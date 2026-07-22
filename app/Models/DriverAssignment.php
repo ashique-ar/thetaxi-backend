@@ -16,6 +16,7 @@ class DriverAssignment extends BaseModel
 
     protected $fillable = [
         'driver_id',
+        'driver_name_snapshot',
         'booking_id',
         'parent_assignment_id',
         'customer_name',
@@ -33,10 +34,12 @@ class DriverAssignment extends BaseModel
         'override_reasons',
         'manually_confirmed',
         'confirmed_by',
+        'confirmed_by_name_snapshot',
         'confirmed_at',
         'confirmation_method',
         'confirmation_notes',
         'assigned_by',
+        'assigned_by_name_snapshot',
         'actual_start',
         'actual_end',
         'assignment_notes',
@@ -84,6 +87,39 @@ class DriverAssignment extends BaseModel
         'overtime_applicable' => 'boolean',
         'hourly_rate' => 'decimal:2',
     ];
+
+    protected static function booted(): void
+    {
+        static::creating(function (DriverAssignment $assignment): void {
+            $assignment->assigned_by_name_snapshot ??= self::userDisplaySnapshot($assignment->assigned_by);
+            $assignment->confirmed_by_name_snapshot ??= self::userDisplaySnapshot($assignment->confirmed_by);
+            $assignment->driver_name_snapshot ??= self::driverDisplaySnapshot($assignment->driver_id);
+        });
+        static::updating(function (DriverAssignment $assignment): void {
+            if ($assignment->isDirty('confirmed_by')) {
+                $assignment->confirmed_by_name_snapshot = self::userDisplaySnapshot($assignment->confirmed_by);
+            }
+            if ($assignment->isDirty('driver_id')) {
+                $assignment->driver_name_snapshot = self::driverDisplaySnapshot($assignment->driver_id);
+            }
+        });
+    }
+
+    private static function userDisplaySnapshot(?string $userId): ?string
+    {
+        if (!$userId) return null;
+        $user = User::query()->find($userId, ['id', 'first_name', 'last_name']);
+        $name = $user ? trim((string) $user->first_name . ' ' . (string) $user->last_name) : '';
+        return $name !== '' ? $name : null;
+    }
+
+    private static function driverDisplaySnapshot(?string $driverId): ?string
+    {
+        if (!$driverId) return null;
+        $driver = Driver::query()->with('user:id,first_name,last_name')->find($driverId);
+        $name = trim((string) (($driver?->user?->first_name ?? '') . ' ' . ($driver?->user?->last_name ?? '')));
+        return $name !== '' ? $name : ($driver?->code ?: null);
+    }
 
     /**
      * Driver this assignment belongs to

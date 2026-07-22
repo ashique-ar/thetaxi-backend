@@ -27,6 +27,8 @@ beforeEach(function () {
 
     foreach ([
         'audit_logs',
+        'driver_sessions',
+        'driver_assignments',
         'booking_addons',
         'booking_qc_repair_items',
         'booking_qcs',
@@ -159,6 +161,29 @@ beforeEach(function () {
     Schema::create('booking_addons', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('booking_id');
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('driver_assignments', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('driver_id')->nullable();
+        $table->uuid('booking_id')->nullable();
+        $table->uuid('booking_item_id')->nullable();
+        $table->string('status')->default('active');
+        $table->string('trip_phase')->nullable();
+        $table->timestamp('trip_completed_at')->nullable();
+        $table->timestamp('actual_end')->nullable();
+        $table->decimal('total_distance_km', 10, 2)->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('driver_sessions', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('driver_id')->nullable();
+        $table->uuid('assignment_id')->nullable();
+        $table->string('status')->default('active');
         $table->timestamps();
         $table->softDeletes();
     });

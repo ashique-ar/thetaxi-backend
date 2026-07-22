@@ -24,9 +24,10 @@ class PermissionRegistry
         return config("permissions.aliases.{$key}", $key);
     }
 
-    public function permissions(): Collection
+    public function permissions(?string $guard = null): Collection
     {
         return Permission::query()
+            ->when($guard, fn ($query) => $query->where('guard_name', $guard))
             ->orderByRaw("case when guard_name = ? then 0 else 1 end", [$this->canonicalGuard()])
             ->orderBy('name')
             ->get()
@@ -36,10 +37,10 @@ class PermissionRegistry
             ->values();
     }
 
-    public function grouped(): array
+    public function grouped(?string $guard = null): array
     {
         $moduleConfig = config('permissions.modules', []);
-        $permissions = $this->permissions();
+        $permissions = $this->permissions($guard);
 
         $modules = $permissions
             ->groupBy('module')
@@ -60,6 +61,7 @@ class PermissionRegistry
 
         return [
             'canonical_guard' => $this->canonicalGuard(),
+            'selected_guard' => $guard ?? $this->canonicalGuard(),
             'modules' => $modules,
             'templates' => $this->templates($permissions),
         ];

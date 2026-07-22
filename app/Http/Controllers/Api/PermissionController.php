@@ -14,11 +14,15 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class PermissionController extends Controller
 {
-    public function registry(PermissionRegistry $registry): JsonResponse
+    public function registry(Request $request, PermissionRegistry $registry): JsonResponse
     {
+        $guard = $request->filled('guard_name')
+            ? $request->string('guard_name')->toString()
+            : null;
+
         return response()->json([
             'status' => 'success',
-            'data' => $registry->grouped(),
+            'data' => $registry->grouped($guard),
         ]);
     }
 

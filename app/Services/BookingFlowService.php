@@ -98,6 +98,34 @@ class BookingFlowService
         $usesDropoffTime = $context['uses_dropoff_time'];
         $tripMode = $context['trip_mode'];
 
+        // Multi-trip requests are canonical, while the dynamic form rules still inspect
+        // the first trip through legacy top-level keys. Promote only missing values so
+        // explicit top-level input remains authoritative and nullable placeholders are
+        // not injected ahead of validation.
+        $firstBookingItem = is_array($params['booking_items'] ?? null)
+            ? ($params['booking_items'][0] ?? null)
+            : null;
+        if (is_array($firstBookingItem)) {
+            foreach ([
+                'service_type',
+                'service_type_id',
+                'vehicle_group_id',
+                'from_date',
+                'from_time',
+                'to_date',
+                'to_time',
+                'pickup_location',
+                'dropoff_location',
+            ] as $canonicalKey) {
+                if (
+                    !$this->hasFilledValue($params[$canonicalKey] ?? null)
+                    && $this->hasFilledValue($firstBookingItem[$canonicalKey] ?? null)
+                ) {
+                    $params[$canonicalKey] = $firstBookingItem[$canonicalKey];
+                }
+            }
+        }
+
         if (empty($params['service_type']) && !empty($context['service_type'])) {
             $params['service_type'] = (string) ($context['service_type']->id ?? '');
         }
@@ -1567,15 +1595,20 @@ class BookingFlowService
     {
         $serviceType = $params['service_type'];
         $fromDate = Carbon::parse($params['from_date']);
-        $toDate = Carbon::parse($params['to_date']);
+        $toDate = Carbon::parse($params['to_date'] ?? $params['from_date']);
         $fromTime = $params['from_time'];
-        $toTime = $params['to_time'];
+        $toTime = $params['to_time'] ?? $fromTime;
+        $vehicle = Vehicle::findOrFail($vehicleId);
 
         $conflicts = [];
 
         // Check for existing bookings through booking_items
         $existingBookings = BookingItem::where('booking_items.vehicle_id', $vehicleId)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->when(
+                $params['exclude_booking_id'] ?? null,
+                fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
+            )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->where(function ($q) use ($fromDate, $toDate) {
                 $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
@@ -1643,15 +1676,19 @@ class BookingFlowService
     {
         $vehicleGroupId = $params['vehicle_group_id'];
         $fromDate = Carbon::parse($params['from_date']);
-        $toDate = Carbon::parse($params['to_date']);
+        $toDate = Carbon::parse($params['to_date'] ?? $params['from_date']);
         $fromTime = $params['from_time'];
-        $toTime = $params['to_time'];
+        $toTime = $params['to_time'] ?? $fromTime;
 
         $conflicts = [];
 
         // Check for existing bookings through booking_items
         $existingBookings = BookingItem::where('booking_items.driver_id', $driverId)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->when(
+                $params['exclude_booking_id'] ?? null,
+                fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
+            )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->where(function ($q) use ($fromDate, $toDate) {
                 $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
@@ -1810,6 +1847,7 @@ class BookingFlowService
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
+            $draft = $this->prepareDraftForTransition($params);
 
             // 1) Calculate pricing with the same payload you got from the controller
             $pricing = $this->calculatePricing($params);
@@ -1823,7 +1861,7 @@ class BookingFlowService
             $requiresApproval = !empty($approvalTriggers);
 
             // 3) Create the booking in "pending_approval"
-            $booking = new Booking();
+            $booking = $draft ?: new Booking();
 
             // (No normalization: we use $params directly)
             $booking->customer_id = $this->resolveBookingCustomerId($params);
@@ -2252,6 +2290,7 @@ class BookingFlowService
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
+            $draft = $this->prepareDraftForTransition($params);
 
             // 1) Calculate pricing
             $pricing = $this->calculatePricing($params);
@@ -2260,7 +2299,7 @@ class BookingFlowService
             $totals = $this->extractTotalsFromPricing($pricing);
 
             // 3) Create confirmed booking (booking-level data only)
-            $booking = new Booking();
+            $booking = $draft ?: new Booking();
 
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
@@ -2314,7 +2353,16 @@ class BookingFlowService
             // Handle multi-group booking items creation
 
             // Handle multi-group booking items creation
-            if ($isMultiGroup) {
+            if ($draft) {
+                // saveBookingDraft already synchronized the canonical booking items for this ID.
+                if (!empty($params['selected_addons'])) {
+                    $this->syncBookingAddons($booking, $params['selected_addons']);
+                }
+                if (!empty($params['variable_customizations'])) {
+                    $this->storeVariableCustomizations($params['variable_customizations'], $booking->id, $params['session_id'] ?? null);
+                }
+                $this->createBookingAssignments($booking, $params, 'active');
+            } elseif ($isMultiGroup) {
                 $this->createMultiGroupBookingItems($booking, $params, $pricing);
             } else {
                 // Handle single group booking - create booking item
@@ -8170,8 +8218,6 @@ class BookingFlowService
             $query->where('booking_items.is_self_driven', $isSelfDriven);
         }
 
-        $this->applyOperationsQueueFilter($query, $filters['operations_queue'] ?? null);
-
         if (!empty($assignmentStatuses)) {
             $query->whereHas('booking', function ($bookingQuery) use ($assignmentStatuses) {
                 $bookingQuery->where(function ($assignmentQuery) use ($assignmentStatuses) {
@@ -8195,6 +8241,12 @@ class BookingFlowService
                 });
             });
         }
+
+        $queueBaseQuery = clone $query;
+        $this->applyOperationsQueueFilter(
+            $query,
+            $filters['queue'] ?? $filters['operations_queue'] ?? null
+        );
 
         $sortBy = $filters['sort_by'] ?? 'created_at';
         $sortDirection = strtolower($filters['sort_direction'] ?? $filters['sort_order'] ?? 'desc');
@@ -8272,7 +8324,7 @@ class BookingFlowService
                 'to' => $paginated->lastItem(),
             ],
             'filters_applied' => $filters,
-            'summary' => $this->getBookingsSummary($query),
+            'summary' => $this->getBookingsSummary($query, $queueBaseQuery),
         ];
     }
 
@@ -8292,8 +8344,9 @@ class BookingFlowService
             }),
             'needs_assignment' => $query->whereHas('booking', function ($bookingQuery) {
                 $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
-                    ->whereDoesntHave('dispatch', function ($dispatchQuery) {
-                        $dispatchQuery->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
+                    ->whereDoesntHave('dispatches', function ($dispatchQuery) {
+                        $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                            ->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
                     });
             })->where(function ($assignmentQuery) {
                 $assignmentQuery->whereNull('booking_items.vehicle_id')
@@ -8307,9 +8360,11 @@ class BookingFlowService
             'ready_to_dispatch' => $query->whereHas('booking', function ($bookingQuery) {
                 $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
                     ->where(function ($dispatchQuery) {
-                        $dispatchQuery->whereDoesntHave('dispatch')
-                            ->orWhereHas('dispatch', function ($dispatchStatusQuery) {
-                                $dispatchStatusQuery->whereIn('dispatch_status', ['not_dispatched', 'ready_for_dispatch']);
+                        $dispatchQuery->whereDoesntHave('dispatches', function ($itemDispatchQuery) {
+                            $itemDispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id');
+                        })->orWhereHas('dispatches', function ($dispatchStatusQuery) {
+                                $dispatchStatusQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                                    ->whereIn('dispatch_status', ['not_dispatched', 'ready_for_dispatch']);
                             });
                     });
             })->whereNotNull('booking_items.vehicle_id')
@@ -8317,7 +8372,49 @@ class BookingFlowService
                     $driverQuery->where('booking_items.is_self_driven', true)
                         ->orWhereNotNull('booking_items.driver_id');
                 }),
-            'payment_pending' => $query->whereHas('booking', function ($bookingQuery) {
+            'active' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
+                    $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
+                        ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
+                })->orWhereHas('dispatches', function ($dispatchQuery) {
+                    $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                        ->whereIn('dispatch_status', ['dispatched', 'in_progress']);
+                });
+            }),
+            'return_due' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereHas('dispatches', function ($dispatchQuery) {
+                    $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                        ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                        ->whereNull('actual_return_at')
+                        ->whereNotNull('expected_return_at')
+                        ->where('expected_return_at', '<=', now());
+                });
+            }),
+            'qc_pending' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereHas('qcs', function ($qcQuery) {
+                    $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
+                        ->whereIn('qc_status', ['pending', 'in_progress']);
+                });
+            }),
+            'repair_pending' => $query->whereHas('booking', function ($bookingQuery) {
+                $bookingQuery->whereHas('qcs', function ($qcQuery) {
+                    $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
+                        ->where(function ($repairQuery) {
+                            $repairQuery->whereIn('qc_status', ['issues_found', 'repair_required'])
+                                ->orWhere('repair_required', true);
+                        });
+                });
+            }),
+            'ready_to_complete' => $query->whereNull('booking_items.completed_at')
+                ->whereNotIn('booking_items.status', ['completed', 'cancelled'])
+                ->whereHas('booking', function ($bookingQuery) {
+                    $bookingQuery->whereNotIn('status', ['completed', 'cancelled'])
+                        ->whereHas('qcs', function ($qcQuery) {
+                            $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
+                                ->where('qc_status', 'completed');
+                        });
+                }),
+            'payment_pending', 'payment_attention' => $query->whereHas('booking', function ($bookingQuery) {
                 $bookingQuery->whereNotIn('status', ['cancelled', 'completed'])
                     ->where(function ($paymentQuery) {
                         $paymentQuery->whereIn('payment_collection_status', ['pending', 'payment_pending', 'billable'])
@@ -8648,6 +8745,7 @@ class BookingFlowService
                 'title' => $itemVehicle->title ?? $itemVehicle->name,
                 'registration_number' => $itemVehicle->registration_number ?? $itemVehicle->license_plate,
                 'license_plate' => $itemVehicle->license_plate,
+                'availability_status' => $itemVehicle->availability_status,
                 'vehicle_group' => $itemVehicleGroup ? [
                     'id' => (string) $itemVehicleGroup->id,
                     'name' => $itemVehicleGroup->name,
@@ -10036,7 +10134,7 @@ class BookingFlowService
     /**
      * Get bookings summary for filtered results
      */
-    private function getBookingsSummary($query): array
+    private function getBookingsSummary($query, $queueBaseQuery = null): array
     {
         $baseQuery = clone $query;
         $baseQuery->reorder();
@@ -10070,7 +10168,31 @@ class BookingFlowService
             'status_counts' => $statusCounts,
             'service_type_counts' => $serviceTypeCounts,
             'booking_status_counts' => $bookingStatusCounts,
+            'queue_counts' => $this->getBookingQueueCounts($queueBaseQuery ?? $baseQuery),
         ];
+    }
+
+    private function getBookingQueueCounts($query): array
+    {
+        $counts = [];
+        foreach ([
+            'needs_approval',
+            'needs_assignment',
+            'ready_to_dispatch',
+            'active',
+            'return_due',
+            'qc_pending',
+            'repair_pending',
+            'ready_to_complete',
+            'payment_attention',
+        ] as $queue) {
+            $queueQuery = clone $query;
+            $queueQuery->reorder();
+            $this->applyOperationsQueueFilter($queueQuery, $queue);
+            $counts[$queue] = $queueQuery->count('booking_items.id');
+        }
+
+        return $counts;
     }
 
     /**
@@ -11345,6 +11467,9 @@ class BookingFlowService
 
             if ($bookingId) {
                 $booking = Booking::findOrFail($bookingId);
+                if ($booking->status !== 'draft') {
+                    abort(409, 'Only an existing draft can be saved through the draft endpoint.');
+                }
             } else {
                 $booking = new Booking();
                 if (method_exists(Booking::class, 'generateConfirmationNumber')) {
@@ -11401,6 +11526,21 @@ class BookingFlowService
 
             return $booking->load(['customer', 'bookingItems']);
         });
+    }
+
+    private function prepareDraftForTransition(array $params): ?Booking
+    {
+        $bookingId = $params['booking_id'] ?? null;
+        if (!$bookingId) {
+            return null;
+        }
+
+        $booking = Booking::query()->lockForUpdate()->findOrFail($bookingId);
+        if ($booking->status !== 'draft') {
+            abort(409, 'Only a draft booking can be submitted through the draft transition flow.');
+        }
+
+        return $this->saveBookingDraft($params);
     }
 
     public function requestBookingQuotation(array $params): Booking
@@ -11525,6 +11665,15 @@ class BookingFlowService
             ?? $params['payment_type']
             ?? ($isExplicitlyNonCorporate && !$hasExplicitPaymentMethod ? null : $booking?->payment_collection_method)
             ?? null;
+        if (!$hasExplicitPaymentMethod && !$rawMethod) {
+            $serviceTypeId = $params['service_type_id'] ?? data_get($params, 'booking_items.0.service_type_id');
+            if ($serviceTypeId) {
+                $service = \App\Models\Service\ServiceType::find($serviceTypeId);
+                $rawMethod = ($service?->deposit_mode && $service->deposit_mode !== 'none' && (float)$service->deposit_value > 0)
+                    ? 'deposit_then_balance'
+                    : $service?->default_payment_arrangement;
+            }
+        }
         $method = $this->normalizePaymentCollectionMethod($rawMethod);
 
         $responsibility = $params['payment_responsibility']
@@ -11548,6 +11697,9 @@ class BookingFlowService
         if ($method === 'monthly_invoice' && $responsibility === 'customer') {
             $responsibility = $isCorporateBooking ? 'corporate' : 'company';
         }
+        if ($method === 'complimentary') {
+            $responsibility = 'company';
+        }
 
         $status = $params['payment_collection_status']
             ?? $booking?->payment_collection_status
@@ -11561,7 +11713,14 @@ class BookingFlowService
             'driver_collected', 'online_paid', 'paid' => 'paid',
             'failed' => 'failed',
             'refunded' => 'refunded',
-            default => 'pending',
+            default => match ($method) {
+                'monthly_invoice' => 'corporate_account',
+                'account_credit' => 'credit_terms',
+                'pay_at_end' => 'due_at_hire_end',
+                'advance_then_balance', 'deposit_then_balance' => 'advance_due',
+                'complimentary' => 'waived',
+                default => 'collection_due',
+            },
         };
 
         return [
@@ -11576,6 +11735,20 @@ class BookingFlowService
                 default => $method,
             },
             'payment_status' => $legacyPaymentStatus,
+            'payment_arrangement_status' => match ($method) {
+                'monthly_invoice' => 'corporate_credit',
+                'account_credit' => 'customer_credit',
+                'pay_at_end' => 'due_at_hire_end',
+                'advance_then_balance' => 'advance_then_balance',
+                'deposit_then_balance' => 'deposit_then_balance',
+                'online' => 'online_payment',
+                'complimentary' => 'complimentary',
+                default => 'driver_collection',
+            },
+            'customer_settlement_status' => !$isCorporateBooking && $method === 'account_credit' ? 'open' : 'not_applicable',
+            'corporate_settlement_status' => $isCorporateBooking && $method === 'monthly_invoice' ? 'open' : 'not_applicable',
+            'driver_collection_status' => in_array($method, ['cash_to_driver', 'pay_at_end', 'advance_then_balance', 'deposit_then_balance'], true) ? 'collection_due' : 'not_required',
+            'invoice_status' => $method === 'monthly_invoice' ? 'pending_issue' : 'not_required',
             'amount_to_pay' => $params['amount_to_pay'] ?? $booking?->amount_to_pay ?? null,
         ];
     }
@@ -11590,8 +11763,13 @@ class BookingFlowService
             'cash', 'cash_to_driver', 'driver_cash', 'pay_to_driver' => 'cash_to_driver',
             'online', 'webxpay', 'credit_card', 'debit_card', 'card_online', 'stripe', 'paypal' => 'online',
             'corporate', 'credit', 'monthly_invoice', 'invoice', 'company_billing' => 'monthly_invoice',
+            'advance_then_balance', 'advance' => 'advance_then_balance',
+            'deposit_then_balance', 'deposit' => 'deposit_then_balance',
+            'pay_at_end', 'end_of_hire' => 'pay_at_end',
+            'account_credit', 'customer_credit', 'customer_account' => 'account_credit',
             'bank', 'bank_transfer' => 'bank_transfer',
             'card' => 'card',
+            'complimentary', 'waived', 'free' => 'complimentary',
             'other' => 'other',
             default => null,
         };

@@ -92,6 +92,8 @@ class RouteReferencedPermissionsSeeder extends Seeder
             'bookings.create',
             'bookings.delete',
             'bookings.dispatch',
+            'bookings.tracking_replay',
+            'bookings.tracking_export',
             'bookings.process_return',
             'bookings.qc_inspect',
             'bookings.view',

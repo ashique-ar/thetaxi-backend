@@ -134,6 +134,11 @@ class Booking extends BaseModel
         return $this->hasMany(\App\Models\Booking\BookingTerm::class, 'booking_id');
     }
 
+    public function paymentReceipts()
+    {
+        return $this->hasMany(BookingPaymentReceipt::class, 'booking_id');
+    }
+
     /**
      * The attributes that are mass assignable.
      *
@@ -184,6 +189,14 @@ class Booking extends BaseModel
         'payment_collected_at',
         'payment_collected_by_driver_id',
         'payment_notes',
+        'payment_arrangement_status',
+        'customer_settlement_status',
+        'corporate_settlement_status',
+        'driver_collection_status',
+        'invoice_status',
+        'refund_status',
+        'settlement_due_date',
+        'settled_at',
 
         // Corporate booking fields
         'is_corporate_booking',

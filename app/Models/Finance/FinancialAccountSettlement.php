@@ -1,0 +1,14 @@
+<?php
+namespace App\Models\Finance;
+
+use App\Models\BaseModel;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+
+class FinancialAccountSettlement extends BaseModel
+{
+    protected $fillable = ['settlement_number','owner_type','owner_id','billing_cycle','period_start','period_end','due_date','status','invoice_number','charges_total','payments_total','refunds_total','adjustments_total','outstanding_total','issued_at','settled_at','payment_reference','notes','dispute_reason','disputed_at','disputed_by','resolved_at','resolved_by','resolution_notes','created_user_id','updated_user_id'];
+    protected $casts = ['period_start'=>'date','period_end'=>'date','due_date'=>'date','issued_at'=>'datetime','settled_at'=>'datetime','charges_total'=>'decimal:2','payments_total'=>'decimal:2','refunds_total'=>'decimal:2','adjustments_total'=>'decimal:2','outstanding_total'=>'decimal:2'];
+    public function items(): HasMany { return $this->hasMany(FinancialSettlementItem::class, 'settlement_id'); }
+    public function allocations(): HasMany { return $this->hasMany(FinancialPaymentAllocation::class, 'settlement_id'); }
+    public function document() { return $this->hasOne(FinancialSettlementDocument::class, 'settlement_id'); }
+}

@@ -44,6 +44,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'update.api.session' => \App\Http\Middleware\UpdateApiSessionOnRequest::class,
             'agent.api' => \App\Http\Middleware\AuthenticateAgentApiKey::class,
             'agent.api.access' => \App\Http\Middleware\EnsureAgentApiAccess::class,
+            'booking.operations.telemetry' => \App\Http\Middleware\BookingOperationsTelemetry::class,
         ]);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);

@@ -2,6 +2,8 @@
 
 This guide explains how to set up Laravel Reverb WebSockets and Sentry error monitoring for each company deployment.
 
+For Booking Management signal definitions, dashboards, alert routing, privacy boundaries, and validation, also follow [BOOKING_OPERATIONS_MONITORING.md](BOOKING_OPERATIONS_MONITORING.md).
+
 Use this document when onboarding a new company, staging domain, or production domain.
 
 ## Components

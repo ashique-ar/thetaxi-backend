@@ -70,6 +70,14 @@ beforeEach(function () {
         $table->string('payment_method')->nullable();
         $table->string('payment_type')->nullable();
         $table->string('payment_status')->nullable();
+        $table->string('payment_arrangement_status')->nullable();
+        $table->string('customer_settlement_status')->nullable();
+        $table->string('corporate_settlement_status')->nullable();
+        $table->string('driver_collection_status')->nullable();
+        $table->string('invoice_status')->nullable();
+        $table->string('refund_status')->nullable();
+        $table->date('settlement_due_date')->nullable();
+        $table->timestamp('settled_at')->nullable();
         $table->decimal('payment_collected_amount', 12, 2)->nullable();
         $table->timestamp('payment_collected_at')->nullable();
         $table->uuid('payment_collected_by_driver_id')->nullable();
@@ -184,6 +192,9 @@ beforeEach(function () {
         $table->uuid('booking_id')->nullable();
         $table->uuid('booking_item_id')->nullable();
         $table->uuid('confirmed_by')->nullable();
+        $table->string('assigned_by_name_snapshot')->nullable();
+        $table->string('confirmed_by_name_snapshot')->nullable();
+        $table->string('driver_name_snapshot')->nullable();
         $table->timestamp('confirmed_at')->nullable();
         $table->timestamp('assigned_from')->nullable();
         $table->timestamp('assigned_to')->nullable();
@@ -891,5 +902,6 @@ it('preserves the enabled contractual snapshot through the full operational life
         ->and($item->pricing_breakdown)->toBe($contractualSnapshot)
         ->and($item->dropoff_location['address'])->toBe('Booked Drop-off')
         ->and(data_get($booking->distance_metrics, 'source'))->toBe('driver_route_points')
-        ->and(data_get($booking->distance_metrics, 'pricing_effect'))->toBe('none_contractual_snapshot');
+        ->and(data_get($booking->distance_metrics, "items.{$item->id}.pricing_effect"))
+        ->toBe('none_contractual_snapshot');
 });

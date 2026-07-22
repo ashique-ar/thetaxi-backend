@@ -37,7 +37,7 @@ trait BookingSubmissionTrait
             'corporate_contact.name' => 'nullable|string|max:255',
             'corporate_contact.email' => 'nullable|email|max:255',
             'corporate_contact.phone' => 'nullable|string|max:50',
-            'service_type' => 'required|string',
+            'service_type' => 'required_without:booking_items|string',
             'vehicle_group_id' => 'sometimes|string',
             'vehicle_groups' => 'sometimes|array',
             'vehicle_groups.*.id' => 'required|string',
@@ -119,7 +119,9 @@ trait BookingSubmissionTrait
             'status' => 'success',
             'data' => new BookingFlowResource($booking),
             'requires_approval' => $booking->requires_approval,
-            'message' => 'Booking submitted for approval successfully'
+            'message' => $booking->requires_approval
+                ? 'Booking submitted for approval successfully'
+                : 'Booking confirmed successfully'
         ], 201);
     }
 
@@ -146,7 +148,7 @@ trait BookingSubmissionTrait
             'corporate_contact.name' => 'nullable|string|max:255',
             'corporate_contact.email' => 'nullable|email|max:255',
             'corporate_contact.phone' => 'nullable|string|max:50',
-            'service_type' => 'required|string',
+            'service_type' => 'required_without:booking_items|string',
             'vehicle_group_id' => 'sometimes|string',
             'vehicle_groups' => 'sometimes|array',
             'vehicle_groups.*.id' => 'required|string',
@@ -236,6 +238,18 @@ trait BookingSubmissionTrait
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
             $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
+            $bookingForEdit = Booking::findOrFail($bookingId);
+            $structureEditable = in_array(
+                (string) $bookingForEdit->status,
+                ['draft', 'pending', 'pending_approval', 'approved', 'confirmed'],
+                true
+            );
+            if (array_key_exists('booking_items', $params) && !$structureEditable) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Trip structure is locked after allocation. Use lifecycle actions for operational changes.',
+                ], 409);
+            }
             $requirements = $this->bookingFlowService->getDynamicCalculationRequirements($params);
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
 
@@ -393,17 +407,25 @@ trait BookingSubmissionTrait
             }
 
             $editData = $this->bookingFlowService->getComprehensiveBookingData($bookingId);
+            $permissions = [
+                'can_edit_basic' => Gate::allows('update', $booking),
+                'can_edit_structure' => Gate::allows('update', $booking) && in_array(
+                    (string) $booking->status,
+                    ['draft', 'pending', 'pending_approval', 'approved', 'confirmed'],
+                    true
+                ),
+                'can_edit_pricing' => Gate::allows('update', $booking),
+                'can_edit_approval' => Gate::allows('update', $booking),
+                'can_cancel' => Gate::allows('delete', $booking),
+                'can_override' => Gate::allows('update', $booking),
+            ];
+            $editData['permissions'] = $permissions;
 
             return response()->json([
                 'status' => 'success',
                 'data' => $editData,
-                'permissions' => [
-                    'can_edit_basic' => Gate::allows('update', $booking),
-                    'can_edit_pricing' => Gate::allows('update', $booking),
-                    'can_edit_approval' => Gate::allows('update', $booking),
-                    'can_cancel' => Gate::allows('delete', $booking),
-                    'can_override' => Gate::allows('update', $booking)
-                ],
+                // Retained at the top level for existing API consumers.
+                'permissions' => $permissions,
                 'message' => 'Booking data retrieved for editing'
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
@@ -563,6 +585,7 @@ trait BookingSubmissionTrait
             'is_self_driven' => 'nullable|boolean',
             'corporate_id' => 'nullable|uuid',
             'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,ready_to_dispatch,payment_pending',
+            'queue' => 'nullable|string|in:needs_approval,needs_assignment,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_attention',
         ]);
 
         try {

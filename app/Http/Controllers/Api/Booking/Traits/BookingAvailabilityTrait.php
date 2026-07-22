@@ -205,6 +205,7 @@ trait BookingAvailabilityTrait
             'to_date' => 'nullable|date',
             'from_time' => 'required|string',
             'to_time' => 'nullable|string',
+            'exclude_booking_id' => 'nullable|uuid|exists:bookings,id',
         ]);
 
         try {
@@ -233,6 +234,7 @@ trait BookingAvailabilityTrait
             'to_date' => 'nullable|date',
             'from_time' => 'required|string',
             'to_time' => 'nullable|string',
+            'exclude_booking_id' => 'nullable|uuid|exists:bookings,id',
         ]);
 
         try {

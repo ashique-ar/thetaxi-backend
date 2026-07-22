@@ -12,6 +12,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\BookingPriceAdjustmentHistory;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Finance\FinancialSettlementItem;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\Pricing\FinalPricingTelemetryResolver;
 use App\Models\AuditLog;
@@ -48,6 +49,7 @@ class BookingLifecycleService
     protected WebsiteSettingsService $websiteSettingsService;
     protected CustomerMobileActivityService $customerMobileActivityService;
     protected FinalPricingTelemetryResolver $finalPricingTelemetryResolver;
+    protected ?BookingOperationsHealthMonitor $healthMonitor;
 
     public function __construct(
         AssignmentService $assignmentService,
@@ -60,7 +62,8 @@ class BookingLifecycleService
         AgentCommissionService $agentCommissionService,
         WebsiteSettingsService $websiteSettingsService,
         CustomerMobileActivityService $customerMobileActivityService,
-        FinalPricingTelemetryResolver $finalPricingTelemetryResolver
+        FinalPricingTelemetryResolver $finalPricingTelemetryResolver,
+        ?BookingOperationsHealthMonitor $healthMonitor = null,
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -73,6 +76,7 @@ class BookingLifecycleService
         $this->websiteSettingsService = $websiteSettingsService;
         $this->customerMobileActivityService = $customerMobileActivityService;
         $this->finalPricingTelemetryResolver = $finalPricingTelemetryResolver;
+        $this->healthMonitor = $healthMonitor;
     }
 
     /**
@@ -415,6 +419,7 @@ class BookingLifecycleService
                 ->findOrFail($bookingId);
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $this->assertFinancialLifecycleReady($booking, 'dispatch');
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
 
             if (!$context['vehicle_id']) {
@@ -464,6 +469,7 @@ class BookingLifecycleService
                 ->findOrFail($bookingId);
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $this->assertFinancialLifecycleReady($booking, 'dispatch');
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $vehicleId = $context['vehicle_id'];
@@ -958,6 +964,7 @@ class BookingLifecycleService
                 }
             } else {
                 // Skip QC stage for businesses that disable it in website settings.
+                $this->assertFinancialLifecycleReady($booking, 'completion');
                 $this->makeVehicleAvailable($vehicleId);
                 $completionMeta = array_merge(
                     $returnData,
@@ -968,6 +975,12 @@ class BookingLifecycleService
                 );
                 if ($isMultiItem) {
                     $this->markBookingItemCompleted($bookingItem, $completionMeta);
+                    $this->closeDriverAssignmentsForCompletion(
+                        (string) $booking->id,
+                        $bookingItem?->id ? (string) $bookingItem->id : null,
+                        $bookingItem?->returned_at ?? $dispatch->fresh()->actual_return_at ?? Carbon::now('UTC'),
+                        $completionMeta
+                    );
                     $this->logItemLifecycleEvent($booking, $bookingItem, 'completed', $completionMeta);
                     $newlyCompleted = $this->finalizeMultiItemBookingIfReady(
                         $booking,
@@ -1002,6 +1015,12 @@ class BookingLifecycleService
                 }
 
                 $this->markBookingItemCompleted($bookingItem?->fresh(), $completionMeta);
+                $this->closeDriverAssignmentsForCompletion(
+                    (string) $booking->id,
+                    $bookingItem?->id ? (string) $bookingItem->id : null,
+                    $bookingItem?->returned_at ?? $dispatch->fresh()->actual_return_at ?? Carbon::now('UTC'),
+                    $completionMeta
+                );
 
                 $this->logLifecycleTransition(
                     $booking,
@@ -1141,9 +1160,16 @@ class BookingLifecycleService
 
             // If no repair needed, make vehicle available
             $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
-            if (!$qc->needsRepair()) {
+            if (!$qc->needsRepair() && !$qc->requires_maintenance) {
                 if ($vehicleId) {
                     $this->makeVehicleAvailable($vehicleId);
+                }
+            } elseif (!$qc->needsRepair() && $qc->requires_maintenance) {
+                if ($vehicleId) {
+                    $vehicle = Vehicle::findOrFail($vehicleId);
+                    $vehicle->update([
+                        'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value,
+                    ]);
                 }
             } else {
                 // Update vehicle to repair status
@@ -1219,6 +1245,7 @@ class BookingLifecycleService
                 ->with(['dispatches', 'dispatch', 'bookingItems'])
                 ->findOrFail($bookingId);
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $this->assertFinancialLifecycleReady($booking, 'completion');
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
             $bookingItem = $context['booking_item']
                 ? BookingItem::query()
@@ -1488,6 +1515,11 @@ class BookingLifecycleService
 
             return $booking->fresh(['bookingItems', 'dispatches']);
         } catch (\Throwable $exception) {
+            // Administrative force completion may recover missing operational
+            // telemetry, but it must not bypass explicit financial safeguards.
+            if ($this->resolveFinancialLifecycleBlockingReasons($bookingForStatus) !== []) {
+                throw $exception;
+            }
             $isExpectedLifecycleBlock = $exception instanceof \DomainException
                 || $exception instanceof \InvalidArgumentException
                 || $exception->getMessage() === 'Booking cannot be completed from its current lifecycle status';
@@ -3203,6 +3235,14 @@ class BookingLifecycleService
         }
 
         $lifecycleContract = $this->getLifecycleContract($booking, $context['booking_item_id']);
+        if (($lifecycleContract['lifecycle_status'] ?? null) !== $currentStatus->value) {
+            $this->healthMonitor?->recordLifecycleMismatch([
+                'booking_id' => (string) $booking->id,
+                'booking_item_id' => $context['booking_item_id'],
+                'summary_status' => $currentStatus->value,
+                'contract_status' => $lifecycleContract['lifecycle_status'] ?? null,
+            ]);
+        }
         $lifecycleHistory = AuditLog::query()
             ->with('user:id,first_name,last_name')
             ->where('entity', 'Booking')
@@ -3434,6 +3474,8 @@ class BookingLifecycleService
             BookingLifecycleStatus::ONGOING_ACTIVE,
             BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
             BookingLifecycleStatus::ONGOING_BREAKDOWN,
+            BookingLifecycleStatus::RETURN_SCHEDULED,
+            BookingLifecycleStatus::RETURN_OVERDUE,
         ], true)) {
             if ($workflowSettings['enable_return_stage'] ?? false) {
                 $actions[] = 'process_return';
@@ -3478,7 +3520,63 @@ class BookingLifecycleService
             $blockingReasons[] = 'Booking is cancelled';
         }
 
+        $financialBlockingReasons = $this->resolveFinancialLifecycleBlockingReasons($booking);
+        if ($financialBlockingReasons !== []) {
+            $actions = array_values(array_diff($actions, ['dispatch_vehicle', 'complete_booking']));
+            $blockingReasons = array_merge($blockingReasons, $financialBlockingReasons);
+        }
+
         return [array_values(array_unique($actions)), array_values(array_unique($blockingReasons))];
+    }
+
+    /**
+     * Only explicit prepaid failures and disputed account settlements block the
+     * operational lifecycle. Driver collection, pay-at-end, customer credit,
+     * and monthly invoicing remain valid post-trip settlement arrangements.
+     *
+     * @return string[]
+     */
+    private function resolveFinancialLifecycleBlockingReasons(Booking $booking): array
+    {
+        $reasons = [];
+        $collectionStatus = strtolower((string) ($booking->payment_collection_status ?? ''));
+        $paymentStatus = strtolower((string) ($booking->payment_status ?? ''));
+        $method = strtolower((string) ($booking->payment_collection_method ?? ''));
+
+        if (in_array($collectionStatus, ['failed', 'declined'], true)
+            || in_array($paymentStatus, ['failed', 'declined'], true)) {
+            $reasons[] = 'Payment collection failed and must be resolved before dispatch or completion';
+        }
+
+        if ($method === 'online') {
+            $outstanding = is_numeric($booking->amount_to_pay)
+                ? (float) $booking->amount_to_pay
+                : max(0, (float) ($booking->total_actual ?? $booking->total_estimated ?? 0)
+                    - (float) ($booking->payment_collected_amount ?? 0));
+            if ($outstanding > 0 && !in_array($collectionStatus, ['online_paid', 'paid'], true)) {
+                $reasons[] = 'Online payment remains due before dispatch or completion';
+            }
+        }
+
+        if (Schema::hasTable('financial_settlement_items') && Schema::hasTable('financial_account_settlements')) {
+            $hasDisputedSettlement = FinancialSettlementItem::query()
+                ->where('booking_id', $booking->id)
+                ->whereHas('settlement', fn ($query) => $query->where('status', 'disputed'))
+                ->exists();
+            if ($hasDisputedSettlement) {
+                $reasons[] = 'The account settlement dispute must be resolved before booking completion';
+            }
+        }
+
+        return array_values(array_unique($reasons));
+    }
+
+    private function assertFinancialLifecycleReady(Booking $booking, string $operation): void
+    {
+        $reasons = $this->resolveFinancialLifecycleBlockingReasons($booking);
+        if ($reasons !== []) {
+            throw new \DomainException(ucfirst($operation) . ' is blocked: ' . implode('; ', $reasons));
+        }
     }
 
     /**
@@ -3861,6 +3959,8 @@ class BookingLifecycleService
                 'interior_condition' => $qc->interior_condition,
                 'exterior_condition' => $qc->exterior_condition,
                 'mechanical_condition' => $qc->mechanical_condition,
+                'damages_found' => $qc->damages_found,
+                'issues_reported' => $qc->issues_reported,
                 'qc_notes' => $qc->qc_notes,
             ],
             'repair_info' => [

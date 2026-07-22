@@ -26,6 +26,8 @@ class AdditionalPermissionsSeeder extends Seeder
             'bookings.dispatch',
             'bookings.process_return',
             'bookings.qc_inspect',
+            'bookings.tracking_replay',
+            'bookings.tracking_export',
             'customers.analytics',
             'customers.bookings',
             'customers.export',

@@ -187,20 +187,22 @@ class DriverHireSettlementController extends Controller
         ]);
     }
 
-    public function markPaid(DriverHireSettlement $driverHireSettlement)
+    public function markPaid(Request $request, DriverHireSettlement $driverHireSettlement)
     {
         abort_unless($driverHireSettlement->status === 'accounts_finalized' && $driverHireSettlement->final_balance >= 0, 422, 'Only payable finalized settlements can be marked paid.');
 
-        $driverHireSettlement->update(['status' => 'paid', 'paid_at' => now()]);
+        $data=$request->validate(['payment_reference'=>['nullable','string','max:120'],'settlement_proof_files'=>['nullable','array'],'settled_at'=>['nullable','date','before_or_equal:now']]);
+        $driverHireSettlement->update(['status' => 'paid', 'paid_at' => $data['settled_at']??now(),'payment_reference'=>$data['payment_reference']??null,'settlement_proof_files'=>$data['settlement_proof_files']??null,'settlement_recorded_at'=>now(),'settlement_recorded_by'=>$request->user()?->id]);
 
         return response()->json(['status' => 'success', 'message' => 'Settlement marked paid', 'data' => new DriverHireSettlementResource($this->loadSettlement($driverHireSettlement->refresh()))]);
     }
 
-    public function markRecovered(DriverHireSettlement $driverHireSettlement)
+    public function markRecovered(Request $request, DriverHireSettlement $driverHireSettlement)
     {
         abort_unless($driverHireSettlement->status === 'recovery_pending' && $driverHireSettlement->final_balance < 0, 422, 'Only recoverable settlements can be marked recovered.');
 
-        $driverHireSettlement->update(['status' => 'recovered', 'recovered_at' => now()]);
+        $data=$request->validate(['payment_reference'=>['nullable','string','max:120'],'settlement_proof_files'=>['nullable','array'],'settled_at'=>['nullable','date','before_or_equal:now']]);
+        $driverHireSettlement->update(['status' => 'recovered', 'recovered_at' => $data['settled_at']??now(),'payment_reference'=>$data['payment_reference']??null,'settlement_proof_files'=>$data['settlement_proof_files']??null,'settlement_recorded_at'=>now(),'settlement_recorded_by'=>$request->user()?->id]);
 
         return response()->json(['status' => 'success', 'message' => 'Settlement marked recovered', 'data' => new DriverHireSettlementResource($this->loadSettlement($driverHireSettlement->refresh()))]);
     }

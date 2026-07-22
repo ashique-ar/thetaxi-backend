@@ -11,6 +11,7 @@ use App\Models\Corporate\CorporateDivision;
 use App\Models\AuditLog;
 use App\Models\DriverAssignment;
 use App\Services\CorporateBookingService;
+use App\Services\BookingObservabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,7 +21,10 @@ class CorporateBookingController extends Controller
 {
     protected CorporateBookingService $bookingService;
 
-    public function __construct(CorporateBookingService $bookingService)
+    public function __construct(
+        CorporateBookingService $bookingService,
+        private readonly BookingObservabilityService $observability
+    )
     {
         $this->bookingService = $bookingService;
 
@@ -129,19 +133,42 @@ class CorporateBookingController extends Controller
     public function liveProgress(Request $request, string $id): JsonResponse
     {
         $booking = $this->authorizedBooking($request, $id);
+        $validated = $request->validate([
+            'booking_item_id' => ['nullable', 'uuid'],
+        ]);
+        $bookingItems = $booking->bookingItems()->orderBy('trip_number')->orderBy('created_at')->get();
+        $itemId = $validated['booking_item_id'] ?? null;
+        if (! $itemId && $bookingItems->count() > 1) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Select a trip before viewing live progress.',
+            ], 422);
+        }
+        $selectedItem = $itemId
+            ? $bookingItems->firstWhere('id', $itemId)
+            : $bookingItems->first();
+        if (! $selectedItem) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $itemId
+                    ? 'Selected booking item does not belong to this booking.'
+                    : 'This booking has no trip to track.',
+            ], 422);
+        }
+
+        $tracking = $this->observability->trackingSummary($booking, (string) $selectedItem->id);
         $assignment = DriverAssignment::query()
-            ->where('booking_id', $booking->id)
-            ->with('driver:id,current_latitude,current_longitude,last_active_at')
-            ->orderByDesc('confirmed_at')
-            ->orderByDesc('created_at')
+            ->whereKey($tracking['assignment_id'] ?? null)
             ->first();
 
         if (! $assignment) {
             return response()->json(['status' => 'success', 'data' => [
                 'booking_id' => $booking->id,
+                'booking_item_id' => (string) $selectedItem->id,
                 'available' => false,
                 'reason' => 'not_assigned',
                 'raw_tracking' => false,
+                'customer_tracking_link' => 'unavailable_policy_not_configured',
             ]]);
         }
 
@@ -152,24 +179,24 @@ class CorporateBookingController extends Controller
                 ?? Carbon::parse($assignment->confirmed_at ?? $assignment->created_at)->addHours(48)
         )->addHours(2);
         $withinWindow = now()->between($windowStart, $windowEnd);
-        $positionFresh = $assignment->driver?->last_active_at
-            && $assignment->driver->current_latitude !== null
-            && $assignment->driver->current_longitude !== null
-            && $assignment->driver->last_active_at->gte(now()->subMinutes(5));
+        $positionFresh = in_array($tracking['freshness'], ['live', 'delayed'], true)
+            && is_array($tracking['active_position']);
 
         return response()->json(['status' => 'success', 'data' => [
             'booking_id' => $booking->id,
+            'booking_item_id' => (string) $selectedItem->id,
             'available' => $withinWindow,
-            'trip_phase' => $assignment->trip_phase?->value ?? (string) $assignment->trip_phase,
+            'trip_phase' => $tracking['trip_phase'],
             'status' => $assignment->status,
             'position' => $withinWindow && $positionFresh ? [
-                'latitude' => (float) $assignment->driver->current_latitude,
-                'longitude' => (float) $assignment->driver->current_longitude,
-                'updated_at' => $assignment->driver->last_active_at->toIso8601String(),
+                'latitude' => round((float) $tracking['active_position']['latitude'], 5),
+                'longitude' => round((float) $tracking['active_position']['longitude'], 5),
+                'updated_at' => $tracking['active_position']['recorded_at'],
             ] : null,
             'position_status' => ! $withinWindow ? 'outside_lifecycle_window' : ($positionFresh ? 'current' : 'unavailable_or_stale'),
             'expires_at' => $windowEnd->toIso8601String(),
             'raw_tracking' => false,
+            'customer_tracking_link' => 'unavailable_policy_not_configured',
         ]]);
     }
 

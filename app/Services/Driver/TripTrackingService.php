@@ -14,6 +14,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\DriverAssignment;
 use App\Models\DriverAssignmentStop;
 use App\Services\BookingLifecycleService;
+use App\Services\BookingPaymentLedgerService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -35,7 +36,8 @@ class TripTrackingService
 
     public function __construct(
         private WaitingTimeService $waitingTimeService,
-        private BookingLifecycleService $bookingLifecycleService
+        private BookingLifecycleService $bookingLifecycleService,
+        private ?BookingPaymentLedgerService $paymentLedger = null,
     ) {}
 
     /**
@@ -1001,13 +1003,13 @@ class TripTrackingService
             $fareAmount = $this->resolveBookingFareAmount($booking);
 
             $booking->update([
-                'payment_collection_method' => 'cash_to_driver',
+                'payment_collection_method' => $booking->payment_collection_method ?: 'cash_to_driver',
                 'payment_collection_status' => $booking->payment_collection_status === 'driver_collected'
                     ? 'driver_collected'
                     : 'pending_collection',
                 'payment_method' => 'cash_to_driver',
                 'payment_type' => 'cash',
-                'amount_to_pay' => $fareAmount,
+                'amount_to_pay' => max(0, round($fareAmount - (float) ($booking->payment_collected_amount ?? 0), 2)),
                 'payment_status' => $booking->payment_collection_status === 'driver_collected'
                     ? $booking->payment_status
                     : 'pending',
@@ -1024,7 +1026,11 @@ class TripTrackingService
                 'payment_collection_status' => 'billable',
                 'payment_method' => 'monthly_invoice',
                 'payment_type' => 'corporate',
-                'payment_status' => 'pending',
+                'payment_status' => 'corporate_account',
+                'payment_arrangement_status' => 'corporate_credit',
+                'corporate_settlement_status' => 'open',
+                'driver_collection_status' => 'not_required',
+                'invoice_status' => 'pending_issue',
             ]);
             return $this->mapBookingPaymentSummary($booking->fresh());
         }
@@ -1033,13 +1039,32 @@ class TripTrackingService
         $paidStatuses = ['paid', 'online_paid', 'driver_collected'];
         if (!in_array((string) $booking->payment_collection_status, $paidStatuses, true)
             && !in_array((string) $booking->payment_status, ['paid', 'refunded'], true)) {
+            $collectionMethod = $booking->payment_collection_method ?: 'online';
+            $arrangementStatus = match ($collectionMethod) {
+                'account_credit' => 'customer_credit',
+                'pay_at_end' => 'due_at_hire_end',
+                'advance_then_balance' => 'advance_then_balance',
+                'deposit_then_balance' => 'deposit_then_balance',
+                'complimentary' => 'complimentary',
+                default => 'online_payment',
+            };
+            $paymentStatus = match ($arrangementStatus) {
+                'customer_credit' => 'credit_terms',
+                'due_at_hire_end' => 'due_at_hire_end',
+                'advance_then_balance', 'deposit_then_balance' => 'advance_due',
+                'complimentary' => 'waived',
+                default => 'online_payment_due',
+            };
             $booking->update([
                 'amount_to_pay' => $fareAmount,
-                'payment_collection_method' => $booking->payment_collection_method ?: 'online',
+                'payment_collection_method' => $collectionMethod,
                 'payment_collection_status' => 'payment_pending',
                 'payment_method' => $booking->payment_method ?: 'online',
                 'payment_type' => $booking->payment_type ?: 'online',
-                'payment_status' => 'pending',
+                'payment_status' => $paymentStatus,
+                'payment_arrangement_status' => $arrangementStatus,
+                'customer_settlement_status' => $collectionMethod === 'account_credit' ? 'open' : $booking->customer_settlement_status,
+                'driver_collection_status' => in_array($collectionMethod, ['pay_at_end','advance_then_balance','deposit_then_balance'], true) ? 'collection_due' : 'not_required',
             ]);
 
             return $this->mapBookingPaymentSummary($booking->fresh());
@@ -1063,19 +1088,28 @@ class TripTrackingService
 
         $collectedAmount = round((float) $paymentData['collected_amount'], 2);
         $fareAmount = $this->resolveBookingFareAmount($booking);
+        $previouslyCollected = round((float) ($booking->payment_collected_amount ?? 0), 2);
+        $outstanding = max(0, round($fareAmount - $previouslyCollected, 2));
+        if ($collectedAmount > $outstanding) {
+            throw new \InvalidArgumentException('PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING');
+        }
+        $totalCollected = round($previouslyCollected + $collectedAmount, 2);
         $now = Carbon::now('UTC');
 
-        $booking->update([
-            'payment_collected_amount' => $collectedAmount,
-            'payment_collected_at' => $now,
+        ($this->paymentLedger ?? app(BookingPaymentLedgerService::class))->receive($booking, [
+            'amount' => $collectedAmount,
+            'payment_method' => 'driver_cash',
+            'payment_stage' => $totalCollected >= $fareAmount ? 'final_payment' : 'part_payment',
+            'received_at' => $now,
+            'notes' => $paymentData['payment_notes'] ?? null,
+            'received_via' => 'driver',
+            'driver_id' => $assignment->driver_id,
+        ], null);
+        $booking->refresh()->update([
             'payment_collected_by_driver_id' => $assignment->driver_id,
-            'payment_notes' => $paymentData['payment_notes'] ?? null,
-            'payment_collection_method' => 'cash_to_driver',
-            'payment_collection_status' => 'driver_collected',
-            'payment_method' => 'cash_to_driver',
+            'payment_collection_status' => $totalCollected >= $fareAmount ? 'driver_collected' : 'partially_collected',
+            'driver_collection_status' => 'collected_unsettled',
             'payment_type' => 'cash',
-            'amount_to_pay' => $fareAmount,
-            'payment_status' => $collectedAmount >= $fareAmount ? 'paid' : 'pending',
         ]);
 
         return [
@@ -1088,7 +1122,7 @@ class TripTrackingService
     private function bookingRequiresDriverCollection($booking): bool
     {
         $method = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? $booking->payment_type ?? ''));
-        return in_array($method, ['cash_to_driver', 'cash', 'driver_cash', 'pay_to_driver'], true);
+        return in_array($method, ['cash_to_driver', 'cash', 'driver_cash', 'pay_to_driver', 'advance_then_balance', 'deposit_then_balance', 'pay_at_end'], true);
     }
 
     private function bookingUsesMonthlyInvoice($booking): bool
@@ -1120,7 +1154,7 @@ class TripTrackingService
                 && $booking->payment_collection_status !== 'driver_collected',
             'collection_message' => $this->resolvePaymentCollectionMessage($booking),
             'amount_to_collect' => $this->bookingRequiresDriverCollection($booking)
-                ? $this->resolveBookingFareAmount($booking)
+                ? max(0, round($this->resolveBookingFareAmount($booking) - (float) ($booking->payment_collected_amount ?? 0), 2))
                 : null,
             'payment_collected_amount' => $booking->payment_collected_amount !== null ? (float) $booking->payment_collected_amount : null,
             'payment_collected_at' => $booking->payment_collected_at?->toIso8601String(),

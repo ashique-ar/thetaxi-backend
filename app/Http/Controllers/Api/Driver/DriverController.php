@@ -1011,8 +1011,21 @@ class DriverController extends Controller
         }
         
         $drivers = $query->with('user:id,first_name,last_name')->get();
+        $activeAssignments = DriverAssignment::query()
+            ->with('booking:id,booking_number')
+            ->whereIn('driver_id', $drivers->pluck('id'))
+            ->where('status', 'active')
+            ->where(function ($assignmentQuery) {
+                $assignmentQuery->whereNull('trip_phase')
+                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
+            })
+            ->latest('updated_at')
+            ->get()
+            ->unique('driver_id')
+            ->keyBy('driver_id');
         
-        $locations = $drivers->map(function ($driver) {
+        $locations = $drivers->map(function ($driver) use ($activeAssignments) {
+            $assignment = $activeAssignments->get($driver->id);
             return [
                 'driver_id' => $driver->id,
                 'driver_name' => $driver->user ? 
@@ -1023,6 +1036,16 @@ class DriverController extends Controller
                 'longitude' => (float) $driver->current_longitude,
                 'is_online' => $driver->is_online,
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
+                'active_assignment' => $assignment ? [
+                    'assignment_id' => (string) $assignment->id,
+                    'booking_id' => (string) $assignment->booking_id,
+                    'booking_item_id' => $assignment->booking_item_id
+                        ? (string) $assignment->booking_item_id
+                        : null,
+                    'booking_number' => $assignment->booking?->booking_number,
+                    'trip_phase' => $assignment->trip_phase?->value
+                        ?? ($assignment->trip_phase ? (string) $assignment->trip_phase : null),
+                ] : null,
             ];
         });
         

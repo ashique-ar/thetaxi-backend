@@ -6,7 +6,9 @@ use App\Http\Controllers\Controller;
 use App\Services\AssignmentService;
 use App\Services\BookingFlowService;
 use App\Services\ContractualDistanceSnapshotProjector;
+use App\Services\BookingPaymentLedgerService;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Driver\RoutePoint;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Booking\BookingAddon;
@@ -26,6 +28,7 @@ class AssignmentController extends Controller
         AssignmentService $assignmentService,
         BookingFlowService $bookingFlowService,
         private readonly ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
+        private readonly BookingPaymentLedgerService $paymentLedger,
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -225,6 +228,24 @@ class AssignmentController extends Controller
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,
+                'booking_items' => $booking->bookingItems
+                    ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
+                    ->values()
+                    ->map(fn ($item) => [
+                        'id' => $item->id,
+                        'trip_number' => $item->trip_number,
+                        'item_code' => $item->item_code ?? null,
+                        'service_name' => $item->serviceType?->name,
+                        'from_date' => $item->from_date,
+                        'from_time' => $item->from_time,
+                        'to_date' => $item->to_date,
+                        'to_time' => $item->to_time,
+                        'status' => $item->completed_at ? 'completed' : ($item->status ?? 'pending'),
+                        'vehicle_name' => $item->vehicle?->title,
+                        'driver_name' => $item->driver?->user
+                            ? trim((string) $item->driver->user->first_name . ' ' . (string) $item->driver->user->last_name)
+                            : null,
+                    ])->all(),
                 'pricing_metrics' => $pricingMetrics,
                 'contractual_distance_snapshot' => $contractualDistanceSnapshot,
                 'approval_context' => [
@@ -234,10 +255,13 @@ class AssignmentController extends Controller
                     'status' => $booking->approval_status,
                     'justification' => $booking->approval_justification,
                 ],
+                'payment_summary' => $this->paymentLedger->summary($booking),
+                'payment_account_summary' => $this->paymentLedger->accountSummary($booking),
                 'current_vehicle' => $selectedVehicle ? [
                     'id' => $selectedVehicle->id,
                     'name' => $selectedVehicle->title,
                     'license_plate' => $selectedVehicle->license_plate,
+                    'availability_status' => $selectedVehicle->availability_status,
                     'vehicle_group' => $selectedVehicle->vehicleGroup ? [
                         'id' => $selectedVehicle->vehicleGroup->id,
                         'name' => $selectedVehicle->vehicleGroup->name,
@@ -326,6 +350,42 @@ class AssignmentController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function receivePayment(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'payment_method' => ['required', 'in:cash,card,bank_transfer,online,cheque,driver_cash,other'],
+            'payment_stage' => ['required', 'in:deposit,advance,part_payment,final_payment,account_payment'],
+            'payment_purpose' => ['sometimes', 'in:booking_payment,service_deposit,security_deposit'],
+            'reference' => ['nullable', 'string', 'max:120'],
+            'received_at' => ['required', 'date', 'before_or_equal:now'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $booking = Booking::findOrFail($bookingId);
+        $summary = $this->paymentLedger->receive($booking, $data, Auth::id());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment received and outstanding balance updated.',
+            'data' => $summary,
+        ]);
+    }
+
+    public function refundSecurityDeposit(Request $request, string $bookingId, BookingPaymentReceipt $receipt): JsonResponse
+    {
+        abort_unless($receipt->booking_id === $bookingId, 404);
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'refund_method' => ['required', 'in:cash,card,bank_transfer,online,cheque,other'],
+            'reference' => ['nullable', 'string', 'max:120'],
+            'refunded_at' => ['required', 'date', 'before_or_equal:now'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $booking = Booking::findOrFail($bookingId);
+        return response()->json(['status' => 'success', 'message' => 'Refundable deposit refund recorded.', 'data' => $this->paymentLedger->refundSecurityDeposit($booking, $receipt, $data, Auth::id())]);
     }
 
     private function buildPricingMetrics($bookingItem, $assignment = null): array

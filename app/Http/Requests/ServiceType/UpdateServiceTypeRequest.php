@@ -69,6 +69,8 @@ class UpdateServiceTypeRequest extends FormRequest
             'is_active' => ['sometimes', 'boolean'],
             'terms' => ['sometimes', 'nullable', 'string'],
             'minimum_km' => ['sometimes', 'nullable'],
+            'default_payment_arrangement'=>['sometimes','nullable','in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,monthly_invoice,complimentary'],
+            'deposit_mode'=>['sometimes','nullable','in:none,fixed,percentage'],'deposit_value'=>['sometimes','nullable','numeric','min:0'],'settlement_due_days'=>['sometimes','nullable','integer','min:0','max:365'],
         ];
     }
 }

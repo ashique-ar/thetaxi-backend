@@ -29,6 +29,19 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class AuditLog extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::creating(function (AuditLog $log): void {
+            $details = is_array($log->details) ? $log->details : [];
+            if (!array_key_exists('actor_display_snapshot', $details)) {
+                $user = $log->user_id ? User::query()->find($log->user_id, ['id', 'first_name', 'last_name']) : null;
+                $name = $user ? trim((string) $user->first_name . ' ' . (string) $user->last_name) : null;
+                $details['actor_display_snapshot'] = $name !== '' ? $name : ($log->user_id ? null : 'System');
+                $details['actor_type_snapshot'] = $log->user_id ? 'user' : 'system';
+                $log->details = $details;
+            }
+        });
+    }
 
     /**
      * The table associated with the model.

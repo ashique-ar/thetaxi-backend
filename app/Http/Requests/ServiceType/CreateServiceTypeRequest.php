@@ -57,6 +57,8 @@ class CreateServiceTypeRequest extends FormRequest
             'is_internal' => ['nullable', 'boolean'],
             'terms' => ['nullable', 'string'],
             'minimum_km' => ['sometimes', 'nullable'],
+            'default_payment_arrangement'=>['nullable','in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,monthly_invoice,complimentary'],
+            'deposit_mode'=>['nullable','in:none,fixed,percentage'],'deposit_value'=>['nullable','numeric','min:0'],'settlement_due_days'=>['nullable','integer','min:0','max:365'],
         ];
     }
 }

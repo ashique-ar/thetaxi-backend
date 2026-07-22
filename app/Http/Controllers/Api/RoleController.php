@@ -53,6 +53,10 @@ class RoleController extends Controller
             $query->where('name', 'like', '%' . $request->search . '%');
         }
 
+        if ($request->filled('guard_name')) {
+            $query->where('guard_name', $request->string('guard_name')->toString());
+        }
+
         $roles = $query->paginate($request->per_page ?? 15);
         return RoleResource::collection($roles);
     }

@@ -4,6 +4,8 @@ use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
 use App\Http\Controllers\Api\AssignmentController;
+use App\Http\Controllers\Api\BookingRouteUsageController;
+use App\Http\Controllers\Api\FinancialSettlementController;
 use App\Http\Controllers\Api\AgreementController;
 use App\Http\Controllers\Api\AuditLogController;
 use App\Http\Controllers\Api\GooglePlacesController;
@@ -1043,6 +1045,9 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::post('bookings/route-usage', [BookingRouteUsageController::class, 'store'])
+        ->middleware(['permission:bookings.view|bookings.create|bookings.update|dashboard.view|analytics.view|analytics.bookings|reports.view|reports.generate|vehicle-availability.view|vip-types.view', 'throttle:120,1']);
+
     Route::middleware(['permission:bookings.view'])->group(function () {
 
         Route::group(['prefix' => 'booking-flow',], function () {
@@ -1060,15 +1065,15 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Conflict Checking Routes - Updated to match frontend service
             Route::post('vehicles/{vehicleId}/conflicts', [BookingFlowController::class, 'checkVehicleConflicts'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update');
             Route::post('drivers/{driverId}/conflicts', [BookingFlowController::class, 'checkDriverConflicts'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update');
 
             // Alternative route names for backward compatibility
             Route::post('check-vehicle-conflicts/{vehicleId}', [BookingFlowController::class, 'checkVehicleConflicts'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update');
             Route::post('check-driver-conflicts/{driverId}', [BookingFlowController::class, 'checkDriverConflicts'])
-                ->middleware('permission:bookings.create');
+                ->middleware('permission:bookings.create|bookings.update');
 
             // Pricing Routes - Updated to match frontend service
             Route::post('pricing/calculate', [BookingFlowController::class, 'calculatePricing'])
@@ -1275,13 +1280,53 @@ Route::middleware(['auth:api'])->group(function () {
         });
 
         // Assignment Management Routes
-        Route::group(['prefix' => 'assignments'], function () {
+        Route::group(['prefix' => 'assignments', 'middleware' => 'booking.operations.telemetry'], function () {
             Route::get('{bookingId}/details', [AssignmentController::class, 'getAssignmentDetails'])
                 ->middleware('permission:bookings.view');
+            Route::post('{bookingId}/payments/receive', [AssignmentController::class, 'receivePayment'])
+                ->middleware('permission:bookings.update');
+            Route::post('{bookingId}/security-deposits/{receipt}/refund', [AssignmentController::class, 'refundSecurityDeposit'])
+                ->middleware('permission:bookings.update');
             Route::post('swap', [AssignmentController::class, 'performSwap'])
                 ->middleware('permission:bookings.update');
             Route::post('breakdown', [AssignmentController::class, 'recordBreakdown'])
                 ->middleware('permission:bookings.update');
+        });
+
+        Route::get('bookings/active-trips', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'activeTrips'])
+            ->middleware('permission:bookings.view');
+
+        Route::prefix('bookings/{booking}')->middleware('booking.operations.telemetry')->group(function () {
+            Route::get('trace', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'trace'])
+                ->middleware('permission:bookings.view');
+            Route::get('tracking-summary', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'trackingSummary'])
+                ->middleware('permission:bookings.view');
+            Route::get('route-replay', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'routeReplay'])
+                ->middleware('permission:bookings.tracking_replay');
+            Route::get('route-replay/export', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'exportRouteReplay'])
+                ->middleware('permission:bookings.tracking_export');
+            Route::get('communications', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'communications'])
+                ->middleware('permission:bookings.view');
+            Route::get('documents', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'documents'])
+                ->middleware('permission:bookings.view');
+        });
+
+        Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
+            Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view');
+            Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
+            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType',['customer','corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
+            Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
+            Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
+            Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');
+            Route::get('{financialSettlement}', [FinancialSettlementController::class, 'show'])->middleware('permission:bookings.view');
+            Route::post('', [FinancialSettlementController::class, 'store'])->middleware('permission:bookings.update');
+            Route::post('{financialSettlement}/issue', [FinancialSettlementController::class, 'issue'])->middleware('permission:bookings.update');
+            Route::post('{financialSettlement}/payments', [FinancialSettlementController::class, 'receivePayment'])->middleware('permission:bookings.update');
+            Route::post('{financialSettlement}/adjustments', [FinancialSettlementController::class, 'adjust'])->middleware('permission:bookings.update');
+            Route::post('{financialSettlement}/dispute', [FinancialSettlementController::class, 'dispute'])->middleware('permission:bookings.update');
+            Route::post('{financialSettlement}/resolve-dispute', [FinancialSettlementController::class, 'resolveDispute'])->middleware('permission:bookings.update');
+            Route::get('{financialSettlement}/audit', [FinancialSettlementController::class, 'audit'])->middleware('permission:bookings.view');
+            Route::get('{financialSettlement}/invoice', [FinancialSettlementController::class, 'downloadInvoice'])->middleware('permission:bookings.view');
         });
 
         // Booking Item Assignment (inline from booking list)
@@ -1289,7 +1334,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:bookings.create');
 
         // Booking Lifecycle Management Routes
-        Route::group(['prefix' => 'booking-lifecycle'], function () {
+        Route::group(['prefix' => 'booking-lifecycle', 'middleware' => 'booking.operations.telemetry'], function () {
             Route::get('{bookingId}/summary', [BookingLifecycleController::class, 'getLifecycleSummary'])
                 ->middleware('permission:bookings.view');
             Route::get('{bookingId}/ongoing-details', [BookingLifecycleController::class, 'getOngoingDetails'])

@@ -471,6 +471,9 @@ class MobileAssignmentService
         $payload['payment_collection_status'] = $paymentDetails['payment_collection_status'];
         $payload['payment_collection_required'] = $paymentDetails['payment_collection_required'];
         $payload['payment_instruction'] = $paymentDetails['payment_instruction'];
+        $payload['amount_to_collect'] = $paymentDetails['payment_collection_required']
+            ? max(0, round($fareAmount - (float)($booking?->payment_collected_amount ?? 0), 2))
+            : null;
         $payload['fare_amount'] = $fareAmount;
         $payload['total_amount'] = $fareAmount;
         $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
@@ -632,6 +635,18 @@ class MobileAssignmentService
             ];
         }
 
+        if (in_array($method, ['account_credit', 'customer_credit', 'invoice', 'complimentary', 'waived'], true)) {
+            return [
+                'payment_type' => $method === 'account_credit' ? 'customer_credit' : $method,
+                'payment_collection_method' => $method,
+                'payment_collection_status' => $status,
+                'payment_collection_required' => false,
+                'payment_instruction' => in_array($method, ['complimentary', 'waived'], true)
+                    ? 'No payment collection required'
+                    : 'Account billing - do not collect cash',
+            ];
+        }
+
         if (in_array($method, ['online', 'webxpay', 'credit_card', 'debit_card', 'stripe', 'paypal'], true)) {
             $paid = in_array($status, ['online_paid', 'paid', 'success'], true) || $booking?->payment_status === 'paid';
             return [
@@ -645,10 +660,12 @@ class MobileAssignmentService
 
         return [
             'payment_type' => 'cash',
-            'payment_collection_method' => 'cash_to_driver',
+            'payment_collection_method' => $method ?: 'cash_to_driver',
             'payment_collection_status' => $status ?: 'pending',
             'payment_collection_required' => true,
-            'payment_instruction' => 'Collect payment from customer',
+            'payment_instruction' => in_array($method,['advance_then_balance','deposit_then_balance'],true)
+                ? 'Collect only the outstanding balance from the customer'
+                : 'Collect payment from customer',
         ];
     }
 

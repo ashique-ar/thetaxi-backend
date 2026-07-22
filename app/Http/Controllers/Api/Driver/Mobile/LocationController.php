@@ -10,6 +10,7 @@ use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\LocationService;
+use App\Services\BookingOperationsHealthMonitor;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -32,7 +33,8 @@ class LocationController extends Controller
      */
     public function __construct(
         private LocationService $locationService,
-        private DriverAuthService $authService
+        private DriverAuthService $authService,
+        private BookingOperationsHealthMonitor $healthMonitor,
     ) {}
 
     /**
@@ -49,6 +51,7 @@ class LocationController extends Controller
      */
     public function update(LocationUpdateRequest $request): JsonResponse
     {
+        $driver = null;
         try {
             $driver = $this->authService->getDriver($request->user());
 
@@ -84,6 +87,12 @@ class LocationController extends Controller
                     'error_code' => 'LOCATION_RATE_LIMITED'
                 ], 429);
             }
+
+            $this->healthMonitor->recordLocationUploadFailure(
+                $this->locationHealthContext($driver),
+                'single',
+                $e
+            );
 
             return response()->json([
                 'status' => 'error',
@@ -219,6 +228,7 @@ class LocationController extends Controller
      */
     public function bulkUpdate(BulkLocationUpdateRequest $request): JsonResponse
     {
+        $driver = null;
         try {
             $driver = $this->authService->getDriver($request->user());
 
@@ -256,6 +266,13 @@ class LocationController extends Controller
                 ], 400);
             }
 
+
+            $this->healthMonitor->recordLocationUploadFailure(
+                $this->locationHealthContext($driver),
+                'buffered',
+                $e
+            );
+
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to process buffered locations',
@@ -274,5 +291,19 @@ class LocationController extends Controller
         if ($to) {
             $query->where('recorded_at', '<=', Carbon::parse($to));
         }
+    }
+
+    private function locationHealthContext($driver): array
+    {
+        $session = $driver?->activeSession;
+        $assignment = $session?->assignment;
+
+        return [
+            'driver_id' => $driver?->id,
+            'session_id' => $session?->id,
+            'assignment_id' => $assignment?->id ?? $session?->assignment_id,
+            'booking_id' => $assignment?->booking_id,
+            'booking_item_id' => $assignment?->booking_item_id,
+        ];
     }
 }

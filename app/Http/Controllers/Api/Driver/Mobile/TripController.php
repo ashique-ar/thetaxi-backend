@@ -342,6 +342,7 @@ class TripController extends Controller
             'TRIP_STOPS_INCOMPLETE' => 'All route stops must be completed or skipped before ending the hire',
             'PAYMENT_BOOKING_NOT_FOUND' => 'Booking payment record was not found',
             'PAYMENT_COLLECTION_NOT_REQUIRED' => 'Driver cash collection is not required for this hire',
+            'PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING' => 'Collected amount cannot exceed the outstanding booking balance',
             default => $code,
         };
     }
