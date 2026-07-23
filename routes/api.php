@@ -555,6 +555,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('system/backups', [SystemBackupController::class, 'store']);
         Route::get('system/backups/{backup}', [SystemBackupController::class, 'show']);
         Route::get('system/backups/{backup}/download', [SystemBackupController::class, 'download']);
+        Route::post('system/backups/{backup}/verify', [SystemBackupController::class, 'verify']);
         Route::post('system/backups/{backup}/restore', [SystemBackupController::class, 'restore']);
         Route::delete('system/backups/{backup}', [SystemBackupController::class, 'destroy']);
     });
@@ -595,6 +596,7 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('bulk-update-status', [VehicleAddonController::class, 'bulkUpdateStatus']);
                 Route::put('{vehicleAddon}/toggle-status', [VehicleAddonController::class, 'toggleStatus']);
             });
+            Route::apiResource('vehicle-addon-categories', \App\Http\Controllers\Api\Vehicle\VehicleAddonCategoryController::class);
             Route::apiResource('vehicle-addons', VehicleAddonController::class);
             Route::apiResource('vehicle-categories', VehicleCategoryController::class);
             Route::apiResource('vehicle-classes', VehicleClassController::class);
@@ -953,8 +955,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('logsheets', [DriverLogController::class, 'index']);
         Route::post('logsheets', [DriverLogController::class, 'store']);
         Route::post('logsheets/{driverLog}/assign', [DriverLogController::class, 'assign']);
+        Route::post('logsheets/{driverLog}/submit', [DriverLogController::class, 'submit']);
         Route::post('logsheets/{driverLog}/verify', [DriverLogController::class, 'verify']);
-        Route::post('logsheets/{driverLog}/cancel', [DriverLogController::class, 'cancel']);
         Route::get('logsheets/{driverLog}', [DriverLogController::class, 'show']);
         Route::put('logsheets/{driverLog}', [DriverLogController::class, 'update']);
         Route::delete('logsheets/{driverLog}', [DriverLogController::class, 'destroy']);

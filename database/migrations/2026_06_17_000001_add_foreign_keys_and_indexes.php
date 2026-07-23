@@ -79,26 +79,12 @@ return new class extends Migration
 
     private function constraintExists(string $table, string $constraintName): bool
     {
-        return collect(DB::select(
-            <<<'SQL'
-                SELECT 1
-                FROM pg_constraint c
-                JOIN pg_class t ON t.oid = c.conrelid
-                JOIN pg_namespace n ON n.oid = t.relnamespace
-                WHERE t.relname = ?
-                  AND c.conname = ?
-                  AND n.nspname = ANY (current_schemas(false))
-                LIMIT 1
-            SQL,
-            [$table, $constraintName]
-        ))->isNotEmpty();
+        return collect(Schema::getForeignKeys($table))
+            ->contains(fn (array $foreignKey) => ($foreignKey['name'] ?? null) === $constraintName);
     }
 
     private function indexExists(string $table, string $indexName): bool
     {
-        return collect(DB::select(
-            'SELECT 1 FROM pg_indexes WHERE schemaname = ANY (current_schemas(false)) AND tablename = ? AND indexname = ? LIMIT 1',
-            [$table, $indexName]
-        ))->isNotEmpty();
+        return Schema::hasIndex($table, $indexName);
     }
 };

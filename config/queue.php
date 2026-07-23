@@ -15,6 +15,17 @@ return [
 
     'default' => env('QUEUE_CONNECTION', 'database'),
 
+    'scheduled_worker' => [
+        // Dedicated supervisors/containers own queue workers by default.
+        // Enable only on hosting where the scheduler is the worker supervisor.
+        'enabled' => (bool) env('SCHEDULED_QUEUE_WORKER_ENABLED', false),
+        'queues' => env('SCHEDULED_QUEUE_WORKER_QUEUES', 'default,sms,driver-notifications'),
+        'tries' => max(1, (int) env('SCHEDULED_QUEUE_WORKER_TRIES', 3)),
+        'timeout' => max(30, (int) env('SCHEDULED_QUEUE_WORKER_TIMEOUT', 180)),
+        'sleep' => max(1, (int) env('SCHEDULED_QUEUE_WORKER_SLEEP', 3)),
+        'max_time' => max(30, (int) env('SCHEDULED_QUEUE_WORKER_MAX_TIME', 50)),
+    ],
+
     /*
     |--------------------------------------------------------------------------
     | Queue Connections

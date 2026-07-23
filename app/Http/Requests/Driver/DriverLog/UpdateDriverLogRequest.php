@@ -24,7 +24,7 @@ class UpdateDriverLogRequest extends FormRequest
             'particulars' => ['sometimes', 'nullable', 'string'],
             'entry_source' => ['sometimes', 'nullable', 'string', 'in:manual,paper_entry,mobile_app,gps'],
             'attachments' => ['sometimes', 'nullable', 'array'],
-            'status' => ['sometimes', 'required', 'in:pending,approved,rejected'],
+            'status' => ['prohibited'],
         ];
     }
 }

@@ -10,6 +10,11 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        // Fresh non-PostgreSQL schemas already create this pivot key as UUID.
+        if (\DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Use raw SQL with explicit casting and IF EXISTS checks to make this safe on PostgreSQL
         // Drop unique constraint and foreign key if they exist
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');
@@ -33,6 +38,10 @@ return new class extends Migration {
      */
     public function down(): void
     {
+        if (\DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Drop constraints first
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_terms_and_condition_id_foreign');
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_terms_and_condition_id_unique');

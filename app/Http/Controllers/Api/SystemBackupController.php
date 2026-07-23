@@ -7,12 +7,13 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use JsonException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class SystemBackupController extends Controller
 {
     private const DISK = 'backups';
-    private const VERSION = 1;
+    private const VERSION = 2;
     private const EXTENSION = '.json.gz';
 
     public function __construct()
@@ -60,8 +61,20 @@ class SystemBackupController extends Controller
             )->values()->all();
         }
 
+        $payload['manifest'] = $this->buildManifest($payload['tables']);
+
         $path = 'database-backup-' . now()->format('Ymd-His') . self::EXTENSION;
-        Storage::disk(self::DISK)->put($path, gzencode(json_encode($payload, JSON_THROW_ON_ERROR)));
+        $written = Storage::disk(self::DISK)->put(
+            $path,
+            gzencode(json_encode($payload, JSON_THROW_ON_ERROR)),
+        );
+        abort_unless($written && Storage::disk(self::DISK)->exists($path), 500, 'Backup could not be stored.');
+
+        $verification = $this->verifyPayload($this->readPayload($path));
+        if (! $verification['valid']) {
+            Storage::disk(self::DISK)->delete($path);
+            abort(500, 'Backup failed its post-write integrity verification.');
+        }
 
         return response()->json([
             'status' => 'success',
@@ -91,17 +104,27 @@ class SystemBackupController extends Controller
         return Storage::disk(self::DISK)->download($path, basename($path));
     }
 
+    public function verify(string $backup): JsonResponse
+    {
+        $path = $this->normalizePath($backup);
+
+        abort_unless(Storage::disk(self::DISK)->exists($path), 404, 'Backup not found.');
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->verifyPayload($this->readPayload($path)),
+        ]);
+    }
+
     public function restore(string $backup): JsonResponse
     {
         $path = $this->normalizePath($backup);
 
         abort_unless(Storage::disk(self::DISK)->exists($path), 404, 'Backup not found.');
 
-        $decoded = gzdecode(Storage::disk(self::DISK)->get($path));
-        abort_if($decoded === false, 422, 'Backup file is not readable.');
-
-        $payload = json_decode($decoded, true, flags: JSON_THROW_ON_ERROR);
-        abort_if(($payload['version'] ?? null) !== self::VERSION || !is_array($payload['tables'] ?? null), 422, 'Unsupported backup format.');
+        $payload = $this->readPayload($path);
+        $verification = $this->verifyPayload($payload);
+        abort_if(! $verification['valid'], 422, 'Backup integrity or schema verification failed.');
 
         DB::transaction(function () use ($payload) {
             $tables = array_keys($payload['tables']);
@@ -163,6 +186,83 @@ class SystemBackupController extends Controller
                 'prefix' => config('filesystems.disks.' . self::DISK . '.root'),
             ],
             'scope' => 'database',
+        ];
+    }
+
+    private function readPayload(string $path): array
+    {
+        $decoded = gzdecode(Storage::disk(self::DISK)->get($path));
+        abort_if($decoded === false, 422, 'Backup file is not readable.');
+
+        try {
+            $payload = json_decode($decoded, true, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException) {
+            abort(422, 'Backup JSON is not readable.');
+        }
+
+        abort_if(! is_array($payload), 422, 'Unsupported backup format.');
+
+        return $payload;
+    }
+
+    private function buildManifest(array $tables): array
+    {
+        $manifest = [];
+
+        foreach ($tables as $table => $rows) {
+            $manifest[$table] = [
+                'rows' => count($rows),
+                'sha256' => hash('sha256', json_encode($rows, JSON_THROW_ON_ERROR)),
+                'columns' => DB::getSchemaBuilder()->getColumnListing($table),
+            ];
+        }
+
+        return [
+            'algorithm' => 'sha256',
+            'table_count' => count($tables),
+            'row_count' => array_sum(array_column($manifest, 'rows')),
+            'tables' => $manifest,
+        ];
+    }
+
+    private function verifyPayload(array $payload): array
+    {
+        $issues = [];
+        $tables = $payload['tables'] ?? null;
+        $manifest = $payload['manifest'] ?? null;
+
+        if (($payload['version'] ?? null) !== self::VERSION || ! is_array($tables) || ! is_array($manifest)) {
+            $issues[] = 'unsupported_or_legacy_format';
+        } else {
+            $actual = $this->buildManifest($tables);
+
+            if (! hash_equals(
+                hash('sha256', json_encode($manifest, JSON_THROW_ON_ERROR)),
+                hash('sha256', json_encode($actual, JSON_THROW_ON_ERROR)),
+            )) {
+                $issues[] = 'manifest_checksum_mismatch';
+            }
+
+            $backupTables = array_keys($tables);
+            $currentTables = $this->tableNames();
+            sort($backupTables);
+            sort($currentTables);
+
+            if ($backupTables !== $currentTables) {
+                $issues[] = 'database_schema_table_mismatch';
+            }
+        }
+
+        return [
+            'valid' => $issues === [],
+            'version' => $payload['version'] ?? null,
+            'scope' => $payload['scope'] ?? null,
+            'created_at' => $payload['created_at'] ?? null,
+            'table_count' => is_array($tables) ? count($tables) : 0,
+            'row_count' => is_array($tables)
+                ? collect($tables)->sum(fn ($rows) => is_array($rows) ? count($rows) : 0)
+                : 0,
+            'issues' => $issues,
         ];
     }
 

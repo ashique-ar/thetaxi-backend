@@ -57,6 +57,7 @@ class VehicleAddonResource extends JsonResource
 
             // Relationships
             'service_type' => new ServiceTypeResource($this->whenLoaded('serviceType')),
+            'category' => new VehicleAddonCategoryResource($this->whenLoaded('category')),
 
             // Metadata
             'created_at' => $this->created_at?->toISOString(),

@@ -15,27 +15,34 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('bookings', function (Blueprint $table) {
-            // Drop redundant date/time columns - now in booking_items
-            $table->dropColumn([
-                'from_date',
-                'to_date',
-                'from_time',
-                'to_time',
-            ]);
-            
-            // Drop redundant foreign keys - now in booking_items
-            $table->dropColumn([
-                'service_type_id',
-                'vehicle_group_id',
-            ]);
-            
-            // Drop redundant location columns - now in booking_items
-            $table->dropColumn([
-                'pickup_location',
-                'dropoff_location',
-            ]);
-        });
+        // SQLite rebuilds the table for DROP COLUMN and refuses to retain an
+        // index that references a removed column. PostgreSQL drops dependent
+        // single-column indexes with the columns themselves.
+        if (Schema::getConnection()->getDriverName() === 'sqlite') {
+            foreach (['service_type_id', 'vehicle_group_id'] as $indexedColumn) {
+                if (Schema::hasColumn('bookings', $indexedColumn)) {
+                    Schema::table('bookings', fn (Blueprint $table) => $table->dropIndex([$indexedColumn]));
+                }
+            }
+        }
+
+        // pickup_location/dropoff_location were commented out in the original
+        // fresh schema but existed in some deployed databases. Drop only the
+        // redundant columns actually present in this database.
+        foreach ([
+            'from_date',
+            'to_date',
+            'from_time',
+            'to_time',
+            'service_type_id',
+            'vehicle_group_id',
+            'pickup_location',
+            'dropoff_location',
+        ] as $column) {
+            if (Schema::hasColumn('bookings', $column)) {
+                Schema::table('bookings', fn (Blueprint $table) => $table->dropColumn($column));
+            }
+        }
     }
 
     /**

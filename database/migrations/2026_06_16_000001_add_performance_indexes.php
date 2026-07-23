@@ -67,7 +67,7 @@ return new class extends Migration
 
     private function indexExists(string $table, string $indexName): bool
     {
-        return collect(\DB::select("SELECT indexname FROM pg_indexes WHERE tablename = ? AND indexname = ?", [$table, $indexName]))->isNotEmpty();
+        return Schema::hasIndex($table, $indexName);
     }
 
     private function hasColumns(string $table, array $columns): bool

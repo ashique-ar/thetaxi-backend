@@ -15,9 +15,9 @@ class DriverLogController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:driver-logs.view')->only(['index', 'show']);
+        $this->middleware('permission:driver-logs.view')->only(['index', 'show', 'stats']);
         $this->middleware('permission:driver-logs.create')->only(['store']);
-        $this->middleware('permission:driver-logs.edit')->only(['update']);
+        $this->middleware('permission:driver-logs.edit')->only(['update', 'assign', 'submit', 'verify']);
         $this->middleware('permission:driver-logs.delete')->only(['destroy']);
     }
 
@@ -37,6 +37,14 @@ class DriverLogController extends Controller
             $q->where('status', $request->status);
         }
 
+        if ($request->filled('search')) {
+            $search = '%' . mb_strtolower(trim((string) $request->search)) . '%';
+            $q->where(function ($query) use ($search): void {
+                $query->whereRaw('LOWER(CAST(log_code AS TEXT)) LIKE ?', [$search])
+                    ->orWhereRaw('LOWER(particulars) LIKE ?', [$search]);
+            });
+        }
+
         $q->orderByDesc('created_at');
 
         return DriverLogResource::collection($q->paginate($request->per_page ?? 15));
@@ -45,12 +53,15 @@ class DriverLogController extends Controller
     public function store(CreateDriverLogRequest $request): JsonResponse
     {
         $data = $this->normalizeLogPayload($request->validated());
+        $data['status'] = 'draft';
         $data['created_user_id'] = $request->user()->id;
+        $data['assigned_by'] = $request->user()->id;
+        $data['assigned_at'] = now();
         $log = DriverLog::create($data);
         return response()->json([
             'status' => 'success',
             'message' => 'Driver log created',
-            'data' => ['log' => new DriverLogResource($log)]
+            'data' => new DriverLogResource($log)
         ], 201);
     }
 
@@ -58,24 +69,26 @@ class DriverLogController extends Controller
     {
         return response()->json([
             'status' => 'success',
-            'data' => ['log' => new DriverLogResource($driverLog)]
+            'data' => new DriverLogResource($driverLog)
         ]);
     }
 
     public function update(UpdateDriverLogRequest $request, DriverLog $driverLog): JsonResponse
     {
+        abort_unless(in_array($driverLog->status, ['draft', 'rejected'], true), 409, 'Submitted or approved log sheets are locked.');
         $data = $this->normalizeLogPayload($request->validated(), $driverLog);
         $data['updated_user_id'] = $request->user()->id;
         $driverLog->update($data);
         return response()->json([
             'status' => 'success',
             'message' => 'Driver log updated',
-            'data' => ['log' => new DriverLogResource($driverLog)]
+            'data' => new DriverLogResource($driverLog)
         ]);
     }
 
     public function destroy(DriverLog $driverLog): JsonResponse
     {
+        abort_unless(in_array($driverLog->status, ['draft', 'rejected'], true), 409, 'Submitted or approved log sheets are locked.');
         $driverLog->delete();
         return response()->json([
             'status' => 'success',
@@ -85,18 +98,48 @@ class DriverLogController extends Controller
 
     public function assign(Request $request, DriverLog $driverLog): JsonResponse
     {
+        abort_unless(in_array($driverLog->status, ['draft', 'rejected'], true), 409, 'Submitted or approved log sheets are locked.');
         $data = $request->validate([
             'driver_id' => 'required|exists:drivers,id',
         ]);
 
         $driverLog->update([
             'driver_id' => $data['driver_id'],
+            'assigned_by' => $request->user()?->id,
+            'assigned_at' => now(),
             'updated_user_id' => $request->user()?->id,
         ]);
 
         return response()->json([
             'status' => 'success',
             'message' => 'Driver assigned to log sheet',
+            'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
+        ]);
+    }
+
+    public function submit(Request $request, DriverLog $driverLog): JsonResponse
+    {
+        abort_unless(in_array($driverLog->status, ['draft', 'rejected'], true), 409, 'Only draft or rejected log sheets can be submitted.');
+        $data = $request->validate([
+            'correction_notes' => $driverLog->status === 'rejected'
+                ? 'required|string|min:10|max:1000'
+                : 'nullable|string|max:1000',
+        ]);
+
+        $driverLog->update([
+            'status' => 'pending',
+            'submitted_by' => $request->user()?->id,
+            'submitted_at' => now(),
+            'correction_notes' => $data['correction_notes'] ?? null,
+            'revision_number' => $driverLog->revision_number + 1,
+            'verified_by' => null,
+            'verified_at' => null,
+            'updated_user_id' => $request->user()?->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Log sheet submitted for review',
             'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
         ]);
     }
@@ -109,28 +152,25 @@ class DriverLogController extends Controller
             'verification_notes' => 'nullable|string|max:1000',
         ]);
 
+        abort_unless($driverLog->status === 'pending', 409, 'Only pending log sheets can be reviewed.');
+        $status = $data['status'] ?? $data['verification_status'] ?? 'approved';
+        if ($status === 'rejected') {
+            validator($data, [
+                'verification_notes' => 'required|string|min:10|max:1000',
+            ])->validate();
+        }
+
         $driverLog->update([
-            'status' => $data['status'] ?? $data['verification_status'] ?? 'approved',
+            'status' => $status,
+            'verification_notes' => $data['verification_notes'] ?? null,
+            'verified_by' => $request->user()?->id,
+            'verified_at' => now(),
             'updated_user_id' => $request->user()?->id,
         ]);
 
         return response()->json([
             'status' => 'success',
             'message' => $driverLog->status === 'approved' ? 'Log sheet verified' : 'Log sheet rejected',
-            'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
-        ]);
-    }
-
-    public function cancel(Request $request, DriverLog $driverLog): JsonResponse
-    {
-        $driverLog->update([
-            'status' => 'rejected',
-            'updated_user_id' => $request->user()?->id,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Log sheet cancelled',
             'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
         ]);
     }

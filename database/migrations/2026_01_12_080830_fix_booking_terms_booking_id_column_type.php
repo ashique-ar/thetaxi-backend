@@ -10,6 +10,11 @@ return new class extends Migration {
      */
     public function up(): void
     {
+        // Fresh non-PostgreSQL schemas already create booking_id as UUID.
+        if (\DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Use raw SQL with explicit casting and IF EXISTS checks to make this safe on PostgreSQL
         // Drop index (some installs create an index instead of a named constraint)
         \DB::statement('DROP INDEX IF EXISTS booking_terms_booking_id_terms_and_condition_id_index');
@@ -35,6 +40,10 @@ return new class extends Migration {
      */
     public function down(): void
     {
+        if (\DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Attempt a safe revert back to integer where possible. This may leave NULLs where UUIDs can't be cast to integers.
         // Drop constraints first
         \DB::statement('ALTER TABLE booking_terms DROP CONSTRAINT IF EXISTS booking_terms_booking_id_foreign');

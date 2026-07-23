@@ -14,19 +14,29 @@ Schedule::command('sitemap:generate-and-ping')->daily();
 
 Schedule::command('short-urls:cleanup')->daily();
 
+Schedule::command('bookings:generate-recurring')
+    ->dailyAt('01:00')
+    ->withoutOverlapping();
+
+Schedule::command('maintenance:check-scheduled')
+    ->dailyAt('06:00')
+    ->withoutOverlapping();
+
 Schedule::command('corporate-transport:generate-bookings')
     ->everyFifteenMinutes()
     ->withoutOverlapping(10);
 
-Schedule::command(sprintf(
-    'queue:work %s --stop-when-empty --queue=%s --tries=%d --timeout=%d --sleep=%d --max-time=%d',
-    config('queue.default', 'database'),
-    env('SCHEDULED_QUEUE_WORKER_QUEUES', 'default,sms,driver-notifications'),
-    max(1, (int) env('SCHEDULED_QUEUE_WORKER_TRIES', 3)),
-    max(30, (int) env('SCHEDULED_QUEUE_WORKER_TIMEOUT', 180)),
-    max(1, (int) env('SCHEDULED_QUEUE_WORKER_SLEEP', 3)),
-    max(30, (int) env('SCHEDULED_QUEUE_WORKER_MAX_TIME', 50))
-))
-    ->everyMinute()
-    ->withoutOverlapping(10)
-    ->runInBackground();
+if (config('queue.scheduled_worker.enabled')) {
+    Schedule::command(sprintf(
+        'queue:work %s --stop-when-empty --queue=%s --tries=%d --timeout=%d --sleep=%d --max-time=%d',
+        config('queue.default', 'database'),
+        config('queue.scheduled_worker.queues'),
+        config('queue.scheduled_worker.tries'),
+        config('queue.scheduled_worker.timeout'),
+        config('queue.scheduled_worker.sleep'),
+        config('queue.scheduled_worker.max_time'),
+    ))
+        ->everyMinute()
+        ->withoutOverlapping(10)
+        ->runInBackground();
+}

@@ -19,7 +19,7 @@ class UpdateVehicleAddonRequest extends FormRequest
 
             // Classification
             'service_type_id' => ['sometimes', 'nullable', 'exists:service_types,id'],
-            'category_id' => ['sometimes', 'nullable', 'uuid'],
+            'category_id' => ['sometimes', 'nullable', 'uuid', 'exists:vehicle_addon_categories,id'],
             'addon_type' => ['sometimes', 'required', 'in:service,item,insurance,fee,discount'],
 
             // Pricing configuration

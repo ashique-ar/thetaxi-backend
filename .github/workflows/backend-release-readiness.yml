@@ -1,0 +1,151 @@
+name: Backend release readiness
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/backend-release-readiness.yml'
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'routes/**'
+      - 'tests/**'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'Dockerfile'
+      - 'docker/**'
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/backend-release-readiness.yml'
+      - 'app/**'
+      - 'bootstrap/**'
+      - 'config/**'
+      - 'database/**'
+      - 'routes/**'
+      - 'tests/**'
+      - 'composer.json'
+      - 'composer.lock'
+      - 'Dockerfile'
+      - 'docker/**'
+  workflow_dispatch:
+
+concurrency:
+  group: backend-release-readiness-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  laravel-postgresql:
+    name: Laravel 13 / PHP 8.5 / PostgreSQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: thetaxi_ci
+          POSTGRES_USER: thetaxi_ci
+          POSTGRES_PASSWORD: thetaxi_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U thetaxi_ci -d thetaxi_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      APP_ENV: testing
+      APP_KEY: base64:dGVzdGluZy1hcHAta2V5LW11c3QtYmUtMzItYnl0ZXM=
+      APP_DEBUG: 'false'
+      DB_CONNECTION: pgsql
+      DB_HOST: 127.0.0.1
+      DB_PORT: 5432
+      DB_DATABASE: thetaxi_ci
+      DB_USERNAME: thetaxi_ci
+      DB_PASSWORD: thetaxi_ci
+      CACHE_STORE: array
+      SESSION_DRIVER: array
+      QUEUE_CONNECTION: sync
+      FILESYSTEM_DISK: local
+      MAIL_MAILER: array
+      BROADCAST_CONNECTION: log
+      REDIS_HOST: 127.0.0.1
+      REDIS_PORT: 6379
+      REDIS_RUNTIME_SMOKE: 'true'
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Set up PHP 8.5
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+          extensions: bcmath, curl, dom, fileinfo, gd, intl, mbstring, pcntl, pdo_pgsql, redis, sodium, xml, zip
+          coverage: none
+          tools: composer:v2
+
+      - name: Validate dependency contract
+        run: |
+          composer validate --strict
+          composer audit --locked --no-interaction
+          composer install --no-interaction --no-progress --prefer-dist
+          composer check-platform-reqs
+
+      - name: Verify cached application boot
+        run: |
+          php artisan config:cache
+          php artisan route:cache
+          php artisan event:cache
+          php artisan about --only=environment,cache,drivers
+
+      - name: Verify fresh PostgreSQL schema
+        run: php artisan migrate:fresh --force --no-interaction
+
+      - name: Run Laravel 13 compatibility contract
+        run: >-
+          php artisan test
+          tests/Feature/Laravel13UpgradeCompatibilityTest.php
+          tests/Feature/PostgresqlSchemaReconciliationTest.php
+          tests/Feature/SchedulerOwnershipContractTest.php
+          tests/Feature/SystemBackupIntegrityTest.php
+          tests/Feature/VehicleAddonCategoryContractTest.php
+          tests/Feature/LoyaltyManagementContractTest.php
+          tests/Feature/BadgeSystemContractTest.php
+          tests/Feature/LeaderboardContractTest.php
+          tests/Feature/DriverLogPermissionContractTest.php
+          tests/Unit/DriverLogEnvelopeContractTest.php
+          tests/Unit/DriverLogStatusContractTest.php
+          tests/Unit/DriverLogReviewContractTest.php
+          tests/Unit/DriverLogAssignmentContractTest.php
+          tests/Unit/DriverLogSubmissionContractTest.php
+          tests/Unit/ImageGalleryAssetContractTest.php
+          tests/Unit/MedicalRecordOwnerContractTest.php
+
+      - name: Verify Redis, worker, and writable storage boot
+        run: |
+          php artisan test tests/Feature/RuntimeServicesBootTest.php
+          php artisan queue:work redis --stop-when-empty --queue=release-readiness --max-time=10
+
+  production-image:
+    name: Production PHP image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out backend
+        uses: actions/checkout@v4
+
+      - name: Build PHP 8.5 production stage
+        run: docker build --target base --tag thetaxi-backend:${{ github.sha }} .

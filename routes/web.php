@@ -226,6 +226,11 @@ Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name
 // Rate Chart route (must be before dynamic CMS routes)
 Route::get('/rate-chart', [RateChartController::class, 'index'])->name('rate-chart');
 
+// Inquiry Service Pages exclusively own /services/{slug}. Keep this explicit
+// route ahead of the generic CMS pair so service inquiries cannot be shadowed.
+Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
+    ->name('inquiry-services.show');
+
 // Dynamic CMS content routes - these handle all content types dynamically
 Route::get('/{contentType}', [CmsController::class, 'index'])
     ->name('cms.index')
@@ -236,8 +241,6 @@ Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
     ->where('contentType', '[a-zA-Z0-9-_]+') // Simple pattern for content types
     ->where('content', '[a-zA-Z0-9-_]+'); // Simple pattern for content slugs
 
-Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
-    ->name('inquiry-services.show');
 // Sitemap
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 

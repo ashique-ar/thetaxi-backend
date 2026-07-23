@@ -48,12 +48,14 @@ return new class extends Migration
             
         ];
 
-        foreach ($brandingSettings as $setting) {
-            WebsiteSetting::firstOrCreate(
-                ['type' => $setting['type']],
-                ['value' => $setting['value']]
-            );
-        }
+        WebsiteSetting::withoutEvents(function () use ($brandingSettings): void {
+            foreach ($brandingSettings as $setting) {
+                WebsiteSetting::firstOrCreate(
+                    ['type' => $setting['type']],
+                    ['value' => $setting['value']]
+                );
+            }
+        });
     }
 
     /**
@@ -86,6 +88,8 @@ return new class extends Migration
             'portal_sidebar_style',
         ];
 
-        WebsiteSetting::whereIn('type', $types)->delete();
+        WebsiteSetting::withoutEvents(
+            fn () => WebsiteSetting::whereIn('type', $types)->delete()
+        );
     }
 };

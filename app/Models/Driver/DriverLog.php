@@ -67,6 +67,15 @@ class DriverLog extends BaseModel
         'entry_source',
         'attachments',
         'status',
+        'assigned_by',
+        'assigned_at',
+        'submitted_by',
+        'submitted_at',
+        'correction_notes',
+        'revision_number',
+        'verification_notes',
+        'verified_by',
+        'verified_at',
         'created_user_id',
         'updated_user_id',
     ];
@@ -81,6 +90,10 @@ class DriverLog extends BaseModel
         'end_km' => 'integer',
         'total_km' => 'integer',
         'attachments' => 'array',
+        'assigned_at' => 'datetime',
+        'submitted_at' => 'datetime',
+        'revision_number' => 'integer',
+        'verified_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -116,5 +129,15 @@ class DriverLog extends BaseModel
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    public function verifiedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'verified_by');
+    }
+
+    public function assignedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_by');
     }
 }

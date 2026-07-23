@@ -13,7 +13,10 @@ return new class extends Migration
     public function up(): void
     {
         // Insert partners content type
-        CmsContentType::create([
+        // Do not emit application activity events while the schema is still
+        // being assembled. A fresh install reaches this migration before the
+        // activity-log v5 columns exist.
+        CmsContentType::withoutEvents(fn () => CmsContentType::create([
             'name' => 'Partners',
             'slug' => 'partners',
             'description' => 'Manage partner logos and companies for the homepage partner section',
@@ -28,7 +31,7 @@ return new class extends Migration
                 'order' => 'nullable|integer',
                 'is_featured' => 'boolean'
             ]
-        ]);
+        ]));
     }
 
     /**
@@ -36,6 +39,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        CmsContentType::where('slug', 'partners')->delete();
+        CmsContentType::withoutEvents(
+            fn () => CmsContentType::where('slug', 'partners')->delete()
+        );
     }
 };

@@ -16,11 +16,13 @@ return new class extends Migration
     public function up(): void
     {
         // Extend the status enum to include 'confirmed' and 'declined'
-        if (config('database.default') === 'pgsql') {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE driver_assignments DROP CONSTRAINT IF EXISTS driver_assignments_status_check');
             DB::statement("ALTER TABLE driver_assignments ALTER COLUMN status SET DEFAULT 'active'");
             DB::statement("ALTER TABLE driver_assignments ADD CONSTRAINT driver_assignments_status_check CHECK (status IN ('active', 'completed', 'cancelled', 'pending_approval', 'confirmed', 'declined'))");
-        } else {
+        } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE driver_assignments MODIFY COLUMN status ENUM('active', 'completed', 'cancelled', 'pending_approval', 'confirmed', 'declined') DEFAULT 'active'");
         }
 
@@ -92,10 +94,12 @@ return new class extends Migration
         });
 
         // Revert status enum
-        if (config('database.default') === 'pgsql') {
+        $driver = DB::getDriverName();
+
+        if ($driver === 'pgsql') {
             DB::statement('ALTER TABLE driver_assignments DROP CONSTRAINT IF EXISTS driver_assignments_status_check');
             DB::statement("ALTER TABLE driver_assignments ADD CONSTRAINT driver_assignments_status_check CHECK (status IN ('active', 'completed', 'cancelled', 'pending_approval'))");
-        } else {
+        } elseif (in_array($driver, ['mysql', 'mariadb'], true)) {
             DB::statement("ALTER TABLE driver_assignments MODIFY COLUMN status ENUM('active', 'completed', 'cancelled', 'pending_approval') DEFAULT 'active'");
         }
     }

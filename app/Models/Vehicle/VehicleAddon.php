@@ -161,6 +161,11 @@ class VehicleAddon extends BaseModel
         return $this->belongsTo(ServiceType::class, 'service_type_id');
     }
 
+    public function category(): BelongsTo
+    {
+        return $this->belongsTo(VehicleAddonCategory::class, 'category_id');
+    }
+
     /**
      * Get the user who created this record.
      */

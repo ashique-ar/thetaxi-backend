@@ -1,0 +1,25 @@
+<?php
+
+use App\Http\Controllers\Api\LoyaltyController;
+use Illuminate\Support\Facades\Route;
+
+it('exposes the four supported loyalty management section contracts', function (): void {
+    $routes = collect(Route::getRoutes()->getRoutes());
+    $expected = [
+        ['GET', 'api/customers/loyalty/stats', 'getLoyaltyStats'],
+        ['GET', 'api/customers/loyalty/tiers', 'getLoyaltyTiers'],
+        ['GET', 'api/customers/loyalty/rewards', 'getLoyaltyRewards'],
+        ['GET', 'api/customers/loyalty/activity', 'getLoyaltyActivity'],
+    ];
+
+    foreach ($expected as [$method, $uri, $controllerMethod]) {
+        $route = $routes->first(fn ($candidate) => $candidate->uri() === $uri && in_array($method, $candidate->methods(), true));
+
+        expect($route)->not->toBeNull()
+            ->and($route->getActionName())->toBe(LoyaltyController::class . '@' . $controllerMethod)
+            ->and($route->gatherMiddleware())->toContain('permission:loyalty.view|customers.loyalty');
+    }
+
+    expect($routes->contains(fn ($route) => in_array($route->uri(), ['api/point-types', 'api/users/{user}/badges/check'], true)))
+        ->toBeFalse();
+});

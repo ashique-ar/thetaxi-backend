@@ -4,6 +4,7 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 return new class extends Migration {
     /**
@@ -135,7 +136,7 @@ return new class extends Migration {
             
             if ($vehicleGroupId || $serviceTypeId) {
                 DB::table('booking_items')->insert([
-                    'id' => DB::raw('gen_random_uuid()'),
+                    'id' => (string) Str::uuid(),
                     'booking_id' => $booking->id,
                     'vehicle_group_id' => $vehicleGroupId,
                     'service_type_id' => $serviceTypeId,

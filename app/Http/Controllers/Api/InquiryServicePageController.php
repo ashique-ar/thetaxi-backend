@@ -8,6 +8,7 @@ use App\Models\InquiryServicePage;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
@@ -72,6 +73,7 @@ class InquiryServicePageController extends Controller
 
         $data['created_user_id'] = $request->user()?->id;
         $page = InquiryServicePage::create($data);
+        $this->clearPublicPageCaches($page->slug);
 
         return response()->json([
             'status' => 'success',
@@ -84,6 +86,7 @@ class InquiryServicePageController extends Controller
 
     public function update(Request $request, InquiryServicePage $inquiry_service_page): JsonResponse
     {
+        $oldSlug = $inquiry_service_page->slug;
         $data = $this->validatePagePayload($request, $inquiry_service_page->id);
 
         if (array_key_exists('name', $data) && empty($data['slug'])) {
@@ -95,6 +98,7 @@ class InquiryServicePageController extends Controller
 
         $data['updated_user_id'] = $request->user()?->id;
         $inquiry_service_page->update($data);
+        $this->clearPublicPageCaches($oldSlug, $inquiry_service_page->slug);
 
         return response()->json([
             'status' => 'success',
@@ -107,7 +111,9 @@ class InquiryServicePageController extends Controller
 
     public function destroy(InquiryServicePage $inquiry_service_page): JsonResponse
     {
+        $slug = $inquiry_service_page->slug;
         $inquiry_service_page->delete();
+        $this->clearPublicPageCaches($slug);
 
         return response()->json([
             'status' => 'success',
@@ -146,5 +152,15 @@ class InquiryServicePageController extends Controller
             'sort_order' => ['nullable', 'integer'],
             'is_active' => ['nullable', 'boolean'],
         ]);
+    }
+
+    private function clearPublicPageCaches(?string ...$slugs): void
+    {
+        Cache::forget('header_services');
+        Cache::forget('sitemap');
+
+        foreach (array_filter(array_unique($slugs)) as $slug) {
+            Cache::forget('inquiry_service_page:' . $slug);
+        }
     }
 }

@@ -10,6 +10,13 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // The original pivot columns are already UUID-compatible on SQLite.
+        // Everything below uses PostgreSQL catalog queries, regex operators,
+        // casts, and ALTER COLUMN syntax.
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         // Cast model_id columns to uuid to avoid uuid = character varying comparison errors on Postgres
         DB::transaction(function () {
             // Helper: drop any primary key constraint on a table if present
@@ -60,6 +67,10 @@ return new class extends Migration
      */
     public function down(): void
     {
+        if (DB::getDriverName() !== 'pgsql') {
+            return;
+        }
+
         DB::transaction(function () {
             // Helper: drop any primary key constraint on a table if present
             $dropPrimary = function (string $table) {

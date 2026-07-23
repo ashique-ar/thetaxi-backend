@@ -24,7 +24,7 @@ class CreateDriverLogRequest extends FormRequest
             'particulars' => ['nullable', 'string'],
             'entry_source' => ['nullable', 'string', 'in:manual,paper_entry,mobile_app,gps'],
             'attachments' => ['nullable', 'array'],
-            'status' => ['required', 'in:pending,approved,rejected'],
+            'status' => ['prohibited'],
         ];
     }
 }

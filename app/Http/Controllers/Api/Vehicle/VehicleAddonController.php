@@ -26,7 +26,7 @@ class VehicleAddonController extends Controller
      */
     public function index(Request $request)
     {
-        $query = VehicleAddon::withInactive()->with('serviceType');
+        $query = VehicleAddon::withInactive()->with(['serviceType', 'category']);
 
         // Search filter
         if ($request->filled('search')) {
@@ -95,7 +95,7 @@ class VehicleAddonController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Addon created successfully',
-            'data' => new VehicleAddonResource($addon->load('serviceType'))
+            'data' => new VehicleAddonResource($addon->load(['serviceType', 'category']))
         ], 201);
     }
 
@@ -110,6 +110,9 @@ class VehicleAddonController extends Controller
         // Always load serviceType
         if (!in_array('serviceType', $relations)) {
             $relations[] = 'serviceType';
+        }
+        if (!in_array('category', $relations)) {
+            $relations[] = 'category';
         }
 
         return response()->json([
@@ -131,7 +134,7 @@ class VehicleAddonController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Addon updated successfully',
-            'data' => new VehicleAddonResource($vehicleAddon->load('serviceType'))
+            'data' => new VehicleAddonResource($vehicleAddon->load(['serviceType', 'category']))
         ]);
     }
 
@@ -165,7 +168,7 @@ class VehicleAddonController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => $request->is_active ? 'Addon activated' : 'Addon deactivated',
-            'data' => new VehicleAddonResource($vehicleAddon->load('serviceType'))
+            'data' => new VehicleAddonResource($vehicleAddon->load(['serviceType', 'category']))
         ]);
     }
 

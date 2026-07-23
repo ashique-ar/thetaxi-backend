@@ -14,7 +14,7 @@ return new class extends Migration {
         Schema::create('booking_terms', function (Blueprint $table) {
             $table->uuid('id')->primary();
             $table->uuid('booking_id'); // Fixed: should be uuid to match bookings table
-            $table->unsignedBigInteger('terms_and_condition_id');
+            $table->uuid('terms_and_condition_id');
             $table->unsignedInteger('terms_version')->nullable();
             $table->timestamp('accepted_at')->nullable();
             $table->timestamps();
