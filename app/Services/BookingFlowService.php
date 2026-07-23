@@ -8142,6 +8142,49 @@ class BookingFlowService
             });
         }
 
+        if (!empty($filters['booking_source'])) {
+            $bookingSource = strtolower((string) $filters['booking_source']);
+            $publicSources = ['public', 'website', 'web', 'online', 'customer', 'customer_portal', 'guest'];
+            $corporateSources = ['corporate', 'corporate_portal', 'employee_portal'];
+
+            $query->whereHas('booking', function ($bookingQuery) use ($bookingSource, $publicSources, $corporateSources) {
+                if ($bookingSource === 'corporate') {
+                    $bookingQuery->where(function ($sourceQuery) use ($corporateSources) {
+                        $sourceQuery->where('is_corporate_booking', true)
+                            ->orWhereIn('booking_source', $corporateSources)
+                            ->orWhereIn('created_from', $corporateSources);
+                    });
+
+                    return;
+                }
+
+                $bookingQuery->where(function ($sourceQuery) {
+                    $sourceQuery->whereNull('is_corporate_booking')
+                        ->orWhere('is_corporate_booking', false);
+                });
+
+                if ($bookingSource === 'public') {
+                    $bookingQuery->where(function ($sourceQuery) use ($publicSources) {
+                        $sourceQuery->whereIn('booking_source', $publicSources)
+                            ->orWhereIn('created_from', $publicSources);
+                    });
+
+                    return;
+                }
+
+                $excludedSources = array_values(array_unique(array_merge($publicSources, $corporateSources)));
+                $bookingQuery
+                    ->where(function ($sourceQuery) use ($excludedSources) {
+                        $sourceQuery->whereNull('booking_source')
+                            ->orWhereNotIn('booking_source', $excludedSources);
+                    })
+                    ->where(function ($sourceQuery) use ($excludedSources) {
+                        $sourceQuery->whereNull('created_from')
+                            ->orWhereNotIn('created_from', $excludedSources);
+                    });
+            });
+        }
+
         if (!empty($filters['vehicle_group_id'])) {
             $query->where('booking_items.vehicle_group_id', $filters['vehicle_group_id']);
         }
