@@ -278,7 +278,7 @@ class PriceAdjustmentController extends Controller
     public function show(string $id): JsonResponse
     {
         try {
-            $adjustment = PriceAdjustment::with(['serviceType', 'vehicleGroup'])
+            $adjustment = PriceAdjustment::withInactive()->with(['serviceType', 'vehicleGroup'])
                 ->findOrFail($id);
 
             return response()->json([
@@ -310,7 +310,7 @@ class PriceAdjustmentController extends Controller
         }
 
         try {
-            $adjustment = PriceAdjustment::findOrFail($id);
+            $adjustment = PriceAdjustment::withInactive()->findOrFail($id);
             $adjustment->update($validator->validated());
             $adjustment->load(['serviceType', 'vehicleGroup']);
 
@@ -343,7 +343,7 @@ class PriceAdjustmentController extends Controller
     public function destroy(string $id): JsonResponse
     {
         try {
-            $adjustment = PriceAdjustment::findOrFail($id);
+            $adjustment = PriceAdjustment::withInactive()->findOrFail($id);
             $adjustmentName = $adjustment->name;
             $adjustment->delete();
 
@@ -374,7 +374,7 @@ class PriceAdjustmentController extends Controller
     public function toggleStatus(string $id): JsonResponse
     {
         try {
-            $adjustment = PriceAdjustment::findOrFail($id);
+            $adjustment = PriceAdjustment::withInactive()->findOrFail($id);
             $adjustment->is_active = !$adjustment->is_active;
             $adjustment->save();
 
