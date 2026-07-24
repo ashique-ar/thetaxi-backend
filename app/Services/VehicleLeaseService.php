@@ -263,6 +263,21 @@ class VehicleLeaseService
                     'lease' => ['Refundable-deposit dispositions can be recorded only after contract activation.'],
                 ]);
             }
+            $validMethod = match ($data['disposition_type']) {
+                'return_received' => in_array(
+                    $data['payment_method'],
+                    ['cash', 'bank_transfer', 'cheque', 'card', 'online', 'other'],
+                    true
+                ),
+                'forfeited' => $data['payment_method'] === 'not_applicable',
+                'offset' => $data['payment_method'] === 'offset',
+                default => false,
+            };
+            if (! $validMethod) {
+                throw ValidationException::withMessages([
+                    'payment_method' => ['The payment method must match the selected deposit disposition.'],
+                ]);
+            }
             if ($lease->deposit_paid_date
                 && Carbon::parse($data['transaction_date'])->lt($lease->deposit_paid_date)) {
                 throw ValidationException::withMessages([

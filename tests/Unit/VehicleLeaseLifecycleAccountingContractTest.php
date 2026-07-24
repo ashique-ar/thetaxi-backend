@@ -51,8 +51,8 @@ it('protects embedded current lease edits from stale forms and unauthorized disc
 
 it('keeps final payment retries and refundable deposit closure controls replay safe', function () {
     $service = file_get_contents(app_path('Services/VehicleLeaseService.php'));
-    $duplicateLookup = strpos($service, "\$duplicate = VehicleLeasePayment::query()");
-    $lifecycleGuard = strpos($service, "Payments can be recorded only for active or expired leases.");
+    $duplicateLookup = strpos($service, '$duplicate = VehicleLeasePayment::query()');
+    $lifecycleGuard = strpos($service, 'Payments can be recorded only for active or expired leases.');
 
     expect($duplicateLookup)->not->toBeFalse()
         ->and($lifecycleGuard)->not->toBeFalse()

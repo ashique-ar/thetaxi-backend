@@ -1,10 +1,11 @@
 <?php
 
-use App\Services\VehicleLeaseService;
 use App\Models\Vehicle\VehicleLease;
+use App\Services\VehicleLeaseService;
 use Illuminate\Validation\ValidationException;
+use Tests\TestCase;
 
-uses(Tests\TestCase::class);
+uses(TestCase::class);
 
 function validateVehicleLeaseTerms(array $overrides = []): void
 {
@@ -25,7 +26,7 @@ function validateVehicleLeaseTerms(array $overrides = []): void
     ], $overrides);
 
     $method = new ReflectionMethod(VehicleLeaseService::class, 'validateFinancialTerms');
-    $method->invoke(new VehicleLeaseService(), $terms);
+    $method->invoke(new VehicleLeaseService, $terms);
 }
 
 it('accepts a reconciled lease schedule and separately evidenced refundable deposit', function () {
@@ -63,7 +64,7 @@ it('normalizes non-monthly instalments to the vehicle monthly commitment', funct
     ]);
     $method = new ReflectionMethod(VehicleLeaseService::class, 'monthlyCommitment');
 
-    expect($method->invoke(new VehicleLeaseService(), $lease))->toBe($expected);
+    expect($method->invoke(new VehicleLeaseService, $lease))->toBe($expected);
 })->with([
     'monthly' => ['monthly', 12000, 12000.0],
     'quarterly' => ['quarterly', 36000, 12000.0],
