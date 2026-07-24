@@ -291,6 +291,11 @@ class VehicleLeaseController extends Controller
 
     public function settleRelease(Request $request, VehicleLease $vehicleLease): JsonResponse
     {
+        if ($request->exists('settlement_reference')) {
+            $request->merge([
+                'settlement_reference' => trim((string) $request->input('settlement_reference')),
+            ]);
+        }
         $data = $request->validate([
             'settled_at' => ['required', 'date', 'before_or_equal:now'],
             'direction' => ['required', Rule::in(['payable_to_provider', 'receivable_from_provider'])],
