@@ -13,6 +13,8 @@ class CreateStaffRequest extends FormRequest
         return [
             'user_id' => ['required', 'exists:users,id'],
             'staff_type' => ['required', 'string', 'max:100'],
+            'collection_commission_enabled' => ['sometimes', 'boolean'],
+            'collection_commission_rate' => ['required_if:collection_commission_enabled,true', 'numeric', 'min:0', 'max:100'],
             'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
             'nic' => ['nullable', 'string', 'max:20'],
             'dob' => ['nullable', 'date'],

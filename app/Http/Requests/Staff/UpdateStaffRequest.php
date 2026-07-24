@@ -15,6 +15,8 @@ class UpdateStaffRequest extends FormRequest
         return [
             'user_id' => ['sometimes', 'required', 'exists:users,id'],
             'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
+            'collection_commission_enabled' => ['sometimes', 'boolean'],
+            'collection_commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'code' => ["sometimes", "nullable", "string", "max:100", "unique:staff,code,{$id}"],
             'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'dob' => ['sometimes', 'nullable', 'date'],

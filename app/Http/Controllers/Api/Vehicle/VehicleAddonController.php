@@ -5,15 +5,17 @@ namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleAddon;
+use App\Models\Service\ServiceType;
 use App\Http\Requests\Vehicle\VehicleAddon\CreateVehicleAddonRequest;
 use App\Http\Requests\Vehicle\VehicleAddon\UpdateVehicleAddonRequest;
 use App\Http\Resources\Vehicle\VehicleAddonResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Services\Pricing\PricingContextPolicyService;
 
 class VehicleAddonController extends Controller
 {
-    public function __construct()
+    public function __construct(private readonly PricingContextPolicyService $pricingContextPolicy)
     {
         $this->middleware('permission:vehicle-addons.view')->only(['index', 'show', 'stats', 'available', 'forService']);
         $this->middleware('permission:vehicle-addons.create')->only(['store']);
@@ -27,6 +29,7 @@ class VehicleAddonController extends Controller
     public function index(Request $request)
     {
         $query = VehicleAddon::withInactive()->with(['serviceType', 'category']);
+        $this->applyManagedPricingScope($query);
 
         // Search filter
         if ($request->filled('search')) {
@@ -88,6 +91,11 @@ class VehicleAddonController extends Controller
     public function store(CreateVehicleAddonRequest $request): JsonResponse
     {
         $data = $request->validated();
+        if (!empty($data['service_type_id'])) {
+            $this->pricingContextPolicy->assertServiceTypeIsWritable(
+                ServiceType::findOrFail($data['service_type_id'])
+            );
+        }
         $data['created_user_id'] = $request->user()->id;
 
         $addon = VehicleAddon::create($data);
@@ -104,6 +112,7 @@ class VehicleAddonController extends Controller
      */
     public function show(Request $request, VehicleAddon $vehicleAddon): JsonResponse
     {
+        $vehicleAddon = $this->pricingContextPolicy->effectiveVehicleAddon($vehicleAddon);
         $includes = $request->input('include', '');
         $relations = array_filter(explode(',', $includes));
 
@@ -126,7 +135,13 @@ class VehicleAddonController extends Controller
      */
     public function update(UpdateVehicleAddonRequest $request, VehicleAddon $vehicleAddon): JsonResponse
     {
+        $this->pricingContextPolicy->assertVehicleAddonIsWritable($vehicleAddon);
         $data = $request->validated();
+        if (!empty($data['service_type_id'])) {
+            $this->pricingContextPolicy->assertServiceTypeIsWritable(
+                ServiceType::findOrFail($data['service_type_id'])
+            );
+        }
         $data['updated_user_id'] = $request->user()->id;
 
         $vehicleAddon->update($data);
@@ -143,6 +158,7 @@ class VehicleAddonController extends Controller
      */
     public function destroy(VehicleAddon $vehicleAddon): JsonResponse
     {
+        $this->pricingContextPolicy->assertVehicleAddonIsWritable($vehicleAddon);
         $vehicleAddon->delete();
 
         return response()->json([
@@ -156,6 +172,7 @@ class VehicleAddonController extends Controller
      */
     public function toggleStatus(Request $request, VehicleAddon $vehicleAddon): JsonResponse
     {
+        $this->pricingContextPolicy->assertVehicleAddonIsWritable($vehicleAddon);
         $request->validate([
             'is_active' => ['required', 'boolean']
         ]);
@@ -183,6 +200,11 @@ class VehicleAddonController extends Controller
             'is_active' => ['required', 'boolean']
         ]);
 
+        VehicleAddon::whereIn('id', $request->addon_ids)
+            ->with('serviceType')
+            ->get()
+            ->each(fn (VehicleAddon $addon) => $this->pricingContextPolicy->assertVehicleAddonIsWritable($addon));
+
         VehicleAddon::whereIn('id', $request->addon_ids)->update([
             'is_active' => $request->is_active,
             'updated_user_id' => $request->user()->id,
@@ -205,7 +227,11 @@ class VehicleAddonController extends Controller
 
         // Filter by service type
         if ($request->filled('service_type')) {
-            $query->forServiceType($request->service_type);
+            $normalized = $this->pricingContextPolicy->normalizeCalculationParams([
+                'service_type' => $request->service_type,
+                'pricing_context' => $request->input('pricing_context', 'portal'),
+            ]);
+            $query->forServiceType($normalized['service_type'] ?? $request->service_type);
         }
 
         // Filter by vehicle category/type
@@ -231,10 +257,15 @@ class VehicleAddonController extends Controller
             'service_type' => ['required', 'string']
         ]);
 
+        $normalized = $this->pricingContextPolicy->normalizeCalculationParams([
+            'service_type' => $request->service_type,
+            'pricing_context' => $request->input('pricing_context', 'portal'),
+        ]);
+
         $query = VehicleAddon::query()
             ->with('serviceType')
             ->available()
-            ->forServiceType($request->service_type);
+            ->forServiceType($normalized['service_type'] ?? $request->service_type);
 
         if ($request->filled('vehicle_type')) {
             $query->where(function ($q) use ($request) {
@@ -254,18 +285,21 @@ class VehicleAddonController extends Controller
      */
     public function stats(): JsonResponse
     {
+        $baseQuery = VehicleAddon::query();
+        $this->applyManagedPricingScope($baseQuery);
+
         $stats = [
-            'totalAddOns' => VehicleAddon::count(),
-            'activeAddOns' => VehicleAddon::where('is_active', true)->count(),
-            'categories' => VehicleAddon::whereNotNull('category_id')
+            'totalAddOns' => (clone $baseQuery)->count(),
+            'activeAddOns' => (clone $baseQuery)->where('is_active', true)->count(),
+            'categories' => (clone $baseQuery)->whereNotNull('category_id')
                 ->distinct('category_id')
                 ->count('category_id'),
-            'averagePrice' => round(VehicleAddon::avg('amount') ?? 0, 2),
-            'byType' => VehicleAddon::select('addon_type')
+            'averagePrice' => round((clone $baseQuery)->avg('amount') ?? 0, 2),
+            'byType' => (clone $baseQuery)->select('addon_type')
                 ->selectRaw('count(*) as count')
                 ->groupBy('addon_type')
                 ->pluck('count', 'addon_type'),
-            'byPricingType' => VehicleAddon::select('pricing_type')
+            'byPricingType' => (clone $baseQuery)->select('pricing_type')
                 ->selectRaw('count(*) as count')
                 ->groupBy('pricing_type')
                 ->pluck('count', 'pricing_type'),
@@ -415,5 +449,20 @@ class VehicleAddonController extends Controller
                 'min_quantity' => $minQuantity,
             ]
         ]);
+    }
+
+    private function applyManagedPricingScope($query): void
+    {
+        if (!$this->pricingContextPolicy->internalUsesWebsitePricing()) {
+            return;
+        }
+
+        $query->where(function ($scopeQuery) {
+            $scopeQuery->whereNull('service_type_id')
+                ->orWhereHas(
+                    'serviceType',
+                    fn ($serviceQuery) => $serviceQuery->where('context', '!=', 'portal')
+                );
+        });
     }
 }

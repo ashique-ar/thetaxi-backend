@@ -362,6 +362,7 @@ class AssignmentController extends Controller
             'reference' => ['nullable', 'string', 'max:120'],
             'received_at' => ['required', 'date', 'before_or_equal:now'],
             'notes' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
         ]);
 
         $booking = Booking::findOrFail($bookingId);
@@ -371,6 +372,58 @@ class AssignmentController extends Controller
             'status' => 'success',
             'message' => 'Payment received and outstanding balance updated.',
             'data' => $summary,
+        ]);
+    }
+
+    public function addPaymentScheduleItem(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate([
+            'label' => ['nullable', 'string', 'max:120'],
+            'period_start' => ['nullable', 'date'],
+            'period_end' => ['nullable', 'date', 'after_or_equal:period_start'],
+            'due_date' => ['required', 'date'],
+            'amount' => ['required', 'numeric', 'gt:0'],
+            'notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+        $booking = Booking::findOrFail($bookingId);
+        $summary = $this->paymentLedger->addScheduleItem($booking, $data, Auth::id());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Payment due date added to the booking schedule.',
+            'data' => $summary,
+        ], 201);
+    }
+
+    public function generatePaymentSchedule(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate([
+            'frequency' => ['required', 'in:full_payment,monthly,every_two_months,every_six_months'],
+            'start_date' => ['required', 'date'],
+            'installment_amount' => ['nullable', 'required_unless:frequency,full_payment', 'numeric', 'gt:0'],
+            'reminder_days' => ['nullable', 'integer', 'min:0', 'max:30'],
+        ]);
+        $booking = Booking::findOrFail($bookingId);
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Automatic payment schedule generated.',
+            'data' => $this->paymentLedger->generateSchedule($booking, $data, Auth::id()),
+        ], 201);
+    }
+
+    public function setCommissionOwner(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate([
+            'commission_owner_staff_id' => ['nullable', 'uuid', 'exists:staff,id'],
+        ]);
+        $booking = Booking::findOrFail($bookingId);
+        abort_unless((bool) $booking->is_corporate_booking, 422, 'An explicit commission owner is only needed for corporate bookings.');
+        $booking->update(['commission_owner_staff_id' => $data['commission_owner_staff_id'] ?? null]);
+        return response()->json([
+            'status' => 'success',
+            'message' => $booking->commission_owner_staff_id
+                ? 'Corporate booking commission owner assigned.'
+                : 'Corporate booking commission owner cleared.',
         ]);
     }
 

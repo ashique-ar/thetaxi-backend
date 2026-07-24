@@ -5,6 +5,7 @@ namespace App\Http\Requests\Vehicle\Vehicle;
 
 use App\Rules\UniqueVehiclePlate;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateVehicleRequest extends FormRequest
 {
@@ -12,6 +13,8 @@ class CreateVehicleRequest extends FormRequest
 
     public function rules()
     {
+        $externalOwnershipTypes = ['package_fleet', 'outside_call_taxi', 'rented_asset', 'leased_asset'];
+
         return [
             'class_id' => ['nullable', 'exists:vehicle_classes,id'],
             'fuel_type_id' => ['nullable', 'exists:vehicle_fuel_types,id'],
@@ -20,11 +23,20 @@ class CreateVehicleRequest extends FormRequest
             'category_id' => ['nullable', 'exists:vehicle_categories,id'],
             'model_id' => ['nullable', 'exists:vehicle_models,id'],
             'make_id' => ['nullable', 'exists:vehicle_makes,id'],
-            'owner_id' => ['nullable', 'exists:vehicle_owners,id'],
+            'owner_id' => [
+                'nullable',
+                Rule::prohibitedIf(fn () => $this->input('ownership_type', 'company_owned') === 'company_owned'),
+                Rule::requiredIf(fn () => in_array(
+                    $this->input('ownership_type', 'company_owned'),
+                    $externalOwnershipTypes,
+                    true
+                )),
+                'exists:vehicle_owners,id',
+            ],
             'grade_id' => ['nullable', 'exists:vehicle_grades,id'],
             'vehicle_group_id' => ['nullable', 'exists:vehicle_groups,id'],
             'default_driver_id' => ['nullable', 'exists:drivers,id'],
-            'ownership_type' => ['nullable', 'string', 'in:company_owned,package_fleet,outside_call_taxi,rented_asset,leased_asset'],
+            'ownership_type' => ['required', 'string', 'in:company_owned,package_fleet,outside_call_taxi,rented_asset,leased_asset'],
             'usage_type' => ['nullable', 'string', 'in:standard_fleet,package_fleet,outside_call_taxi,rental,lease,shared_pool'],
             'payment_model' => ['nullable', 'string', 'in:none,commission,fixed_monthly,commission_plus_fixed'],
             'owner_payment_method_id' => ['nullable', 'exists:payment_methods,id'],

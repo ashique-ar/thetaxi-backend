@@ -173,6 +173,16 @@ class Vehicle extends BaseModel
         return $this->morphMany(Document::class, 'documentable');
     }
 
+    public function leases()
+    {
+        return $this->hasMany(VehicleLease::class)->orderByDesc('start_date');
+    }
+
+    public function ownershipHistory()
+    {
+        return $this->hasMany(VehicleOwnershipHistory::class)->orderByDesc('effective_at');
+    }
+
     /**
      * Get the vehicle's grade.
      *

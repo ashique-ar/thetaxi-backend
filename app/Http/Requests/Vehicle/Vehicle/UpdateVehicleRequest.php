@@ -5,6 +5,7 @@ namespace App\Http\Requests\Vehicle\Vehicle;
 
 use App\Rules\UniqueVehiclePlate;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateVehicleRequest extends FormRequest
 {
@@ -12,7 +13,11 @@ class UpdateVehicleRequest extends FormRequest
 
     public function rules()
     {
-        $id = $this->route('vehicle')->id;
+        $vehicle = $this->route('vehicle');
+        $id = $vehicle->id;
+        $externalOwnershipTypes = ['package_fleet', 'outside_call_taxi', 'rented_asset', 'leased_asset'];
+        $effectiveOwnershipType = $this->input('ownership_type', $vehicle->ownership_type ?? 'company_owned');
+        $effectiveOwnerId = $this->exists('owner_id') ? $this->input('owner_id') : $vehicle->owner_id;
 
         return [
             'class_id' => ['sometimes', 'nullable', 'exists:vehicle_classes,id'],
@@ -22,11 +27,17 @@ class UpdateVehicleRequest extends FormRequest
             'category_id' => ['sometimes', 'nullable', 'exists:vehicle_categories,id'],
             'model_id' => ['sometimes', 'nullable', 'exists:vehicle_models,id'],
             'make_id' => ['sometimes', 'nullable', 'exists:vehicle_makes,id'],
-            'owner_id' => ['sometimes', 'nullable', 'exists:vehicle_owners,id'],
+            'owner_id' => [
+                'nullable',
+                Rule::prohibitedIf(fn () => $effectiveOwnershipType === 'company_owned'),
+                Rule::requiredIf(fn () => in_array($effectiveOwnershipType, $externalOwnershipTypes, true)
+                    && blank($effectiveOwnerId)),
+                'exists:vehicle_owners,id',
+            ],
             'grade_id' => ['sometimes', 'nullable', 'exists:vehicle_grades,id'],
             'vehicle_group_id' => ['sometimes', 'nullable', 'exists:vehicle_groups,id'],
             'default_driver_id' => ['sometimes', 'nullable', 'exists:drivers,id'],
-            'ownership_type' => ['sometimes', 'nullable', 'string', 'in:company_owned,package_fleet,outside_call_taxi,rented_asset,leased_asset'],
+            'ownership_type' => ['sometimes', 'required', 'string', 'in:company_owned,package_fleet,outside_call_taxi,rented_asset,leased_asset'],
             'usage_type' => ['sometimes', 'nullable', 'string', 'in:standard_fleet,package_fleet,outside_call_taxi,rental,lease,shared_pool'],
             'payment_model' => ['sometimes', 'nullable', 'string', 'in:none,commission,fixed_monthly,commission_plus_fixed'],
             'owner_payment_method_id' => ['sometimes', 'nullable', 'exists:payment_methods,id'],

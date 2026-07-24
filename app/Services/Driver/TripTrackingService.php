@@ -1104,6 +1104,7 @@ class TripTrackingService
             'notes' => $paymentData['payment_notes'] ?? null,
             'received_via' => 'driver',
             'driver_id' => $assignment->driver_id,
+            'idempotency_key' => $paymentData['idempotency_key'] ?? null,
         ], null);
         $booking->refresh()->update([
             'payment_collected_by_driver_id' => $assignment->driver_id,

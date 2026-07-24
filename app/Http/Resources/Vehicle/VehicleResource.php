@@ -52,6 +52,7 @@ class VehicleResource extends JsonResource
             'actual_vehicle_images' => $this->actual_vehicle_images ?? [],
             'insurances' => VehicleInsuranceResource::collection($this->whenLoaded('insurances')),
             'revenue_licenses' => VehicleRevenueLicenseResource::collection($this->whenLoaded('revenueLicenses')),
+            'ownership_history' => $this->whenLoaded('ownershipHistory'),
             'active_insurance' => new VehicleInsuranceResource($this->whenLoaded('activeInsurance')),
             'active_revenue_license' => new VehicleRevenueLicenseResource($this->whenLoaded('activeRevenueLicense')),
             'tagline' => $this->tagline ?? null,

@@ -44,6 +44,8 @@ class Staff extends BaseModel
     protected $fillable = [
         'user_id',
         'staff_type',
+        'collection_commission_enabled',
+        'collection_commission_rate',
         'code',
         'nic',
         'dob',
@@ -65,6 +67,8 @@ class Staff extends BaseModel
     protected $casts = [
         'dob' => 'date',
         'license_expiry' => 'date',
+        'collection_commission_enabled' => 'boolean',
+        'collection_commission_rate' => 'decimal:2',
     ];
 
     // Relations

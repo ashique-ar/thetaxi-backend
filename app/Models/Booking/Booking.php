@@ -160,6 +160,7 @@ class Booking extends BaseModel
         'payment_status',
         'payment_reference',
         'created_user_id',
+        'commission_owner_staff_id',
         'updated_user_id',
 
         // Service details (booking-level, not item-specific)
@@ -183,6 +184,10 @@ class Booking extends BaseModel
         'payment_type',
         'amount_to_pay',
         'payment_responsibility',
+        'payment_schedule_frequency',
+        'payment_schedule_start_date',
+        'payment_schedule_installment_amount',
+        'payment_schedule_reminder_days',
         'payment_collection_method',
         'payment_collection_status',
         'payment_collected_amount',
@@ -322,6 +327,9 @@ class Booking extends BaseModel
         'recurring_occurrence_date' => 'date',
         'payment_collected_at' => 'datetime',
         'payment_collected_amount' => 'decimal:2',
+        'payment_schedule_start_date' => 'date',
+        'payment_schedule_installment_amount' => 'decimal:2',
+        'payment_schedule_reminder_days' => 'integer',
 
         // booleans
         'is_recurring' => 'boolean',
@@ -459,6 +467,16 @@ class Booking extends BaseModel
     public function createdBy()
     {
         return $this->belongsTo(\App\Models\User::class, 'created_user_id');
+    }
+
+    public function paymentSchedules()
+    {
+        return $this->hasMany(BookingPaymentSchedule::class);
+    }
+
+    public function commissionOwnerStaff()
+    {
+        return $this->belongsTo(\App\Models\Staff::class, 'commission_owner_staff_id');
     }
 
     /**

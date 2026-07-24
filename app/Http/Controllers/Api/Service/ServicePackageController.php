@@ -10,13 +10,14 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use App\Services\DynamicServiceConfigurationService;
+use App\Services\Pricing\PricingContextPolicyService;
 
 class ServicePackageController extends Controller
 {
-    public function __construct()
+    public function __construct(private readonly PricingContextPolicyService $pricingContextPolicy)
     {
         $this->middleware('auth:api')->except(['getPackagesByService']);
-        $this->middleware('permission:service-packages.view')->only(['index']);
+        $this->middleware('permission:service-packages.view')->only(['index', 'show']);
         $this->middleware('permission:service-packages.create')->only(['store']);
         $this->middleware('permission:service-packages.edit')->only(['update']);
         $this->middleware('permission:service-packages.delete')->only(['destroy']);
@@ -103,6 +104,13 @@ class ServicePackageController extends Controller
             ->orderBy('service_type_id')
             ->orderBy('sort_order');
 
+        if ($this->pricingContextPolicy->internalUsesWebsitePricing()) {
+            $query->whereHas(
+                'serviceType',
+                fn ($serviceQuery) => $serviceQuery->where('context', '!=', 'portal')
+            );
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {
@@ -144,6 +152,9 @@ class ServicePackageController extends Controller
             'supports_return_trip' => 'boolean',
         ]);
         $this->assertPositiveDefaultDuration($validated);
+        $this->pricingContextPolicy->assertServiceTypeIsWritable(
+            ServiceType::findOrFail($validated['service_type_id'])
+        );
 
         $validated['created_user_id'] = auth()->id();
         $validated['is_active'] = true;
@@ -158,11 +169,25 @@ class ServicePackageController extends Controller
         ], 201);
     }
 
+    public function show(ServicePackage $servicePackage): JsonResponse
+    {
+        $servicePackage = $this->pricingContextPolicy
+            ->effectiveServicePackage($servicePackage)
+            ->load(['serviceType', 'returnRules']);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['package' => $servicePackage],
+        ]);
+    }
+
     /**
      * Update an existing service package
      */
     public function update(Request $request, ServicePackage $servicePackage): JsonResponse
     {
+        $this->pricingContextPolicy->assertServicePackageIsWritable($servicePackage);
+
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:100|unique:service_packages,code,' . $servicePackage->id,
@@ -179,6 +204,9 @@ class ServicePackageController extends Controller
             'supports_return_trip' => 'boolean',
         ]);
         $this->assertPositiveDefaultDuration($validated);
+        $this->pricingContextPolicy->assertServiceTypeIsWritable(
+            ServiceType::findOrFail($validated['service_type_id'])
+        );
 
         $validated['updated_user_id'] = auth()->id();
 
@@ -196,6 +224,7 @@ class ServicePackageController extends Controller
      */
     public function destroy(ServicePackage $servicePackage): JsonResponse
     {
+        $this->pricingContextPolicy->assertServicePackageIsWritable($servicePackage);
         $servicePackage->delete();
 
         return response()->json([
@@ -225,6 +254,7 @@ class ServicePackageController extends Controller
      */
     public function getReturnRules(ServicePackage $servicePackage): JsonResponse
     {
+        $servicePackage = $this->pricingContextPolicy->effectiveServicePackage($servicePackage);
         $rules = $servicePackage->returnRules()
             ->with('vehicleGroup:id,name')
             ->orderBy('day_offset_min')
@@ -278,6 +308,8 @@ class ServicePackageController extends Controller
      */
     public function storeReturnRule(Request $request, ServicePackage $servicePackage): JsonResponse
     {
+        $this->pricingContextPolicy->assertServicePackageIsWritable($servicePackage);
+
         $validated = $request->validate([
             'vehicle_group_id' => 'nullable|exists:vehicle_groups,id',
             'day_offset_min' => 'required|integer|min:0|max:365',
@@ -322,6 +354,8 @@ class ServicePackageController extends Controller
      */
     public function updateReturnRule(Request $request, ServicePackage $servicePackage, ServicePackageReturnRule $returnRule): JsonResponse
     {
+        $this->pricingContextPolicy->assertServicePackageIsWritable($servicePackage);
+
         // Ensure the rule belongs to this package
         if ($returnRule->service_package_id !== $servicePackage->id) {
             return response()->json([
@@ -367,6 +401,8 @@ class ServicePackageController extends Controller
      */
     public function destroyReturnRule(ServicePackage $servicePackage, ServicePackageReturnRule $returnRule): JsonResponse
     {
+        $this->pricingContextPolicy->assertServicePackageIsWritable($servicePackage);
+
         // Ensure the rule belongs to this package
         if ($returnRule->service_package_id !== $servicePackage->id) {
             return response()->json([
@@ -398,7 +434,9 @@ class ServicePackageController extends Controller
             'kilometers' => 'nullable|numeric|min:0',
         ]);
 
-        $servicePackage = ServicePackage::find($validated['service_package_id']);
+        $servicePackage = $this->pricingContextPolicy->effectiveServicePackage(
+            ServicePackage::findOrFail($validated['service_package_id'])
+        );
 
         // Calculate day offset
         $outboundDate = \Carbon\Carbon::parse($validated['outbound_date'])->startOfDay();

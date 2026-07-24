@@ -90,6 +90,7 @@ class TripController extends Controller
         $validated = $request->validate([
             'collected_amount' => ['required', 'numeric', 'min:0'],
             'payment_notes' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['required', 'uuid'],
         ]);
 
         try {

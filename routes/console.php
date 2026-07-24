@@ -22,6 +22,14 @@ Schedule::command('maintenance:check-scheduled')
     ->dailyAt('06:00')
     ->withoutOverlapping();
 
+Schedule::command('bookings:process-payment-schedules')
+    ->dailyAt('07:00')
+    ->withoutOverlapping();
+
+Schedule::command('vehicles:process-lease-schedules')
+    ->dailyAt('07:15')
+    ->withoutOverlapping();
+
 Schedule::command('corporate-transport:generate-bookings')
     ->everyFifteenMinutes()
     ->withoutOverlapping(10);

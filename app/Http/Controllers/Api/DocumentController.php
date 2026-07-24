@@ -9,6 +9,7 @@ use App\Models\Document;
 use App\Models\Driver\Driver;
 use App\Models\Staff;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleLease;
 use App\Models\Vehicle\VehicleOwner;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Http\JsonResponse;
@@ -25,14 +26,15 @@ class DocumentController extends Controller
         'driver' => Driver::class,
         'staff' => Staff::class,
         'vehicle' => Vehicle::class,
+        'vehicle_lease' => VehicleLease::class,
         'vehicle_owner' => VehicleOwner::class,
     ];
 
     public function __construct()
     {
-        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view')->only(['index', 'show', 'download', 'stats']);
-        $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit')->only(['store']);
-        $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit')->only(['verify', 'reject']);
+        $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
+        $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['store']);
+        $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit|vehicle-leases.manage')->only(['verify', 'reject']);
         $this->middleware('permission:documents.delete|uploads.manage')->only(['destroy']);
     }
 
@@ -272,6 +274,10 @@ class DocumentController extends Controller
 
         if ($owner instanceof Vehicle) {
             return trim(($owner->title ?: 'Vehicle') . ' ' . ($owner->registration_no ? "({$owner->registration_no})" : ''));
+        }
+
+        if ($owner instanceof VehicleLease) {
+            return $owner->lease_number;
         }
 
         if (method_exists($owner, 'getFullNameAttribute')) {

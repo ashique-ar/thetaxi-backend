@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
 use App\Http\Controllers\Api\AssignmentController;
+use App\Http\Controllers\Api\CollectionCommissionController;
 use App\Http\Controllers\Api\BookingRouteUsageController;
 use App\Http\Controllers\Api\FinancialSettlementController;
 use App\Http\Controllers\Api\AgreementController;
@@ -58,6 +59,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleCommissionController;
 use App\Http\Controllers\Api\Vehicle\VehicleController;
 use App\Http\Controllers\Api\Vehicle\VehicleDistanceMultiplierController;
 use App\Http\Controllers\Api\Vehicle\VehicleFuelTypeController;
+use App\Http\Controllers\Api\Vehicle\VehicleFinanceProviderController;
 use App\Http\Controllers\Api\Vehicle\VehicleGradeController;
 use App\Http\Controllers\Api\Vehicle\VehicleGroupController;
 use App\Http\Controllers\Api\Vehicle\VehicleImageController;
@@ -65,6 +67,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleInsuranceController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceClaimController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceProviderController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceTypeController;
+use App\Http\Controllers\Api\Vehicle\VehicleLeaseController;
 use App\Http\Controllers\Api\Vehicle\VehicleMaintenanceRecordController;
 use App\Http\Controllers\Api\Vehicle\VehicleMaintenanceScheduleController;
 use App\Http\Controllers\Api\Vehicle\VehicleMakeController;
@@ -81,6 +84,7 @@ use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefi
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\KmRangePricingController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\PriceAdjustmentController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\PricingContextPolicyController;
 
 use App\Http\Controllers\Api\VipTypeController;
 use App\Http\Controllers\Api\Website\CmsContentController;
@@ -236,7 +240,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
     Route::get('booking-flow/service-types', function (\Illuminate\Http\Request $request) {
-        $context = (string) $request->input('context', 'portal');
+        $context = app(\App\Services\Pricing\PricingContextPolicyService::class)
+            ->effectiveContext((string) $request->input('context', 'portal'));
         $ownerType = (string) $request->input('owner_type', '');
         $ownerId = (string) $request->input('owner_id', '');
         $fallbackContext = (string) $request->input('fallback_context', '');
@@ -276,7 +281,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->paginate(min(max($perPage, 1), 500));
 
         return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
-    });
+    })->middleware('pricing.context');
     Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('auth:api');
 
@@ -516,9 +521,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('website-settings/{section}/{key}', [WebsiteSettingController::class, 'updateByKey']);
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
-        Route::apiResource('service-types', ServiceTypeController::class);
-        Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone']);
-        Route::apiResource('service-packages', ServicePackageController::class);
+        Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
+        Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');
+        Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone'])
+            ->middleware('pricing.context');
+        Route::apiResource('service-packages', ServicePackageController::class)
+            ->middleware('pricing.context');
 
         // Service Form Configuration
         Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig']);
@@ -529,10 +537,14 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('airports-active', [AirportController::class, 'getActive']);
 
         // Service Package Return Rules
-        Route::get('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'getReturnRules']);
-        Route::post('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'storeReturnRule']);
-        Route::put('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'updateReturnRule']);
-        Route::delete('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'destroyReturnRule']);
+        Route::get('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'getReturnRules'])
+            ->middleware('pricing.context');
+        Route::post('service-packages/{servicePackage}/return-rules', [ServicePackageController::class, 'storeReturnRule'])
+            ->middleware('pricing.context');
+        Route::put('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'updateReturnRule'])
+            ->middleware('pricing.context');
+        Route::delete('service-packages/{servicePackage}/return-rules/{returnRule}', [ServicePackageController::class, 'destroyReturnRule'])
+            ->middleware('pricing.context');
 
         // Inquiry service pages & dynamic forms
         Route::apiResource('inquiry-forms', InquiryFormController::class);
@@ -583,10 +595,48 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    Route::get('/vehicle-finance-providers', [VehicleFinanceProviderController::class, 'index'])
+        ->middleware('permission:vehicle-leases.view');
+    Route::post('/vehicle-finance-providers', [VehicleFinanceProviderController::class, 'store'])
+        ->middleware('permission:vehicle-leases.manage');
+    Route::put('/vehicle-finance-providers/{vehicleFinanceProvider}', [VehicleFinanceProviderController::class, 'update'])
+        ->middleware('permission:vehicle-leases.manage');
+    Route::delete('/vehicle-finance-providers/{vehicleFinanceProvider}', [VehicleFinanceProviderController::class, 'destroy'])
+        ->middleware('permission:vehicle-leases.manage');
+
+    Route::prefix('vehicle-leases')->group(function () {
+        Route::get('/', [VehicleLeaseController::class, 'index'])
+            ->middleware('permission:vehicle-leases.view');
+        Route::get('/{vehicleLease}', [VehicleLeaseController::class, 'show'])
+            ->middleware('permission:vehicle-leases.view');
+        Route::put('/{vehicleLease}', [VehicleLeaseController::class, 'update'])
+            ->middleware('permission:vehicle-leases.edit');
+        Route::post('/{vehicleLease}/activate', [VehicleLeaseController::class, 'activate'])
+            ->middleware('permission:vehicle-leases.manage');
+        Route::post('/{vehicleLease}/payments', [VehicleLeaseController::class, 'recordPayment'])
+            ->middleware('permission:vehicle-leases.payments');
+        Route::post('/{vehicleLease}/payments/{payment}/reverse', [VehicleLeaseController::class, 'reversePayment'])
+            ->middleware('permission:vehicle-leases.payments');
+        Route::post('/{vehicleLease}/release', [VehicleLeaseController::class, 'release'])
+            ->middleware('permission:vehicle-leases.release');
+        Route::post('/{vehicleLease}/release-settlement', [VehicleLeaseController::class, 'settleRelease'])
+            ->middleware('permission:vehicle-leases.payments');
+        Route::post('/{vehicleLease}/close-finance', [VehicleLeaseController::class, 'closeFinance'])
+            ->middleware('permission:vehicle-leases.manage');
+        Route::post('/{vehicleLease}/transfer-ownership', [VehicleLeaseController::class, 'transferOwnership'])
+            ->middleware('permission:vehicle-leases.manage');
+        Route::post('/{vehicleLease}/renew', [VehicleLeaseController::class, 'renew'])
+            ->middleware('permission:vehicle-leases.create');
+    });
+    Route::get('/vehicles/{vehicle}/leases', [VehicleLeaseController::class, 'vehicleHistory'])
+        ->middleware('permission:vehicle-leases.view');
+    Route::post('/vehicles/{vehicle}/leases', [VehicleLeaseController::class, 'store'])
+        ->middleware('permission:vehicle-leases.create');
+
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::prefix('vehicles')->group(function () {
             // Vehicle Addons - Extended routes
-            Route::prefix('vehicle-addons')->group(function () {
+            Route::prefix('vehicle-addons')->middleware('pricing.context')->group(function () {
                 Route::get('stats', [VehicleAddonController::class, 'stats']);
                 Route::get('available', [VehicleAddonController::class, 'available']);
                 Route::get('for-service', [VehicleAddonController::class, 'forService']);
@@ -597,7 +647,8 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::put('{vehicleAddon}/toggle-status', [VehicleAddonController::class, 'toggleStatus']);
             });
             Route::apiResource('vehicle-addon-categories', \App\Http\Controllers\Api\Vehicle\VehicleAddonCategoryController::class);
-            Route::apiResource('vehicle-addons', VehicleAddonController::class);
+            Route::apiResource('vehicle-addons', VehicleAddonController::class)
+                ->middleware('pricing.context');
             Route::apiResource('vehicle-categories', VehicleCategoryController::class);
             Route::apiResource('vehicle-classes', VehicleClassController::class);
             // Route::apiResource('vehicle-common-rates', VehicleCommonRateController::class);
@@ -630,7 +681,7 @@ Route::middleware(['auth:api'])->group(function () {
             // Route::apiResource('vehicle-discounts', VehicleDiscountController::class);
 
 
-            Route::prefix('pricing-slab-definitions')->group(function () {
+            Route::prefix('pricing-slab-definitions')->middleware('pricing.context')->group(function () {
                 Route::get('/', [VehiclePricingSlabDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingSlabDefinitionController::class, 'store']);
                 Route::get('/service-types', [VehiclePricingSlabDefinitionController::class, 'getServiceTypes']);
@@ -643,7 +694,7 @@ Route::middleware(['auth:api'])->group(function () {
             });
 
             // Vehicle Group Pricing
-            Route::prefix('vehicle-group-pricing')->group(function () {
+            Route::prefix('vehicle-group-pricing')->middleware('pricing.context')->group(function () {
                 Route::get('/', [VehicleGroupPricingController::class, 'index']);
                 Route::post('/', [VehicleGroupPricingController::class, 'store']);
                 Route::post('/bulk-store', [VehicleGroupPricingController::class, 'bulkStore']);
@@ -660,7 +711,7 @@ Route::middleware(['auth:api'])->group(function () {
             });
 
             // Pricing Common Rate Definition endpoints
-            Route::prefix('common-rate-definitions')->group(function () {
+            Route::prefix('common-rate-definitions')->middleware('pricing.context')->group(function () {
                 Route::get('/', [VehiclePricingCommonRateDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingCommonRateDefinitionController::class, 'store']);
                 Route::get('/{id}', [VehiclePricingCommonRateDefinitionController::class, 'show']);
@@ -681,7 +732,7 @@ Route::middleware(['auth:api'])->group(function () {
 
 
             // Calculation Definitions Management
-            Route::prefix('calculation-definitions')->group(function () {
+            Route::prefix('calculation-definitions')->middleware('pricing.context')->group(function () {
                 Route::get('/', [VehiclePricingCalculationDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingCalculationDefinitionController::class, 'store']);
                 Route::get('/service-types', [VehiclePricingCalculationDefinitionController::class, 'getServiceTypes']);
@@ -700,7 +751,7 @@ Route::middleware(['auth:api'])->group(function () {
             });
 
             // KM-Range Pricing Management
-            Route::prefix('km-range-pricing')->group(function () {
+            Route::prefix('km-range-pricing')->middleware('pricing.context')->group(function () {
                 Route::get('/', [KmRangePricingController::class, 'index']);
                 Route::post('/', [KmRangePricingController::class, 'store']);
                 Route::get('/service-types', [KmRangePricingController::class, 'getServiceTypes']);
@@ -715,7 +766,7 @@ Route::middleware(['auth:api'])->group(function () {
             });
 
             // Price Adjustments Management
-            Route::prefix('price-adjustments')->group(function () {
+            Route::prefix('price-adjustments')->middleware('pricing.context')->group(function () {
                 Route::get('/', [PriceAdjustmentController::class, 'index']);
                 Route::post('/', [PriceAdjustmentController::class, 'store']);
                 Route::get('/service-types', [PriceAdjustmentController::class, 'getServiceTypes']);
@@ -784,7 +835,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('/vehicles/maintenance/schedules/{id}/complete', [VehicleController::class, 'completeMaintenanceSchedule']);
         Route::post('/vehicles/{id}/block', [VehicleController::class, 'blockVehicle']);
         Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability']);
-        Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes']);
+        Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes'])
+            ->middleware('pricing.context');
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
         Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability']);
         Route::apiResource('vehicles', VehicleController::class);
@@ -1089,15 +1141,15 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Add-ons Routes - Updated to match frontend service
             Route::get('addons/available', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware('permission:bookings.view');
+                ->middleware(['permission:bookings.view', 'pricing.context']);
             Route::post('addons/process-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
-                ->middleware('permission:bookings.create');
+                ->middleware(['permission:bookings.create', 'pricing.context']);
 
             // Alternative route names for backward compatibility
             Route::get('available-addons', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware('permission:bookings.view');
+                ->middleware(['permission:bookings.view', 'pricing.context']);
             Route::post('process-addon-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
-                ->middleware('permission:bookings.create');
+                ->middleware(['permission:bookings.create', 'pricing.context']);
 
             // Self-Driven Routes - Updated to match frontend service
             Route::get('customers/{customerId}/self-driven-eligibility', [BookingFlowController::class, 'validateSelfDrivenEligibility'])
@@ -1287,6 +1339,12 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::post('{bookingId}/payments/receive', [AssignmentController::class, 'receivePayment'])
                 ->middleware('permission:bookings.update');
+            Route::post('{bookingId}/payment-schedule', [AssignmentController::class, 'addPaymentScheduleItem'])
+                ->middleware('permission:bookings.update');
+            Route::post('{bookingId}/payment-schedule/generate', [AssignmentController::class, 'generatePaymentSchedule'])
+                ->middleware('permission:bookings.update');
+            Route::put('{bookingId}/commission-owner', [AssignmentController::class, 'setCommissionOwner'])
+                ->middleware('permission:collection-commissions.manage');
             Route::post('{bookingId}/security-deposits/{receipt}/refund', [AssignmentController::class, 'refundSecurityDeposit'])
                 ->middleware('permission:bookings.update');
             Route::post('swap', [AssignmentController::class, 'performSwap'])
@@ -1294,6 +1352,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('breakdown', [AssignmentController::class, 'recordBreakdown'])
                 ->middleware('permission:bookings.update');
         });
+        Route::get('collection-commissions', [CollectionCommissionController::class, 'index'])
+            ->middleware('permission:collection-commissions.view');
+        Route::post('collection-commissions/mark-paid', [CollectionCommissionController::class, 'markPaid'])
+            ->middleware('permission:collection-commissions.pay');
 
         Route::get('bookings/active-trips', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'activeTrips'])
             ->middleware('permission:bookings.view');

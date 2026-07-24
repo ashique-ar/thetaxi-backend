@@ -58,6 +58,7 @@ class WebsiteSettingsService
         'feature_vehicle_return_management_enabled',
         'assignment_enable_qc_stage',
         'assignment_enable_maintenance_stage',
+        'internal_pricing_mode',
         'driver_mobile_latest_version',
         'driver_mobile_mandatory_update',
         'driver_mobile_update_message',
@@ -91,6 +92,7 @@ class WebsiteSettingsService
         'contact' => 'getContactPageSettings',
         'payment' => 'getPaymentSettings',
         'booking' => 'getBookingSettings',
+        'pricing' => 'getPricingSettings',
         'driverMobile' => 'getDriverMobileSettings',
         'driver-mobile' => 'getDriverMobileSettings',
         'security' => 'getSecuritySettings',
@@ -1025,6 +1027,13 @@ class WebsiteSettingsService
         ];
 
         return $this->getMultiple($types);
+    }
+
+    public function getPricingSettings(): array
+    {
+        return $this->getMultiple([
+            'internal_pricing_mode',
+        ]);
     }
 
     /**

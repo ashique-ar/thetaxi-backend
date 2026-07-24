@@ -66,6 +66,9 @@ class BusinessSettingController extends Controller
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
         ],
+        'pricing' => [
+            'internal_pricing_mode',
+        ],
         'driverMobile' => [
             'driver_mobile_latest_version',
             'driver_mobile_mandatory_update',
@@ -156,6 +159,22 @@ class BusinessSettingController extends Controller
         $settings = $category === 'booking'
             ? $this->normalizeBookingWorkflowSettings($request->input('settings', []))
             : $request->input('settings', []);
+
+        if (
+            $category === 'pricing'
+            && isset($settings['internal_pricing_mode'])
+            && !in_array($settings['internal_pricing_mode'], ['inherit_website', 'separate'], true)
+        ) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Invalid internal pricing mode.',
+                'errors' => [
+                    'settings.internal_pricing_mode' => [
+                        'Choose Website inheritance or separate Internal pricing.',
+                    ],
+                ],
+            ], 422);
+        }
         $invalidKeys = array_values(array_diff(array_keys($settings), $validKeys));
 
         if ($invalidKeys !== []) {

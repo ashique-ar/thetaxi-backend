@@ -12,6 +12,7 @@ use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMaintenanceRecord;
 use App\Models\Vehicle\VehicleMaintenanceSchedule;
+use App\Models\Vehicle\VehicleOwnershipHistory;
 use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
 use App\Http\Requests\Vehicle\Vehicle\UpdateVehicleRequest;
 use App\Http\Resources\Vehicle\VehicleResource;
@@ -22,6 +23,8 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\CarbonPeriod;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class VehicleController extends Controller
 {
@@ -97,7 +100,23 @@ class VehicleController extends Controller
     {
         $data = $this->normalizeVehicleIdentifierPayload($request->validated());
         $data['created_user_id'] = $request->user()->id;
-        $vehicle = Vehicle::create($data);
+        $vehicle = DB::transaction(function () use ($data, $request) {
+            $vehicle = Vehicle::create($data);
+            VehicleOwnershipHistory::create([
+                'vehicle_id' => $vehicle->id,
+                'from_owner_id' => null,
+                'to_owner_id' => $vehicle->owner_id,
+                'from_ownership_type' => 'unregistered',
+                'to_ownership_type' => $vehicle->ownership_type ?: 'company_owned',
+                'transfer_type' => 'initial_registration',
+                'effective_at' => now(),
+                'reference' => 'INITIAL-' . $vehicle->id,
+                'notes' => 'Initial legal ownership recorded with the vehicle master.',
+                'performed_by' => $request->user()->id,
+            ]);
+
+            return $vehicle;
+        });
 
         return response()->json([
             'status' => 'success',
@@ -108,7 +127,30 @@ class VehicleController extends Controller
 
     public function show(Vehicle $vehicle): JsonResponse
     {
-        $vehicle->load(['owner.driver.user', 'owner.paymentMethods', 'ownerPaymentMethod', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission', 'insurances.provider', 'insurances.insuranceType', 'revenueLicenses', 'activeInsurance.provider', 'activeInsurance.insuranceType', 'activeRevenueLicense']);
+        $vehicle->load([
+            'owner.driver.user',
+            'owner.paymentMethods',
+            'ownerPaymentMethod',
+            'grade',
+            'group.class',
+            'group.fuelType',
+            'group.transmission',
+            'group.category',
+            'group.make',
+            'group.model',
+            'group.grade',
+            'contractType',
+            'activeCommission',
+            'insurances.provider',
+            'insurances.insuranceType',
+            'revenueLicenses',
+            'activeInsurance.provider',
+            'activeInsurance.insuranceType',
+            'activeRevenueLicense',
+            'ownershipHistory.fromOwner.user',
+            'ownershipHistory.toOwner.user',
+            'ownershipHistory.document',
+        ]);
 
         return response()->json([
             'status' => 'success',
@@ -452,7 +494,46 @@ class VehicleController extends Controller
     {
         $data = $this->normalizeVehicleIdentifierPayload($request->validated());
         $data['updated_user_id'] = $request->user()->id;
-        $vehicle->update($data);
+        $nextOwnerId = array_key_exists('owner_id', $data) ? $data['owner_id'] : $vehicle->owner_id;
+        $nextOwnershipType = $data['ownership_type'] ?? $vehicle->ownership_type;
+        $ownershipChanged = $nextOwnerId !== $vehicle->owner_id
+            || $nextOwnershipType !== $vehicle->ownership_type;
+
+        if ($ownershipChanged && $vehicle->leases()
+            ->whereIn('status', ['draft', 'active', 'expired', 'closure_pending'])
+            ->exists()) {
+            throw ValidationException::withMessages([
+                'owner_id' => ['Ownership cannot be edited while a finance or lease contract is open. Complete the verified contract closure/transfer workflow first.'],
+            ]);
+        }
+
+        DB::transaction(function () use (
+            $vehicle,
+            $data,
+            $ownershipChanged,
+            $nextOwnerId,
+            $nextOwnershipType,
+            $request
+        ) {
+            $fromOwnerId = $vehicle->owner_id;
+            $fromOwnershipType = $vehicle->ownership_type ?: 'company_owned';
+            $vehicle->update($data);
+
+            if ($ownershipChanged) {
+                VehicleOwnershipHistory::create([
+                    'vehicle_id' => $vehicle->id,
+                    'from_owner_id' => $fromOwnerId,
+                    'to_owner_id' => $nextOwnerId,
+                    'from_ownership_type' => $fromOwnershipType,
+                    'to_ownership_type' => $nextOwnershipType ?: 'company_owned',
+                    'transfer_type' => 'vehicle_master_update',
+                    'effective_at' => now(),
+                    'reference' => 'OWNER-' . now()->format('YmdHis') . '-' . strtoupper(substr((string) Str::uuid(), 0, 8)),
+                    'notes' => 'Legal owner or ownership classification changed through the vehicle master.',
+                    'performed_by' => $request->user()->id,
+                ]);
+            }
+        });
 
         return response()->json([
             'status' => 'success',
@@ -836,7 +917,8 @@ class VehicleController extends Controller
      */
     public function getServiceTypes(Request $request)
     {
-        $context = (string) $request->input('context', 'portal');
+        $context = app(\App\Services\Pricing\PricingContextPolicyService::class)
+            ->effectiveContext((string) $request->input('context', 'portal'));
         $ownerType = (string) $request->input('owner_type', ($context === 'corporate' ? 'corporate' : ''));
         $ownerId = (string) $request->input('owner_id', '');
 

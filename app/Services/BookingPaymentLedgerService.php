@@ -5,8 +5,13 @@ namespace App\Services;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Booking\BookingDepositRefund;
+use App\Models\Booking\BookingCollectionCommission;
+use App\Models\Booking\BookingPaymentSchedule;
+use App\Models\Booking\BookingPaymentScheduleAllocation;
+use App\Models\Staff;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Carbon;
 use App\Models\Corporate\Corporate;
 use App\Models\Customer;
 use App\Models\Finance\FinancialSettlementItem;
@@ -115,6 +120,33 @@ class BookingPaymentLedgerService
         $driverReceipts = $receipts->where('received_via', 'driver');
         $driverCashCollected = round((float) $driverReceipts->sum('amount'), 2);
         $driverCashHandedOver = round((float) $driverReceipts->sum('driver_company_settled_amount'), 2);
+        $scheduleRows = BookingPaymentSchedule::query()
+            ->where('booking_id', $booking->id)
+            ->withSum('allocations', 'amount')
+            ->orderBy('due_date')
+            ->orderBy('sequence')
+            ->get();
+        $scheduledAmount = round((float) $scheduleRows->sum('amount'), 2);
+        $scheduledPaid = round((float) $scheduleRows->sum('allocations_sum_amount'), 2);
+        $today = now()->toDateString();
+        $paymentSchedule = $scheduleRows->map(function (BookingPaymentSchedule $schedule) use ($today) {
+            $allocated = round((float) ($schedule->allocations_sum_amount ?? 0), 2);
+            $balance = max(0, round((float) $schedule->amount - $allocated, 2));
+            $status = $balance <= 0 ? 'paid' : ($allocated > 0 ? 'partially_paid' : ($schedule->due_date->toDateString() < $today ? 'overdue' : 'scheduled'));
+            return [
+                'id' => $schedule->id,
+                'sequence' => $schedule->sequence,
+                'label' => $schedule->label,
+                'period_start' => $schedule->period_start?->toDateString(),
+                'period_end' => $schedule->period_end?->toDateString(),
+                'due_date' => $schedule->due_date->toDateString(),
+                'amount' => (float) $schedule->amount,
+                'allocated_amount' => $allocated,
+                'balance_amount' => $balance,
+                'status' => $status,
+                'notes' => $schedule->notes,
+            ];
+        })->values();
 
         return [
             'total_amount' => $total,
@@ -209,6 +241,17 @@ class BookingPaymentLedgerService
                 'handed_over_to_company' => $driverCashHandedOver,
                 'still_held_by_driver' => max(0, round($driverCashCollected - $driverCashHandedOver, 2)),
             ],
+            'payment_schedule' => [
+                'items' => $paymentSchedule,
+                'scheduled_amount' => $scheduledAmount,
+                'booking_total' => $total,
+                'unscheduled_amount' => max(0, round($total - $scheduledAmount, 2)),
+                'overscheduled_amount' => max(0, round($scheduledAmount - $total, 2)),
+                'allocated_amount' => $scheduledPaid,
+                'unallocated_received' => max(0, round($paid - $scheduledPaid, 2)),
+                'overdue_amount' => round((float) $paymentSchedule->where('status', 'overdue')->sum('balance_amount'), 2),
+                'next_due' => $paymentSchedule->whereIn('status', ['scheduled', 'partially_paid'])->first(),
+            ],
             'receipts' => $receipts->map(fn (BookingPaymentReceipt $receipt) => [
                 'id' => $receipt->id,
                 'amount' => (float) $receipt->amount,
@@ -278,12 +321,25 @@ class BookingPaymentLedgerService
     {
         return DB::transaction(function () use ($booking, $data, $userId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            if (!empty($data['idempotency_key'])) {
+                $duplicate = BookingPaymentReceipt::query()
+                    ->where('idempotency_key', $data['idempotency_key'])
+                    ->first();
+                if ($duplicate) {
+                    if ($duplicate->booking_id !== $booking->id) {
+                        throw ValidationException::withMessages([
+                            'idempotency_key' => ['This payment submission key already belongs to another booking.'],
+                        ]);
+                    }
+                    return $this->summary($booking);
+                }
+            }
             $existing = BookingPaymentReceipt::query()->where('booking_id', $booking->id)
                 ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])->exists();
             if (!$existing) {
                 $legacy = $this->legacyPaidAmount($booking, $this->total($booking));
                 if ($legacy > 0) {
-                    BookingPaymentReceipt::create([
+                    $openingReceipt = BookingPaymentReceipt::create([
                         'booking_id' => $booking->id,
                         'amount' => $legacy,
                         'payment_method' => $booking->payment_method ?: 'legacy',
@@ -297,6 +353,7 @@ class BookingPaymentLedgerService
                         'driver_id' => $booking->payment_collected_by_driver_id,
                         'driver_company_settlement_status' => $booking->payment_collected_by_driver_id ? 'unsettled' : 'not_applicable',
                     ]);
+                    $this->allocateReceiptToSchedule($booking, $openingReceipt, $legacy, $userId);
                 }
             }
 
@@ -323,6 +380,7 @@ class BookingPaymentLedgerService
                 'payment_stage' => $data['payment_stage'],
                 'payment_purpose' => $purpose,
                 'reference' => $data['reference'] ?? null,
+                'idempotency_key' => $data['idempotency_key'] ?? null,
                 'received_at' => $data['received_at'],
                 'received_by' => $userId,
                 'notes' => $data['notes'] ?? null,
@@ -332,8 +390,37 @@ class BookingPaymentLedgerService
                 'driver_id' => $data['driver_id'] ?? null,
                 'driver_company_settlement_status' => ($data['received_via'] ?? 'company') === 'driver' ? 'unsettled' : 'not_applicable',
             ]);
+
+            // Refundable security deposits are liabilities and never enter the commission ledger.
+            if ($purpose !== 'security_deposit') {
+                $staff = $booking->commission_owner_staff_id
+                    ? Staff::query()->find($booking->commission_owner_staff_id)
+                    : ($booking->created_user_id
+                        ? Staff::query()->where('user_id', $booking->created_user_id)->first()
+                        : null);
+            } else {
+                $staff = null;
+            }
+            if ($staff && $staff->collection_commission_enabled) {
+                $rate = (float) $staff->collection_commission_rate;
+                BookingCollectionCommission::create([
+                    'booking_id' => $booking->id,
+                    'booking_payment_receipt_id' => $receipt->id,
+                    'staff_id' => $staff->id,
+                    'receipt_amount' => $amount,
+                    'eligible_amount' => $amount,
+                    'commission_rate' => $rate,
+                    'commission_amount' => round($amount * $rate / 100, 2),
+                    'status' => 'earned',
+                    'ineligibility_reason' => null,
+                    'earned_at' => $data['received_at'],
+                ]);
+            }
             FinancialAuditEvent::create(['subject_type'=>'booking_payment','subject_id'=>$receipt->id,'booking_id'=>$booking->id,'event_type'=>'payment_received','from_status'=>$booking->payment_status,'amount'=>$amount,'metadata'=>['method'=>$data['payment_method'],'stage'=>$data['payment_stage'],'purpose'=>$purpose,'received_via'=>$data['received_via']??'company','reference'=>$data['reference']??null],'performed_by'=>$userId,'occurred_at'=>now()]);
 
+            if ($purpose !== 'security_deposit') {
+                $this->allocateReceiptToSchedule($booking, $receipt, $amount, $userId);
+            }
             if ($purpose !== 'security_deposit' && !($data['skip_settlement_allocation'] ?? false)) {
                 $item = FinancialSettlementItem::with('settlement')->where('booking_id', $booking->id)
                     ->whereHas('settlement', fn($query) => $query->whereNotIn('status', ['paid','void']))
@@ -385,6 +472,138 @@ class BookingPaymentLedgerService
             return $summary;
         });
     }
+
+    public function addScheduleItem(Booking $booking, array $data, ?string $userId): array
+    {
+        DB::transaction(function () use ($booking, $data, $userId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $scheduled = (float) BookingPaymentSchedule::query()->where('booking_id', $booking->id)->sum('amount');
+            $total = $this->total($booking);
+            $newAmount = round((float) $data['amount'], 2);
+            if (round($scheduled + $newAmount, 2) > $total) {
+                throw ValidationException::withMessages([
+                    'amount' => ['Scheduled payments cannot exceed the booking total. Adjust the booking total or remaining schedule first.'],
+                ]);
+            }
+            $sequence = (int) BookingPaymentSchedule::query()->where('booking_id', $booking->id)->max('sequence') + 1;
+            BookingPaymentSchedule::create([
+                'booking_id' => $booking->id,
+                'sequence' => $sequence,
+                'label' => $data['label'] ?? null,
+                'period_start' => $data['period_start'] ?? null,
+                'period_end' => $data['period_end'] ?? null,
+                'due_date' => $data['due_date'],
+                'amount' => $newAmount,
+                'notes' => $data['notes'] ?? null,
+                'created_user_id' => $userId,
+            ]);
+            BookingPaymentReceipt::query()
+                ->where('booking_id', $booking->id)
+                ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->orderBy('received_at')
+                ->each(fn (BookingPaymentReceipt $receipt) =>
+                    $this->allocateReceiptToSchedule($booking, $receipt, (float) $receipt->amount, $userId)
+                );
+        });
+        return $this->summary($booking->fresh());
+    }
+
+    public function generateSchedule(Booking $booking, array $data, ?string $userId): array
+    {
+        DB::transaction(function () use ($booking, $data, $userId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            if (BookingPaymentSchedule::query()->where('booking_id', $booking->id)->exists()) {
+                throw ValidationException::withMessages([
+                    'frequency' => ['A payment schedule already exists. Revise the existing schedule instead of generating duplicates.'],
+                ]);
+            }
+            $frequency = $data['frequency'];
+            $months = match ($frequency) {
+                'monthly' => 1,
+                'every_two_months' => 2,
+                'every_six_months' => 6,
+                'full_payment' => 0,
+                default => throw ValidationException::withMessages(['frequency' => ['Select a supported automatic frequency.']]),
+            };
+            $total = $this->total($booking);
+            $installment = $frequency === 'full_payment'
+                ? $total
+                : round((float) ($data['installment_amount'] ?? 0), 2);
+            if ($installment <= 0) {
+                throw ValidationException::withMessages(['installment_amount' => ['Enter an installment amount above zero.']]);
+            }
+            $dueDate = Carbon::parse($data['start_date'])->startOfDay();
+            $remaining = $total;
+            $sequence = 1;
+            while ($remaining > 0) {
+                $amount = min($installment, $remaining);
+                BookingPaymentSchedule::create([
+                    'booking_id' => $booking->id,
+                    'sequence' => $sequence,
+                    'label' => $frequency === 'full_payment' ? 'Full payment' : "Installment {$sequence}",
+                    'due_date' => $dueDate->toDateString(),
+                    'amount' => $amount,
+                    'created_user_id' => $userId,
+                ]);
+                $remaining = round($remaining - $amount, 2);
+                $sequence++;
+                if ($months === 0 || $sequence > 600) break;
+                $dueDate = $dueDate->copy()->addMonthsNoOverflow($months);
+            }
+            $booking->update([
+                'payment_schedule_frequency' => $frequency,
+                'payment_schedule_start_date' => $data['start_date'],
+                'payment_schedule_installment_amount' => $installment,
+                'payment_schedule_reminder_days' => $data['reminder_days'] ?? 3,
+            ]);
+            BookingPaymentReceipt::query()
+                ->where('booking_id', $booking->id)
+                ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->orderBy('received_at')
+                ->each(fn (BookingPaymentReceipt $receipt) =>
+                    $this->allocateReceiptToSchedule($booking, $receipt, (float) $receipt->amount, $userId)
+                );
+        });
+        return $this->summary($booking->fresh());
+    }
+
+    private function allocateReceiptToSchedule(
+        Booking $booking,
+        BookingPaymentReceipt $receipt,
+        float $amount,
+        ?string $userId
+    ): void {
+        $alreadyAllocated = (float) BookingPaymentScheduleAllocation::query()
+            ->where('booking_payment_receipt_id', $receipt->id)->sum('amount');
+        $remaining = max(0, round($amount - $alreadyAllocated, 2));
+        $schedules = BookingPaymentSchedule::query()
+            ->where('booking_id', $booking->id)
+            ->withSum('allocations', 'amount')
+            ->orderBy('due_date')
+            ->orderBy('sequence')
+            ->lockForUpdate()
+            ->get();
+        foreach ($schedules as $schedule) {
+            if ($remaining <= 0) break;
+            $balance = max(0, round((float) $schedule->amount - (float) ($schedule->allocations_sum_amount ?? 0), 2));
+            if ($balance <= 0) continue;
+            $allocated = min($remaining, $balance);
+            BookingPaymentScheduleAllocation::create([
+                'booking_payment_schedule_id' => $schedule->id,
+                'booking_payment_receipt_id' => $receipt->id,
+                'amount' => $allocated,
+                'allocated_at' => $receipt->received_at,
+                'allocated_by' => $userId,
+            ]);
+            $schedule->update([
+                'status' => round((float) ($schedule->allocations_sum_amount ?? 0) + $allocated, 2) >= (float) $schedule->amount
+                    ? 'paid'
+                    : 'partially_paid',
+            ]);
+            $remaining = round($remaining - $allocated, 2);
+        }
+    }
+
 
     public function refundSecurityDeposit(Booking $booking, BookingPaymentReceipt $receipt, array $data, ?string $userId): array
     {

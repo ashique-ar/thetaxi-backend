@@ -15,6 +15,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Finance\FinancialSettlementItem;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\Pricing\FinalPricingTelemetryResolver;
+use App\Services\Pricing\PricingContextPolicyService;
 use App\Models\AuditLog;
 use App\Notifications\BookingLifecycleNotification;
 use App\Services\InvoiceService;
@@ -2110,8 +2111,10 @@ class BookingLifecycleService
             ];
         }
 
+        $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
+
         $activeDefinitions = VehiclePricingCalculationDefinition::query()
-            ->where('service_type_id', $bookingItem->service_type_id)
+            ->where('service_type_id', $params['service_type_id'])
             ->where('status', 'active')
             ->get(['id', 'name', 'variables', 'formula', 'conditions']);
 

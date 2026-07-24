@@ -23,6 +23,8 @@ class StaffResource extends JsonResource
             'status'          => $this->user?->is_active ? 'active' : 'inactive',
             'is_active'       => (bool) $this->user?->is_active,
             'staff_type'      => $this->staff_type,
+            'collection_commission_enabled' => (bool) $this->collection_commission_enabled,
+            'collection_commission_rate' => (float) $this->collection_commission_rate,
             'role_id'         => $staffType,
             'role'            => $staffType ? [
                 'id' => $staffType,

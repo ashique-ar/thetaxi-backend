@@ -7,9 +7,14 @@ use App\Models\Service\ServiceType;
 use App\Models\Airport;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use App\Services\Pricing\PricingContextPolicyService;
 
 class ServiceFormConfigController extends Controller
 {
+    public function __construct(private readonly PricingContextPolicyService $pricingContextPolicy)
+    {
+    }
+
     private const CANONICAL_SUBMIT_AS_ALIASES = [
         'from_date' => ['from_date', 'pickup_date', 'date'],
         'from_time' => ['from_time', 'pickup_time', 'time'],
@@ -27,9 +32,7 @@ class ServiceFormConfigController extends Controller
         try {
             \Log::info('Loading form config for service type: ' . $serviceTypeId);
             
-            $serviceType = ServiceType::with(['packages' => function ($query) {
-                $query->where('is_active', true)->orderBy('sort_order');
-            }])->find($serviceTypeId);
+            $serviceType = ServiceType::find($serviceTypeId);
 
             if (!$serviceType) {
                 \Log::warning('Service type not found: ' . $serviceTypeId);
@@ -38,6 +41,12 @@ class ServiceFormConfigController extends Controller
                     'message' => 'Service type not found',
                 ], 404);
             }
+
+            $serviceType = $this->pricingContextPolicy
+                ->effectiveServiceType($serviceType)
+                ->load(['packages' => function ($query) {
+                    $query->where('is_active', true)->orderBy('sort_order');
+                }]);
 
             \Log::info('Building form config for: ' . $serviceType->name);
             $config = $this->buildFormConfig($serviceType);
@@ -850,6 +859,7 @@ class ServiceFormConfigController extends Controller
             ]);
 
             $serviceType = ServiceType::findOrFail($serviceTypeId);
+            $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
 
             $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
 

@@ -13,10 +13,11 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Database\Eloquent\Builder;
 use Carbon\Carbon;
+use App\Services\Pricing\PricingContextPolicyService;
 
 class PriceAdjustmentController extends Controller
 {
-    public function __construct()
+    public function __construct(private readonly PricingContextPolicyService $pricingContextPolicy)
     {
         $this->middleware('permission:price-adjustments.view')->only(['index', 'show', 'getServiceTypes', 'getVehicleGroups', 'getApplicableAdjustments', 'applyAdjustments', 'getUsageStatistics']);
         $this->middleware('permission:price-adjustments.create')->only(['store']);
@@ -32,6 +33,15 @@ class PriceAdjustmentController extends Controller
         $payload['applicable_contexts'] = is_array($contexts)
             ? array_values($contexts)
             : $contexts;
+        if (
+            is_array($payload['applicable_contexts'])
+            && $this->pricingContextPolicy->internalUsesWebsitePricing()
+        ) {
+            $payload['applicable_contexts'] = array_values(array_unique(array_map(
+                fn (mixed $context) => (string) $context === 'portal' ? 'public' : (string) $context,
+                $payload['applicable_contexts']
+            )));
+        }
         if (($payload['scope'] ?? null) === 'service_vehicle_group') {
             $payload['scope'] = 'vehicle_group';
         }

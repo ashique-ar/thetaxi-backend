@@ -8,6 +8,7 @@ use App\Http\Requests\ServiceType\CreateServiceTypeRequest;
 use App\Http\Requests\ServiceType\UpdateServiceTypeRequest;
 use App\Http\Resources\ServiceTypeResource;
 use App\Services\ServiceTypeCloneService;
+use App\Services\Pricing\PricingContextPolicyService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -16,8 +17,10 @@ use Illuminate\Support\Str;
 
 class ServiceTypeController extends Controller
 {
-    public function __construct(private readonly ServiceTypeCloneService $cloneService)
-    {
+    public function __construct(
+        private readonly ServiceTypeCloneService $cloneService,
+        private readonly PricingContextPolicyService $pricingContextPolicy
+    ) {
         $this->middleware('permission:service-types.view')->only(['index','show']);
         $this->middleware('permission:service-types.create')->only(['store', 'clone']);
         $this->middleware('permission:service-types.edit')->only(['update']);
@@ -70,6 +73,8 @@ class ServiceTypeController extends Controller
 
     public function show(ServiceType $serviceType): JsonResponse
     {
+        $serviceType = $this->pricingContextPolicy->effectiveServiceType($serviceType);
+
         return response()->json([
             'status'=>'success',
             'data'=>['service_type'=>new ServiceTypeResource($serviceType)]
@@ -78,6 +83,7 @@ class ServiceTypeController extends Controller
 
     public function update(UpdateServiceTypeRequest $request, ServiceType $serviceType): JsonResponse
     {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $data = $request->validated();
         [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
         $data['context'] = $data['context'] ?? $context;
@@ -127,6 +133,7 @@ class ServiceTypeController extends Controller
 
     public function destroy(ServiceType $serviceType): JsonResponse
     {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $serviceType->delete();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         return response()->json([
@@ -137,6 +144,7 @@ class ServiceTypeController extends Controller
 
     public function clone(Request $request, ServiceType $serviceType): JsonResponse
     {
+        $serviceType = $this->pricingContextPolicy->effectiveServiceType($serviceType);
         $payload = $request->validate([
             'code' => ['required', 'string', 'max:50'],
             'name' => ['nullable', 'string', 'max:255'],
@@ -170,6 +178,10 @@ class ServiceTypeController extends Controller
             return [$context, '', ''];
         }
 
+        if ($context !== 'all') {
+            $context = $this->pricingContextPolicy->effectiveContext($context);
+        }
+
         return [$context, $ownerType, $ownerId];
     }
 
@@ -179,7 +191,11 @@ class ServiceTypeController extends Controller
         $ownerType = (string) $request->input('fallback_owner_type', '');
         $ownerId = (string) $request->input('fallback_owner_id', '');
 
-        return [$context, $ownerType, $ownerId];
+        return [
+            $context === 'all' ? 'all' : $this->pricingContextPolicy->effectiveContext($context),
+            $ownerType,
+            $ownerId,
+        ];
     }
 
     private function buildScopedIndexQuery(Request $request, string $context, string $ownerType, string $ownerId)

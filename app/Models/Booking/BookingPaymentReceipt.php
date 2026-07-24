@@ -12,10 +12,10 @@ class BookingPaymentReceipt extends BaseModel
     private const IMMUTABLE_EVIDENCE_FIELDS = [
         'booking_id', 'amount', 'payment_method', 'payment_stage', 'payment_purpose',
         'reference', 'received_at', 'received_by', 'received_via', 'payer_type',
-        'payer_id', 'driver_id',
+        'payer_id', 'driver_id', 'idempotency_key',
     ];
     protected $fillable = [
-        'booking_id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference',
+        'booking_id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference', 'idempotency_key',
         'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'payer_type', 'payer_id',
         'driver_id', 'allocated_amount', 'driver_company_settled_amount', 'allocation_status', 'driver_company_settlement_status', 'driver_company_settled_at',
     ];
@@ -48,5 +48,6 @@ class BookingPaymentReceipt extends BaseModel
     }
 
     public function driver(): BelongsTo { return $this->belongsTo(Driver::class); }
+    public function collectionCommission() { return $this->hasOne(BookingCollectionCommission::class); }
     public function depositRefunds(): HasMany { return $this->hasMany(BookingDepositRefund::class); }
 }

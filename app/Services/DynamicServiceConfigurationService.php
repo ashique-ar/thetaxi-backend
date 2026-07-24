@@ -508,8 +508,9 @@ class DynamicServiceConfigurationService
      */
     public function getAllServiceTypes(): Collection
     {
-        return Cache::remember('service_types_enhanced', self::CACHE_TIMEOUT, function () {
-            return ServiceType::where('is_active', true)
+        return Cache::remember('service_types_enhanced_public', self::CACHE_TIMEOUT, function () {
+            return ServiceType::publicContext()
+                ->where('is_active', true)
                 ->where('is_internal', false) // Filter out internal services
                 ->orderBy('priority')
                 ->get()
@@ -617,10 +618,12 @@ class DynamicServiceConfigurationService
      */
     public function getServiceFormConfiguration(string $serviceCode): array
     {
-        $cacheKey = "service_form_config_{$serviceCode}";
+        $cacheKey = "service_form_config_public_{$serviceCode}";
 
         return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode) {
-            $serviceType = ServiceType::where('code', $serviceCode)->first();
+            $serviceType = ServiceType::publicContext()
+                ->where('code', $serviceCode)
+                ->first();
 
             if (!$serviceType) {
                 return [
@@ -900,6 +903,7 @@ class DynamicServiceConfigurationService
     {
         $cacheKeys = [
             'service_types_enhanced',
+            'service_types_enhanced_public',
             'service_categories_grouped'
         ];
 
@@ -911,6 +915,7 @@ class DynamicServiceConfigurationService
         $serviceCodes = ServiceType::pluck('code');
         foreach ($serviceCodes as $code) {
             Cache::forget("service_form_config_{$code}");
+            Cache::forget("service_form_config_public_{$code}");
         }
 
         Log::info('Dynamic service configuration cache cleared');

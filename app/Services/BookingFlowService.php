@@ -44,6 +44,7 @@ use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
 use App\Services\Pricing\PricingHolidayCalendarService;
+use App\Services\Pricing\PricingContextPolicyService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
 
@@ -1760,7 +1761,18 @@ class BookingFlowService
             $perPage = (int) ($params['per_page'] ?? 50);
         }
 
-        $serviceTypeModel = ServiceType::where('name', $serviceType)->first();
+        $serviceTypeParams = app(PricingContextPolicyService::class)->normalizeCalculationParams([
+            'service_type' => $serviceType,
+            'pricing_context' => is_array($params)
+                ? ($params['pricing_context'] ?? 'portal')
+                : 'portal',
+        ]);
+        $serviceType = $serviceTypeParams['service_type'] ?? $serviceType;
+        $serviceTypeModel = is_string($serviceType) && Str::isUuid($serviceType)
+            ? ServiceType::whereKey($serviceType)->first()
+            : ServiceType::where(function ($query) use ($serviceType) {
+                $query->where('name', $serviceType)->orWhere('code', $serviceType);
+            })->first();
         $serviceTypeId = $serviceTypeModel ? $serviceTypeModel->id : null;
 
         $query = VehicleAddon::where('is_active', true);
@@ -2052,6 +2064,7 @@ class BookingFlowService
      */
     public function calculateReturnTripPricing(array $params): array
     {
+        $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
         $packageId = $params['package_id'] ?? null;
         $vehicleGroupId = $params['vehicle_group_id'] ?? null;
         $oneWayFare = (float) ($params['one_way_fare'] ?? 0);
@@ -2165,6 +2178,10 @@ class BookingFlowService
      */
     public function getAvailableReturnRules(string $packageId, ?string $vehicleGroupId = null): array
     {
+        $normalizedParams = app(PricingContextPolicyService::class)->normalizeCalculationParams([
+            'package_id' => $packageId,
+        ]);
+        $packageId = $normalizedParams['package_id'] ?? $packageId;
         $servicePackage = ServicePackage::find($packageId);
 
         if (!$servicePackage) {
@@ -3894,6 +3911,8 @@ class BookingFlowService
     public function calculateDynamicPricing(array $params): array
     {
         try {
+            $params = app(PricingContextPolicyService::class)->normalizeCalculationParams($params);
+
             // Support both service_type and service_type_id
             $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
             $mode = $params['mode'] ?? 'full_calculation';
@@ -4024,7 +4043,9 @@ class BookingFlowService
                     'is_weekend', 'is_holiday', 'month', 'day_of_week',
                     'holiday_context',
                     'customer_type', 'customer_tier', 'owner_type', 'owner_id',
-                    'pricing_context',
+                    'pricing_context', 'requested_pricing_context',
+                    'requested_service_type_id', 'pricing_service_type_id',
+                    'requested_service_package_id', 'pricing_service_package_id',
                     'is_self_driven', 'booking_type',
                     'package_id', 'package_included_km', 'additional_stops', 'stops',
                     'manual_additional_charge', 'late_return_fee',
@@ -4035,6 +4056,14 @@ class BookingFlowService
                 'owner_type' => $ownerType,
                 'owner_id' => $ownerId,
                 'pricing_context' => $calculationInputs['pricing_context'] ?? 'public',
+                'requested_pricing_context' => $params['requested_pricing_context']
+                    ?? ($calculationInputs['pricing_context'] ?? 'public'),
+                'requested_service_type_id' => $params['requested_service_type_id'] ?? $serviceTypeId,
+                'pricing_service_type_id' => $params['pricing_service_type_id'] ?? $serviceTypeId,
+                'requested_service_package_id' => $params['requested_service_package_id']
+                    ?? ($params['package_id'] ?? $params['service_package_id'] ?? null),
+                'pricing_service_package_id' => $params['pricing_service_package_id']
+                    ?? ($params['package_id'] ?? $params['service_package_id'] ?? null),
                 'calculation_definition_id' => $calculationDefinition->id,
                 'calculation_definition_name' => $calculationDefinition->name,
             ];
@@ -4215,6 +4244,15 @@ class BookingFlowService
         }
 
         $inputs['pricing_context'] = $this->resolvePricingContext($params, $serviceType);
+        foreach ([
+            'requested_pricing_context',
+            'requested_service_type_id',
+            'pricing_service_type_id',
+        ] as $auditKey) {
+            if (array_key_exists($auditKey, $params)) {
+                $inputs[$auditKey] = $params[$auditKey];
+            }
+        }
 
         // Final/mobile pricing supplies measured telemetry directly rather than
         // route locations. Enforce the same minimum charge used by route-based
@@ -4425,9 +4463,13 @@ class BookingFlowService
             ?? $serviceType?->context;
         $candidate = is_string($candidate) ? strtolower(trim($candidate)) : null;
 
-        return in_array($candidate, PriceAdjustment::APPLICABLE_CONTEXTS, true)
+        $candidate = in_array($candidate, PriceAdjustment::APPLICABLE_CONTEXTS, true)
             ? $candidate
             : 'public';
+
+        return $candidate === 'portal'
+            ? app(PricingContextPolicyService::class)->effectiveContext($candidate)
+            : $candidate;
     }
 
     /**
@@ -6381,6 +6423,11 @@ class BookingFlowService
      */
     public function getCustomizableVariables($serviceTypeId, $vehicleGroupIds, ?string $bookingId = null): array
     {
+        $normalizedParams = app(PricingContextPolicyService::class)->normalizeCalculationParams([
+            'service_type_id' => $serviceTypeId,
+        ]);
+        $serviceTypeId = $normalizedParams['service_type_id'] ?? $serviceTypeId;
+
         // Ensure we have an array of vehicle group IDs
         if (!is_array($vehicleGroupIds)) {
             $vehicleGroupIds = [$vehicleGroupIds];
@@ -9749,8 +9796,8 @@ class BookingFlowService
     {
         $booking = Booking::findOrFail($bookingId);
 
-        // Check if booking can be deleted or should be cancelled
-        $canDelete = in_array($booking->status, ['draft', 'pending_approval']);
+        // Only an uncommitted draft can be deleted. Other lifecycles use explicit cancellation.
+        $canDelete = $booking->status === 'draft';
 
         if ($canDelete) {
             $booking->delete();
@@ -9759,15 +9806,10 @@ class BookingFlowService
                 'cancelled' => false,
                 'message' => 'Booking deleted successfully'
             ];
-        } else {
-            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled via admin interface');
-
-            return [
-                'deleted' => false,
-                'cancelled' => true,
-                'message' => 'Booking cancelled successfully'
-            ];
         }
+        throw ValidationException::withMessages([
+            'booking' => ['Only draft bookings can be deleted. Use the booking cancellation workflow for submitted bookings.'],
+        ]);
     }
 
     /**
