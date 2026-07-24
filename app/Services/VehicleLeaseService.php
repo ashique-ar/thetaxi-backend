@@ -23,7 +23,8 @@ class VehicleLeaseService
     public function create(Vehicle $vehicle, array $data, ?string $userId): VehicleLease
     {
         return DB::transaction(function () use ($vehicle, $data, $userId) {
-            if (VehicleLease::query()->where('vehicle_id', $vehicle->id)->whereIn('status', ['active', 'expired', 'closure_pending'])->lockForUpdate()->exists()) {
+            $vehicle = Vehicle::query()->lockForUpdate()->findOrFail($vehicle->id);
+            if (VehicleLease::query()->where('vehicle_id', $vehicle->id)->whereIn('status', ['draft', 'active', 'expired', 'closure_pending'])->lockForUpdate()->exists()) {
                 throw ValidationException::withMessages(['vehicle_id' => ['This vehicle already has an open finance or lease contract.']]);
             }
             $this->validateFinancialTerms($data);
@@ -91,7 +92,6 @@ class VehicleLeaseService
                 'agreement_start_date' => $lease->start_date,
                 'agreement_end_date' => $lease->end_date,
                 'agreement_status' => 'active',
-                'monthly_payment_commitment' => $this->monthlyCommitment($lease),
             ]);
             $this->event($lease, 'activated', 'draft', 'active', [
                 'schedule_count' => $lease->installment_count,
@@ -116,6 +116,16 @@ class VehicleLeaseService
             if ($duplicate) {
                 if ($duplicate->vehicle_lease_id !== $lease->id) {
                     throw ValidationException::withMessages(['idempotency_key' => ['This payment key belongs to another lease.']]);
+                }
+                $sameRequest = round((float) $duplicate->amount, 2) === round((float) $data['amount'], 2)
+                    && $duplicate->paid_date->toDateString() === Carbon::parse($data['paid_date'])->toDateString()
+                    && $duplicate->payment_method === $data['payment_method']
+                    && ($duplicate->reference ?: null) === ($data['reference'] ?? null)
+                    && ($duplicate->notes ?: null) === ($data['notes'] ?? null);
+                if (!$sameRequest) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This payment key was already used with different payment details.'],
+                    ]);
                 }
                 return $this->summary($lease);
             }
@@ -237,6 +247,7 @@ class VehicleLeaseService
                 throw ValidationException::withMessages(['deposit_credit' => ['Deposit credit cannot exceed the refundable deposit actually recorded as paid.']]);
             }
             $net = round($outstanding + $termination - $depositCredit, 2);
+            $zeroSettlement = abs($net) < 0.01;
             $release = VehicleLeaseRelease::create([
                 ...$data,
                 'vehicle_lease_id' => $lease->id,
@@ -244,11 +255,22 @@ class VehicleLeaseService
                 'termination_charge' => $termination,
                 'deposit_credit' => $depositCredit,
                 'net_settlement_amount' => $net,
-                'settlement_status' => abs($net) < 0.01 ? 'settled' : 'pending',
+                'settlement_status' => $zeroSettlement ? 'settled' : 'pending',
+                'settlement_direction' => $zeroSettlement ? 'none' : null,
+                'settlement_amount' => $zeroSettlement ? 0 : null,
+                'settlement_method' => $zeroSettlement ? 'not_applicable' : null,
+                'settlement_reference' => $zeroSettlement ? 'ZERO-' . $lease->lease_number : null,
+                'settled_at' => $zeroSettlement ? $data['effective_at'] : null,
+                'settled_by' => $zeroSettlement ? $userId : null,
                 'approved_by' => $userId,
             ]);
             $from = $lease->status;
-            $lease->update(['status' => 'released', 'completed_at' => $data['effective_at']]);
+            $lease->update([
+                'status' => 'released',
+                'completed_at' => $data['effective_at'],
+                'financial_status' => $zeroSettlement ? 'settled' : $lease->financial_status,
+                'financially_settled_at' => $zeroSettlement ? $data['effective_at'] : $lease->financially_settled_at,
+            ]);
             $lease->vehicle()->update([
                 'agreement_status' => 'ended',
                 'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value,
@@ -275,19 +297,65 @@ class VehicleLeaseService
             if (!$release) {
                 throw ValidationException::withMessages(['lease' => ['This lease has no release record to settle.']]);
             }
+            $duplicate = VehicleLeaseRelease::query()
+                ->where('settlement_idempotency_key', $data['idempotency_key'])
+                ->first();
+            if ($duplicate) {
+                if ($duplicate->id !== $release->id) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This settlement key belongs to another vehicle release.'],
+                    ]);
+                }
+                $sameRequest = round((float) $duplicate->settlement_amount, 2) === round((float) $data['amount'], 2)
+                    && $duplicate->settlement_direction === $data['direction']
+                    && $duplicate->settlement_method === $data['payment_method']
+                    && $duplicate->settled_at?->equalTo(Carbon::parse($data['settled_at']))
+                    && $duplicate->settlement_reference === $data['settlement_reference']
+                    && ($duplicate->notes ?: null) === ($data['notes'] ?? null);
+                if (!$sameRequest) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This settlement key was already used with different settlement details.'],
+                    ]);
+                }
+
+                return $this->summary($lease);
+            }
             if ($release->settlement_status === 'settled') {
                 throw ValidationException::withMessages(['lease' => ['This release settlement is already recorded.']]);
             }
+            $net = round((float) $release->net_settlement_amount, 2);
+            $expectedDirection = $net > 0 ? 'payable_to_provider' : 'receivable_from_provider';
+            if ($data['direction'] !== $expectedDirection) {
+                throw ValidationException::withMessages([
+                    'direction' => ["This release must be recorded as {$expectedDirection}."],
+                ]);
+            }
+            if (abs(round((float) $data['amount'], 2) - abs($net)) >= 0.01) {
+                throw ValidationException::withMessages([
+                    'amount' => ['The settlement amount must equal the approved net release settlement.'],
+                ]);
+            }
             $release->update([
                 'settlement_status' => 'settled',
+                'settlement_direction' => $data['direction'],
+                'settlement_amount' => round((float) $data['amount'], 2),
+                'settlement_method' => $data['payment_method'],
+                'settlement_idempotency_key' => $data['idempotency_key'],
                 'settled_at' => $data['settled_at'],
                 'settled_by' => $userId,
                 'settlement_reference' => $data['settlement_reference'],
                 'notes' => $data['notes'] ?? $release->notes,
             ]);
+            $lease->update([
+                'financial_status' => 'settled',
+                'financially_settled_at' => $data['settled_at'],
+            ]);
             $this->event($lease, 'release_settled', 'released', 'released', [
                 'release_id' => $release->id,
                 'net_settlement_amount' => (float) $release->net_settlement_amount,
+                'settlement_direction' => $release->settlement_direction,
+                'settlement_amount' => (float) $release->settlement_amount,
+                'settlement_method' => $release->settlement_method,
                 'settlement_reference' => $release->settlement_reference,
                 'settled_at' => $release->settled_at?->toISOString(),
             ], $userId);
@@ -328,7 +396,6 @@ class VehicleLeaseService
             ]);
             $lease->vehicle()->update([
                 'agreement_status' => 'ended',
-                'monthly_payment_commitment' => null,
             ]);
             $this->event($lease, 'finance_closed', 'closure_pending', 'completed', [
                 'closure_reference' => $lease->closure_reference,
@@ -388,7 +455,6 @@ class VehicleLeaseService
                 'owner_id' => $toOwnerId,
                 'ownership_type' => $toOwnershipType,
                 'agreement_status' => 'ended',
-                'monthly_payment_commitment' => null,
             ]);
             $lease->update([
                 'status' => 'completed',
@@ -455,7 +521,7 @@ class VehicleLeaseService
         $schedule = $lease->schedules->sortBy('sequence')->map(function ($item) {
             $paid = round((float) $item->allocations->whereNull('reversed_at')->sum('amount'), 2);
             $balance = max(0, round((float) $item->amount_due - $paid, 2));
-            $status = $balance <= 0 ? 'paid' : ($paid > 0 ? 'partially_paid' : ($item->due_date->isPast() ? 'overdue' : 'scheduled'));
+            $status = $balance <= 0 ? 'paid' : ($paid > 0 ? 'partially_paid' : ($item->due_date->lt(today()) ? 'overdue' : 'scheduled'));
             return [
                 'id' => $item->id, 'sequence' => $item->sequence,
                 'due_date' => $item->due_date->toDateString(),
@@ -465,23 +531,44 @@ class VehicleLeaseService
         })->values();
         $scheduled = round((float) $schedule->sum('amount_due'), 2);
         $paid = round((float) $lease->payments->where('status', 'recorded')->sum('amount'), 2);
+        $contractualScheduleBalance = max(0, round($scheduled - $paid, 2));
+        $releaseSettlementPending = $lease->release
+            && $lease->release->settlement_status !== 'settled';
+        $releaseNet = round((float) ($lease->release?->net_settlement_amount ?? 0), 2);
+        $contractualOverdue = round((float) $schedule->where('status', 'overdue')->sum('balance_amount'), 2);
+        $financiallyClosed = $lease->status === 'released' || $lease->financial_status === 'settled';
+        $openPayable = $lease->status === 'released'
+            ? ($releaseSettlementPending ? max(0, $releaseNet) : 0)
+            : ($lease->financial_status === 'settled' ? 0 : $contractualScheduleBalance);
+        $openReceivable = $lease->status === 'released' && $releaseSettlementPending
+            ? abs(min(0, $releaseNet))
+            : 0;
         return [
             'lease' => $lease,
             'financial_summary' => [
                 'scheduled_amount' => $scheduled, 'paid_amount' => $paid,
-                'outstanding_amount' => max(0, round($scheduled - $paid, 2)),
-                'overdue_amount' => round((float) $schedule->where('status', 'overdue')->sum('balance_amount'), 2),
+                'contractual_schedule_balance' => $contractualScheduleBalance,
+                'outstanding_amount' => $openPayable,
+                'release_receivable_amount' => $openReceivable,
+                'contractual_overdue_amount' => $contractualOverdue,
+                'overdue_amount' => $financiallyClosed ? 0 : $contractualOverdue,
                 'refundable_deposit' => (float) $lease->refundable_deposit,
                 'deposit_paid_amount' => (float) $lease->deposit_paid_amount,
                 'deposit_available_for_release' => max(0, round((float) $lease->deposit_paid_amount - (float) ($lease->release?->deposit_credit ?? 0), 2)),
-                'next_due' => $schedule->whereIn('status', ['scheduled', 'partially_paid'])->first(),
+                'monthly_run_rate' => $lease->financial_status === 'active'
+                    && in_array($lease->status, ['active', 'expired'], true)
+                    ? min($this->monthlyCommitment($lease), max(0, round($scheduled - $paid, 2)))
+                    : 0,
+                'next_due' => $financiallyClosed
+                    ? null
+                    : $schedule->whereIn('status', ['overdue', 'scheduled', 'partially_paid'])->first(),
             ],
             'schedule' => $schedule,
             'payments' => $lease->payments->sortByDesc('paid_date')->values(),
             'release' => $lease->release,
             'history' => $lease->events,
             'ownership_history' => $lease->vehicle->ownershipHistory,
-            'next_action' => $this->nextAction($lease, max(0, round($scheduled - $paid, 2))),
+            'next_action' => $this->nextAction($lease, $openPayable),
         ];
     }
 
@@ -496,8 +583,9 @@ class VehicleLeaseService
         $balloonPrincipal = min(round((float) $lease->balloon_payment, 2), $principalRemaining);
         $amortizingPrincipal = max(0, round($principalRemaining - $balloonPrincipal, 2));
         $regularPrincipal = round($amortizingPrincipal / (int) $lease->installment_count, 2);
-        $dueDate = $lease->first_payment_date->copy();
+        $firstDueDate = $lease->first_payment_date->copy();
         for ($sequence = 1; $sequence <= (int) $lease->installment_count; $sequence++) {
+            $dueDate = $firstDueDate->copy()->addMonthsNoOverflow($months * ($sequence - 1));
             $amount = (float) $lease->installment_amount + ($sequence === (int) $lease->installment_count ? (float) $lease->balloon_payment : 0);
             $principal = $sequence === (int) $lease->installment_count
                 ? $principalRemaining
@@ -509,7 +597,6 @@ class VehicleLeaseService
                 'amount_due' => $amount, 'status' => 'scheduled', 'created_user_id' => $userId,
             ]);
             $principalRemaining = max(0, round($principalRemaining - $principal, 2));
-            $dueDate = $dueDate->addMonthsNoOverflow($months);
         }
     }
 

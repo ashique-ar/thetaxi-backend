@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle;
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleLease;
+use App\Services\VehicleLeaseAccountingService;
 use App\Services\VehicleLeaseService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -12,9 +13,10 @@ use Illuminate\Validation\Rule;
 
 class VehicleLeaseController extends Controller
 {
-    public function __construct(private readonly VehicleLeaseService $leases)
-    {
-    }
+    public function __construct(
+        private readonly VehicleLeaseService $leases,
+        private readonly VehicleLeaseAccountingService $accounting
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -66,13 +68,42 @@ class VehicleLeaseController extends Controller
         $rows->getCollection()->transform(function (VehicleLease $lease) {
             $scheduled = round((float) ($lease->scheduled_amount ?? 0), 2);
             $paid = round((float) ($lease->paid_amount ?? 0), 2);
-            $lease->setAttribute('outstanding_amount', max(0, round($scheduled - $paid, 2)));
+            $scheduleBalance = max(0, round($scheduled - $paid, 2));
+            $release = $lease->release;
+            $lease->setAttribute(
+                'outstanding_amount',
+                $lease->status === 'released'
+                    ? ($release?->settlement_status === 'pending'
+                        ? max(0, (float) $release->net_settlement_amount)
+                        : 0)
+                    : ($lease->financial_status === 'settled' ? 0 : $scheduleBalance)
+            );
+            $lease->setAttribute(
+                'receivable_amount',
+                $lease->status === 'released' && $release?->settlement_status === 'pending'
+                    ? abs(min(0, (float) $release->net_settlement_amount))
+                    : 0
+            );
             return $lease;
         });
+        $accountingStart = now()->startOfMonth();
+        $accountingEnd = now()->endOfMonth();
+        $accounting = [
+            'period' => [
+                'start_date' => $accountingStart->toDateString(),
+                'end_date' => $accountingEnd->toDateString(),
+            ],
+            ...$this->accounting->portfolioSummary(
+                $accountingStart,
+                $accountingEnd,
+                Vehicle::query()->pluck('id')
+            ),
+        ];
 
         return response()->json([
             'status' => 'success',
             'data' => $rows,
+            'accounting' => $accounting,
             'summary' => [
                 'total' => (int) $statusCounts->sum(),
                 'draft' => (int) ($statusCounts['draft'] ?? 0),
@@ -95,9 +126,22 @@ class VehicleLeaseController extends Controller
             ->orderByDesc('start_date')
             ->get()
             ->each(function (VehicleLease $lease) {
+                $release = $lease->release;
                 $lease->setAttribute(
                     'outstanding_amount',
-                    max(0, round((float) ($lease->scheduled_amount ?? 0) - (float) ($lease->paid_amount ?? 0), 2))
+                    $lease->status === 'released'
+                        ? ($release?->settlement_status === 'pending'
+                            ? max(0, (float) $release->net_settlement_amount)
+                            : 0)
+                        : ($lease->financial_status === 'settled'
+                            ? 0
+                            : max(0, round((float) ($lease->scheduled_amount ?? 0) - (float) ($lease->paid_amount ?? 0), 2)))
+                );
+                $lease->setAttribute(
+                    'receivable_amount',
+                    $lease->status === 'released' && $release?->settlement_status === 'pending'
+                        ? abs(min(0, (float) $release->net_settlement_amount))
+                        : 0
                 );
             });
 
@@ -200,7 +244,17 @@ class VehicleLeaseController extends Controller
     {
         $data = $request->validate([
             'settled_at' => ['required', 'date', 'before_or_equal:now'],
-            'settlement_reference' => ['required', 'string', 'max:255', 'unique:vehicle_lease_releases,settlement_reference'],
+            'direction' => ['required', Rule::in(['payable_to_provider', 'receivable_from_provider'])],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'payment_method' => ['required', Rule::in(['cash', 'bank_transfer', 'cheque', 'card', 'online', 'offset', 'other'])],
+            'settlement_reference' => [
+                'required',
+                'string',
+                'max:255',
+                Rule::unique('vehicle_lease_releases', 'settlement_reference')
+                    ->ignore($vehicleLease->release()->value('id')),
+            ],
+            'idempotency_key' => ['required', 'uuid'],
             'notes' => ['nullable', 'string', 'max:3000'],
         ]);
 

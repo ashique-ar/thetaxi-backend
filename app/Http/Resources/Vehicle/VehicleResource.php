@@ -53,6 +53,10 @@ class VehicleResource extends JsonResource
             'insurances' => VehicleInsuranceResource::collection($this->whenLoaded('insurances')),
             'revenue_licenses' => VehicleRevenueLicenseResource::collection($this->whenLoaded('revenueLicenses')),
             'ownership_history' => $this->whenLoaded('ownershipHistory'),
+            'current_lease' => $this->when(
+                $request->user()?->can('vehicle-leases.view') === true,
+                $this->whenLoaded('currentLease')
+            ),
             'active_insurance' => new VehicleInsuranceResource($this->whenLoaded('activeInsurance')),
             'active_revenue_license' => new VehicleRevenueLicenseResource($this->whenLoaded('activeRevenueLicense')),
             'tagline' => $this->tagline ?? null,

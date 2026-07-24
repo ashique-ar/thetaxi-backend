@@ -13,11 +13,17 @@ use App\Models\Finance\FinancialAuditEvent;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\DB;
 use App\Models\Driver\DriverHireSettlement;
+use App\Models\Vehicle\Vehicle;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\VehicleLeaseAccountingService;
 
 class FinancialSettlementController extends Controller
 {
-    public function __construct(private readonly FinancialAccountSettlementService $service, private readonly BookingPaymentLedgerService $ledger) {}
+    public function __construct(
+        private readonly FinancialAccountSettlementService $service,
+        private readonly BookingPaymentLedgerService $ledger,
+        private readonly VehicleLeaseAccountingService $vehicleLeaseAccounting
+    ) {}
 
     public function account(string $ownerType,string $ownerId)
     { abort_unless(in_array($ownerType,['customer','corporate'],true),404);return response()->json(['status'=>'success','data'=>$this->ledger->accountSummaryFor($ownerType,$ownerId)]); }
@@ -25,6 +31,22 @@ class FinancialSettlementController extends Controller
     public function dashboard(Request $request)
     {
         $this->service->markOverdueSettlements(Auth::id());
+        $leaseAccounting = null;
+        if ($request->user()?->can('vehicle-leases.view')) {
+            $periodStart = now()->startOfMonth();
+            $periodEnd = now()->endOfMonth();
+            $leaseAccounting = [
+                'period' => [
+                    'start_date' => $periodStart->toDateString(),
+                    'end_date' => $periodEnd->toDateString(),
+                ],
+                ...$this->vehicleLeaseAccounting->portfolioSummary(
+                    $periodStart,
+                    $periodEnd,
+                    Vehicle::query()->pluck('id')
+                ),
+            ];
+        }
         $query = FinancialAccountSettlement::query();
         if ($request->filled('owner_type')) $query->where('owner_type', $request->owner_type);
         if ($request->filled('status')) $query->where('status', $request->status);
@@ -43,7 +65,10 @@ class FinancialSettlementController extends Controller
                 'company_receivable_from_drivers'=>abs((float)DriverHireSettlement::whereIn('status',['draft','submitted','ops_reviewed','recovery_pending'])->where('final_balance','<',0)->sum('final_balance')),
                 'driver_settlements_overdue'=>(float)DriverHireSettlement::whereNotIn('status',['paid','recovered'])->whereNotNull('settlement_due_date')->whereDate('settlement_due_date','<',today())->sum(DB::raw('ABS(final_balance)')),
                 'disputed'=>FinancialAccountSettlement::where('status','disputed')->count()+BookingPaymentReceipt::where('driver_company_settlement_status','disputed')->count(),
-            ], 'settlements'=>$rows,'driver_net_positions'=>$driverPositions,
+            ],
+            'settlements'=>$rows,
+            'driver_net_positions'=>$driverPositions,
+            'vehicle_lease_accounting'=>$leaseAccounting,
         ]]);
     }
 

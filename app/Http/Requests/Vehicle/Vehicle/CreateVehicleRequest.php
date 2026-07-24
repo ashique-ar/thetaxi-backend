@@ -3,13 +3,14 @@
 
 namespace App\Http\Requests\Vehicle\Vehicle;
 
+use App\Http\Requests\Vehicle\Vehicle\Concerns\HasCurrentVehicleLeaseRules;
 use App\Rules\UniqueVehiclePlate;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
 class CreateVehicleRequest extends FormRequest
 {
-
+    use HasCurrentVehicleLeaseRules;
 
     public function rules()
     {
@@ -79,6 +80,7 @@ class CreateVehicleRequest extends FormRequest
             'year' => ['nullable', 'integer'],
             'tagline' => ['nullable', 'string'],
             'description' => ['nullable', 'string'],
+            ...$this->currentVehicleLeaseRules(),
         ];
     }
 }

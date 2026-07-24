@@ -10,6 +10,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\DriverAssignment;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleLease;
 use App\Models\Vehicle\VehicleMaintenanceRecord;
 use App\Models\Vehicle\VehicleMaintenanceSchedule;
 use App\Models\Vehicle\VehicleOwnershipHistory;
@@ -17,6 +18,8 @@ use App\Http\Requests\Vehicle\Vehicle\CreateVehicleRequest;
 use App\Http\Requests\Vehicle\Vehicle\UpdateVehicleRequest;
 use App\Http\Resources\Vehicle\VehicleResource;
 use App\Rules\UniqueVehiclePlate;
+use App\Services\VehicleLeaseAccountingService;
+use App\Services\VehicleLeaseService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Carbon;
@@ -96,11 +99,13 @@ class VehicleController extends Controller
         );
     }
 
-    public function store(CreateVehicleRequest $request): JsonResponse
+    public function store(CreateVehicleRequest $request, VehicleLeaseService $leaseService): JsonResponse
     {
-        $data = $this->normalizeVehicleIdentifierPayload($request->validated());
+        $data = $request->validated();
+        $currentLeaseData = $this->pullCurrentLeaseData($data);
+        $data = $this->normalizeVehicleIdentifierPayload($data);
         $data['created_user_id'] = $request->user()->id;
-        $vehicle = DB::transaction(function () use ($data, $request) {
+        $vehicle = DB::transaction(function () use ($data, $currentLeaseData, $request, $leaseService) {
             $vehicle = Vehicle::create($data);
             VehicleOwnershipHistory::create([
                 'vehicle_id' => $vehicle->id,
@@ -114,9 +119,11 @@ class VehicleController extends Controller
                 'notes' => 'Initial legal ownership recorded with the vehicle master.',
                 'performed_by' => $request->user()->id,
             ]);
+            $this->syncCurrentLease($vehicle, $currentLeaseData, $request, $leaseService);
 
-            return $vehicle;
+            return $vehicle->fresh();
         });
+        $vehicle->load('currentLease.financeProvider');
 
         return response()->json([
             'status' => 'success',
@@ -147,6 +154,7 @@ class VehicleController extends Controller
             'activeInsurance.provider',
             'activeInsurance.insuranceType',
             'activeRevenueLicense',
+            'currentLease.financeProvider',
             'ownershipHistory.fromOwner.user',
             'ownershipHistory.toOwner.user',
             'ownershipHistory.document',
@@ -179,7 +187,10 @@ class VehicleController extends Controller
         ]);
     }
 
-    public function operationsDashboard(Request $request): JsonResponse
+    public function operationsDashboard(
+        Request $request,
+        VehicleLeaseAccountingService $leaseAccountingService
+    ): JsonResponse
     {
         $validated = $request->validate([
             'start_date' => ['nullable', 'date'],
@@ -211,6 +222,8 @@ class VehicleController extends Controller
 
         $vehicles = $vehiclesQuery->get();
         $vehicleIds = $vehicles->pluck('id');
+        $leaseAccounting = $leaseAccountingService->portfolioSummary($start, $end, $vehicleIds);
+        $leaseAccountingByVehicle = $leaseAccounting['per_vehicle'];
 
         $activeVehicleIds = DriverAssignment::query()
             ->join('booking_items', 'driver_assignments.booking_item_id', '=', 'booking_items.id')
@@ -258,12 +271,32 @@ class VehicleController extends Controller
             ->get()
             ->keyBy('vehicle_id');
 
-        $vehicleRows = $vehicles->map(function (Vehicle $vehicle) use ($performance, $activeVehicleIds, $activeHireMovements) {
+        $vehicleRows = $vehicles->map(function (Vehicle $vehicle) use (
+            $performance,
+            $activeVehicleIds,
+            $activeHireMovements,
+            $leaseAccountingByVehicle
+        ) {
             $row = $performance->get($vehicle->id);
             $hireCount = (int) ($row->hire_count ?? 0);
             $revenue = (float) ($row->revenue ?? 0);
             $usedMileage = (float) ($row->used_mileage ?? 0);
             $limit = $vehicle->monthly_mileage_limit !== null ? (float) $vehicle->monthly_mileage_limit : null;
+            $usesOwnerFixedPayment = in_array(
+                $vehicle->payment_model,
+                ['fixed_monthly', 'commission_plus_fixed'],
+                true
+            );
+            $ownerMonthlyCommitment = $usesOwnerFixedPayment
+                ? round((float) ($vehicle->monthly_payment_commitment ?? 0), 2)
+                : 0;
+            $leaseMetrics = $leaseAccountingByVehicle[$vehicle->id] ?? [];
+            $leaseMonthlyCommitment = round((float) ($leaseMetrics['monthly_run_rate'] ?? 0), 2);
+            $leaseCurrency = $leaseMetrics['currency'] ?? null;
+            $hasMixedCommitmentCurrency = $leaseCurrency !== null && $leaseCurrency !== 'LKR';
+            $totalMonthlyCommitment = $hasMixedCommitmentCurrency
+                ? $ownerMonthlyCommitment
+                : round($ownerMonthlyCommitment + $leaseMonthlyCommitment, 2);
             $commission = $vehicle->activeCommission;
             $commissionPayable = 0.0;
             $movement = $activeHireMovements->get($vehicle->id);
@@ -298,7 +331,17 @@ class VehicleController extends Controller
                 'hire_count' => $hireCount,
                 'revenue' => $revenue,
                 'commission_payable' => $commissionPayable,
-                'monthly_payment_commitment' => $vehicle->monthly_payment_commitment !== null ? (float) $vehicle->monthly_payment_commitment : null,
+                'monthly_payment_commitment' => $usesOwnerFixedPayment
+                    && $vehicle->monthly_payment_commitment !== null
+                    ? $ownerMonthlyCommitment
+                    : null,
+                'owner_monthly_commitment' => $ownerMonthlyCommitment,
+                'lease_monthly_commitment' => $leaseMonthlyCommitment,
+                'total_monthly_commitment' => $totalMonthlyCommitment,
+                'lease_currency' => $leaseCurrency,
+                'has_mixed_commitment_currency' => $hasMixedCommitmentCurrency,
+                'lease_outstanding' => round((float) ($leaseMetrics['outstanding'] ?? 0), 2),
+                'lease_overdue' => round((float) ($leaseMetrics['overdue'] ?? 0), 2),
                 'monthly_mileage_limit' => $limit,
                 'used_mileage' => $usedMileage,
                 'remaining_mileage' => $limit !== null ? max($limit - $usedMileage, 0) : null,
@@ -306,6 +349,16 @@ class VehicleController extends Controller
                 'underutilized_mileage' => $limit !== null ? max($limit - $usedMileage, 0) : null,
             ];
         })->values();
+
+        $ownerMonthlyCommitments = round($vehicleRows->sum('owner_monthly_commitment'), 2);
+        $lkrLeaseMonthlyCommitments = round(
+            (float) ($leaseAccounting['by_currency']['LKR']['monthly_run_rate'] ?? 0),
+            2
+        );
+        $totalMonthlyCommitments = round(
+            $ownerMonthlyCommitments + $lkrLeaseMonthlyCommitments,
+            2
+        );
 
         return response()->json([
             'status' => 'success',
@@ -324,7 +377,14 @@ class VehicleController extends Controller
                     'outside_taxi_operations' => $vehicleRows->where('ownership_type', 'outside_call_taxi')->count(),
                     'total_revenue' => round($vehicleRows->sum('revenue'), 2),
                     'total_commission_payable' => round($vehicleRows->sum('commission_payable'), 2),
-                    'fixed_monthly_commitments' => round($vehicleRows->sum('monthly_payment_commitment'), 2),
+                    'owner_monthly_commitments' => $ownerMonthlyCommitments,
+                    'lease_accounting_by_currency' => $leaseAccounting['by_currency'],
+                    'fixed_monthly_commitments' => $totalMonthlyCommitments,
+                    'total_monthly_commitments' => $totalMonthlyCommitments,
+                    'commitment_currency' => 'LKR',
+                    'has_mixed_commitment_currencies' => collect($leaseAccounting['by_currency'])
+                        ->except('LKR')
+                        ->contains(fn ($totals) => (float) ($totals['monthly_run_rate'] ?? 0) > 0),
                     'commission_based_vehicles' => $vehicleRows->whereIn('payment_model', ['commission', 'commission_plus_fixed'])->count(),
                     'fixed_monthly_vehicles' => $vehicleRows->whereIn('payment_model', ['fixed_monthly', 'commission_plus_fixed'])->count(),
                 ],
@@ -334,7 +394,9 @@ class VehicleController extends Controller
                 'highest_used_vehicles' => $vehicleRows->sortByDesc('hire_count')->take(10)->values(),
                 'least_used_vehicles' => $vehicleRows->sortBy('hire_count')->take(10)->values(),
                 'low_utilization_fixed_costs' => $vehicleRows
-                    ->filter(fn ($row) => $row['monthly_payment_commitment'] && $row['monthly_mileage_limit'] && $row['used_mileage'] < ($row['monthly_mileage_limit'] * 0.5))
+                    ->filter(fn ($row) => ($row['owner_monthly_commitment'] || $row['lease_monthly_commitment'])
+                        && $row['monthly_mileage_limit']
+                        && $row['used_mileage'] < ($row['monthly_mileage_limit'] * 0.5))
                     ->values(),
                 'vehicles' => $vehicleRows,
             ],
@@ -490,9 +552,15 @@ class VehicleController extends Controller
         ]);
     }
 
-    public function update(UpdateVehicleRequest $request, Vehicle $vehicle): JsonResponse
+    public function update(
+        UpdateVehicleRequest $request,
+        Vehicle $vehicle,
+        VehicleLeaseService $leaseService
+    ): JsonResponse
     {
-        $data = $this->normalizeVehicleIdentifierPayload($request->validated());
+        $data = $request->validated();
+        $currentLeaseData = $this->pullCurrentLeaseData($data);
+        $data = $this->normalizeVehicleIdentifierPayload($data);
         $data['updated_user_id'] = $request->user()->id;
         $nextOwnerId = array_key_exists('owner_id', $data) ? $data['owner_id'] : $vehicle->owner_id;
         $nextOwnershipType = $data['ownership_type'] ?? $vehicle->ownership_type;
@@ -500,7 +568,7 @@ class VehicleController extends Controller
             || $nextOwnershipType !== $vehicle->ownership_type;
 
         if ($ownershipChanged && $vehicle->leases()
-            ->whereIn('status', ['draft', 'active', 'expired', 'closure_pending'])
+            ->whereIn('status', ['active', 'expired', 'closure_pending'])
             ->exists()) {
             throw ValidationException::withMessages([
                 'owner_id' => ['Ownership cannot be edited while a finance or lease contract is open. Complete the verified contract closure/transfer workflow first.'],
@@ -513,7 +581,9 @@ class VehicleController extends Controller
             $ownershipChanged,
             $nextOwnerId,
             $nextOwnershipType,
-            $request
+            $request,
+            $currentLeaseData,
+            $leaseService
         ) {
             $fromOwnerId = $vehicle->owner_id;
             $fromOwnershipType = $vehicle->ownership_type ?: 'company_owned';
@@ -532,8 +602,16 @@ class VehicleController extends Controller
                     'notes' => 'Legal owner or ownership classification changed through the vehicle master.',
                     'performed_by' => $request->user()->id,
                 ]);
+                $vehicle->leases()->where('status', 'draft')->update([
+                    'owner_id_at_start' => $nextOwnerId,
+                    'ownership_type_at_start' => $nextOwnershipType ?: 'company_owned',
+                    'updated_user_id' => $request->user()->id,
+                ]);
             }
+
+            $this->syncCurrentLease($vehicle->fresh(), $currentLeaseData, $request, $leaseService);
         });
+        $vehicle->refresh()->load('currentLease.financeProvider');
 
         return response()->json([
             'status' => 'success',
@@ -582,6 +660,67 @@ class VehicleController extends Controller
         }
 
         return $data;
+    }
+
+    private function pullCurrentLeaseData(array &$data): ?array
+    {
+        $currentLease = $data['current_lease'] ?? null;
+        unset($data['current_lease']);
+
+        if (!is_array($currentLease) || !($currentLease['enabled'] ?? false)) {
+            return null;
+        }
+
+        unset($currentLease['enabled']);
+        $currentLease['currency'] = strtoupper((string) ($currentLease['currency'] ?? 'LKR'));
+
+        return $currentLease;
+    }
+
+    private function syncCurrentLease(
+        Vehicle $vehicle,
+        ?array $data,
+        Request $request,
+        VehicleLeaseService $leaseService
+    ): void {
+        if ($data === null) {
+            return;
+        }
+
+        $requestedLeaseId = $data['id'] ?? null;
+        unset($data['id']);
+        $currentLease = VehicleLease::query()
+            ->where('vehicle_id', $vehicle->id)
+            ->whereIn('status', ['draft', 'active', 'expired', 'closure_pending'])
+            ->lockForUpdate()
+            ->latest('start_date')
+            ->first();
+
+        if (!$requestedLeaseId && $currentLease) {
+            throw ValidationException::withMessages([
+                'current_lease.id' => ['A current contract was created or changed after this vehicle form was opened. Reload before editing it.'],
+            ]);
+        }
+
+        if ($requestedLeaseId && (!$currentLease || $currentLease->id !== $requestedLeaseId)) {
+            throw ValidationException::withMessages([
+                'current_lease.id' => ['The selected contract is not the current open contract for this vehicle.'],
+            ]);
+        }
+
+        if ($currentLease) {
+            abort_unless($request->user()->can('vehicle-leases.edit'), 403);
+            if ($currentLease->status !== 'draft') {
+                throw ValidationException::withMessages([
+                    'current_lease' => ['Activated finance terms cannot be overwritten from vehicle onboarding. Use Finance & Leasing for payments, discharge, release, or renewal.'],
+                ]);
+            }
+            $leaseService->updateDraft($currentLease, $data, $request->user()->id);
+            return;
+        }
+
+        abort_unless($request->user()->can('vehicle-leases.create'), 403);
+        $leaseService->create($vehicle, $data, $request->user()->id);
     }
 
     private function normalizeVehicleImages(array $images): array

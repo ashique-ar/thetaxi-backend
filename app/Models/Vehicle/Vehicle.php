@@ -178,6 +178,14 @@ class Vehicle extends BaseModel
         return $this->hasMany(VehicleLease::class)->orderByDesc('start_date');
     }
 
+    public function currentLease()
+    {
+        return $this->hasOne(VehicleLease::class)
+            ->whereIn('status', ['draft', 'active', 'expired', 'closure_pending'])
+            ->orderByDesc('start_date')
+            ->orderByDesc('created_at');
+    }
+
     public function ownershipHistory()
     {
         return $this->hasMany(VehicleOwnershipHistory::class)->orderByDesc('effective_at');
