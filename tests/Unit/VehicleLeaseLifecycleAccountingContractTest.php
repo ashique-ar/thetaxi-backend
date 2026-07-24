@@ -16,7 +16,7 @@ it('keeps vehicle-owner commitments independent from finance and lease lifecycle
 it('requires complete and replay-safe release settlement evidence', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Vehicle/VehicleLeaseController.php'));
     $service = file_get_contents(app_path('Services/VehicleLeaseService.php'));
-    $migration = file_get_contents(database_path('migrations/2026_07_25_000001_harden_vehicle_lease_release_settlements.php'));
+    $migration = file_get_contents(database_path('migrations/2026_07_24_000001_harden_vehicle_lease_release_settlements.php'));
 
     expect($controller)
         ->toContain("'direction' =>")
@@ -32,7 +32,8 @@ it('requires complete and replay-safe release settlement evidence', function () 
         ->toContain('settlement_direction')
         ->toContain('settlement_amount')
         ->toContain('settlement_method')
-        ->toContain('settlement_idempotency_key');
+        ->toContain('settlement_idempotency_key')
+        ->toContain('legacy_unverified');
 });
 
 it('protects embedded current lease edits from stale forms and unauthorized disclosure', function () {
@@ -46,4 +47,30 @@ it('protects embedded current lease edits from stale forms and unauthorized disc
         ->toContain('Vehicle::query()->lockForUpdate()->findOrFail($vehicle->id)')
         ->and($resource)
         ->toContain("can('vehicle-leases.view')");
+});
+
+it('keeps final payment retries and refundable deposit closure controls replay safe', function () {
+    $service = file_get_contents(app_path('Services/VehicleLeaseService.php'));
+    $duplicateLookup = strpos($service, "\$duplicate = VehicleLeasePayment::query()");
+    $lifecycleGuard = strpos($service, "Payments can be recorded only for active or expired leases.");
+
+    expect($duplicateLookup)->not->toBeFalse()
+        ->and($lifecycleGuard)->not->toBeFalse()
+        ->and($duplicateLookup)->toBeLessThan($lifecycleGuard)
+        ->and($service)
+        ->toContain('optionalText($duplicate->reference)')
+        ->toContain('recordDepositDisposition')
+        ->toContain('reverseDepositDisposition')
+        ->toContain('Return, forfeit, or offset the remaining refundable deposit before closing finance.');
+});
+
+it('gates lease dashboard figures and resolves partial periods before projection', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Vehicle/VehicleController.php'));
+
+    expect($controller)
+        ->toContain("can('vehicle-leases.view')")
+        ->toContain('$providedStart')
+        ->toContain('$providedEnd')
+        ->toContain('The end date must be on or after the start date.')
+        ->toContain('...($canViewLeaseAccounting ? [');
 });

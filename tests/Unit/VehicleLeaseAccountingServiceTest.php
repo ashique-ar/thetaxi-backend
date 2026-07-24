@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Vehicle\VehicleLease;
+use App\Models\Vehicle\VehicleLeaseDepositDisposition;
 use App\Models\Vehicle\VehicleLeasePayment;
 use App\Models\Vehicle\VehicleLeasePaymentAllocation;
 use App\Models\Vehicle\VehicleLeaseRelease;
@@ -19,13 +20,15 @@ function vehicleLeaseAccountingPayment(
     string $id,
     float|string $amount,
     string $paidDate,
-    string $status = 'recorded'
+    string $status = 'recorded',
+    ?string $reversedAt = null
 ): VehicleLeasePayment {
     $payment = new VehicleLeasePayment([
         'amount' => $amount,
         'paid_date' => $paidDate,
         'payment_method' => 'bank_transfer',
         'status' => $status,
+        'reversed_at' => $reversedAt,
     ]);
     $payment->id = $id;
     $payment->setRelation('allocations', collect());
@@ -69,7 +72,8 @@ function vehicleLeaseAccountingLease(
     array $overrides = [],
     array $schedules = [],
     array $payments = [],
-    ?VehicleLeaseRelease $release = null
+    ?VehicleLeaseRelease $release = null,
+    array $depositDispositions = []
 ): VehicleLease {
     $lease = new VehicleLease(array_merge([
         'vehicle_id' => $vehicleId,
@@ -90,6 +94,7 @@ function vehicleLeaseAccountingLease(
     $lease->setRelation('schedules', collect($schedules));
     $lease->setRelation('payments', collect($payments));
     $lease->setRelation('release', $release);
+    $lease->setRelation('depositDispositions', collect($depositDispositions));
 
     return $lease;
 }
@@ -111,7 +116,13 @@ it('separates current commitments from historical activity and excludes deposits
 
     $partialPayment = vehicleLeaseAccountingPayment('payment-partial', '4000.00', '2026-08-10');
     $settledPayment = vehicleLeaseAccountingPayment('payment-settled', '7000.00', '2026-08-12');
-    $reversedPayment = vehicleLeaseAccountingPayment('payment-reversed', '500.00', '2026-08-13', 'reversed');
+    $reversedPayment = vehicleLeaseAccountingPayment(
+        'payment-reversed',
+        '500.00',
+        '2026-08-13',
+        'reversed',
+        '2026-08-14 09:00:00'
+    );
 
     $active = vehicleLeaseAccountingLease(
         'lease-active',
@@ -169,7 +180,8 @@ it('separates current commitments from historical activity and excludes deposits
         'scheduled_in_period' => 17000.0,
         'allocated_in_period' => 11000.0,
         'remaining_due_in_period' => 6000.0,
-        'cash_paid_in_period' => 11000.0,
+        'cash_paid_in_period' => 11500.0,
+        'payment_reversals_in_period' => 500.0,
         'overdue' => 5000.0,
         'total_outstanding' => 21000.0,
         'refundable_deposit_asset' => 4000.0,
@@ -185,6 +197,53 @@ it('separates current commitments from historical activity and excludes deposits
     ]);
     expect($summary['per_vehicle'])->not->toHaveKey('vehicle-settled')
         ->and($summary['per_vehicle'])->not->toHaveKey('vehicle-draft');
+});
+
+it('preserves dated release cash and refundable deposit dispositions', function () {
+    $release = new VehicleLeaseRelease([
+        'settlement_status' => 'settled',
+        'deposit_credit' => '100.00',
+        'net_settlement_amount' => '50.00',
+        'settlement_direction' => 'payable_to_provider',
+        'settlement_amount' => '50.00',
+        'settled_at' => '2026-08-12 12:00:00',
+    ]);
+    $returned = new VehicleLeaseDepositDisposition([
+        'disposition_type' => 'return_received',
+        'amount' => '150.00',
+        'transaction_date' => '2026-08-13',
+        'payment_method' => 'bank_transfer',
+        'reference' => 'DEP-RETURN-1',
+        'status' => 'recorded',
+    ]);
+    $returned->id = 'deposit-return';
+    $lease = vehicleLeaseAccountingLease(
+        'lease-deposit',
+        'vehicle-deposit',
+        [
+            'currency' => 'LKR',
+            'status' => 'released',
+            'financial_status' => 'settled',
+            'deposit_paid_amount' => '500.00',
+            'deposit_paid_date' => '2026-07-01',
+            'down_payment' => '1000.00',
+            'down_payment_paid_date' => '2026-08-02',
+        ],
+        [],
+        [],
+        $release,
+        [$returned]
+    );
+
+    $summary = vehicleLeaseAccountingProjection([$lease], '2026-08-01', '2026-08-31');
+
+    expect($summary['by_currency']['LKR'])->toMatchArray([
+        'refundable_deposit_asset' => 250.0,
+        'release_cash_paid_in_period' => 50.0,
+        'release_cash_received_in_period' => 0.0,
+        'down_payment_paid_in_period' => 1000.0,
+        'refundable_deposit_cash_received_in_period' => 150.0,
+    ]);
 });
 
 it('normalizes periodic instalments in minor units and caps run rate at outstanding', function () {

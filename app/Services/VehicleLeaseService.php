@@ -7,6 +7,7 @@ use App\Models\Document;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleFinanceProvider;
 use App\Models\Vehicle\VehicleLease;
+use App\Models\Vehicle\VehicleLeaseDepositDisposition;
 use App\Models\Vehicle\VehicleLeaseEvent;
 use App\Models\Vehicle\VehicleLeasePayment;
 use App\Models\Vehicle\VehicleLeasePaymentAllocation;
@@ -106,12 +107,6 @@ class VehicleLeaseService
     {
         return DB::transaction(function () use ($lease, $data, $userId) {
             $lease = VehicleLease::query()->lockForUpdate()->findOrFail($lease->id);
-            if (!in_array($lease->status, ['active', 'expired'], true)) {
-                throw ValidationException::withMessages(['lease' => ['Payments can be recorded only for active or expired leases.']]);
-            }
-            if ($lease->financial_status === 'settled') {
-                throw ValidationException::withMessages(['lease' => ['This finance contract is already fully settled.']]);
-            }
             $duplicate = VehicleLeasePayment::query()->where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
                 if ($duplicate->vehicle_lease_id !== $lease->id) {
@@ -120,14 +115,20 @@ class VehicleLeaseService
                 $sameRequest = round((float) $duplicate->amount, 2) === round((float) $data['amount'], 2)
                     && $duplicate->paid_date->toDateString() === Carbon::parse($data['paid_date'])->toDateString()
                     && $duplicate->payment_method === $data['payment_method']
-                    && ($duplicate->reference ?: null) === ($data['reference'] ?? null)
-                    && ($duplicate->notes ?: null) === ($data['notes'] ?? null);
+                    && $this->optionalText($duplicate->reference) === $this->optionalText($data['reference'] ?? null)
+                    && $this->optionalText($duplicate->notes) === $this->optionalText($data['notes'] ?? null);
                 if (!$sameRequest) {
                     throw ValidationException::withMessages([
                         'idempotency_key' => ['This payment key was already used with different payment details.'],
                     ]);
                 }
                 return $this->summary($lease);
+            }
+            if (!in_array($lease->status, ['active', 'expired'], true)) {
+                throw ValidationException::withMessages(['lease' => ['Payments can be recorded only for active or expired leases.']]);
+            }
+            if ($lease->financial_status === 'settled') {
+                throw ValidationException::withMessages(['lease' => ['This finance contract is already fully settled.']]);
             }
             $outstanding = $this->outstanding($lease);
             $amount = round((float) $data['amount'], 2);
@@ -139,10 +140,10 @@ class VehicleLeaseService
                 'amount' => $amount,
                 'paid_date' => $data['paid_date'],
                 'payment_method' => $data['payment_method'],
-                'reference' => $data['reference'] ?? null,
+                'reference' => $this->optionalText($data['reference'] ?? null),
                 'idempotency_key' => $data['idempotency_key'],
                 'status' => 'recorded',
-                'notes' => $data['notes'] ?? null,
+                'notes' => $this->optionalText($data['notes'] ?? null),
                 'recorded_by' => $userId,
             ]);
             $this->allocate($lease, $payment, $amount, $userId);
@@ -227,12 +228,133 @@ class VehicleLeaseService
         });
     }
 
+    public function recordDepositDisposition(
+        VehicleLease $lease,
+        array $data,
+        string $userId
+    ): array {
+        return DB::transaction(function () use ($lease, $data, $userId) {
+            $lease = VehicleLease::query()->lockForUpdate()->findOrFail($lease->id);
+            $duplicate = VehicleLeaseDepositDisposition::query()
+                ->where('idempotency_key', $data['idempotency_key'])
+                ->first();
+            if ($duplicate) {
+                if ($duplicate->vehicle_lease_id !== $lease->id) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This deposit disposition key belongs to another lease.'],
+                    ]);
+                }
+                $sameRequest = round((float) $duplicate->amount, 2) === round((float) $data['amount'], 2)
+                    && $duplicate->disposition_type === $data['disposition_type']
+                    && $duplicate->transaction_date->toDateString() === Carbon::parse($data['transaction_date'])->toDateString()
+                    && $duplicate->payment_method === $data['payment_method']
+                    && $duplicate->reference === trim($data['reference'])
+                    && $this->optionalText($duplicate->notes) === $this->optionalText($data['notes'] ?? null);
+                if (! $sameRequest) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This deposit disposition key was already used with different details.'],
+                    ]);
+                }
+
+                return $this->summary($lease);
+            }
+            if (! $lease->activated_at || $lease->status === 'draft') {
+                throw ValidationException::withMessages([
+                    'lease' => ['Refundable-deposit dispositions can be recorded only after contract activation.'],
+                ]);
+            }
+            if ($lease->deposit_paid_date
+                && Carbon::parse($data['transaction_date'])->lt($lease->deposit_paid_date)) {
+                throw ValidationException::withMessages([
+                    'transaction_date' => ['The deposit disposition cannot predate the recorded deposit payment.'],
+                ]);
+            }
+
+            $amount = round((float) $data['amount'], 2);
+            $available = $this->depositAvailable($lease);
+            if ($amount > $available) {
+                throw ValidationException::withMessages([
+                    'amount' => ['The disposition cannot exceed the unapplied refundable deposit balance.'],
+                ]);
+            }
+
+            $disposition = VehicleLeaseDepositDisposition::create([
+                'vehicle_lease_id' => $lease->id,
+                'disposition_type' => $data['disposition_type'],
+                'amount' => $amount,
+                'transaction_date' => $data['transaction_date'],
+                'payment_method' => $data['payment_method'],
+                'reference' => trim($data['reference']),
+                'idempotency_key' => $data['idempotency_key'],
+                'status' => 'recorded',
+                'notes' => $this->optionalText($data['notes'] ?? null),
+                'recorded_by' => $userId,
+            ]);
+            $this->event($lease, 'deposit_disposition_recorded', $lease->status, $lease->status, [
+                'deposit_disposition_id' => $disposition->id,
+                'disposition_type' => $disposition->disposition_type,
+                'amount' => (float) $disposition->amount,
+                'transaction_date' => $disposition->transaction_date->toDateString(),
+                'payment_method' => $disposition->payment_method,
+                'reference' => $disposition->reference,
+            ], $userId);
+
+            return $this->summary($lease->fresh());
+        });
+    }
+
+    public function reverseDepositDisposition(
+        VehicleLease $lease,
+        string $dispositionId,
+        string $reason,
+        string $userId
+    ): array {
+        return DB::transaction(function () use ($lease, $dispositionId, $reason, $userId) {
+            $lease = VehicleLease::query()->lockForUpdate()->findOrFail($lease->id);
+            $disposition = VehicleLeaseDepositDisposition::query()
+                ->where('vehicle_lease_id', $lease->id)
+                ->lockForUpdate()
+                ->findOrFail($dispositionId);
+            if ($disposition->status !== 'recorded') {
+                throw ValidationException::withMessages([
+                    'deposit_disposition' => ['Only a recorded deposit disposition can be reversed.'],
+                ]);
+            }
+            if ($lease->status === 'completed' || $lease->closed_at) {
+                throw ValidationException::withMessages([
+                    'deposit_disposition' => ['A deposit disposition cannot be reversed after verified finance closure.'],
+                ]);
+            }
+
+            $disposition->update([
+                'status' => 'reversed',
+                'reversed_at' => now(),
+                'reversed_by' => $userId,
+                'reversal_reason' => $reason,
+            ]);
+            $this->event($lease, 'deposit_disposition_reversed', $lease->status, $lease->status, [
+                'deposit_disposition_id' => $disposition->id,
+                'amount' => (float) $disposition->amount,
+                'reason' => $reason,
+            ], $userId);
+
+            return $this->summary($lease->fresh());
+        });
+    }
+
     public function release(VehicleLease $lease, array $data, string $userId): array
     {
         return DB::transaction(function () use ($lease, $data, $userId) {
             $lease = VehicleLease::query()->lockForUpdate()->findOrFail($lease->id);
             if (!in_array($lease->status, ['active', 'expired', 'closure_pending'], true) || $lease->release()->exists()) {
                 throw ValidationException::withMessages(['lease' => ['Only an open, unreleased contract can record a physical vehicle release.']]);
+            }
+            $effectiveAt = Carbon::parse($data['effective_at']);
+            $earliestRelease = $lease->activated_at ?? $lease->start_date;
+            if ($effectiveAt->isFuture() || ($earliestRelease && $effectiveAt->lt($earliestRelease))) {
+                throw ValidationException::withMessages([
+                    'effective_at' => ['The physical release must be effective now or earlier, and cannot predate contract activation.'],
+                ]);
             }
             if (in_array($lease->contract_type, ['vehicle_loan', 'hire_purchase'], true)
                 && !in_array($data['release_type'], ['repossession', 'voluntary_surrender'], true)) {
@@ -311,7 +433,7 @@ class VehicleLeaseService
                     && $duplicate->settlement_method === $data['payment_method']
                     && $duplicate->settled_at?->equalTo(Carbon::parse($data['settled_at']))
                     && $duplicate->settlement_reference === $data['settlement_reference']
-                    && ($duplicate->notes ?: null) === ($data['notes'] ?? null);
+                    && $this->optionalText($duplicate->notes) === $this->optionalText($data['notes'] ?? null);
                 if (!$sameRequest) {
                     throw ValidationException::withMessages([
                         'idempotency_key' => ['This settlement key was already used with different settlement details.'],
@@ -322,6 +444,11 @@ class VehicleLeaseService
             }
             if ($release->settlement_status === 'settled') {
                 throw ValidationException::withMessages(['lease' => ['This release settlement is already recorded.']]);
+            }
+            if (Carbon::parse($data['settled_at'])->lt($release->effective_at)) {
+                throw ValidationException::withMessages([
+                    'settled_at' => ['The release settlement cannot predate the physical release.'],
+                ]);
             }
             $net = round((float) $release->net_settlement_amount, 2);
             $expectedDirection = $net > 0 ? 'payable_to_provider' : 'receivable_from_provider';
@@ -344,7 +471,7 @@ class VehicleLeaseService
                 'settled_at' => $data['settled_at'],
                 'settled_by' => $userId,
                 'settlement_reference' => $data['settlement_reference'],
-                'notes' => $data['notes'] ?? $release->notes,
+                'notes' => $this->optionalText($data['notes'] ?? null) ?? $release->notes,
             ]);
             $lease->update([
                 'financial_status' => 'settled',
@@ -376,6 +503,11 @@ class VehicleLeaseService
             }
             if ($lease->ownership_transfer_required) {
                 throw ValidationException::withMessages(['lease' => ['This contract requires an explicit ownership transfer instead of a no-change closure.']]);
+            }
+            if ($this->depositAvailable($lease) > 0) {
+                throw ValidationException::withMessages([
+                    'lease' => ['Return, forfeit, or offset the remaining refundable deposit before closing finance.'],
+                ]);
             }
             if ($lease->financially_settled_at
                 && Carbon::parse($data['closed_at'])->lt($lease->financially_settled_at)) {
@@ -418,6 +550,11 @@ class VehicleLeaseService
             }
             if (!$lease->ownership_transfer_required) {
                 throw ValidationException::withMessages(['lease' => ['This contract is configured to close without an ownership transfer.']]);
+            }
+            if ($this->depositAvailable($lease) > 0) {
+                throw ValidationException::withMessages([
+                    'lease' => ['Return, forfeit, or offset the remaining refundable deposit before ownership transfer.'],
+                ]);
             }
             $document = $this->verifiedClosureDocument($lease, $data['closure_document_id']);
             $vehicle = Vehicle::query()->lockForUpdate()->findOrFail($lease->vehicle_id);
@@ -487,6 +624,11 @@ class VehicleLeaseService
             if (!in_array($previousLease->status, ['released', 'completed'], true)) {
                 throw ValidationException::withMessages(['lease' => ['Only a physically released or finance-closed contract can be renewed.']]);
             }
+            if ($this->depositAvailable($previousLease) > 0) {
+                throw ValidationException::withMessages([
+                    'lease' => ['Resolve the previous contract refundable deposit before renewal.'],
+                ]);
+            }
             $newLease = $this->create($previousLease->vehicle, $data, $userId);
             $this->event($previousLease, 'renewal_created', $previousLease->status, $previousLease->status, [
                 'renewal_lease_id' => $newLease->id,
@@ -509,6 +651,7 @@ class VehicleLeaseService
             'ownerAtStart.user',
             'schedules.allocations',
             'payments.allocations',
+            'depositDispositions',
             'release',
             'events.performer:id,first_name,last_name',
             'ownershipHistory.fromOwner.user',
@@ -543,6 +686,8 @@ class VehicleLeaseService
         $openReceivable = $lease->status === 'released' && $releaseSettlementPending
             ? abs(min(0, $releaseNet))
             : 0;
+        $depositAvailable = $this->depositAvailable($lease);
+        $depositDispositions = $lease->depositDispositions->sortByDesc('transaction_date')->values();
         return [
             'lease' => $lease,
             'financial_summary' => [
@@ -554,7 +699,19 @@ class VehicleLeaseService
                 'overdue_amount' => $financiallyClosed ? 0 : $contractualOverdue,
                 'refundable_deposit' => (float) $lease->refundable_deposit,
                 'deposit_paid_amount' => (float) $lease->deposit_paid_amount,
-                'deposit_available_for_release' => max(0, round((float) $lease->deposit_paid_amount - (float) ($lease->release?->deposit_credit ?? 0), 2)),
+                'deposit_available_for_release' => $depositAvailable,
+                'deposit_returned_amount' => round((float) $depositDispositions
+                    ->where('status', 'recorded')
+                    ->where('disposition_type', 'return_received')
+                    ->sum('amount'), 2),
+                'deposit_forfeited_amount' => round((float) $depositDispositions
+                    ->where('status', 'recorded')
+                    ->where('disposition_type', 'forfeited')
+                    ->sum('amount'), 2),
+                'deposit_offset_amount' => round((float) $depositDispositions
+                    ->where('status', 'recorded')
+                    ->where('disposition_type', 'offset')
+                    ->sum('amount'), 2),
                 'monthly_run_rate' => $lease->financial_status === 'active'
                     && in_array($lease->status, ['active', 'expired'], true)
                     ? min($this->monthlyCommitment($lease), max(0, round($scheduled - $paid, 2)))
@@ -565,10 +722,11 @@ class VehicleLeaseService
             ],
             'schedule' => $schedule,
             'payments' => $lease->payments->sortByDesc('paid_date')->values(),
+            'deposit_dispositions' => $depositDispositions,
             'release' => $lease->release,
             'history' => $lease->events,
             'ownership_history' => $lease->vehicle->ownershipHistory,
-            'next_action' => $this->nextAction($lease, $openPayable),
+            'next_action' => $this->nextAction($lease, $openPayable, $depositAvailable),
         ];
     }
 
@@ -655,6 +813,20 @@ class VehicleLeaseService
                 'deposit_paid_date' => ['Paid date and payment reference are required when a refundable deposit is recorded as paid.'],
             ]);
         }
+        if ($paidDeposit > 0 && empty($data['deposit_payment_method'])) {
+            throw ValidationException::withMessages([
+                'deposit_payment_method' => ['Payment method is required when a refundable deposit is recorded as paid.'],
+            ]);
+        }
+        $downPayment = round((float) ($data['down_payment'] ?? 0), 2);
+        if ($downPayment > 0
+            && (empty($data['down_payment_paid_date'])
+                || empty($data['down_payment_method'])
+                || empty($data['down_payment_reference']))) {
+            throw ValidationException::withMessages([
+                'down_payment_paid_date' => ['Paid date, payment method, and reference are required when a down payment is recorded.'],
+            ]);
+        }
         $months = match ($data['payment_frequency']) {
             'monthly' => 1,
             'quarterly' => 3,
@@ -719,15 +891,24 @@ class VehicleLeaseService
         return $document;
     }
 
-    private function nextAction(VehicleLease $lease, float $outstanding): string
+    private function nextAction(
+        VehicleLease $lease,
+        float $outstanding,
+        float $depositAvailable
+    ): string
     {
         if ($lease->status === 'draft') {
             return 'Review ownership snapshot and finance terms, then activate.';
         }
         if ($lease->status === 'released') {
-            return $lease->release?->settlement_status === 'settled'
-                ? 'Physical release and settlement are complete.'
-                : 'Record the physical release settlement.';
+            if ($lease->release?->settlement_status !== 'settled') {
+                return 'Record the physical release settlement.';
+            }
+            if ($depositAvailable > 0) {
+                return 'Record how the remaining refundable deposit was returned, forfeited, or offset.';
+            }
+
+            return 'Physical release, settlement, and refundable-deposit reconciliation are complete.';
         }
         if ($lease->status === 'completed') {
             return 'Finance contract is closed; vehicle ownership and availability are unchanged unless an explicit transfer was recorded.';
@@ -745,6 +926,23 @@ class VehicleLeaseService
         return 'Verify the discharge document and close finance without changing vehicle ownership.';
     }
 
+    private function depositAvailable(VehicleLease $lease): float
+    {
+        $dispositions = $lease->relationLoaded('depositDispositions')
+            ? $lease->depositDispositions
+            : $lease->depositDispositions()->get();
+        $disposed = (float) $dispositions
+            ->where('status', 'recorded')
+            ->sum('amount');
+
+        return max(0, round(
+            (float) $lease->deposit_paid_amount
+            - (float) ($lease->release?->deposit_credit ?? $lease->release()->value('deposit_credit') ?? 0)
+            - $disposed,
+            2
+        ));
+    }
+
     private function event(VehicleLease $lease, string $type, ?string $from, ?string $to, array $data, ?string $userId): void
     {
         VehicleLeaseEvent::create([
@@ -757,5 +955,12 @@ class VehicleLeaseService
     private function nextLeaseNumber(): string
     {
         return 'VLS-' . now()->format('YmdHis') . '-' . strtoupper(substr((string) Str::uuid(), 0, 6));
+    }
+
+    private function optionalText(mixed $value): ?string
+    {
+        $normalized = trim((string) ($value ?? ''));
+
+        return $normalized === '' ? null : $normalized;
     }
 }

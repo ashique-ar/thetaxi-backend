@@ -20,6 +20,7 @@ function validateVehicleLeaseTerms(array $overrides = []): void
         'refundable_deposit' => 15000,
         'deposit_paid_amount' => 15000,
         'deposit_paid_date' => '2026-01-01',
+        'deposit_payment_method' => 'bank_transfer',
         'deposit_payment_reference' => 'DEP-001',
     ], $overrides);
 

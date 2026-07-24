@@ -6,6 +6,17 @@ use Illuminate\Validation\Rule;
 
 trait HasCurrentVehicleLeaseRules
 {
+    protected function prepareForValidation(): void
+    {
+        $lease = $this->input('current_lease');
+        if (! is_array($lease) || ! array_key_exists('currency', $lease)) {
+            return;
+        }
+
+        $lease['currency'] = strtoupper(trim((string) $lease['currency']));
+        $this->merge(['current_lease' => $lease]);
+    }
+
     protected function currentVehicleLeaseRules(): array
     {
         $ignoreLeaseId = $this->input('current_lease.id');
@@ -49,12 +60,22 @@ trait HasCurrentVehicleLeaseRules
                 'after_or_equal:current_lease.start_date',
                 'before_or_equal:current_lease.end_date',
             ],
-            'current_lease.currency' => ['exclude_if:current_lease.enabled,false', 'required', 'string', 'size:3'],
+            'current_lease.currency' => [
+                'exclude_if:current_lease.enabled,false',
+                'required',
+                'string',
+                'size:3',
+                Rule::exists('currencies', 'code')->whereNull('deleted_at'),
+            ],
             'current_lease.financed_amount' => ['exclude_if:current_lease.enabled,false', 'required', 'numeric', 'min:0.01'],
             'current_lease.down_payment' => ['exclude_if:current_lease.enabled,false', 'nullable', 'numeric', 'min:0'],
+            'current_lease.down_payment_paid_date' => ['exclude_if:current_lease.enabled,false', 'nullable', 'date', 'before_or_equal:today'],
+            'current_lease.down_payment_method' => ['exclude_if:current_lease.enabled,false', 'nullable', 'string', 'max:40'],
+            'current_lease.down_payment_reference' => ['exclude_if:current_lease.enabled,false', 'nullable', 'string', 'max:255'],
             'current_lease.refundable_deposit' => ['exclude_if:current_lease.enabled,false', 'nullable', 'numeric', 'min:0'],
             'current_lease.deposit_paid_amount' => ['exclude_if:current_lease.enabled,false', 'nullable', 'numeric', 'min:0'],
             'current_lease.deposit_paid_date' => ['exclude_if:current_lease.enabled,false', 'nullable', 'date', 'before_or_equal:today'],
+            'current_lease.deposit_payment_method' => ['exclude_if:current_lease.enabled,false', 'nullable', 'string', 'max:40'],
             'current_lease.deposit_payment_reference' => ['exclude_if:current_lease.enabled,false', 'nullable', 'string', 'max:255'],
             'current_lease.installment_amount' => ['exclude_if:current_lease.enabled,false', 'required', 'numeric', 'min:0.01'],
             'current_lease.payment_frequency' => [

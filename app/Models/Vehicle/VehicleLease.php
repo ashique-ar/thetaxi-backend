@@ -16,8 +16,9 @@ class VehicleLease extends BaseModel
         'contract_type', 'title_holder', 'lien_reference',
         'ownership_transfer_required', 'start_date', 'end_date',
         'first_payment_date', 'currency', 'financed_amount',
-        'down_payment', 'refundable_deposit', 'deposit_paid_amount',
-        'deposit_paid_date', 'deposit_payment_reference', 'installment_amount',
+        'down_payment', 'down_payment_paid_date', 'down_payment_method',
+        'down_payment_reference', 'refundable_deposit', 'deposit_paid_amount',
+        'deposit_paid_date', 'deposit_payment_method', 'deposit_payment_reference', 'installment_amount',
         'payment_frequency', 'installment_count', 'interest_rate', 'balloon_payment',
         'reminder_days', 'status', 'financial_status', 'activated_at',
         'financially_settled_at', 'expired_at', 'expiry_reminder_sent_at',
@@ -28,6 +29,7 @@ class VehicleLease extends BaseModel
     protected $casts = [
         'start_date' => 'date', 'end_date' => 'date', 'first_payment_date' => 'date',
         'financed_amount' => 'decimal:2', 'down_payment' => 'decimal:2',
+        'down_payment_paid_date' => 'date',
         'refundable_deposit' => 'decimal:2', 'deposit_paid_amount' => 'decimal:2',
         'deposit_paid_date' => 'date', 'installment_amount' => 'decimal:2',
         'interest_rate' => 'decimal:4', 'balloon_payment' => 'decimal:2',
@@ -41,6 +43,7 @@ class VehicleLease extends BaseModel
     public function ownerAtStart(): BelongsTo { return $this->belongsTo(VehicleOwner::class, 'owner_id_at_start'); }
     public function schedules(): HasMany { return $this->hasMany(VehicleLeaseSchedule::class); }
     public function payments(): HasMany { return $this->hasMany(VehicleLeasePayment::class); }
+    public function depositDispositions(): HasMany { return $this->hasMany(VehicleLeaseDepositDisposition::class); }
     public function release(): HasOne { return $this->hasOne(VehicleLeaseRelease::class); }
     public function events(): HasMany { return $this->hasMany(VehicleLeaseEvent::class)->orderByDesc('occurred_at'); }
     public function ownershipHistory(): HasMany { return $this->hasMany(VehicleOwnershipHistory::class); }

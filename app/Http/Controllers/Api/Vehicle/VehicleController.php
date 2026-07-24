@@ -194,7 +194,7 @@ class VehicleController extends Controller
     {
         $validated = $request->validate([
             'start_date' => ['nullable', 'date'],
-            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
+            'end_date' => ['nullable', 'date'],
             'ownership_type' => ['nullable', 'string'],
             'usage_type' => ['nullable', 'string'],
             'payment_model' => ['nullable', 'string'],
@@ -204,12 +204,19 @@ class VehicleController extends Controller
             'hire_status' => ['nullable', 'string'],
         ]);
 
-        $start = isset($validated['start_date'])
-            ? Carbon::parse($validated['start_date'])->startOfDay()
-            : now()->startOfMonth();
-        $end = isset($validated['end_date'])
-            ? Carbon::parse($validated['end_date'])->endOfDay()
-            : now()->endOfMonth();
+        $providedStart = isset($validated['start_date'])
+            ? Carbon::parse($validated['start_date'])
+            : null;
+        $providedEnd = isset($validated['end_date'])
+            ? Carbon::parse($validated['end_date'])
+            : null;
+        $start = ($providedStart ?? $providedEnd?->copy()->startOfMonth() ?? now()->startOfMonth())->startOfDay();
+        $end = ($providedEnd ?? $providedStart?->copy()->endOfMonth() ?? now()->endOfMonth())->endOfDay();
+        if ($end->lt($start)) {
+            throw ValidationException::withMessages([
+                'end_date' => ['The end date must be on or after the start date.'],
+            ]);
+        }
 
         $vehiclesQuery = Vehicle::query()
             ->with(['owner.driver.user', 'group.category', 'activeCommission', 'defaultDriver.user'])
@@ -222,7 +229,10 @@ class VehicleController extends Controller
 
         $vehicles = $vehiclesQuery->get();
         $vehicleIds = $vehicles->pluck('id');
-        $leaseAccounting = $leaseAccountingService->portfolioSummary($start, $end, $vehicleIds);
+        $canViewLeaseAccounting = $request->user()?->can('vehicle-leases.view') === true;
+        $leaseAccounting = $canViewLeaseAccounting
+            ? $leaseAccountingService->portfolioSummary($start, $end, $vehicleIds)
+            : ['by_currency' => [], 'per_vehicle' => []];
         $leaseAccountingByVehicle = $leaseAccounting['per_vehicle'];
 
         $activeVehicleIds = DriverAssignment::query()
@@ -275,7 +285,8 @@ class VehicleController extends Controller
             $performance,
             $activeVehicleIds,
             $activeHireMovements,
-            $leaseAccountingByVehicle
+            $leaseAccountingByVehicle,
+            $canViewLeaseAccounting
         ) {
             $row = $performance->get($vehicle->id);
             $hireCount = (int) ($row->hire_count ?? 0);
@@ -336,12 +347,14 @@ class VehicleController extends Controller
                     ? $ownerMonthlyCommitment
                     : null,
                 'owner_monthly_commitment' => $ownerMonthlyCommitment,
-                'lease_monthly_commitment' => $leaseMonthlyCommitment,
                 'total_monthly_commitment' => $totalMonthlyCommitment,
-                'lease_currency' => $leaseCurrency,
-                'has_mixed_commitment_currency' => $hasMixedCommitmentCurrency,
-                'lease_outstanding' => round((float) ($leaseMetrics['outstanding'] ?? 0), 2),
-                'lease_overdue' => round((float) ($leaseMetrics['overdue'] ?? 0), 2),
+                ...($canViewLeaseAccounting ? [
+                    'lease_monthly_commitment' => $leaseMonthlyCommitment,
+                    'lease_currency' => $leaseCurrency,
+                    'has_mixed_commitment_currency' => $hasMixedCommitmentCurrency,
+                    'lease_outstanding' => round((float) ($leaseMetrics['outstanding'] ?? 0), 2),
+                    'lease_overdue' => round((float) ($leaseMetrics['overdue'] ?? 0), 2),
+                ] : []),
                 'monthly_mileage_limit' => $limit,
                 'used_mileage' => $usedMileage,
                 'remaining_mileage' => $limit !== null ? max($limit - $usedMileage, 0) : null,
@@ -378,13 +391,15 @@ class VehicleController extends Controller
                     'total_revenue' => round($vehicleRows->sum('revenue'), 2),
                     'total_commission_payable' => round($vehicleRows->sum('commission_payable'), 2),
                     'owner_monthly_commitments' => $ownerMonthlyCommitments,
-                    'lease_accounting_by_currency' => $leaseAccounting['by_currency'],
                     'fixed_monthly_commitments' => $totalMonthlyCommitments,
                     'total_monthly_commitments' => $totalMonthlyCommitments,
                     'commitment_currency' => 'LKR',
-                    'has_mixed_commitment_currencies' => collect($leaseAccounting['by_currency'])
-                        ->except('LKR')
-                        ->contains(fn ($totals) => (float) ($totals['monthly_run_rate'] ?? 0) > 0),
+                    ...($canViewLeaseAccounting ? [
+                        'lease_accounting_by_currency' => $leaseAccounting['by_currency'],
+                        'has_mixed_commitment_currencies' => collect($leaseAccounting['by_currency'])
+                            ->except('LKR')
+                            ->contains(fn ($totals) => (float) ($totals['monthly_run_rate'] ?? 0) > 0),
+                    ] : []),
                     'commission_based_vehicles' => $vehicleRows->whereIn('payment_model', ['commission', 'commission_plus_fixed'])->count(),
                     'fixed_monthly_vehicles' => $vehicleRows->whereIn('payment_model', ['fixed_monthly', 'commission_plus_fixed'])->count(),
                 ],
@@ -394,7 +409,7 @@ class VehicleController extends Controller
                 'highest_used_vehicles' => $vehicleRows->sortByDesc('hire_count')->take(10)->values(),
                 'least_used_vehicles' => $vehicleRows->sortBy('hire_count')->take(10)->values(),
                 'low_utilization_fixed_costs' => $vehicleRows
-                    ->filter(fn ($row) => ($row['owner_monthly_commitment'] || $row['lease_monthly_commitment'])
+                    ->filter(fn ($row) => ($row['owner_monthly_commitment'] || ($row['lease_monthly_commitment'] ?? 0))
                         && $row['monthly_mileage_limit']
                         && $row['used_mileage'] < ($row['monthly_mileage_limit'] * 0.5))
                     ->values(),
@@ -573,6 +588,11 @@ class VehicleController extends Controller
             throw ValidationException::withMessages([
                 'owner_id' => ['Ownership cannot be edited while a finance or lease contract is open. Complete the verified contract closure/transfer workflow first.'],
             ]);
+        }
+        if ($ownershipChanged
+            && $vehicle->leases()->where('status', 'draft')->exists()
+            && ! $request->user()->can('vehicle-leases.edit')) {
+            abort(403, 'Editing vehicle ownership also changes the current lease draft and requires vehicle lease edit permission.');
         }
 
         DB::transaction(function () use (

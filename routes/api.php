@@ -617,6 +617,10 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:vehicle-leases.payments');
         Route::post('/{vehicleLease}/payments/{payment}/reverse', [VehicleLeaseController::class, 'reversePayment'])
             ->middleware('permission:vehicle-leases.payments');
+        Route::post('/{vehicleLease}/deposit-dispositions', [VehicleLeaseController::class, 'recordDepositDisposition'])
+            ->middleware('permission:vehicle-leases.payments');
+        Route::post('/{vehicleLease}/deposit-dispositions/{depositDisposition}/reverse', [VehicleLeaseController::class, 'reverseDepositDisposition'])
+            ->middleware('permission:vehicle-leases.payments');
         Route::post('/{vehicleLease}/release', [VehicleLeaseController::class, 'release'])
             ->middleware('permission:vehicle-leases.release');
         Route::post('/{vehicleLease}/release-settlement', [VehicleLeaseController::class, 'settleRelease'])

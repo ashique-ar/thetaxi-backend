@@ -150,6 +150,7 @@ class VehicleLeaseController extends Controller
 
     public function store(Request $request, Vehicle $vehicle): JsonResponse
     {
+        $this->normalizeCurrency($request);
         $data = $request->validate($this->rules());
         $lease = $this->leases->create($vehicle, $data, $request->user()?->id);
 
@@ -167,6 +168,7 @@ class VehicleLeaseController extends Controller
 
     public function update(Request $request, VehicleLease $vehicleLease): JsonResponse
     {
+        $this->normalizeCurrency($request);
         $data = $request->validate($this->rules($vehicleLease));
 
         return response()->json([
@@ -207,7 +209,7 @@ class VehicleLeaseController extends Controller
     {
         $data = $request->validate([
             'release_type' => ['required', Rule::in(['scheduled_return', 'early_termination', 'repossession', 'voluntary_surrender', 'other'])],
-            'effective_at' => ['required', 'date'],
+            'effective_at' => ['required', 'date', 'before_or_equal:now'],
             'odometer' => ['nullable', 'integer', 'min:0'],
             'condition_status' => ['nullable', Rule::in(['excellent', 'good', 'fair', 'damaged'])],
             'location' => ['nullable', 'string', 'max:255'],
@@ -237,6 +239,53 @@ class VehicleLeaseController extends Controller
             'status' => 'success',
             'message' => 'Lease payment reversed with its original record retained.',
             'data' => $this->leases->reversePayment($vehicleLease, $payment, $data['reason'], $request->user()->id),
+        ]);
+    }
+
+    public function recordDepositDisposition(Request $request, VehicleLease $vehicleLease): JsonResponse
+    {
+        $data = $request->validate([
+            'disposition_type' => ['required', Rule::in(['return_received', 'forfeited', 'offset'])],
+            'amount' => ['required', 'numeric', 'min:0.01'],
+            'transaction_date' => ['required', 'date', 'before_or_equal:today'],
+            'payment_method' => [
+                'required',
+                Rule::in(['cash', 'bank_transfer', 'cheque', 'card', 'online', 'offset', 'not_applicable', 'other']),
+            ],
+            'reference' => ['required', 'string', 'max:255'],
+            'idempotency_key' => ['required', 'uuid'],
+            'notes' => ['nullable', 'string', 'max:3000'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Refundable-deposit disposition recorded.',
+            'data' => $this->leases->recordDepositDisposition(
+                $vehicleLease,
+                $data,
+                $request->user()->id
+            ),
+        ]);
+    }
+
+    public function reverseDepositDisposition(
+        Request $request,
+        VehicleLease $vehicleLease,
+        string $depositDisposition
+    ): JsonResponse {
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:3000'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Refundable-deposit disposition reversed with its original record retained.',
+            'data' => $this->leases->reverseDepositDisposition(
+                $vehicleLease,
+                $depositDisposition,
+                $data['reason'],
+                $request->user()->id
+            ),
         ]);
     }
 
@@ -312,6 +361,7 @@ class VehicleLeaseController extends Controller
 
     public function renew(Request $request, VehicleLease $vehicleLease): JsonResponse
     {
+        $this->normalizeCurrency($request);
         $data = $request->validate($this->rules());
 
         return response()->json([
@@ -336,12 +386,21 @@ class VehicleLeaseController extends Controller
             'start_date' => ['required', 'date'],
             'end_date' => ['required', 'date', 'after:start_date'],
             'first_payment_date' => ['required', 'date', 'after_or_equal:start_date', 'before_or_equal:end_date'],
-            'currency' => ['required', 'string', 'size:3'],
+            'currency' => [
+                'required',
+                'string',
+                'size:3',
+                Rule::exists('currencies', 'code')->whereNull('deleted_at'),
+            ],
             'financed_amount' => ['required', 'numeric', 'min:0.01'],
             'down_payment' => ['nullable', 'numeric', 'min:0'],
+            'down_payment_paid_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'down_payment_method' => ['nullable', 'string', 'max:40'],
+            'down_payment_reference' => ['nullable', 'string', 'max:255'],
             'refundable_deposit' => ['nullable', 'numeric', 'min:0'],
             'deposit_paid_amount' => ['nullable', 'numeric', 'min:0'],
             'deposit_paid_date' => ['nullable', 'date', 'before_or_equal:today'],
+            'deposit_payment_method' => ['nullable', 'string', 'max:40'],
             'deposit_payment_reference' => ['nullable', 'string', 'max:255'],
             'installment_amount' => ['required', 'numeric', 'min:0.01'],
             'payment_frequency' => ['required', Rule::in(['monthly', 'quarterly', 'semiannual', 'annual'])],
@@ -352,5 +411,14 @@ class VehicleLeaseController extends Controller
             'terms' => ['nullable', 'string', 'max:10000'],
             'notes' => ['nullable', 'string', 'max:5000'],
         ];
+    }
+
+    private function normalizeCurrency(Request $request): void
+    {
+        if ($request->exists('currency')) {
+            $request->merge([
+                'currency' => strtoupper(trim((string) $request->input('currency'))),
+            ]);
+        }
     }
 }

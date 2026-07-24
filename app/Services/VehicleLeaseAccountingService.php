@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Vehicle\VehicleLease;
+use App\Models\Vehicle\VehicleLeasePayment;
+use App\Models\Vehicle\VehicleLeaseSchedule;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -56,12 +58,47 @@ class VehicleLeaseAccountingService
         $leases = VehicleLease::query()
             ->whereIn('vehicle_id', $ids)
             ->whereNotNull('activated_at')
-            ->with([
-                'schedules.allocations.payment',
-                'payments',
-                'release',
-            ])
+            ->with(['release', 'depositDispositions'])
             ->get();
+
+        if ($leases->isEmpty()) {
+            return $this->emptySummary();
+        }
+
+        $leaseIds = $leases->pluck('id');
+        $openLeaseIds = $leases
+            ->filter(fn (VehicleLease $lease) => in_array($lease->status, self::OPEN_STATUSES, true)
+                && $lease->financial_status === 'active')
+            ->pluck('id');
+
+        $schedules = VehicleLeaseSchedule::query()
+            ->whereIn('vehicle_lease_id', $leaseIds)
+            ->where(function ($query) use ($openLeaseIds, $periodStart, $periodEnd) {
+                $query->whereIn('vehicle_lease_id', $openLeaseIds)
+                    ->orWhereBetween('due_date', [
+                        $periodStart->toDateString(),
+                        $periodEnd->toDateString(),
+                    ]);
+            })
+            ->with('allocations.payment')
+            ->get()
+            ->groupBy('vehicle_lease_id');
+
+        $payments = VehicleLeasePayment::query()
+            ->whereIn('vehicle_lease_id', $leaseIds)
+            ->where(function ($query) use ($periodStart, $periodEnd) {
+                $query->whereBetween('paid_date', [
+                    $periodStart->toDateString(),
+                    $periodEnd->toDateString(),
+                ])->orWhereBetween('reversed_at', [$periodStart, $periodEnd]);
+            })
+            ->get()
+            ->groupBy('vehicle_lease_id');
+
+        foreach ($leases as $lease) {
+            $lease->setRelation('schedules', $schedules->get($lease->id, collect()));
+            $lease->setRelation('payments', $payments->get($lease->id, collect()));
+        }
 
         return $this->buildSummary($leases, $periodStart, $periodEnd);
     }
@@ -104,6 +141,9 @@ class VehicleLeaseAccountingService
             $release = $lease->relationLoaded('release')
                 ? $lease->getRelation('release')
                 : null;
+            $depositDispositions = $lease->relationLoaded('depositDispositions')
+                ? collect($lease->getRelation('depositDispositions'))
+                : collect();
 
             $leaseOutstanding = 0;
             $leaseOverdue = 0;
@@ -133,13 +173,13 @@ class VehicleLeaseAccountingService
             }
 
             foreach ($payments as $payment) {
-                if ($payment->status !== 'recorded') {
-                    continue;
-                }
-
                 $paidDate = $this->date($payment->paid_date)->startOfDay();
                 if ($paidDate->betweenIncluded($periodStart, $periodEnd)) {
                     $currencyTotals[$currency]['cash_paid_in_period'] += $this->toMinorUnits($payment->amount);
+                }
+                if ($payment->reversed_at
+                    && $this->date($payment->reversed_at)->betweenIncluded($periodStart, $periodEnd)) {
+                    $currencyTotals[$currency]['payment_reversals_in_period'] += $this->toMinorUnits($payment->amount);
                 }
             }
 
@@ -150,9 +190,14 @@ class VehicleLeaseAccountingService
 
             $releaseIsPending = $release && $release->settlement_status === 'pending';
             $depositCredit = $release ? $this->toMinorUnits($release->deposit_credit) : 0;
+            $recordedDepositDispositions = $depositDispositions
+                ->where('status', 'recorded')
+                ->sum(fn ($disposition) => $this->toMinorUnits($disposition->amount));
             $currencyTotals[$currency]['refundable_deposit_asset'] += max(
                 0,
-                $this->toMinorUnits($lease->deposit_paid_amount) - $depositCredit
+                $this->toMinorUnits($lease->deposit_paid_amount)
+                    - $depositCredit
+                    - $recordedDepositDispositions
             );
 
             if ($releaseIsPending) {
@@ -161,6 +206,46 @@ class VehicleLeaseAccountingService
                     $currencyTotals[$currency]['pending_release_payable'] += $netSettlement;
                 } elseif ($netSettlement < 0) {
                     $currencyTotals[$currency]['pending_release_receivable'] += abs($netSettlement);
+                }
+            } elseif ($release?->settlement_status === 'settled'
+                && $release->settled_at
+                && $this->date($release->settled_at)->betweenIncluded($periodStart, $periodEnd)) {
+                $settledAmount = $this->toMinorUnits(
+                    $release->settlement_amount ?? abs((float) $release->net_settlement_amount)
+                );
+                if ($release->settlement_direction === 'receivable_from_provider') {
+                    $currencyTotals[$currency]['release_cash_received_in_period'] += $settledAmount;
+                } elseif ($release->settlement_direction === 'payable_to_provider') {
+                    $currencyTotals[$currency]['release_cash_paid_in_period'] += $settledAmount;
+                }
+            }
+
+            if ($lease->deposit_paid_date
+                && $this->date($lease->deposit_paid_date)->betweenIncluded($periodStart, $periodEnd)) {
+                $currencyTotals[$currency]['refundable_deposit_paid_in_period'] +=
+                    $this->toMinorUnits($lease->deposit_paid_amount);
+            }
+            if ($lease->down_payment_paid_date
+                && $this->date($lease->down_payment_paid_date)->betweenIncluded($periodStart, $periodEnd)) {
+                $currencyTotals[$currency]['down_payment_paid_in_period'] +=
+                    $this->toMinorUnits($lease->down_payment);
+            }
+            foreach ($depositDispositions as $disposition) {
+                $transactionDate = $this->date($disposition->transaction_date)->startOfDay();
+                if ($transactionDate->betweenIncluded($periodStart, $periodEnd)) {
+                    $amount = $this->toMinorUnits($disposition->amount);
+                    if ($disposition->disposition_type === 'return_received') {
+                        $currencyTotals[$currency]['refundable_deposit_cash_received_in_period'] += $amount;
+                    } elseif ($disposition->disposition_type === 'forfeited') {
+                        $currencyTotals[$currency]['refundable_deposit_forfeited_in_period'] += $amount;
+                    } elseif ($disposition->disposition_type === 'offset') {
+                        $currencyTotals[$currency]['refundable_deposit_offset_in_period'] += $amount;
+                    }
+                }
+                if ($disposition->reversed_at
+                    && $this->date($disposition->reversed_at)->betweenIncluded($periodStart, $periodEnd)) {
+                    $currencyTotals[$currency]['deposit_disposition_reversals_in_period'] +=
+                        $this->toMinorUnits($disposition->amount);
                 }
             }
 
@@ -284,6 +369,15 @@ class VehicleLeaseAccountingService
             'allocated_in_period' => 0,
             'remaining_due_in_period' => 0,
             'cash_paid_in_period' => 0,
+            'payment_reversals_in_period' => 0,
+            'release_cash_paid_in_period' => 0,
+            'release_cash_received_in_period' => 0,
+            'down_payment_paid_in_period' => 0,
+            'refundable_deposit_paid_in_period' => 0,
+            'refundable_deposit_cash_received_in_period' => 0,
+            'refundable_deposit_forfeited_in_period' => 0,
+            'refundable_deposit_offset_in_period' => 0,
+            'deposit_disposition_reversals_in_period' => 0,
             'overdue' => 0,
             'total_outstanding' => 0,
             'refundable_deposit_asset' => 0,
