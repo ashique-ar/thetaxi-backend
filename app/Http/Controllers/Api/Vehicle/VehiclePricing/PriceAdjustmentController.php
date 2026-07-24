@@ -38,7 +38,7 @@ class PriceAdjustmentController extends Controller
             && $this->pricingContextPolicy->internalUsesWebsitePricing()
         ) {
             $payload['applicable_contexts'] = array_values(array_unique(array_map(
-                fn (mixed $context) => (string) $context === 'portal' ? 'public' : (string) $context,
+                fn(mixed $context) => (string) $context === 'portal' ? 'public' : (string) $context,
                 $payload['applicable_contexts']
             )));
         }
