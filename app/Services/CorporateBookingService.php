@@ -22,7 +22,9 @@ class CorporateBookingService
         protected BookingFlowService $bookingFlowService,
         protected ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         protected CorporateSubmittedResponseProjector $submittedResponseProjector,
-    ) {}
+    )
+    {
+    }
 
     // ─── Booking Creation ─────────────────────────────────────────────
 
@@ -39,13 +41,13 @@ class CorporateBookingService
             $needsApproval = $corporate->approval_required;
 
             $params = array_merge($data, [
-                'customer_id'            => $this->resolveCustomerIdForEmployee($employee),
-                'is_corporate_booking'   => true,
-                'corporate_account_id'   => $corporate->id,
-                'employee_id'            => $employee->user_id,
+                'customer_id' => $this->resolveCustomerIdForEmployee($employee),
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => $employee->user_id,
                 'corporate_department_id' => $employee->department_id,
-                'corporate_division_id'  => $employee->division_id,
-                'created_by_user_id'     => Auth::id(),
+                'corporate_division_id' => $employee->division_id,
+                'created_by_user_id' => Auth::id(),
             ]);
 
             if ($needsApproval) {
@@ -58,17 +60,17 @@ class CorporateBookingService
 
             // Ensure corporate fields are set on the booking
             $booking->update([
-                'is_corporate_booking'    => true,
-                'corporate_account_id'    => $corporate->id,
-                'employee_id'             => $employee->user_id,
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => $employee->user_id,
                 'corporate_department_id' => $employee->department_id,
-                'corporate_division_id'   => $employee->division_id,
-                'created_by_user_id'      => Auth::id(),
+                'corporate_division_id' => $employee->division_id,
+                'created_by_user_id' => Auth::id(),
             ]);
 
             $this->logAudit('corporate_booking_created', 'Booking', $booking->id, [
-                'corporate_id'  => $corporate->id,
-                'employee_id'   => $employee->user_id,
+                'corporate_id' => $corporate->id,
+                'employee_id' => $employee->user_id,
                 'needs_approval' => $needsApproval,
             ]);
 
@@ -92,7 +94,8 @@ class CorporateBookingService
         CorporateEmployee $coordinator,
         CorporateEmployee $targetEmployee,
         array $data,
-    ): Booking {
+    ): Booking
+    {
         $corporate = $coordinator->corporate;
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
@@ -106,13 +109,13 @@ class CorporateBookingService
             }
 
             $params = array_merge($data, [
-                'customer_id'            => $this->resolveCustomerIdForEmployee($targetEmployee),
-                'is_corporate_booking'   => true,
-                'corporate_account_id'   => $corporate->id,
-                'employee_id'            => $targetEmployee->user_id,
+                'customer_id' => $this->resolveCustomerIdForEmployee($targetEmployee),
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => $targetEmployee->user_id,
                 'corporate_department_id' => $targetEmployee->department_id,
-                'corporate_division_id'  => $targetEmployee->division_id,
-                'created_by_user_id'     => $coordinator->user_id,
+                'corporate_division_id' => $targetEmployee->division_id,
+                'created_by_user_id' => $coordinator->user_id,
             ]);
 
             if ($needsApproval) {
@@ -125,19 +128,19 @@ class CorporateBookingService
 
             // Ensure corporate fields are set on the booking
             $booking->update([
-                'is_corporate_booking'    => true,
-                'corporate_account_id'    => $corporate->id,
-                'employee_id'             => $targetEmployee->user_id,
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => $targetEmployee->user_id,
                 'corporate_department_id' => $targetEmployee->department_id,
-                'corporate_division_id'   => $targetEmployee->division_id,
-                'created_by_user_id'      => $coordinator->user_id,
+                'corporate_division_id' => $targetEmployee->division_id,
+                'created_by_user_id' => $coordinator->user_id,
             ]);
 
             $this->logAudit('corporate_booking_created_for_employee', 'Booking', $booking->id, [
-                'corporate_id'       => $corporate->id,
-                'coordinator_id'     => $coordinator->user_id,
+                'corporate_id' => $corporate->id,
+                'coordinator_id' => $coordinator->user_id,
                 'target_employee_id' => $targetEmployee->user_id,
-                'needs_approval'     => $needsApproval,
+                'needs_approval' => $needsApproval,
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
             ]);
 
@@ -207,10 +210,12 @@ class CorporateBookingService
         }
 
         if (!empty($data['vehicle_group_id']) || !empty($data['service_type_id']) || !empty($data['service_type'])) {
-            return [[
-                'vehicle_group_id' => $data['vehicle_group_id'] ?? null,
-                'service_type_id' => $data['service_type_id'] ?? ($data['service_type'] ?? null),
-            ]];
+            return [
+                [
+                    'vehicle_group_id' => $data['vehicle_group_id'] ?? null,
+                    'service_type_id' => $data['service_type_id'] ?? ($data['service_type'] ?? null),
+                ]
+            ];
         }
 
         return [];
@@ -456,7 +461,7 @@ class CorporateBookingService
 
             return $trip;
         })->values();
-        $payload['approvals'] = $booking->approvals->map(fn (BookingApproval $approval) => [
+        $payload['approvals'] = $booking->approvals->map(fn(BookingApproval $approval) => [
             'id' => $approval->id,
             'status' => $approval->status,
             'comments' => $approval->comments ?? $approval->notes ?? null,
@@ -468,13 +473,13 @@ class CorporateBookingService
             ] : null,
         ])->values();
         $payload['assignments'] = [
-            'vehicles' => $booking->vehicleAssignments->map(fn ($assignment) => [
+            'vehicles' => $booking->vehicleAssignments->map(fn($assignment) => [
                 'id' => $assignment->id,
                 'status' => $assignment->status,
                 'vehicle_name' => $assignment->vehicle?->name ?? $assignment->vehicle?->title,
                 'license_plate' => $assignment->vehicle?->license_plate,
             ])->values(),
-            'drivers' => $booking->driverAssignments->map(fn ($assignment) => [
+            'drivers' => $booking->driverAssignments->map(fn($assignment) => [
                 'id' => $assignment->id,
                 'status' => $assignment->status,
                 'driver_name' => $assignment->driver?->name,
@@ -522,10 +527,14 @@ class CorporateBookingService
             $search = trim((string) $filters['search']);
             $query->where(function ($q) use ($search) {
                 $q->where('booking_number', 'like', "%{$search}%")
-                    ->orWhereHas('customer', fn ($customerQuery) =>
+                    ->orWhereHas(
+                        'customer',
+                        fn($customerQuery) =>
                         $customerQuery->where('name', 'like', "%{$search}%")
                     )
-                    ->orWhereHas('employee.user', fn ($userQuery) =>
+                    ->orWhereHas(
+                        'employee.user',
+                        fn($userQuery) =>
                         $userQuery->where('first_name', 'like', "%{$search}%")
                             ->orWhere('last_name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%")
@@ -554,7 +563,7 @@ class CorporateBookingService
     {
         $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
         $paginator->setCollection(
-            $paginator->getCollection()->map(fn (Booking $booking) => $this->mapBooking($booking, $canViewPayments))
+            $paginator->getCollection()->map(fn(Booking $booking) => $this->mapBooking($booking, $canViewPayments))
         );
 
         return $paginator;
@@ -563,7 +572,7 @@ class CorporateBookingService
     private function corporateBookingItemQuery(string $corporateId)
     {
         return BookingItem::query()
-            ->whereHas('booking', fn ($bookingQuery) => $bookingQuery->where('corporate_account_id', $corporateId))
+            ->whereHas('booking', fn($bookingQuery) => $bookingQuery->where('corporate_account_id', $corporateId))
             ->with($this->corporateBookingItemRelations());
     }
 
@@ -591,7 +600,7 @@ class CorporateBookingService
     {
         $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
         $paginator->setCollection(
-            $paginator->getCollection()->map(fn (BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
+            $paginator->getCollection()->map(fn(BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
         );
 
         return $paginator;
@@ -625,7 +634,7 @@ class CorporateBookingService
         $approval = $booking?->latestApproval;
         $bookingItems = $booking?->bookingItems ?? collect();
         $itemCount = max(1, $bookingItems->count());
-        $itemIndex = $bookingItems->search(fn ($candidate) => (string) $candidate->id === (string) $item->id);
+        $itemIndex = $bookingItems->search(fn($candidate) => (string) $candidate->id === (string) $item->id);
         $sequence = $itemIndex === false ? 1 : $itemIndex + 1;
         $itemCode = $itemCount > 1
             ? sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence)
@@ -673,7 +682,7 @@ class CorporateBookingService
             'to_time' => $item->to_time,
             'assigned_vehicle' => $item->vehicle ? [
                 'id' => $item->vehicle->id,
-                'name' => $item->vehicle->name ?? $item->vehicle->title,
+                'name' => $item->vehicle->title,
                 'license_plate' => $item->vehicle->license_plate,
             ] : null,
             'assigned_driver' => $item->driver ? [
@@ -759,7 +768,7 @@ class CorporateBookingService
             'dropoff_date' => $this->dateIso($booking->to_date),
             'assigned_vehicle' => $booking->vehicle ? [
                 'id' => $booking->vehicle->id,
-                'name' => $booking->vehicle->name ?? $booking->vehicle->title,
+                'name' => $booking->vehicle->title,
                 'license_plate' => $booking->vehicle->license_plate,
             ] : null,
             'assigned_driver' => $booking->driver ? [
@@ -843,7 +852,7 @@ class CorporateBookingService
         }
 
         $totalCount = (clone $query)->count();
-        $totalCost  = (clone $query)->sum('total_estimated');
+        $totalCost = (clone $query)->sum('total_estimated');
 
         $byStatus = (clone $query)
             ->select('status')
@@ -861,9 +870,9 @@ class CorporateBookingService
             ->toArray();
 
         return [
-            'total_count'           => $totalCount,
-            'total_cost'            => (float) $totalCost,
-            'bookings_by_status'    => $byStatus,
+            'total_count' => $totalCount,
+            'total_cost' => (float) $totalCost,
+            'bookings_by_status' => $byStatus,
             'bookings_by_department' => $byDepartment,
         ];
     }
@@ -947,12 +956,12 @@ class CorporateBookingService
     private function logAudit(string $action, string $entity, ?string $entityId, array $details = []): void
     {
         AuditLog::create([
-            'user_id'   => Auth::id(),
-            'action'    => $action,
-            'entity'    => $entity,
+            'user_id' => Auth::id(),
+            'action' => $action,
+            'entity' => $entity,
             'entity_id' => $entityId,
             'timestamp' => now(),
-            'details'   => $details,
+            'details' => $details,
         ]);
     }
 }

@@ -46,7 +46,7 @@ class BookingObservabilityService
         }
 
         $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->limit($limit + 1)->get();
-        $events = $logs->map(fn (AuditLog $log): array => $this->mapAuditEvent($booking, $log));
+        $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
         $financialQuery = FinancialAuditEvent::query()
             ->with('performedBy:id,first_name,last_name')
@@ -56,27 +56,27 @@ class BookingObservabilityService
         }
         $financialEvents = $financialQuery->orderByDesc('occurred_at')->orderByDesc('id')
             ->limit($limit + 1)->get()
-            ->map(fn (FinancialAuditEvent $event): array => $this->mapFinancialEvent($booking, $event));
+            ->map(fn(FinancialAuditEvent $event): array => $this->mapFinancialEvent($booking, $event));
 
         $tripEvents = $bookingItemId
             ? $this->tripMilestoneEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
             : collect();
         $communicationEvents = $this->communicationItems($booking, $bookingItemId)
-            ->when(!$bookingItemId, fn (Collection $items) => $items->whereNull('booking_item_id'))
-            ->map(fn (array $event): array => $this->mapCommunicationTraceEvent($booking, $event));
+            ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
+            ->map(fn(array $event): array => $this->mapCommunicationTraceEvent($booking, $event));
         $documentEvents = $this->documentItems($booking, $bookingItemId)
-            ->when(!$bookingItemId, fn (Collection $items) => $items->whereNull('booking_item_id'))
-            ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
+            ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
+            ->map(fn(array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
         $events = $events->concat($financialEvents)->concat($tripEvents)
             ->concat($communicationEvents)->concat($documentEvents)
-            ->map(fn (array $event): array => $this->withTraceIntegrity($event))
+            ->map(fn(array $event): array => $this->withTraceIntegrity($event))
             ->unique('deduplication_key')
-            ->filter(fn (array $event): bool => $this->matchesTraceFilter($event, $filter))
-            ->when($decodedCursor, fn (Collection $items) => $items->filter(
-                fn (array $event): bool => $this->isBeforeCursor($event, $decodedCursor)
+            ->filter(fn(array $event): bool => $this->matchesTraceFilter($event, $filter))
+            ->when($decodedCursor, fn(Collection $items) => $items->filter(
+                fn(array $event): bool => $this->isBeforeCursor($event, $decodedCursor)
             ))
-            ->sortByDesc(fn (array $event): string => $event['occurred_at'] . '|' . $event['id'])
+            ->sortByDesc(fn(array $event): string => $event['occurred_at'] . '|' . $event['id'])
             ->values();
         $hasMore = $events->count() > $limit;
         $events = $events->take($limit)->values();
@@ -156,12 +156,12 @@ class BookingObservabilityService
             ->with([
                 'booking:id,booking_number,status',
                 'bookingItem:id,booking_id,trip_number,vehicle_id',
-                'bookingItem.vehicle:id,name,license_plate',
+                'bookingItem.vehicle:id,title,license_plate',
                 'driver.user:id,first_name,last_name',
             ])
             ->where('status', 'active')
             ->when($dashboardScope === 'standard', function ($query) {
-                $query->whereHas('booking', fn ($bookingQuery) => $bookingQuery->whereNull('corporate_account_id'));
+                $query->whereHas('booking', fn($bookingQuery) => $bookingQuery->whereNull('corporate_account_id'));
             })
             ->where(function ($query) {
                 $query->whereNull('trip_phase')
@@ -193,7 +193,7 @@ class BookingObservabilityService
                 'trip_number' => $assignment->bookingItem?->trip_number,
                 'driver_id' => $assignment->driver_id ? (string) $assignment->driver_id : null,
                 'driver_name' => $driverName !== '' ? $driverName : ($assignment->driver?->code ?? 'Assigned driver'),
-                'vehicle_name' => $assignment->bookingItem?->vehicle?->name,
+                'vehicle_name' => $assignment->bookingItem?->vehicle?->title,
                 'vehicle_registration' => $assignment->bookingItem?->vehicle?->license_plate,
                 'trip_phase' => $assignment->trip_phase?->value ?? ($assignment->trip_phase ? (string) $assignment->trip_phase : null),
                 'freshness' => $this->freshness($recordedAt, (bool) ($assignment->driver?->is_online ?? false)),
@@ -229,19 +229,22 @@ class BookingObservabilityService
 
         if ($cursor && ($decoded = $this->decodeCursor($cursor))) {
             [$recordedAt, $id] = $decoded;
-            $previousPoint = (clone $query)->where(fn ($q) => $q->where('recorded_at', '<', $recordedAt)
-                ->orWhere(fn ($same) => $same->where('recorded_at', $recordedAt)->where('id', '<=', $id)))
+            $previousPoint = (clone $query)->where(fn($q) => $q->where('recorded_at', '<', $recordedAt)
+                ->orWhere(fn($same) => $same->where('recorded_at', $recordedAt)->where('id', '<=', $id)))
                 ->orderByDesc('recorded_at')->orderByDesc('id')->first();
-            $query->where(fn ($q) => $q->where('recorded_at', '>', $recordedAt)
-                ->orWhere(fn ($same) => $same->where('recorded_at', $recordedAt)->where('id', '>', $id)));
+            $query->where(fn($q) => $q->where('recorded_at', '>', $recordedAt)
+                ->orWhere(fn($same) => $same->where('recorded_at', $recordedAt)->where('id', '>', $id)));
         }
 
         $points = $query->orderBy('recorded_at')->orderBy('id')->limit($limit + 1)->get();
         $hasMore = $points->count() > $limit;
         $points = $points->take($limit)->values();
-        $assignmentsById = $assignments->keyBy(fn (DriverAssignment $assignment) => (string) $assignment->id);
+        $assignmentsById = $assignments->keyBy(fn(DriverAssignment $assignment) => (string) $assignment->id);
         [$mapped, $segments, $quality] = $this->segmentRoutePoints(
-            $points, $assignmentsById, $sessionAssignmentIds, $previousPoint
+            $points,
+            $assignmentsById,
+            $sessionAssignmentIds,
+            $previousPoint
         );
         $last = $points->last();
         $activeAssignment = $this->assignmentForItem($booking, $bookingItemId);
@@ -309,7 +312,7 @@ class BookingObservabilityService
             $scope->whereIn('assignment_id', $assignments->pluck('id'));
             foreach ($assignments as $assignment) {
                 $sessionIds = $sessionAssignmentIds->filter(
-                    fn ($assignmentId) => (string) $assignmentId === (string) $assignment->id
+                    fn($assignmentId) => (string) $assignmentId === (string) $assignment->id
                 )->keys();
                 $windowStart = $assignment->trip_started_at ?? $assignment->confirmed_at ?? $assignment->created_at;
                 $windowEnd = $assignment->trip_completed_at ?? $assignment->actual_end ?? now('UTC');
@@ -327,10 +330,14 @@ class BookingObservabilityService
 
     private function phase(RoutePoint $point, ?DriverAssignment $assignment): string
     {
-        if (!$assignment) return 'unknown';
-        if (!$assignment?->confirmed_at || $point->recorded_at->lt($assignment->confirmed_at)) return 'before_accept';
-        if (!$assignment->pickup_arrived_at || $point->recorded_at->lt($assignment->pickup_arrived_at)) return 'accepted_to_pickup';
-        if ($assignment->trip_completed_at && $point->recorded_at->gt($assignment->trip_completed_at)) return 'post_dropoff';
+        if (!$assignment)
+            return 'unknown';
+        if (!$assignment?->confirmed_at || $point->recorded_at->lt($assignment->confirmed_at))
+            return 'before_accept';
+        if (!$assignment->pickup_arrived_at || $point->recorded_at->lt($assignment->pickup_arrived_at))
+            return 'accepted_to_pickup';
+        if ($assignment->trip_completed_at && $point->recorded_at->gt($assignment->trip_completed_at))
+            return 'post_dropoff';
         return 'pickup_to_dropoff';
     }
 
@@ -399,7 +406,8 @@ class BookingObservabilityService
             $startsSegment = !$current || $current['phase'] !== $phase || $assignmentChanged
                 || $gapSeconds > $quality['gap_threshold_seconds'];
             if ($startsSegment) {
-                if ($current) $segments->push($current);
+                if ($current)
+                    $segments->push($current);
                 $current = [
                     'phase' => $phase,
                     'assignment_id' => $assignmentId,
@@ -431,7 +439,8 @@ class BookingObservabilityService
             $previousPoint = $point;
             $previousAssignmentId = $assignmentId;
         }
-        if ($current) $segments->push($current);
+        if ($current)
+            $segments->push($current);
 
         $segments = $segments->map(function (array $segment): array {
             $segment['distance_km'] = round($segment['distance_km'], 3);
@@ -472,8 +481,10 @@ class BookingObservabilityService
 
     private function freshness(?Carbon $reportedAt, bool $online): string
     {
-        if (!$reportedAt) return 'never_reported';
-        if (!$online) return 'offline';
+        if (!$reportedAt)
+            return 'never_reported';
+        if (!$online)
+            return 'offline';
         $age = $reportedAt->diffInSeconds(now(), true);
         return $age <= 120 ? 'live' : ($age <= 300 ? 'delayed' : 'stale');
     }
@@ -535,7 +546,12 @@ class BookingObservabilityService
     private function mapFinancialEvent(Booking $booking, FinancialAuditEvent $event): array
     {
         $metadata = collect(is_array($event->metadata) ? $event->metadata : [])->only([
-            'method', 'stage', 'purpose', 'received_via', 'invoice_number', 'reason',
+            'method',
+            'stage',
+            'purpose',
+            'received_via',
+            'invoice_number',
+            'reason',
         ])->all();
         if ($event->amount !== null) {
             $metadata['amount'] = (float) $event->amount;
@@ -575,7 +591,7 @@ class BookingObservabilityService
             ->with(['driver.user:id,first_name,last_name', 'assignedBy:id,first_name,last_name', 'confirmedBy:id,first_name,last_name'])
             ->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
-            ->when($cursor, fn ($query) => $query->where('created_at', '<=', $cursor[0]))
+            ->when($cursor, fn($query) => $query->where('created_at', '<=', $cursor[0]))
             ->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get();
 
         return $assignments->flatMap(function (DriverAssignment $assignment) use ($booking, $bookingItemId): array {
@@ -588,7 +604,7 @@ class BookingObservabilityService
             ];
             $driverName = trim((string) (($assignment->driver?->user?->first_name ?? '') . ' ' . ($assignment->driver?->user?->last_name ?? '')));
 
-            return collect($milestones)->filter(fn (array $milestone) => $milestone[0] !== null)
+            return collect($milestones)->filter(fn(array $milestone) => $milestone[0] !== null)
                 ->map(function (array $milestone, string $type) use ($assignment, $booking, $bookingItemId, $driverName): array {
                     $assignedByName = trim((string) (($assignment->assignedBy?->first_name ?? '') . ' ' . ($assignment->assignedBy?->last_name ?? '')));
                     $confirmedByName = trim((string) (($assignment->confirmedBy?->first_name ?? '') . ' ' . ($assignment->confirmedBy?->last_name ?? '')));
@@ -631,7 +647,7 @@ class BookingObservabilityService
     {
         $events = Invoice::query()->where('booking_id', $booking->id)
             ->whereNotNull('email_sent_at')->get()
-            ->map(fn (Invoice $invoice): array => [
+            ->map(fn(Invoice $invoice): array => [
                 'id' => 'invoice-email-' . $invoice->id,
                 'booking_item_id' => null,
                 'channel' => 'email',
@@ -644,9 +660,9 @@ class BookingObservabilityService
             ]);
 
         $dispatchEvents = BookingDispatch::query()->where('booking_id', $booking->id)
-            ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
+            ->when($bookingItemId, fn($query) => $query->where('booking_item_id', $bookingItemId))
             ->whereNotNull('trigger_delivered_at')->get()
-            ->map(fn (BookingDispatch $dispatch): array => [
+            ->map(fn(BookingDispatch $dispatch): array => [
                 'id' => 'dispatch-trigger-' . $dispatch->id,
                 'booking_item_id' => $dispatch->booking_item_id ? (string) $dispatch->booking_item_id : null,
                 'channel' => $dispatch->trigger_delivery_channel ?: 'system',
@@ -664,7 +680,7 @@ class BookingObservabilityService
     private function documentItems(Booking $booking, ?string $bookingItemId): Collection
     {
         $items = Invoice::query()->where('booking_id', $booking->id)->get()
-            ->map(fn (Invoice $invoice): array => [
+            ->map(fn(Invoice $invoice): array => [
                 'id' => 'invoice-' . $invoice->id,
                 'booking_item_id' => null,
                 'type' => 'invoice',
@@ -676,7 +692,7 @@ class BookingObservabilityService
             ]);
 
         $receipts = BookingPaymentReceipt::query()->where('booking_id', $booking->id)->get()
-            ->map(fn (BookingPaymentReceipt $receipt): array => [
+            ->map(fn(BookingPaymentReceipt $receipt): array => [
                 'id' => 'receipt-' . $receipt->id,
                 'booking_item_id' => null,
                 'type' => 'payment_receipt',
@@ -688,7 +704,7 @@ class BookingObservabilityService
             ]);
 
         $dispatchDocuments = BookingDispatch::query()->where('booking_id', $booking->id)
-            ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
+            ->when($bookingItemId, fn($query) => $query->where('booking_item_id', $bookingItemId))
             ->get()->flatMap(function (BookingDispatch $dispatch): array {
                 return collect($dispatch->documents_generated ?? [])->map(function ($document, int $index) use ($dispatch): array {
                     $value = is_array($document) ? ($document['name'] ?? $document['title'] ?? 'Generated document') : $document;
@@ -706,7 +722,7 @@ class BookingObservabilityService
             });
 
         return $items->concat($receipts)->concat($dispatchDocuments)
-            ->filter(fn (array $document): bool => !empty($document['created_at']))
+            ->filter(fn(array $document): bool => !empty($document['created_at']))
             ->values();
     }
 
@@ -796,7 +812,8 @@ class BookingObservabilityService
     private function decodeCursor(string $cursor): ?array
     {
         $decoded = base64_decode(strtr($cursor, '-_', '+/'), true);
-        if (!$decoded || !str_contains($decoded, '|')) return null;
+        if (!$decoded || !str_contains($decoded, '|'))
+            return null;
         return explode('|', $decoded, 2);
     }
 

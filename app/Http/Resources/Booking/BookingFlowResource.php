@@ -22,7 +22,7 @@ class BookingFlowResource extends JsonResource
             'approval_status' => $this->approval_status,
             'requires_approval' => $this->requires_approval,
             'has_overrides' => $this->has_overrides,
-            
+
             // Customer information
             'customer' => $this->whenLoaded('customer', function () {
                 return [
@@ -32,7 +32,7 @@ class BookingFlowResource extends JsonResource
                     'phone' => $this->customer->phone,
                 ];
             }),
-            
+
             // Service details
             'service_type' => $this->whenLoaded('serviceType', function () {
                 return [
@@ -41,7 +41,7 @@ class BookingFlowResource extends JsonResource
                     'display_name' => $this->serviceType->display_name,
                 ];
             }),
-            
+
             // Vehicle information
             'vehicle_group' => $this->whenLoaded('vehicleGroup', function () {
                 return [
@@ -50,18 +50,18 @@ class BookingFlowResource extends JsonResource
                     'category' => $this->vehicleGroup->category->name ?? null,
                 ];
             }),
-            
+
             'vehicle' => $this->whenLoaded('vehicle', function () {
                 return [
                     'id' => $this->vehicle->id,
-                    'name' => $this->vehicle->name,
+                    'name' => $this->vehicle->title,
                     'make' => $this->vehicle->make,
                     'model' => $this->vehicle->model,
                     'year' => $this->vehicle->year,
                     'license_plate' => $this->vehicle->license_plate,
                 ];
             }),
-            
+
             'driver' => $this->whenLoaded('driver', function () {
                 return [
                     'id' => $this->driver->id,
@@ -70,14 +70,14 @@ class BookingFlowResource extends JsonResource
                     'license_number' => $this->driver->license_number,
                 ];
             }),
-            
+
             // Booking dates and times
             'booking_date' => $this->booking_date?->format('Y-m-d H:i:s'),
             'from_date' => $this->from_date?->format('Y-m-d'),
             'to_date' => $this->to_date?->format('Y-m-d'),
             'from_time' => $this->from_time,
             'to_time' => $this->to_time,
-            
+
             // Location information
             'pickup_location' => $this->pickup_location,
             'dropoff_location' => $this->dropoff_location,
@@ -87,13 +87,13 @@ class BookingFlowResource extends JsonResource
             'dropoff_latitude' => $this->dropoff_latitude,
             'dropoff_longitude' => $this->dropoff_longitude,
             'dropoff_landmark' => $this->dropoff_landmark,
-            
+
             // Service details
             'is_self_driven' => $this->is_self_driven,
             'passenger_count' => $this->passenger_count,
             'luggage_count' => $this->luggage_count,
             'special_requirements' => $this->special_requirements,
-            
+
             // Pricing information
             'pricing' => [
                 'base_amount' => $this->base_amount,
@@ -115,18 +115,18 @@ class BookingFlowResource extends JsonResource
                 'gamify_discount_applied' => $this->gamify_discount_applied,
                 'gamify_details' => $this->gamify_details,
             ],
-            
+
             // Distance and time tracking
             'estimated_distance' => $this->estimated_distance,
             'estimated_duration' => $this->estimated_duration,
             'actual_distance' => $this->actual_distance,
             'actual_duration' => $this->actual_duration,
-            
+
             // Charges inclusion flags
             'toll_charges_included' => $this->toll_charges_included,
             'fuel_charges_included' => $this->fuel_charges_included,
             'parking_charges_included' => $this->parking_charges_included,
-            
+
             // Payment details
             'payment_method' => $this->payment_method,
             'payment_status' => $this->payment_status,
@@ -138,14 +138,14 @@ class BookingFlowResource extends JsonResource
             'payment_collected_at' => $this->payment_collected_at?->toISOString(),
             'payment_collected_by_driver_id' => $this->payment_collected_by_driver_id,
             'payment_notes' => $this->payment_notes,
-            
+
             // Corporate booking fields
             'is_corporate_booking' => $this->is_corporate_booking,
             'corporate_account_id' => $this->corporate_account_id,
             'cost_center' => $this->cost_center,
             'project_code' => $this->project_code,
             'employee_id' => $this->employee_id,
-            
+
             // Recurring booking fields
             'is_recurring' => $this->is_recurring,
             'recurrence_pattern' => $this->recurrence_pattern,
@@ -154,7 +154,7 @@ class BookingFlowResource extends JsonResource
             'recurring_series_id' => $this->recurring_series_id,
             'recurring_sequence' => $this->recurring_sequence,
             'recurring_occurrence_date' => $this->recurring_occurrence_date?->format('Y-m-d'),
-            
+
             // Approval workflow
             'approval_details' => [
                 'approval_status' => $this->approval_status,
@@ -171,18 +171,18 @@ class BookingFlowResource extends JsonResource
                 'approval_at' => $this->approval_at?->format('Y-m-d H:i:s'),
                 'approval_note' => $this->approval_note,
             ],
-            
+
             // Emergency contact
             'emergency_contact' => [
                 'name' => $this->emergency_contact_name,
                 'phone' => $this->emergency_contact_phone,
                 'relationship' => $this->emergency_contact_relationship,
             ],
-            
+
             // Insurance and safety
             'insurance_type' => $this->insurance_type,
             'safety_features_required' => $this->safety_features_required,
-            
+
             // Notification preferences
             'notifications' => [
                 'sms' => $this->notification_sms,
@@ -190,7 +190,7 @@ class BookingFlowResource extends JsonResource
                 'whatsapp' => $this->notification_whatsapp,
                 'push' => $this->notification_push,
             ],
-            
+
             // Trip tracking
             'trip_status' => $this->trip_status,
             'trip_started_at' => $this->trip_started_at?->format('Y-m-d H:i:s'),
@@ -200,7 +200,7 @@ class BookingFlowResource extends JsonResource
                 'longitude' => $this->current_longitude,
                 'updated_at' => $this->location_updated_at?->format('Y-m-d H:i:s'),
             ],
-            
+
             // Feedback and ratings
             'feedback' => [
                 'customer_rating' => $this->customer_rating,
@@ -208,13 +208,13 @@ class BookingFlowResource extends JsonResource
                 'driver_rating' => $this->driver_rating,
                 'driver_feedback' => $this->driver_feedback,
             ],
-            
+
             // Override and workflow information
             'override_reasons' => $this->override_reasons,
             'concurrent_assignments' => $this->concurrent_assignments,
             'workflow_step' => $this->workflow_step,
             'workflow_data' => $this->workflow_data,
-            
+
             // Add-ons
             'addons' => $this->whenLoaded('addons', function () {
                 return $this->addons->map(function ($addon) {
@@ -231,7 +231,7 @@ class BookingFlowResource extends JsonResource
                     ];
                 });
             }),
-            
+
             // Approval records
             'approvals' => $this->whenLoaded('approvals', function () {
                 return $this->approvals->map(function ($approval) {
@@ -252,7 +252,7 @@ class BookingFlowResource extends JsonResource
                     ];
                 });
             }),
-            
+
             // Timestamps
             'created_at' => $this->created_at?->format('Y-m-d H:i:s'),
             'updated_at' => $this->updated_at?->format('Y-m-d H:i:s'),
