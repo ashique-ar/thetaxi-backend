@@ -69,7 +69,8 @@ class VehicleAssignment extends BaseModel
      */
     public function getAssignedFromAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         return TimezoneService::fromUtc($value);
     }
 
@@ -78,7 +79,8 @@ class VehicleAssignment extends BaseModel
      */
     public function getAssignedToAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         return TimezoneService::fromUtc($value);
     }
 
@@ -202,7 +204,7 @@ class VehicleAssignment extends BaseModel
     public function scopeRequiringConfirmation($query)
     {
         return $query->where('manually_confirmed', false)
-                    ->whereIn('status', ['active', 'pending_approval']);
+            ->whereIn('status', ['active', 'pending_approval']);
     }
 
     /**
@@ -220,11 +222,11 @@ class VehicleAssignment extends BaseModel
     {
         return $query->where(function ($q) use ($from, $to) {
             $q->whereBetween('assigned_from', [$from, $to])
-              ->orWhereBetween('assigned_to', [$from, $to])
-              ->orWhere(function ($q2) use ($from, $to) {
-                  $q2->where('assigned_from', '<=', $from)
-                     ->where('assigned_to', '>=', $to);
-              });
+                ->orWhereBetween('assigned_to', [$from, $to])
+                ->orWhere(function ($q2) use ($from, $to) {
+                    $q2->where('assigned_from', '<=', $from)
+                        ->where('assigned_to', '>=', $to);
+                });
         });
     }
 
@@ -250,9 +252,9 @@ class VehicleAssignment extends BaseModel
     public function isCurrentlyActive(): bool
     {
         $now = now();
-        return $this->status === 'active' && 
-               $this->assigned_from <= $now && 
-               $this->assigned_to >= $now;
+        return $this->status === 'active' &&
+            $this->assigned_from <= $now &&
+            $this->assigned_to >= $now;
     }
 
     /**
@@ -268,7 +270,7 @@ class VehicleAssignment extends BaseModel
      */
     public function needsConfirmation(): bool
     {
-        return !$this->manually_confirmed && 
-               in_array($this->status, ['active', 'pending_approval']);
+        return !$this->manually_confirmed &&
+            in_array($this->status, ['active', 'pending_approval']);
     }
 }

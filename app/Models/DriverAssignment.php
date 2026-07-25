@@ -111,7 +111,8 @@ class DriverAssignment extends BaseModel
      */
     public function getAssignedFromAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         return TimezoneService::fromUtc($value);
     }
 
@@ -120,7 +121,8 @@ class DriverAssignment extends BaseModel
      */
     public function getAssignedToAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         return TimezoneService::fromUtc($value);
     }
 
@@ -152,7 +154,8 @@ class DriverAssignment extends BaseModel
 
     private static function userDisplaySnapshot(?string $userId): ?string
     {
-        if (!$userId) return null;
+        if (!$userId)
+            return null;
         $user = User::query()->find($userId, ['id', 'first_name', 'last_name']);
         $name = $user ? trim((string) $user->first_name . ' ' . (string) $user->last_name) : '';
         return $name !== '' ? $name : null;
@@ -160,7 +163,8 @@ class DriverAssignment extends BaseModel
 
     private static function driverDisplaySnapshot(?string $driverId): ?string
     {
-        if (!$driverId) return null;
+        if (!$driverId)
+            return null;
         $driver = Driver::query()->with('user:id,first_name,last_name')->find($driverId);
         $name = trim((string) (($driver?->user?->first_name ?? '') . ' ' . ($driver?->user?->last_name ?? '')));
         return $name !== '' ? $name : ($driver?->code ?: null);
@@ -293,7 +297,7 @@ class DriverAssignment extends BaseModel
     public function scopeRequiringConfirmation($query)
     {
         return $query->where('manually_confirmed', false)
-                    ->whereIn('status', ['active', 'pending_approval']);
+            ->whereIn('status', ['active', 'pending_approval']);
     }
 
     /**
@@ -311,11 +315,11 @@ class DriverAssignment extends BaseModel
     {
         return $query->where(function ($q) use ($from, $to) {
             $q->whereBetween('assigned_from', [$from, $to])
-              ->orWhereBetween('assigned_to', [$from, $to])
-              ->orWhere(function ($q2) use ($from, $to) {
-                  $q2->where('assigned_from', '<=', $from)
-                     ->where('assigned_to', '>=', $to);
-              });
+                ->orWhereBetween('assigned_to', [$from, $to])
+                ->orWhere(function ($q2) use ($from, $to) {
+                    $q2->where('assigned_from', '<=', $from)
+                        ->where('assigned_to', '>=', $to);
+                });
         });
     }
 
@@ -341,9 +345,9 @@ class DriverAssignment extends BaseModel
     public function isCurrentlyActive(): bool
     {
         $now = now();
-        return $this->status === 'active' && 
-               $this->assigned_from <= $now && 
-               $this->assigned_to >= $now;
+        return $this->status === 'active' &&
+            $this->assigned_from <= $now &&
+            $this->assigned_to >= $now;
     }
 
     /**
@@ -359,8 +363,8 @@ class DriverAssignment extends BaseModel
      */
     public function needsConfirmation(): bool
     {
-        return !$this->manually_confirmed && 
-               in_array($this->status, ['active', 'pending_approval']);
+        return !$this->manually_confirmed &&
+            in_array($this->status, ['active', 'pending_approval']);
     }
 
     /**
@@ -377,7 +381,7 @@ class DriverAssignment extends BaseModel
         $overtimeHours = max(0, $hours - 8);
 
         $cost = $regularHours * $this->hourly_rate;
-        
+
         if ($this->overtime_applicable && $overtimeHours > 0) {
             $cost += $overtimeHours * ($this->hourly_rate * 1.5); // 1.5x for overtime
         }

@@ -100,7 +100,8 @@ class BookingItem extends BaseModel
      */
     public function getFromDateAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         // Parse as UTC and convert to user's timezone for display
         return TimezoneService::fromUtc($value);
     }
@@ -111,7 +112,8 @@ class BookingItem extends BaseModel
      */
     public function getToDateAttribute($value)
     {
-        if (!$value) return null;
+        if (!$value)
+            return null;
         // Parse as UTC and convert to user's timezone for display
         return TimezoneService::fromUtc($value);
     }
@@ -126,7 +128,7 @@ class BookingItem extends BaseModel
             $this->attributes['from_date'] = null;
             return;
         }
-        
+
         // Convert from user timezone to UTC for storage
         $utcDate = TimezoneService::toUtc($value);
         $this->attributes['from_date'] = $utcDate->format('Y-m-d H:i:s');
@@ -142,7 +144,7 @@ class BookingItem extends BaseModel
             $this->attributes['to_date'] = null;
             return;
         }
-        
+
         // Convert from user timezone to UTC for storage
         $utcDate = TimezoneService::toUtc($value);
         $this->attributes['to_date'] = $utcDate->format('Y-m-d H:i:s');

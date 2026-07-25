@@ -21,7 +21,7 @@ class TimezoneService
         if (Auth::check() && Auth::user()->timezone) {
             return Auth::user()->timezone;
         }
-        
+
         return config('app.timezone', 'UTC');
     }
 
