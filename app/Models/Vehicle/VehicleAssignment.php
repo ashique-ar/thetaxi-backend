@@ -5,6 +5,7 @@ namespace App\Models\Vehicle;
 use App\Models\BaseModel;
 use App\Models\Booking\Booking;
 use App\Models\User;
+use App\Services\TimezoneService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -62,6 +63,50 @@ class VehicleAssignment extends BaseModel
         'mileage_start' => 'integer',
         'mileage_end' => 'integer',
     ];
+
+    /**
+     * Custom accessor for assigned_from to convert UTC to user's timezone
+     */
+    public function getAssignedFromAttribute($value)
+    {
+        if (!$value) return null;
+        return TimezoneService::fromUtc($value);
+    }
+
+    /**
+     * Custom accessor for assigned_to to convert UTC to user's timezone
+     */
+    public function getAssignedToAttribute($value)
+    {
+        if (!$value) return null;
+        return TimezoneService::fromUtc($value);
+    }
+
+    /**
+     * Custom mutator for assigned_from to convert from user timezone to UTC
+     */
+    public function setAssignedFromAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['assigned_from'] = null;
+            return;
+        }
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['assigned_from'] = $utcDate->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Custom mutator for assigned_to to convert from user timezone to UTC
+     */
+    public function setAssignedToAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['assigned_to'] = null;
+            return;
+        }
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['assigned_to'] = $utcDate->format('Y-m-d H:i:s');
+    }
 
     /**
      * Vehicle this assignment belongs to

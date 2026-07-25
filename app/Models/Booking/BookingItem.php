@@ -3,6 +3,7 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
+use App\Services\TimezoneService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\Relations\HasOne;
@@ -12,6 +13,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Driver\Driver;
 use App\Models\Service\ServiceType;
 use App\Models\User;
+use Carbon\Carbon;
 
 class BookingItem extends BaseModel
 {
@@ -93,27 +95,30 @@ class BookingItem extends BaseModel
     ];
 
     /**
-     * Custom accessor for from_date to return as Carbon without timezone conversion
+     * Custom accessor for from_date to return as Carbon with user timezone conversion
+     * Returns UTC time converted to user's local timezone
      */
     public function getFromDateAttribute($value)
     {
         if (!$value) return null;
-        // Parse without timezone conversion
-        return \Carbon\Carbon::parse($value, config('app.timezone'));
+        // Parse as UTC and convert to user's timezone for display
+        return TimezoneService::fromUtc($value);
     }
 
     /**
-     * Custom accessor for to_date to return as Carbon without timezone conversion
+     * Custom accessor for to_date to return as Carbon with user timezone conversion
+     * Returns UTC time converted to user's local timezone
      */
     public function getToDateAttribute($value)
     {
         if (!$value) return null;
-        // Parse without timezone conversion
-        return \Carbon\Carbon::parse($value, config('app.timezone'));
+        // Parse as UTC and convert to user's timezone for display
+        return TimezoneService::fromUtc($value);
     }
 
     /**
-     * Custom mutator for from_date to store without timezone conversion
+     * Custom mutator for from_date to convert user timezone to UTC for storage
+     * Stores the date in UTC format to the database
      */
     public function setFromDateAttribute($value)
     {
@@ -122,26 +127,14 @@ class BookingItem extends BaseModel
             return;
         }
         
-        // Always store as-is without any timezone conversion
-        if (is_string($value)) {
-            // If it's already a datetime string, use it directly
-            $this->attributes['from_date'] = $value;
-        } else if ($value instanceof \DateTimeInterface) {
-            // If it's a DateTime object, format it without timezone conversion
-            $this->attributes['from_date'] = $value->format('Y-m-d H:i:s');
-        } else {
-            // Try to parse it
-            try {
-                $date = \Carbon\Carbon::parse($value);
-                $this->attributes['from_date'] = $date->format('Y-m-d H:i:s');
-            } catch (\Exception $e) {
-                $this->attributes['from_date'] = $value;
-            }
-        }
+        // Convert from user timezone to UTC for storage
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['from_date'] = $utcDate->format('Y-m-d H:i:s');
     }
 
     /**
-     * Custom mutator for to_date to store without timezone conversion
+     * Custom mutator for to_date to convert user timezone to UTC for storage
+     * Stores the date in UTC format to the database
      */
     public function setToDateAttribute($value)
     {
@@ -150,22 +143,9 @@ class BookingItem extends BaseModel
             return;
         }
         
-        // Always store as-is without any timezone conversion
-        if (is_string($value)) {
-            // If it's already a datetime string, use it directly
-            $this->attributes['to_date'] = $value;
-        } else if ($value instanceof \DateTimeInterface) {
-            // If it's a DateTime object, format it without timezone conversion
-            $this->attributes['to_date'] = $value->format('Y-m-d H:i:s');
-        } else {
-            // Try to parse it
-            try {
-                $date = \Carbon\Carbon::parse($value);
-                $this->attributes['to_date'] = $date->format('Y-m-d H:i:s');
-            } catch (\Exception $e) {
-                $this->attributes['to_date'] = $value;
-            }
-        }
+        // Convert from user timezone to UTC for storage
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['to_date'] = $utcDate->format('Y-m-d H:i:s');
     }
 
     /**

@@ -8,6 +8,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\Driver\Driver;
 use App\Models\Driver\RoutePoint;
 use App\Models\DriverAssignmentStop;
+use App\Services\TimezoneService;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
@@ -103,6 +104,50 @@ class DriverAssignment extends BaseModel
                 $assignment->driver_name_snapshot = self::driverDisplaySnapshot($assignment->driver_id);
             }
         });
+    }
+
+    /**
+     * Custom accessor for assigned_from to convert UTC to user's timezone
+     */
+    public function getAssignedFromAttribute($value)
+    {
+        if (!$value) return null;
+        return TimezoneService::fromUtc($value);
+    }
+
+    /**
+     * Custom accessor for assigned_to to convert UTC to user's timezone
+     */
+    public function getAssignedToAttribute($value)
+    {
+        if (!$value) return null;
+        return TimezoneService::fromUtc($value);
+    }
+
+    /**
+     * Custom mutator for assigned_from to convert from user timezone to UTC
+     */
+    public function setAssignedFromAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['assigned_from'] = null;
+            return;
+        }
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['assigned_from'] = $utcDate->format('Y-m-d H:i:s');
+    }
+
+    /**
+     * Custom mutator for assigned_to to convert from user timezone to UTC
+     */
+    public function setAssignedToAttribute($value)
+    {
+        if (!$value) {
+            $this->attributes['assigned_to'] = null;
+            return;
+        }
+        $utcDate = TimezoneService::toUtc($value);
+        $this->attributes['assigned_to'] = $utcDate->format('Y-m-d H:i:s');
     }
 
     private static function userDisplaySnapshot(?string $userId): ?string
