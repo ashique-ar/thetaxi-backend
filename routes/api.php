@@ -1066,7 +1066,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
         Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
         Route::apiResource('inquiries', InquiryController::class);
-        Route::post('notification-logs/{notificationLog}/retry', [NotificationLogController::class, 'retry']);
         Route::post('notifications/send-bulk', [NotificationLogController::class, 'sendBulk']);
         Route::apiResource('notification-logs', NotificationLogController::class);
         Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);

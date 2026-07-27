@@ -19,13 +19,13 @@ class NotificationLogController extends Controller
     {
         $this->middleware('permission:notification-logs.view')->only(['index','show']);
         $this->middleware('permission:notification-logs.create')->only(['store', 'sendBulk']);
-        $this->middleware('permission:notification-logs.edit')->only(['update', 'retry']);
+        $this->middleware('permission:notification-logs.edit')->only(['update']);
         $this->middleware('permission:notification-logs.delete')->only(['destroy']);
     }
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = NotificationLog::query();
+        $q = NotificationLog::query()->with(['user', 'template']);
         return NotificationLogResource::collection($q->paginate($request->per_page ?? 15));
     }
 
@@ -44,6 +44,8 @@ class NotificationLogController extends Controller
 
     public function show(NotificationLog $notificationLog): JsonResponse
     {
+        $notificationLog->load(['user', 'template']);
+
         return response()->json([
             'status'=>'success',
             'data'=>['log'=>new NotificationLogResource($notificationLog)]
@@ -69,21 +71,6 @@ class NotificationLogController extends Controller
         return response()->json([
             'status'=>'success',
             'message'=>'Notification log deleted'
-        ]);
-    }
-
-    public function retry(Request $request, NotificationLog $notificationLog): JsonResponse
-    {
-        $notificationLog->update([
-            'status' => 'queued',
-            'sent_at' => now(),
-            'updated_user_id' => $request->user()->id,
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Notification retry queued',
-            'data' => ['log' => new NotificationLogResource($notificationLog)]
         ]);
     }
 
