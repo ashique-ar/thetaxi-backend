@@ -1078,26 +1078,43 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('agreements/stats', [AgreementController::class, 'stats']);
         Route::get('agreements/reports', [AgreementController::class, 'reports']);
         Route::get('agreements/reports/export', [AgreementController::class, 'exportReport']);
-        Route::post('agreements/preview', [AgreementController::class, 'preview']);
-        Route::get('agreement-templates', [AgreementController::class, 'templates']);
-        Route::get('agreement-templates/{template}', [AgreementController::class, 'showTemplate']);
-        Route::post('agreement-templates', [AgreementController::class, 'storeTemplate']);
-        Route::put('agreement-templates/{template}', [AgreementController::class, 'updateTemplate']);
-        Route::delete('agreement-templates/{template}', [AgreementController::class, 'destroyTemplate']);
         Route::get('agreements/{agreement}/documents', [AgreementController::class, 'documents']);
-        Route::post('agreements/{agreement}/documents', [AgreementController::class, 'uploadDocument']);
         Route::get('agreements/{agreement}/pdf', [AgreementController::class, 'pdf']);
         Route::get('agreements/{agreement}/timeline', [AgreementController::class, 'timeline']);
+        Route::post('agreements/bulk-export', [AgreementController::class, 'bulkExport']);
+    });
+
+    Route::middleware(['permission:agreements.create'])->group(function () {
+        Route::post('agreements/preview', [AgreementController::class, 'preview']);
+        Route::post('agreements/{agreement}/documents', [AgreementController::class, 'uploadDocument']);
         Route::post('agreements/{agreement}/duplicate', [AgreementController::class, 'duplicate']);
         Route::post('agreements/{agreement}/renew', [AgreementController::class, 'renew']);
+    });
+
+    Route::middleware(['permission:agreement-templates.view'])->group(function () {
+        Route::get('agreement-templates', [AgreementController::class, 'templates']);
+        Route::get('agreement-templates/{template}', [AgreementController::class, 'showTemplate']);
+    });
+    Route::post('agreement-templates', [AgreementController::class, 'storeTemplate'])
+        ->middleware('permission:agreement-templates.create');
+    Route::put('agreement-templates/{template}', [AgreementController::class, 'updateTemplate'])
+        ->middleware('permission:agreement-templates.edit');
+    Route::delete('agreement-templates/{template}', [AgreementController::class, 'destroyTemplate'])
+        ->middleware('permission:agreement-templates.delete');
+
+    Route::middleware(['permission:agreements.view', 'permission:agreement-signing.edit'])->group(function () {
         Route::post('agreements/{agreement}/verify-identity', [AgreementController::class, 'verifyIdentity']);
         Route::post('agreements/{agreement}/sign', [AgreementController::class, 'sign']);
         Route::post('agreements/{agreement}/email-signed', [AgreementController::class, 'emailSignedAgreement']);
-        Route::post('agreements/bulk-update-status', [AgreementController::class, 'bulkUpdateStatus']);
-        Route::post('agreements/bulk-delete', [AgreementController::class, 'bulkDelete']);
-        Route::post('agreements/bulk-export', [AgreementController::class, 'bulkExport']);
-        Route::apiResource('agreements', AgreementController::class);
     });
+
+    Route::middleware(['permission:agreements.edit'])->group(function () {
+        Route::post('agreements/bulk-update-status', [AgreementController::class, 'bulkUpdateStatus']);
+    });
+    Route::middleware(['permission:agreements.delete'])->group(function () {
+        Route::post('agreements/bulk-delete', [AgreementController::class, 'bulkDelete']);
+    });
+    Route::apiResource('agreements', AgreementController::class);
 
     /*
     |--------------------------------------------------------------------------

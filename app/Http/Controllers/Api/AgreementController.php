@@ -19,10 +19,15 @@ class AgreementController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:agreements.view')->only(['index', 'show', 'stats', 'reports', 'exportReport', 'templates', 'showTemplate', 'documents', 'pdf', 'timeline']);
-        $this->middleware('permission:agreements.create')->only(['store', 'storeTemplate', 'preview', 'duplicate', 'renew', 'uploadDocument']);
-        $this->middleware('permission:agreements.edit')->only(['update', 'updateTemplate', 'verifyIdentity', 'sign', 'emailSignedAgreement', 'bulkUpdateStatus']);
-        $this->middleware('permission:agreements.delete')->only(['destroy', 'destroyTemplate', 'bulkDelete']);
+        $this->middleware('permission:agreements.view')->only(['index', 'show', 'stats', 'reports', 'exportReport', 'documents', 'pdf', 'timeline', 'bulkExport']);
+        $this->middleware('permission:agreements.create')->only(['store', 'preview', 'duplicate', 'renew', 'uploadDocument']);
+        $this->middleware('permission:agreements.edit')->only(['update', 'bulkUpdateStatus']);
+        $this->middleware('permission:agreements.delete')->only(['destroy', 'bulkDelete']);
+        $this->middleware('permission:agreement-templates.view')->only(['templates', 'showTemplate']);
+        $this->middleware('permission:agreement-templates.create')->only(['storeTemplate']);
+        $this->middleware('permission:agreement-templates.edit')->only(['updateTemplate']);
+        $this->middleware('permission:agreement-templates.delete')->only(['destroyTemplate']);
+        $this->middleware('permission:agreement-signing.edit')->only(['verifyIdentity', 'sign', 'emailSignedAgreement']);
     }
 
     public function index(Request $request): JsonResponse
