@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Customer;
 use App\Models\LoyaltyPointTransaction;
 use App\Models\LoyaltyReward;
+use App\Models\LoyaltyTier;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -27,6 +28,7 @@ class LoyaltyController extends Controller
             'getLoyaltyRewards',
             'getLoyaltyActivity',
             'getLoyaltyStats',
+            'getLoyaltyLeaderboard',
             'getRewardRedemptions',
             'exportLoyaltyData',
         ]);
@@ -202,7 +204,24 @@ class LoyaltyController extends Controller
      */
     public function getLoyaltyTiers(): JsonResponse
     {
-        $tiers = $this->getLoyaltyTierStructure();
+        $tiers = LoyaltyTier::query()
+            ->withCount('customers')
+            ->active()
+            ->ordered()
+            ->get()
+            ->map(fn (LoyaltyTier $tier) => [
+                'id' => $tier->id,
+                'name' => $tier->display_name ?: $tier->name,
+                'min_points' => $tier->min_points,
+                'max_points' => $tier->max_points,
+                'benefits' => $this->tierBenefits($tier),
+                'badge_color' => $tier->color_code,
+                'customers_count' => $tier->customers_count,
+                'multiplier' => (float) $tier->points_earning_multiplier,
+                'badge_level' => null,
+                'icon' => $tier->icon,
+                'description' => $tier->description,
+            ]);
         
         return response()->json([
             'status' => 'success',
@@ -301,20 +320,57 @@ class LoyaltyController extends Controller
 
     public function getLoyaltyStats(): JsonResponse
     {
-        $redemptions = LoyaltyPointTransaction::redeemed()->completed();
-        $monthRedemptions = (clone $redemptions)->whereMonth('created_at', now()->month)->whereYear('created_at', now()->year);
-
-        $totalRedeemed = (clone $redemptions)->count();
-        $totalPoints = abs((int) (clone $redemptions)->sum('points'));
+        $customerPoints = Customer::query()
+            ->join('users', 'customers.user_id', '=', 'users.id')
+            ->whereNull('customers.deleted_at');
+        $reputations = DB::table('reputations')
+            ->join('customers', 'reputations.payee_id', '=', 'customers.user_id')
+            ->whereNull('customers.deleted_at');
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'total_rewards_redeemed' => $totalRedeemed,
-                'redemptions_this_month' => (clone $monthRedemptions)->count(),
-                'total_points_redeemed' => $totalPoints,
-                'points_spent_this_month' => abs((int) (clone $monthRedemptions)->sum('points')),
-                'average_redemption' => $totalRedeemed > 0 ? (int) round($totalPoints / $totalRedeemed) : 0,
+                'total_members' => (clone $customerPoints)->count(),
+                'members_with_points' => (clone $customerPoints)->where('users.reputation', '>', 0)->count(),
+                'outstanding_points' => (int) (clone $customerPoints)->sum('users.reputation'),
+                'points_issued' => (int) (clone $reputations)->where('reputations.point', '>', 0)->sum('reputations.point'),
+                'points_deducted' => abs((int) (clone $reputations)->where('reputations.point', '<', 0)->sum('reputations.point')),
+                'average_balance' => round((float) ((clone $customerPoints)->avg('users.reputation') ?? 0), 2),
+            ],
+        ]);
+    }
+
+    public function getLoyaltyLeaderboard(Request $request): JsonResponse
+    {
+        $limit = min(max((int) $request->get('limit', 10), 1), 50);
+        $members = DB::table('customers')
+            ->join('users', 'customers.user_id', '=', 'users.id')
+            ->whereNull('customers.deleted_at')
+            ->select([
+                'customers.id as customer_id',
+                'users.first_name',
+                'users.last_name',
+                'users.email',
+                'users.reputation',
+            ])
+            ->orderByDesc('users.reputation')
+            ->orderBy('customers.id')
+            ->limit($limit)
+            ->get()
+            ->map(fn ($member, int $index) => [
+                'id' => $member->customer_id,
+                'name' => trim($member->first_name . ' ' . $member->last_name),
+                'email' => $member->email,
+                'points' => (int) $member->reputation,
+                'tier' => $this->getLoyaltyTier((int) $member->reputation)['name'],
+                'rank' => $index + 1,
+            ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'leaderboard' => $members,
+                'limit' => $limit,
             ],
         ]);
     }
@@ -356,8 +412,12 @@ class LoyaltyController extends Controller
             'users.first_name',
             'users.last_name',
             'users.email',
+            'users.reputation',
+            'customers.id as customer_id',
+            'reputations.id as reputation_id',
             'reputations.point',
             'reputations.name as activity_type',
+            'reputations.meta',
             'reputations.created_at'
         ])
         ->join('reputations', 'users.id', '=', 'reputations.payee_id')
@@ -391,13 +451,24 @@ class LoyaltyController extends Controller
             'status' => 'success',
             'data' => [
                 'activity' => $activity->map(function ($item) {
+                    $meta = is_array($item->meta) ? $item->meta : json_decode((string) $item->meta, true);
+                    $manualType = data_get($meta, 'adjustment_type');
+                    $actionType = str_starts_with((string) $item->activity_type, 'manual_')
+                        ? 'adjusted'
+                        : ($item->point >= 0 ? 'earned' : 'redeemed');
+
                     return [
-                        'user_id' => $item->id,
-                        'user_name' => trim($item->first_name . ' ' . $item->last_name),
-                        'email' => $item->email,
-                        'points' => $item->point,
-                        'activity_type' => $item->activity_type,
-                        'created_at' => $item->created_at
+                        'id' => (string) $item->reputation_id,
+                        'customer_id' => $item->customer_id,
+                        'customer_name' => trim($item->first_name . ' ' . $item->last_name),
+                        'customer_email' => $item->email,
+                        'action_type' => $actionType,
+                        'points' => (int) $item->point,
+                        'current_points' => (int) $item->reputation,
+                        'tier' => $this->getLoyaltyTier((int) $item->reputation)['name'],
+                        'description' => data_get($meta, 'reason')
+                            ?: ($manualType ? ucfirst($manualType) . ' adjustment' : (string) $item->activity_type),
+                        'created_at' => $item->created_at,
                     ];
                 }),
                 'period' => $period,
@@ -523,6 +594,23 @@ class LoyaltyController extends Controller
             'starts_at' => ['nullable', 'date'],
             'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at'],
         ]);
+    }
+
+    private function tierBenefits(LoyaltyTier $tier): array
+    {
+        $benefits = $tier->privileges ?? [];
+
+        if ($tier->priority_booking) {
+            $benefits[] = 'Priority booking';
+        }
+        if ($tier->free_cancellation) {
+            $benefits[] = 'Free cancellation';
+        }
+        if ($tier->priority_support) {
+            $benefits[] = 'Priority support';
+        }
+
+        return array_values(array_unique($benefits));
     }
 
     /**

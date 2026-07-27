@@ -1580,6 +1580,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::middleware(['permission:loyalty.view|customers.loyalty'])->group(function () {
         Route::get('customers/loyalty/tiers', [LoyaltyController::class, 'getLoyaltyTiers']);
         Route::get('customers/loyalty/stats', [LoyaltyController::class, 'getLoyaltyStats']);
+        Route::get('customers/loyalty/leaderboard', [LoyaltyController::class, 'getLoyaltyLeaderboard']);
         Route::get('customers/loyalty/rewards', [LoyaltyController::class, 'getLoyaltyRewards']);
         Route::post('customers/loyalty/rewards', [LoyaltyController::class, 'storeReward'])->middleware('permission:customers.loyalty');
         Route::put('customers/loyalty/rewards/{reward}', [LoyaltyController::class, 'updateReward'])->middleware('permission:customers.loyalty');

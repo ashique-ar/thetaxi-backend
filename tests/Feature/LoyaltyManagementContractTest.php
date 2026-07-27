@@ -9,6 +9,7 @@ it('exposes the supported loyalty management contracts', function (): void {
         ['POST', 'api/customers/{customer}/loyalty/points', 'addPoints', 'permission:customers.loyalty'],
         ['POST', 'api/customers/{customer}/loyalty/adjustments', 'adjustPoints', 'permission:customers.loyalty'],
         ['GET', 'api/customers/loyalty/stats', 'getLoyaltyStats'],
+        ['GET', 'api/customers/loyalty/leaderboard', 'getLoyaltyLeaderboard'],
         ['GET', 'api/customers/loyalty/tiers', 'getLoyaltyTiers'],
         ['GET', 'api/customers/loyalty/rewards', 'getLoyaltyRewards'],
         ['GET', 'api/customers/loyalty/activity', 'getLoyaltyActivity'],
