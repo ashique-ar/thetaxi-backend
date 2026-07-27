@@ -31,6 +31,8 @@ class LoyaltyController extends Controller
             'exportLoyaltyData',
         ]);
         $this->middleware('permission:customers.loyalty')->only([
+            'addPoints',
+            'adjustPoints',
             'storeReward',
             'updateReward',
             'deleteReward',
@@ -100,6 +102,44 @@ class LoyaltyController extends Controller
                 ]
             ]
         ]);
+    }
+
+    public function addPoints(Request $request, Customer $customer): JsonResponse
+    {
+        $data = $request->validate([
+            'points' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'reason' => ['required', 'string', 'min:10', 'max:500'],
+        ]);
+
+        return $this->applyManualPointChange(
+            $customer,
+            (int) $data['points'],
+            'bonus',
+            $data['reason'],
+            $request->user()?->id,
+        );
+    }
+
+    public function adjustPoints(Request $request, Customer $customer): JsonResponse
+    {
+        $data = $request->validate([
+            'points' => ['required', 'integer', 'min:1', 'max:1000000'],
+            'adjustment_type' => ['required', 'in:bonus,correction,penalty,migration'],
+            'reason' => ['required', 'string', 'min:10', 'max:500'],
+        ]);
+
+        $points = (int) $data['points'];
+        if ($data['adjustment_type'] === 'penalty') {
+            $points *= -1;
+        }
+
+        return $this->applyManualPointChange(
+            $customer,
+            $points,
+            $data['adjustment_type'],
+            $data['reason'],
+            $request->user()?->id,
+        );
     }
 
     /**
@@ -424,6 +464,48 @@ class LoyaltyController extends Controller
         $value = (string) $value;
 
         return preg_match('/^[=+\-@]/', $value) === 1 ? "'" . $value : $value;
+    }
+
+    private function applyManualPointChange(
+        Customer $customer,
+        int $points,
+        string $type,
+        string $reason,
+        ?string $actorId,
+    ): JsonResponse {
+        $result = DB::transaction(function () use ($customer, $points, $type, $reason, $actorId): array {
+            $user = User::query()->lockForUpdate()->findOrFail($customer->user_id);
+            $balanceBefore = $user->getPoints();
+
+            abort_if($balanceBefore + $points < 0, 422, 'The adjustment cannot reduce the customer balance below zero.');
+
+            $user->forceFill(['reputation' => $balanceBefore + $points])->save();
+
+            $user->reputations()->create([
+                'name' => 'manual_' . $type,
+                'point' => $points,
+                'meta' => json_encode([
+                    'reason' => $reason,
+                    'adjustment_type' => $type,
+                    'processed_by' => $actorId,
+                ], JSON_THROW_ON_ERROR),
+            ]);
+
+            return [
+                'customer_id' => $customer->id,
+                'points_changed' => $points,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceBefore + $points,
+                'adjustment_type' => $type,
+                'reason' => $reason,
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $points < 0 ? 'Loyalty points deducted successfully' : 'Loyalty points added successfully',
+            'data' => $result,
+        ]);
     }
 
     private function validateReward(Request $request, bool $partial = false): array

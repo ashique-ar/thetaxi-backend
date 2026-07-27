@@ -376,30 +376,6 @@ class CustomerController extends Controller
     }
 
     /**
-     * Add loyalty points
-     * POST /api/customers/{customer}/loyalty/points
-     */
-    public function addLoyaltyPoints(Request $request, Customer $customer): JsonResponse
-    {
-        $request->validate([
-            'points' => 'required|integer|min:1',
-            'reason' => 'required|string|max:255'
-        ]);
-
-        $user = $customer->user;
-        $user->addPoint($request->get('points'));
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Points added successfully',
-            'data' => [
-                'points_added' => $request->get('points'),
-                'total_points' => $user->fresh()->getPoints()
-            ]
-        ]);
-    }
-
-    /**
      * Get customer feedback
      * GET /api/customers/{customer}/feedback
      */

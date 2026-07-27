@@ -445,7 +445,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('customers/documents/{document}/reject', [CustomerController::class, 'rejectDocument'])->middleware('permission:customers.edit')->whereUuid('document');
         Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings')->whereUuid('customer');
         Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty')->whereUuid('customer');
-        Route::post('customers/{customer}/loyalty/points', [CustomerController::class, 'addLoyaltyPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+        Route::post('customers/{customer}/loyalty/points', [LoyaltyController::class, 'addPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
+        Route::post('customers/{customer}/loyalty/adjustments', [LoyaltyController::class, 'adjustPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
         Route::get('customers/{customer}/documents', [CustomerController::class, 'getCustomerDocuments'])->whereUuid('customer');
         Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
         Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
