@@ -843,6 +843,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('pricing.context');
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
         Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability']);
+        Route::put('/vehicles/{vehicle}/handover', [VehicleController::class, 'recordHandover'])
+            ->middleware('permission:vehicles.edit');
         Route::apiResource('vehicles', VehicleController::class);
 
         // Default driver management for vehicles
@@ -1584,6 +1586,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('customers/loyalty/rewards/{reward}/status', [LoyaltyController::class, 'updateRewardStatus'])->middleware('permission:customers.loyalty');
         Route::get('customers/loyalty/rewards/{reward}/redemptions', [LoyaltyController::class, 'getRewardRedemptions']);
         Route::get('customers/loyalty/activity', [LoyaltyController::class, 'getLoyaltyActivity']);
+        Route::get('customers/loyalty/export', [LoyaltyController::class, 'exportLoyaltyData']);
     });
 
     /*

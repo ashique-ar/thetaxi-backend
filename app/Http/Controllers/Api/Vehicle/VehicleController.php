@@ -104,6 +104,7 @@ class VehicleController extends Controller
         $data = $request->validated();
         $currentLeaseData = $this->pullCurrentLeaseData($data);
         $data = $this->normalizeVehicleIdentifierPayload($data);
+        $data['current_mileage'] = $data['initial_mileage'] ?? null;
         $data['created_user_id'] = $request->user()->id;
         $vehicle = DB::transaction(function () use ($data, $currentLeaseData, $request, $leaseService) {
             $vehicle = Vehicle::create($data);
@@ -637,6 +638,32 @@ class VehicleController extends Controller
             'status' => 'success',
             'message' => 'Vehicle updated',
             'data' => ['vehicle' => new VehicleResource($vehicle)]
+        ]);
+    }
+
+    public function recordHandover(Request $request, Vehicle $vehicle): JsonResponse
+    {
+        $data = $request->validate([
+            'handover_mileage' => [
+                'required',
+                'integer',
+                'min:' . (int) ($vehicle->current_mileage ?? $vehicle->initial_mileage ?? 0),
+            ],
+            'handover_at' => ['required', 'date'],
+            'handover_location' => ['required', 'string', 'max:255'],
+            'handover_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $vehicle->update([
+            ...$data,
+            'current_mileage' => $data['handover_mileage'],
+            'updated_user_id' => $request->user()->id,
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Vehicle handover recorded',
+            'data' => ['vehicle' => new VehicleResource($vehicle->fresh())],
         ]);
     }
 

@@ -534,7 +534,12 @@ class BookingLifecycleService
 
             // Update vehicle availability
             $vehicle = Vehicle::findOrFail($vehicleId);
-            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value]);
+            $vehicleUpdates = ['availability_status' => VehicleAvailabilityStatus::ON_HIRE->value];
+            $dispatchMileage = (int) ($dispatchData['mileage'] ?? 0);
+            if ($dispatchMileage > (int) ($vehicle->current_mileage ?? 0)) {
+                $vehicleUpdates['current_mileage'] = $dispatchMileage;
+            }
+            $vehicle->update($vehicleUpdates);
 
             if (!$isRepeatDispatch) {
                 if ($booking->bookingItems->count() === 1) {
@@ -915,6 +920,9 @@ class BookingLifecycleService
                     try {
                         $vehicleForMaintenance = Vehicle::find($vehicleId);
                         if ($vehicleForMaintenance) {
+                            if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
+                                $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
+                            }
                             $triggered = $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
                                 $vehicleForMaintenance,
                                 $mileageIn

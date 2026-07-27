@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoyaltyController extends Controller
 {
@@ -27,6 +28,7 @@ class LoyaltyController extends Controller
             'getLoyaltyActivity',
             'getLoyaltyStats',
             'getRewardRedemptions',
+            'exportLoyaltyData',
         ]);
         $this->middleware('permission:customers.loyalty')->only([
             'storeReward',
@@ -362,6 +364,66 @@ class LoyaltyController extends Controller
                 'limit' => $limit
             ]
         ]);
+    }
+
+    /**
+     * Export the canonical customer loyalty activity ledger.
+     * GET /api/customers/loyalty/export
+     */
+    public function exportLoyaltyData(): StreamedResponse
+    {
+        $filename = 'loyalty-activity-' . now()->format('Y-m-d-His') . '.csv';
+
+        return response()->streamDownload(function (): void {
+            $output = fopen('php://output', 'wb');
+            fputcsv($output, [
+                'customer_id',
+                'customer_name',
+                'email',
+                'points',
+                'activity_type',
+                'activity_at',
+            ]);
+
+            User::query()
+                ->select([
+                    'customers.id as customer_id',
+                    'users.first_name',
+                    'users.last_name',
+                    'users.email',
+                    'reputations.point',
+                    'reputations.name as activity_type',
+                    'reputations.created_at as activity_at',
+                ])
+                ->join('reputations', 'users.id', '=', 'reputations.payee_id')
+                ->join('customers', 'users.id', '=', 'customers.user_id')
+                ->orderBy('reputations.created_at')
+                ->orderBy('reputations.id')
+                ->chunk(500, function ($rows) use ($output): void {
+                    foreach ($rows as $row) {
+                        fputcsv($output, [
+                            $this->csvValue($row->customer_id),
+                            $this->csvValue(trim($row->first_name . ' ' . $row->last_name)),
+                            $this->csvValue($row->email),
+                            (int) $row->point,
+                            $this->csvValue($row->activity_type),
+                            $row->activity_at,
+                        ]);
+                    }
+                });
+
+            fclose($output);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    private function csvValue(mixed $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@]/', $value) === 1 ? "'" . $value : $value;
     }
 
     private function validateReward(Request $request, bool $partial = false): array

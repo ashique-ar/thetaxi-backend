@@ -3,13 +3,14 @@
 use App\Http\Controllers\Api\LoyaltyController;
 use Illuminate\Support\Facades\Route;
 
-it('exposes the four supported loyalty management section contracts', function (): void {
+it('exposes the supported loyalty management contracts', function (): void {
     $routes = collect(Route::getRoutes()->getRoutes());
     $expected = [
         ['GET', 'api/customers/loyalty/stats', 'getLoyaltyStats'],
         ['GET', 'api/customers/loyalty/tiers', 'getLoyaltyTiers'],
         ['GET', 'api/customers/loyalty/rewards', 'getLoyaltyRewards'],
         ['GET', 'api/customers/loyalty/activity', 'getLoyaltyActivity'],
+        ['GET', 'api/customers/loyalty/export', 'exportLoyaltyData'],
     ];
 
     foreach ($expected as [$method, $uri, $controllerMethod]) {
