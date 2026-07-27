@@ -662,6 +662,11 @@ class AssignmentController extends Controller
                 'booking_item_id' => $tripAssignment->booking_item_id,
                 'status' => $tripAssignment->status,
                 'trip_phase' => $tripAssignment->trip_phase?->value ?? (string) $tripAssignment->trip_phase,
+                'created_at' => $this->toUtcIsoTimestamp($tripAssignment->created_at),
+                'scheduled_from' => $this->bookingItemDateTime(
+                    $tripAssignment->bookingItem ?? $selectedBookingItem,
+                    'from'
+                ),
                 'assigned_from' => $this->toUtcIsoTimestamp($tripAssignment->assigned_from),
                 'assigned_to' => $this->toUtcIsoTimestamp($tripAssignment->assigned_to),
                 'confirmed_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
@@ -689,7 +694,10 @@ class AssignmentController extends Controller
                     ? (float) $tripAssignment->final_longitude
                     : null,
                 'stops' => $this->mapPersistedAssignmentStops($tripAssignment),
-                'events' => $this->buildAssignmentEventTimeline($tripAssignment),
+                'events' => $this->buildAssignmentEventTimeline(
+                    $tripAssignment,
+                    $tripAssignment->bookingItem ?? $selectedBookingItem
+                ),
             ];
             $operationalRecords['assignment'] = [
                 'accepted_at' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
@@ -1014,7 +1022,7 @@ class AssignmentController extends Controller
         return 'accepted_to_pickup';
     }
 
-    private function buildAssignmentEventTimeline($assignment): array
+    private function buildAssignmentEventTimeline($assignment, $bookingItem = null): array
     {
         if (!$assignment) {
             return [];
@@ -1023,9 +1031,18 @@ class AssignmentController extends Controller
         $events = [
             [
                 'key' => 'assigned',
+                'label' => 'Assigned',
+                'timestamp' => $this->toUtcIsoTimestamp($assignment->created_at),
+                'source' => 'driver_assignment.created_at',
+            ],
+            [
+                'key' => 'scheduled',
                 'label' => 'Assignment scheduled',
-                'timestamp' => $this->toUtcIsoTimestamp($assignment->assigned_from),
-                'source' => 'driver_assignment.assigned_from',
+                'timestamp' => $this->bookingItemDateTime($bookingItem, 'from')
+                    ?? $this->toUtcIsoTimestamp($assignment->assigned_from),
+                'source' => $this->bookingItemDateTime($bookingItem, 'from')
+                    ? 'booking_item.from_date + from_time'
+                    : 'driver_assignment.assigned_from',
             ],
             [
                 'key' => 'confirmed',
@@ -1058,6 +1075,28 @@ class AssignmentController extends Controller
             ->sortBy(fn ($event) => strtotime((string) $event['timestamp']) ?: 0)
             ->values()
             ->all();
+    }
+
+    private function bookingItemDateTime($bookingItem, string $boundary): ?string
+    {
+        $dateField = $boundary === 'to' ? 'to_date' : 'from_date';
+        $timeField = $boundary === 'to' ? 'to_time' : 'from_time';
+        $date = $bookingItem?->{$dateField};
+
+        if (!$date) {
+            return null;
+        }
+
+        $timestamp = $date instanceof Carbon
+            ? $date->copy()
+            : Carbon::parse((string) $date);
+        $time = $bookingItem?->{$timeField};
+
+        if ($time) {
+            $timestamp->setTimeFromTimeString((string) $time);
+        }
+
+        return $this->toUtcIsoTimestamp($timestamp);
     }
 
     private function toUtcIsoTimestamp($value): ?string

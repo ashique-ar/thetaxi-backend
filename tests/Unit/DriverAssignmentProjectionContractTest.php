@@ -236,3 +236,21 @@ it('keeps supported driver app version and lifecycle endpoints compatible with O
         ->and($driverRoutes)->toContain("Route::post('{id}/complete', [TripController::class, 'endTripForAssignment'])")
         ->and($driverRoutes)->toContain("Route::post('bulk', [LocationController::class, 'bulkUpdate'])");
 });
+
+it('keeps assignment creation time separate from the scheduled trip window', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/AssignmentController.php'));
+    $bookingFlow = file_get_contents(app_path('Services/BookingFlowService.php'));
+    $lifecycle = file_get_contents(app_path('Services/BookingLifecycleService.php'));
+
+    expect($controller)
+        ->toContain("'label' => 'Assigned'")
+        ->toContain("'source' => 'driver_assignment.created_at'")
+        ->toContain("'label' => 'Assignment scheduled'")
+        ->toContain("'booking_item.from_date + from_time'")
+        ->and($bookingFlow)->toContain(
+            "'assigned_from' => \$this->bookingDateTime(\$bookingItem->from_date, \$bookingItem->from_time)"
+        )
+        ->and($lifecycle)->toContain(
+            "\$selectedItem?->from_time ?? \$booking->from_time"
+        );
+});

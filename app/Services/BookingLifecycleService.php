@@ -383,8 +383,8 @@ class BookingLifecycleService
                 $this->assignmentService->createVehicleAssignment([
                     'booking_id' => $booking->id,
                     'vehicle_id' => $assignmentData['vehicle_id'],
-                    'assigned_from' => $booking->from_date,
-                    'assigned_to' => $booking->to_date,
+                    'assigned_from' => $this->bookingDateTime($booking->from_date, $booking->from_time),
+                    'assigned_to' => $this->bookingDateTime($booking->to_date, $booking->to_time),
                     'assignment_type' => $assignmentData['assignment_type'] ?? 'primary',
                     'requires_approval' => $assignmentData['requires_approval'] ?? false,
                 ]);
@@ -394,8 +394,8 @@ class BookingLifecycleService
                 $this->assignmentService->createDriverAssignment([
                     'booking_id' => $booking->id,
                     'driver_id' => $assignmentData['driver_id'],
-                    'assigned_from' => $booking->from_date,
-                    'assigned_to' => $booking->to_date,
+                    'assigned_from' => $this->bookingDateTime($booking->from_date, $booking->from_time),
+                    'assigned_to' => $this->bookingDateTime($booking->to_date, $booking->to_time),
                     'assignment_type' => $assignmentData['assignment_type'] ?? 'primary',
                 ]);
             }
@@ -693,8 +693,14 @@ class BookingLifecycleService
                 ?? 'Booking Service'
         );
 
-        $assignedFrom = $selectedItem?->from_date ?? $booking->from_date ?? now();
-        $assignedTo = $selectedItem?->to_date ?? $booking->to_date ?? $assignedFrom;
+        $assignedFrom = $this->bookingDateTime(
+            $selectedItem?->from_date ?? $booking->from_date ?? now(),
+            $selectedItem?->from_time ?? $booking->from_time
+        );
+        $assignedTo = $this->bookingDateTime(
+            $selectedItem?->to_date ?? $booking->to_date ?? $assignedFrom,
+            $selectedItem?->to_time ?? $booking->to_time
+        );
 
         $this->assignmentService->createDriverAssignment([
             'driver_id' => $driverId,
@@ -4206,5 +4212,18 @@ class BookingLifecycleService
                 'updated_at' => now()->toISOString(),
             ];
         });
+    }
+
+    private function bookingDateTime(mixed $date, mixed $time = null): Carbon
+    {
+        $timestamp = $date instanceof Carbon
+            ? $date->copy()
+            : Carbon::parse((string) $date);
+
+        if ($time) {
+            $timestamp->setTimeFromTimeString((string) $time);
+        }
+
+        return $timestamp;
     }
 }
