@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use App\Services\PaymentMethodSyncService;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CustomerController extends Controller
 {
@@ -30,6 +31,7 @@ class CustomerController extends Controller
         $this->middleware('permission:customers.create')->only(['store']);
         $this->middleware('permission:customers.edit')->only(['update']);
         $this->middleware('permission:customers.delete')->only(['destroy']);
+        $this->middleware('permission:customers.export')->only(['exportCustomers']);
     }
 
     public function index(Request $request): AnonymousResourceCollection
@@ -584,20 +586,109 @@ class CustomerController extends Controller
      * Export customers
      * GET /api/customers/export
      */
-    public function exportCustomers(Request $request): JsonResponse
+    public function exportCustomers(Request $request): StreamedResponse
     {
-        $format = $request->get('format', 'csv');
-
-        // This would typically generate a file export
-        // For now, returning success response
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Export initiated',
-            'data' => [
-                'format' => $format,
-                'estimated_completion' => now()->addMinutes(5)
-            ]
+        $request->validate([
+            'search' => ['nullable', 'string', 'max:255'],
+            'status' => ['nullable', 'string', 'in:active,inactive'],
+            'is_verified' => ['nullable', 'boolean'],
         ]);
+
+        $query = Customer::query()->with('user');
+
+        if ($request->filled('search')) {
+            $search = trim((string) $request->get('search'));
+            $query->where(function ($builder) use ($search) {
+                $builder->whereHas('user', function ($userQuery) use ($search) {
+                    $userQuery->whereLikeInsensitive('id', $search)
+                        ->orWhereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search)
+                        ->orWhereLikeInsensitive('phone', $search);
+                })->orWhereLikeInsensitive('id', $search)
+                    ->orWhereLikeInsensitive('user_id', $search)
+                    ->orWhereLikeInsensitive('code', $search)
+                    ->orWhereLikeInsensitive('nic', $search)
+                    ->orWhereLikeInsensitive('passport_number', $search)
+                    ->orWhereLikeInsensitive('license_no', $search)
+                    ->orWhereLikeInsensitive('address', $search)
+                    ->orWhereLikeInsensitive('country', $search)
+                    ->orWhereLikeInsensitive('city', $search);
+            });
+        }
+
+        if ($request->filled('status')) {
+            $isActive = $request->get('status') === 'active';
+            $query->whereHas('user', fn ($userQuery) => $userQuery->where('is_active', $isActive));
+        }
+
+        if ($request->has('is_verified')) {
+            $verified = filter_var($request->get('is_verified'), FILTER_VALIDATE_BOOLEAN);
+            $query->whereHas('user', function ($userQuery) use ($verified) {
+                if ($verified) {
+                    $userQuery->whereNotNull('email_verified_at');
+                } else {
+                    $userQuery->whereNull('email_verified_at');
+                }
+            });
+        }
+
+        $filename = 'customers-' . now()->format('Y-m-d-His') . '.csv';
+
+        return response()->streamDownload(function () use ($query): void {
+            $output = fopen('php://output', 'wb');
+            fputcsv($output, [
+                'customer_id',
+                'code',
+                'name',
+                'email',
+                'phone',
+                'status',
+                'email_verified',
+                'phone_verified',
+                'type',
+                'nic',
+                'passport_number',
+                'license_number',
+                'country',
+                'city',
+                'created_at',
+            ]);
+
+            $query->orderBy('id')->chunk(500, function ($customers) use ($output): void {
+                foreach ($customers as $customer) {
+                    fputcsv($output, [
+                        $this->csvValue($customer->id),
+                        $this->csvValue($customer->code),
+                        $this->csvValue($customer->full_name),
+                        $this->csvValue($customer->user?->email),
+                        $this->csvValue($customer->user?->phone),
+                        $customer->user?->is_active ? 'active' : 'inactive',
+                        $customer->user?->email_verified_at ? 'yes' : 'no',
+                        $customer->user?->phone_verified_at ? 'yes' : 'no',
+                        $this->csvValue($customer->type),
+                        $this->csvValue($customer->nic),
+                        $this->csvValue($customer->passport_number),
+                        $this->csvValue($customer->license_no),
+                        $this->csvValue($customer->getAttribute('country')),
+                        $this->csvValue($customer->city),
+                        $customer->created_at?->toIso8601String(),
+                    ]);
+                }
+            });
+
+            fclose($output);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'no-store, no-cache',
+        ]);
+    }
+
+    private function csvValue(mixed $value): string
+    {
+        $value = (string) $value;
+
+        return preg_match('/^[=+\-@]/', $value) === 1 ? "'" . $value : $value;
     }
 
     /**

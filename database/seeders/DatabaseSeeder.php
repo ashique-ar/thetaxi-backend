@@ -14,8 +14,11 @@ class DatabaseSeeder extends Seeder
     public function run(): void
     {
         $this->call([
+            // Safe on new and existing client databases. Creates only missing
+            // permissions/roles and adds baseline grants without removing any.
+            AllPermissionsSeeder::class,
+
                 // Basic/core seeders (uncomment as needed)
-                // RolesAndPermissionsSeeder::class,
                 // CorporatePermissionsSeeder::class,
                 // AdminUserSeeder::class,
                 // SmsManagementPermissionsSeeder::class,

@@ -968,28 +968,26 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['permission:agents.view'])->group(function () {
-        Route::get('agents/dashboard-stats', [AgentController::class, 'dashboardStats']);
-        Route::get('agents/top-performers', [AgentController::class, 'topPerformers']);
-        Route::get('agents/export', [AgentController::class, 'export']);
-        Route::prefix('agents')->group(function () {
-            Route::get('api-management/stats', [AgentApiController::class, 'stats']);
-            Route::post('api-management/{agentApi}/revoke', [AgentApiController::class, 'revoke']);
-            Route::post('api-management/{agentApi}/activate', [AgentApiController::class, 'activate']);
-            Route::get('api-management/{agentApi}/usage', [AgentApiController::class, 'usage']);
-            Route::get('api-management/{agentApi}/logs', [AgentApiController::class, 'logs']);
-            Route::apiResource('api-management', AgentApiController::class)
-                ->parameters(['api-management' => 'agentApi']);
-            Route::apiResource('agent-api-sessions', AgentApiSessionController::class);
-            Route::apiResource('agent-commissions', AgentCommissionController::class);
-            Route::post('agent-commissions/settle', [AgentCommissionController::class, 'settle']);
-            Route::get('{agentId}/commission-statement', [AgentCommissionController::class, 'statement']);
-            Route::get('{agent}/statistics', [AgentController::class, 'statistics']);
-            Route::put('{agent}/branding', [AgentController::class, 'updateBranding']);
-            Route::post('{agent}/reset-password', [AgentController::class, 'resetPassword']);
-        });
-        Route::apiResource('agents', AgentController::class);
+    Route::get('agents/dashboard-stats', [AgentController::class, 'dashboardStats']);
+    Route::get('agents/top-performers', [AgentController::class, 'topPerformers']);
+    Route::get('agents/export', [AgentController::class, 'export']);
+    Route::prefix('agents')->group(function () {
+        Route::get('api-management/stats', [AgentApiController::class, 'stats']);
+        Route::post('api-management/{agentApi}/revoke', [AgentApiController::class, 'revoke']);
+        Route::post('api-management/{agentApi}/activate', [AgentApiController::class, 'activate']);
+        Route::get('api-management/{agentApi}/usage', [AgentApiController::class, 'usage']);
+        Route::get('api-management/{agentApi}/logs', [AgentApiController::class, 'logs']);
+        Route::apiResource('api-management', AgentApiController::class)
+            ->parameters(['api-management' => 'agentApi']);
+        Route::apiResource('agent-api-sessions', AgentApiSessionController::class);
+        Route::apiResource('agent-commissions', AgentCommissionController::class);
+        Route::post('agent-commissions/settle', [AgentCommissionController::class, 'settle']);
+        Route::get('{agentId}/commission-statement', [AgentCommissionController::class, 'statement']);
+        Route::get('{agent}/statistics', [AgentController::class, 'statistics']);
+        Route::put('{agent}/branding', [AgentController::class, 'updateBranding']);
+        Route::post('{agent}/reset-password', [AgentController::class, 'resetPassword']);
     });
+    Route::apiResource('agents', AgentController::class);
 
     /*
     |--------------------------------------------------------------------------
