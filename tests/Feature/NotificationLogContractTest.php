@@ -21,6 +21,10 @@ it('exposes only truthful notification log read contracts', function (): void {
         ->and($index->gatherMiddleware())->toContain('permission:notification-logs.view')
         ->and($show->gatherMiddleware())->toContain('permission:notification-logs.view')
         ->and($routes->contains(fn ($route) => $route->uri() === 'api/notification-logs/{notificationLog}/retry'))
+        ->toBeFalse()
+        ->and($routes->contains(fn ($route) => $route->uri() === 'api/notifications' && in_array('POST', $route->methods(), true)))
+        ->toBeFalse()
+        ->and($routes->contains(fn ($route) => $route->uri() === 'api/notifications/{id}' && in_array('PUT', $route->methods(), true)))
         ->toBeFalse();
 });
 
@@ -62,4 +66,3 @@ it('returns persisted recipient template delivery and content facts', function (
         'delivery_status' => 'sent',
     ]);
 });
-

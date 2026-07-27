@@ -13,7 +13,7 @@ it('exposes item-scoped trace and tracking summary behind booking view permissio
 
 it('protects raw replay coordinates with a dedicated permission', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
-    $seeder = file_get_contents(database_path('seeders/AdditionalPermissionsSeeder.php'));
+    $seeder = file_get_contents(database_path('seeders/AllPermissionsSeeder.php'));
 
     expect($routes)
         ->toContain("Route::get('route-replay'")

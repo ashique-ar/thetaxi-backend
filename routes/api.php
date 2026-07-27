@@ -408,19 +408,14 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('payment-methods', [PaymentMethodController::class, 'index'])->middleware('permission:bookings.view');
     Route::get('payment-methods/{payment_method}', [PaymentMethodController::class, 'show'])->middleware('permission:bookings.view');
 
-    Route::middleware(['permission:system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view'])->group(function () {
-        Route::get('documents/stats', [DocumentController::class, 'stats']);
-        Route::get('documents', [DocumentController::class, 'index']);
-        Route::get('documents/{document}', [DocumentController::class, 'show'])->whereUuid('document');
-        Route::get('documents/{document}/download', [DocumentController::class, 'download'])->whereUuid('document');
-    });
-
-    Route::middleware(['permission:uploads.manage|customers.edit|agreements.view|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit'])->group(function () {
-        Route::post('documents', [DocumentController::class, 'store']);
-        Route::post('documents/{document}/verify', [DocumentController::class, 'verify'])->whereUuid('document');
-        Route::post('documents/{document}/reject', [DocumentController::class, 'reject'])->whereUuid('document');
-        Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->whereUuid('document');
-    });
+    Route::get('documents/stats', [DocumentController::class, 'stats']);
+    Route::get('documents', [DocumentController::class, 'index']);
+    Route::get('documents/{document}', [DocumentController::class, 'show'])->whereUuid('document');
+    Route::get('documents/{document}/download', [DocumentController::class, 'download'])->whereUuid('document');
+    Route::post('documents', [DocumentController::class, 'store']);
+    Route::post('documents/{document}/verify', [DocumentController::class, 'verify'])->whereUuid('document');
+    Route::post('documents/{document}/reject', [DocumentController::class, 'reject'])->whereUuid('document');
+    Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->whereUuid('document');
 
     Route::middleware(['permission:customers.view'])->group(function () {
         Route::get('customers/search', [CustomerController::class, 'search']);
