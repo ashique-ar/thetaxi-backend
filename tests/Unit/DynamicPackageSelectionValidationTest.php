@@ -134,6 +134,88 @@ class DynamicPackageSelectionValidationTest extends TestCase
         ])->fails());
     }
 
+    public function test_configured_selector_with_no_active_packages_discards_stale_package_id(): void
+    {
+        $request = new class(self::OTHER_SERVICE_TYPE_ID) extends BookingSearchRequest {
+            public function __construct(private readonly string $serviceTypeId)
+            {
+                parent::__construct();
+            }
+
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'pickup_location' => [
+                        'type' => 'location',
+                        'required' => true,
+                        'submit_as' => 'pickup',
+                    ],
+                    'package_id' => [
+                        'type' => 'package_select',
+                        'required' => false,
+                        'submit_as' => 'package_id',
+                    ],
+                ], true, false, $this->serviceTypeId];
+            }
+
+            public function prepareForTest(): void
+            {
+                $this->prepareForValidation();
+            }
+        };
+        DB::table('service_packages')
+            ->where('service_type_id', self::OTHER_SERVICE_TYPE_ID)
+            ->update(['is_active' => false]);
+        $request->initialize([
+            'service_type' => 'point_to_point',
+            'pickup' => 'Colombo, Sri Lanka',
+            'package_id' => self::OTHER_PACKAGE_ID,
+        ]);
+
+        $request->prepareForTest();
+        $rules = $request->rules();
+
+        $this->assertFalse($request->has('package_id'));
+        $this->assertArrayNotHasKey('package_id', $rules);
+        $this->assertFalse(Validator::make($request->all(), $rules)->fails());
+    }
+
+    public function test_single_active_package_is_authoritative_default(): void
+    {
+        $request = new class(self::SERVICE_TYPE_ID) extends BookingSearchRequest {
+            public function __construct(private readonly string $serviceTypeId)
+            {
+                parent::__construct();
+            }
+
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'package_id' => [
+                        'type' => 'package_select',
+                        'required' => false,
+                        'submit_as' => 'package_id',
+                    ],
+                ], true, false, $this->serviceTypeId];
+            }
+
+            public function prepareForTest(): void
+            {
+                $this->prepareForValidation();
+            }
+        };
+        $request->initialize([
+            'service_type' => 'configured-package',
+            'package_id' => self::OTHER_PACKAGE_ID,
+        ]);
+
+        $request->prepareForTest();
+
+        $this->assertSame(self::ACTIVE_PACKAGE_ID, $request->input('package_id'));
+        $this->assertSame(self::ACTIVE_PACKAGE_ID, $request->input('service_package_id'));
+        $this->assertFalse(Validator::make($request->all(), $request->rules())->fails());
+    }
+
     private function validatorFor(array $rules, array $input)
     {
         return Validator::make([

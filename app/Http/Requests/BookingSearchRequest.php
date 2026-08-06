@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Models\PredefinedLocation;
+use App\Models\Service\ServicePackage;
 use App\Models\Service\ServiceType;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
@@ -55,13 +56,27 @@ class BookingSearchRequest extends FormRequest
         // not be validated or consumed by a service such as point-to-point.
         if ($serviceType) {
             try {
-                [$configuredFields] = $this->resolveServiceFormConfig((string) $serviceType);
+                $resolvedConfig = $this->resolveServiceFormConfig((string) $serviceType);
+                $configuredFields = $resolvedConfig[0] ?? [];
+                $configuredServiceTypeId = $resolvedConfig[3] ?? null;
                 $hasConfiguredPackageSelector = collect($configuredFields)->contains(
                     fn($config) => is_array($config) && ($config['type'] ?? null) === 'package_select'
                 );
+                $activePackageIds = $hasConfiguredPackageSelector
+                    ? ServicePackage::query()
+                        ->where('service_type_id', $configuredServiceTypeId)
+                        ->where('is_active', true)
+                        ->pluck('id')
+                    : collect();
 
-                if (!empty($configuredFields) && !$hasConfiguredPackageSelector) {
+                if (!empty($configuredFields) && $activePackageIds->isEmpty()) {
                     unset($data['package_id'], $data['service_package_id']);
+                } elseif ($activePackageIds->count() === 1) {
+                    // Match the dynamic form's hidden-input behavior and make the
+                    // single available package authoritative even for stale URLs.
+                    $onlyPackageId = (string) $activePackageIds->first();
+                    $data['package_id'] = $onlyPackageId;
+                    $data['service_package_id'] = $onlyPackageId;
                 }
             } catch (\Throwable $exception) {
                 Log::warning('Failed to determine package support for booking search', [
@@ -228,6 +243,7 @@ class BookingSearchRequest extends FormRequest
         $resolvedConfig = $this->resolveServiceFormConfig($serviceCode);
         [$fields, $usesDropoffTime, $allowReturnTrip] = $resolvedConfig;
         $serviceTypeId = $resolvedConfig[3] ?? null;
+        $serviceHasActivePackages = $this->serviceHasActivePackages($serviceTypeId);
 
         // If no fields configured, return null to use legacy rules
         if (empty($fields)) {
@@ -345,6 +361,10 @@ class BookingSearchRequest extends FormRequest
                     break;
 
                 case 'package_select':
+                    if (!$serviceHasActivePackages) {
+                        break;
+                    }
+
                     $hasPackageSelector = true;
                     $rules[$submitAs] = [
                         $required ? 'required' : 'nullable',
@@ -387,6 +407,23 @@ class BookingSearchRequest extends FormRequest
         }
 
         return $rules;
+    }
+
+    /**
+     * A configured selector is usable only when the resolved service type has at
+     * least one active option. This mirrors the Blade renderer, which emits no
+     * package input for an empty package collection.
+     */
+    protected function serviceHasActivePackages(?string $serviceTypeId): bool
+    {
+        if (!$serviceTypeId) {
+            return false;
+        }
+
+        return ServicePackage::query()
+            ->where('service_type_id', $serviceTypeId)
+            ->where('is_active', true)
+            ->exists();
     }
 
     private function isOpenPackageServiceConfig(?string $serviceCode, array $data): bool
