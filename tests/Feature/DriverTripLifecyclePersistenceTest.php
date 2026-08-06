@@ -593,6 +593,50 @@ it('keeps the supported assignment payload unchanged for a non-policy booking', 
         ]);
 });
 
+it('reconciles a stale booking item pointer for a single-item driver assignment', function () {
+    $booking = Booking::create(['status' => 'confirmed']);
+    $canonicalItem = BookingItem::create(['booking_id' => $booking->id]);
+    $otherBooking = Booking::create(['status' => 'confirmed']);
+    $staleItem = BookingItem::create(['booking_id' => $otherBooking->id]);
+    $driver = Driver::create(['code' => 'LEGACY-ITEM-DRIVER']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $staleItem->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+    ]);
+    $booking->setRelation('bookingItems', collect([$canonicalItem]));
+
+    $resolveItem = new ReflectionMethod($this->tripService, 'resolveCanonicalAssignmentBookingItemId');
+    $resolvedItemId = $resolveItem->invoke($this->tripService, $assignment, $booking);
+
+    expect($resolvedItemId)->toBe((string) $canonicalItem->id)
+        ->and((string) $assignment->fresh()->booking_item_id)->toBe((string) $canonicalItem->id);
+});
+
+it('does not guess a replacement item for a multi-item driver assignment', function () {
+    $booking = Booking::create(['status' => 'confirmed']);
+    $firstItem = BookingItem::create(['booking_id' => $booking->id]);
+    $secondItem = BookingItem::create(['booking_id' => $booking->id]);
+    $otherBooking = Booking::create(['status' => 'confirmed']);
+    $staleItem = BookingItem::create(['booking_id' => $otherBooking->id]);
+    $driver = Driver::create(['code' => 'AMBIGUOUS-ITEM-DRIVER']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $staleItem->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+    ]);
+    $booking->setRelation('bookingItems', collect([$firstItem, $secondItem]));
+    $resolveItem = new ReflectionMethod($this->tripService, 'resolveCanonicalAssignmentBookingItemId');
+
+    expect(fn () => $resolveItem->invoke($this->tripService, $assignment, $booking))
+        ->toThrow(InvalidArgumentException::class, 'Selected booking item does not belong to this booking')
+        ->and((string) $assignment->fresh()->booking_item_id)->toBe((string) $staleItem->id);
+});
+
 it('rejects accept and decline mutations for an assignment owned by another driver', function () {
     $owner = Driver::create(['code' => 'OWNER']);
     $other = Driver::create(['code' => 'OTHER']);

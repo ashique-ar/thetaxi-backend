@@ -5,6 +5,7 @@ namespace App\Services\Driver;
 use App\Enums\DispatchStatus;
 use App\Enums\TripPhase;
 use App\Enums\VehicleAvailabilityStatus;
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Driver\Driver;
@@ -859,7 +860,7 @@ class TripTrackingService
             return null;
         }
 
-        $assignment->loadMissing(['booking', 'bookingItem']);
+        $assignment->loadMissing(['booking.bookingItems', 'bookingItem']);
         $booking = $assignment->booking;
         if (!$booking) {
             return null;
@@ -879,11 +880,13 @@ class TripTrackingService
             return $this->resolveCanonicalFinalPricingSummary($assignment);
         }
 
+        $bookingItemId = $this->resolveCanonicalAssignmentBookingItemId($assignment, $booking);
+
         // Primary path: use lifecycle service so dispatch + booking tracking stay consistent.
         try {
             if ($this->resolveAssignmentDispatch($assignment)) {
                 $this->bookingLifecycleService->processReturn((string) $booking->id, [
-                    'booking_item_id' => $assignment->booking_item_id,
+                    'booking_item_id' => $bookingItemId,
                     'actual_return_time' => $completedAt->toIso8601String(),
                     'mileage' => $finalLocation['ending_mileage'] ?? null,
                     'notes' => $finalLocation['notes'] ?? 'Completed via driver mobile app',
@@ -918,7 +921,7 @@ class TripTrackingService
                     'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
                     'completed_by_driver' => true,
                 ],
-                $assignment->booking_item_id
+                $bookingItemId
             );
             return $this->resolveCanonicalFinalPricingSummary($assignment);
         } catch (\Throwable $exception) {
@@ -934,6 +937,50 @@ class TripTrackingService
                 previous: $exception
             );
         }
+    }
+
+    /**
+     * Repair legacy single-item assignments whose item pointer is missing or belongs
+     * to another booking. Multi-item assignments remain strict because selecting an
+     * item heuristically could complete the wrong trip.
+     */
+    private function resolveCanonicalAssignmentBookingItemId(
+        DriverAssignment $assignment,
+        Booking $booking
+    ): ?string {
+        $bookingItems = $booking->bookingItems->values();
+        $assignedItemId = $assignment->booking_item_id
+            ? (string) $assignment->booking_item_id
+            : null;
+
+        if ($assignedItemId && $bookingItems->contains(
+            fn (BookingItem $item): bool => (string) $item->getKey() === $assignedItemId
+        )) {
+            return $assignedItemId;
+        }
+
+        if ($bookingItems->count() !== 1) {
+            throw new \InvalidArgumentException(
+                $assignedItemId
+                    ? 'Selected booking item does not belong to this booking'
+                    : 'booking_item_id could not be resolved safely for this assignment'
+            );
+        }
+
+        $canonicalItem = $bookingItems->first();
+        $canonicalItemId = (string) $canonicalItem->getKey();
+
+        $assignment->forceFill(['booking_item_id' => $canonicalItemId])->save();
+        $assignment->setRelation('bookingItem', $canonicalItem);
+
+        Log::warning('Reconciled legacy driver assignment booking item before completion', [
+            'assignment_id' => $assignment->id,
+            'booking_id' => $booking->id,
+            'previous_booking_item_id' => $assignedItemId,
+            'booking_item_id' => $canonicalItemId,
+        ]);
+
+        return $canonicalItemId;
     }
 
     private function resolveAssignmentDispatch(DriverAssignment $assignment): ?BookingDispatch
