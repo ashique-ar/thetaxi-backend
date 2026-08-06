@@ -50,6 +50,27 @@ class BookingSearchRequest extends FormRequest
         $serviceType = $data['service_type'] ?? null;
         $isOpenPackageRequest = $this->isOpenPackageServiceConfig($serviceType, $data);
 
+        // Package selections belong only to service forms that explicitly expose a
+        // package selector. A stale query-string value from another booking tab must
+        // not be validated or consumed by a service such as point-to-point.
+        if ($serviceType) {
+            try {
+                [$configuredFields] = $this->resolveServiceFormConfig((string) $serviceType);
+                $hasConfiguredPackageSelector = collect($configuredFields)->contains(
+                    fn($config) => is_array($config) && ($config['type'] ?? null) === 'package_select'
+                );
+
+                if (!empty($configuredFields) && !$hasConfiguredPackageSelector) {
+                    unset($data['package_id'], $data['service_package_id']);
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to determine package support for booking search', [
+                    'service_type' => $serviceType,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
         if (in_array($serviceType, ['self_drive', 'with_driver'], true)) {
             if (empty($data['pickup_date']) && !empty($data['date'])) {
                 $data['pickup_date'] = $data['date'];
@@ -225,6 +246,8 @@ class BookingSearchRequest extends FormRequest
             return $rule;
         };
 
+        $hasPackageSelector = false;
+
         foreach ($fields as $fieldName => $config) {
             $submitAs = $config['submit_as'] ?? $fieldName;
             $required = (bool) ($config['required'] ?? false);
@@ -322,6 +345,7 @@ class BookingSearchRequest extends FormRequest
                     break;
 
                 case 'package_select':
+                    $hasPackageSelector = true;
                     $rules[$submitAs] = [
                         $required ? 'required' : 'nullable',
                         'uuid',
@@ -337,11 +361,13 @@ class BookingSearchRequest extends FormRequest
 
         // Always allow common auxiliary fields
         $rules['rental_mode'] = $rules['rental_mode'] ?? 'nullable|string';
-        $rules['package_id'] = $rules['package_id'] ?? [
-            'nullable',
-            'uuid',
-            $activePackageRule(),
-        ];
+        if ($hasPackageSelector) {
+            $rules['package_id'] = $rules['package_id'] ?? [
+                'nullable',
+                'uuid',
+                $activePackageRule(),
+            ];
+        }
         $rules['package_type'] = $rules['package_type'] ?? 'nullable|string';
         $rules['trip_mode'] = $rules['trip_mode'] ?? 'nullable|string|in:fixed_route,open_package';
 

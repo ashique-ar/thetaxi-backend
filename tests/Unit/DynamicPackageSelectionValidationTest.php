@@ -93,6 +93,47 @@ class DynamicPackageSelectionValidationTest extends TestCase
         ])->fails());
     }
 
+    public function test_service_without_package_selector_does_not_validate_stale_package_id(): void
+    {
+        $request = new class(self::SERVICE_TYPE_ID) extends BookingSearchRequest {
+            public function __construct(private readonly string $serviceTypeId)
+            {
+                parent::__construct();
+            }
+
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'pickup_location' => [
+                        'type' => 'location',
+                        'required' => true,
+                        'submit_as' => 'pickup',
+                    ],
+                ], true, false, $this->serviceTypeId];
+            }
+
+            public function prepareForTest(): void
+            {
+                $this->prepareForValidation();
+            }
+        };
+        $request->initialize([
+            'service_type' => 'point_to_point',
+            'pickup' => 'Galle, Sri Lanka',
+            'package_id' => self::OTHER_PACKAGE_ID,
+        ]);
+
+        $request->prepareForTest();
+        $rules = $request->rules();
+
+        $this->assertFalse($request->has('package_id'));
+        $this->assertArrayNotHasKey('package_id', $rules);
+        $this->assertFalse($this->validatorFor($rules, [
+            'pickup' => 'Galle, Sri Lanka',
+            'package_id' => self::OTHER_PACKAGE_ID,
+        ])->fails());
+    }
+
     private function validatorFor(array $rules, array $input)
     {
         return Validator::make([
