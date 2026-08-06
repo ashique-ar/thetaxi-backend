@@ -14,6 +14,9 @@ use Illuminate\Support\Facades\Log;
 
 class KmRangePricingRule extends BaseModel
 {
+    public const APPLICABLE_CONTEXTS = ['portal', 'public', 'corporate'];
+    public const DEFAULT_APPLICABLE_CONTEXTS = ['public'];
+
     protected $table = 'km_range_pricing_rules';
     
     protected $fillable = [
@@ -22,6 +25,8 @@ class KmRangePricingRule extends BaseModel
         'scope',
         'service_type_id',
         'vehicle_group_id',
+        'distance_types',
+        'applicable_contexts',
         'owner_type',
         'owner_id',
         'from_km',
@@ -48,6 +53,8 @@ class KmRangePricingRule extends BaseModel
         'priority' => 'integer',
         'effective_from' => 'datetime',
         'effective_to' => 'datetime',
+        'distance_types' => 'array',
+        'applicable_contexts' => 'array',
     ];
 
     /**
@@ -76,7 +83,7 @@ class KmRangePricingRule extends BaseModel
         return $query->where('is_active', true);
     }
 
-    public function scopeEffective(Builder $query, Carbon $date = null): Builder
+    public function scopeEffective(Builder $query, ?Carbon $date = null): Builder
     {
         $date = $date ?? now();
         
@@ -125,6 +132,26 @@ class KmRangePricingRule extends BaseModel
                      });
     }
 
+    public function scopeForDistanceType(Builder $query, string $distanceType): Builder
+    {
+        return $query->whereJsonContains('distance_types', $distanceType);
+    }
+
+    public function scopeForPricingContext(Builder $query, ?string $pricingContext): Builder
+    {
+        $context = in_array($pricingContext, self::APPLICABLE_CONTEXTS, true)
+            ? $pricingContext
+            : 'public';
+
+        return $query->where(function (Builder $q) use ($context) {
+            $q->whereJsonContains('applicable_contexts', $context);
+
+            if ($context === 'public') {
+                $q->orWhereNull('applicable_contexts');
+            }
+        });
+    }
+
     public function scopeOrderByPriority(Builder $query): Builder
     {
         return $query->orderBy('priority', 'desc')->orderBy('created_at', 'asc');
@@ -151,7 +178,7 @@ class KmRangePricingRule extends BaseModel
     /**
      * Check if this rule is currently effective
      */
-    public function isEffective(Carbon $date = null): bool
+    public function isEffective(?Carbon $date = null): bool
     {
         $date = $date ?? now();
         
@@ -228,6 +255,8 @@ class KmRangePricingRule extends BaseModel
                 'id' => $this->id,
                 'name' => $this->name,
                 'scope' => $this->scope,
+                'distance_types' => $this->distance_types,
+                'applicable_contexts' => $this->applicable_contexts ?? self::DEFAULT_APPLICABLE_CONTEXTS,
                 'km_range' => "{$this->from_km} - " . ($this->to_km ?? '∞') . " km",
                 'priority' => $this->priority,
             ],
@@ -241,11 +270,17 @@ class KmRangePricingRule extends BaseModel
         float $distance,
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
-        Carbon $date = null,
+        ?Carbon $date = null,
         ?string $ownerType = null,
-        ?string $ownerId = null
+        ?string $ownerId = null,
+        string $distanceType = 'journey_distance',
+        string $pricingContext = 'public'
     ): \Illuminate\Database\Eloquent\Collection {
-        $query = static::active()->effective($date)->forDistance($distance);
+        $query = static::active()
+            ->effective($date)
+            ->forDistanceType($distanceType)
+            ->forPricingContext($pricingContext)
+            ->forDistance($distance);
         static::applyOwnerScope($query, $ownerType, $ownerId);
 
         // Apply scope filtering
@@ -310,11 +345,22 @@ class KmRangePricingRule extends BaseModel
         float $baseAmount = 0,
         ?string $serviceTypeId = null,
         ?string $vehicleGroupId = null,
-        Carbon $date = null,
+        ?Carbon $date = null,
         ?string $ownerType = null,
-        ?string $ownerId = null
+        ?string $ownerId = null,
+        string $distanceType = 'journey_distance',
+        string $pricingContext = 'public'
     ): array {
-        $applicableRules = static::getApplicableRules($distance, $serviceTypeId, $vehicleGroupId, $date, $ownerType, $ownerId);
+        $applicableRules = static::getApplicableRules(
+            $distance,
+            $serviceTypeId,
+            $vehicleGroupId,
+            $date,
+            $ownerType,
+            $ownerId,
+            $distanceType,
+            $pricingContext
+        );
         
         if ($applicableRules->isEmpty()) {
             return [
@@ -353,6 +399,10 @@ class KmRangePricingRule extends BaseModel
             'scope' => 'required|in:global,service,vehicle_group',
             'service_type_id' => 'nullable|uuid|exists:service_types,id|required_if:scope,service',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id|required_if:scope,vehicle_group',
+            'distance_types' => 'sometimes|array|min:1',
+            'distance_types.*' => 'required|string|distinct|in:journey_distance,pickup_distance,delivery_distance',
+            'applicable_contexts' => 'required|array|min:1',
+            'applicable_contexts.*' => 'required|string|distinct|in:portal,public,corporate',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|required_with:owner_type',
             'from_km' => 'required|numeric|min:0',

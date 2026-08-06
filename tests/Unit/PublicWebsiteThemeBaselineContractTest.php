@@ -61,29 +61,53 @@ it('preserves every configured booking tab and dynamic field contract for theme 
     }
 });
 
-it('documents the effective owner of routes declared after the CMS catch alls', function () {
+it('keeps specific public owners ahead of the CMS catch alls', function () {
     $routesSource = file_get_contents(publicThemeProjectPath('routes/web.php'));
     $dynamicPosition = strpos($routesSource, "Route::get('/{contentType}/{content}'");
     $servicePosition = strpos($routesSource, "Route::get('/services/{slug}'");
-    $systemPosition = strpos($routesSource, "Route::get('/system/{any?}'");
 
     expect($dynamicPosition)->toBeInt()
-        ->and($servicePosition)->toBeInt()->toBeGreaterThan($dynamicPosition)
-        ->and($systemPosition)->toBeInt()->toBeGreaterThan($dynamicPosition);
+        ->and($servicePosition)->toBeInt()->toBeLessThan($dynamicPosition);
 
     $routes = new RouteCollection();
+    $routes->add(new Route(['GET'], '/services/{slug}', fn () => null));
     $routes->add((new Route(['GET'], '/{contentType}/{content}', fn () => null))
         ->where('contentType', '[a-zA-Z0-9-_]+')
         ->where('content', '[a-zA-Z0-9-_]+'));
-    $routes->add(new Route(['GET'], '/services/{slug}', fn () => null));
-    $routes->add((new Route(['GET'], '/system/{any?}', fn () => null))->where('any', '.*'));
 
     expect($routes->match(Request::create('/services/airport-transfer', 'GET'))->uri())
-        ->toBe('{contentType}/{content}')
-        ->and($routes->match(Request::create('/system/settings', 'GET'))->uri())
-        ->toBe('{contentType}/{content}')
-        ->and($routes->match(Request::create('/system/settings/appearance', 'GET'))->uri())
-        ->toBe('system/{any?}');
+        ->toBe('services/{slug}');
+});
+
+it('does not expose diagnostic cache mutation or orphan system routes', function () {
+    $routes = file_get_contents(publicThemeProjectPath('routes/web.php'));
+
+    expect($routes)
+        ->not->toContain('/clear-all-caches')
+        ->not->toContain('/check-services-debug')
+        ->not->toContain("Route::get('/test'")
+        ->not->toContain('/test-render')
+        ->not->toContain("Route::get('/system/{any?}'")
+        ->not->toContain('Artisan::call(')
+        ->not->toContain('DebugController');
+});
+
+it('keeps booking confirmation customers on the public verified status owner', function () {
+    $success = file_get_contents(publicThemeProjectPath('resources/views/booking/success.blade.php'));
+    $status = file_get_contents(publicThemeProjectPath('resources/views/booking/status.blade.php'));
+    $routes = file_get_contents(publicThemeProjectPath('routes/web.php'));
+
+    expect($success)
+        ->toContain("route('booking.status', ['booking_reference' => \$bookingReference])")
+        ->toContain('View Booking Status')
+        ->not->toContain("route('bookings.view'");
+
+    expect($status)
+        ->toContain("old('booking_reference', request()->query('booking_reference', ''))");
+
+    expect($routes)
+        ->toContain("Route::get('/booking/status', [CustomerBookingStatusController::class, 'show'])->name('booking.status')")
+        ->toContain("Route::post('/booking/status', [CustomerBookingStatusController::class, 'lookup'])");
 });
 
 it('keeps known missing literal views limited to non-public or unregistered legacy paths', function () {
@@ -118,7 +142,6 @@ it('keeps known missing literal views limited to non-public or unregistered lega
     expect($missing)->toBe([
         'admin.analytics.short-urls',
         'checkout.mock-gateway',
-        'layout.system-app',
     ]);
 
     $webRoutes = file_get_contents(publicThemeProjectPath('routes/web.php'));

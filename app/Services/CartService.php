@@ -4,6 +4,8 @@ namespace App\Services;
 
 use App\Models\Cart;
 use App\Models\User;
+use App\Models\Vehicle\VehicleAddon;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
@@ -277,11 +279,12 @@ class CartService
     /**
      * Calculate and update cart totals
      */
-    public function updateTotals(Cart $cart): void
+    public function updateTotals(Cart $cart, ?string $customerId = null): array
     {
         $items = $cart->getItems();
 
         if ($items->isEmpty()) {
+            $cart->removeCoupon();
             $cart->setTotals([
                 'subtotal' => 0,
                 'service_fee' => 0,
@@ -292,7 +295,11 @@ class CartService
                 'total' => 0
             ]);
             $cart->save();
-            return;
+            return [
+                'valid' => true,
+                'applied' => false,
+                'discount' => 0.0,
+            ];
         }
 
         // Calculate subtotal using LKR prices from BookingFlowService (already calculated package amounts)
@@ -371,8 +378,9 @@ class CartService
         }
         $extraKmCharges = round($extraKmCharges, 2);
 
-        // Coupon discount (if any)
-        $couponDiscount = round($cart->coupon_discount ?? 0, 2);
+        // Revalidate portal-owned promotion rules whenever cart values change.
+        $promoState = $this->refreshAppliedPromoCode($cart, (float) $subtotal, $customerId);
+        $couponDiscount = round((float) ($promoState['discount'] ?? 0), 2);
 
         // Calculate tax dynamically from database settings (apply on taxable base after discount)
         $tax = 0;
@@ -428,6 +436,8 @@ class CartService
         $cart->setTotals($totalsArray);
 
         $cart->save();
+
+        return $promoState;
     }
 
     /**
@@ -495,13 +505,37 @@ class CartService
 
             // Convert prices from LKR (stored) to selected currency
             if (isset($item['price'])) {
-                $item['price'] = $this->currencyService->convertFromLKR((float) $item['price'], $selectedCurrency);
-                $item['price_lkr'] = (float) ($item['price_lkr'] ?? $item['price']); // Preserve original LKR price
+                $priceLkr = (float) ($item['price_lkr'] ?? $item['price']);
+                $item['price_lkr'] = $priceLkr;
+                $item['price'] = $this->currencyService->convertFromLKR($priceLkr, $selectedCurrency);
             }
 
             if (isset($item['total_price'])) {
-                $item['total_price'] = $this->currencyService->convertFromLKR((float) $item['total_price'], $selectedCurrency);
-                $item['total_price_lkr'] = (float) ($item['total_price_lkr'] ?? $item['total_price']); // Preserve original LKR price
+                $totalPriceLkr = (float) ($item['total_price_lkr'] ?? $item['total_price']);
+                $item['total_price_lkr'] = $totalPriceLkr;
+                $item['total_price'] = $this->currencyService->convertFromLKR($totalPriceLkr, $selectedCurrency);
+            }
+
+            if (isset($item['addons']) && is_array($item['addons'])) {
+                $item['addons'] = collect($item['addons'])->map(function ($addon) use ($selectedCurrency) {
+                    if (!is_array($addon)) {
+                        return $addon;
+                    }
+
+                    foreach (['amount', 'calculated_amount', 'total', 'unit_price', 'total_price'] as $field) {
+                        if (isset($addon[$field]) && is_numeric($addon[$field])) {
+                            $addon[$field . '_lkr'] = (float) ($addon[$field . '_lkr'] ?? $addon[$field]);
+                            $addon[$field] = $this->currencyService->convertFromLKR(
+                                (float) $addon[$field],
+                                $selectedCurrency
+                            );
+                        }
+                    }
+
+                    $addon['currency'] = $selectedCurrency;
+
+                    return $addon;
+                })->all();
             }
 
             // Convert extra_km prices if present
@@ -677,8 +711,12 @@ class CartService
             }
 
             // Get addon details from database
-            $addon = \App\Models\Vehicle\VehicleAddon::find($addonId);
-            if (!$addon) {
+            $addon = VehicleAddon::find($addonId);
+            if (
+                !$addon
+                || !$this->isAddonEligibleForItem($addon, $items[$cartKey])
+                || !$this->isAddonQuantityAllowed($addon, $qty)
+            ) {
                 return false;
             }
 
@@ -763,15 +801,11 @@ class CartService
                 return $this->removeAddon($cart, $cartKey, $addonId);
             }
 
-            $addon = \App\Models\Vehicle\VehicleAddon::find($addonId);
-            if (!$addon) {
-                return false;
-            }
-
-            // Check qty constraints
+            $addon = VehicleAddon::find($addonId);
             if (
-                ($addon->min_qty && $qty < $addon->min_qty) ||
-                ($addon->max_qty && $qty > $addon->max_qty)
+                !$addon
+                || !$this->isAddonEligibleForItem($addon, $items[$cartKey])
+                || !$this->isAddonQuantityAllowed($addon, $qty)
             ) {
                 return false;
             }
@@ -817,19 +851,18 @@ class CartService
      */
     public function getAvailableAddons(?string $serviceTypeId = null): array
     {
-        $query = \App\Models\Vehicle\VehicleAddon::query();
+        $query = VehicleAddon::query()->available();
 
         if ($serviceTypeId) {
-            $query->where(function ($query) use ($serviceTypeId) {
-                $query->where('service_type_id', $serviceTypeId)
-                    ->orWhereNull('service_type_id');
-            });
+            $query->forServiceType($serviceTypeId);
+        } else {
+            $query->whereNull('service_type_id');
         }
 
         // Convert addon amounts to the user's selected currency before returning
         $selectedCurrency = $this->currencyService->getSelectedCurrency();
 
-        $addons = $query->whereNull('deleted_at') // Only active (not soft deleted)
+        $addons = $query
             ->select('id', 'name', 'description', 'thumbnail', 'amount', 'rate_type', 'min_qty', 'max_qty')
             ->orderBy('name')
             ->get()
@@ -851,6 +884,36 @@ class CartService
             })->toArray();
 
         return $addons;
+    }
+
+    /**
+     * Enforce the portal-owned service and availability contract on mutations.
+     */
+    protected function isAddonEligibleForItem(VehicleAddon $addon, array $item): bool
+    {
+        if (!$addon->isValid()) {
+            return false;
+        }
+
+        if (!$addon->service_type_id) {
+            return true;
+        }
+
+        $serviceTypeData = $item['service_type_data'] ?? null;
+        $serviceTypeId = is_array($serviceTypeData)
+            ? ($serviceTypeData['id'] ?? null)
+            : ($serviceTypeData->id ?? null);
+
+        return is_string($serviceTypeId)
+            && $serviceTypeId !== ''
+            && $addon->service_type_id === $serviceTypeId;
+    }
+
+    protected function isAddonQuantityAllowed(VehicleAddon $addon, int $quantity): bool
+    {
+        return $quantity > 0
+            && (!$addon->min_qty || $quantity >= $addon->min_qty)
+            && (!$addon->max_qty || $quantity <= $addon->max_qty);
     }
 
     /**
@@ -981,6 +1044,71 @@ class CartService
 
         $cart->setTotals($totalsArray);
         $cart->save();
+    }
+
+    /**
+     * Revalidate and reprice the applied promotion against the current cart.
+     *
+     * @return array{
+     *     valid: bool,
+     *     applied: bool,
+     *     discount: float,
+     *     error_code?: string,
+     *     message?: string,
+     *     removed_code?: string
+     * }
+     */
+    public function refreshAppliedPromoCode(
+        Cart $cart,
+        float $subtotal,
+        ?string $customerId = null
+    ): array {
+        $code = trim((string) ($cart->coupon_code ?? ''));
+
+        if ($code === '') {
+            return [
+                'valid' => true,
+                'applied' => false,
+                'discount' => 0.0,
+            ];
+        }
+
+        $validation = $this->promoCodeService->validatePromoCode($code, $subtotal, $customerId);
+        if (!($validation['valid'] ?? false)) {
+            $cart->removeCoupon();
+
+            return [
+                'valid' => false,
+                'applied' => false,
+                'discount' => 0.0,
+                'error_code' => $validation['error_code'] ?? 'PROMO_CODE_INVALID',
+                'message' => $validation['message'] ?? 'The applied promo code is no longer valid.',
+                'removed_code' => $code,
+            ];
+        }
+
+        $promoCode = $this->promoCodeService->getByCode($code);
+        if (!$promoCode) {
+            $cart->removeCoupon();
+
+            return [
+                'valid' => false,
+                'applied' => false,
+                'discount' => 0.0,
+                'error_code' => 'PROMO_CODE_NOT_FOUND',
+                'message' => 'The applied promo code no longer exists.',
+                'removed_code' => $code,
+            ];
+        }
+
+        $discount = $this->promoCodeService->calculateDiscount($promoCode, $subtotal);
+        $cart->applyCoupon($promoCode->code, $discount);
+
+        return [
+            'valid' => true,
+            'applied' => true,
+            'discount' => $discount,
+        ];
     }
 
     /**
@@ -1225,6 +1353,77 @@ class CartService
     }
 
     /**
+     * Resolve the current portal-owned extra-KM offer for a persisted cart item.
+     *
+     * An active slab enables the option for the service type, while the common
+     * rate definition supplies the selected vehicle group's price.
+     *
+     * @return array{
+     *     vehicle_group_id: string,
+     *     service_type_id: string,
+     *     has_slab: bool,
+     *     rate: array|null
+     * }|null
+     */
+    public function getExtraKmOfferForItem(array $item): ?array
+    {
+        $vehicleGroupId = $this->cartItemIdentifier($item, 'vehicle_group_id');
+        $serviceTypeId = $this->cartItemNestedIdentifier($item, 'service_type_data', 'id');
+
+        if (!$vehicleGroupId || !$serviceTypeId) {
+            return null;
+        }
+
+        $hasSlab = $this->hasActiveExtraKmSlabForService($serviceTypeId);
+
+        return [
+            'vehicle_group_id' => $vehicleGroupId,
+            'service_type_id' => $serviceTypeId,
+            'has_slab' => $hasSlab,
+            'rate' => $hasSlab
+                ? $this->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId)
+                : null,
+        ];
+    }
+
+    protected function hasActiveExtraKmSlabForService(string $serviceTypeId): bool
+    {
+        return VehiclePricingSlabDefinition::query()
+            ->forServiceType($serviceTypeId)
+            ->active()
+            ->exists();
+    }
+
+    protected function cartItemIdentifier(array $item, string $key): ?string
+    {
+        $value = $item[$key] ?? null;
+
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    protected function cartItemNestedIdentifier(array $item, string $container, string $key): ?string
+    {
+        $data = $item[$container] ?? null;
+        $value = is_array($data)
+            ? ($data[$key] ?? null)
+            : (is_object($data) ? ($data->{$key} ?? null) : null);
+
+        if (!is_scalar($value)) {
+            return null;
+        }
+
+        $value = trim((string) $value);
+
+        return $value !== '' ? $value : null;
+    }
+
+    /**
      * Get KM limits from slab definition for a service type
      * 
      * @param string $serviceTypeId Service type ID
@@ -1278,24 +1477,17 @@ class CartService
         try {
             $items = $cart->items ?? [];
 
-            if (!isset($items[$cartKey])) {
+            if (!isset($items[$cartKey]) || $extraKm <= 0) {
                 return false;
             }
 
-            $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
-            if (!$vehicleGroupId) {
-                return false;
-            }
-
-            // Get service type ID from cart item for accurate rate lookup
-            $serviceTypeId = $items[$cartKey]['service_type_data']['id'] ?? null;
-
-            // Get extra km rate for this vehicle group and service type
-            $extraKmRate = $this->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
-            if (!$extraKmRate) {
+            $offer = $this->getExtraKmOfferForItem($items[$cartKey]);
+            $extraKmRate = $offer['rate'] ?? null;
+            if (!$offer || !$offer['has_slab'] || !$extraKmRate) {
                 \Illuminate\Support\Facades\Log::warning('Extra KM rate not configured for vehicle group', [
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'service_type_id' => $serviceTypeId,
+                    'vehicle_group_id' => $offer['vehicle_group_id'] ?? null,
+                    'service_type_id' => $offer['service_type_id'] ?? null,
+                    'has_slab' => $offer['has_slab'] ?? false,
                 ]);
                 return false;
             }

@@ -412,8 +412,17 @@
             e.preventDefault();
             
             const $form = $(this);
+            if ($form.data('quotation-submitting')) {
+                return;
+            }
+            $form.data('quotation-submitting', true);
+
             const $submitBtn = $form.find('button[type="submit"]');
             const originalBtnText = $submitBtn.html();
+
+            if (typeof window.prepareQuotationRequestForm === 'function') {
+                window.prepareQuotationRequestForm(this);
+            }
             
             // Show loading state
             $submitBtn.prop('disabled', true).html(
@@ -441,6 +450,7 @@
                     showErrorNotification(errorMsg);
                 },
                 complete: function() {
+                    $form.data('quotation-submitting', false);
                     $submitBtn.prop('disabled', false).html(originalBtnText);
                 }
             });

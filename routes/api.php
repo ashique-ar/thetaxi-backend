@@ -1006,6 +1006,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('logsheets/dashboard', [DriverLogController::class, 'stats']);
         Route::get('logsheets', [DriverLogController::class, 'index']);
         Route::post('logsheets', [DriverLogController::class, 'store']);
+        Route::post('logsheets/bulk-review', [DriverLogController::class, 'bulkReview']);
         Route::post('logsheets/{driverLog}/assign', [DriverLogController::class, 'assign']);
         Route::post('logsheets/{driverLog}/submit', [DriverLogController::class, 'submit']);
         Route::post('logsheets/{driverLog}/verify', [DriverLogController::class, 'verify']);
@@ -1094,12 +1095,6 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:agreement-templates.edit');
     Route::delete('agreement-templates/{template}', [AgreementController::class, 'destroyTemplate'])
         ->middleware('permission:agreement-templates.delete');
-
-    Route::middleware(['permission:agreements.view', 'permission:agreement-signing.edit'])->group(function () {
-        Route::post('agreements/{agreement}/verify-identity', [AgreementController::class, 'verifyIdentity']);
-        Route::post('agreements/{agreement}/sign', [AgreementController::class, 'sign']);
-        Route::post('agreements/{agreement}/email-signed', [AgreementController::class, 'emailSignedAgreement']);
-    });
 
     Route::middleware(['permission:agreements.edit'])->group(function () {
         Route::post('agreements/bulk-update-status', [AgreementController::class, 'bulkUpdateStatus']);

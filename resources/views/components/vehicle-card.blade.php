@@ -32,13 +32,19 @@
     // Check specific conditions for quotation-only
     $hasPricing = isset($pricing['base_amount']) && $pricing['base_amount'] > 0;
     $isGroupActive = $vehicle['is_group_active'] ?? true;
-    $hasAvailableVehicles = ($availability['available'] ?? 0) > 0;
+    $availabilitySetting = app(\App\Services\WebsiteSettingsService::class)
+        ->get('public_booking_enforce_vehicle_availability', true);
+    $availabilityEnforced = $availabilitySetting === null || $availabilitySetting === ''
+        ? true
+        : (filter_var($availabilitySetting, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true);
+    $hasAvailableVehicles = !$availabilityEnforced || ($availability['available'] ?? 0) > 0;
     $isInquiryOnly = $vehicle['is_inquiry_only'] ?? false;
     $serviceRequiresInquiry = $vehicle['service_requires_inquiry'] ?? false;
 
     // Final determination: show quotation button if any condition is met
     $showQuotationButton =
-        $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry;
+        $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry ||
+        ($availabilityEnforced && !$hasAvailableVehicles);
     $showPublicPrice = $hasPricing && !$isInquiryOnly && !$serviceRequiresInquiry;
 
     // Can add to cart/book only if all conditions are met

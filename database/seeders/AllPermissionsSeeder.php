@@ -28,7 +28,6 @@ class AllPermissionsSeeder extends Seeder
         'agent-commissions',
         'agents',
         'agreements',
-        'agreement-signing',
         'agreement-templates',
         'airports',
         'analytics',

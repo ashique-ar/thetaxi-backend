@@ -261,7 +261,7 @@ class GamificationController extends Controller
                         'description' => $badge->description,
                         'level' => $badge->level,
                         'earned_at' => $badge->pivot->created_at ?? null,
-                        'is_active' => $badge->is_active
+                        'is_active' => true,
                     ];
                 })
             ]
@@ -302,7 +302,10 @@ class GamificationController extends Controller
                         'icon' => $badge->icon,
                         'description' => $badge->description,
                         'level' => $badge->level,
-                        'is_active' => $badge->is_active
+                        // Laravel Gamify has no inactive badge state. A persisted
+                        // badge is available until it is removed.
+                        'is_active' => true,
+                        'earned_count' => $badge->users()->count(),
                     ];
                 })
             ]
@@ -333,7 +336,8 @@ class GamificationController extends Controller
                     'icon' => $badge->icon,
                     'description' => $badge->description,
                     'level' => $badge->level,
-                    'is_active' => $badge->is_active
+                    'is_active' => true,
+                    'earned_count' => $badge->users()->count(),
                 ]
             ]
         ]);
@@ -345,12 +349,30 @@ class GamificationController extends Controller
      */
     public function getBadgeStats(): JsonResponse
     {
+        $badges = Badge::with('users:id')->get();
+        $levels = $badges
+            ->groupBy('level')
+            ->map(function ($levelBadges, $level): array {
+                return [
+                    'id' => (int) $level,
+                    'level' => (int) $level,
+                    'badge_count' => $levelBadges->count(),
+                    'user_count' => $levelBadges
+                        ->flatMap(fn (Badge $badge) => $badge->users->pluck('id'))
+                        ->unique()
+                        ->count(),
+                ];
+            })
+            ->values();
+        $totalBadges = $badges->count();
+
         return response()->json([
             'status' => 'success',
             'data' => [
-                'total_badges' => Badge::count(),
-                'active_badges' => Badge::where('is_active', true)->count(),
-                'inactive_badges' => Badge::where('is_active', false)->count()
+                'total_badges' => $totalBadges,
+                'active_badges' => $totalBadges,
+                'inactive_badges' => 0,
+                'levels' => $levels,
             ]
         ]);
     }
@@ -382,8 +404,19 @@ class GamificationController extends Controller
      */
     public function getLeaderboard(Request $request): JsonResponse
     {
-        $limit = $request->get('limit', 10);
-        $period = $request->get('period', 'all'); // all, month, week, day
+        $validator = Validator::make($request->all(), [
+            'limit' => 'sometimes|integer|min:1|max:100',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Validation failed',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
+
+        $limit = (int) $request->input('limit', 10);
 
         $query = User::select([
             'users.id',
@@ -412,7 +445,9 @@ class GamificationController extends Controller
                         'rank' => $index + 1
                     ];
                 }),
-                'period' => $period,
+                // Period ranking is not implemented. Keep this response
+                // explicitly all-time rather than echoing an ignored filter.
+                'period' => 'all',
                 'limit' => $limit
             ]
         ]);

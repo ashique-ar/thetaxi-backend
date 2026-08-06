@@ -2,10 +2,12 @@
 
 namespace App\Http\Requests;
 
+use App\Models\PredefinedLocation;
 use App\Models\Service\ServiceType;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Rule;
 use Carbon\Carbon;
 
 class BookingSearchRequest extends FormRequest
@@ -66,9 +68,9 @@ class BookingSearchRequest extends FormRequest
                         ->where('is_active', true)
                         ->first();
                     if ($predefinedDropoff) {
-                        $data['dropoff'] = $data['dropoff'] ?: ($predefinedDropoff->address ?? $predefinedDropoff->name);
-                        $data['dropoff_lat'] = $data['dropoff_lat'] ?: (string) $predefinedDropoff->latitude;
-                        $data['dropoff_lng'] = $data['dropoff_lng'] ?: (string) $predefinedDropoff->longitude;
+                        $data['dropoff'] = $data['dropoff'] ?? ($predefinedDropoff->address ?? $predefinedDropoff->name);
+                        $data['dropoff_lat'] = $data['dropoff_lat'] ?? (string) $predefinedDropoff->latitude;
+                        $data['dropoff_lng'] = $data['dropoff_lng'] ?? (string) $predefinedDropoff->longitude;
                     }
                 } catch (\Exception $e) {
                     Log::warning('Failed to resolve predefined dropoff location', [
@@ -107,17 +109,39 @@ class BookingSearchRequest extends FormRequest
 
         // For any service type: resolve predefined location codes to address/coords
         // This handles dynamic forms that use predefined_or_custom location mode
-        foreach (['pickup', 'dropoff'] as $locPrefix) {
+        $locationPrefixes = ['pickup', 'dropoff'];
+        if (!empty($serviceType)) {
+            try {
+                [$fields] = $this->resolveServiceFormConfig($serviceType);
+                foreach ($fields as $fieldName => $config) {
+                    if (($config['type'] ?? null) !== 'location') {
+                        continue;
+                    }
+
+                    $submitAs = $config['submit_as'] ?? $fieldName;
+                    if (is_string($submitAs) && $submitAs !== '') {
+                        $locationPrefixes[] = $submitAs;
+                    }
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Failed to resolve configured location fields', [
+                    'service_type' => $serviceType,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        foreach (array_unique($locationPrefixes) as $locPrefix) {
             $predefinedKey = "{$locPrefix}_predefined";
             if (!empty($data[$predefinedKey]) && empty($data[$locPrefix])) {
                 try {
-                    $predefined = \App\Models\PredefinedLocation::where('code', $data[$predefinedKey])
+                    $predefined = PredefinedLocation::where('code', $data[$predefinedKey])
                         ->where('is_active', true)
                         ->first();
                     if ($predefined) {
                         $data[$locPrefix] = $predefined->address ?? $predefined->name;
-                        $data["{$locPrefix}_lat"] = $data["{$locPrefix}_lat"] ?: (string) $predefined->latitude;
-                        $data["{$locPrefix}_lng"] = $data["{$locPrefix}_lng"] ?: (string) $predefined->longitude;
+                        $data["{$locPrefix}_lat"] = $data["{$locPrefix}_lat"] ?? (string) $predefined->latitude;
+                        $data["{$locPrefix}_lng"] = $data["{$locPrefix}_lng"] ?? (string) $predefined->longitude;
                     }
                 } catch (\Exception $e) {
                     // Silently continue — formatLocation in controller will also try
@@ -133,8 +157,15 @@ class BookingSearchRequest extends FormRequest
      */
     public function rules(): array
     {
-        $serviceType = $this->input('service_type');
+        return $this->rulesForService((string) $this->input('service_type'));
+    }
 
+    /**
+     * Resolve the authoritative public-search rules for a service code.
+     */
+    public function rulesForService(string $serviceType): array
+    {
+        $this->merge(['service_type' => $serviceType]);
         // Try dynamic rules first — if form_config exists, use it
         $dynamicRules = $this->buildDynamicRules($serviceType);
         if ($dynamicRules !== null) {
@@ -173,7 +204,9 @@ class BookingSearchRequest extends FormRequest
      */
     protected function buildDynamicRules(string $serviceCode): ?array
     {
-        [$fields, $usesDropoffTime, $allowReturnTrip] = $this->resolveServiceFormConfig($serviceCode);
+        $resolvedConfig = $this->resolveServiceFormConfig($serviceCode);
+        [$fields, $usesDropoffTime, $allowReturnTrip] = $resolvedConfig;
+        $serviceTypeId = $resolvedConfig[3] ?? null;
 
         // If no fields configured, return null to use legacy rules
         if (empty($fields)) {
@@ -181,6 +214,16 @@ class BookingSearchRequest extends FormRequest
         }
 
         $rules = ['service_type' => 'required|string'];
+        $activePackageRule = function () use ($serviceTypeId) {
+            $rule = Rule::exists('service_packages', 'id')
+                ->where(fn($query) => $query->where('is_active', true));
+
+            if (is_string($serviceTypeId) && $serviceTypeId !== '') {
+                $rule->where('service_type_id', $serviceTypeId);
+            }
+
+            return $rule;
+        };
 
         foreach ($fields as $fieldName => $config) {
             $submitAs = $config['submit_as'] ?? $fieldName;
@@ -192,8 +235,12 @@ class BookingSearchRequest extends FormRequest
                     $rules[$submitAs] = $required ? 'required|string|max:255' : 'nullable|string|max:255';
                     $rules[$submitAs . '_lat'] = 'nullable|numeric|between:-90,90';
                     $rules[$submitAs . '_lng'] = 'nullable|numeric|between:-180,180';
-                    // Allow predefined location codes
-                    $rules[$submitAs . '_predefined'] = 'nullable|string';
+                    $rules[$submitAs . '_predefined'] = [
+                        'nullable',
+                        'string',
+                        Rule::exists('predefined_locations', 'code')
+                            ->where(fn($query) => $query->where('is_active', true)),
+                    ];
                     break;
 
                 case 'date':
@@ -216,19 +263,49 @@ class BookingSearchRequest extends FormRequest
                         : 'nullable|date_format:H:i';
                     break;
 
+                case 'datetime':
+                    $rules[$submitAs] = ($required ? 'required' : 'nullable')
+                        . '|date_format:Y-m-d\TH:i|after_or_equal:today';
+                    break;
+
                 case 'radio':
                     $options = $config['options'] ?? [];
-                    $validValues = array_map(fn($o) => $o['value'], $options);
-                    $inRule = !empty($validValues) ? '|in:' . implode(',', $validValues) : '';
-                    $rules[$submitAs] = ($required ? 'required' : 'nullable') . '|string' . $inRule;
+                    $validValues = array_values(array_filter(
+                        array_map(
+                            fn($option) => is_array($option) ? ($option['value'] ?? null) : null,
+                            $options
+                        ),
+                        fn($value) => is_string($value) && $value !== ''
+                    ));
+                    $rules[$submitAs] = [
+                        $required ? 'required' : 'nullable',
+                        'string',
+                    ];
+                    if (!empty($validValues)) {
+                        $rules[$submitAs][] = Rule::in($validValues);
+                    }
                     break;
 
                 case 'select':
-                    $rules[$submitAs] = $required ? 'required|string' : 'nullable|string';
+                    $options = $config['options'] ?? [];
+                    $validValues = array_values(array_filter(
+                        array_map(
+                            fn($option) => is_array($option) ? ($option['value'] ?? null) : null,
+                            $options
+                        ),
+                        fn($value) => is_string($value) && $value !== ''
+                    ));
+                    $rules[$submitAs] = [
+                        $required ? 'required' : 'nullable',
+                        'string',
+                    ];
+                    if (!empty($validValues)) {
+                        $rules[$submitAs][] = Rule::in($validValues);
+                    }
                     break;
 
                 case 'checkbox':
-                    $rules[$submitAs] = 'nullable|boolean';
+                    $rules[$submitAs] = $required ? 'accepted' : 'nullable|boolean';
                     break;
 
                 case 'number':
@@ -245,7 +322,11 @@ class BookingSearchRequest extends FormRequest
                     break;
 
                 case 'package_select':
-                    $rules[$submitAs] = ($required ? 'required' : 'nullable') . '|uuid|exists:service_packages,id';
+                    $rules[$submitAs] = [
+                        $required ? 'required' : 'nullable',
+                        'uuid',
+                        $activePackageRule(),
+                    ];
                     break;
 
                 default:
@@ -255,10 +336,14 @@ class BookingSearchRequest extends FormRequest
         }
 
         // Always allow common auxiliary fields
-        $rules['rental_mode'] = 'nullable|string';
-        $rules['package_id'] = 'nullable|uuid|exists:service_packages,id';
-        $rules['package_type'] = 'nullable|string';
-        $rules['trip_mode'] = 'nullable|string|in:fixed_route,open_package';
+        $rules['rental_mode'] = $rules['rental_mode'] ?? 'nullable|string';
+        $rules['package_id'] = $rules['package_id'] ?? [
+            'nullable',
+            'uuid',
+            $activePackageRule(),
+        ];
+        $rules['package_type'] = $rules['package_type'] ?? 'nullable|string';
+        $rules['trip_mode'] = $rules['trip_mode'] ?? 'nullable|string|in:fixed_route,open_package';
 
         // Allow dropoff fields for self_drive/with_driver even if not in config
         if (in_array($serviceCode, ['self_drive', 'with_driver'])) {
@@ -649,7 +734,7 @@ class BookingSearchRequest extends FormRequest
             $fields = \App\Services\DefaultFormConfigService::getDefaults($serviceCode);
         }
 
-        return [$fields, $usesDropoffTime, $allowReturnTrip];
+        return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id];
     }
 
     /**

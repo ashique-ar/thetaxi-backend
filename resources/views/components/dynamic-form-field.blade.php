@@ -232,6 +232,27 @@
         </div>
         @break
 
+    {{-- ===== DATE & TIME FIELD ===== --}}
+    @case('datetime')
+        <div class="booking-field">
+            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+            <div class="single-search-box date-field">
+                @include('components.partials.calendar-icon')
+                <input type="datetime-local" name="{{ $submitAs }}" id="{{ $elementId }}"
+                   placeholder="{{ $placeholder }}"
+                   value="{{ $fieldValue }}"
+                   class="@error($submitAs) is-invalid @enderror"
+                   {{ $required ? 'required' : '' }}>
+            </div>
+            @if($hint)
+                <small class="text-muted">{{ $hint }}</small>
+            @endif
+            @error($submitAs)
+                <span class="text-danger small">{{ $message }}</span>
+            @enderror
+        </div>
+        @break
+
     {{-- ===== SELECT FIELD ===== --}}
     @case('select')
         <div class="booking-field">
@@ -312,11 +333,16 @@
             <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
             <div class="single-search-box checkbox-field">
                 <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
-                       value="1" {{ $fieldValue ? 'checked' : '' }}>
+                       value="1"
+                       {{ $fieldValue ? 'checked' : '' }}
+                       {{ $required ? 'required' : '' }}>
                 @if($hint)
                     <small class="text-muted">{{ $hint }}</small>
                 @endif
             </div>
+            @error($submitAs)
+                <span class="text-danger small">{{ $message }}</span>
+            @enderror
         </div>
         @break
 
@@ -340,6 +366,10 @@
         @break
 
     @case('number')
+        @php
+            $minimum = data_get($field, 'validation.min');
+            $maximum = data_get($field, 'validation.max');
+        @endphp
         <div class="booking-field">
             <label class="input-label">{{ $label }}</label>
             <div class="single-search-box">
@@ -349,8 +379,8 @@
                        value="{{ $fieldValue }}"
                        class="@error($submitAs) is-invalid @enderror"
                        {{ $required ? 'required' : '' }}
-                       min="{{ $field['validation']['min'] ?? '' }}"
-                           max="{{ $field['validation']['max'] ?? '' }}">
+                       @if($minimum !== null && $minimum !== '') min="{{ $minimum }}" @endif
+                       @if($maximum !== null && $maximum !== '') max="{{ $maximum }}" @endif>
                 </div>
             </div>
             @error($submitAs)

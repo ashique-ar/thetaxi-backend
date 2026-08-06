@@ -1524,50 +1524,72 @@ class VehiclePricingCalculationDefinition extends Model
         $appendComponentResult($baseAdjustmentResult, 'base_price');
         $currentAmount = (float) ($baseAdjustmentResult['final_amount'] ?? $currentAmount);
 
-        $totalKmAdjustment = 0;
-        if ($vehicleGroupId && $totalDistance > 0) {
-            $kmRangeResult = KmRangePricingRule::calculateBestPricing(
-                $totalDistance,
-                $currentAmount,
-                $this->service_type_id,
-                $vehicleGroupId,
-                null,
-                $inputs['owner_type'] ?? null,
-                $inputs['owner_id'] ?? null
-            );
+        $totalKmAdjustment = 0.0;
+        $distanceLegs = [
+            'journey_distance' => $totalDistance,
+        ];
 
-            if (!empty($kmRangeResult['rules_applied'])) {
-                foreach ($kmRangeResult['rules_applied'] as $rule) {
-                    $adjustmentAmount = $rule['adjustment_amount'] ?? 0;
+        // Pickup and delivery legs are eligible only for a garage-to-garage
+        // calculation. When garage distance is excluded, only the journey
+        // selections on matching rules are evaluated.
+        if ((bool) ($inputs['include_garage_distance'] ?? false)) {
+            $distanceLegs['pickup_distance'] = (float) ($inputs['pickup_distance'] ?? 0);
+            $distanceLegs['delivery_distance'] = (float) ($inputs['delivery_distance'] ?? 0);
+        }
+
+        if ($vehicleGroupId) {
+            foreach ($distanceLegs as $distanceType => $distance) {
+                if ($distance <= 0) {
+                    continue;
+                }
+
+                $kmRangeResult = KmRangePricingRule::calculateBestPricing(
+                    $distance,
+                    $currentAmount,
+                    $this->service_type_id,
+                    $vehicleGroupId,
+                    null,
+                    $inputs['owner_type'] ?? null,
+                    $inputs['owner_id'] ?? null,
+                    $distanceType,
+                    $inputs['pricing_context'] ?? 'public'
+                );
+
+                foreach ($kmRangeResult['rules_applied'] ?? [] as $rule) {
+                    $adjustmentAmount = (float) ($rule['adjustment_amount'] ?? 0);
                     $adjustments[] = [
                         'type' => 'km_range_pricing',
+                        'distance_type' => $distanceType,
+                        'distance' => $distance,
                         'name' => $rule['rule_info']['name'] ?? 'KM Range Pricing',
                         'amount' => $adjustmentAmount,
                         'calculation' => $rule['calculation_details'] ?? null,
                         'is_discount' => $adjustmentAmount < 0,
                     ];
                     $totalKmAdjustment += $adjustmentAmount;
+                    $currentAmount += $adjustmentAmount;
                 }
 
-                // Apply KM-range adjustment to the current amount so subsequent price adjustments are stacked on top
-                $currentAmount += $totalKmAdjustment;
-
-                // Add a summary entry for frontend convenience
-                $adjustments[] = [
-                    'type' => 'km_range_pricing_summary',
-                    'name' => 'KM Range Adjustment',
-                    'amount' => $totalKmAdjustment,
-                    'calculation' => $kmRangeResult['calculation_summary'] ?? null,
-                    'is_discount' => $totalKmAdjustment < 0,
-                ];
-
-                Log::info('KM range pricing applied', [
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'distance' => $totalDistance,
-                    'total_km_adjustment' => $totalKmAdjustment,
-                    'current_amount' => $currentAmount,
-                ]);
+                if (!empty($kmRangeResult['rules_applied'])) {
+                    Log::info('KM range pricing applied to distance leg', [
+                        'vehicle_group_id' => $vehicleGroupId,
+                        'distance_type' => $distanceType,
+                        'distance' => $distance,
+                        'leg_adjustment' => $kmRangeResult['total_adjustment'] ?? 0,
+                        'current_amount' => $currentAmount,
+                    ]);
+                }
             }
+        }
+
+        if ($totalKmAdjustment !== 0.0) {
+            $adjustments[] = [
+                'type' => 'km_range_pricing_summary',
+                'name' => 'KM Range Adjustment',
+                'amount' => $totalKmAdjustment,
+                'calculation' => 'Applied configured KM rules separately to eligible distance legs.',
+                'is_discount' => $totalKmAdjustment < 0,
+            ];
         }
 
         $kmChargeAmount = $this->calculateResolvedKmChargeComponent($resolvedVariables);

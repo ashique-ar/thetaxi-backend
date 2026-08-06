@@ -6,7 +6,27 @@ use Illuminate\Support\Facades\Storage;
 
 class Agreement extends BaseModel
 {
-    protected $guarded = [];
+    protected $fillable = [
+        'template_id',
+        'title',
+        'description',
+        'type',
+        'priority',
+        'content',
+        'terms',
+        'parties',
+        'start_date',
+        'end_date',
+        'auto_renew',
+        'renewal_period',
+        'status',
+        'signature_status',
+        'signatures',
+        'metadata',
+        'signed_at',
+        'created_user_id',
+        'updated_user_id',
+    ];
     protected $casts = ['parties' => 'array', 'signatures' => 'array', 'metadata' => 'array', 'start_date' => 'date:Y-m-d', 'end_date' => 'date:Y-m-d', 'auto_renew' => 'boolean', 'signed_at' => 'datetime'];
 
     public function documents() { return $this->morphMany(Document::class, 'documentable'); }

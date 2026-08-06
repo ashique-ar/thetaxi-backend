@@ -731,7 +731,8 @@
         .checkout-addon-apply,
         .checkout-addon-remove,
         .checkout-extra-km-apply,
-        .checkout-extra-km-remove {
+        .checkout-extra-km-remove,
+        .checkout-option-retry {
             border: 1px solid #d1d5db;
             background: #fff;
             color: #111827;
@@ -793,6 +794,16 @@
             color: #64748b;
             font-size: 13px;
             padding: 8px 0;
+        }
+
+        .checkout-option-availability-error {
+            color: #64748b;
+            font-size: 13px;
+            margin-top: 10px;
+        }
+
+        .checkout-option-retry {
+            margin-left: 6px;
         }
 
         .checkout-extra-km-input {
@@ -1816,8 +1827,15 @@
             });
 
 
-            // Trigger change event on page load if a payment type is already selected
-            updatePaymentTerms($('input[name="payment_type"]:checked').val());
+            function restoreCheckoutInteractiveState() {
+                $('#checkout-submit-btn').prop('disabled', false);
+                $('input[name="payment_type"]:checked').trigger('change');
+            }
+
+            // Apply the selected payment type on first render and whenever the
+            // browser restores this page from its back-forward cache.
+            restoreCheckoutInteractiveState();
+            window.addEventListener('pageshow', restoreCheckoutInteractiveState);
 
             // Form submission - disable submit button to prevent double submission
             $('#checkout-form').on('submit', function(e) {
@@ -2077,35 +2095,55 @@
                     renderSelectedAddonSummary(cartKey, selected);
                     panel.data('loaded', true);
                 }).fail(function() {
-                    panel.html('<div class="checkout-addon-error">Unable to load add-ons.</div>');
+                    panel.html(`
+                        <div class="checkout-addon-error">
+                            Unable to load add-ons.
+                            <button type="button" class="checkout-option-retry checkout-addon-load-retry"
+                                data-cart-key="${checkoutEscapeHtml(cartKey)}"
+                                data-service-type="${checkoutEscapeHtml(serviceType)}">Retry</button>
+                        </div>
+                    `);
+                });
+            }
+
+            function loadCheckoutAddonAvailability(wrapper) {
+                const serviceType = wrapper.data('service-type') || '';
+                const cartKey = wrapper.data('cart-key');
+                const selectedCount = Number(wrapper.find('.checkout-addon-count').text() || 0);
+
+                wrapper.find('.checkout-option-availability-error').remove();
+                $.ajax({
+                    url: '{{ route('cart.addons.available') }}',
+                    method: 'GET',
+                    data: {
+                        service_type: serviceType,
+                        cart_key: cartKey
+                    },
+                    success: function(response) {
+                        const hasAvailableAddons = response.success && Array.isArray(response.data) && response.data.length > 0;
+                        wrapper.toggle(hasAvailableAddons || selectedCount > 0)
+                            .removeClass('checkout-option-pending');
+                    },
+                    error: function() {
+                        // Preserve selected add-ons and keep recovery available when
+                        // eligibility could not be verified.
+                        wrapper.show()
+                            .removeClass('checkout-option-pending')
+                            .append(`
+                                <div class="checkout-option-availability-error">
+                                    Add-on availability could not be checked.
+                                    <button type="button" class="checkout-option-retry checkout-addon-availability-retry">
+                                        Retry
+                                    </button>
+                                </div>
+                            `);
+                    }
                 });
             }
 
             function initializeCheckoutAddonAvailability() {
                 $('.checkout-item-addons').each(function() {
-                    const wrapper = $(this);
-                    const serviceType = wrapper.data('service-type') || '';
-                    const selectedCount = Number(wrapper.find('.checkout-addon-count').text() || 0);
-
-                    $.ajax({
-                        url: '{{ route('cart.addons.available') }}',
-                        method: 'GET',
-                        data: {
-                            service_type: serviceType,
-                            cart_key: wrapper.data('cart-key')
-                        },
-                        success: function(response) {
-                            const hasAvailableAddons = response.success && Array.isArray(response.data) && response.data.length > 0;
-                            wrapper.toggle(hasAvailableAddons || selectedCount > 0)
-                                .removeClass('checkout-option-pending');
-                        },
-                        error: function() {
-                            // Preserve already-selected add-ons, but do not offer an
-                            // unavailable manager when eligibility cannot be verified.
-                            wrapper.toggle(selectedCount > 0)
-                                .removeClass('checkout-option-pending');
-                        }
-                    });
+                    loadCheckoutAddonAvailability($(this));
                 });
             }
 
@@ -2195,6 +2233,14 @@
                 loadCheckoutAddons(cartKey, serviceType, false);
             });
 
+            $(document).on('click', '.checkout-addon-load-retry', function() {
+                loadCheckoutAddons($(this).data('cart-key'), $(this).data('service-type'), true);
+            });
+
+            $(document).on('click', '.checkout-addon-availability-retry', function() {
+                loadCheckoutAddonAvailability($(this).closest('.checkout-item-addons'));
+            });
+
             $(document).on('click', '.checkout-addon-apply', function() {
                 const button = $(this);
                 const cartKey = button.data('cart-key');
@@ -2273,7 +2319,14 @@
                         panel.data('loaded', true);
                     },
                     error: function() {
-                        wrapper.hide().removeClass('checkout-option-pending');
+                        wrapper.show().removeClass('checkout-option-pending');
+                        panel.show().html(`
+                            <div class="checkout-extra-km-error">
+                                Unable to load extra KM options.
+                                <button type="button" class="checkout-option-retry checkout-extra-km-load-retry"
+                                    data-cart-key="${checkoutEscapeHtml(cartKey)}">Retry</button>
+                            </div>
+                        `);
                     }
                 });
             }
@@ -2338,6 +2391,10 @@
                 const panel = $('.checkout-extra-km-panel[data-cart-key="' + cartKey + '"]');
                 panel.slideToggle(150);
                 loadCheckoutExtraKm(cartKey, false);
+            });
+
+            $(document).on('click', '.checkout-extra-km-load-retry', function() {
+                loadCheckoutExtraKm($(this).data('cart-key'), true);
             });
 
             $(document).on('input', '.checkout-extra-km-value', function() {

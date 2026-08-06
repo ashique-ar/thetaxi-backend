@@ -4,7 +4,6 @@ namespace App\Http\Controllers;
 
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
-use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\CartService;
 use App\Services\BookingFlowService;
 use Illuminate\Http\Request;
@@ -467,8 +466,16 @@ class CartController extends Controller
                         'pricing_params' => $pricingParams
                     ]);
 
-                    // Price the selected group directly. The search page has already
-                    // resolved availability; cart add only needs to verify this item.
+                    $availability = $this->bookingFlowService
+                        ->getPublicVehicleGroupAvailability($pricingParams);
+                    if (!$availability || !($availability['allow_booking'] ?? false)) {
+                        throw new \DomainException(
+                            'This vehicle option is no longer available for the selected dates. '
+                            . 'Please return to the results and request a quotation for this option.'
+                        );
+                    }
+
+                    // Recalculate pricing server-side after availability is confirmed.
                     $pricingResult = $this->bookingFlowService->calculatePricing($pricingParams);
 
                     Log::info('Pricing data from BookingFlowService', [
@@ -1366,15 +1373,12 @@ class CartController extends Controller
                 ], 400);
             }
 
-            if (!empty($items[$cartKey]['service_type_data']['id'])) {
-                $serviceTypeId = $items[$cartKey]['service_type_data']['id'];
-                $extraKmRate = $this->cartService->getExtraKmRateForVehicleGroup($vehicleGroupId, $serviceTypeId);
+            $offer = $this->cartService->getExtraKmOfferForItem($items[$cartKey]);
+            if ($offer) {
+                $serviceTypeId = $offer['service_type_id'];
+                $extraKmRate = $offer['rate'];
                 $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
-
-                // Determine if this vehicle group has slab pricing configured (slab-based pricing implies extra-km purchase availability)
-                $hasSlabPricing = VehiclePricingSlabDefinition::where('service_type_id', $serviceTypeId)
-                    ->where('is_active', true)
-                    ->exists();
+                $hasSlabPricing = $offer['has_slab'];
 
                 Log::debug('Extra KM rate lookup for cart item', [
                     'cart_key' => $cartKey,

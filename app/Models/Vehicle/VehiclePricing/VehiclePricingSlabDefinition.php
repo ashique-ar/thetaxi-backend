@@ -44,6 +44,7 @@ class VehiclePricingSlabDefinition extends BaseModel
         'owner_type',
         'owner_id',
         'priority',
+        'is_active',
     ];
 
     /**
@@ -62,6 +63,7 @@ class VehiclePricingSlabDefinition extends BaseModel
         'max_km_per_package' => 'integer',
         'sort_order' => 'integer',
         'priority' => 'integer',
+        'is_active' => 'boolean',
     ];
 
     /**

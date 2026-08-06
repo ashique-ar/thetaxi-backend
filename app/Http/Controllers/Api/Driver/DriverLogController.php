@@ -10,6 +10,7 @@ use App\Http\Resources\Driver\DriverLogResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class DriverLogController extends Controller
 {
@@ -17,7 +18,7 @@ class DriverLogController extends Controller
     {
         $this->middleware('permission:driver-logs.view')->only(['index', 'show', 'stats']);
         $this->middleware('permission:driver-logs.create')->only(['store']);
-        $this->middleware('permission:driver-logs.edit')->only(['update', 'assign', 'submit', 'verify']);
+        $this->middleware('permission:driver-logs.edit')->only(['update', 'assign', 'submit', 'verify', 'bulkReview']);
         $this->middleware('permission:driver-logs.delete')->only(['destroy']);
     }
 
@@ -152,7 +153,6 @@ class DriverLogController extends Controller
             'verification_notes' => 'nullable|string|max:1000',
         ]);
 
-        abort_unless($driverLog->status === 'pending', 409, 'Only pending log sheets can be reviewed.');
         $status = $data['status'] ?? $data['verification_status'] ?? 'approved';
         if ($status === 'rejected') {
             validator($data, [
@@ -160,18 +160,72 @@ class DriverLogController extends Controller
             ])->validate();
         }
 
-        $driverLog->update([
-            'status' => $status,
-            'verification_notes' => $data['verification_notes'] ?? null,
-            'verified_by' => $request->user()?->id,
-            'verified_at' => now(),
-            'updated_user_id' => $request->user()?->id,
-        ]);
+        $driverLog = DB::transaction(function () use ($driverLog, $status, $data, $request): DriverLog {
+            $lockedLog = DriverLog::query()->lockForUpdate()->findOrFail($driverLog->id);
+            abort_unless($lockedLog->status === 'pending', 409, 'Only pending log sheets can be reviewed.');
+            $lockedLog->update([
+                'status' => $status,
+                'verification_notes' => $data['verification_notes'] ?? null,
+                'verified_by' => $request->user()?->id,
+                'verified_at' => now(),
+                'updated_user_id' => $request->user()?->id,
+            ]);
+
+            return $lockedLog;
+        });
 
         return response()->json([
             'status' => 'success',
             'message' => $driverLog->status === 'approved' ? 'Log sheet verified' : 'Log sheet rejected',
             'data' => new DriverLogResource($driverLog->fresh(['driver', 'booking', 'createdBy'])),
+        ]);
+    }
+
+    public function bulkReview(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'log_sheet_ids' => 'required|array|min:1|max:100',
+            'log_sheet_ids.*' => 'required|uuid|distinct|exists:driver_logs,id',
+            'action' => 'required|in:approve,reject',
+            'notes' => $request->input('action') === 'reject'
+                ? 'required|string|min:10|max:1000'
+                : 'nullable|string|max:1000',
+        ]);
+
+        $status = $data['action'] === 'approve' ? 'approved' : 'rejected';
+        $reviewedIds = DB::transaction(function () use ($data, $status, $request): array {
+            $logs = DriverLog::query()
+                ->whereIn('id', $data['log_sheet_ids'])
+                ->lockForUpdate()
+                ->get();
+
+            abort_unless($logs->count() === count($data['log_sheet_ids']), 409, 'One or more selected log sheets no longer exist.');
+            abort_if(
+                $logs->contains(fn (DriverLog $log): bool => $log->status !== 'pending'),
+                409,
+                'Only pending log sheets can be reviewed. Refresh the list and try again.'
+            );
+
+            $now = now();
+            foreach ($logs as $log) {
+                $log->update([
+                    'status' => $status,
+                    'verification_notes' => $data['notes'] ?? null,
+                    'verified_by' => $request->user()?->id,
+                    'verified_at' => $now,
+                    'updated_user_id' => $request->user()?->id,
+                ]);
+            }
+
+            return $logs->pluck('id')->all();
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => count($reviewedIds) . ' log sheet(s) ' . ($status === 'approved' ? 'approved' : 'rejected'),
+            'data' => DriverLogResource::collection(
+                DriverLog::with(['driver', 'booking', 'createdBy'])->whereIn('id', $reviewedIds)->get()
+            )->resolve($request),
         ]);
     }
 
@@ -185,7 +239,9 @@ class DriverLogController extends Controller
                 'approved_today' => DriverLog::where('status', 'approved')
                     ->whereDate('updated_at', now()->toDateString())
                     ->count(),
-                'total_allowances_paid' => 0,
+                'total_allowances_paid' => (float) DB::table('driver_hire_settlements')
+                    ->where('status', 'paid')
+                    ->sum('approved_batta_amount'),
                 'average_km_per_trip' => round((float) DriverLog::whereNotNull('total_km')->avg('total_km'), 2),
                 'average_hours_per_trip' => 0,
             ],

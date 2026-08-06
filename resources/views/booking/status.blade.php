@@ -15,7 +15,7 @@
                         @csrf
                         <div class="col-md-6">
                             <label for="booking_reference" class="form-label">Booking reference</label>
-                            <input id="booking_reference" name="booking_reference" class="form-control @error('booking_reference') is-invalid @enderror" value="{{ old('booking_reference') }}" required autocomplete="off">
+                            <input id="booking_reference" name="booking_reference" class="form-control @error('booking_reference') is-invalid @enderror" value="{{ old('booking_reference', request()->query('booking_reference', '')) }}" required autocomplete="off">
                             @error('booking_reference')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">

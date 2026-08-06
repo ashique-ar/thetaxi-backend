@@ -11,6 +11,7 @@ it('applies driver and logsheet permissions to every active logsheet action', fu
         ['GET', 'api/logsheets/dashboard', 'stats', 'permission:driver-logs.view'],
         ['GET', 'api/logsheets/{driverLog}', 'show', 'permission:driver-logs.view'],
         ['POST', 'api/logsheets', 'store', 'permission:driver-logs.create'],
+        ['POST', 'api/logsheets/bulk-review', 'bulkReview', 'permission:driver-logs.edit'],
         ['PUT', 'api/logsheets/{driverLog}', 'update', 'permission:driver-logs.edit'],
         ['POST', 'api/logsheets/{driverLog}/assign', 'assign', 'permission:driver-logs.edit'],
         ['POST', 'api/logsheets/{driverLog}/submit', 'submit', 'permission:driver-logs.edit'],

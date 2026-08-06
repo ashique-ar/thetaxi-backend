@@ -2,6 +2,7 @@
 // app/Http/Resources/Website/CmsContentResource.php
 namespace App\Http\Resources\Website;
 
+use Carbon\CarbonInterface;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class CmsContentResource extends JsonResource
@@ -42,7 +43,7 @@ class CmsContentResource extends JsonResource
             'dropoff_lng' => $this->dropoff_lng,
             'service_type' => $this->service_type,
             'min_days' => $this->min_days ?? 1,
-            'full_url' => $this->full_url,
+            'full_url' => $this->publicUrl(),
             'content_type' => $this->whenLoaded('contentType', function () {
                 return new CmsContentTypeResource($this->contentType);
             }),
@@ -61,5 +62,34 @@ class CmsContentResource extends JsonResource
                 ];
             }),
         ];
+    }
+
+    private function publicUrl(): ?string
+    {
+        if (!$this->resource->relationLoaded('contentType')) {
+            return null;
+        }
+
+        $contentType = $this->resource->getRelation('contentType');
+        $publishedAt = $this->published_at;
+        $isPublished = $this->status === 'published'
+            && $this->is_active
+            && $publishedAt instanceof CarbonInterface
+            && $publishedAt->isPast();
+
+        // /services/{slug} belongs exclusively to Inquiry Service Pages.
+        if (
+            !$isPublished
+            || !$contentType
+            || !$contentType->is_active
+            || $contentType->slug === 'services'
+        ) {
+            return null;
+        }
+
+        return route('cms.show', [
+            'contentType' => $contentType->slug,
+            'content' => $this->slug,
+        ]);
     }
 }

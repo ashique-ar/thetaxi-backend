@@ -573,6 +573,7 @@ class BookingController extends Controller
         $fields = $formConfig['fields'] ?? [];
         $fieldMappings = $formConfig['field_mappings'] ?? [];
         $usesDropoffTime = $formConfig['uses_dropoff_time'] ?? true;
+        $allowReturnTrip = $formConfig['allow_return_trip'] ?? false;
 
         // If no config at all, use DefaultFormConfigService
         if (empty($fields)) {
@@ -595,6 +596,9 @@ class BookingController extends Controller
                 $dateFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
             } elseif ($type === 'time') {
                 $timeFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
+            } elseif ($type === 'datetime') {
+                $dateFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
+                $timeFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff];
             } elseif ($type === 'location') {
                 $locationFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff, 'config' => $config];
             }
@@ -603,30 +607,27 @@ class BookingController extends Controller
         // --- Resolve dates ---
         $pickupDateRaw = null;
         $dropoffDateRaw = null;
+        $pickupDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => !$f['is_dropoff']));
+        $dropoffDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => $f['is_dropoff']));
+
+        $pickupDateKeys = array_unique(array_merge($pickupDateKeys, ['pickup_date', 'date', 'from_date']));
+        $dropoffDateKeys = array_unique(array_merge($dropoffDateKeys, ['dropoff_date', 'to_date', 'return_date']));
 
         // Try field_mappings first, then scan config fields
         if (!empty($fieldMappings)) {
             $pickupDateRaw = $this->getMappedFieldValue(
                 $requestData,
                 data_get($fieldMappings, 'dates.from_date'),
-                ['pickup_date', 'date', 'from_date']
+                $pickupDateKeys
             );
             $dropoffDateRaw = $this->getMappedFieldValue(
                 $requestData,
                 data_get($fieldMappings, 'dates.to_date'),
-                ['dropoff_date', 'to_date', 'return_date']
+                $dropoffDateKeys
             );
         } else {
-            // Use submit_as keys from config fields
-            $pickupDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => !$f['is_dropoff']));
-            $dropoffDateKeys = array_map(fn($f) => $f['submit_as'], array_filter($dateFields, fn($f) => $f['is_dropoff']));
-
-            // Add common fallbacks
-            $pickupDateKeys = array_merge($pickupDateKeys, ['pickup_date', 'date', 'from_date']);
-            $dropoffDateKeys = array_merge($dropoffDateKeys, ['dropoff_date', 'to_date', 'return_date']);
-
-            $pickupDateRaw = $this->getMappedFieldValue($requestData, null, array_unique($pickupDateKeys));
-            $dropoffDateRaw = $this->getMappedFieldValue($requestData, null, array_unique($dropoffDateKeys));
+            $pickupDateRaw = $this->getMappedFieldValue($requestData, null, $pickupDateKeys);
+            $dropoffDateRaw = $this->getMappedFieldValue($requestData, null, $dropoffDateKeys);
         }
 
         $pickupDate = $this->parseDateValue($pickupDateRaw, now());
@@ -642,33 +643,35 @@ class BookingController extends Controller
         // --- Resolve times ---
         $pickupTime = null;
         $dropoffTime = null;
+        $pickupTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => !$f['is_dropoff']));
+        $dropoffTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => $f['is_dropoff']));
+
+        $pickupTimeKeys = array_unique(array_merge($pickupTimeKeys, ['pickup_time', 'time', 'from_time']));
+        $dropoffTimeKeys = array_unique(array_merge($dropoffTimeKeys, ['dropoff_time', 'to_time', 'return_time']));
 
         if (!empty($fieldMappings)) {
             $pickupTime = $this->getMappedFieldValue(
                 $requestData,
                 data_get($fieldMappings, 'dates.from_time'),
-                ['pickup_time', 'time', 'from_time'],
+                $pickupTimeKeys,
                 '00:00'
             );
             $dropoffTime = $this->getMappedFieldValue(
                 $requestData,
                 data_get($fieldMappings, 'dates.to_time'),
-                ['dropoff_time', 'to_time', 'return_time'],
+                $dropoffTimeKeys,
                 $pickupTime ?: '00:00'
             );
         } else {
-            $pickupTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => !$f['is_dropoff']));
-            $dropoffTimeKeys = array_map(fn($f) => $f['submit_as'], array_filter($timeFields, fn($f) => $f['is_dropoff']));
-
-            $pickupTimeKeys = array_merge($pickupTimeKeys, ['pickup_time', 'time', 'from_time']);
-            $dropoffTimeKeys = array_merge($dropoffTimeKeys, ['dropoff_time', 'to_time', 'return_time']);
-
-            $pickupTime = $this->getMappedFieldValue($requestData, null, array_unique($pickupTimeKeys), '00:00');
-            $dropoffTime = $this->getMappedFieldValue($requestData, null, array_unique($dropoffTimeKeys), $pickupTime ?: '00:00');
+            $pickupTime = $this->getMappedFieldValue($requestData, null, $pickupTimeKeys, '00:00');
+            $dropoffTime = $this->getMappedFieldValue($requestData, null, $dropoffTimeKeys, $pickupTime ?: '00:00');
         }
 
-        $params['from_time'] = $pickupTime ?: '00:00';
-        $params['to_time'] = ($usesDropoffTime && $dropoffTime) ? $dropoffTime : ($pickupTime ?: '00:00');
+        $pickupTime = $this->normalizeTimeValue($pickupTime, '00:00');
+        $dropoffTime = $this->normalizeTimeValue($dropoffTime, $pickupTime);
+
+        $params['from_time'] = $pickupTime;
+        $params['to_time'] = ($usesDropoffTime && $dropoffTime) ? $dropoffTime : $pickupTime;
 
         // --- Resolve locations ---
         if (!empty($fieldMappings)) {
@@ -723,11 +726,29 @@ class BookingController extends Controller
             $submitAs = $config['submit_as'] ?? $fieldName;
 
             // Skip types already handled above
-            if (in_array($type, ['date', 'time', 'location'], true)) continue;
+            if (in_array($type, ['date', 'time', 'datetime', 'location'], true)) continue;
 
             if (isset($requestData[$submitAs]) && $requestData[$submitAs] !== '') {
                 $params[$submitAs] = $requestData[$submitAs];
             }
+        }
+
+        if ($allowReturnTrip) {
+            $isReturnTrip = filter_var(
+                $requestData['is_return_trip'] ?? false,
+                FILTER_VALIDATE_BOOLEAN
+            );
+            $params['is_return_trip'] = $isReturnTrip;
+
+            if ($isReturnTrip) {
+                $returnDate = $this->parseDateValue($dropoffDateRaw, $pickupDate);
+                $params['return_date'] = $returnDate->format('Y-m-d');
+                $params['return_time'] = $dropoffTime ?: ($pickupTime ?: '00:00');
+            } else {
+                unset($params['return_date'], $params['return_time']);
+            }
+        } else {
+            unset($params['is_return_trip'], $params['return_date'], $params['return_time']);
         }
 
         $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
@@ -827,6 +848,26 @@ class BookingController extends Controller
             return Carbon::parse($dateValue);
         } catch (\Throwable $e) {
             return $fallback->copy();
+        }
+    }
+
+    /**
+     * Extract the canonical time from either a time or datetime-local value.
+     */
+    protected function normalizeTimeValue(?string $timeValue, string $fallback): string
+    {
+        if (empty($timeValue)) {
+            return $fallback;
+        }
+
+        if (preg_match('/^\d{2}:\d{2}$/', $timeValue)) {
+            return $timeValue;
+        }
+
+        try {
+            return Carbon::parse($timeValue)->format('H:i');
+        } catch (\Throwable $e) {
+            return $fallback;
         }
     }
 
@@ -2179,43 +2220,19 @@ class BookingController extends Controller
      */
     private function buildValidationRules(string $code): array
     {
-        return match ($code) {
-            'airport_transfers' => [
-                'from' => 'required|string|max:255',
-                'to' => 'required|string|max:255',
-                'date' => 'required|date_format:d/m/Y|after:today',
-                'time' => 'required|date_format:H:i',
-                'passengers' => 'nullable|integer|min:1|max:10',
-            ],
-            'point_to_point' => [
-                'from' => 'required|string|max:255',
-                'to' => 'required|string|max:255',
-                'date' => 'required|date_format:d/m/Y|after:today',
-                'time' => 'required|date_format:H:i',
-                'passengers' => 'nullable|integer|min:1|max:10',
-            ],
-            'ride_now' => [
-                'pickup_date' => 'required|date_format:d/m/Y|after:today',
-                // 'dropoff_date' => 'required|date_format:d/m/Y|after:pickup_date',
-                'pickup_time' => 'required|date_format:H:i',
-                'dropoff_time' => 'required|date_format:H:i',
-                'passengers' => 'nullable|integer|min:1|max:10',
-            ],
-            'wedding_hire' => [
-                'date' => 'required|date_format:d/m/Y|after:today',
-                'time' => 'required|date_format:H:i',
-                'package_hours' => 'required|integer|in:6,8,12',
-                'passengers' => 'nullable|integer|min:1|max:10',
-            ],
-            'corporate' => [
-                'company_name' => 'required|string|max:255',
-                'contact_person' => 'required|string|max:255',
-                'email' => 'required|email|max:255',
-                'phone' => 'required|string|max:20',
-                'contract_type' => 'required|in:weekly,monthly,quarterly,annual',
-            ],
-            default => []
-        };
+        $request = new BookingSearchRequest();
+        $rules = $request->rulesForService($code);
+
+        return array_map(function ($fieldRules) {
+            if (!is_array($fieldRules)) {
+                return $fieldRules;
+            }
+
+            return implode('|', array_map(
+                fn($rule) => (string) $rule,
+                $fieldRules
+            ));
+        }, $rules);
     }
 
     /**

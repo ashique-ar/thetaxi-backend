@@ -36,6 +36,8 @@ class KmRangePricingController extends Controller
             'scope' => 'in:global,service,vehicle_group',
             'service_type_id' => 'uuid|exists:service_types,id',
             'vehicle_group_id' => 'uuid|exists:vehicle_groups,id',
+            'distance_type' => 'in:journey_distance,pickup_distance,delivery_distance',
+            'pricing_context' => 'nullable|string|in:portal,public,corporate',
             'owner_type' => 'nullable|string|in:corporate',
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'is_active' => 'boolean',
@@ -72,6 +74,14 @@ class KmRangePricingController extends Controller
 
             if ($request->filled('vehicle_group_id')) {
                 $query->where('vehicle_group_id', $request->vehicle_group_id);
+            }
+
+            if ($request->filled('distance_type')) {
+                $query->whereJsonContains('distance_types', $request->distance_type);
+            }
+
+            if ($request->filled('pricing_context')) {
+                $query->forPricingContext($request->input('pricing_context'));
             }
 
             if ($request->filled('owner_type')) {
@@ -120,6 +130,9 @@ class KmRangePricingController extends Controller
      */
     public function store(Request $request): JsonResponse
     {
+        if (!$request->has('applicable_contexts')) {
+            $request->merge(['applicable_contexts' => KmRangePricingRule::DEFAULT_APPLICABLE_CONTEXTS]);
+        }
         $validator = Validator::make($request->all(), KmRangePricingRule::validationRules());
 
         if ($validator->fails()) {
@@ -183,6 +196,12 @@ class KmRangePricingController extends Controller
      */
     public function update(Request $request, string $id): JsonResponse
     {
+        if (!$request->has('applicable_contexts')) {
+            $existingContexts = KmRangePricingRule::withInactive()->findOrFail($id)->applicable_contexts;
+            $request->merge([
+                'applicable_contexts' => $existingContexts ?: KmRangePricingRule::DEFAULT_APPLICABLE_CONTEXTS,
+            ]);
+        }
         $validator = Validator::make($request->all(), KmRangePricingRule::validationRules());
 
         if ($validator->fails()) {
@@ -292,6 +311,8 @@ class KmRangePricingController extends Controller
             'distance' => 'required|numeric|min:0',
             'service_type_id' => 'nullable|uuid|exists:service_types,id',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
+            'distance_type' => 'sometimes|in:journey_distance,pickup_distance,delivery_distance',
+            'pricing_context' => 'sometimes|string|in:portal,public,corporate',
             'date' => 'nullable|date',
         ]);
 
@@ -312,7 +333,11 @@ class KmRangePricingController extends Controller
                 $distance,
                 $serviceTypeId,
                 $vehicleGroupId,
-                $date
+                $date,
+                null,
+                null,
+                $request->input('distance_type', 'journey_distance'),
+                $request->input('pricing_context', 'public')
             );
 
             return response()->json([
@@ -323,6 +348,8 @@ class KmRangePricingController extends Controller
                     'distance' => $distance,
                     'service_type_id' => $serviceTypeId,
                     'vehicle_group_id' => $vehicleGroupId,
+                    'distance_type' => $request->input('distance_type', 'journey_distance'),
+                    'pricing_context' => $request->input('pricing_context', 'public'),
                     'date' => $date->toISOString(),
                 ]
             ]);
@@ -348,6 +375,8 @@ class KmRangePricingController extends Controller
             'base_amount' => 'required|numeric|min:0',
             'service_type_id' => 'nullable|uuid|exists:service_types,id',
             'vehicle_group_id' => 'nullable|uuid|exists:vehicle_groups,id',
+            'distance_type' => 'sometimes|in:journey_distance,pickup_distance,delivery_distance',
+            'pricing_context' => 'sometimes|string|in:portal,public,corporate',
             'date' => 'nullable|date',
         ]);
 
@@ -370,7 +399,11 @@ class KmRangePricingController extends Controller
                 $baseAmount,
                 $serviceTypeId,
                 $vehicleGroupId,
-                $date
+                $date,
+                null,
+                null,
+                $request->input('distance_type', 'journey_distance'),
+                $request->input('pricing_context', 'public')
             );
 
             return response()->json([
@@ -381,6 +414,8 @@ class KmRangePricingController extends Controller
                     'base_amount' => $baseAmount,
                     'service_type_id' => $serviceTypeId,
                     'vehicle_group_id' => $vehicleGroupId,
+                    'distance_type' => $request->input('distance_type', 'journey_distance'),
+                    'pricing_context' => $request->input('pricing_context', 'public'),
                     'date' => $date->toISOString(),
                 ]
             ]);

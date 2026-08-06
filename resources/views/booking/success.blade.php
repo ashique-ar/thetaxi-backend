@@ -18,13 +18,19 @@
                         <strong>Booking Reference:</strong> {{ $booking->booking_number ?? 'N/A' }}
                     </div>
 
+                    @php
+                        $bookingReference = $booking->booking_number ?? $booking->confirmation_number ?? null;
+                    @endphp
+
                     <div class="mt-4">
                         <a href="{{ route('home') }}" class="btn btn-primary btn-lg">
                             <i class="bi bi-house-door me-2"></i>Return to Home
                         </a>
-                        <a href="{{ route('bookings.view', $booking->id ?? '') }}" class="btn btn-outline-primary btn-lg ms-2">
-                            <i class="bi bi-file-text me-2"></i>View Booking Details
-                        </a>
+                        @if ($bookingReference)
+                            <a href="{{ route('booking.status', ['booking_reference' => $bookingReference]) }}" class="btn btn-outline-primary btn-lg ms-2">
+                                <i class="bi bi-file-text me-2"></i>View Booking Status
+                            </a>
+                        @endif
                     </div>
                 </div>
             </div>

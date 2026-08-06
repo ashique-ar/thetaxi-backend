@@ -1017,6 +1017,7 @@ class WebsiteSettingsService
             'enable_wedding',
             'enable_corporate',
             'show_return_trip_toggle',
+            'public_booking_enforce_vehicle_availability',
             'include_garage_distance_in_pricing',
             'pricing_holiday_dates',
             'pricing_recurring_holidays',
@@ -1026,7 +1027,13 @@ class WebsiteSettingsService
             'feature_vehicle_return_management_enabled',
         ];
 
-        return $this->getMultiple($types);
+        $settings = $this->getMultiple($types);
+        $availabilitySetting = $settings['public_booking_enforce_vehicle_availability'] ?? null;
+        $settings['public_booking_enforce_vehicle_availability'] = $availabilitySetting === null || $availabilitySetting === ''
+            ? true
+            : (filter_var($availabilitySetting, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true);
+
+        return $settings;
     }
 
     public function getPricingSettings(): array

@@ -1487,50 +1487,15 @@
             }
         }
 
-        // Quotation Form Submission
-        $('#quotationRequestForm').on('submit', function(e) {
-            e.preventDefault();
-
-            const $form = $(this);
-            const $submitBtn = $form.find('button[type="submit"]');
-            const originalBtnText = $submitBtn.html();
-
+        // The reusable vehicle-card script owns quotation submission. This page
+        // contributes only the phone normalization needed before serialization.
+        window.prepareQuotationRequestForm = function(form) {
+            const $form = $(form);
             if (quotationPhoneIti) {
                 const countryData = quotationPhoneIti.getSelectedCountryData();
                 $form.find('.quotation-phone-country-code').val(countryData.dialCode || '');
                 $form.find('.quotation-phone-international').val(quotationPhoneIti.getNumber() || '');
             }
-
-            // Show loading state
-            $submitBtn.prop('disabled', true).html(
-                '<span class="spinner-border spinner-border-sm me-2"></span> Submitting...');
-
-            $.ajax({
-                url: $form.attr('action'),
-                method: 'POST',
-                data: $form.serialize(),
-                success: function(response) {
-                    if (response.success) {
-                        // Close modal and show success
-                        $('#requestQuotationModal').modal('hide');
-                        showSuccessNotification(
-                            'Quotation request submitted successfully! Our team will contact you shortly.'
-                        );
-                        $form[0].reset();
-                    } else {
-                        showErrorNotification(response.message ||
-                            'Failed to submit quotation request. Please try again.');
-                    }
-                },
-                error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.message ||
-                        'An error occurred. Please try again.';
-                    showErrorNotification(errorMsg);
-                },
-                complete: function() {
-                    $submitBtn.prop('disabled', false).html(originalBtnText);
-                }
-            });
-        });
+        };
     </script>
 @endpush

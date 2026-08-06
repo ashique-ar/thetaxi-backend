@@ -802,10 +802,20 @@ class BookingFlowService
 
 
         if ($isPublic) {
-            // public: hide groups without available vehicles
+            // Retain active fleet groups even when every vehicle conflicts for the
+            // requested dates. The shared result contract will make the group
+            // bookable or quotation-only according to the Website setting.
+            $activeVehicleConstraint = fn ($query) => $query->where('is_active', true);
             $query->with([
-                'vehicles' => $vehicleAvailabilityConstraint,
-            ])->whereHas('vehicles', $vehicleAvailabilityConstraint);
+                'grade',
+                'make',
+                'model',
+                'transmission',
+                'fuelType',
+                'category',
+                'class',
+                'vehicles' => $activeVehicleConstraint,
+            ])->whereHas('vehicles', $activeVehicleConstraint);
         } else {
             $query->with([
                 'grade',
@@ -835,6 +845,7 @@ class BookingFlowService
         $orderedAdditionalStops = $this->extractOrderedAdditionalStopsFromParams($params);
         $customerId = $params['customer_id'] ?? null;
         $excludeBookingId = $params['exclude_booking_id'] ?? null; // For edit mode
+        $bypassPublicAvailability = $isPublic && !$this->publicWebsiteAvailabilityEnforced();
 
         // New filtering and pagination parameters
         $search = trim((string) (
@@ -894,6 +905,9 @@ class BookingFlowService
         if (!empty($gradeId)) {
             $baseQuery->where('grade_id', $gradeId);
         }
+        if (!empty($params['vehicle_group_id'])) {
+            $baseQuery->where('id', $params['vehicle_group_id']);
+        }
 
         $corporateAccountId = $params['corporate_account_id'] ?? null;
         if (!empty($corporateAccountId)) {
@@ -952,8 +966,19 @@ class BookingFlowService
                 continue;
             }
 
-            // Get detailed vehicle analysis
-            $vehicleAnalysis = $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId);
+            // In sales-first public mode the administrator deliberately bypasses
+            // date conflicts. Internal and corporate allocation remains unchanged.
+            $vehicleAnalysis = $bypassPublicAvailability
+                ? [
+                    'available_count' => $group->vehicles->count(),
+                    'total_count' => $group->vehicles->count(),
+                    'booked_count' => 0,
+                    'conflict_count' => 0,
+                    'vehicle_details' => [],
+                    'concurrent_possible' => false,
+                    'override_available' => false,
+                ]
+                : $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId);
 
             $availableCount = $vehicleAnalysis['available_count'];
             $totalCount = $vehicleAnalysis['total_count'];
@@ -1089,7 +1114,7 @@ class BookingFlowService
             $sampleVehicle = $group->vehicles->first();
             $hasLongTermAssignments = false;
 
-            if ($sampleVehicle) {
+            if ($sampleVehicle && !$bypassPublicAvailability) {
                 // Check for long-term assignments
                 $hasLongTermAssignments = $group->vehicles->filter(function ($vehicle) use ($fromDate, $toDate) {
                     return BookingItem::where('booking_items.vehicle_id', $vehicle->id)
@@ -1162,7 +1187,7 @@ class BookingFlowService
             if (!$isGroupActive) {
                 $quotationOnlyReasons[] = 'group_inactive';
             }
-            if (!$hasAvailableVehicles && $totalCount > 0) {
+            if (!$bypassPublicAvailability && !$hasAvailableVehicles && $totalCount > 0) {
                 $quotationOnlyReasons[] = 'no_vehicles_available';
             }
             if ($isInquiryOnly) {
@@ -1233,6 +1258,7 @@ class BookingFlowService
                 'is_inquiry_only' => $isInquiryOnly,
                 'service_requires_inquiry' => $serviceTypeRequiresInquiry,
                 'availability_status' => $this->determineGroupAvailabilityStatus($availableCount, $totalCount, $conflictCount),
+                'availability_enforced' => !$bypassPublicAvailability,
                 'concurrent_bookings_possible' => $vehicleAnalysis['concurrent_possible'],
                 'override_options_available' => $vehicleAnalysis['override_available'],
                 // Add new vehicle group fields
@@ -1379,6 +1405,117 @@ class BookingFlowService
             'return_distance_km' => $returnDistanceKm,
             'outbound_duration_seconds' => $outboundDurationSeconds,
             'return_duration_seconds' => $returnDurationSeconds,
+        ];
+    }
+
+    /**
+     * Whether public website dates must be checked before cart and checkout.
+     * Existing installations default to the safer enforced behavior.
+     */
+    public function publicWebsiteAvailabilityEnforced(): bool
+    {
+        $value = app(WebsiteSettingsService::class)->get(
+            'public_booking_enforce_vehicle_availability',
+            true
+        );
+
+        if ($value === null || $value === '') {
+            return true;
+        }
+
+        return filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true;
+    }
+
+    /**
+     * Resolve one selected group through the canonical public search contract.
+     */
+    public function getPublicVehicleGroupAvailability(array $params): ?array
+    {
+        $vehicleGroupId = trim((string) ($params['vehicle_group_id'] ?? ''));
+        if ($vehicleGroupId === '') {
+            return null;
+        }
+
+        $params['vehicle_group_id'] = $vehicleGroupId;
+        $params['page'] = 1;
+        $params['per_page'] = 1;
+
+        $result = $this->getAvailableVehicleGroups($params, true);
+
+        return collect($result['data'] ?? $result)
+            ->first(fn(array $group) => (string) ($group['id'] ?? '') === $vehicleGroupId);
+    }
+
+    /**
+     * Recheck persisted public cart items immediately before checkout.
+     *
+     * @return array{
+     *     available: bool,
+     *     failures: array<int, array{cart_key: string, vehicle_group_id: string|null, reasons: array}>
+     * }
+     */
+    public function validatePublicCartAvailability(array $items): array
+    {
+        $failures = [];
+
+        foreach ($items as $cartKey => $item) {
+            if (!is_array($item)) {
+                $failures[] = [
+                    'cart_key' => (string) $cartKey,
+                    'vehicle_group_id' => null,
+                    'reasons' => ['invalid_cart_item'],
+                ];
+                continue;
+            }
+
+            $params = $this->publicAvailabilityParamsFromCartItem($item);
+            $vehicleGroupId = $params['vehicle_group_id'] ?? null;
+            if (!$vehicleGroupId || empty($params['service_type']) || empty($params['from_date'])) {
+                $failures[] = [
+                    'cart_key' => (string) $cartKey,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'reasons' => ['missing_availability_context'],
+                ];
+                continue;
+            }
+
+            $availability = $this->getPublicVehicleGroupAvailability($params);
+            if (!$availability || !($availability['allow_booking'] ?? false)) {
+                $failures[] = [
+                    'cart_key' => (string) $cartKey,
+                    'vehicle_group_id' => $vehicleGroupId,
+                    'reasons' => $availability['quotation_only_reasons']
+                        ?? [$availability ? 'booking_not_allowed' : 'vehicle_group_unavailable'],
+                ];
+            }
+        }
+
+        return [
+            'available' => empty($failures),
+            'failures' => $failures,
+        ];
+    }
+
+    protected function publicAvailabilityParamsFromCartItem(array $item): array
+    {
+        $serviceTypeData = $item['service_type_data'] ?? null;
+        $serviceTypeId = is_array($serviceTypeData)
+            ? ($serviceTypeData['id'] ?? null)
+            : (is_object($serviceTypeData) ? ($serviceTypeData->id ?? null) : null);
+
+        return [
+            'vehicle_group_id' => $item['vehicle_group_id'] ?? null,
+            'service_type' => $serviceTypeId ?: ($item['service_type'] ?? null),
+            'from_date' => $item['from_date'] ?? ($item['pickup_date'] ?? ($item['date'] ?? null)),
+            'from_time' => $item['from_time'] ?? ($item['pickup_time'] ?? ($item['time'] ?? '10:00')),
+            'to_date' => $item['to_date']
+                ?? ($item['return_date'] ?? ($item['dropoff_date'] ?? ($item['from_date'] ?? ($item['pickup_date'] ?? null)))),
+            'to_time' => $item['to_time']
+                ?? ($item['return_time'] ?? ($item['dropoff_time'] ?? ($item['from_time'] ?? ($item['pickup_time'] ?? '10:00')))),
+            'pickup_location' => $item['pickup_location'] ?? null,
+            'dropoff_location' => $item['dropoff_location'] ?? null,
+            'package_id' => $item['service_package_id'] ?? null,
+            'service_type_context' => 'public',
         ];
     }
 
@@ -6513,7 +6650,7 @@ class BookingFlowService
     /**
      * Apply discount using the new DiscountService
      */
-    public function applyDiscount(array $discountData, string $bookingId = null): array
+    public function applyDiscount(array $discountData, ?string $bookingId = null): array
     {
         $discountService = app(DiscountService::class);
         return $discountService->applyDiscount($discountData, $bookingId);

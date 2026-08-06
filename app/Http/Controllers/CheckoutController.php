@@ -141,7 +141,7 @@ class CheckoutController extends Controller
         }
 
         $paymentSettings = $this->resolvePaymentSettings();
-        $paymentType = $request->get('type', 'full');
+        $paymentType = $request->old('payment_type', $request->query('type', 'full'));
         $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
 
         // Validate payment type
@@ -238,7 +238,10 @@ class CheckoutController extends Controller
 
         $advancePaymentEnabled = $paymentSettings['advance_payment_enabled'];
         $advancePercentage = $paymentSettings['advance_payment_percentage'];
-        $advanceMinAmount = $paymentSettings['advance_payment_min_amount'];
+        $advanceMinAmount = $this->currencyService->convertFromLKR(
+            $paymentSettings['advance_payment_min_amount'],
+            $cartData['currency'] ?? $this->currencyService->getSelectedCurrency()
+        );
 
         // Load countries for dynamic dropdown
         $countries = \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
@@ -372,17 +375,38 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Your cart is empty.');
         }
 
-        // Ensure cart totals are calculated
-        if (empty($cartModel->totals)) {
-            Log::warning('Cart totals are empty, recalculating', [
-                'cart_id' => $cartModel->id,
-                'items_count' => count($cart),
-                'items' => $cart
-            ]);
-            $this->cartService->updateTotals($cartModel);
-            // Refresh the model to get updated totals
-            $cartModel->refresh();
+        $availabilityState = $this->bookingFlowService->validatePublicCartAvailability($cart);
+        if ($paymentType !== 'quotation' && !($availabilityState['available'] ?? false)) {
+            return redirect()->back()
+                ->withInput()
+                ->with(
+                    'error',
+                    'One or more selected vehicle options are no longer available for these dates. '
+                    . 'Choose Request Quotation to send these dates to our team, or return to the results.'
+                );
         }
+
+        // Recalculate totals and revalidate any applied portal-owned promo code
+        // against the current cart and existing customer before creating a booking.
+        $existingCustomer = $this->customerService->getCustomerByEmail($validated['email']);
+        $promoState = $this->cartService->updateTotals($cartModel, $existingCustomer?->id);
+        $cartModel->refresh();
+
+        if (!($promoState['valid'] ?? true)) {
+            return redirect()->back()
+                ->withInput()
+                ->with(
+                    'error',
+                    ($promoState['message'] ?? 'The applied promo code is no longer valid.')
+                        . ' It has been removed; please review the updated total.'
+                );
+        }
+
+        // Persist the exact currency snapshot shown to the customer. The cart is
+        // stored in LKR, while toArray() converts every customer-facing amount.
+        $cartData = $this->cartService->toArray($cartModel);
+        $cart = $cartData['items'] ?? [];
+        $bookingCurrency = $cartData['currency'] ?? $this->currencyService->getSelectedCurrency();
 
         // Re-check dynamic Terms & Conditions acceptance based on cart service types
         $serviceMap = [
@@ -428,8 +452,8 @@ class CheckoutController extends Controller
             // Step 1: Create or get customer
             $customer = $this->customerService->getOrCreateCustomer($validated);
 
-            // Get totals from cart (already calculated with proper currency and fees)
-            $totals = $cartModel->totals ?? [];
+            // Use the converted snapshot shown on checkout, not the raw LKR cart.
+            $totals = $cartData['totals'] ?? [];
             $subtotal = $totals['subtotal'] ?? 0;
             $serviceFee = $totals['service_fee'] ?? 0;
             $tax = $totals['tax'] ?? 0;
@@ -456,10 +480,12 @@ class CheckoutController extends Controller
                 'total' => $total,
             ]);
 
-            // All amounts are in LKR (base currency)
             // Calculate payment amount based on type
             // Fetch advance percentage from database
-            $advanceMinAmount = $paymentSettings['advance_payment_min_amount'];
+            $advanceMinAmount = $this->currencyService->convertFromLKR(
+                $paymentSettings['advance_payment_min_amount'],
+                $bookingCurrency
+            );
             $paymentAmount = match ($validated['payment_type']) {
                 'advance' => $total * ($advancePercentage / 100),
                 'quotation' => 0,
@@ -521,7 +547,7 @@ class CheckoutController extends Controller
                 'vat_amount' => $vat,
                 'discount_amount' => $discount,
                 'total_estimated' => $total,
-                'currency' => $bookingBaseCurrency,
+                'currency' => $bookingCurrency,
                 'payment_method' => $validated['payment_method'] ?? null,
                 'payment_status' => 'pending',
                 'payment_type' => $validated['payment_type'],
@@ -538,6 +564,13 @@ class CheckoutController extends Controller
                 'additional_notes' => $validated['additional_notes'] ?? null,
                 'budget_range' => $validated['budget_range'] ?? null,
                 'cart_items' => $cart,
+                'display_currency' => $bookingCurrency,
+                'base_currency' => 'LKR',
+                'configured_booking_base_currency' => $bookingBaseCurrency,
+                'exchange_rate' => $this->currencyService->getExchangeRate(
+                    'LKR',
+                    $bookingCurrency
+                ),
                 'service_packages' => collect($cart)->map(function ($item) {
                     return [
                         'vehicle_group_id' => $item['vehicle_group_id'] ?? null,
@@ -694,7 +727,11 @@ class CheckoutController extends Controller
                     'unit_price' => $unitPrice,
                     'total_price' => $totalPrice,
                     'quantity' => $durationQuantity,  // Stores duration in days for vehicle rentals
-                    'currency' => $bookingBaseCurrency,
+                    'currency' => $bookingCurrency,
+                    'exchange_rate' => $this->currencyService->getExchangeRate(
+                        'LKR',
+                        $bookingCurrency
+                    ),
                     'status' => 'confirmed',
                     'item_type' => 'vehicle_group',
                     'pricing_breakdown' => [

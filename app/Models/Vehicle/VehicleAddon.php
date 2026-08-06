@@ -225,11 +225,11 @@ class VehicleAddon extends BaseModel
         return $query->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('valid_from')
-                    ->orWhere('valid_from', '<=', now());
+                    ->orWhereDate('valid_from', '<=', today());
             })
             ->where(function ($q) {
                 $q->whereNull('valid_to')
-                    ->orWhere('valid_to', '>=', now());
+                    ->orWhereDate('valid_to', '>=', today());
             });
     }
 
@@ -242,13 +242,13 @@ class VehicleAddon extends BaseModel
             return false;
         }
 
-        $now = now();
+        $today = today();
 
-        if ($this->valid_from && $this->valid_from > $now) {
+        if ($this->valid_from && $this->valid_from->copy()->startOfDay()->gt($today)) {
             return false;
         }
 
-        if ($this->valid_to && $this->valid_to < $now) {
+        if ($this->valid_to && $this->valid_to->copy()->startOfDay()->lt($today)) {
             return false;
         }
 

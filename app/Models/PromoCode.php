@@ -124,11 +124,11 @@ class PromoCode extends BaseModel
         return $query->where('is_active', true)
             ->where(function (Builder $q) {
                 $q->whereNull('start_date')
-                    ->orWhere('start_date', '<=', now());
+                    ->orWhereDate('start_date', '<=', today());
             })
             ->where(function (Builder $q) {
                 $q->whereNull('end_date')
-                    ->orWhere('end_date', '>=', now());
+                    ->orWhereDate('end_date', '>=', today());
             });
     }
 
@@ -156,13 +156,13 @@ class PromoCode extends BaseModel
      */
     public function isWithinDateRange(): bool
     {
-        $now = now();
+        $today = today();
         
-        if ($this->start_date && $now->lt($this->start_date)) {
+        if ($this->start_date && $today->lt($this->start_date->copy()->startOfDay())) {
             return false;
         }
         
-        if ($this->end_date && $now->gt($this->end_date)) {
+        if ($this->end_date && $today->gt($this->end_date->copy()->startOfDay())) {
             return false;
         }
         
@@ -186,7 +186,7 @@ class PromoCode extends BaseModel
      */
     public function hasCustomerReachedLimit(?string $customerId): bool
     {
-        if ($customerId === null) {
+        if ($customerId === null || $this->usage_limit_per_customer === null) {
             return false;
         }
 

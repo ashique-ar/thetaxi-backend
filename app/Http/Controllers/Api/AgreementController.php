@@ -10,7 +10,6 @@ use App\Models\Document;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\Response;
@@ -27,7 +26,6 @@ class AgreementController extends Controller
         $this->middleware('permission:agreement-templates.create')->only(['storeTemplate']);
         $this->middleware('permission:agreement-templates.edit')->only(['updateTemplate']);
         $this->middleware('permission:agreement-templates.delete')->only(['destroyTemplate']);
-        $this->middleware('permission:agreement-signing.edit')->only(['verifyIdentity', 'sign', 'emailSignedAgreement']);
     }
 
     public function index(Request $request): JsonResponse
@@ -61,19 +59,22 @@ class AgreementController extends Controller
     public function destroy(Agreement $agreement): JsonResponse { $agreement->delete(); return response()->json(null, Response::HTTP_NO_CONTENT); }
 
     public function stats(): JsonResponse { return response()->json($this->statsData()); }
-    public function reports(Request $request): JsonResponse { return response()->json(['stats' => $this->statsData(), 'items' => $this->reportQuery($request)->latest()->get()]); }
+    public function reports(Request $request): JsonResponse
+    {
+        $this->validatedReportFilters($request);
+
+        return response()->json([
+            'stats' => $this->statsData(),
+            'items' => $this->reportQuery($request)->latest()->get(),
+        ]);
+    }
 
     public function exportReport(Request $request): Response
     {
-        $data = $request->validate([
-            'reportType' => 'nullable|string|in:summary,detailed,expiry,financial',
-            'dateFrom' => 'nullable|date',
-            'dateTo' => 'nullable|date|after_or_equal:dateFrom',
-            'format' => 'nullable|string|in:pdf,excel',
-        ]);
+        $data = $this->validatedReportFilters($request, true);
 
         $agreements = $this->reportQuery($request)->latest()->get();
-        $format = $data['format'] ?? 'excel';
+        $format = $data['format'] ?? 'csv';
         $filenameSuffix = now()->format('Ymd-His');
 
         if ($format === 'pdf') {
@@ -178,64 +179,6 @@ class AgreementController extends Controller
         return response()->json($agreement->fresh());
     }
 
-    public function sign(Request $request, Agreement $agreement): JsonResponse
-    {
-        abort_unless((bool) data_get($agreement->metadata, 'identity_verified'), Response::HTTP_UNPROCESSABLE_ENTITY, 'Identity must be verified before signing.');
-        $data = $request->validate(['signature'=>'required_without:signature_file|nullable|string|max:250000','signature_file'=>'required_without:signature|nullable|image|mimes:jpg,jpeg,png,webp|max:5120','party_id'=>'nullable|string|max:100','signature_method'=>'nullable|string|in:typed,drawn,uploaded']);
-        if ($request->hasFile('signature_file')) {
-            $disk = $this->storageDisk();
-            $path = $request->file('signature_file')->store("agreements/{$agreement->id}/signatures", $disk);
-            $data['signature'] = $path;
-            $data['signature_disk'] = $disk;
-            $data['signature_method'] = 'uploaded';
-            unset($data['signature_file']);
-        } elseif (($data['signature_method'] ?? null) === 'drawn' && isset($data['signature'])) {
-            $data = $this->storeDrawnSignature($agreement, $data);
-        } else {
-            $data['signature_method'] = $data['signature_method'] ?? 'typed';
-        }
-        $signatures = $agreement->signatures ?? []; $signatures[] = $data + ['signed_at'=>now()->toIso8601String(),'user_id'=>$request->user()?->id,'ip_address'=>$request->ip(),'user_agent'=>Str::limit((string) $request->userAgent(), 500, '')];
-        $agreement->update(['signature_status'=>'fully_signed','status'=>'active','signatures'=>$signatures,'signed_at'=>now()]);
-        $this->activity($agreement, 'signed', 'Agreement digitally signed.', $request);
-        return response()->json($agreement->fresh());
-    }
-
-    public function verifyIdentity(Request $request, Agreement $agreement): JsonResponse
-    {
-        $data = $request->validate(['method'=>'required|string|in:email,sms,document','code'=>'nullable|string|max:100','document_id'=>'nullable|string|max:255','party_id'=>'nullable|string|max:100']);
-        $metadata = $agreement->metadata ?? [];
-        $metadata['identity_verified'] = true;
-        $metadata['identity_verified_at'] = now()->toIso8601String();
-        $metadata['identity_verification_method'] = $data['method'];
-        $metadata['identity_verifications'] = array_values(array_merge($metadata['identity_verifications'] ?? [], [[
-            'method' => $data['method'],
-            'party_id' => $data['party_id'] ?? null,
-            'document_id' => $data['document_id'] ?? null,
-            'verified_at' => now()->toIso8601String(),
-            'user_id' => $request->user()?->id,
-            'ip_address' => $request->ip(),
-            'user_agent' => Str::limit((string) $request->userAgent(), 500, ''),
-        ]]));
-        $agreement->update(['metadata' => $metadata]);
-        $this->activity($agreement, 'identity_verified', 'Agreement signer identity verified.', $request, ['method' => $data['method']]);
-        return response()->json(['verified' => true, 'agreement' => $agreement->fresh()]);
-    }
-
-    public function emailSignedAgreement(Request $request, Agreement $agreement): JsonResponse
-    {
-        abort_unless($agreement->signed_at, Response::HTTP_UNPROCESSABLE_ENTITY, 'Agreement must be signed before it can be emailed.');
-        $data = $request->validate(['email'=>'nullable|email|max:255']);
-        $recipient = $data['email'] ?? $request->user()?->email;
-        abort_unless($recipient, Response::HTTP_UNPROCESSABLE_ENTITY, 'Recipient email is required.');
-        Mail::raw("Attached is the signed agreement: {$agreement->title}.", function ($message) use ($agreement, $recipient) {
-            $message->to($recipient)
-                ->subject("Signed agreement: {$agreement->title}")
-                ->attachData($this->pdfBytes([$agreement]), 'agreement-'.$agreement->id.'.pdf', ['mime' => 'application/pdf']);
-        });
-        $this->activity($agreement, 'emailed', 'Signed agreement emailed.', $request, ['recipient' => $recipient]);
-        return response()->json(['emailed' => true, 'recipient' => $recipient]);
-    }
-
     public function bulkUpdateStatus(Request $request): JsonResponse { $data=$request->validate(['agreementIds'=>'required|array','agreementIds.*'=>'uuid','status'=>'required|string']); Agreement::whereIn('id',$data['agreementIds'])->update(['status'=>strtolower($data['status'])]); return response()->json(['updated'=>count($data['agreementIds'])]); }
     public function bulkDelete(Request $request): JsonResponse { $data=$request->validate(['agreementIds'=>'required|array','agreementIds.*'=>'uuid']); Agreement::whereIn('id',$data['agreementIds'])->delete(); return response()->json(['deleted'=>count($data['agreementIds'])]); }
 
@@ -246,6 +189,19 @@ class AgreementController extends Controller
     }
     private function normalise(array $data): array { $map=['templateId'=>'template_id','startDate'=>'start_date','endDate'=>'end_date','autoRenew'=>'auto_renew','renewalPeriod'=>'renewal_period']; foreach($map as $from=>$to) if(array_key_exists($from,$data)){$data[$to]=$data[$from];unset($data[$from]);} if(isset($data['status']))$data['status']=strtolower($data['status']); return $data; }
     private function validatedTemplate(Request $request, bool $partial=false): array { $p=$partial?'sometimes':'required'; $d=$request->validate(['name'=>"$p|string|max:255",'type'=>"$p|string|max:50",'description'=>'nullable|string','content'=>"$p|string",'variables'=>'nullable|array','isActive'=>'nullable|boolean']); if(array_key_exists('isActive',$d)){$d['is_active']=$d['isActive'];unset($d['isActive']);} return $d; }
+    private function validatedReportFilters(Request $request, bool $withFormat=false): array
+    {
+        $rules = [
+            'reportType' => 'nullable|string|in:summary,expiry',
+            'dateFrom' => 'nullable|date',
+            'dateTo' => 'nullable|date|after_or_equal:dateFrom',
+        ];
+        if ($withFormat) {
+            $rules['format'] = 'nullable|string|in:pdf,csv';
+        }
+
+        return $request->validate($rules);
+    }
     private function statsData(): array { $total=Agreement::count(); $count=fn($s)=>Agreement::where('status',$s)->count(); $near=Agreement::whereBetween('end_date',[now(),now()->addDays(30)])->count(); return ['total'=>$total,'active'=>$count('active'),'expired'=>$count('expired'),'pending'=>$count('pending_signature'),'draft'=>$count('draft'),'cancelled'=>$count('cancelled'),'nearExpiry'=>$near,'total_agreements'=>$total,'active_agreements'=>$count('active'),'pending_signature'=>$count('pending_signature'),'expiring_soon'=>$near,'expired_agreements'=>$count('expired'),'draft_agreements'=>$count('draft')]; }
     private function reportQuery(Request $request)
     {
@@ -264,20 +220,6 @@ class AgreementController extends Controller
     private function abortUnlessAgreementDocument(Document $document): void { abort_unless($document->documentable_type === Agreement::class, Response::HTTP_NOT_FOUND); }
     private function storageDisk(): string { return config('filesystems.default'); }
     private function storageUrl(string $diskName, string $path): string { $disk = Storage::disk($diskName); return method_exists($disk, 'providesTemporaryUrls') && $disk->providesTemporaryUrls() ? $disk->temporaryUrl($path, now()->addMinutes(15)) : $disk->url($path); }
-    private function storeDrawnSignature(Agreement $agreement, array $data): array
-    {
-        $signature = $data['signature'];
-        if (!preg_match('/^data:image\/(png|jpeg|webp);base64,(.+)$/', $signature, $matches)) return $data;
-        $bytes = base64_decode($matches[2], true);
-        abort_unless($bytes !== false, Response::HTTP_UNPROCESSABLE_ENTITY, 'Invalid drawn signature image.');
-        $extension = $matches[1] === 'jpeg' ? 'jpg' : $matches[1];
-        $disk = $this->storageDisk();
-        $path = "agreements/{$agreement->id}/signatures/drawn-".Str::uuid().".{$extension}";
-        Storage::disk($disk)->put($path, $bytes);
-        $data['signature'] = $path;
-        $data['signature_disk'] = $disk;
-        return $data;
-    }
     private function pdfBytes(iterable $agreements): string
     {
         $lines=[]; foreach($agreements as $a){$lines[]=$a->title; $lines[]='Status: '.$a->status.'  Type: '.($a->type ?: 'N/A'); $lines[]='Dates: '.($a->start_date?->format('Y-m-d') ?: 'N/A').' - '.($a->end_date?->format('Y-m-d') ?: 'Open'); if($a->signed_at)$lines[]='Signed at: '.$a->signed_at->format('Y-m-d H:i'); if(data_get($a->metadata,'identity_verified'))$lines[]='Identity verified: '.data_get($a->metadata,'identity_verification_method','yes'); foreach($a->signatures ?? [] as $signature){$lines[]='Signature: '.($signature['signature_method'] ?? 'typed').' at '.($signature['signed_at'] ?? 'N/A');} if($a->description)$lines[]=$a->description; if($a->parties)$lines[]='Parties: '.collect($a->parties)->map(fn($party)=>data_get($party,'name'))->filter()->implode(', '); if($a->terms){$lines[]='Terms:'; foreach(preg_split('/\R/', is_array($a->terms) ? json_encode($a->terms) : (string) $a->terms) as $termLine){if(trim($termLine)!=='')$lines[]=trim($termLine);}} if($a->content)$lines[]=$a->content; $lines[]='';}
