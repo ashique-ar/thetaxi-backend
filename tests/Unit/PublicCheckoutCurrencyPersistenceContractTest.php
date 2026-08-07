@@ -41,4 +41,18 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
             $service
         );
     }
+
+    public function test_cart_conversion_returns_items_as_an_associative_array(): void
+    {
+        $service = file_get_contents(__DIR__ . '/../../app/Services/CartService.php');
+
+        $this->assertStringContainsString(
+            "'items' => \$convertedItems->all(),",
+            $service
+        );
+        $this->assertStringNotContainsString(
+            "'items' => \$convertedItems,",
+            $service
+        );
+    }
 }

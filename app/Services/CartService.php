@@ -617,7 +617,9 @@ class CartService
 
         return [
             'id' => $cart->id,
-            'items' => $convertedItems,
+            // Keep the original associative cart keys, but honor this method's
+            // array contract for checkout and JSON consumers.
+            'items' => $convertedItems->all(),
             'totals' => $convertedTotals,
             'coupon_code' => $cart->coupon_code,
             'coupon_discount' => $this->currencyService->convertFromLKR((float) ($cart->coupon_discount ?? 0), $selectedCurrency),
