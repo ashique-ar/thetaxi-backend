@@ -3,10 +3,10 @@
 namespace App\Http\Requests;
 
 use App\Models\PredefinedLocation;
-use App\Models\Service\ServicePackage;
 use App\Models\Service\ServiceType;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Carbon\Carbon;
@@ -63,7 +63,7 @@ class BookingSearchRequest extends FormRequest
                     fn($config) => is_array($config) && ($config['type'] ?? null) === 'package_select'
                 );
                 $activePackageIds = $hasConfiguredPackageSelector
-                    ? ServicePackage::query()
+                    ? DB::table('service_packages')
                         ->where('service_type_id', $configuredServiceTypeId)
                         ->where('is_active', true)
                         ->pluck('id')
@@ -420,7 +420,7 @@ class BookingSearchRequest extends FormRequest
             return false;
         }
 
-        return ServicePackage::query()
+        return DB::table('service_packages')
             ->where('service_type_id', $serviceTypeId)
             ->where('is_active', true)
             ->exists();
