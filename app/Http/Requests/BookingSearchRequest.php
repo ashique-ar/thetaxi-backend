@@ -763,6 +763,7 @@ class BookingSearchRequest extends FormRequest
         $serviceType = null;
         foreach ($candidateCodes as $candidateCode) {
             $serviceType = ServiceType::query()
+                ->publicContext()
                 ->where('code', $candidateCode)
                 ->where('is_active', true)
                 ->first();

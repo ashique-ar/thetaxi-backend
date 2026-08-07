@@ -180,7 +180,9 @@
 
     try {
         $serviceTypeConfigs = \App\Models\Service\ServiceType::query()
+            ->publicContext()
             ->whereIn('code', $serviceTypeCodesForConfig)
+            ->where('is_active', true)
             ->get()
             ->keyBy('code');
     } catch (Exception $e) {
