@@ -57,6 +57,16 @@ class RoleController extends Controller
             $query->where('guard_name', $request->string('guard_name')->toString());
         }
 
+        $sortable = ['name', 'guard_name'];
+        $sortBy = $request->get('sort_by');
+        $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if ($sortBy && in_array($sortBy, $sortable, true)) {
+            $query->orderBy($sortBy, $sortDirection);
+        } else {
+            $query->orderBy('name');
+        }
+
         $roles = $query->paginate($request->per_page ?? 15);
         return RoleResource::collection($roles);
     }

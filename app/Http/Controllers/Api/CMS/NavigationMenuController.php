@@ -62,9 +62,18 @@ class NavigationMenuController extends Controller
             $query->with('parent');
         }
 
-        $navigationMenus = $query->orderBy('sort_order')
-            ->orderBy('title')
-            ->paginate($request->get('per_page', 15));
+        $sortable = ['title', 'url', 'sort_order', 'is_active'];
+        $sortBy = $request->get('sort_by');
+        $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if ($sortBy && in_array($sortBy, $sortable, true)) {
+            $query->orderBy($sortBy, $sortDirection);
+        } else {
+            $query->orderBy('sort_order')
+                ->orderBy('title');
+        }
+
+        $navigationMenus = $query->paginate($request->get('per_page', 15));
 
         return response()->json($navigationMenus);
     }

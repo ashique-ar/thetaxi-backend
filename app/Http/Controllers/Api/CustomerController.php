@@ -81,13 +81,32 @@ class CustomerController extends Controller
             });
         }
 
-        $sort = in_array($request->get('sort'), ['created_at', 'updated_at', 'code'], true)
+        $sortable = ['created_at', 'updated_at', 'code', 'name', 'email', 'phone', 'status'];
+        $sort = in_array($request->get('sort'), $sortable, true)
             ? $request->get('sort')
             : 'created_at';
         $direction = $request->get('direction') === 'asc' ? 'asc' : 'desc';
 
+        switch ($sort) {
+            case 'name':
+                $q->orderBy(User::select('first_name')->whereColumn('users.id', 'customers.user_id'), $direction)
+                    ->orderBy(User::select('last_name')->whereColumn('users.id', 'customers.user_id'), $direction);
+                break;
+            case 'email':
+                $q->orderBy(User::select('email')->whereColumn('users.id', 'customers.user_id'), $direction);
+                break;
+            case 'phone':
+                $q->orderBy(User::select('phone')->whereColumn('users.id', 'customers.user_id'), $direction);
+                break;
+            case 'status':
+                $q->orderBy(User::select('is_active')->whereColumn('users.id', 'customers.user_id'), $direction);
+                break;
+            default:
+                $q->orderBy($sort, $direction);
+        }
+
         return CustomerResource::collection(
-            $q->orderBy($sort, $direction)->paginate($request->per_page ?? 15)
+            $q->paginate($request->per_page ?? 15)
         );
     }
 

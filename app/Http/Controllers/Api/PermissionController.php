@@ -52,6 +52,16 @@ class PermissionController extends Controller
             $query->where('guard_name', $request->guard_name);
         }
 
+        $sortable = ['id', 'name', 'guard_name', 'created_at'];
+        $sortBy = $request->get('sort_by');
+        $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        if ($sortBy && in_array($sortBy, $sortable, true)) {
+            $query->orderBy($sortBy, $sortDirection);
+        } else {
+            $query->orderBy('name');
+        }
+
         $permissions = $query->paginate($request->per_page ?? 15);
         return PermissionResource::collection($permissions);
     }

@@ -48,7 +48,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'owner_id' => 'nullable|uuid|exists:corporates,id|required_with:owner_type',
             'context' => 'nullable|string|in:public,portal,corporate',
             'status' => 'in:active,inactive,draft',
-            'sort_by' => 'in:name,created_at,updated_at,status,priority',
+            'sort_by' => 'in:name,created_at,updated_at,status,priority,service_type',
             'sort_direction' => 'in:asc,desc',
         ]);
 
@@ -90,7 +90,14 @@ class VehiclePricingCalculationDefinitionController extends Controller
         // Apply sorting
         $sortBy = $request->get('sort_by', 'created_at');
         $sortDirection = $request->get('sort_direction', 'desc');
-        $query->orderBy($sortBy, $sortDirection);
+        if ($sortBy === 'service_type') {
+            $query->orderBy(
+                ServiceType::select('name')->whereColumn('service_types.id', 'vehicle_pricing_calculation_definitions.service_type_id'),
+                $sortDirection
+            );
+        } else {
+            $query->orderBy($sortBy, $sortDirection);
+        }
 
         // Paginate results
         $perPage = $request->get('per_page', 15);

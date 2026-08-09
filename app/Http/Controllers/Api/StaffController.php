@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Models\User;
 use App\Http\Requests\Staff\CreateStaffRequest;
 use App\Http\Requests\Staff\UpdateStaffRequest;
 use App\Http\Resources\StaffResource;
@@ -52,6 +53,37 @@ class StaffController extends Controller
 
         if ($request->filled('status')) {
             $q->whereHas('user', fn ($query) => $query->where('is_active', $request->get('status') === 'active'));
+        }
+
+        $sortable = ['employee_id', 'name', 'nic', 'role', 'email', 'status', 'created_at'];
+        $sortBy = in_array($request->get('sort_by'), $sortable, true) ? $request->get('sort_by') : null;
+        $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
+
+        switch ($sortBy) {
+            case 'employee_id':
+                $q->orderBy('code', $sortDirection);
+                break;
+            case 'name':
+                $q->orderBy(User::select('first_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection)
+                    ->orderBy(User::select('last_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection);
+                break;
+            case 'nic':
+                $q->orderBy('nic', $sortDirection);
+                break;
+            case 'role':
+                $q->orderBy('staff_type', $sortDirection);
+                break;
+            case 'email':
+                $q->orderBy(User::select('email')->whereColumn('users.id', 'staff.user_id'), $sortDirection);
+                break;
+            case 'status':
+                $q->orderBy(User::select('is_active')->whereColumn('users.id', 'staff.user_id'), $sortDirection);
+                break;
+            case 'created_at':
+                $q->orderBy('created_at', $sortDirection);
+                break;
+            default:
+                $q->orderBy('created_at', 'desc');
         }
 
         return StaffResource::collection(
