@@ -3,11 +3,66 @@
 namespace App\Services\Sms\Providers;
 
 use App\Contracts\Sms\SmsProviderInterface;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use RuntimeException;
 
 class EsmsProvider implements SmsProviderInterface
 {
+    /**
+     * Error codes shared by the v2 login and SMS (POST) APIs.
+     * @see eSMS API Document v2.9 section 3.1.5
+     */
+    private const POST_ERROR_CODES = [
+        '100' => 'Invalid token (token expired)',
+        '101' => 'Invalid request parameters',
+        '102' => 'User account not found or not a valid account',
+        '103' => 'Unable to find a campaign for the specified transaction ID',
+        '104' => 'Transaction ID is already used',
+        '105' => 'Invalid token signature',
+        '106' => 'Token not found in the header',
+        '107' => 'One or more mandatory parameters in the request is either missing or invalid',
+        '108' => 'User does not have an active mask eligible to send messages',
+        '109' => 'No valid mobile number left after removing invalid, duplicate and mask-blocked numbers',
+        '110' => 'Not eligible to consume packaging',
+        '111' => 'Package payments can only be used for campaigns scheduled for this month',
+        '112' => 'Number of messages left in the package is less than the campaign messages',
+        '113' => 'Package maintenance downtime',
+        '114' => 'Not enough wallet balance to run the campaign',
+        '115' => 'Username or password invalid',
+        '116' => 'Account locked',
+        '117' => 'Too many requests',
+        '118' => 'Campaigns cannot be created during the system blackout period (generally 08:00 PM to 08:00 AM)',
+        '999' => 'Internal server error',
+    ];
+
+    /**
+     * Error/response codes for the URL (GET) based SMS and balance APIs.
+     * @see eSMS API Document v2.9 sections 3.2.3 and 3.2.2
+     */
+    private const GET_ERROR_CODES = [
+        '1' => 'Success',
+        '2001' => 'Error occurred during campaign creation',
+        '2002' => 'Bad request',
+        '2003' => 'Empty number list',
+        '2004' => 'Empty message body',
+        '2005' => 'Invalid number list format',
+        '2006' => 'Not eligible to send messages via GET requests (admin has not granted access)',
+        '2007' => 'Invalid key (esmsqk parameter is invalid)',
+        '2008' => 'Not enough money in the wallet or not enough messages left in the package',
+        '2009' => 'No valid numbers found after removing mask-blocked numbers',
+        '2010' => 'Not eligible to consume packaging',
+        '2011' => 'Transactional error',
+        '2012' => 'Does not have access for this mask',
+        '2013' => 'Campaigns cannot be created during the system blackout period (generally 08:00 PM to 08:00 AM)',
+        '2020' => 'Too many requests',
+    ];
+
+    private const TOKEN_EXPIRED_ERROR_CODE = '100';
+
+    /** Safety margin (seconds) subtracted from the token expiration before it is treated as stale. */
+    private const TOKEN_EXPIRY_BUFFER = 300;
+
     private ?string $resolvedApiKey = null;
     private ?array $resolvedLoginPayload = null;
 
@@ -32,7 +87,6 @@ class EsmsProvider implements SmsProviderInterface
 
     public function sendBulk(array $payload): array
     {
-        $token = $this->resolveApiKey();
         $recipients = array_values(array_filter(array_map(
             fn($recipient) => trim((string) $recipient),
             $payload['recipients'] ?? []
@@ -42,8 +96,10 @@ class EsmsProvider implements SmsProviderInterface
             throw new RuntimeException('No recipients provided for SMS send');
         }
 
+        $transactionId = $this->resolveTransactionId($payload['meta']['transaction_id'] ?? null);
+
         $requestBody = [
-            'transaction_id' => $this->resolveTransactionId($payload['meta']['transaction_id'] ?? null),
+            'transaction_id' => $transactionId,
             'message' => $payload['message'],
             'msisdn' => array_map(
                 fn($recipient) => ['mobile' => $recipient],
@@ -56,15 +112,28 @@ class EsmsProvider implements SmsProviderInterface
             $requestBody['sourceAddress'] = $senderMask;
         }
 
-        $response = $this->http()
-            ->withToken($token)
-            ->post($this->endpointUrl('v2/sms'), $requestBody)
-            ->throw()
-            ->json();
+        $pushNotificationUrl = trim((string) ($payload['push_notification_url'] ?? $this->config['delivery_callback_url'] ?? ''));
+        if ($pushNotificationUrl !== '') {
+            $requestBody['push_notification_url'] = $pushNotificationUrl;
+        }
+
+        $response = $this->requestWithTokenRetry(
+            fn (string $token) => $this->http()
+                ->withToken($token)
+                ->post($this->endpointUrl('v2/sms'), $requestBody)
+                ->throw()
+                ->json()
+        );
+
+        $status = strtolower((string) ($this->extractValue($response, ['status']) ?? ''));
+        if ($status !== 'success') {
+            throw new RuntimeException($this->describeFailure($response, self::POST_ERROR_CODES));
+        }
 
         return [
             'ok' => true,
             'provider' => $this->identifier(),
+            'transaction_id' => $transactionId,
             'provider_campaign_id' => $this->extractValue(
                 $response,
                 ['campaignId', 'campaign_id', 'campaignCode', 'id']
@@ -77,9 +146,74 @@ class EsmsProvider implements SmsProviderInterface
         ];
     }
 
-    public function getBalance(): array
+    /**
+     * Check the delivery/creation status of a previously sent campaign via its transaction id.
+     * @see eSMS API Document v2.9 section 3.1.3
+     */
+    public function checkTransactionStatus(string $transactionId): array
     {
-        $loginPayload = $this->resolveLoginPayload();
+        $response = $this->requestWithTokenRetry(
+            fn (string $token) => $this->http()
+                ->withToken($token)
+                ->post($this->endpointUrl('v2/sms/check-transaction'), [
+                    'transaction_id' => $transactionId,
+                ])
+                ->throw()
+                ->json()
+        );
+
+        $status = strtolower((string) ($this->extractValue($response, ['status']) ?? ''));
+        if ($status !== 'success') {
+            throw new RuntimeException($this->describeFailure($response, self::POST_ERROR_CODES));
+        }
+
+        return [
+            'transaction_id' => $transactionId,
+            'campaign_status' => $this->extractValue($response, ['campaign status', 'campaign_status']),
+            'comment' => $this->extractValue($response, ['comment']),
+            'raw' => $response,
+        ];
+    }
+
+    /**
+     * List every mask (default + additional) available on the account, so the UI never has
+     * to make the user free-type a sender id.
+     */
+    public function getMasks(bool $forceRefresh = false): array
+    {
+        $loginPayload = $this->login($forceRefresh);
+        $userData = $this->userData($loginPayload);
+
+        $defaultMask = trim((string) ($userData['defaultMask'] ?? ''));
+        $masks = [];
+
+        if ($defaultMask !== '') {
+            $masks[] = ['mask' => $defaultMask, 'is_default' => true];
+        }
+
+        foreach ((array) ($userData['additional_mask'] ?? []) as $entry) {
+            $mask = trim((string) (is_array($entry) ? ($entry['mask'] ?? '') : $entry));
+            if ($mask === '' || $mask === $defaultMask) {
+                continue;
+            }
+            $masks[] = ['mask' => $mask, 'is_default' => false];
+        }
+
+        return [
+            'provider' => $this->identifier(),
+            'default_mask' => $defaultMask !== '' ? $defaultMask : null,
+            'masks' => $masks,
+        ];
+    }
+
+    public function getBalance(bool $forceRefresh = false): array
+    {
+        $esmsqk = trim((string) ($this->config['esmsqk'] ?? ''));
+        if ($esmsqk !== '') {
+            return $this->getBalanceViaUrlKey($esmsqk);
+        }
+
+        $loginPayload = $this->login($forceRefresh);
         $status = strtolower((string) ($this->extractValue($loginPayload, ['status']) ?? ''));
         $connected = in_array($status, ['success', 'true', '1'], true);
         $comment = $this->extractValue($loginPayload, ['comment']);
@@ -103,16 +237,58 @@ class EsmsProvider implements SmsProviderInterface
             'balance_available' => $balance !== null && $balance !== '',
             'comment' => is_string($comment) && $comment !== '' ? $comment : null,
             'token_expires_in' => $this->extractValue($loginPayload, ['expiration']),
+            'source' => 'login',
         ];
     }
 
-    private function resolveApiKey(): string
+    /**
+     * Dedicated, lightweight balance check via the URL Message Key (esmsqk).
+     * Unlike the login response this does not require re-authenticating and reflects the
+     * live wallet balance at call time.
+     * @see eSMS API Document v2.9 section 3.2.2
+     */
+    private function getBalanceViaUrlKey(string $esmsqk): array
     {
-        if ($this->resolvedApiKey) {
+        $raw = trim((string) $this->http()
+            ->get($this->endpointUrl('v1/message-via-url/check/balance'), [
+                'esmsqk' => $esmsqk,
+            ])
+            ->throw()
+            ->body());
+
+        [$code, $balance] = array_pad(explode('|', $raw, 2), 2, null);
+        $code = trim((string) $code);
+        $success = $code === '1';
+
+        return [
+            'provider' => $this->identifier(),
+            'balance' => $success ? $balance : null,
+            'connected' => true,
+            'balance_available' => $success && $balance !== null && $balance !== '',
+            'comment' => $success ? null : ($this->describeGetErrorCode($code) ?? "eSMS balance check failed (code {$code})"),
+            'token_expires_in' => null,
+            'source' => 'url_key',
+        ];
+    }
+
+    private function login(bool $forceRefresh = false): array
+    {
+        if ($forceRefresh) {
+            Cache::forget($this->tokenCacheKey());
+            $this->resolvedLoginPayload = null;
+            $this->resolvedApiKey = null;
+        }
+
+        return $this->resolveLoginPayload();
+    }
+
+    private function resolveApiKey(bool $forceRefresh = false): string
+    {
+        if (!$forceRefresh && $this->resolvedApiKey) {
             return $this->resolvedApiKey;
         }
 
-        $response = $this->resolveLoginPayload();
+        $response = $this->resolveLoginPayload($forceRefresh);
 
         $apiKey = $this->extractValue(
             $response,
@@ -130,36 +306,94 @@ class EsmsProvider implements SmsProviderInterface
         throw new RuntimeException('Unable to resolve eSMS API key from login response');
     }
 
-    private function resolveLoginPayload(): array
+    /**
+     * Resolves the login payload, reusing a cached token for its documented lifetime
+     * (~12 hours) instead of calling v2/user/login on every request. Per the eSMS docs
+     * this endpoint "should be called only on initial request and on access token expiration".
+     */
+    private function resolveLoginPayload(bool $forceRefresh = false): array
     {
-        if ($this->resolvedLoginPayload !== null) {
+        if (!$forceRefresh && $this->resolvedLoginPayload !== null) {
             return $this->resolvedLoginPayload;
+        }
+
+        if (!empty($this->config['api_key']) && empty($this->config['username'])) {
+            return $this->resolvedLoginPayload = [
+                'status' => 'success',
+                'comment' => 'Balance and masks unavailable when only an API key/token is configured',
+                'token' => (string) $this->config['api_key'],
+            ];
+        }
+
+        $cacheKey = $this->tokenCacheKey();
+
+        if (!$forceRefresh) {
+            $cached = Cache::get($cacheKey);
+            if (is_array($cached)) {
+                return $this->resolvedLoginPayload = $cached;
+            }
         }
 
         $username = (string) ($this->config['username'] ?? '');
         $password = (string) ($this->config['password'] ?? '');
 
         if ($username === '' || $password === '') {
-            if (!empty($this->config['api_key'])) {
-                return $this->resolvedLoginPayload = [
-                    'status' => true,
-                    'comment' => 'Balance unavailable when only API key/token is configured',
-                    'token' => (string) $this->config['api_key'],
-                ];
-            }
-
             throw new RuntimeException('eSMS credentials are not configured');
         }
 
         $response = $this->http()
-            ->post($this->endpointUrl('v1/login'), [
+            ->post($this->endpointUrl('v2/user/login'), [
                 'username' => $username,
                 'password' => $password,
             ])
             ->throw()
             ->json();
 
-        return $this->resolvedLoginPayload = is_array($response) ? $response : [];
+        $response = is_array($response) ? $response : [];
+
+        $status = strtolower((string) ($this->extractValue($response, ['status']) ?? ''));
+        if ($status !== 'success') {
+            throw new RuntimeException($this->describeFailure($response, self::POST_ERROR_CODES));
+        }
+
+        $expiration = (int) ($this->extractValue($response, ['expiration']) ?? 43200);
+        $ttl = max(60, $expiration - self::TOKEN_EXPIRY_BUFFER);
+        Cache::put($cacheKey, $response, $ttl);
+
+        return $this->resolvedLoginPayload = $response;
+    }
+
+    /**
+     * Runs an authenticated request, transparently forcing a fresh login and retrying once
+     * if the cached token turned out to be expired/invalid (error code 100).
+     */
+    private function requestWithTokenRetry(callable $request): array
+    {
+        $token = $this->resolveApiKey();
+
+        try {
+            $response = $request($token);
+        } catch (\Illuminate\Http\Client\RequestException $exception) {
+            throw $exception;
+        }
+
+        $errCode = (string) ($this->extractValue($response, ['errCode']) ?? '');
+        $status = strtolower((string) ($this->extractValue($response, ['status']) ?? ''));
+
+        if ($status !== 'success' && $errCode === self::TOKEN_EXPIRED_ERROR_CODE) {
+            $token = $this->resolveApiKey(true);
+            $response = $request($token);
+        }
+
+        return $response;
+    }
+
+    private function tokenCacheKey(): string
+    {
+        $username = (string) ($this->config['username'] ?? '');
+        $baseUrl = $this->normalizeBaseUrl((string) ($this->config['base_url'] ?? ''));
+
+        return 'esms:login:' . md5($baseUrl . '|' . $username);
     }
 
     private function http()
@@ -183,7 +417,7 @@ class EsmsProvider implements SmsProviderInterface
             $candidate = (string) random_int(1000000000, 2147483647);
         }
 
-        return substr($candidate, 0, 10);
+        return substr($candidate, 0, 18);
     }
 
     private function normalizeBaseUrl(string $baseUrl): string
@@ -199,6 +433,37 @@ class EsmsProvider implements SmsProviderInterface
         }
 
         return $normalized;
+    }
+
+    private function userData(array $loginPayload): array
+    {
+        $userData = $this->extractValue($loginPayload, ['userData']);
+
+        return is_array($userData) ? $userData : [];
+    }
+
+    private function describeFailure(array $response, array $errorCodes): string
+    {
+        $comment = $this->extractValue($response, ['comment']);
+        $errCode = $this->extractValue($response, ['errCode']);
+        $errCodeKey = $errCode !== null ? (string) $errCode : null;
+
+        $description = $errCodeKey !== null ? ($errorCodes[$errCodeKey] ?? null) : null;
+
+        if (is_string($comment) && $comment !== '') {
+            return $description ? "{$comment} (errCode {$errCodeKey}: {$description})" : $comment;
+        }
+
+        if ($description) {
+            return "eSMS request failed (errCode {$errCodeKey}: {$description})";
+        }
+
+        return 'eSMS request failed for an unknown reason';
+    }
+
+    private function describeGetErrorCode(string $code): ?string
+    {
+        return self::GET_ERROR_CODES[$code] ?? null;
     }
 
     private function extractValue(array $payload, array $keys): mixed

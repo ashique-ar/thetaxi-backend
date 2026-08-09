@@ -337,11 +337,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('test', [SmsManagementController::class, 'sendTest']);
         Route::get('messages', [SmsManagementController::class, 'messages']);
         Route::post('messages/{smsMessage}/retry', [SmsManagementController::class, 'retryMessage']);
+        Route::get('messages/{smsMessage}/status', [SmsManagementController::class, 'checkMessageStatus']);
         Route::get('campaigns', [SmsManagementController::class, 'campaigns']);
         Route::post('campaigns', [SmsManagementController::class, 'createCampaign']);
         Route::get('campaigns/{smsCampaign}', [SmsManagementController::class, 'showCampaign']);
         Route::post('campaigns/{smsCampaign}/launch', [SmsManagementController::class, 'launchCampaign']);
         Route::get('balance', [SmsManagementController::class, 'balance']);
+        Route::get('masks', [SmsManagementController::class, 'masks']);
     });
 
     /*

@@ -974,6 +974,7 @@ class WebsiteSettingsService
             'sms_esms_username',
             'sms_esms_password',
             'sms_esms_api_key',
+            'sms_esms_esmsqk',
             'sms_esms_delivery_callback_url',
         ];
 

@@ -26,6 +26,7 @@ class SmsManagementController extends Controller
         $this->middleware('permission:communication.view|communication.manage|sms.settings.view|sms.settings.manage')->only([
             'settings',
             'balance',
+            'masks',
         ]);
         $this->middleware('permission:communication.manage|sms.settings.manage')->only([
             'updateSettings',
@@ -39,6 +40,9 @@ class SmsManagementController extends Controller
         ]);
         $this->middleware('permission:communication.manage|sms.messages.manage')->only([
             'retryMessage',
+        ]);
+        $this->middleware('permission:communication.view|communication.manage|sms.messages.view|sms.messages.manage')->only([
+            'checkMessageStatus',
         ]);
         $this->middleware('permission:communication.view|communication.manage|sms.campaigns.view|sms.campaigns.manage')->only([
             'campaigns',
@@ -240,17 +244,49 @@ class SmsManagementController extends Controller
         ]);
     }
 
-    public function balance(): JsonResponse
+    public function balance(Request $request): JsonResponse
     {
         try {
             return response()->json([
                 'status' => 'success',
-                'data' => $this->smsService->getBalance(),
+                'data' => $this->smsService->getBalance($request->boolean('refresh')),
             ]);
         } catch (Throwable $exception) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to fetch SMS provider balance',
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function masks(Request $request): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->smsService->getMasks($request->boolean('refresh')),
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to fetch SMS provider masks',
+                'error' => $exception->getMessage(),
+            ], 422);
+        }
+    }
+
+    public function checkMessageStatus(SmsMessage $smsMessage): JsonResponse
+    {
+        try {
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->smsService->checkMessageStatus($smsMessage),
+            ]);
+        } catch (Throwable $exception) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to check SMS transaction status',
                 'error' => $exception->getMessage(),
             ], 422);
         }

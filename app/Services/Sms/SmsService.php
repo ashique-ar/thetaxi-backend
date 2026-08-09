@@ -219,6 +219,7 @@ class SmsService
                 'status' => 'sent',
                 'provider_message_id' => $response['provider_message_id'] ?? null,
                 'provider_campaign_id' => $response['provider_campaign_id'] ?? null,
+                'provider_transaction_id' => $response['transaction_id'] ?? null,
                 'provider_response' => $response['raw'] ?? $response,
                 'sent_at' => now(),
                 'error_message' => null,
@@ -318,9 +319,31 @@ class SmsService
             ->paginate((int) ($filters['per_page'] ?? 20));
     }
 
-    public function getBalance(): array
+    public function getBalance(bool $forceRefresh = false): array
     {
-        return $this->providerManager->active()->getBalance();
+        return $this->providerManager->active()->getBalance($forceRefresh);
+    }
+
+    public function getMasks(bool $forceRefresh = false): array
+    {
+        return $this->providerManager->active()->getMasks($forceRefresh);
+    }
+
+    public function checkMessageStatus(SmsMessage $message): array
+    {
+        if (!$message->provider_transaction_id) {
+            throw new RuntimeException('This message has no provider transaction id to check');
+        }
+
+        $result = $this->providerManager->active()->checkTransactionStatus($message->provider_transaction_id);
+
+        $message->update([
+            'provider_response' => array_merge($message->provider_response ?? [], [
+                'transaction_status_check' => $result,
+            ]),
+        ]);
+
+        return $result;
     }
 
     public function resolveAudienceRecipients(

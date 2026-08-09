@@ -22,6 +22,7 @@ class SmsMessage extends BaseModel
         'status',
         'provider_message_id',
         'provider_campaign_id',
+        'provider_transaction_id',
         'attempts',
         'error_message',
         'provider_response',
