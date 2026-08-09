@@ -201,10 +201,7 @@ class TripTrackingService
                     : 0,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                 'waiting_period_count'       => $waitingTime['waiting_period_count'],
-                'pickup_coordinates'         => [
-                    'latitude'  => $assignment->pickup_arrival_latitude  ? (float) $assignment->pickup_arrival_latitude  : null,
-                    'longitude' => $assignment->pickup_arrival_longitude ? (float) $assignment->pickup_arrival_longitude : null,
-                ],
+                'pickup_coordinates'         => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates'        => [
                     'latitude'  => (float) ($finalLocation['latitude']  ?? $assignment->final_latitude),
                     'longitude' => (float) ($finalLocation['longitude'] ?? $assignment->final_longitude),
@@ -280,10 +277,7 @@ class TripTrackingService
                 'total_duration_minutes' => $durationMinutes,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                 'waiting_period_count' => $waitingTime['waiting_period_count'],
-                'pickup_coordinates' => [
-                    'latitude' => $assignment->pickup_arrival_latitude ? (float) $assignment->pickup_arrival_latitude : null,
-                    'longitude' => $assignment->pickup_arrival_longitude ? (float) $assignment->pickup_arrival_longitude : null,
-                ],
+                'pickup_coordinates' => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates' => [
                     'latitude' => (float) $finalLocation['latitude'],
                     'longitude' => (float) $finalLocation['longitude'],
@@ -294,6 +288,39 @@ class TripTrackingService
                 'payment' => $paymentSummary,
             ];
         });
+    }
+
+    /**
+     * Resolve the pickup coordinates reported in a trip completion summary.
+     *
+     * Sourced from the pickup stop's own recorded coordinates — never from
+     * the final/completion location — so a hire's completion response can
+     * never report the drop-off position as its pickup position. Falls back
+     * through the pickup stop's completed -> arrived coordinates, then to the
+     * legacy assignment-level "arrived" coordinates for assignments that
+     * predate the per-stop model or never resolved a stops list (e.g. open
+     * package trips).
+     */
+    private function resolvePickupCoordinates(DriverAssignment $assignment): array
+    {
+        $pickupStop = DriverAssignmentStop::query()
+            ->where('assignment_id', $assignment->id)
+            ->where('stop_type', 'pickup')
+            ->orderBy('route_order')
+            ->first();
+
+        $latitude = $pickupStop?->completed_latitude ?? $pickupStop?->arrived_latitude;
+        $longitude = $pickupStop?->completed_longitude ?? $pickupStop?->arrived_longitude;
+
+        if ($latitude === null || $longitude === null) {
+            $latitude = $assignment->pickup_arrival_latitude;
+            $longitude = $assignment->pickup_arrival_longitude;
+        }
+
+        return [
+            'latitude' => $latitude !== null ? (float) $latitude : null,
+            'longitude' => $longitude !== null ? (float) $longitude : null,
+        ];
     }
 
     public function markStopArrived(DriverAssignment $assignment, DriverAssignmentStop $stop, array $data): array

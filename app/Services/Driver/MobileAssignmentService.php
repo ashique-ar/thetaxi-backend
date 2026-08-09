@@ -143,15 +143,10 @@ class MobileAssignmentService
     {
         $this->reconcileCompletedBookingAssignments($driver);
 
-        $query = $this->baseAssignmentQuery($driver)
-            ->whereIn('trip_phase', [
-                TripPhase::ACCEPTED,
-                TripPhase::PICKUP_ARRIVED,
-                TripPhase::IN_PROGRESS,
-            ]);
-        $this->excludeTerminalBookings($query);
-
-        return $query->orderByDesc('updated_at')->first();
+        return $this->baseAssignmentQuery($driver)
+            ->activeTripPhase()
+            ->orderByDesc('updated_at')
+            ->first();
     }
 
     public function getPendingAssignments(Driver $driver): Collection

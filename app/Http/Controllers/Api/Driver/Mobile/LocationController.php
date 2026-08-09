@@ -88,6 +88,14 @@ class LocationController extends Controller
                 ], 429);
             }
 
+            if ($e->getMessage() === 'LOCATION_ASSIGNMENT_AMBIGUOUS') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Driver has more than one active trip assignment; location point was not saved',
+                    'error_code' => 'LOCATION_ASSIGNMENT_AMBIGUOUS'
+                ], 409);
+            }
+
             $this->healthMonitor->recordLocationUploadFailure(
                 $this->locationHealthContext($driver),
                 'single',
@@ -266,6 +274,13 @@ class LocationController extends Controller
                 ], 400);
             }
 
+            if ($e->getMessage() === 'LOCATION_ASSIGNMENT_AMBIGUOUS') {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Driver has more than one active trip assignment; buffered points were not saved',
+                    'error_code' => 'LOCATION_ASSIGNMENT_AMBIGUOUS'
+                ], 409);
+            }
 
             $this->healthMonitor->recordLocationUploadFailure(
                 $this->locationHealthContext($driver),

@@ -284,6 +284,30 @@ class DriverAssignment extends BaseModel
     }
 
     /**
+     * Scope: assignments currently in an active trip phase, excluding stale
+     * rows whose parent booking has already reached a terminal status.
+     *
+     * This is the single source of truth for "which assignment is the
+     * driver's current trip" and must be used everywhere that question is
+     * asked (heartbeat, current-assignment, location tracking) so they never
+     * disagree with each other.
+     */
+    public function scopeActiveTripPhase($query)
+    {
+        return $query
+            ->whereIn('trip_phase', [
+                TripPhase::ACCEPTED,
+                TripPhase::PICKUP_ARRIVED,
+                TripPhase::IN_PROGRESS,
+            ])
+            ->where(function ($q) {
+                $q->whereDoesntHave('booking')
+                    ->orWhereHas('booking', fn ($bookingQuery) => $bookingQuery
+                        ->whereNotIn('status', ['completed', 'cancelled', 'booking_cancelled', 'booking_rejected', 'rejected']));
+            });
+    }
+
+    /**
      * Scope for pending approval assignments
      */
     public function scopePendingApproval($query)

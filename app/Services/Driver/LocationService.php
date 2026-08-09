@@ -9,6 +9,7 @@ use App\Models\Driver\RoutePoint;
 use App\Models\DriverAssignment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * Location Service
@@ -117,18 +118,34 @@ class LocationService
     /**
      * Get the active assignment ID for trip-specific route point linking.
      * Returns null if no trip tracking session is active.
+     *
+     * Uses the same activeTripPhase scope + most-recently-updated ordering
+     * as MobileAssignmentService::getActiveTripAssignment() (the heartbeat /
+     * current-assignment source of truth) so a route point is never attached
+     * to a stale assignment while heartbeat reports a different active one.
+     *
+     * @throws \RuntimeException LOCATION_ASSIGNMENT_AMBIGUOUS if the driver has
+     *         more than one assignment simultaneously in an active trip phase —
+     *         a data-integrity state where guessing which one owns this point
+     *         would silently risk misattributing it.
      */
     private function getActiveAssignmentId(Driver $driver): ?string
     {
-        $assignment = DriverAssignment::where('driver_id', $driver->id)
-            ->whereIn('trip_phase', [
-                TripPhase::ACCEPTED,
-                TripPhase::PICKUP_ARRIVED,
-                TripPhase::IN_PROGRESS,
-            ])
-            ->first();
+        $candidates = DriverAssignment::where('driver_id', $driver->id)
+            ->activeTripPhase()
+            ->orderByDesc('updated_at')
+            ->get(['id']);
 
-        return $assignment?->id;
+        if ($candidates->count() > 1) {
+            Log::warning('Driver has multiple concurrent active-trip assignments; rejecting location update', [
+                'driver_id' => $driver->id,
+                'assignment_ids' => $candidates->pluck('id')->all(),
+            ]);
+
+            throw new \RuntimeException('LOCATION_ASSIGNMENT_AMBIGUOUS');
+        }
+
+        return $candidates->first()?->id;
     }
 
     /**
