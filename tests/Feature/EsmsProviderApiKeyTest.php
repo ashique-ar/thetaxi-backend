@@ -36,6 +36,61 @@ it('uses the configured API key for sending even when login credentials and a UR
     );
 });
 
+it('refreshes an expired configured API key through login and retries once', function () {
+    $smsAttempts = 0;
+
+    Http::fake(function ($request) use (&$smsAttempts) {
+        if ($request->url() === 'https://e-sms.dialog.lk/api/v2/user/login') {
+            return Http::response([
+                'status' => 'success',
+                'token' => 'fresh-api-key',
+                'expiration' => 43200,
+            ]);
+        }
+
+        if ($request->url() === 'https://e-sms.dialog.lk/api/v2/sms') {
+            $smsAttempts++;
+
+            if ($smsAttempts === 1) {
+                return Http::response([
+                    'status' => 'failed',
+                    'comment' => 'Authentication Token Expired',
+                    'errCode' => 100,
+                ], 401);
+            }
+
+            expect($request->hasHeader('Authorization', 'Bearer fresh-api-key'))->toBeTrue();
+
+            return Http::response([
+                'status' => 'success',
+                'campaignId' => 'campaign-after-refresh',
+            ]);
+        }
+
+        return Http::response([], 404);
+    });
+
+    $provider = new EsmsProvider([
+        'base_url' => 'https://e-sms.dialog.lk/api',
+        'username' => 'valid-user',
+        'password' => 'valid-password',
+        'api_key' => 'expired-api-key',
+        'esmsqk' => 'url-message-key',
+    ]);
+
+    $result = $provider->sendSingle([
+        'recipient' => '94767706768',
+        'message' => 'Company SMS test message',
+        'sender_mask' => 'TheTaxi',
+    ]);
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['provider_campaign_id'])->toBe('campaign-after-refresh')
+        ->and($smsAttempts)->toBe(2);
+
+    Http::assertSentCount(3);
+});
+
 it('uses the URL Message Key only for the dedicated balance endpoint', function () {
     Http::fake([
         'https://e-sms.dialog.lk/api/v1/message-via-url/check/balance*' => Http::response('1|1000'),

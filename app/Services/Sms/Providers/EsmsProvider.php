@@ -303,7 +303,7 @@ class EsmsProvider implements SmsProviderInterface
         }
 
         $configuredApiKey = trim((string) ($this->config['api_key'] ?? ''));
-        if ($configuredApiKey !== '') {
+        if (!$forceRefresh && $configuredApiKey !== '') {
             return $this->resolvedApiKey = $configuredApiKey;
         }
 
@@ -389,7 +389,18 @@ class EsmsProvider implements SmsProviderInterface
         try {
             $response = $request($token);
         } catch (\Illuminate\Http\Client\RequestException $exception) {
-            throw $exception;
+            $errorPayload = $exception->response->json();
+            $errCode = is_array($errorPayload)
+                ? (string) ($this->extractValue($errorPayload, ['errCode']) ?? '')
+                : '';
+
+            if ($errCode !== self::TOKEN_EXPIRED_ERROR_CODE) {
+                throw $exception;
+            }
+
+            $token = $this->resolveApiKey(true);
+
+            return $request($token);
         }
 
         $errCode = (string) ($this->extractValue($response, ['errCode']) ?? '');
