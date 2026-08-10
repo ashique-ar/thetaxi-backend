@@ -85,6 +85,7 @@ class SmsManagementController extends Controller
             'sms_esms_username' => ['nullable', 'string', 'max:255'],
             'sms_esms_password' => ['nullable', 'string', 'max:255'],
             'sms_esms_api_key' => ['nullable', 'string', 'max:5000'],
+            'sms_esms_esmsqk' => ['nullable', 'string', 'max:5000'],
             'sms_esms_delivery_callback_url' => ['nullable', 'url'],
         ]);
 

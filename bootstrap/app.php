@@ -6,6 +6,7 @@ use Illuminate\Foundation\Configuration\Middleware;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Broadcast;
 use Illuminate\Support\Facades\Route;
+use League\OAuth2\Server\Exception\OAuthServerException;
 use Spatie\Permission\Exceptions\UnauthorizedException;
 
 return Application::configure(basePath: dirname(__DIR__))
@@ -61,6 +62,15 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        // Passport reports rejected bearer tokens before Laravel's auth
+        // middleware turns them into the expected 401 response. Expired,
+        // revoked, or otherwise invalid client tokens are routine auth
+        // failures and should not be recorded as production application
+        // errors or sent to Sentry.
+        $exceptions->dontReport([
+            OAuthServerException::class,
+        ]);
+
         \Sentry\Laravel\Integration::handles($exceptions);
 
         $exceptions->render(function (UnauthorizedException $exception, Request $request) {
