@@ -89,8 +89,16 @@ class SmsManagementController extends Controller
             'sms_esms_delivery_callback_url' => ['nullable', 'url'],
         ]);
 
+        $companyId = $this->websiteSettingsService->resolveCurrentCompanyId();
+
         foreach ($data as $type => $value) {
-            $this->websiteSettingsService->set($type, $value);
+            // Queue workers have no HTTP/company context, so they consume the
+            // deployment-global copy. Keep the active company copy in sync so
+            // the settings screen reads back exactly what was submitted.
+            $this->websiteSettingsService->setGlobal($type, $value);
+            if ($companyId !== null) {
+                $this->websiteSettingsService->set($type, $value, $companyId);
+            }
         }
 
         return response()->json([

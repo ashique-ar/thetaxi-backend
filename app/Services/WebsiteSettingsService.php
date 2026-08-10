@@ -133,6 +133,16 @@ class WebsiteSettingsService
     }
 
     /**
+     * Persist a setting in deployment-global scope for CLI/queue consumers that
+     * do not have an HTTP request from which to resolve a company.
+     */
+    public function setGlobal(string $type, $value): void
+    {
+        WebsiteSetting::setValue($type, $value, null);
+        $this->clearCache($type);
+    }
+
+    /**
      * Get multiple settings with caching
      */
     public function getMultiple(array $types): array
