@@ -67,9 +67,10 @@ return Application::configure(basePath: dirname(__DIR__))
         // revoked, or otherwise invalid client tokens are routine auth
         // failures and should not be recorded as production application
         // errors or sent to Sentry.
-        $exceptions->dontReport([
-            OAuthServerException::class,
-        ]);
+        $exceptions->dontReportWhen(
+            fn (\Throwable $exception): bool => $exception instanceof OAuthServerException
+                && $exception->getCode() === 9
+        );
 
         \Sentry\Laravel\Integration::handles($exceptions);
 

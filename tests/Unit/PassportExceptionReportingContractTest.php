@@ -7,6 +7,7 @@ it('does not report routine Passport bearer token rejections as application erro
 
     expect($bootstrap)
         ->toContain('use League\\OAuth2\\Server\\Exception\\OAuthServerException;')
-        ->toContain('$exceptions->dontReport([')
-        ->toContain('OAuthServerException::class,');
+        ->toContain('$exceptions->dontReportWhen(')
+        ->toContain('$exception instanceof OAuthServerException')
+        ->toContain('$exception->getCode() === 9');
 });
