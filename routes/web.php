@@ -148,8 +148,8 @@ Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name
 // Rate Chart route (must be before dynamic CMS routes)
 Route::get('/rate-chart', [RateChartController::class, 'index'])->name('rate-chart');
 
-// Inquiry Service Pages exclusively own /services/{slug}. Keep this explicit
-// route ahead of the generic CMS pair so service inquiries cannot be shadowed.
+// CMS Services own /services/{slug}; the controller retains legacy inquiry-page
+// fallback so existing deployed service URLs continue to resolve during migration.
 Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
     ->name('inquiry-services.show');
 

@@ -2,8 +2,8 @@
 
 use App\Http\ViewComposers\ServicesViewComposer;
 use App\Http\Controllers\Api\InquiryServicePageController;
-use App\Models\InquiryServicePage;
-it('registers the inquiry service route before the generic cms detail route', function () {
+use App\Models\Website\CmsContent;
+it('registers the cms-first service route before the generic cms detail route', function () {
     $projectRoot = dirname(__DIR__, 2);
     $routes = file_get_contents($projectRoot . '/routes/web.php');
 
@@ -28,15 +28,14 @@ it('invalidates navigation sitemap and rendered page caches after management cha
         ->toContain('$this->clearPublicPageCaches($slug)');
 });
 
-it('uses inquiry service pages as the public services navigation owner', function () {
+it('uses cms contents as the public services navigation owner', function () {
     $projectRoot = dirname(__DIR__, 2);
     $composer = file_get_contents((new ReflectionClass(ServicesViewComposer::class))->getFileName());
 
     expect($composer)
-        ->toContain(InquiryServicePage::class)
-        ->toContain("->where('status', 'published')")
-        ->toContain("->where('is_active', true)")
-        ->not->toContain('CmsContent');
+        ->toContain(CmsContent::class)
+        ->toContain('CmsContent::published()')
+        ->toContain("->byType('services')");
 
     foreach ([
         'resources/views/partials/header.blade.php',
@@ -45,7 +44,17 @@ it('uses inquiry service pages as the public services navigation owner', functio
         'resources/views/partials/themes/theme-04/header.blade.php',
     ] as $view) {
         expect(file_get_contents($projectRoot . '/' . $view))
-            ->toContain("route('inquiry-services.show'")
-            ->not->toContain("route('cms.show', ['contentType' => 'services'");
+            ->toContain("route('cms.show', ['contentType' => 'services'");
     }
+});
+
+it('resolves published cms services before legacy inquiry service pages', function () {
+    $projectRoot = dirname(__DIR__, 2);
+    $controller = file_get_contents($projectRoot . '/app/Http/Controllers/Website/InquiryServicePageController.php');
+
+    expect($controller)
+        ->toContain('CmsContent::published()')
+        ->toContain("->byType('services')")
+        ->toContain("app(CmsController::class)->show('services', \$slug)")
+        ->toContain('InquiryServicePage::withInactive()');
 });

@@ -53,6 +53,9 @@ return [
         'queue' => env('FIREBASE_NOTIFICATION_QUEUE', 'driver-notifications'),
         'assignment_title' => env('FIREBASE_ASSIGNMENT_TITLE', 'New Booking Assigned'),
         'assignment_body' => env('FIREBASE_ASSIGNMENT_BODY', 'A new booking has been assigned to you.'),
+        'customer_queue' => env('FIREBASE_CUSTOMER_NOTIFICATION_QUEUE', 'customer-notifications'),
+        'rider_assignment_title' => env('FIREBASE_RIDER_ASSIGNMENT_TITLE', 'Driver Assigned'),
+        'rider_assignment_body' => env('FIREBASE_RIDER_ASSIGNMENT_BODY', 'A driver has been assigned to your booking.'),
     ],
 
 ];

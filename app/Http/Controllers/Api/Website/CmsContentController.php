@@ -12,6 +12,7 @@ use App\Models\Website\CmsContentType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 
 class CmsContentController extends Controller
 {
@@ -123,6 +124,7 @@ class CmsContentController extends Controller
         $data = $this->prepareContentData($request->validated());
         $data['created_user_id'] = $request->user()->id;
         $content = CmsContent::create($data);
+        $this->clearPublicCmsCaches();
 
         return response()->json([
             'status' => 'success',
@@ -146,6 +148,7 @@ class CmsContentController extends Controller
         $data = $this->prepareContentData($request->validated(), $cms_content);
         $data['updated_user_id'] = $request->user()->id;
         $cms_content->update($data);
+        $this->clearPublicCmsCaches();
 
         return response()->json([
             'status' => 'success',
@@ -157,6 +160,7 @@ class CmsContentController extends Controller
     public function destroy(CmsContent $cms_content): JsonResponse
     {
         $cms_content->delete();
+        $this->clearPublicCmsCaches();
 
         return response()->json([
             'status' => 'success',
@@ -182,6 +186,7 @@ class CmsContentController extends Controller
             'is_active' => true,
             'updated_user_id' => $request->user()->id,
         ]);
+        $this->clearPublicCmsCaches();
 
         return response()->json([
             'status' => 'success',
@@ -196,6 +201,7 @@ class CmsContentController extends Controller
             'status' => 'draft',
             'updated_user_id' => $request->user()->id,
         ]);
+        $this->clearPublicCmsCaches();
 
         return response()->json([
             'status' => 'success',
@@ -258,6 +264,12 @@ class CmsContentController extends Controller
                 'updated_users' => $updatedUsers,
             ],
         ]);
+    }
+
+    private function clearPublicCmsCaches(): void
+    {
+        Cache::forget('header_services');
+        Cache::forget('sitemap');
     }
 
     /**

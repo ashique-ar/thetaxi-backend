@@ -7,6 +7,7 @@ use App\Models\Driver\Driver;
 use App\Models\Booking\Booking;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\DriverAssignment;
+use App\Jobs\SendCustomerDriverAssignedNotificationJob;
 use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -175,6 +176,11 @@ class AssignmentService
                 $driver = Driver::find($params['driver_id']);
                 $driverName = $driver?->full_name ?? $driver?->name ?? 'Your driver';
                 $this->smsAutomation->queueDriverAssignment($booking, $driverName);
+
+                if ($driver) {
+                    SendCustomerDriverAssignedNotificationJob::dispatch($booking, $driver)
+                        ->onQueue(config('services.firebase.customer_queue', 'customer-notifications'));
+                }
             }
 
             return $assignment;

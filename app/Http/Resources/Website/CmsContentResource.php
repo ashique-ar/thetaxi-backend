@@ -77,12 +77,10 @@ class CmsContentResource extends JsonResource
             && $publishedAt instanceof CarbonInterface
             && $publishedAt->isPast();
 
-        // /services/{slug} belongs exclusively to Inquiry Service Pages.
         if (
             !$isPublished
             || !$contentType
             || !$contentType->is_active
-            || $contentType->slug === 'services'
         ) {
             return null;
         }

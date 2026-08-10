@@ -7,10 +7,8 @@ use App\Jobs\SendAssignmentNotificationJob;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
+use App\Services\Fcm\FcmMessageService;
 use Carbon\Carbon;
-use Google\Auth\Credentials\ServiceAccountCredentials;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Notifications\DatabaseNotification;
@@ -26,7 +24,9 @@ use Illuminate\Notifications\DatabaseNotification;
  */
 class NotificationTriggerService
 {
-    private const FIREBASE_MESSAGING_SCOPE = 'https://www.googleapis.com/auth/firebase.messaging';
+    public function __construct(
+        private readonly FcmMessageService $fcm = new FcmMessageService(),
+    ) {}
 
     /**
      * Send assignment notification to the assigned driver.
@@ -280,24 +280,6 @@ class NotificationTriggerService
         }
     }
 
-    private function normalizePayloadForPush(array $payload): array
-    {
-        $normalized = [];
-        foreach ($payload as $key => $value) {
-            if (is_array($value)) {
-                $normalized[$key] = json_encode($value);
-                continue;
-            }
-            if (is_bool($value)) {
-                $normalized[$key] = $value ? '1' : '0';
-                continue;
-            }
-            $normalized[$key] = $value === null ? '' : (string) $value;
-        }
-
-        return $normalized;
-    }
-
     private function buildAssignmentMessage(DriverAssignment $assignment, array $payload): array
     {
         $bookingNumber = trim((string) ($payload['booking_number'] ?? ''));
@@ -416,139 +398,6 @@ class NotificationTriggerService
         }
     }
 
-    private function resolveFirebaseCredentialsPath(): ?string
-    {
-        $configuredPath = trim((string) config('services.firebase.credentials', ''));
-        if ($configuredPath === '') {
-            return null;
-        }
-
-        if (is_file($configuredPath)) {
-            return $configuredPath;
-        }
-
-        $storageRelativePath = storage_path(ltrim(str_replace(['storage\\', 'storage/'], '', $configuredPath), '\\/'));
-        if (is_file($storageRelativePath)) {
-            return $storageRelativePath;
-        }
-
-        $baseRelativePath = base_path($configuredPath);
-        if (is_file($baseRelativePath)) {
-            return $baseRelativePath;
-        }
-
-        return null;
-    }
-
-    private function getFirebaseCredentials(): ?array
-    {
-        $credentialsPath = $this->resolveFirebaseCredentialsPath();
-        if (!$credentialsPath) {
-            Log::warning('FCM push skipped: FIREBASE_CREDENTIALS is not configured or the file was not found');
-            return null;
-        }
-
-        try {
-            $contents = file_get_contents($credentialsPath);
-            if ($contents === false) {
-                throw new \RuntimeException('Unable to read Firebase credentials file.');
-            }
-
-            $decoded = json_decode($contents, true, 512, JSON_THROW_ON_ERROR);
-            if (!is_array($decoded)) {
-                throw new \RuntimeException('Firebase credentials JSON is invalid.');
-            }
-
-            return $decoded;
-        } catch (\Throwable $e) {
-            Log::warning('FCM push skipped: failed to load Firebase credentials', [
-                'path' => $credentialsPath,
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
-    private function getFirebaseProjectId(?array $credentials = null): ?string
-    {
-        $configuredProjectId = trim((string) config('services.firebase.project_id', ''));
-        if ($configuredProjectId !== '') {
-            return $configuredProjectId;
-        }
-
-        return $credentials['project_id'] ?? null;
-    }
-
-    private function getFirebaseSendUrl(string $projectId): string
-    {
-        $configuredUrl = trim((string) config('services.firebase.http_v1_url', ''));
-        if ($configuredUrl !== '') {
-            return $configuredUrl;
-        }
-
-        return sprintf('https://fcm.googleapis.com/v1/projects/%s/messages:send', $projectId);
-    }
-
-    private function getFirebaseAccessToken(array $credentials): ?string
-    {
-        $projectId = $this->getFirebaseProjectId($credentials);
-        $clientEmail = $credentials['client_email'] ?? 'unknown';
-        $cacheKey = 'firebase:fcm-access-token:' . md5($clientEmail . '|' . ($projectId ?? ''));
-
-        $cached = Cache::get($cacheKey);
-        if (is_string($cached) && $cached !== '') {
-            return $cached;
-        }
-
-        try {
-            $serviceAccount = new ServiceAccountCredentials(
-                [self::FIREBASE_MESSAGING_SCOPE],
-                $credentials
-            );
-
-            $tokenData = $serviceAccount->fetchAuthToken();
-            $accessToken = $tokenData['access_token'] ?? null;
-
-            if (!is_string($accessToken) || $accessToken === '') {
-                Log::warning('Failed to fetch Firebase access token: access token missing', [
-                    'token_data' => $tokenData,
-                ]);
-
-                return null;
-            }
-
-            $expiresIn = (int) ($tokenData['expires_in'] ?? 3600);
-            $ttl = max($expiresIn - 120, 300);
-            Cache::put($cacheKey, $accessToken, now()->addSeconds($ttl));
-
-            return $accessToken;
-        } catch (\Throwable $e) {
-            Log::warning('Failed to fetch Firebase access token', [
-                'error' => $e->getMessage(),
-            ]);
-
-            return null;
-        }
-    }
-
-    private function shouldInvalidatePushToken(array $errorPayload): bool
-    {
-        $errorCode = data_get($errorPayload, 'error.details.0.errorCode');
-        $status = data_get($errorPayload, 'error.status');
-        $message = (string) data_get($errorPayload, 'error.message', '');
-
-        if (in_array($errorCode, ['UNREGISTERED', 'INVALID_ARGUMENT'], true)) {
-            return true;
-        }
-
-        if ($status === 'NOT_FOUND' && str_contains(strtolower($message), 'registration token')) {
-            return true;
-        }
-
-        return false;
-    }
-
     private function pushToDriverDevices(Driver $driver, array $payload, string $title, string $body): array
     {
         try {
@@ -568,8 +417,8 @@ class NotificationTriggerService
                 ];
             }
 
-            $credentials = $this->getFirebaseCredentials();
-            if (!$credentials) {
+            $session = $this->fcm->prepareSession();
+            if (!$session) {
                 return [
                     'success' => false,
                     'eligible_devices' => 0,
@@ -577,26 +426,6 @@ class NotificationTriggerService
                 ];
             }
 
-            $projectId = $this->getFirebaseProjectId($credentials);
-            if (!$projectId) {
-                Log::warning('FCM push skipped: FIREBASE_PROJECT_ID could not be resolved from config or credentials');
-                return [
-                    'success' => false,
-                    'eligible_devices' => 0,
-                    'delivered_devices' => 0,
-                ];
-            }
-
-            $accessToken = $this->getFirebaseAccessToken($credentials);
-            if (!$accessToken) {
-                return [
-                    'success' => false,
-                    'eligible_devices' => 0,
-                    'delivered_devices' => 0,
-                ];
-            }
-
-            $sendUrl = $this->getFirebaseSendUrl($projectId);
             $sessionDeviceUuid = $driver->activeSession->device_uuid;
             $targetDeviceUuid = $driver->current_device_uuid ?: $sessionDeviceUuid;
             $devicesQuery = $driver->activeDevices()->whereNotNull('push_token');
@@ -631,7 +460,7 @@ class NotificationTriggerService
             }
 
             $delivered = 0;
-            $normalizedPayload = $this->normalizePayloadForPush($payload);
+            $normalizedPayload = $this->fcm->normalizeDataPayload($payload);
 
             foreach ($devices as $device) {
                 if (!in_array($device->push_provider, [null, '', 'fcm'], true)) {
@@ -643,66 +472,21 @@ class NotificationTriggerService
                     continue;
                 }
 
-                $response = Http::withHeaders([
-                    'Authorization' => 'Bearer ' . $accessToken,
-                    'Content-Type' => 'application/json',
-                ])->timeout(10)->post($sendUrl, [
-                    'message' => [
-                        'token' => $device->push_token,
-                        'notification' => [
-                            'title' => $title,
-                            'body' => $body,
-                        ],
-                        'data' => $normalizedPayload,
-                        'android' => [
-                            'priority' => 'high',
-                            'notification' => [
-                                'sound' => 'default',
-                            ],
-                        ],
-                        'apns' => [
-                            'headers' => [
-                                'apns-priority' => '10',
-                            ],
-                            'payload' => [
-                                'aps' => [
-                                    'sound' => 'default',
-                                    'content-available' => 1,
-                                ],
-                            ],
-                        ],
-                    ],
-                ]);
+                $result = $this->fcm->send($session, $device->push_token, $title, $body, $normalizedPayload);
 
-                if (!$response->successful()) {
-                    $responseData = $response->json() ?? ['raw' => $response->body()];
-                    if ($this->shouldInvalidatePushToken($responseData)) {
-                        $device->update(['push_token' => null]);
-                    }
-
-                    Log::warning('FCM request failed', [
-                        'driver_id' => $driver->id,
-                        'device_uuid' => $device->device_uuid,
-                        'status' => $response->status(),
-                        'response' => $responseData,
-                    ]);
-                    continue;
-                }
-
-                $responseData = $response->json() ?? [];
-                if (!empty($responseData['name'])) {
+                if ($result['success']) {
                     $delivered++;
                     continue;
                 }
 
-                if ($this->shouldInvalidatePushToken($responseData)) {
+                if ($result['invalid_token']) {
                     $device->update(['push_token' => null]);
                 }
 
-                Log::warning('FCM delivery returned failure', [
+                Log::warning('FCM delivery failed', [
                     'driver_id' => $driver->id,
                     'device_uuid' => $device->device_uuid,
-                    'response' => $responseData,
+                    'response' => $result['response'],
                 ]);
             }
 

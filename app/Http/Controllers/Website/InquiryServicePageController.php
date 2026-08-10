@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\InquiryServicePage;
-use Illuminate\Http\Request;
+use App\Models\Website\CmsContent;
 use Illuminate\Support\Facades\Log;
 
 class InquiryServicePageController extends Controller
@@ -15,6 +15,19 @@ class InquiryServicePageController extends Controller
     public function show(string $slug)
     {
         try {
+            // Services created through CMS Types are the canonical public owner.
+            // Keep the legacy inquiry page lookup below as a compatibility fallback
+            // for existing installations while their records are migrated to CMS.
+            $hasCmsService = CmsContent::published()
+                ->byType('services')
+                ->where('slug', $slug)
+                ->whereHas('contentType', fn ($query) => $query->where('is_active', true))
+                ->exists();
+
+            if ($hasCmsService) {
+                return app(CmsController::class)->show('services', $slug);
+            }
+
             $page = InquiryServicePage::withInactive()
                 ->where('slug', $slug)
                 ->firstOrFail();

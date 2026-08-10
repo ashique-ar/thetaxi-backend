@@ -162,6 +162,27 @@ class Customer extends BaseModel
         return $this->morphMany(PaymentMethod::class, 'payable');
     }
 
+    /**
+     * Get all registered mobile devices for this customer.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function devices()
+    {
+        return $this->hasMany(CustomerDevice::class, 'customer_id');
+    }
+
+    /**
+     * Get active mobile devices for this customer.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     */
+    public function activeDevices()
+    {
+        return $this->hasMany(CustomerDevice::class, 'customer_id')
+            ->where('is_active', true);
+    }
+
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');

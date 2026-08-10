@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
+use App\Http\Controllers\Api\Customer\Mobile\DeviceController as CustomerMobileDeviceController;
 use App\Http\Controllers\Api\AssignmentController;
 use App\Http\Controllers\Api\CollectionCommissionController;
 use App\Http\Controllers\Api\BookingRouteUsageController;
@@ -230,6 +231,16 @@ Route::middleware(['auth:api'])->group(function () {
         'customer-mobile/bookings/{bookingId}/items/{bookingItemId}/activity',
         [CustomerMobileActivityController::class, 'store']
     )->middleware('throttle:120,1');
+
+    // Rider device/push-token registration, so booking events (e.g. driver
+    // assigned) can be delivered to the rider's mobile app via FCM.
+    Route::prefix('customer-mobile/devices')->group(function () {
+        Route::get('', [CustomerMobileDeviceController::class, 'index']);
+        Route::put('', [CustomerMobileDeviceController::class, 'update']);
+        Route::post('push-token', [CustomerMobileDeviceController::class, 'updatePushToken']);
+        Route::post('{deviceUuid}/deactivate', [CustomerMobileDeviceController::class, 'deactivate']);
+        Route::delete('{deviceUuid}', [CustomerMobileDeviceController::class, 'destroy']);
+    });
 
     /*
     |--------------------------------------------------------------------------
