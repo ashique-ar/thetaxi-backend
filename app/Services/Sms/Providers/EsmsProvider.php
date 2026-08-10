@@ -96,11 +96,6 @@ class EsmsProvider implements SmsProviderInterface
             throw new RuntimeException('No recipients provided for SMS send');
         }
 
-        $esmsqk = trim((string) ($this->config['esmsqk'] ?? ''));
-        if ($esmsqk !== '') {
-            return $this->sendViaUrlKey($payload, $recipients, $esmsqk);
-        }
-
         $transactionId = $this->resolveTransactionId($payload['meta']['transaction_id'] ?? null);
 
         $requestBody = [
@@ -152,50 +147,6 @@ class EsmsProvider implements SmsProviderInterface
     }
 
     /**
-     * Send via the URL Message Key API when esmsqk is configured.
-     * @see eSMS API Document v2.9 section 3.2.1
-     */
-    private function sendViaUrlKey(array $payload, array $recipients, string $esmsqk): array
-    {
-        $query = [
-            'esmsqk' => $esmsqk,
-            'list' => implode(',', $recipients),
-            'message' => (string) ($payload['message'] ?? ''),
-        ];
-
-        $senderMask = trim((string) ($payload['sender_mask'] ?? ''));
-        if ($senderMask !== '') {
-            $query['source_address'] = $senderMask;
-        }
-
-        $pushNotificationUrl = trim((string) ($payload['push_notification_url'] ?? $this->config['delivery_callback_url'] ?? ''));
-        if ($pushNotificationUrl !== '') {
-            $query['push_notification_url'] = $pushNotificationUrl;
-        }
-
-        $code = trim((string) $this->http()
-            ->get($this->endpointUrl('v1/message-via-url/create/url-campaign'), $query)
-            ->throw()
-            ->body());
-
-        if ($code !== '1') {
-            throw new RuntimeException(
-                $this->describeGetErrorCode($code) ?? "eSMS URL message request failed (code {$code})"
-            );
-        }
-
-        return [
-            'ok' => true,
-            'provider' => $this->identifier(),
-            'transaction_id' => $this->resolveTransactionId($payload['meta']['transaction_id'] ?? null),
-            'provider_campaign_id' => null,
-            'provider_message_id' => null,
-            'source' => 'url_key',
-            'raw' => $code,
-        ];
-    }
-
-    /**
      * Check the delivery/creation status of a previously sent campaign via its transaction id.
      * @see eSMS API Document v2.9 section 3.1.3
      */
@@ -230,6 +181,20 @@ class EsmsProvider implements SmsProviderInterface
      */
     public function getMasks(bool $forceRefresh = false): array
     {
+        $apiKey = trim((string) ($this->config['api_key'] ?? ''));
+        if ($apiKey !== '') {
+            $defaultMask = trim((string) ($this->config['default_sender_mask'] ?? ''));
+
+            return [
+                'provider' => $this->identifier(),
+                'default_mask' => $defaultMask !== '' ? $defaultMask : null,
+                'masks' => $defaultMask !== ''
+                    ? [['mask' => $defaultMask, 'is_default' => true]]
+                    : [],
+                'source' => 'configured',
+            ];
+        }
+
         $loginPayload = $this->login($forceRefresh);
         $userData = $this->userData($loginPayload);
 
@@ -337,6 +302,11 @@ class EsmsProvider implements SmsProviderInterface
             return $this->resolvedApiKey;
         }
 
+        $configuredApiKey = trim((string) ($this->config['api_key'] ?? ''));
+        if ($configuredApiKey !== '') {
+            return $this->resolvedApiKey = $configuredApiKey;
+        }
+
         $response = $this->resolveLoginPayload($forceRefresh);
 
         $apiKey = $this->extractValue(
@@ -346,10 +316,6 @@ class EsmsProvider implements SmsProviderInterface
 
         if ($apiKey) {
             return $this->resolvedApiKey = (string) $apiKey;
-        }
-
-        if (!empty($this->config['api_key'])) {
-            return $this->resolvedApiKey = (string) $this->config['api_key'];
         }
 
         throw new RuntimeException('Unable to resolve eSMS API key from login response');

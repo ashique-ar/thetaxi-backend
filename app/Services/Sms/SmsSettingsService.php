@@ -42,6 +42,7 @@ class SmsSettingsService
                     'password' => $settings['sms_esms_password'] ?: null,
                     'api_key' => $settings['sms_esms_api_key'] ?: null,
                     'esmsqk' => $settings['sms_esms_esmsqk'] ?: null,
+                    'default_sender_mask' => $settings['sms_default_sender_mask'] ?: null,
                     'delivery_callback_url' => $settings['sms_esms_delivery_callback_url'] ?: null,
                 ],
             ],
