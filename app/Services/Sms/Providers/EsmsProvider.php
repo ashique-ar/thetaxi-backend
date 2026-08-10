@@ -75,6 +75,97 @@ class EsmsProvider implements SmsProviderInterface
         return 'esms';
     }
 
+    /**
+     * Validate configured credentials without creating an SMS campaign.
+     */
+    public function testCredentials(): array
+    {
+        $checks = [];
+
+        $username = trim((string) ($this->config['username'] ?? ''));
+        $password = trim((string) ($this->config['password'] ?? ''));
+        if ($username !== '' || $password !== '') {
+            try {
+                $payload = $this->login(true);
+                $checks['login'] = [
+                    'configured' => true,
+                    'ok' => strtolower((string) ($this->extractValue($payload, ['status']) ?? '')) === 'success',
+                    'message' => (string) ($this->extractValue($payload, ['comment']) ?? 'Username and password accepted by eSMS'),
+                    'token_expires_in' => $this->extractValue($payload, ['expiration']),
+                ];
+            } catch (\Throwable $exception) {
+                $checks['login'] = [
+                    'configured' => true,
+                    'ok' => false,
+                    'message' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        $apiKey = trim((string) ($this->config['api_key'] ?? ''));
+        if ($apiKey !== '') {
+            try {
+                $response = $this->http()
+                    ->withToken($apiKey)
+                    ->post($this->endpointUrl('v2/sms/check-transaction'), [
+                        'transaction_id' => '999999999999999999',
+                    ]);
+                $payload = $response->json();
+                $payload = is_array($payload) ? $payload : [];
+                $errCode = (string) ($this->extractValue($payload, ['errCode']) ?? '');
+                $authenticationErrors = ['100', '105', '106', '115', '116'];
+                $ok = !in_array($errCode, $authenticationErrors, true)
+                    && !in_array($response->status(), [401, 403], true);
+
+                $checks['api_key'] = [
+                    'configured' => true,
+                    'ok' => $ok,
+                    'message' => $ok
+                        ? 'API key accepted by eSMS'
+                        : $this->describeFailure($payload, self::POST_ERROR_CODES),
+                    'http_status' => $response->status(),
+                    'err_code' => $errCode !== '' ? $errCode : null,
+                ];
+            } catch (\Throwable $exception) {
+                $checks['api_key'] = [
+                    'configured' => true,
+                    'ok' => false,
+                    'message' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        $esmsqk = trim((string) ($this->config['esmsqk'] ?? ''));
+        if ($esmsqk !== '') {
+            try {
+                $balance = $this->getBalanceViaUrlKey($esmsqk);
+                $checks['url_message_key'] = [
+                    'configured' => true,
+                    'ok' => (bool) ($balance['balance_available'] ?? false),
+                    'message' => $balance['balance_available']
+                        ? 'URL Message Key accepted by eSMS'
+                        : ($balance['comment'] ?? 'URL Message Key validation failed'),
+                    'balance' => $balance['balance'] ?? null,
+                ];
+            } catch (\Throwable $exception) {
+                $checks['url_message_key'] = [
+                    'configured' => true,
+                    'ok' => false,
+                    'message' => $exception->getMessage(),
+                ];
+            }
+        }
+
+        $configuredChecks = array_values($checks);
+
+        return [
+            'provider' => $this->identifier(),
+            'ok' => $configuredChecks !== []
+                && collect($configuredChecks)->every(fn (array $check) => $check['ok'] === true),
+            'checks' => $checks,
+        ];
+    }
+
     public function sendSingle(array $payload): array
     {
         return $this->sendBulk([

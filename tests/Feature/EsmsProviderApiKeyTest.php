@@ -134,3 +134,49 @@ it('uses the configured mask without attempting login in API key mode', function
 
     Http::assertNothingSent();
 });
+
+it('tests login API key and URL Message Key without sending an SMS', function () {
+    Http::fake(function ($request) {
+        if (str_ends_with($request->url(), '/v2/user/login')) {
+            return Http::response([
+                'status' => 'success',
+                'token' => 'fresh-token',
+                'expiration' => 43200,
+            ]);
+        }
+
+        if (str_contains($request->url(), '/v2/sms/check-transaction')) {
+            return Http::response([
+                'status' => 'failed',
+                'comment' => 'Unable to find campaign',
+                'errCode' => 103,
+            ]);
+        }
+
+        if (str_contains($request->url(), '/v1/message-via-url/check/balance')) {
+            return Http::response('1|1000');
+        }
+
+        return Http::response([], 404);
+    });
+
+    $provider = new EsmsProvider([
+        'base_url' => 'https://e-sms.dialog.lk/api',
+        'username' => 'valid-user',
+        'password' => 'valid-password',
+        'api_key' => 'configured-api-key',
+        'esmsqk' => 'url-message-key',
+    ]);
+
+    $result = $provider->testCredentials();
+
+    expect($result['ok'])->toBeTrue()
+        ->and($result['checks']['login']['ok'])->toBeTrue()
+        ->and($result['checks']['api_key']['ok'])->toBeTrue()
+        ->and($result['checks']['url_message_key']['ok'])->toBeTrue();
+
+    Http::assertSentCount(3);
+    Http::assertNotSent(fn ($request) =>
+        str_ends_with($request->url(), '/v2/sms')
+    );
+});

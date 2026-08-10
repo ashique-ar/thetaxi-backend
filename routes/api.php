@@ -333,6 +333,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('overview', [SmsManagementController::class, 'overview']);
         Route::get('settings', [SmsManagementController::class, 'settings']);
         Route::put('settings', [SmsManagementController::class, 'updateSettings']);
+        Route::post('credentials/test', [SmsManagementController::class, 'testCredentials']);
         Route::post('send', [SmsManagementController::class, 'send']);
         Route::post('test', [SmsManagementController::class, 'sendTest']);
         Route::get('messages', [SmsManagementController::class, 'messages']);

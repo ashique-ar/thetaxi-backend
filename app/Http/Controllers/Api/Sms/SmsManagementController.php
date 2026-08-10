@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
+use App\Services\Sms\SmsProviderManager;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
@@ -30,6 +31,7 @@ class SmsManagementController extends Controller
         ]);
         $this->middleware('permission:communication.manage|sms.settings.manage')->only([
             'updateSettings',
+            'testCredentials',
         ]);
         $this->middleware('permission:communication.manage|sms.sending.manage')->only([
             'send',
@@ -105,6 +107,27 @@ class SmsManagementController extends Controller
             'status' => 'success',
             'message' => 'SMS settings updated successfully',
             'data' => $this->smsSettingsService->getSettings(),
+        ]);
+    }
+
+    public function testCredentials(Request $request, SmsProviderManager $providerManager): JsonResponse
+    {
+        $data = $request->validate([
+            'provider' => ['required', 'string', 'in:esms'],
+            'base_url' => ['nullable', 'url'],
+            'username' => ['nullable', 'string', 'max:255'],
+            'password' => ['nullable', 'string', 'max:255'],
+            'api_key' => ['nullable', 'string', 'max:5000'],
+            'esmsqk' => ['nullable', 'string', 'max:5000'],
+        ]);
+
+        $provider = $data['provider'];
+        unset($data['provider']);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'SMS credentials tested',
+            'data' => $providerManager->testCredentials($provider, $data),
         ]);
     }
 

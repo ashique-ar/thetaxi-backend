@@ -26,4 +26,12 @@ class SmsProviderManager
             default => throw new InvalidArgumentException("Unsupported SMS provider: {$provider}"),
         };
     }
+
+    public function testCredentials(string $provider, array $config): array
+    {
+        return match ($provider) {
+            'esms' => (new EsmsProvider($config))->testCredentials(),
+            default => throw new InvalidArgumentException("Unsupported SMS provider: {$provider}"),
+        };
+    }
 }
