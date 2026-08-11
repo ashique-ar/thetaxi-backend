@@ -89,6 +89,7 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::get('', [AssignmentController::class, 'index']);
         Route::get('current', [AssignmentController::class, 'current']);
         Route::post('{id}/accept', [AssignmentController::class, 'accept']);
+        Route::post('{id}/acknowledge', [AssignmentController::class, 'acknowledge']);
         Route::post('{id}/decline', [AssignmentController::class, 'decline']);
         // Canonical assignment lifecycle (single-track)
         Route::get('{id}/status', [TripController::class, 'statusForAssignment']);

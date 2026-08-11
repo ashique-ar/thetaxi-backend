@@ -15,10 +15,46 @@ use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\BookingCommunicationActivityService;
 use App\Services\Sms\SmsService;
 use App\Services\Sms\SmsSettingsService;
+use App\Services\Sms\SmsSegmentCalculator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 uses(Tests\TestCase::class);
+
+it('previews the admin summary with example data without queueing an SMS', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'admin_booking_summary_template' => 'DEFAULT {booking_number}',
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $preview = (new SmsAutomationService($settings, $sms))
+        ->previewAdminBookingSummary(null, 'PREVIEW {booking_number} {customer_name} {total}');
+
+    expect($preview['source'])->toBe('example')
+        ->and($preview['booking_id'])->toBeNull()
+        ->and($preview['message'])->toBe('PREVIEW BK-EXAMPLE-001 Example Customer 8,500.00');
+});
+
+it('previews any transactional template with the production segment and cost rules', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'cost_per_segment' => 2,
+        'cost_currency' => 'LKR',
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $preview = (new SmsAutomationService($settings, $sms))
+        ->previewTransactionalTemplate('booking.confirmed', str_repeat('A', 161));
+
+    expect($preview['encoding'])->toBe('gsm7')
+        ->and($preview['characters'])->toBe(161)
+        ->and($preview['segments'])->toBe(2)
+        ->and($preview['estimated_cost'])->toBe(4.0)
+        ->and($preview['cost_currency'])->toBe('LKR');
+});
 
 it('queues one customer confirmation and one consolidated summary per configured admin number', function (): void {
     $settings = Mockery::mock(SmsSettingsService::class);
@@ -432,4 +468,45 @@ it('deduplicates payment SMS by provider payment reference', function (): void {
         ->and($payload['idempotency_key'])->toBe(hash('sha256', implode('|', [
             'booking', 'booking-payment', 'PAY-1001', 'payment.received', '94770000000',
         ])));
+});
+
+it('provides authenticated acknowledgement and uniquely scheduled safe driver fallback', function (): void {
+    $routes = file_get_contents(base_path('routes/api_driver.php'));
+    $notificationService = file_get_contents(app_path('Services/Driver/NotificationTriggerService.php'));
+    $job = file_get_contents(app_path('Jobs/SendDriverAssignmentFallbackSmsJob.php'));
+    $payloadService = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+
+    expect($routes)->toContain("Route::post('{id}/acknowledge'")
+        ->and($job)->toContain('ShouldBeUnique')
+        ->and($job)->toContain("driver-notifications")
+        ->and($notificationService)->toContain('lockForUpdate()')
+        ->and($notificationService)->toContain('skipped_acknowledged')
+        ->and($notificationService)->toContain('skipped_reassigned')
+        ->and($notificationService)->toContain('skipped_expired')
+        ->and($payloadService)->toContain("'notification_id'")
+        ->and($payloadService)->toContain("'accepted'");
+});
+
+it('calculates GSM and Unicode SMS segments at multipart boundaries', function (): void {
+    $calculator = new SmsSegmentCalculator();
+
+    expect($calculator->calculate(str_repeat('A', 160))['segments'])->toBe(1)
+        ->and($calculator->calculate(str_repeat('A', 161))['segments'])->toBe(2)
+        ->and($calculator->calculate(str_repeat('අ', 70))['segments'])->toBe(1)
+        ->and($calculator->calculate(str_repeat('අ', 71))['segments'])->toBe(2)
+        ->and($calculator->calculate('Hello')['encoding'])->toBe('gsm7')
+        ->and($calculator->calculate('ආයුබෝවන්')['encoding'])->toBe('unicode');
+});
+
+it('matches delivery callbacks only by exact provider identity and redacts secrets', function (): void {
+    $service = file_get_contents(app_path('Services/Sms/SmsService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sms/SmsManagementController.php'));
+
+    expect($service)->toContain("where('provider_transaction_id', \$transactionId)")
+        ->and($service)->toContain("where('provider_message_id', \$messageId)")
+        ->and($service)->not->toContain("where('normalized_recipient', \$recipient)")
+        ->and($service)->toContain('redactProviderPayload')
+        ->and($service)->toContain("whereIn('status', ['queued', 'pending', 'failed'])")
+        ->and($controller)->toContain('hash_equals')
+        ->and($controller)->toContain('X-SMS-Webhook-Secret');
 });

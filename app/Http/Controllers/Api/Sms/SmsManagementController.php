@@ -7,11 +7,14 @@ use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
 use App\Services\Sms\SmsProviderManager;
+use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\Rule;
+use RuntimeException;
 use Throwable;
 
 class SmsManagementController extends Controller
@@ -19,7 +22,8 @@ class SmsManagementController extends Controller
     public function __construct(
         private SmsService $smsService,
         private SmsSettingsService $smsSettingsService,
-        private WebsiteSettingsService $websiteSettingsService
+        private WebsiteSettingsService $websiteSettingsService,
+        private SmsAutomationService $smsAutomationService
     ) {
         $this->middleware('permission:communication.view|communication.manage|sms.overview.view')->only([
             'overview',
@@ -28,6 +32,8 @@ class SmsManagementController extends Controller
             'settings',
             'balance',
             'masks',
+            'previewAdminBookingSummary',
+            'previewTransactionalTemplate',
         ]);
         $this->middleware('permission:communication.manage|sms.settings.manage')->only([
             'updateSettings',
@@ -39,12 +45,15 @@ class SmsManagementController extends Controller
         ]);
         $this->middleware('permission:communication.view|communication.manage|sms.messages.view|sms.messages.manage')->only([
             'messages',
+            'showMessage',
+            'complianceReport',
         ]);
         $this->middleware('permission:communication.manage|sms.messages.manage')->only([
             'retryMessage',
         ]);
         $this->middleware('permission:communication.view|communication.manage|sms.messages.view|sms.messages.manage')->only([
             'checkMessageStatus',
+            'reconcileProcessing',
         ]);
         $this->middleware('permission:communication.view|communication.manage|sms.campaigns.view|sms.campaigns.manage')->only([
             'campaigns',
@@ -82,6 +91,8 @@ class SmsManagementController extends Controller
             'sms_queue_enabled' => ['required', 'boolean'],
             'sms_dry_run' => ['required', 'boolean'],
             'sms_bulk_chunk_size' => ['required', 'integer', 'min:1', 'max:1000'],
+            'sms_cost_per_segment' => ['required', 'numeric', 'min:0'],
+            'sms_cost_currency' => ['required', 'string', 'size:3'],
             'sms_webhook_secret' => ['nullable', 'string', 'max:255'],
             'sms_booking_status_enabled' => ['required', 'boolean'],
             'sms_booking_confirmation_enabled' => ['sometimes', 'boolean'],
@@ -93,6 +104,7 @@ class SmsManagementController extends Controller
             'sms_payment_confirmation_enabled' => ['sometimes', 'boolean'],
             'sms_trip_completion_scope' => ['sometimes', 'string', 'in:booking,item'],
             'sms_driver_assignment_fallback_enabled' => ['sometimes', 'boolean'],
+            'sms_driver_assignment_fallback_timeout_minutes' => ['sometimes', 'integer', 'min:1', 'max:120'],
             'sms_admin_booking_summary_enabled' => ['sometimes', 'boolean'],
             'sms_admin_booking_summary_numbers' => [
                 'sometimes',
@@ -243,15 +255,116 @@ class SmsManagementController extends Controller
         ]);
     }
 
-    public function retryMessage(SmsMessage $smsMessage): JsonResponse
+    public function showMessage(SmsMessage $smsMessage): JsonResponse
     {
         return response()->json([
             'status' => 'success',
-            'message' => 'SMS re-queued successfully',
             'data' => [
-                'message' => $this->smsService->retryFailedMessage($smsMessage),
+                'message' => $smsMessage,
+                'retry_eligible' => $smsMessage->status === 'failed' && $smsMessage->is_active,
             ],
         ]);
+    }
+
+    public function complianceReport(Request $request): JsonResponse
+    {
+        $data = $request->validate(['days' => ['nullable', 'integer', 'min:1', 'max:365']]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsService->getTransactionalComplianceReport((int) ($data['days'] ?? 30)),
+        ]);
+    }
+
+    public function previewAdminBookingSummary(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_reference' => ['nullable', 'string', 'max:100'],
+            'template' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $booking = null;
+
+        if (!empty($data['booking_reference'])) {
+            $reference = $data['booking_reference'];
+            $booking = \App\Models\Booking\Booking::query()
+                ->whereKey($reference)
+                ->orWhere('booking_number', $reference)
+                ->first();
+
+            if (!$booking) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'The selected booking could not be found.',
+                ], 404);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsAutomationService->previewAdminBookingSummary($booking, $data['template'] ?? null),
+        ]);
+    }
+
+    public function previewTransactionalTemplate(Request $request): JsonResponse
+    {
+        $events = [
+            'website.inquiry_received',
+            'website.quotation_requested',
+            'booking.confirmed',
+            'admin.booking_confirmed_summary',
+            'driver.assignment_fallback',
+            'driver.dispatched',
+            'driver.arrived',
+            'trip.completed',
+            'payment.received',
+        ];
+        $data = $request->validate([
+            'event_key' => ['required', 'string', Rule::in($events)],
+            'template' => ['required', 'string', 'max:2000'],
+            'booking_reference' => ['nullable', 'string', 'max:100'],
+        ]);
+        $booking = null;
+
+        if (!empty($data['booking_reference'])) {
+            $reference = $data['booking_reference'];
+            $booking = \App\Models\Booking\Booking::query()
+                ->whereKey($reference)
+                ->orWhere('booking_number', $reference)
+                ->first();
+
+            if (!$booking) {
+                return response()->json(['status' => 'error', 'message' => 'The selected booking could not be found.'], 404);
+            }
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->smsAutomationService->previewTransactionalTemplate(
+                $data['event_key'],
+                $data['template'],
+                $booking
+            ),
+        ]);
+    }
+
+    public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
+    {
+        $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
+
+        try {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'SMS re-queued successfully',
+                'data' => [
+                    'message' => $this->smsService->retryFailedMessage($smsMessage, trim($data['reason']), $request->user()?->id),
+                ],
+            ]);
+        } catch (RuntimeException $exception) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $exception->getMessage(),
+            ], 422);
+        }
     }
 
     public function campaigns(Request $request): JsonResponse
@@ -362,19 +475,49 @@ class SmsManagementController extends Controller
         }
     }
 
+    public function reconcileProcessing(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'older_than_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
+            'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Stale processing messages checked against the provider without resending',
+            'data' => $this->smsService->reconcileStaleProcessing(
+                (int) ($data['older_than_minutes'] ?? 15),
+                (int) ($data['limit'] ?? 100)
+            ),
+        ]);
+    }
+
     public function deliveryCallback(Request $request): JsonResponse
     {
         $secret = $this->smsSettingsService->getSettings()['webhook_secret'];
-        if ($secret && $request->query('secret') !== $secret) {
+        if (!$secret) {
+            return response()->json(['status' => 'error', 'message' => 'SMS webhook is not configured'], 503);
+        }
+        $providedSecret = (string) ($request->header('X-SMS-Webhook-Secret') ?: $request->query('secret', ''));
+        if (!hash_equals((string) $secret, $providedSecret)) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Invalid webhook secret',
             ], 403);
         }
 
+        $payload = $request->validate([
+            'transaction_id' => ['nullable', 'string', 'max:255', 'required_without_all:transactionId,message_id,messageId'],
+            'transactionId' => ['nullable', 'string', 'max:255'],
+            'message_id' => ['nullable', 'string', 'max:255'],
+            'messageId' => ['nullable', 'string', 'max:255'],
+            'status' => ['required_without:delivery_status', 'string', 'max:100'],
+            'delivery_status' => ['required_without:status', 'string', 'max:100'],
+        ]);
+
         return response()->json([
             'status' => 'success',
-            'data' => $this->smsService->markDelivery($request->all()),
+            'data' => $this->smsService->markDelivery($payload),
         ]);
     }
 }

@@ -5,6 +5,8 @@ namespace App\Models\Booking;
 use App\Models\BaseModel;
 use Illuminate\Database\Eloquent\Concerns\HasUuids;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\Sms\SmsMessage;
 
 class BookingActivity extends BaseModel
 {
@@ -19,4 +21,9 @@ class BookingActivity extends BaseModel
         'meta' => 'array',
         'event_at' => 'datetime',
     ];
+
+    public function smsMessage(): BelongsTo
+    {
+        return $this->belongsTo(SmsMessage::class, 'sms_message_id');
+    }
 }

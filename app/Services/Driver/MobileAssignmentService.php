@@ -13,6 +13,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Mobile Assignment Service
@@ -300,6 +301,16 @@ class MobileAssignmentService
 
             $this->tripTrackingService->ensureAssignmentStops($updated);
 
+            try {
+                $this->notificationService->acknowledgeAssignment($updated, (string) $driver->id, 'accepted');
+            } catch (\Throwable $exception) {
+                Log::warning('Assignment accepted but notification acknowledgement could not be recorded', [
+                    'assignment_id' => $updated->id,
+                    'driver_id' => $driver->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+
             // Broadcast status change to admin panel for real-time sync
             $this->broadcastStatusChange($updated, 'accepted', $driver);
 
@@ -460,6 +471,12 @@ class MobileAssignmentService
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
             'created_at' => $assignment->created_at?->toIso8601String(),
             'updated_at' => $assignment->updated_at?->toIso8601String(),
+            'notification_id' => Schema::hasTable('driver_assignment_notifications')
+                ? \App\Models\Driver\DriverAssignmentNotification::query()
+                    ->where('assignment_id', $assignment->id)
+                    ->where('driver_id', $assignment->driver_id)
+                    ->value('id')
+                : null,
         ];
         $payload['payment_type'] = $paymentDetails['payment_type'];
         $payload['payment_collection_method'] = $paymentDetails['payment_collection_method'];

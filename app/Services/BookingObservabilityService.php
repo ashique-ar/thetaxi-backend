@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingPaymentReceipt;
+use App\Models\Booking\BookingActivity;
+use App\Models\Sms\SmsMessage;
 use App\Models\AuditLog;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
@@ -63,20 +65,20 @@ class BookingObservabilityService
             : collect();
         $communicationEvents = $this->communicationItems($booking, $bookingItemId)
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
-            ->map(fn(array $event): array => $this->mapCommunicationTraceEvent($booking, $event));
+            ->map(fn (array $event): array => $this->mapCommunicationTraceEvent($booking, $event));
         $documentEvents = $this->documentItems($booking, $bookingItemId)
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
-            ->map(fn(array $event): array => $this->mapDocumentTraceEvent($booking, $event));
+            ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
         $events = $events->concat($financialEvents)->concat($tripEvents)
             ->concat($communicationEvents)->concat($documentEvents)
-            ->map(fn(array $event): array => $this->withTraceIntegrity($event))
+            ->map(fn (array $event): array => $this->withTraceIntegrity($event))
             ->unique('deduplication_key')
-            ->filter(fn(array $event): bool => $this->matchesTraceFilter($event, $filter))
+            ->filter(fn (array $event): bool => $this->matchesTraceFilter($event, $filter))
             ->when($decodedCursor, fn(Collection $items) => $items->filter(
-                fn(array $event): bool => $this->isBeforeCursor($event, $decodedCursor)
+                fn (array $event): bool => $this->isBeforeCursor($event, $decodedCursor)
             ))
-            ->sortByDesc(fn(array $event): string => $event['occurred_at'] . '|' . $event['id'])
+            ->sortByDesc(fn (array $event): string => $event['occurred_at'] . '|' . $event['id'])
             ->values();
         $hasMore = $events->count() > $limit;
         $events = $events->take($limit)->values();
@@ -103,6 +105,8 @@ class BookingObservabilityService
             'sources' => [
                 'invoice_delivery' => 'connected',
                 'dispatch_delivery' => 'connected',
+                'transactional_sms' => 'connected',
+                'booking_activities' => 'connected',
                 'notification_logs' => 'unavailable_no_booking_link',
             ],
             'generated_at' => now()->utc()->toIso8601String(),
@@ -674,7 +678,66 @@ class BookingObservabilityService
                 'source' => 'dispatch_delivery',
             ]);
 
-        return $events->concat($dispatchEvents)->values();
+        $smsEvents = SmsMessage::query()->where('booking_id', $booking->id)
+            ->when($bookingItemId, fn($query) => $query->where(function ($scope) use ($bookingItemId) {
+                $scope->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId);
+            }))
+            ->get()
+            ->map(fn(SmsMessage $message): array => [
+                'id' => 'sms-' . $message->id,
+                'sms_message_id' => (string) $message->id,
+                'booking_item_id' => $message->booking_item_id ? (string) $message->booking_item_id : null,
+                'driver_assignment_id' => $message->driver_assignment_id ? (string) $message->driver_assignment_id : null,
+                'channel' => 'sms',
+                'direction' => 'outbound',
+                'event_key' => $message->event_key,
+                'title' => $message->event_key ? str_replace(['.', '_'], ' ', $message->event_key) : 'SMS message',
+                'status' => $message->status,
+                'provider_status' => $message->provider_status,
+                'occurred_at' => ($message->triggered_at ?? $message->created_at)?->utc()->toIso8601String(),
+                'recipient' => $this->maskRecipient((string) $message->normalized_recipient),
+                'source' => $message->source ?: 'sms',
+                'failure_reason' => $message->error_message,
+                'segments' => (int) ($message->segments ?: 1),
+                'total_cost' => $message->total_cost,
+                'cost_currency' => $message->cost_currency,
+            ]);
+
+        $decisionEvents = BookingActivity::query()->where('booking_id', $booking->id)
+            ->whereNull('sms_message_id')
+            ->when($bookingItemId, fn($query) => $query->where(function ($scope) use ($bookingItemId) {
+                $scope->whereNull('booking_item_id')->orWhere('booking_item_id', $bookingItemId);
+            }))
+            ->get()
+            ->map(fn(BookingActivity $activity): array => [
+                'id' => 'booking-activity-' . $activity->id,
+                'sms_message_id' => null,
+                'booking_item_id' => $activity->booking_item_id ? (string) $activity->booking_item_id : null,
+                'driver_assignment_id' => $activity->driver_assignment_id ? (string) $activity->driver_assignment_id : null,
+                'channel' => $activity->channel,
+                'direction' => 'system',
+                'event_key' => $activity->event_key,
+                'title' => $activity->title,
+                'status' => $activity->result_status,
+                'provider_status' => null,
+                'occurred_at' => $activity->event_at?->utc()->toIso8601String(),
+                'recipient' => $activity->recipient_masked,
+                'source' => $activity->source,
+                'failure_reason' => $activity->detail,
+                'segments' => null,
+                'total_cost' => null,
+                'cost_currency' => null,
+            ]);
+
+        return $events->concat($dispatchEvents)->concat($smsEvents)->concat($decisionEvents)
+            ->when(!$bookingItemId, fn (Collection $items) => $items->whereNull('booking_item_id'))
+            ->values();
+    }
+
+    private function maskRecipient(string $number): ?string
+    {
+        $digits = preg_replace('/\D+/', '', $number);
+        return $digits === '' ? null : str_repeat('*', max(0, strlen($digits) - 4)) . substr($digits, -4);
     }
 
     private function documentItems(Booking $booking, ?string $bookingItemId): Collection
@@ -722,7 +785,7 @@ class BookingObservabilityService
             });
 
         return $items->concat($receipts)->concat($dispatchDocuments)
-            ->filter(fn(array $document): bool => !empty($document['created_at']))
+            ->filter(fn (array $document): bool => !empty($document['created_at']))
             ->values();
     }
 

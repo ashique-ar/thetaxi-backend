@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Sms\SmsManagementController;
 use App\Services\Sms\SmsService;
+use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
@@ -10,6 +11,7 @@ it('saves the SMS API key globally for queue workers and in the active company s
     $smsService = Mockery::mock(SmsService::class);
     $smsSettingsService = Mockery::mock(SmsSettingsService::class);
     $websiteSettingsService = Mockery::mock(WebsiteSettingsService::class)->shouldIgnoreMissing();
+    $smsAutomationService = Mockery::mock(SmsAutomationService::class)->shouldIgnoreMissing();
 
     $websiteSettingsService->shouldReceive('resolveCurrentCompanyId')
         ->once()
@@ -25,7 +27,8 @@ it('saves the SMS API key globally for queue workers and in the active company s
     $controller = new SmsManagementController(
         $smsService,
         $smsSettingsService,
-        $websiteSettingsService
+        $websiteSettingsService,
+        $smsAutomationService
     );
 
     $response = $controller->updateSettings(Request::create('/api/sms/settings', 'PUT', [
@@ -35,6 +38,8 @@ it('saves the SMS API key globally for queue workers and in the active company s
         'sms_queue_enabled' => true,
         'sms_dry_run' => false,
         'sms_bulk_chunk_size' => 250,
+        'sms_cost_per_segment' => 0,
+        'sms_cost_currency' => 'LKR',
         'sms_booking_status_enabled' => false,
         'sms_esms_api_key' => 'configured-api-key',
     ]));

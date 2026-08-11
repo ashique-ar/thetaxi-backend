@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\DriverAssignment;
 use App\Models\Inquiry;
+use App\Models\Sms\SmsMessage;
 use Illuminate\Support\Carbon;
 
 class SmsAutomationService
@@ -93,6 +94,69 @@ class SmsAutomationService
                 ['audience' => 'admin_summary']
             );
         }
+    }
+
+    public function previewAdminBookingSummary(?Booking $booking, ?string $template = null): array
+    {
+        $settings = $this->settingsService->getSettings();
+        $variables = $booking
+            ? $this->bookingVariables($this->resolveBooking($booking))
+            : [
+                'booking_number' => 'BK-EXAMPLE-001',
+                'customer_name' => 'Example Customer',
+                'customer_mobile' => '0771234567',
+                'pickup_datetime' => now()->addDay()->setTime(9, 30)->format('d/m/Y h:i A'),
+                'origin' => 'Colombo Fort',
+                'destination' => 'Bandaranaike International Airport',
+                'item_count' => '1',
+                'currency' => 'LKR',
+                'total' => '8,500.00',
+            ];
+
+        return array_merge([
+            'message' => $this->render($template ?: $settings['admin_booking_summary_template'], $variables),
+            'variables' => $variables,
+            'source' => $booking ? 'booking' : 'example',
+            'booking_id' => $booking?->getKey(),
+        ], $this->previewEstimate($this->render($template ?: $settings['admin_booking_summary_template'], $variables), $settings));
+    }
+
+    public function previewTransactionalTemplate(string $eventKey, string $template, ?Booking $booking = null): array
+    {
+        $settings = $this->settingsService->getSettings();
+        $variables = [
+            'booking_number' => 'BK-EXAMPLE-001',
+            'inquiry_number' => 'INQ-EXAMPLE-001',
+            'customer_name' => 'Example Customer',
+            'customer_mobile' => '0771234567',
+            'pickup_datetime' => now()->addDay()->setTime(9, 30)->format('d/m/Y h:i A'),
+            'origin' => 'Colombo Fort',
+            'destination' => 'Bandaranaike International Airport',
+            'item_count' => '1',
+            'currency' => 'LKR',
+            'total' => '8,500.00',
+            'inquiry_type' => 'General inquiry',
+            'driver_name' => 'Example Driver',
+            'driver_mobile' => '0777654321',
+            'vehicle_description' => 'Toyota Prius',
+            'vehicle_number' => 'WP CAB-1234',
+            'amount' => '8,500.00',
+            'payment_reference' => 'PAY-EXAMPLE-001',
+        ];
+
+        if ($booking) {
+            $variables = array_merge($variables, $this->bookingVariables($this->resolveBooking($booking)));
+        }
+
+        $message = $this->render($template, $variables);
+
+        return array_merge([
+            'event_key' => $eventKey,
+            'message' => $message,
+            'variables' => $variables,
+            'source' => $booking ? 'booking' : 'example',
+            'booking_id' => $booking?->getKey(),
+        ], $this->previewEstimate($message, $settings));
     }
 
     public function queueWebsiteQuotationRequested(Booking $booking): void
@@ -276,6 +340,45 @@ class SmsAutomationService
             $assignment->id,
             (string) $assignment->id
         );
+    }
+
+    public function queueDriverAssignmentFallback(
+        Booking $booking,
+        DriverAssignment $assignment,
+        string $driverPhone
+    ): ?SmsMessage {
+        $booking = $this->resolveBooking($booking);
+        $settings = $this->settingsService->getSettings();
+        if (!$settings['enabled'] || empty($settings['driver_assignment_fallback_enabled'])) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverAssignmentFallback, 'disabled', 'Driver assignment fallback SMS is disabled.', $assignment->booking_item_id, $assignment->id);
+            return null;
+        }
+
+        $normalizedRecipient = preg_replace('/\D+/', '', $driverPhone);
+        if ($normalizedRecipient === '') {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverAssignmentFallback, 'missing_recipient', 'Driver has no SMS recipient number.', $assignment->booking_item_id, $assignment->id);
+            return null;
+        }
+
+        $message = $this->smsService->queueSingleMessage([
+            'recipient' => $driverPhone,
+            'message' => $this->render($settings['driver_assignment_fallback_template'], $this->bookingVariables($booking)),
+            'channel' => 'transactional',
+            'source' => 'fallback',
+            'context_type' => 'driver_assignment',
+            'context_id' => $assignment->id,
+            'booking_id' => $booking->id,
+            'booking_item_id' => $assignment->booking_item_id,
+            'driver_assignment_id' => $assignment->id,
+            'template_key' => TransactionalSmsEvent::DriverAssignmentFallback->value,
+            'event_key' => TransactionalSmsEvent::DriverAssignmentFallback->value,
+            'idempotency_key' => hash('sha256', implode('|', ['driver-fallback', $assignment->id, $assignment->driver_id, $normalizedRecipient])),
+            'triggered_at' => now(),
+            'meta' => ['audience' => 'driver', 'driver_id' => $assignment->driver_id],
+        ]);
+        $this->activityService?->recordMessage($message, $message->status === 'dry_run' ? 'dry_run' : ($message->wasRecentlyCreated ? 'queued' : 'duplicate'));
+
+        return $message;
     }
 
     public function recordTripStarted(Booking $booking, DriverAssignment $assignment): void
@@ -535,5 +638,17 @@ class SmsAutomationService
         }
 
         return strtr($template, $replacements);
+    }
+
+    private function previewEstimate(string $message, array $settings): array
+    {
+        $facts = (new SmsSegmentCalculator())->calculate($message);
+        $unitCost = (float) ($settings['cost_per_segment'] ?? 0);
+
+        return array_merge($facts, [
+            'unit_cost' => $unitCost,
+            'estimated_cost' => round($facts['segments'] * $unitCost, 4),
+            'cost_currency' => (string) ($settings['cost_currency'] ?? 'LKR'),
+        ]);
     }
 }

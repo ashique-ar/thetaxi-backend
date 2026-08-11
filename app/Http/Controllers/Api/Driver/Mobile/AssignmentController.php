@@ -8,6 +8,7 @@ use App\Http\Requests\Driver\Mobile\DeclineAssignmentRequest;
 use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\MobileAssignmentService;
+use App\Services\Driver\NotificationTriggerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -23,7 +24,8 @@ class AssignmentController extends Controller
 {
     public function __construct(
         private DriverAuthService $authService,
-        private MobileAssignmentService $assignmentService
+        private MobileAssignmentService $assignmentService,
+        private NotificationTriggerService $notificationService
     ) {}
 
     /**
@@ -231,6 +233,29 @@ class AssignmentController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function acknowledge(Request $request, string $id): JsonResponse
+    {
+        $driver = $this->authService->getDriver($request->user());
+        if (!$driver) {
+            return response()->json(['status' => 'error', 'message' => 'User is not registered as a driver'], 403);
+        }
+
+        $assignment = DriverAssignment::query()->whereKey($id)->where('driver_id', $driver->id)->first();
+        if (!$assignment) {
+            return response()->json(['status' => 'error', 'message' => 'Assignment not found'], 404);
+        }
+
+        $notification = $this->notificationService->acknowledgeAssignment($assignment, (string) $driver->id, 'opened');
+        if (!$notification) {
+            return response()->json(['status' => 'error', 'message' => 'Assignment notification could not be acknowledged'], 409);
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            'notification_id' => $notification->id,
+            'acknowledged_at' => $notification->acknowledged_at?->toIso8601String(),
+        ]]);
     }
 
     /**

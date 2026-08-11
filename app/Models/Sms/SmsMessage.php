@@ -27,6 +27,12 @@ class SmsMessage extends BaseModel
         'sender_mask',
         'message',
         'status',
+        'provider_status',
+        'provider_status_at',
+        'segments',
+        'unit_cost',
+        'total_cost',
+        'cost_currency',
         'provider_message_id',
         'provider_campaign_id',
         'provider_transaction_id',
@@ -56,6 +62,9 @@ class SmsMessage extends BaseModel
         'failed_at' => 'datetime',
         'scheduled_at' => 'datetime',
         'triggered_at' => 'datetime',
+        'provider_status_at' => 'datetime',
+        'unit_cost' => 'decimal:4',
+        'total_cost' => 'decimal:4',
         'is_active' => 'boolean',
     ];
 

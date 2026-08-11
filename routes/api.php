@@ -346,11 +346,16 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('settings', [SmsManagementController::class, 'settings']);
         Route::put('settings', [SmsManagementController::class, 'updateSettings']);
         Route::post('credentials/test', [SmsManagementController::class, 'testCredentials']);
+        Route::post('admin-booking-summary/preview', [SmsManagementController::class, 'previewAdminBookingSummary']);
+        Route::post('templates/preview', [SmsManagementController::class, 'previewTransactionalTemplate']);
         Route::post('send', [SmsManagementController::class, 'send']);
         Route::post('test', [SmsManagementController::class, 'sendTest']);
         Route::get('messages', [SmsManagementController::class, 'messages']);
+        Route::get('reports/compliance', [SmsManagementController::class, 'complianceReport']);
+        Route::get('messages/{smsMessage}', [SmsManagementController::class, 'showMessage']);
         Route::post('messages/{smsMessage}/retry', [SmsManagementController::class, 'retryMessage']);
         Route::get('messages/{smsMessage}/status', [SmsManagementController::class, 'checkMessageStatus']);
+        Route::post('messages/reconcile-processing', [SmsManagementController::class, 'reconcileProcessing']);
         Route::get('campaigns', [SmsManagementController::class, 'campaigns']);
         Route::post('campaigns', [SmsManagementController::class, 'createCampaign']);
         Route::get('campaigns/{smsCampaign}', [SmsManagementController::class, 'showCampaign']);

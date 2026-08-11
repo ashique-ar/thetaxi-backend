@@ -4,14 +4,19 @@ namespace App\Services\Driver;
 
 use App\Events\AssignmentCreated;
 use App\Jobs\SendAssignmentNotificationJob;
+use App\Jobs\SendDriverAssignmentFallbackSmsJob;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Driver\Driver;
 use App\Models\DriverAssignment;
+use App\Models\Driver\DriverAssignmentNotification;
+use App\Services\Sms\SmsAutomationService;
+use App\Services\Sms\SmsSettingsService;
 use App\Services\Fcm\FcmMessageService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\DB;
 
 /**
  * Notification Trigger Service
@@ -26,6 +31,8 @@ class NotificationTriggerService
 {
     public function __construct(
         private readonly FcmMessageService $fcm = new FcmMessageService(),
+        private readonly ?SmsSettingsService $smsSettings = null,
+        private readonly ?SmsAutomationService $smsAutomation = null,
     ) {}
 
     /**
@@ -34,15 +41,26 @@ class NotificationTriggerService
      * Builds the payload, attempts WebSocket then push delivery,
      * records success, or queues a retry job on failure.
      */
-    public function sendAssignmentNotification(DriverAssignment $assignment): void
+    public function sendAssignmentNotification(DriverAssignment $assignment): string
     {
-        SendAssignmentNotificationJob::dispatch($assignment, 1, [])
+        $tracking = DriverAssignmentNotification::query()->firstOrCreate(
+            ['assignment_id' => $assignment->id, 'driver_id' => $assignment->driver_id],
+            ['fallback_due_at' => now()->addMinutes($this->smsSettings?->getSettings()['driver_assignment_fallback_timeout_minutes'] ?? 10)]
+        );
+
+        SendAssignmentNotificationJob::dispatch($assignment, 1, ['notification_id' => $tracking->id])
             ->onQueue(config('services.firebase.queue', 'driver-notifications'));
+
+        SendDriverAssignmentFallbackSmsJob::dispatch($tracking->id)
+            ->delay($tracking->fallback_due_at);
 
         Log::info('Queued assignment notification', [
             'assignment_id' => $assignment->id,
             'queue' => config('services.firebase.queue', 'driver-notifications'),
+            'notification_id' => $tracking->id,
         ]);
+
+        return (string) $tracking->id;
     }
 
     /**
@@ -63,12 +81,17 @@ class NotificationTriggerService
         $payload['title'] = $message['title'];
         $payload['message'] = $message['body'];
 
-        $this->storeDriverNotification(
+        $databaseNotificationId = $this->storeDriverNotification(
             $driver,
             $payload,
             $message['title'],
             $message['body']
         );
+        if (!empty($payload['notification_id'])) {
+            DriverAssignmentNotification::query()->whereKey($payload['notification_id'])->update([
+                'database_notification_id' => $databaseNotificationId,
+            ]);
+        }
 
         $channels = [];
 
@@ -85,6 +108,12 @@ class NotificationTriggerService
 
         if (!empty($channels)) {
             $this->recordDelivery($assignment, implode('+', array_unique($channels)), Carbon::now());
+            if (!empty($payload['notification_id'])) {
+                DriverAssignmentNotification::query()->whereKey($payload['notification_id'])->update([
+                    'delivered_at' => now(),
+                    'delivery_channel' => implode('+', array_unique($channels)),
+                ]);
+            }
             return;
         }
 
@@ -280,6 +309,70 @@ class NotificationTriggerService
         }
     }
 
+    public function acknowledgeAssignment(DriverAssignment $assignment, string $driverId, string $source): ?DriverAssignmentNotification
+    {
+        return DB::transaction(function () use ($assignment, $driverId, $source) {
+            $notification = DriverAssignmentNotification::query()
+                ->where('assignment_id', $assignment->id)
+                ->where('driver_id', $driverId)
+                ->lockForUpdate()
+                ->first();
+            $notification ??= DriverAssignmentNotification::query()->create([
+                'assignment_id' => $assignment->id,
+                'driver_id' => $driverId,
+            ]);
+
+            if (!$notification->acknowledged_at) {
+                $notification->update([
+                    'acknowledged_at' => now(),
+                    'acknowledgement_source' => $source,
+                    'fallback_result' => 'acknowledged',
+                ]);
+            }
+
+            return $notification->fresh();
+        });
+    }
+
+    public function processFallback(DriverAssignmentNotification $notification): void
+    {
+        DB::transaction(function () use ($notification): void {
+            $locked = DriverAssignmentNotification::query()->lockForUpdate()->find($notification->id);
+            if (!$locked || $locked->fallback_checked_at || $locked->fallback_sms_message_id) {
+                return;
+            }
+
+            $assignment = DriverAssignment::query()->with(['driver.user', 'booking'])->find($locked->assignment_id);
+            $result = null;
+            if ($locked->acknowledged_at) {
+                $result = 'skipped_acknowledged';
+            } elseif (!$assignment) {
+                $result = 'skipped_assignment_missing';
+            } elseif ((string) $assignment->driver_id !== (string) $locked->driver_id) {
+                $result = 'skipped_reassigned';
+            } elseif (in_array((string) $assignment->status, ['declined', 'cancelled', 'completed'], true)) {
+                $result = 'skipped_terminal';
+            } elseif ($assignment->assigned_to && $assignment->assigned_to->isPast()) {
+                $result = 'skipped_expired';
+            } elseif (!$this->smsAutomation || !$assignment->booking) {
+                $result = 'skipped_unavailable';
+            }
+
+            if ($result) {
+                $locked->update(['fallback_checked_at' => now(), 'fallback_result' => $result]);
+                return;
+            }
+
+            $phone = (string) ($assignment->driver?->phone ?? $assignment->driver?->user?->phone ?? '');
+            $message = $this->smsAutomation->queueDriverAssignmentFallback($assignment->booking, $assignment, $phone);
+            $locked->update([
+                'fallback_checked_at' => now(),
+                'fallback_result' => $message ? $message->status : 'skipped_disabled_or_missing_recipient',
+                'fallback_sms_message_id' => $message?->id,
+            ]);
+        });
+    }
+
     private function buildAssignmentMessage(DriverAssignment $assignment, array $payload): array
     {
         $bookingNumber = trim((string) ($payload['booking_number'] ?? ''));
@@ -351,7 +444,7 @@ class NotificationTriggerService
         return $location;
     }
 
-    private function storeDriverNotification(Driver $driver, array $payload, string $title, string $message): void
+    private function storeDriverNotification(Driver $driver, array $payload, string $title, string $message): ?string
     {
         try {
             $driver->loadMissing('user');
@@ -360,7 +453,7 @@ class NotificationTriggerService
                 Log::warning('Driver notification inbox persistence skipped: driver has no user', [
                     'driver_id' => $driver->id,
                 ]);
-                return;
+                return null;
             }
 
             if (
@@ -372,10 +465,10 @@ class NotificationTriggerService
                     ->where('data->data->assignment_id', $payload['assignment_id'])
                     ->exists()
             ) {
-                return;
+                return null;
             }
 
-            DatabaseNotification::create([
+            $notification = DatabaseNotification::create([
                 'id' => (string) Str::uuid(),
                 'type' => 'driver_mobile',
                 'notifiable_type' => $driver->user->getMorphClass(),
@@ -390,11 +483,13 @@ class NotificationTriggerService
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            return (string) $notification->id;
         } catch (\Throwable $e) {
             Log::warning('Failed to persist driver notification inbox item', [
                 'driver_id' => $driver->id,
                 'error' => $e->getMessage(),
             ]);
+            return null;
         }
     }
 

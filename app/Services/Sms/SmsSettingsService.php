@@ -31,6 +31,8 @@ class SmsSettingsService
                 false
             ),
             'bulk_chunk_size' => max(1, (int) ($settings['sms_bulk_chunk_size'] ?: 250)),
+            'cost_per_segment' => max(0, (float) ($settings['sms_cost_per_segment'] ?? 0)),
+            'cost_currency' => strtoupper(substr((string) ($settings['sms_cost_currency'] ?? 'LKR'), 0, 3)),
             'webhook_secret' => $settings['sms_webhook_secret'] ?: null,
             'booking_status_enabled' => $this->toBool(
                 $settings['sms_booking_status_enabled'] ?? false,
@@ -71,6 +73,9 @@ class SmsSettingsService
                 $settings['sms_driver_assignment_fallback_enabled'] ?? false,
                 false
             ),
+            'driver_assignment_fallback_timeout_minutes' => max(1, min(120, (int) (
+                $settings['sms_driver_assignment_fallback_timeout_minutes'] ?? 10
+            ))),
             'admin_booking_summary_enabled' => $this->toBool(
                 $settings['sms_admin_booking_summary_enabled'] ?? false,
                 false

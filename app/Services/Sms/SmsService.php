@@ -20,7 +20,8 @@ class SmsService
 {
     public function __construct(
         private SmsProviderManager $providerManager,
-        private SmsSettingsService $settingsService
+        private SmsSettingsService $settingsService,
+        private SmsSegmentCalculator $segmentCalculator = new SmsSegmentCalculator()
     ) {}
 
     public function getOverview(): array
@@ -61,8 +62,10 @@ class SmsService
 
         $settings = $this->settingsService->getSettings();
         $queueEnabled = $settings['queue_enabled'];
-        $dryRun = ($payload['source'] ?? 'manual') === 'automation'
+        $dryRun = in_array(($payload['source'] ?? 'manual'), ['automation', 'fallback'], true)
             && !empty($settings['dry_run']);
+        $segmentFacts = $this->segmentCalculator->calculate(trim((string) ($payload['message'] ?? '')));
+        $unitCost = (float) ($settings['cost_per_segment'] ?? 0);
 
         $attributes = [
             'campaign_id' => $payload['campaign_id'] ?? null,
@@ -81,6 +84,10 @@ class SmsService
             'normalized_recipient' => $normalizedRecipient,
             'sender_mask' => $this->resolveSenderMask($payload['sender_mask'] ?? null),
             'message' => trim((string) ($payload['message'] ?? '')),
+            'segments' => $segmentFacts['segments'],
+            'unit_cost' => $unitCost,
+            'total_cost' => $unitCost * $segmentFacts['segments'],
+            'cost_currency' => $settings['cost_currency'] ?? 'LKR',
             'status' => $dryRun ? 'dry_run' : ($queueEnabled ? 'queued' : 'pending'),
             'scheduled_at' => isset($payload['scheduled_at']) && $payload['scheduled_at']
                 ? Carbon::parse($payload['scheduled_at'])
@@ -91,6 +98,8 @@ class SmsService
             'queued_at' => $dryRun ? null : now(),
             'meta' => array_merge($payload['meta'] ?? [], [
                 'dry_run' => $dryRun,
+                'encoding' => $segmentFacts['encoding'],
+                'characters' => $segmentFacts['characters'],
             ]),
         ];
 
@@ -236,15 +245,20 @@ class SmsService
 
     public function processQueuedMessage(SmsMessage $message): SmsMessage
     {
-        if ($message->status === 'delivered') {
-            return $message;
-        }
-
-        $message->update([
+        $claimed = SmsMessage::query()
+            ->whereKey($message->id)
+            ->whereIn('status', ['queued', 'pending', 'failed'])
+            ->update([
             'status' => 'processing',
+            'provider_status' => 'processing',
+            'provider_status_at' => now(),
             'processing_at' => now(),
             'attempts' => (int) $message->attempts + 1,
         ]);
+        if ($claimed !== 1) {
+            return $message->fresh();
+        }
+        $message = $message->fresh();
 
         try {
             $response = $this->providerManager->active()->sendSingle([
@@ -256,6 +270,8 @@ class SmsService
 
             $message->update([
                 'status' => 'sent',
+                'provider_status' => 'sent',
+                'provider_status_at' => now(),
                 'provider_message_id' => $response['provider_message_id'] ?? null,
                 'provider_campaign_id' => $response['provider_campaign_id'] ?? null,
                 'provider_transaction_id' => $response['transaction_id'] ?? null,
@@ -266,6 +282,8 @@ class SmsService
         } catch (Throwable $exception) {
             $message->update([
                 'status' => 'failed',
+                'provider_status' => 'failed',
+                'provider_status_at' => now(),
                 'error_message' => $exception->getMessage(),
                 'failed_at' => now(),
             ]);
@@ -280,31 +298,33 @@ class SmsService
 
     public function markDelivery(array $payload): array
     {
-        $providerCampaignId = $payload['campaignId'] ?? $payload['campaign_id'] ?? null;
-        $recipient = $this->normalizeRecipient($payload['msisdn'] ?? $payload['recipient'] ?? '');
-        $statusCode = (string) ($payload['status'] ?? '');
-
-        $query = SmsMessage::query();
-        if ($providerCampaignId) {
-            $query->where('provider_campaign_id', $providerCampaignId);
-        }
-        if ($recipient) {
-            $query->where('normalized_recipient', $recipient);
+        $transactionId = $payload['transaction_id'] ?? $payload['transactionId'] ?? null;
+        $messageId = $payload['message_id'] ?? $payload['messageId'] ?? null;
+        if (!$transactionId && !$messageId) {
+            throw new RuntimeException('Delivery callback requires a provider transaction or message id');
         }
 
-        $message = $query->latest()->first();
+        $query = SmsMessage::query()
+            ->when($transactionId, fn ($q) => $q->where('provider_transaction_id', $transactionId))
+            ->when($messageId, fn ($q) => $q->where('provider_message_id', $messageId));
+        if ((clone $query)->count() > 1) {
+            throw new RuntimeException('Delivery callback matched more than one SMS message');
+        }
+        $message = $query->first();
         if (!$message) {
             return ['updated' => false];
         }
 
-        $isDelivered = in_array($statusCode, ['1', 'delivered', 'success'], true);
+        $normalizedStatus = $this->normalizeProviderStatus((string) ($payload['status'] ?? $payload['delivery_status'] ?? ''));
 
         $message->update([
-            'status' => $isDelivered ? 'delivered' : 'failed',
-            'delivered_at' => $isDelivered ? now() : $message->delivered_at,
-            'failed_at' => $isDelivered ? $message->failed_at : now(),
+            'status' => $normalizedStatus,
+            'provider_status' => $normalizedStatus,
+            'provider_status_at' => now(),
+            'delivered_at' => $normalizedStatus === 'delivered' ? now() : $message->delivered_at,
+            'failed_at' => $normalizedStatus === 'failed' ? now() : $message->failed_at,
             'provider_response' => array_merge($message->provider_response ?? [], [
-                'delivery_callback' => $payload,
+                'delivery_callback' => $this->redactProviderPayload($payload),
             ]),
         ]);
 
@@ -315,17 +335,32 @@ class SmsService
         return ['updated' => true, 'message_id' => $message->id];
     }
 
-    public function retryFailedMessage(SmsMessage $message): SmsMessage
+    public function retryFailedMessage(SmsMessage $message, string $reason, ?string $actorId = null): SmsMessage
     {
-        $message->update([
-            'status' => 'queued',
-            'error_message' => null,
-            'failed_at' => null,
-            'queued_at' => now(),
-        ]);
+        $message = DB::transaction(function () use ($message, $reason, $actorId): SmsMessage {
+            $lockedMessage = SmsMessage::query()->lockForUpdate()->findOrFail($message->id);
+
+            if ($lockedMessage->status !== 'failed' || !$lockedMessage->is_active) {
+                throw new RuntimeException('Only an active, currently failed SMS message can be retried');
+            }
+
+            $lockedMessage->update([
+                'status' => 'queued',
+                'error_message' => null,
+                'failed_at' => null,
+                'queued_at' => now(),
+                'meta' => array_merge($lockedMessage->meta ?? [], [
+                    'retry_reason' => $reason,
+                    'retried_by' => $actorId,
+                    'retried_at' => now()->toIso8601String(),
+                ]),
+            ]);
+
+            return $lockedMessage;
+        });
 
         if ($this->settingsService->getSettings()['queue_enabled']) {
-            SendSmsMessageJob::dispatch($message->id);
+            SendSmsMessageJob::dispatch($message->id)->afterCommit();
         } else {
             $this->processQueuedMessage($message);
         }
@@ -347,6 +382,91 @@ class SmsService
             })
             ->latest()
             ->paginate((int) ($filters['per_page'] ?? 20));
+    }
+
+    public function getTransactionalComplianceReport(int $days = 30): array
+    {
+        $since = now()->subDays($days);
+        $standardEvents = ['booking.confirmed', 'driver.dispatched', 'driver.arrived'];
+        $optionalEvents = ['website.inquiry_received', 'website.quotation_requested', 'trip.completed', 'payment.received'];
+        $adminEvent = 'admin.booking_confirmed_summary';
+        $driverOnlyEvents = ['driver.assignment_fallback'];
+
+        $messages = SmsMessage::query()
+            ->where('source', 'automation')
+            ->where('created_at', '>=', $since)
+            ->whereNotNull('event_key')
+            ->get([
+                'id', 'booking_id', 'event_key', 'idempotency_key', 'status',
+                'segments', 'total_cost', 'cost_currency', 'created_at',
+            ]);
+        $bookingMessages = $messages->whereNotNull('booking_id');
+        $standard = $bookingMessages->whereIn('event_key', $standardEvents);
+        $byBooking = $standard->groupBy('booking_id');
+        $compliant = 0;
+        $incomplete = 0;
+        $bookingsWithExtra = 0;
+        $standardOverage = 0;
+        $duplicateStandardEvents = 0;
+
+        foreach ($byBooking as $bookingRows) {
+            $eventCounts = $bookingRows->countBy('event_key');
+            $hasAllThree = collect($standardEvents)->every(fn (string $event) => ($eventCounts[$event] ?? 0) === 1);
+            if ($hasAllThree && $bookingRows->count() === 3) {
+                $compliant++;
+            } else {
+                if ($eventCounts->count() < 3) {
+                    $incomplete++;
+                }
+                $duplicates = $eventCounts->sum(fn (int $count) => max(0, $count - 1));
+                $duplicateStandardEvents += $duplicates;
+                if ($bookingRows->count() > 3 || $duplicates > 0) {
+                    $bookingsWithExtra++;
+                }
+                $standardOverage += max(0, $bookingRows->count() - 3);
+            }
+        }
+
+        $admin = $bookingMessages->where('event_key', $adminEvent);
+        $optional = $messages->whereIn('event_key', $optionalEvents);
+        $knownEvents = array_merge($standardEvents, $optionalEvents, [$adminEvent], $driverOnlyEvents);
+        $unexpected = $messages->reject(fn (SmsMessage $message) => in_array($message->event_key, $knownEvents, true));
+        $settings = $this->settingsService->getSettings();
+        $configuredAdminRecipients = !empty($settings['admin_booking_summary_enabled'])
+            ? count($settings['admin_booking_summary_numbers'] ?? [])
+            : 0;
+        $confirmationBookings = $standard->where('event_key', 'booking.confirmed')->pluck('booking_id')->unique()->count();
+
+        return [
+            'window' => ['days' => $days, 'from' => $since->toIso8601String(), 'to' => now()->toIso8601String()],
+            'customer_normal_three' => [
+                'bookings_observed' => $byBooking->count(),
+                'compliant_bookings' => $compliant,
+                'incomplete_bookings' => $incomplete,
+                'bookings_with_extras' => $bookingsWithExtra,
+                'messages' => $standard->count(),
+                'duplicate_event_messages' => $duplicateStandardEvents,
+            ],
+            'admin_summaries' => [
+                'configured_recipients' => $configuredAdminRecipients,
+                'expected_messages_for_confirmations' => $confirmationBookings * $configuredAdminRecipients,
+                'recorded_messages' => $admin->count(),
+                'segments' => (int) $admin->sum(fn (SmsMessage $message) => (int) ($message->segments ?: 1)),
+                'estimated_cost' => round((float) $admin->sum(fn (SmsMessage $message) => (float) ($message->total_cost ?? 0)), 4),
+                'cost_currency' => (string) ($settings['cost_currency'] ?? 'LKR'),
+            ],
+            'optional_messages' => [
+                'total' => $optional->count(),
+                'by_event' => $optional->countBy('event_key')->all(),
+            ],
+            'unexpected_messages' => [
+                'total' => $standardOverage + $unexpected->count(),
+                'standard_overage' => $standardOverage,
+                'unknown_event_messages' => $unexpected->count(),
+                'by_event' => $unexpected->countBy('event_key')->all(),
+            ],
+            'status_counts' => $messages->countBy('status')->all(),
+        ];
     }
 
     public function getCampaigns(array $filters = []): LengthAwarePaginator
@@ -375,14 +495,76 @@ class SmsService
         }
 
         $result = $this->providerManager->active()->checkTransactionStatus($message->provider_transaction_id);
+        $normalizedStatus = $this->normalizeProviderStatus((string) ($result['campaign_status'] ?? ''));
 
         $message->update([
+            'status' => $normalizedStatus,
+            'provider_status' => $normalizedStatus,
+            'provider_status_at' => now(),
             'provider_response' => array_merge($message->provider_response ?? [], [
-                'transaction_status_check' => $result,
+                'transaction_status_check' => $this->redactProviderPayload($result),
             ]),
         ]);
 
         return $result;
+    }
+
+    public function reconcileStaleProcessing(int $olderThanMinutes = 15, int $limit = 100): array
+    {
+        $messages = SmsMessage::query()
+            ->where('status', 'processing')
+            ->where('processing_at', '<=', now()->subMinutes(max(1, $olderThanMinutes)))
+            ->whereNotNull('provider_transaction_id')
+            ->oldest('processing_at')
+            ->limit(max(1, min(500, $limit)))
+            ->get();
+
+        $result = ['checked' => 0, 'updated' => 0, 'errors' => 0, 'resent' => 0];
+        foreach ($messages as $message) {
+            $result['checked']++;
+            try {
+                $before = $message->status;
+                $this->checkMessageStatus($message);
+                if ($message->fresh()->status !== $before) {
+                    $result['updated']++;
+                }
+            } catch (Throwable $exception) {
+                $result['errors']++;
+                $message->update([
+                    'provider_response' => array_merge($message->provider_response ?? [], [
+                        'reconciliation_error' => $exception->getMessage(),
+                        'reconciliation_checked_at' => now()->toIso8601String(),
+                    ]),
+                ]);
+            }
+        }
+
+        return $result;
+    }
+
+    private function normalizeProviderStatus(string $status): string
+    {
+        return match (strtolower(trim($status))) {
+            '1', 'delivered', 'delivery successful', 'success' => 'delivered',
+            'queued', 'pending', 'created' => 'queued',
+            'processing', 'submitted', 'in progress', 'in_progress' => 'processing',
+            'sent', 'accepted' => 'sent',
+            'cancelled', 'canceled' => 'cancelled',
+            'failed', 'rejected', 'undelivered', 'expired', '0' => 'failed',
+            default => throw new RuntimeException('Unknown SMS provider status'),
+        };
+    }
+
+    private function redactProviderPayload(array $payload): array
+    {
+        foreach ($payload as $key => $value) {
+            if (preg_match('/secret|token|password|authorization|api.?key/i', (string) $key)) {
+                $payload[$key] = '[REDACTED]';
+            } elseif (is_array($value)) {
+                $payload[$key] = $this->redactProviderPayload($value);
+            }
+        }
+        return $payload;
     }
 
     public function resolveAudienceRecipients(
