@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Airport;
 use App\Models\Service\ServiceFormConfig;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
@@ -614,15 +615,16 @@ class DynamicServiceConfigurationService
 
     /**
      * Get dynamic form configuration for a specific service type.
-     * DB record (service_form_configs) takes precedence over the hardcoded constant.
+     * Resolve the public form from Service Type config, then config-service and default fallbacks.
      */
     public function getServiceFormConfiguration(string $serviceCode): array
     {
-        $cacheKey = "service_form_config_public_{$serviceCode}";
+        $cacheKey = "service_form_config_public_v5_{$serviceCode}";
 
         return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode) {
             $serviceType = ServiceType::publicContext()
                 ->where('code', $serviceCode)
+                ->orderByDesc('updated_at')
                 ->first();
 
             if (!$serviceType) {
@@ -633,11 +635,31 @@ class DynamicServiceConfigurationService
                 ];
             }
 
-            // Prefer DB config; fall back to hardcoded constant
-            $dbConfig   = ServiceFormConfig::forCode($serviceCode);
-            $baseConfig = $dbConfig
-                ? $dbConfig->config
-                : (self::SERVICE_FIELD_CONFIGS[$serviceCode] ?? [
+            // Public form ownership order: Service Type form, config-service record, defaults.
+            $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
+            $dbConfig = ServiceFormConfig::forCode($serviceCode);
+            $configServiceFields = $this->extractRenderableFields($dbConfig?->config);
+            $defaultFields = DefaultFormConfigService::getDefaults($serviceCode);
+
+            if (!empty($serviceTypeFields)) {
+                $fields = $this->fillMissingFieldProperties(
+                    $serviceTypeFields,
+                    $configServiceFields,
+                    $defaultFields,
+                );
+                $configSource = 'service_type_form_config';
+            } elseif (!empty($configServiceFields)) {
+                $fields = $this->fillMissingFieldProperties($configServiceFields, $defaultFields);
+                $configSource = 'config_service_database';
+            } else {
+                $fields = $defaultFields;
+                $configSource = 'default_form_config_service';
+            }
+
+            $fields = $this->hydrateConditionalAirportFields($fields);
+
+            $baseConfig = $dbConfig?->config
+                ?? (self::SERVICE_FIELD_CONFIGS[$serviceCode] ?? [
                     'required_fields' => ['pickup_location', 'from_date', 'passengers'],
                     'optional_fields' => [],
                     'special_fields'  => [],
@@ -649,6 +671,9 @@ class DynamicServiceConfigurationService
 
             return [
                 'service_type'            => $serviceType,
+                'fields'                  => $fields,
+                'field_mappings'          => $this->extractFieldMappings($serviceType->form_config)
+                    ?: $this->extractFieldMappings($dbConfig?->config),
                 'base_fields'             => $baseConfig,
                 'pricing_slabs'           => $slabs,
                 'common_rates'            => $commonRates,
@@ -656,9 +681,124 @@ class DynamicServiceConfigurationService
                 'calculation_formula'     => $this->getServiceCalculationFormula($serviceType->id),
                 'estimated_duration_range' => $this->getServiceDurationRange($slabs),
                 'supported_features'      => $this->getServiceFeatures($serviceCode),
-                'config_source'           => $dbConfig ? 'database' : 'default',
+                'config_source'           => $configSource,
             ];
         });
+    }
+
+    private function extractRenderableFields(?array $config): array
+    {
+        if (empty($config)) {
+            return [];
+        }
+
+        $candidate = isset($config['fields']) && is_array($config['fields'])
+            ? $config['fields']
+            : $config;
+
+        return array_filter($candidate, static fn ($field): bool =>
+            is_array($field) && isset($field['type'], $field['label'])
+        );
+    }
+
+    private function extractFieldMappings(?array $config): array
+    {
+        return is_array($config['field_mappings'] ?? null)
+            ? $config['field_mappings']
+            : [];
+    }
+
+    private function fillMissingFieldProperties(array $fields, array ...$fallbackSets): array
+    {
+        foreach ($fields as $fieldKey => &$field) {
+            if (!is_array($field)) {
+                continue;
+            }
+
+            foreach ($fallbackSets as $fallbackFields) {
+                $fallback = $fallbackFields[$fieldKey] ?? null;
+                if (!is_array($fallback)) {
+                    $submitAs = $field['submit_as'] ?? $fieldKey;
+                    $fallback = collect($fallbackFields)->first(
+                        static fn ($candidate, $candidateKey) => is_array($candidate)
+                            && (($candidate['submit_as'] ?? $candidateKey) === $submitAs)
+                    );
+                }
+
+                if (is_array($fallback)) {
+                    $field = array_merge($fallback, $field);
+                }
+            }
+
+            if (($field['type'] ?? null) === 'location'
+                && empty($field['placeholder_examples'])) {
+                $field['placeholder_examples'] = [
+                    'Search apartments or residences',
+                    'Search hotels',
+                    'Search airports',
+                    'Search landmarks',
+                ];
+            }
+        }
+        unset($field);
+
+        return $fields;
+    }
+
+    /**
+     * Conditional airport variants always use the Airports master data. Stored
+     * condition options are treated as a snapshot and replaced at read time.
+     */
+    private function hydrateConditionalAirportFields(array $fields): array
+    {
+        $airportOptions = null;
+
+        foreach ($fields as &$field) {
+            if (!is_array($field) || ($field['type'] ?? null) !== 'location') {
+                continue;
+            }
+
+            $conditions = $field['conditions'] ?? null;
+            if (!is_array($conditions) || $conditions === []) {
+                continue;
+            }
+
+            $field['location_type'] = 'conditional';
+            $field['location_mode'] = 'conditional';
+
+            foreach ($conditions as &$condition) {
+                if (!is_array($condition) || strtolower((string) ($condition['type'] ?? 'location')) !== 'airport') {
+                    continue;
+                }
+
+                if ($airportOptions === null) {
+                    try {
+                        $airportOptions = Airport::query()
+                            ->where('is_active', true)
+                            ->orderByDesc('is_default')
+                            ->orderBy('sort_order')
+                            ->get(['id', 'name', 'code', 'city', 'latitude', 'longitude', 'is_default'])
+                            ->map(static fn (Airport $airport) => $airport->toArray())
+                            ->values()
+                            ->all();
+                    } catch (\Throwable $exception) {
+                        Log::warning('Unable to hydrate conditional airport options', [
+                            'message' => $exception->getMessage(),
+                        ]);
+                        $airportOptions = [];
+                    }
+                }
+
+                $condition['type'] = 'airport';
+                if ($airportOptions !== []) {
+                    $condition['options'] = $airportOptions;
+                }
+            }
+            unset($condition);
+        }
+        unset($field);
+
+        return $fields;
     }
 
     /**
@@ -916,6 +1056,10 @@ class DynamicServiceConfigurationService
         foreach ($serviceCodes as $code) {
             Cache::forget("service_form_config_{$code}");
             Cache::forget("service_form_config_public_{$code}");
+            Cache::forget("service_form_config_public_v2_{$code}");
+            Cache::forget("service_form_config_public_v3_{$code}");
+            Cache::forget("service_form_config_public_v4_{$code}");
+            Cache::forget("service_form_config_public_v5_{$code}");
         }
 
         Log::info('Dynamic service configuration cache cleared');

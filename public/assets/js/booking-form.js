@@ -83,9 +83,88 @@
         setupFormValidation();
         setupDateTimePickers();
         setupFormAnimations();
+        initializeLocationPlaceholderExamples();
         loadMapsAPI();
         initializeDatePickers();
         setDefaultDatesAndLocations();
+        hideFreshDynamicFormDefaults();
+    }
+
+    /**
+     * Fresh homepage forms show guidance only. Configured values remain in data
+     * attributes/data-field-defaults and are applied immediately before submit.
+     * Search/results forms keep their submitted values visible.
+     */
+    function hideFreshDynamicFormDefaults() {
+        document.querySelectorAll('.filter-input[data-has-search-context="false"]').forEach((form) => {
+            form.querySelectorAll([
+                'input.location-search',
+                'input.custom-datepicker',
+                'input[type="date"]',
+                'input[type="time"]',
+                'input[data-default-value]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
+            ].join(',')).forEach((input) => {
+                if (input.classList.contains('airport-select')) return;
+                input.value = '';
+                if (input.classList.contains('location-search')) {
+                    input.setAttribute('data-place-selected', 'false');
+                    input.setAttribute('data-is-default', 'false');
+                }
+            });
+        });
+    }
+
+    /**
+     * Rotate configured examples without putting a value into the location input.
+     * Airport dropdowns are selects and are intentionally excluded.
+     */
+    function initializeLocationPlaceholderExamples() {
+        const reduceMotion = window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+        document.querySelectorAll('input.location-search[data-placeholder-examples]').forEach((input) => {
+            if (input.dataset.placeholderRotationInitialized === "true") return;
+
+            let examples = [];
+            try {
+                const json = decodeURIComponent(escape(window.atob(input.dataset.placeholderExamples)));
+                examples = JSON.parse(json).filter((example) => typeof example === "string" && example.trim());
+            } catch (error) {
+                console.warn("Invalid location placeholder examples", error);
+            }
+
+            if (!examples.length) return;
+
+            input.dataset.placeholderRotationInitialized = "true";
+            let index = 0;
+            let timer = null;
+
+            const showExample = () => {
+                if (!input.value) input.placeholder = examples[index % examples.length];
+            };
+            const start = () => {
+                if (reduceMotion || timer || input.value) return;
+                timer = window.setInterval(() => {
+                    index = (index + 1) % examples.length;
+                    showExample();
+                }, 2800);
+            };
+            const stop = () => {
+                if (timer) window.clearInterval(timer);
+                timer = null;
+            };
+
+            showExample();
+            start();
+            input.addEventListener("focus", stop);
+            input.addEventListener("input", () => input.value ? stop() : start());
+            input.addEventListener("blur", () => {
+                if (!input.value) {
+                    showExample();
+                    start();
+                }
+            });
+        });
     }
 
     /**
@@ -570,8 +649,11 @@
         // Get the correct lat/lng inputs using the mapping helper
         const { latInput, lngInput } = getCoordInputs(input);
 
-        // Store default values - ALWAYS update to current values (handles search results)
-        input.setAttribute("data-default-value", input.value || "");
+        // Service Type defaults remain metadata on a fresh homepage. Search/results
+        // values are visible because the server rendered them into input.value.
+        if (!input.hasAttribute("data-default-value")) {
+            input.setAttribute("data-default-value", "");
+        }
         // For conditional location fields, prefer data-default-lat/lng already set on the input by server
         var serverDefaultLat = input.getAttribute("data-default-lat") || "";
         var serverDefaultLng = input.getAttribute("data-default-lng") || "";
@@ -674,12 +756,10 @@
                 const placeSelected = self.getAttribute("data-place-selected") === "true";
 
                 if (currentValue === "") {
-                    // Field is empty - reset to default
-                    self.value = defaultValue;
-                    if (latInput) latInput.value = defaultLat;
-                    if (lngInput) lngInput.value = defaultLng;
-                    self.setAttribute("data-place-selected", "true");
-                    self.setAttribute("data-is-default", "true");
+                    // Keep fresh/cleared location inputs empty so their placeholder
+                    // remains visible. Submit applies metadata defaults later.
+                    self.setAttribute("data-place-selected", "false");
+                    self.setAttribute("data-is-default", "false");
                     self.classList.remove("error");
                     self.style.borderColor = "";
                     removeInlineError(self);
@@ -930,8 +1010,9 @@
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
 
-                // ALWAYS update to current values (handles search results)
-                input.setAttribute("data-default-value", input.value || "");
+                if (!input.hasAttribute("data-default-value")) {
+                    input.setAttribute("data-default-value", "");
+                }
                 if (latInput) {
                     latInput.setAttribute("data-default-lat", latInput.value || "");
                 }
@@ -984,12 +1065,8 @@
                         const placeSelected = self.getAttribute("data-place-selected") === "true";
 
                         if (currentValue === "") {
-                            // Reset to default
-                            self.value = defaultValue;
-                            if (latInput) latInput.value = defaultLat;
-                            if (lngInput) lngInput.value = defaultLng;
-                            self.setAttribute("data-place-selected", "true");
-                            self.setAttribute("data-is-default", "true");
+                            self.setAttribute("data-place-selected", "false");
+                            self.setAttribute("data-is-default", "false");
                             self.classList.remove("error");
                             self.style.borderColor = "";
                             removeInlineError(self);
@@ -1022,8 +1099,9 @@
                 const form = input.closest("form");
                 const { latInput, lngInput } = getCoordInputs(input);
 
-                // ALWAYS update to current values (handles search results)
-                input.setAttribute("data-default-value", input.value || "");
+                if (!input.hasAttribute("data-default-value")) {
+                    input.setAttribute("data-default-value", "");
+                }
                 if (latInput) {
                     latInput.setAttribute("data-default-lat", latInput.value || "");
                 }
@@ -1081,11 +1159,8 @@
                         const placeSelected = self.getAttribute("data-place-selected") === "true";
 
                         if (currentValue === "") {
-                            self.value = defaultValue;
-                            if (latInput) latInput.value = defaultLat;
-                            if (lngInput) lngInput.value = defaultLng;
-                            self.setAttribute("data-place-selected", "true");
-                            self.setAttribute("data-is-default", "true");
+                            self.setAttribute("data-place-selected", "false");
+                            self.setAttribute("data-is-default", "false");
                             self.classList.remove("error");
                             self.style.borderColor = "";
                             removeInlineError(self);
@@ -3154,6 +3229,11 @@
 
         forms.forEach((form) => {
             form.addEventListener("submit", function (e) {
+                // Keep configured defaults visually hidden until Search is pressed.
+                // At submission time, fill untouched controls so both custom and
+                // server-side validation receive the same dynamic fallback values.
+                applyConfiguredSearchDefaults(form);
+
                 // ALWAYS validate FIRST - prevent submission if invalid
                 if (!validateForm(form)) {
                     e.preventDefault();
@@ -3193,6 +3273,80 @@
 
             // Check form validity on load
             setTimeout(() => checkFormValidity(form), 500);
+        });
+    }
+
+    function applyConfiguredSearchDefaults(form) {
+        const encodedDefaults = form.dataset.fieldDefaults || '';
+        if (!encodedDefaults) return;
+
+        let defaults = {};
+        try {
+            const binary = atob(encodedDefaults);
+            const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
+            defaults = JSON.parse(new TextDecoder().decode(bytes));
+        } catch (error) {
+            console.warn('Unable to read configured booking defaults', error);
+            return;
+        }
+
+        const resolveValue = (value, input) => {
+            if (typeof value !== 'string') return value;
+            const token = value.trim().toLowerCase();
+            const isDate = input.classList.contains('custom-datepicker') || input.type === 'date';
+            const isTime = input.type === 'time';
+            const now = new Date();
+
+            if (isDate && (token === 'today' || token === 'tomorrow' || /^\+\d+\s*days?$/.test(token))) {
+                if (token === 'tomorrow') now.setDate(now.getDate() + 1);
+                const dayMatch = token.match(/^\+(\d+)\s*days?$/);
+                if (dayMatch) now.setDate(now.getDate() + Number(dayMatch[1]));
+                const day = String(now.getDate()).padStart(2, '0');
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                return `${day}/${month}/${now.getFullYear()}`;
+            }
+            if (isTime && (token === 'now' || token === 'current_time')) {
+                return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+            }
+            return value;
+        };
+
+        Object.entries(defaults).forEach(([name, configuredValue]) => {
+            const controls = Array.from(form.querySelectorAll(`[name="${CSS.escape(name)}"]`));
+            const control = controls.find((candidate) => !candidate.disabled && candidate.offsetParent !== null)
+                || controls.find((candidate) => !candidate.disabled)
+                || controls[0];
+            if (!control) return;
+
+            if (control.type === 'radio' || control.type === 'checkbox') {
+                const matchingControl = controls.find((candidate) => String(candidate.value) === String(configuredValue));
+                if (matchingControl && !controls.some((candidate) => candidate.checked)) {
+                    matchingControl.checked = true;
+                }
+                return;
+            }
+
+            if (control.classList.contains('airport-select') && String(control.value || '').trim() === '') {
+                const configuredOption = Array.from(control.options).find(
+                    (option) => String(option.value) === String(configuredValue)
+                );
+                const defaultAirportValue = control.dataset.defaultAirportValue || '';
+                control.value = configuredOption ? configuredOption.value : defaultAirportValue;
+                if (control.value) {
+                    control.setAttribute('data-is-default', 'true');
+                    control.dispatchEvent(new Event('change', { bubbles: true }));
+                    control.dispatchEvent(new Event('airport-pls-sync'));
+                }
+                return;
+            }
+
+            if (String(control.value || '').trim() === '') {
+                control.value = resolveValue(configuredValue, control);
+                if (control.classList.contains('location-search') || ['pickup', 'dropoff', 'from', 'to'].includes(control.name)) {
+                    control.setAttribute('data-is-default', 'true');
+                }
+                control.dispatchEvent(new Event('change', { bubbles: true }));
+            }
         });
     }
 
@@ -3578,18 +3732,12 @@
         // Create error message element
         const errorEl = document.createElement("div");
         errorEl.className = "inline-error-message";
-        errorEl.style.cssText = `
-            color: #dc3545;
-            font-size: 12px;
-            margin-top: 4px;
-            display: block;
-        `;
         errorEl.textContent = message;
 
-        // Insert after the input's parent container
-        const container = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
-        if (container) {
-            container.appendChild(errorEl);
+        // Keep validation text outside the bordered control and below the field.
+        const control = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
+        if (control) {
+            control.insertAdjacentElement('afterend', errorEl);
         }
     }
 
@@ -3597,9 +3745,9 @@
      * Remove inline error message for input field
      */
     function removeInlineError(input) {
-        const container = input.closest('.single-search-box') || input.closest('.custom-select-dropdown') || input.parentElement;
+        const container = input.closest('.booking-field') || input.parentElement;
         if (container) {
-            const existingError = container.querySelector('.inline-error-message');
+            const existingError = container.querySelector(':scope > .inline-error-message');
             if (existingError) {
                 existingError.remove();
             }

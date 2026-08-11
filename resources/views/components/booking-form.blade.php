@@ -5,7 +5,10 @@
         return \App\Models\BookingFormTab::getOrderedTabs();
     });
     $bookingTabsByCode = $bookingTabs->keyBy('code');
-    $defaultTabCode = $bookingTabs->first()?->code ?? 'airport_transfers';
+    $defaultTabCode = $bookingTabs->first(fn ($tab) => (bool) data_get($tab->metadata, 'is_default', false))?->code
+        ?? $bookingTabs->first()?->code
+        ?? 'airport_transfers';
+    $hasSearchContext = isset($search) || session()->hasOldInput();
 
     $knownFormCodes = ['airport_transfers', 'ride_now', 'day_rental', 'corporate', 'wedding_hire', 'self_drive', 'with_driver'];
     $getFormServiceCodeForTab = function ($tab) use ($knownFormCodes) {
@@ -183,6 +186,7 @@
             ->publicContext()
             ->whereIn('code', $serviceTypeCodesForConfig)
             ->where('is_active', true)
+            ->orderBy('updated_at')
             ->get()
             ->keyBy('code');
     } catch (Exception $e) {
@@ -206,63 +210,14 @@
     };
 
     $extractConfigFields = function ($serviceTypeModel, $serviceCode = null) {
-        $defaults = $serviceCode
-            ? \App\Services\DefaultFormConfigService::getDefaults($serviceCode)
-            : [];
-
-        if ($serviceTypeModel && is_array($serviceTypeModel->form_config)) {
-            $storedConfig = $serviceTypeModel->form_config;
-            $fieldConfig = isset($storedConfig['fields']) && is_array($storedConfig['fields'])
-                ? $storedConfig['fields']
-                : $storedConfig;
-            if (isset($fieldConfig['field_mappings'])) {
-                unset($fieldConfig['field_mappings']);
-            }
-            $fields = array_filter($fieldConfig, function ($field) {
-                return is_array($field) && isset($field['type']) && isset($field['label']);
-            });
-            if (!empty($fields)) {
-                // Build a lookup of defaults by both key and submit_as for flexible matching
-                $defaultsByKey = $defaults;
-                $defaultsBySubmitAs = [];
-                foreach ($defaults as $dKey => $dField) {
-                    $dSubmitAs = $dField['submit_as'] ?? $dKey;
-                    $defaultsBySubmitAs[$dSubmitAs] = $dField;
-                }
-
-                // Merge: DB fields take priority, but missing keys are filled from defaults
-                foreach ($fields as $key => &$field) {
-                    $matchedDefault = null;
-                    if (isset($defaultsByKey[$key])) {
-                        $matchedDefault = $defaultsByKey[$key];
-                    } else {
-                        $fieldSubmitAs = $field['submit_as'] ?? $key;
-                        if (isset($defaultsBySubmitAs[$fieldSubmitAs])) {
-                            $matchedDefault = $defaultsBySubmitAs[$fieldSubmitAs];
-                        }
-                    }
-                    if ($matchedDefault && is_array($matchedDefault)) {
-                        // Default fills in missing keys only — DB values always win
-                        $field = array_merge($matchedDefault, $field);
-                    }
-                }
-                unset($field);
-
-                $existingSubmitAs = [];
-                foreach ($fields as $f) {
-                    $existingSubmitAs[] = $f['submit_as'] ?? '';
-                }
-                foreach ($defaults as $dKey => $dField) {
-                    $dSubmitAs = $dField['submit_as'] ?? $dKey;
-                    if (!isset($fields[$dKey]) && !in_array($dSubmitAs, $existingSubmitAs, true)) {
-                        $fields[$dKey] = $dField;
-                    }
-                }
-
-                return $fields;
-            }
+        if (!$serviceTypeModel || !$serviceCode) {
+            return [];
         }
-        return $defaults;
+
+        $resolved = app(\App\Services\DynamicServiceConfigurationService::class)
+            ->getServiceFormConfiguration($serviceTypeModel->code ?: $serviceCode);
+
+        return is_array($resolved['fields'] ?? null) ? $resolved['fields'] : [];
     };
 
     // Airport options
@@ -393,6 +348,7 @@
                     'predefinedLocations' => $predefinedLocations ?? collect(),
                     'airportOptions' => $airportOptions ?? collect(),
                     'airportTransferType' => $airportTransferType ?? null,
+                    'hasSearchContext' => $hasSearchContext,
                 ])
             @endif
         @endforeach
@@ -561,9 +517,12 @@
                 function updateConditionalVisibility() {
                     var checkedRadio = form.querySelector('input[name="' + condField + '"]:checked');
                     var currentValue = checkedRadio ? checkedRadio.value : '';
+                    var normalizedCurrentValue = currentValue.toLowerCase().replace(/-/g, '_');
                     variants.forEach(function(variant) {
                         var condValue = variant.dataset.conditionValue;
-                        if (condValue === currentValue) {
+                        var isCurrentVariant = condValue === currentValue
+                            || condValue.toLowerCase().replace(/-/g, '_') === normalizedCurrentValue;
+                        if (isCurrentVariant) {
                             variant.style.display = 'block';
                             variant.querySelectorAll('input, select').forEach(function(inp) { inp.disabled = false; });
                         } else {
@@ -601,6 +560,12 @@
                     var activeValue = checkedRadio ? checkedRadio.value : '';
                     if (!activeValue) return;
                     var activeVariant = container.querySelector('.conditional-variant[data-condition-value="' + activeValue + '"]');
+                    if (!activeVariant) {
+                        var normalizedActiveValue = activeValue.toLowerCase().replace(/-/g, '_');
+                        activeVariant = Array.from(variants).find(function(variant) {
+                            return variant.dataset.conditionValue.toLowerCase().replace(/-/g, '_') === normalizedActiveValue;
+                        });
+                    }
                     if (!activeVariant) return;
 
                     // Check if active variant has an airport select with a value
@@ -620,6 +585,12 @@
                     radio.addEventListener('change', function() {
                         var newValue = this.value;
                         var newVariant = container.querySelector('.conditional-variant[data-condition-value="' + newValue + '"]');
+                        if (!newVariant) {
+                            var normalizedNewValue = newValue.toLowerCase().replace(/-/g, '_');
+                            newVariant = Array.from(variants).find(function(variant) {
+                                return variant.dataset.conditionValue.toLowerCase().replace(/-/g, '_') === normalizedNewValue;
+                            });
+                        }
                         if (!newVariant) return;
                         var airportSelect = newVariant.querySelector('select.airport-select');
                         if (airportSelect && airportSelect.value) {

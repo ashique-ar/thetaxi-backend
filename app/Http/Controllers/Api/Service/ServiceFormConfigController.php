@@ -24,6 +24,37 @@ class ServiceFormConfigController extends Controller
         'dropoff_location' => ['dropoff_location', 'dropoff', 'to', 'destination'],
     ];
 
+    public function publicByCode(string $serviceCode): JsonResponse
+    {
+        $config = app(\App\Services\DynamicServiceConfigurationService::class)
+            ->getServiceFormConfiguration($serviceCode);
+
+        if (!empty($config['error'])) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $config['error'],
+            ], 404);
+        }
+
+        $serviceType = $config['service_type'];
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'service_type' => [
+                    'id' => $serviceType->id,
+                    'code' => $serviceType->code,
+                    'name' => $serviceType->name,
+                    'uses_dropoff_time' => (bool) $serviceType->uses_dropoff_time,
+                    'allow_return_trip' => (bool) $serviceType->allow_return_trip,
+                ],
+                'fields' => $config['fields'] ?? [],
+                'field_mappings' => $config['field_mappings'] ?? [],
+                'config_source' => $config['config_source'] ?? null,
+            ],
+        ]);
+    }
+
     /**
      * Get dynamic form configuration for a service type
      */
@@ -76,39 +107,11 @@ class ServiceFormConfigController extends Controller
     private function buildFormConfig(ServiceType $serviceType): array
     {
         $storedConfig = $this->extractStoredFormConfig($serviceType->form_config);
-        $defaults = \App\Services\DefaultFormConfigService::getDefaults($serviceType->code);
-
-        // Merge stored fields with defaults: DB values win, missing keys filled from defaults
         $fields = $storedConfig['fields'];
         if (empty($fields)) {
-            $fields = $defaults;
-        } else {
-            // Build lookup of defaults by both key and submit_as
-            $defaultsByKey = $defaults;
-            $defaultsBySubmitAs = [];
-            foreach ($defaults as $dKey => $dField) {
-                $dSubmitAs = $dField['submit_as'] ?? $dKey;
-                $defaultsBySubmitAs[$dSubmitAs] = $dField;
-            }
-
-            // Merge: DB fields take priority, missing keys filled from defaults
-            foreach ($fields as $key => &$field) {
-                $matchedDefault = null;
-                if (isset($defaultsByKey[$key])) {
-                    $matchedDefault = $defaultsByKey[$key];
-                } else {
-                    $fieldSubmitAs = $field['submit_as'] ?? $key;
-                    if (isset($defaultsBySubmitAs[$fieldSubmitAs])) {
-                        $matchedDefault = $defaultsBySubmitAs[$fieldSubmitAs];
-                    }
-                }
-                if ($matchedDefault && is_array($matchedDefault)) {
-                    $field = array_merge($matchedDefault, $field);
-                }
-            }
-            unset($field);
-            // IMPORTANT: Do not re-add missing default fields here.
-            // If an admin removes fields from saved form_config, those removals must persist.
+            $resolved = app(\App\Services\DynamicServiceConfigurationService::class)
+                ->getServiceFormConfiguration($serviceType->code);
+            $fields = is_array($resolved['fields'] ?? null) ? $resolved['fields'] : [];
         }
 
         // Inject airport options into conditional location fields
@@ -829,10 +832,14 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.label' => 'sometimes|required|string',
                 'form_config.*.required' => 'boolean',
                 'form_config.*.order' => 'integer',
-                'form_config.*.width' => 'nullable|in:full,half,third',
+                'form_config.*.width' => 'nullable|in:full,half,third,auto',
+                'form_config.*.tablet_width' => 'nullable|in:full,half,third,auto',
+                'form_config.*.mobile_width' => 'nullable|in:full,half,third,auto',
                 'form_config.*.alignment' => 'nullable|in:left,center,right',
                 'form_config.*.row' => 'nullable|integer',
                 'form_config.*.placeholder' => 'nullable|string',
+                'form_config.*.placeholder_examples' => 'nullable|array|max:10',
+                'form_config.*.placeholder_examples.*' => 'nullable|string|max:120',
                 'form_config.*.hint' => 'nullable|string',
                 'form_config.*.submit_as' => 'nullable|string|max:50',
                 'form_config.*.location_mode' => 'nullable|string|in:autocomplete,airport,predefined_or_custom,conditional',
@@ -877,6 +884,19 @@ class ServiceFormConfigController extends Controller
                 if (array_key_exists('sync_from', $fieldConfig)) {
                     $formConfig[$fieldName]['sync_from'] = $this->normalizeMappingValue($fieldConfig['sync_from']);
                 }
+                if (!empty($fieldConfig['conditions']) && is_array($fieldConfig['conditions'])) {
+                    $formConfig[$fieldName]['location_type'] = 'conditional';
+                    $formConfig[$fieldName]['location_mode'] = 'conditional';
+                    foreach ($fieldConfig['conditions'] as $conditionValue => $conditionConfig) {
+                        if (!is_array($conditionConfig)) {
+                            continue;
+                        }
+                        // Airport choices belong to the Airports master data and
+                        // must not be duplicated as stale snapshots in form JSON.
+                        unset($conditionConfig['options']);
+                        $formConfig[$fieldName]['conditions'][$conditionValue] = $conditionConfig;
+                    }
+                }
             }
 
             $storedMappings = is_array($validated['field_mappings'] ?? null) ? $validated['field_mappings'] : [];
@@ -903,6 +923,7 @@ class ServiceFormConfigController extends Controller
                 'allow_multiple_dropoff_locations' => $validated['allow_multiple_dropoff_locations'] ?? false,
                 'form_config' => !empty($formConfig) ? $formConfig : null,
             ]);
+            app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
 
             return response()->json([
                 'status' => 'success',

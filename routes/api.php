@@ -184,6 +184,7 @@ Route::prefix('agent-api')
 Route::prefix('public')->group(function () {
     Route::get('inquiry-services', [PublicInquiryServiceController::class, 'index']);
     Route::get('inquiry-services/{slug}', [PublicInquiryServiceController::class, 'show']);
+    Route::get('service-form-configs/{serviceCode}', [ServiceFormConfigController::class, 'publicByCode']);
 
     // Return trip pricing calculator (public)
     Route::post('return-trip/calculate', [ServicePackageController::class, 'calculateReturnPrice']);

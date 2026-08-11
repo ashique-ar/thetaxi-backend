@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Models\Airport;
 use App\Models\PredefinedLocation;
 use App\Models\Service\ServiceType;
 use App\Services\WebsiteSettingsService;
@@ -21,6 +22,40 @@ class BookingSearchRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $data = $this->all();
+
+        $serviceType = $data['service_type'] ?? null;
+        if (!empty($serviceType)) {
+            try {
+                [$configuredFields] = $this->resolveServiceFormConfig((string) $serviceType);
+                foreach ($configuredFields as $fieldName => $config) {
+                    if (!is_array($config)) {
+                        continue;
+                    }
+
+                    $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+                    $effectiveConfig = $this->resolveConditionalLocationDefaults($config, $data);
+                    $default = $this->resolveConfiguredDefault($effectiveConfig['default'] ?? null, $effectiveConfig['type'] ?? null);
+                    if ($submitAs !== '' && $this->isBlankSearchValue($data[$submitAs] ?? null) && $default !== null) {
+                        $data[$submitAs] = $default;
+                    }
+
+                    if (($config['type'] ?? null) === 'location') {
+                        foreach (['lat', 'lng'] as $coordinate) {
+                            $coordinateKey = "{$submitAs}_{$coordinate}";
+                            $configuredCoordinate = $effectiveConfig['default_' . $coordinate] ?? null;
+                            if ($this->isBlankSearchValue($data[$coordinateKey] ?? null) && !$this->isBlankSearchValue($configuredCoordinate)) {
+                                $data[$coordinateKey] = (string) $configuredCoordinate;
+                            }
+                        }
+                    }
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to apply configured booking search defaults', [
+                    'service_type' => $serviceType,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
 
         // Convert DD/MM/YYYY format to Y-m-d for validation and processing
         if (isset($data['from_date']) && $this->isValidDDMMYYYY($data['from_date'])) {
@@ -186,6 +221,74 @@ class BookingSearchRequest extends FormRequest
         }
 
         $this->replace($data);
+    }
+
+    private function resolveConditionalLocationDefaults(array $config, array $data): array
+    {
+        if (($config['type'] ?? null) !== 'location' || !is_array($config['conditions'] ?? null)) {
+            return $config;
+        }
+
+        $conditionField = (string) ($config['condition_field'] ?? 'transfer_type');
+        $activeValue = strtolower(str_replace('-', '_', trim((string) ($data[$conditionField] ?? ''))));
+        $activeCondition = collect($config['conditions'])->first(
+            static fn ($condition, $value) => strtolower(str_replace('-', '_', (string) $value)) === $activeValue
+        );
+
+        if (!is_array($activeCondition) || strtolower((string) ($activeCondition['type'] ?? 'location')) !== 'airport') {
+            return $config;
+        }
+
+        $airport = Airport::query()
+            ->where('is_active', true)
+            ->orderByDesc('is_default')
+            ->orderBy('sort_order')
+            ->first(['name', 'latitude', 'longitude']);
+
+        if (!$airport) {
+            return $config;
+        }
+
+        $config['default'] = $airport->name;
+        $config['default_lat'] = (string) $airport->latitude;
+        $config['default_lng'] = (string) $airport->longitude;
+
+        return $config;
+    }
+
+    private function isBlankSearchValue(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
+    }
+
+    private function resolveConfiguredDefault(mixed $default, mixed $fieldType): mixed
+    {
+        if ($this->isBlankSearchValue($default)) {
+            return null;
+        }
+
+        if (!is_string($default)) {
+            return $default;
+        }
+
+        $token = strtolower(trim($default));
+        if ($fieldType === 'date') {
+            if ($token === 'today') {
+                return Carbon::today()->toDateString();
+            }
+            if ($token === 'tomorrow') {
+                return Carbon::tomorrow()->toDateString();
+            }
+            if (preg_match('/^\+(\d+)\s*days?$/', $token, $matches)) {
+                return Carbon::today()->addDays((int) $matches[1])->toDateString();
+            }
+        }
+
+        if ($fieldType === 'time' && in_array($token, ['now', 'current_time'], true)) {
+            return Carbon::now()->format('H:i');
+        }
+
+        return $default;
     }
 
     /**
@@ -776,27 +879,13 @@ class BookingSearchRequest extends FormRequest
         $usesDropoffTimeDefault = $serviceCode === 'ride_now' ? false : true;
         $usesDropoffTime = $serviceType?->uses_dropoff_time ?? $usesDropoffTimeDefault;
         $allowReturnTrip = $serviceType?->allow_return_trip ?? false;
-        $fields = [];
-
-        if (is_array($serviceType?->form_config)) {
-            $storedConfig = $serviceType->form_config;
-            $fieldConfig = isset($storedConfig['fields']) && is_array($storedConfig['fields'])
-                ? $storedConfig['fields']
-                : $storedConfig;
-
-            unset($fieldConfig['field_mappings']);
-
-            $fields = array_filter($fieldConfig, function ($config) {
-                return is_array($config)
-                    && isset($config['type'])
-                    && isset($config['label']);
-            });
-        }
-
-        // Fallback to defaults if no custom config
-        if (empty($fields)) {
-            $fields = \App\Services\DefaultFormConfigService::getDefaults($serviceCode);
-        }
+        $resolvedPublicConfig = $serviceType
+            ? app(\App\Services\DynamicServiceConfigurationService::class)
+                ->getServiceFormConfiguration($serviceType->code)
+            : [];
+        $fields = is_array($resolvedPublicConfig['fields'] ?? null)
+            ? $resolvedPublicConfig['fields']
+            : [];
 
         return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id];
     }

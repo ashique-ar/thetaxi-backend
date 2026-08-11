@@ -34,7 +34,27 @@
     $dropoffTime = $getTimeForService($serviceCode, false);
 
     // Sort fields by order
-    $sortedFields = collect($fields)->sortBy('order')->all();
+    $sortedFields = collect($fields)->sortBy(static function ($field) {
+        $row = max(1, (int) ($field['row'] ?? 1));
+        $order = max(0, (int) ($field['order'] ?? 0));
+        return sprintf('%06d-%06d', $row, $order);
+    })->all();
+    $hasSearchContext = (bool) ($hasSearchContext ?? false);
+    $clientFieldDefaults = [];
+    foreach ($sortedFields as $defaultFieldName => $defaultFieldConfig) {
+        $defaultSubmitAs = $defaultFieldConfig['submit_as'] ?? $defaultFieldName;
+        if (array_key_exists('default', $defaultFieldConfig) && $defaultFieldConfig['default'] !== '') {
+            $clientFieldDefaults[$defaultSubmitAs] = $defaultFieldConfig['default'];
+        }
+        if (($defaultFieldConfig['type'] ?? null) === 'location') {
+            foreach (['lat', 'lng'] as $coordinate) {
+                $coordinateDefault = $defaultFieldConfig['default_' . $coordinate] ?? null;
+                if ($coordinateDefault !== null && $coordinateDefault !== '') {
+                    $clientFieldDefaults[$defaultSubmitAs . '_' . $coordinate] = $coordinateDefault;
+                }
+            }
+        }
+    }
 
     // Backward-compatible return-trip UX for Ride Now.
     // The frontend JS still targets legacy IDs/classes (ride_now-return-*).
@@ -121,16 +141,20 @@
 <form id="{{ $formId }}"
       class="filter-input {{ $isActive ? 'show' : '' }}"
       data-service="{{ $serviceCode }}"
+      data-has-search-context="{{ $hasSearchContext ? 'true' : 'false' }}"
+      data-field-defaults="{{ base64_encode(json_encode($clientFieldDefaults)) }}"
       action="{{ $actionRoute }}"
-      method="GET">
+      method="GET"
+      novalidate>
 
     <input type="hidden" name="service_type" value="{{ $serviceCode }}">
 
+    @php $currentLayoutRow = null; @endphp
     @foreach($sortedFields as $fieldName => $field)
         @php
             $submitAs = $field['submit_as'] ?? $fieldName;
             $fieldType = $field['type'] ?? 'text';
-            $locationMode = $field['location_mode'] ?? 'autocomplete';
+            $locationMode = $field['location_mode'] ?? ($field['location_type'] ?? 'autocomplete');
             $syncFrom = $field['sync_from'] ?? '';
 
             // Resolve current value based on field type and submit_as
@@ -168,30 +192,30 @@
 
                 if ($isPickupField) {
                     $locAddr = $pickupLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $locAddr ?: $fieldDefault);
+                    $currentValue = $safeOldOr($submitAs, $locAddr ?: ($hasSearchContext ? $fieldDefault : ''));
                     $locLat = $pickupLoc['lat'] ?? '';
                     $locLng = $pickupLoc['lng'] ?? '';
-                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($field['default_lat'] ?? ''));
-                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($field['default_lng'] ?? ''));
+                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($hasSearchContext ? ($field['default_lat'] ?? '') : ''));
+                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($hasSearchContext ? ($field['default_lng'] ?? '') : ''));
                 } elseif ($isDropoffField) {
                     $locAddr = $dropoffLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $locAddr ?: $fieldDefault);
+                    $currentValue = $safeOldOr($submitAs, $locAddr ?: ($hasSearchContext ? $fieldDefault : ''));
                     $locLat = $dropoffLoc['lat'] ?? '';
                     $locLng = $dropoffLoc['lng'] ?? '';
-                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($field['default_lat'] ?? ''));
-                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($field['default_lng'] ?? ''));
+                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($hasSearchContext ? ($field['default_lat'] ?? '') : ''));
+                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($hasSearchContext ? ($field['default_lng'] ?? '') : ''));
                 } else {
-                    $currentValue = $safeOldOr($submitAs, $fieldDefault);
+                    $currentValue = $safeOldOr($submitAs, $hasSearchContext ? $fieldDefault : '');
                 }
             } elseif ($fieldType === 'date') {
                 $isPickupDate = str_contains($fieldName, 'pickup') || $submitAs === 'date';
                 $rawDate = $isPickupDate ? $pickupDate : $dropoffDate;
-                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : date('d/m/Y');
+                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : ($hasSearchContext ? $fieldDefault : '');
                 $currentValue = old($submitAs, $formatted);
             } elseif ($fieldType === 'time') {
                 $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time';
                 $rawTime = $isPickupTime ? $pickupTime : $dropoffTime;
-                $currentValue = old($submitAs, $rawTime ?? ($fieldDefault ?: '09:00'));
+                $currentValue = old($submitAs, $rawTime ?? ($hasSearchContext ? $fieldDefault : ''));
             } elseif ($fieldType === 'package_select') {
                 $searchPackageValue = null;
                 if (isset($search) && is_object($search)) {
@@ -204,7 +228,7 @@
                         ?? ($search['service_package_id'] ?? null);
                 }
 
-                $currentValue = old($submitAs, $searchPackageValue ?? $fieldDefault);
+                $currentValue = old($submitAs, $searchPackageValue ?? ($hasSearchContext ? $fieldDefault : ''));
             } elseif ($fieldType === 'radio') {
                 if ($submitAs === 'transfer_type') {
                     $currentValue = old($submitAs, $airportTransferType ?? ($fieldDefault ?: ''));
@@ -220,23 +244,48 @@
                     }
                 }
             } else {
-                $currentValue = old($submitAs, $fieldDefault);
+                $currentValue = old($submitAs, $hasSearchContext ? $fieldDefault : '');
             }
         @endphp
 
-        @include('components.dynamic-form-field', [
-            'fieldName' => $fieldName,
-            'field' => $field,
-            'prefix' => $prefix,
-            'formId' => $formId,
-            'currentValue' => $currentValue,
-            'currentLat' => $currentLat,
-            'currentLng' => $currentLng,
-            'predefinedLocations' => $predefinedLocations ?? collect(),
-            'airportOptions' => $airportOptions ?? collect(),
-            'servicePackages' => $servicePackages,
-            'transferType' => $airportTransferType ?? null,
-        ])
+        @php
+            $desktopWidth = $field['width'] ?? 'auto';
+            $tabletWidth = $field['tablet_width'] ?? 'full';
+            $mobileWidth = $field['mobile_width'] ?? 'full';
+            $configuredWidth = in_array($desktopWidth, ['full', 'half', 'third', 'auto'], true)
+                ? $desktopWidth
+                : 'auto';
+            $configuredTabletWidth = in_array($tabletWidth, ['full', 'half', 'third', 'auto'], true)
+                ? $tabletWidth
+                : 'full';
+            $configuredMobileWidth = in_array($mobileWidth, ['full', 'half', 'third', 'auto'], true)
+                ? $mobileWidth
+                : 'full';
+            $configuredRow = max(1, (int) ($field['row'] ?? 1));
+        @endphp
+        @if($currentLayoutRow !== $configuredRow)
+            @if($currentLayoutRow !== null)
+                </div>
+            @endif
+            <div class="dynamic-form-row" data-form-row="{{ $configuredRow }}">
+            @php $currentLayoutRow = $configuredRow; @endphp
+        @endif
+        <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }}"
+             data-field-row="{{ $configuredRow }}">
+            @include('components.dynamic-form-field', [
+                'fieldName' => $fieldName,
+                'field' => $field,
+                'prefix' => $prefix,
+                'formId' => $formId,
+                'currentValue' => $currentValue,
+                'currentLat' => $currentLat,
+                'currentLng' => $currentLng,
+                'predefinedLocations' => $predefinedLocations ?? collect(),
+                'airportOptions' => $airportOptions ?? collect(),
+                'servicePackages' => $servicePackages,
+                'transferType' => $airportTransferType ?? null,
+            ])
+        </div>
 
         {{-- For predefined_or_custom location with sync_from: add dropoff sync fields --}}
         @if($fieldType === 'location' && $locationMode === 'predefined_or_custom' && $syncFrom)
@@ -245,6 +294,9 @@
             @endphp
         @endif
     @endforeach
+    @if($currentLayoutRow !== null)
+        </div>
+    @endif
 
     @if($useLegacyRideNowReturnBlock)
         <div class="return-trip-section" id="ride_now-return-trip-section">
@@ -379,7 +431,7 @@
         @endif
     @endif
 
-    <button type="submit" class="primary-btn1">
+    <button type="submit" class="primary-btn1 booking-search-submit">
         <span>{{ $submitLabel }}</span>
     </button>
 </form>

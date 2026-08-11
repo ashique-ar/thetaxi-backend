@@ -19,6 +19,22 @@ $dropdownId = $selectId . '_dropdown';
 $selectedAirportName = '';
 $selectedAirportCode = '';
 $cleanedValue = '';
+$defaultAirportValue = '';
+
+foreach ($airports as $airport) {
+    $aName = is_array($airport) ? ($airport['name'] ?? '') : ($airport->name ?? '');
+    $isDefaultAirport = (bool) (is_array($airport) ? ($airport['is_default'] ?? false) : ($airport->is_default ?? false));
+    if ($isDefaultAirport || $defaultAirportValue === '') {
+        $defaultAirportValue = $aName;
+    }
+    if ($isDefaultAirport) break;
+}
+
+// Airport selectors keep their normal visible selection behavior. Only free-text
+// location defaults are hidden behind placeholders.
+if (!$selectedValue && $defaultAirportValue !== '') {
+    $selectedValue = $defaultAirportValue;
+}
 
 if ($selectedValue) {
     // Strip trailing " (Airport)" suffix that transformSearchParams may have appended
@@ -81,6 +97,7 @@ $displayText = $selectedAirportName
     {{-- Hidden native select for form submission & JS compatibility --}}
     <select id="{{ $selectId }}" name="{{ $name }}"
             class="no-nice airport-select {{ $cssClass ?? '' }}"
+            data-default-airport-value="{{ $defaultAirportValue }}"
             style="display:none !important;position:absolute;opacity:0;pointer-events:none;"
             {{ ($disabled ?? false) ? 'disabled' : '' }}
             {{ ($required ?? false) ? 'required' : '' }}>
@@ -91,8 +108,9 @@ $displayText = $selectedAirportName
                 $aCode = is_array($airport) ? ($airport['code'] ?? '') : ($airport->code ?? '');
                 $aLat  = is_array($airport) ? ($airport['latitude'] ?? '') : ($airport->latitude ?? '');
                 $aLng  = is_array($airport) ? ($airport['longitude'] ?? '') : ($airport->longitude ?? '');
+                $aDefault = (bool) (is_array($airport) ? ($airport['is_default'] ?? false) : ($airport->is_default ?? false));
             @endphp
-            <option value="{{ $aName }}" data-lat="{{ $aLat }}" data-lng="{{ $aLng }}"
+            <option value="{{ $aName }}" data-lat="{{ $aLat }}" data-lng="{{ $aLng }}" data-is-default="{{ $aDefault ? 'true' : 'false' }}"
                     {{ $isSelected($aName) ? 'selected' : '' }}>
                 {{ $aName }}{{ $aCode ? ' (' . $aCode . ')' : '' }}
             </option>

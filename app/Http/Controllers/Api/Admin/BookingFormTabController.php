@@ -62,6 +62,20 @@ class BookingFormTabController extends Controller
         }
 
         $tab = BookingFormTab::findOrFail($id);
+
+        $metadata = $request->input('metadata');
+        if (is_array($metadata) && filter_var($metadata['is_default'] ?? false, FILTER_VALIDATE_BOOLEAN)) {
+            BookingFormTab::query()
+                ->where('id', '!=', $tab->id)
+                ->get()
+                ->each(function (BookingFormTab $otherTab): void {
+                    $otherMetadata = $otherTab->metadata ?? [];
+                    if (!empty($otherMetadata['is_default'])) {
+                        $otherMetadata['is_default'] = false;
+                        $otherTab->update(['metadata' => $otherMetadata]);
+                    }
+                });
+        }
         $tab->update($request->only([
             'label',
             'enabled',

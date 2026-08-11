@@ -35,6 +35,114 @@
     min-width: 0 !important;
 }
 
+.filter-wrapper .booking-textarea-box,
+.t2-filter-wrapper .booking-textarea-box {
+    height: auto !important;
+    min-height: 96px !important;
+    padding: 0 !important;
+    align-items: stretch !important;
+}
+
+.filter-wrapper .booking-textarea-box .custom-select-dropdown,
+.t2-filter-wrapper .booking-textarea-box .custom-select-dropdown {
+    display: flex !important;
+    width: 100% !important;
+}
+
+.filter-wrapper textarea.booking-textarea,
+.t2-filter-wrapper textarea.booking-textarea {
+    display: block !important;
+    width: 100% !important;
+    min-height: 94px !important;
+    margin: 0 !important;
+    padding: 14px 16px !important;
+    border: 0 !important;
+    outline: 0 !important;
+    border-radius: inherit !important;
+    background: transparent !important;
+    color: inherit !important;
+    font: inherit !important;
+    line-height: 1.45 !important;
+    resize: vertical !important;
+}
+
+.filter-wrapper textarea.booking-textarea:focus,
+.t2-filter-wrapper textarea.booking-textarea:focus {
+    box-shadow: none !important;
+}
+
+/* Service Type Form Configuration width mapping. */
+.filter-wrapper .dynamic-form-row,
+.t2-filter-wrapper .dynamic-form-row {
+    display: grid !important;
+    grid-template-columns: repeat(12, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-column: 1 / -1 !important;
+}
+
+.filter-wrapper .dynamic-field-layout,
+.t2-filter-wrapper .dynamic-field-layout {
+    width: 100% !important;
+    min-width: 0 !important;
+    grid-column: span 3;
+}
+
+.filter-wrapper .dynamic-field-layout > .booking-field,
+.t2-filter-wrapper .dynamic-field-layout > .booking-field,
+.filter-wrapper .dynamic-field-layout > .dynamic-conditional-location,
+.t2-filter-wrapper .dynamic-field-layout > .dynamic-conditional-location {
+    width: 100% !important;
+}
+
+.filter-wrapper .dynamic-field-width-full,
+.t2-filter-wrapper .dynamic-field-width-full {
+    grid-column: span 12 !important;
+}
+
+.filter-wrapper .dynamic-field-width-half,
+.t2-filter-wrapper .dynamic-field-width-half {
+    grid-column: span 6 !important;
+}
+
+.filter-wrapper .dynamic-field-width-third,
+.t2-filter-wrapper .dynamic-field-width-third {
+    grid-column: span 4 !important;
+}
+
+.filter-wrapper .filter-input-wrap .filter-input > .primary-btn1,
+.t2-filter-wrapper .filter-input-wrap .filter-input > .primary-btn1 {
+    grid-column: span 4;
+}
+
+@media (max-width: 991px) {
+    .filter-wrapper .dynamic-field-tablet-full,
+    .t2-filter-wrapper .dynamic-field-tablet-full { grid-column: span 12 !important; }
+    .filter-wrapper .dynamic-field-tablet-half,
+    .t2-filter-wrapper .dynamic-field-tablet-half { grid-column: span 6 !important; }
+    .filter-wrapper .dynamic-field-tablet-third,
+    .t2-filter-wrapper .dynamic-field-tablet-third { grid-column: span 4 !important; }
+    .filter-wrapper .dynamic-field-tablet-auto,
+    .t2-filter-wrapper .dynamic-field-tablet-auto { grid-column: span 6 !important; }
+}
+
+@media (max-width: 576px) {
+    .filter-wrapper .dynamic-field-mobile-full,
+    .t2-filter-wrapper .dynamic-field-mobile-full { grid-column: span 12 !important; }
+    .filter-wrapper .dynamic-field-mobile-half,
+    .t2-filter-wrapper .dynamic-field-mobile-half { grid-column: span 6 !important; }
+    .filter-wrapper .dynamic-field-mobile-third,
+    .t2-filter-wrapper .dynamic-field-mobile-third { grid-column: span 4 !important; }
+    .filter-wrapper .dynamic-field-mobile-auto,
+    .t2-filter-wrapper .dynamic-field-mobile-auto { grid-column: span 12 !important; }
+
+    .filter-wrapper .filter-input-wrap .filter-input > .primary-btn1,
+    .t2-filter-wrapper .filter-input-wrap .filter-input > .primary-btn1 {
+        grid-column: span 12 !important;
+    }
+}
+
 /* ==================== GLOBAL FORM STYLES ==================== */
 .primary-btn1 {
     padding: 12px 20px !important;
@@ -333,13 +441,6 @@
     margin-top: 0;
 }
 
-#ride_now-form .primary-btn1 {
-    width: auto !important;
-    min-width: 220px !important;
-    justify-self: start !important;
-    align-self: start !important;
-}
-
 @media (max-width: 991px) {
     .filter-wrapper .filter-input-wrap .filter-input .return-trip-details {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -348,12 +449,6 @@
     .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-route-summary,
     .filter-wrapper .filter-input-wrap .filter-input .return-trip-details .return-pricing-info {
         grid-column: 1 / -1;
-    }
-
-    #ride_now-form .primary-btn1 {
-        width: 100% !important;
-        min-width: 0 !important;
-        justify-self: stretch !important;
     }
 }
 
@@ -457,6 +552,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     margin: 0 !important;
     transform: scale(1.1) !important;
     cursor: pointer !important;
+}
+
+.package-selector-field .package-buttons-wrapper {
+    width: 100% !important;
+}
+
+.single-package-display {
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    gap: 12px !important;
+    width: 100% !important;
 }
 
 /* ==================== CORPORATE FORM ==================== */
@@ -1487,4 +1594,36 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 /* Custom location box animation */
 .custom-location-box {
     animation: slideDown 0.3s ease-out;
+}
+
+/* Booking submit buttons render one label span, so keep it visible instead of
+   applying the global two-span hover animation used by other primary buttons. */
+.booking-search-submit,
+.booking-search-submit:hover,
+.booking-search-submit:focus,
+.booking-search-submit:active,
+.booking-search-submit > span:first-child,
+.booking-search-submit:hover > span:first-child,
+.booking-search-submit:focus > span:first-child,
+.booking-search-submit:active > span:first-child {
+    color: #fff !important;
+}
+
+.booking-search-submit:hover > span:first-child,
+.booking-search-submit:focus > span:first-child,
+.booking-search-submit:active > span:first-child {
+    opacity: 1 !important;
+    transform: none !important;
+}
+
+/* Keep validation copy below, rather than inside, the bordered control. */
+.filter-wrapper .booking-field > .inline-error-message,
+.t2-filter-wrapper .booking-field > .inline-error-message,
+.booking-field > .inline-error-message {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    color: #dc3545;
+    font-size: 12px;
+    line-height: 1.35;
 }

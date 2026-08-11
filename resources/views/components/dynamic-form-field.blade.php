@@ -21,10 +21,17 @@
     $label = $field['label'] ?? ucfirst(str_replace('_', ' ', $fieldName));
     $required = (bool) ($field['required'] ?? false);
     $placeholder = $field['placeholder'] ?? '';
+    $placeholderExamples = array_values(array_filter(
+        is_array($field['placeholder_examples'] ?? null) ? $field['placeholder_examples'] : [],
+        static fn ($example) => is_string($example) && trim($example) !== ''
+    ));
+    $encodedPlaceholderExamples = $placeholderExamples
+        ? base64_encode(json_encode($placeholderExamples, JSON_UNESCAPED_UNICODE))
+        : '';
     $datePlaceholder = $settings['booking_date_placeholder'] ?? 'DD/MM/YYYY';
     $airportSelectPlaceholder = $settings['booking_airport_select_placeholder'] ?? 'Select Airport';
     $submitAs = $field['submit_as'] ?? $fieldName;
-    $locationMode = $field['location_mode'] ?? 'autocomplete';
+    $locationMode = $field['location_mode'] ?? ($field['location_type'] ?? 'autocomplete');
     $defaultValue = $field['default'] ?? '';
     $width = $field['width'] ?? 'auto';
     $hint = $field['hint'] ?? '';
@@ -90,10 +97,23 @@
                     // Determine the active condition value for server-side rendering
                     $condKeys = array_keys($conditions);
                     $activeCondValue = '';
+                    $normalizeConditionValue = static fn ($value) => str_replace('-', '_', strtolower(trim((string) $value)));
 
                     // Try transferType prop first (from parent booking form)
                     if ($condField === 'transfer_type' && !empty($transferType)) {
                         $activeCondValue = $transferType;
+                    }
+
+                    // Older defaults use hyphens while Service Type forms may use underscores.
+                    // Resolve both formats to the actual saved condition key.
+                    if (!empty($activeCondValue) && !in_array($activeCondValue, $condKeys, true)) {
+                        $normalizedActiveValue = $normalizeConditionValue($activeCondValue);
+                        foreach ($condKeys as $condKey) {
+                            if ($normalizeConditionValue($condKey) === $normalizedActiveValue) {
+                                $activeCondValue = $condKey;
+                                break;
+                            }
+                        }
                     }
 
                     // Validate activeCondValue is actually a valid condition key
@@ -115,6 +135,9 @@
                         @php
                             $condType = $condConfig['type'] ?? 'any';
                             $isActiveVariant = ($condValue === $activeCondValue);
+                            $conditionalAirportOptions = !empty($condConfig['options'])
+                                ? collect($condConfig['options'])
+                                : ($airportOptions ?? collect());
                         @endphp
                         <div class="conditional-variant" data-condition-value="{{ $condValue }}" style="display:{{ $isActiveVariant ? 'block' : 'none' }};">
                             @if($condType === 'airport')
@@ -126,7 +149,7 @@
                                             @include('components.airport-select', [
                                             'selectId' => $elementId . '_' . $condValue,
                                             'name' => $submitAs,
-                                            'airports' => $airportOptions ?? collect(),
+                                            'airports' => $conditionalAirportOptions,
                                             'selectedValue' => $isActiveVariant ? $fieldValue : '',
                                             'placeholder' => $airportSelectPlaceholder,
                                             'required' => $required,
@@ -147,8 +170,10 @@
                                             <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}_{{ $condValue }}"
                                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                class="location-search @error($submitAs) is-invalid @enderror"
+                                               @if($encodedPlaceholderExamples) data-placeholder-examples="{{ $encodedPlaceholderExamples }}" @endif
+                                               data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                value="{{ $isActiveVariant ? $fieldValue : '' }}"
-                                               data-default-value="{{ $fieldValue }}"
+                                               data-default-value="{{ $defaultValue }}"
                                                data-default-lat="{{ $currentLat ?? $fieldDefaultLat }}"
                                                data-default-lng="{{ $currentLng ?? $fieldDefaultLng }}"
                                                {{ $required ? 'required' : '' }}
@@ -176,6 +201,11 @@
                             <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                                placeholder="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                class="location-search @error($submitAs) is-invalid @enderror"
+                               @if($encodedPlaceholderExamples) data-placeholder-examples="{{ $encodedPlaceholderExamples }}" @endif
+                               data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
+                               data-default-value="{{ $defaultValue }}"
+                               data-default-lat="{{ $field['default_lat'] ?? '' }}"
+                               data-default-lng="{{ $field['default_lng'] ?? '' }}"
                                value="{{ $fieldValue }}"
                                {{ $required ? 'required' : '' }}
                                autocomplete="off">
@@ -199,7 +229,7 @@
                 <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
                    placeholder="{{ $placeholder ?: $datePlaceholder }}"
                    class="custom-datepicker @error($submitAs) is-invalid @enderror"
-                   value="{{ $fieldValue ?: date('d/m/Y') }}"
+                   value="{{ $fieldValue }}"
                    {{ $required ? 'required' : '' }}
                    data-enable-time="false"
                    data-date-format="d/m/Y"
@@ -221,7 +251,8 @@
                 @include('components.partials.clock-icon')
                 <div class="custom-select-dropdown">
                     <input type="time" name="{{ $submitAs }}" id="{{ $elementId }}"
-                       value="{{ $fieldValue ?: ($defaultValue ?: '09:00') }}"
+                       value="{{ $fieldValue }}"
+                       placeholder="{{ $placeholder }}"
                        class="@error($submitAs) is-invalid @enderror"
                            {{ $required ? 'required' : '' }}>
                 </div>
@@ -350,11 +381,11 @@
     @case('textarea')
         <div class="booking-field">
             <label class="input-label">{{ $label }}</label>
-            <div class="single-search-box">
+            <div class="single-search-box booking-textarea-box">
                 <div class="custom-select-dropdown">
                     <textarea name="{{ $submitAs }}" id="{{ $elementId }}"
                           placeholder="{{ $placeholder }}"
-                          class="@error($submitAs) is-invalid @enderror"
+                          class="booking-textarea @error($submitAs) is-invalid @enderror"
                           {{ $required ? 'required' : '' }}
                               rows="3">{{ $fieldValue }}</textarea>
                 </div>
@@ -396,7 +427,10 @@
 
     {{-- ===== PACKAGE SELECT (special) ===== --}}
     @case('package_select')
-        @if(isset($servicePackages) && $servicePackages->count() > 1)
+        @if(isset($servicePackages) && $servicePackages->isNotEmpty())
+        <div class="booking-field package-selector-field">
+            <label class="input-label">{{ $label }}</label>
+            @if($servicePackages->count() > 1)
             {{-- Only show package selector if there are 2 or more packages --}}
 
                 
@@ -419,9 +453,20 @@
                         </label>
                     @endforeach
                 </div>
-        @elseif(isset($servicePackages) && $servicePackages->count() === 1)
+            @else
             {{-- If only one package, auto-select it with hidden input --}}
             <input type="hidden" name="{{ $submitAs }}" value="{{ $servicePackages->first()->id }}">
+            <div class="single-search-box single-package-display" aria-label="{{ $label }}">
+                <span class="package-name">{{ $servicePackages->first()->name }}</span>
+                @if($servicePackages->first()->max_km_per_day)
+                    <span class="package-detail">{{ number_format($servicePackages->first()->max_km_per_day) }} km</span>
+                @endif
+            </div>
+            @endif
+            @error($submitAs)
+                <span class="text-danger small">{{ $message }}</span>
+            @enderror
+        </div>
         @endif
         @break
 
