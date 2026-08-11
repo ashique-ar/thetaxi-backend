@@ -259,3 +259,15 @@ it('provides a provider-free operating-cycle monitor with a failing health exit'
         ->and($command)->not->toContain('queueSingleMessage')
         ->and($command)->not->toContain('dispatch(');
 });
+
+it('keeps successful unknown provider status checks non-destructive', function () {
+    $provider = file_get_contents(app_path('Services/Sms/Providers/EsmsProvider.php'));
+    $service = file_get_contents(app_path('Services/Sms/SmsService.php'));
+
+    expect($provider)->toContain("'campaignStatus'")
+        ->and($service)->toContain('tryNormalizeProviderStatus($providerStatus)')
+        ->and($service)->toContain("'status_known' => \$normalizedStatus !== null")
+        ->and($service)->toContain("'message_status' => \$normalizedStatus ?: \$message->status")
+        ->and($service)->toContain('if ($normalizedStatus !== null)')
+        ->and($service)->toContain("default => null");
+});

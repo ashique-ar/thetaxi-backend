@@ -260,7 +260,11 @@ class EsmsProvider implements SmsProviderInterface
 
         return [
             'transaction_id' => $transactionId,
-            'campaign_status' => $this->extractValue($response, ['campaign status', 'campaign_status']),
+            'campaign_status' => $this->extractValue($response, [
+                'campaignStatus',
+                'campaign status',
+                'campaign_status',
+            ]),
             'comment' => $this->extractValue($response, ['comment']),
             'raw' => $response,
         ];

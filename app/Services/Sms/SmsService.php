@@ -586,18 +586,26 @@ class SmsService
         }
 
         $result = $this->providerManager->active()->checkTransactionStatus($message->provider_transaction_id);
-        $normalizedStatus = $this->normalizeProviderStatus((string) ($result['campaign_status'] ?? ''));
+        $providerStatus = trim((string) ($result['campaign_status'] ?? ''));
+        $normalizedStatus = $this->tryNormalizeProviderStatus($providerStatus);
 
-        $message->update([
-            'status' => $normalizedStatus,
-            'provider_status' => $normalizedStatus,
+        $updates = [
+            'provider_status' => $normalizedStatus ?: mb_substr($providerStatus ?: 'unknown', 0, 255),
             'provider_status_at' => now(),
             'provider_response' => array_merge($message->provider_response ?? [], [
                 'transaction_status_check' => $this->redactProviderPayload($result),
             ]),
-        ]);
+        ];
+        if ($normalizedStatus !== null) {
+            $updates['status'] = $normalizedStatus;
+        }
+        $message->update($updates);
 
-        return $result;
+        return array_merge($result, [
+            'normalized_status' => $normalizedStatus,
+            'status_known' => $normalizedStatus !== null,
+            'message_status' => $normalizedStatus ?: $message->status,
+        ]);
     }
 
     public function reconcileStaleProcessing(int $olderThanMinutes = 15, int $limit = 100): array
@@ -635,14 +643,21 @@ class SmsService
 
     private function normalizeProviderStatus(string $status): string
     {
+        return $this->tryNormalizeProviderStatus($status)
+            ?? throw new RuntimeException('Unknown SMS provider status');
+    }
+
+    private function tryNormalizeProviderStatus(string $status): ?string
+    {
         return match (strtolower(trim($status))) {
             '1', 'delivered', 'delivery successful', 'success' => 'delivered',
-            'queued', 'pending', 'created' => 'queued',
-            'processing', 'submitted', 'in progress', 'in_progress' => 'processing',
-            'sent', 'accepted' => 'sent',
+            'queued', 'pending', 'created', 'campaign created' => 'queued',
+            'processing', 'submitted', 'in progress', 'in_progress', 'campaign processing' => 'processing',
+            'sent', 'accepted', 'completed', 'campaign completed', 'partially completed' => 'sent',
+            'fully completed' => 'delivered',
             'cancelled', 'canceled' => 'cancelled',
             'failed', 'rejected', 'undelivered', 'expired', '0' => 'failed',
-            default => throw new RuntimeException('Unknown SMS provider status'),
+            default => null,
         };
     }
 
