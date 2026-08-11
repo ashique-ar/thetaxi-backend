@@ -8,7 +8,12 @@
     $defaultTabCode = $bookingTabs->first(fn ($tab) => (bool) data_get($tab->metadata, 'is_default', false))?->code
         ?? $bookingTabs->first()?->code
         ?? 'airport_transfers';
-    $hasSearchContext = isset($search) || session()->hasOldInput();
+    $hasSearchContext = session()->hasOldInput()
+        || request()->routeIs('search', 'booking.search')
+        || request()->hasAny([
+            'service_type', 'pickup', 'dropoff', 'from', 'to',
+            'pickup_location', 'dropoff_location', 'date', 'pickup_date',
+        ]);
 
     $knownFormCodes = ['airport_transfers', 'ride_now', 'day_rental', 'corporate', 'wedding_hire', 'self_drive', 'with_driver'];
     $getFormServiceCodeForTab = function ($tab) use ($knownFormCodes) {

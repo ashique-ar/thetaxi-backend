@@ -192,18 +192,18 @@
 
                 if ($isPickupField) {
                     $locAddr = $pickupLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $locAddr ?: ($hasSearchContext ? $fieldDefault : ''));
+                    $currentValue = $safeOldOr($submitAs, $hasSearchContext ? ($locAddr ?: $fieldDefault) : '');
                     $locLat = $pickupLoc['lat'] ?? '';
                     $locLng = $pickupLoc['lng'] ?? '';
-                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($hasSearchContext ? ($field['default_lat'] ?? '') : ''));
-                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($hasSearchContext ? ($field['default_lng'] ?? '') : ''));
+                    $currentLat = $safeOldOr($submitAs . '_lat', $hasSearchContext ? ($locLat ?: ($field['default_lat'] ?? '')) : '');
+                    $currentLng = $safeOldOr($submitAs . '_lng', $hasSearchContext ? ($locLng ?: ($field['default_lng'] ?? '')) : '');
                 } elseif ($isDropoffField) {
                     $locAddr = $dropoffLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $locAddr ?: ($hasSearchContext ? $fieldDefault : ''));
+                    $currentValue = $safeOldOr($submitAs, $hasSearchContext ? ($locAddr ?: $fieldDefault) : '');
                     $locLat = $dropoffLoc['lat'] ?? '';
                     $locLng = $dropoffLoc['lng'] ?? '';
-                    $currentLat = $safeOldOr($submitAs . '_lat', $locLat ?: ($hasSearchContext ? ($field['default_lat'] ?? '') : ''));
-                    $currentLng = $safeOldOr($submitAs . '_lng', $locLng ?: ($hasSearchContext ? ($field['default_lng'] ?? '') : ''));
+                    $currentLat = $safeOldOr($submitAs . '_lat', $hasSearchContext ? ($locLat ?: ($field['default_lat'] ?? '')) : '');
+                    $currentLng = $safeOldOr($submitAs . '_lng', $hasSearchContext ? ($locLng ?: ($field['default_lng'] ?? '')) : '');
                 } else {
                     $currentValue = $safeOldOr($submitAs, $hasSearchContext ? $fieldDefault : '');
                 }
