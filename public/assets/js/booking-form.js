@@ -97,20 +97,21 @@
      */
     function hideFreshDynamicFormDefaults() {
         document.querySelectorAll('.filter-input[data-has-search-context="false"]').forEach((form) => {
-            form.querySelectorAll([
-                'input.location-search',
-                'input.custom-datepicker',
-                'input[type="date"]',
-                'input[type="time"]',
-                'input[data-default-value]:not([type="hidden"]):not([type="radio"]):not([type="checkbox"])'
-            ].join(',')).forEach((input) => {
-                if (input.classList.contains('airport-select')) return;
+            form.querySelectorAll('input.location-search').forEach((input) => {
                 input.value = '';
-                if (input.classList.contains('location-search')) {
-                    input.setAttribute('data-place-selected', 'false');
-                    input.setAttribute('data-is-default', 'false');
-                }
+                input.setAttribute('data-place-selected', 'false');
+                input.setAttribute('data-is-default', 'false');
             });
+        });
+    }
+
+    function restoreBackgroundDefaultPlaceholders(form) {
+        if (form.dataset.hasSearchContext !== 'false') return;
+
+        form.querySelectorAll('input.location-search[data-is-default="true"]').forEach((input) => {
+            input.value = '';
+            input.setAttribute('data-place-selected', 'false');
+            input.setAttribute('data-is-default', 'false');
         });
     }
 
@@ -3243,9 +3244,9 @@
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
+                    restoreBackgroundDefaultPlaceholders(form);
 
                     console.error('Form submission BLOCKED - validation failed');
-                    showValidationMessage("Please select valid locations from the dropdown");
                     return false;
                 }
 
@@ -3490,6 +3491,10 @@
             if (missingFields.length > 0) {
                 errorMessages.push("Please select valid locations from the dropdown");
             }
+        }
+
+        if (!isValid && errorMessages.length === 0) {
+            errorMessages.push("Please complete all required booking fields");
         }
 
         // Display error messages if validation failed
