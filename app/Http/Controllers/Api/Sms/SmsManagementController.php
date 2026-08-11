@@ -65,19 +65,37 @@ class SmsManagementController extends Controller
         ]);
     }
 
-    public function overview(): JsonResponse
+    public function overview(Request $request): JsonResponse
     {
+        $overview = $this->smsService->getOverview();
+        $canManageMessages = $this->canManageMessages($request);
+        $overview['recent_messages'] = collect($overview['recent_messages'] ?? [])
+            ->map(fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages))
+            ->values()
+            ->all();
+
         return response()->json([
             'status' => 'success',
-            'data' => $this->smsService->getOverview(),
+            'data' => $overview,
         ]);
     }
 
-    public function settings(): JsonResponse
+    public function settings(Request $request): JsonResponse
     {
+        $settings = $this->smsSettingsService->getSettings();
+        $canManage = $request->user()?->can('communication.manage')
+            || $request->user()?->can('sms.settings.manage');
+
+        if (!$canManage) {
+            $settings['admin_booking_summary_numbers'] = array_map(
+                static fn (string $number): string => str_repeat('*', max(0, strlen($number) - 4)) . substr($number, -4),
+                $settings['admin_booking_summary_numbers']
+            );
+        }
+
         return response()->json([
             'status' => 'success',
-            'data' => $this->smsSettingsService->getSettings(),
+            'data' => $settings,
         ]);
     }
 
@@ -144,6 +162,10 @@ class SmsManagementController extends Controller
         $companyId = $this->websiteSettingsService->resolveCurrentCompanyId();
 
         foreach ($data as $type => $value) {
+            if ($type === 'sms_admin_booking_summary_numbers') {
+                $value = $this->smsSettingsService->protectAdminNumbers($value);
+            }
+
             // Queue workers have no HTTP/company context, so they consume the
             // deployment-global copy. Keep the active company copy in sync so
             // the settings screen reads back exactly what was submitted.
@@ -242,6 +264,10 @@ class SmsManagementController extends Controller
     public function messages(Request $request): JsonResponse
     {
         $messages = $this->smsService->getMessages($request->all());
+        $canManageMessages = $this->canManageMessages($request);
+        $messages->setCollection($messages->getCollection()->map(
+            fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages)
+        ));
 
         return response()->json([
             'status' => 'success',
@@ -255,12 +281,12 @@ class SmsManagementController extends Controller
         ]);
     }
 
-    public function showMessage(SmsMessage $smsMessage): JsonResponse
+    public function showMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
         return response()->json([
             'status' => 'success',
             'data' => [
-                'message' => $smsMessage,
+                'message' => $this->messagePayload($smsMessage, $this->canManageMessages($request)),
                 'retry_eligible' => $smsMessage->status === 'failed' && $smsMessage->is_active,
             ],
         ]);
@@ -389,12 +415,13 @@ class SmsManagementController extends Controller
             'name' => ['required', 'string', 'max:255'],
             'message' => ['required', 'string'],
             'sender_mask' => ['nullable', 'string', 'max:50'],
-            'audience_type' => ['required', 'string', 'in:manual,customers,drivers,users'],
+            'audience_type' => ['required', 'string', 'in:manual,customers'],
             'audience_filters' => ['nullable', 'array'],
             'recipients' => ['nullable', 'array'],
             'recipients.*' => ['string'],
             'scheduled_at' => ['nullable', 'date'],
             'launch_now' => ['nullable', 'boolean'],
+            'consent_confirmed' => ['required_if:audience_type,manual', 'accepted'],
         ]);
 
         return response()->json([
@@ -430,9 +457,17 @@ class SmsManagementController extends Controller
     public function balance(Request $request): JsonResponse
     {
         try {
+            $balance = $this->smsService->getBalance($request->boolean('refresh'));
+            $threshold = (float) config('sms.health.low_balance', 1000);
+            $numericBalance = is_numeric($balance['balance'] ?? null)
+                ? (float) $balance['balance']
+                : null;
+            $balance['low_balance_threshold'] = $threshold;
+            $balance['is_low_balance'] = $numericBalance !== null && $numericBalance <= $threshold;
+
             return response()->json([
                 'status' => 'success',
-                'data' => $this->smsService->getBalance($request->boolean('refresh')),
+                'data' => $balance,
             ]);
         } catch (Throwable $exception) {
             return response()->json([
@@ -519,5 +554,57 @@ class SmsManagementController extends Controller
             'status' => 'success',
             'data' => $this->smsService->markDelivery($payload),
         ]);
+    }
+
+    private function canManageMessages(Request $request): bool
+    {
+        return (bool) ($request->user()?->can('communication.manage')
+            || $request->user()?->can('sms.messages.manage'));
+    }
+
+    private function messagePayload(SmsMessage $message, bool $canManage): array
+    {
+        $recipient = (string) ($message->normalized_recipient ?: $message->recipient ?: '');
+
+        return [
+            'id' => $message->id,
+            'campaign_id' => $message->campaign_id,
+            'provider' => $message->provider,
+            'channel' => $message->channel,
+            'source' => $message->source,
+            'booking_id' => $message->booking_id,
+            'booking_item_id' => $message->booking_item_id,
+            'driver_assignment_id' => $message->driver_assignment_id,
+            'event_key' => $message->event_key,
+            'template_key' => $message->template_key,
+            'recipient' => $canManage ? $recipient : $this->maskPhone($recipient),
+            'normalized_recipient' => $canManage ? $message->normalized_recipient : null,
+            'sender_mask' => $message->sender_mask,
+            'message' => $canManage ? $message->message : '[Message content restricted]',
+            'status' => $message->status,
+            'provider_status' => $message->provider_status,
+            'segments' => $message->segments,
+            'unit_cost' => $message->unit_cost,
+            'total_cost' => $message->total_cost,
+            'cost_currency' => $message->cost_currency,
+            'provider_message_id' => $message->provider_message_id,
+            'provider_campaign_id' => $message->provider_campaign_id,
+            'provider_transaction_id' => $message->provider_transaction_id,
+            'attempts' => $message->attempts,
+            'error_message' => $message->error_message,
+            'queued_at' => $message->queued_at,
+            'processing_at' => $message->processing_at,
+            'sent_at' => $message->sent_at,
+            'delivered_at' => $message->delivered_at,
+            'failed_at' => $message->failed_at,
+            'created_at' => $message->created_at,
+        ];
+    }
+
+    private function maskPhone(string $number): string
+    {
+        return strlen($number) > 4
+            ? str_repeat('*', strlen($number) - 4) . substr($number, -4)
+            : $number;
     }
 }

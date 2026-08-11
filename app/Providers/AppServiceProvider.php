@@ -165,6 +165,22 @@ class AppServiceProvider extends ServiceProvider
 
             return Limit::perMinute($limit)->by($request->user()?->id ?: $request->ip());
         });
+        RateLimiter::for('sms-send', function (Request $request) {
+            $actor = $request->user()?->id ?: $request->ip();
+            return $request->filled('recipient')
+                ? Limit::perMinute(10)->by('single:' . $actor)
+                : Limit::perMinute(2)->by('bulk:' . $actor);
+        });
+        RateLimiter::for('sms-test', fn (Request $request) => Limit::perMinute(3)
+            ->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('sms-campaign', fn (Request $request) => Limit::perMinute(2)
+            ->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('sms-preview', fn (Request $request) => Limit::perMinute(30)
+            ->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('sms-retry', fn (Request $request) => Limit::perMinute(5)
+            ->by($request->user()?->id ?: $request->ip()));
+        RateLimiter::for('sms-webhook', fn (Request $request) => Limit::perMinute(120)
+            ->by($request->ip()));
 
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,

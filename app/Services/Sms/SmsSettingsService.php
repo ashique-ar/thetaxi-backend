@@ -3,6 +3,8 @@
 namespace App\Services\Sms;
 
 use App\Services\WebsiteSettingsService;
+use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Support\Facades\Crypt;
 
 class SmsSettingsService
 {
@@ -16,8 +18,8 @@ class SmsSettingsService
 
         return [
             'enabled' => $this->toBool($settings['sms_enabled'] ?? true, true),
-            'provider' => $settings['sms_provider'] ?: 'esms',
-            'default_sender_mask' => $settings['sms_default_sender_mask'] ?: null,
+            'provider' => ($settings['sms_provider'] ?? null) ?: 'esms',
+            'default_sender_mask' => $settings['sms_default_sender_mask'] ?? null,
             'allow_mask_override' => $this->toBool(
                 $settings['sms_allow_mask_override'] ?? true,
                 true
@@ -30,10 +32,10 @@ class SmsSettingsService
                 $settings['sms_dry_run'] ?? false,
                 false
             ),
-            'bulk_chunk_size' => max(1, (int) ($settings['sms_bulk_chunk_size'] ?: 250)),
+            'bulk_chunk_size' => max(1, (int) ($settings['sms_bulk_chunk_size'] ?? 250)),
             'cost_per_segment' => max(0, (float) ($settings['sms_cost_per_segment'] ?? 0)),
             'cost_currency' => strtoupper(substr((string) ($settings['sms_cost_currency'] ?? 'LKR'), 0, 3)),
-            'webhook_secret' => $settings['sms_webhook_secret'] ?: null,
+            'webhook_secret' => $settings['sms_webhook_secret'] ?? null,
             'booking_status_enabled' => $this->toBool(
                 $settings['sms_booking_status_enabled'] ?? false,
                 false
@@ -67,7 +69,7 @@ class SmsSettingsService
                 false
             ),
             'trip_completion_scope' => in_array(($settings['sms_trip_completion_scope'] ?? 'booking'), ['booking', 'item'], true)
-                ? $settings['sms_trip_completion_scope']
+                ? ($settings['sms_trip_completion_scope'] ?? 'booking')
                 : 'booking',
             'driver_assignment_fallback_enabled' => $this->toBool(
                 $settings['sms_driver_assignment_fallback_enabled'] ?? false,
@@ -122,15 +124,15 @@ class SmsSettingsService
             'providers' => [
                 'esms' => [
                     'base_url' => rtrim(
-                        $settings['sms_esms_base_url'] ?: 'https://e-sms.dialog.lk/api',
+                        ($settings['sms_esms_base_url'] ?? null) ?: 'https://e-sms.dialog.lk/api',
                         '/'
                     ),
-                    'username' => $settings['sms_esms_username'] ?: null,
-                    'password' => $settings['sms_esms_password'] ?: null,
-                    'api_key' => $settings['sms_esms_api_key'] ?: null,
-                    'esmsqk' => $settings['sms_esms_esmsqk'] ?: null,
-                    'default_sender_mask' => $settings['sms_default_sender_mask'] ?: null,
-                    'delivery_callback_url' => $settings['sms_esms_delivery_callback_url'] ?: null,
+                    'username' => $settings['sms_esms_username'] ?? null,
+                    'password' => $settings['sms_esms_password'] ?? null,
+                    'api_key' => $settings['sms_esms_api_key'] ?? null,
+                    'esmsqk' => $settings['sms_esms_esmsqk'] ?? null,
+                    'default_sender_mask' => $settings['sms_default_sender_mask'] ?? null,
+                    'delivery_callback_url' => $settings['sms_esms_delivery_callback_url'] ?? null,
                 ],
             ],
         ];
@@ -149,6 +151,11 @@ class SmsSettingsService
     public function isEnabled(): bool
     {
         return $this->getSettings()['enabled'];
+    }
+
+    public function protectAdminNumbers(array $numbers): string
+    {
+        return 'enc:v1:' . Crypt::encryptString(json_encode($this->adminNumbers($numbers), JSON_THROW_ON_ERROR));
     }
 
     private function toBool(mixed $value, bool $default): bool
@@ -170,6 +177,14 @@ class SmsSettingsService
 
     private function adminNumbers(mixed $value): array
     {
+        if (is_string($value) && str_starts_with($value, 'enc:v1:')) {
+            try {
+                $value = Crypt::decryptString(substr($value, 7));
+            } catch (DecryptException) {
+                return [];
+            }
+        }
+
         if (is_string($value)) {
             $decoded = json_decode($value, true);
             $value = is_array($decoded) ? $decoded : preg_split('/[,\r\n]+/', $value);

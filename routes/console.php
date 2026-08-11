@@ -14,6 +14,12 @@ Schedule::command('sitemap:generate-and-ping')->daily();
 
 Schedule::command('short-urls:cleanup')->daily();
 
+if (config('sms.retention.enabled')) {
+    Schedule::command('sms:apply-retention --execute')
+        ->dailyAt('02:30')
+        ->withoutOverlapping();
+}
+
 Schedule::command('bookings:generate-recurring')
     ->dailyAt('01:00')
     ->withoutOverlapping();

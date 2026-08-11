@@ -1,0 +1,29 @@
+# CANARY TEMPLATE ONLY — do not install or start until sms:audit-readiness reports
+# no historical SMS jobs/non-terminal records and the production backlog is classified.
+# Replace every __PLACEHOLDER__ from evidence gathered on the target business.
+
+[Unit]
+Description=__BUSINESS_NAME__ transactional SMS canary worker
+After=network.target
+ConditionPathExists=__DEPLOYMENT_DIRECTORY__/artisan
+
+[Service]
+Type=simple
+User=__PROCESS_USER__
+Group=__PROCESS_GROUP__
+WorkingDirectory=__DEPLOYMENT_DIRECTORY__
+ExecStart=__PHP_BINARY__ artisan queue:work __QUEUE_CONNECTION__ --queue=sms --sleep=3 --tries=3 --timeout=180 --max-time=3600
+Restart=no
+KillSignal=SIGTERM
+TimeoutStopSec=190
+StandardOutput=journal
+StandardError=journal
+
+# Keep privileges and filesystem access scoped to the audited application.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=__DEPLOYMENT_DIRECTORY__/storage __DEPLOYMENT_DIRECTORY__/bootstrap/cache
+
+[Install]
+# No installation target is declared; canary activation must be explicit and manual.

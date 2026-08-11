@@ -19,7 +19,7 @@ class LaunchSmsCampaignJob implements ShouldQueue
     public function __construct(
         public string $campaignId
     ) {
-        $this->queue = 'sms';
+        $this->queue = 'sms-campaigns';
     }
 
     public function handle(SmsService $smsService): void

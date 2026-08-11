@@ -237,6 +237,8 @@ it('queues item-scoped dispatched and assignment-scoped arrived customer message
 
     expect(array_column($payloads, 'event_key'))->toBe(['driver.dispatched', 'driver.arrived'])
         ->and($payloads[0]['booking_item_id'])->toBe('item-1')
+        ->and($payloads[0]['recipient'])->toBe('0770000000')
+        ->and($payloads[1]['recipient'])->toBe('0770000000')
         ->and($payloads[0]['driver_assignment_id'])->toBeNull()
         ->and($payloads[1]['driver_assignment_id'])->toBe('assignment-1')
         ->and($payloads[0]['message'])->toContain('ON WAY Kamal Silva 0771111111 CAB-1234')
@@ -484,6 +486,8 @@ it('provides authenticated acknowledgement and uniquely scheduled safe driver fa
         ->and($notificationService)->toContain('skipped_reassigned')
         ->and($notificationService)->toContain('skipped_expired')
         ->and($payloadService)->toContain("'notification_id'")
+        ->and($payloadService)->toContain("'acknowledgement_required'")
+        ->and($payloadService)->toContain("'acknowledged_at'")
         ->and($payloadService)->toContain("'accepted'");
 });
 

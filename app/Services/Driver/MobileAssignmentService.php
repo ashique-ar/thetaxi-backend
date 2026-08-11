@@ -453,6 +453,12 @@ class MobileAssignmentService
         $paymentDetails = $this->resolvePaymentDetails($assignment);
         $fareAmount = $this->resolveFareAmount($assignment);
         $pricingMetrics = $this->buildPricingMetrics($bookingItem, $assignment);
+        $notification = Schema::hasTable('driver_assignment_notifications')
+            ? \App\Models\Driver\DriverAssignmentNotification::query()
+                ->where('assignment_id', $assignment->id)
+                ->where('driver_id', $assignment->driver_id)
+                ->first(['id', 'acknowledged_at', 'acknowledgement_source'])
+            : null;
 
         // Driver responses are an explicit projection. Never serialize loaded booking,
         // pricing, tracking, approval, or internal assignment relations implicitly.
@@ -471,12 +477,13 @@ class MobileAssignmentService
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
             'created_at' => $assignment->created_at?->toIso8601String(),
             'updated_at' => $assignment->updated_at?->toIso8601String(),
-            'notification_id' => Schema::hasTable('driver_assignment_notifications')
-                ? \App\Models\Driver\DriverAssignmentNotification::query()
-                    ->where('assignment_id', $assignment->id)
-                    ->where('driver_id', $assignment->driver_id)
-                    ->value('id')
-                : null,
+            'notification_id' => $notification?->id,
+            'notification' => $notification ? [
+                'id' => $notification->id,
+                'acknowledged_at' => $notification->acknowledged_at?->toIso8601String(),
+                'acknowledgement_source' => $notification->acknowledgement_source,
+                'acknowledgement_required' => $notification->acknowledged_at === null,
+            ] : null,
         ];
         $payload['payment_type'] = $paymentDetails['payment_type'];
         $payload['payment_collection_method'] = $paymentDetails['payment_collection_method'];

@@ -5,10 +5,8 @@ namespace App\Services\Sms;
 use App\Jobs\LaunchSmsCampaignJob;
 use App\Jobs\SendSmsMessageJob;
 use App\Models\Customer;
-use App\Models\Driver\Driver;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
-use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -46,6 +44,69 @@ class SmsService
             ],
             'recent_messages' => SmsMessage::query()->latest()->limit(10)->get(),
             'recent_campaigns' => SmsCampaign::query()->latest()->limit(10)->get(),
+            'health' => $this->getOperationalHealth(),
+        ];
+    }
+
+    public function getOperationalHealth(): array
+    {
+        $queueAgeMinutes = (int) config('sms.health.queue_age_minutes', 10);
+        $callbackAgeMinutes = (int) config('sms.health.callback_age_minutes', 30);
+        $failureWindowMinutes = (int) config('sms.health.failure_window_minutes', 60);
+        $failureThreshold = (int) config('sms.health.failure_count', 5);
+        $bookingMessageThreshold = (int) config('sms.health.messages_per_booking', 5);
+
+        $oldestQueuedAt = SmsMessage::query()
+            ->where('status', 'queued')
+            ->min('queued_at');
+        $staleQueued = SmsMessage::query()
+            ->where('status', 'queued')
+            ->where('queued_at', '<=', now()->subMinutes($queueAgeMinutes))
+            ->count();
+        $recentFailures = SmsMessage::query()
+            ->where('status', 'failed')
+            ->where('failed_at', '>=', now()->subMinutes($failureWindowMinutes))
+            ->count();
+        $staleCallbacks = SmsMessage::query()
+            ->whereIn('status', ['sent', 'provider_accepted'])
+            ->whereNull('delivered_at')
+            ->where('sent_at', '<=', now()->subMinutes($callbackAgeMinutes))
+            ->count();
+        $abnormalBookings = SmsMessage::query()
+            ->whereNotNull('booking_id')
+            ->where('created_at', '>=', now()->subDay())
+            ->whereNotIn('status', ['dry_run', 'cancelled'])
+            ->select('booking_id')
+            ->groupBy('booking_id')
+            ->havingRaw('COUNT(*) > ?', [$bookingMessageThreshold])
+            ->get()
+            ->count();
+
+        $alerts = [];
+        if ($staleQueued > 0) {
+            $alerts[] = ['key' => 'queue_age', 'severity' => 'critical', 'count' => $staleQueued, 'message' => "{$staleQueued} SMS message(s) have been queued for more than {$queueAgeMinutes} minutes."];
+        }
+        if ($recentFailures >= $failureThreshold) {
+            $alerts[] = ['key' => 'failure_spike', 'severity' => 'critical', 'count' => $recentFailures, 'message' => "{$recentFailures} SMS failures occurred within the last {$failureWindowMinutes} minutes."];
+        }
+        if ($staleCallbacks > 0) {
+            $alerts[] = ['key' => 'callback_stale', 'severity' => 'warning', 'count' => $staleCallbacks, 'message' => "{$staleCallbacks} sent SMS message(s) have no delivery callback after {$callbackAgeMinutes} minutes."];
+        }
+        if ($abnormalBookings > 0) {
+            $alerts[] = ['key' => 'booking_volume', 'severity' => 'warning', 'count' => $abnormalBookings, 'message' => "{$abnormalBookings} booking(s) exceeded {$bookingMessageThreshold} non-dry-run SMS records in the last 24 hours."];
+        }
+
+        return [
+            'status' => $alerts === [] ? 'healthy' : (collect($alerts)->contains('severity', 'critical') ? 'critical' : 'warning'),
+            'checked_at' => now()->toIso8601String(),
+            'oldest_queued_at' => $oldestQueuedAt,
+            'metrics' => [
+                'stale_queued' => $staleQueued,
+                'recent_failures' => $recentFailures,
+                'stale_callbacks' => $staleCallbacks,
+                'abnormal_bookings' => $abnormalBookings,
+            ],
+            'alerts' => $alerts,
         ];
     }
 
@@ -121,7 +182,9 @@ class SmsService
         }
 
         if ($queueEnabled) {
-            SendSmsMessageJob::dispatch($message->id)->afterCommit();
+            SendSmsMessageJob::dispatch($message->id)
+                ->onQueue($this->queueForMessage($message))
+                ->afterCommit();
         } else {
             DB::afterCommit(function () use ($message): void {
                 $freshMessage = SmsMessage::query()->find($message->id);
@@ -151,8 +214,9 @@ class SmsService
 
     public function createCampaign(array $payload): SmsCampaign
     {
+        $audienceType = $payload['audience_type'] ?? 'manual';
         $recipients = $this->resolveAudienceRecipients(
-            $payload['audience_type'] ?? 'manual',
+            $audienceType,
             $payload['audience_filters'] ?? [],
             $payload['recipients'] ?? []
         );
@@ -163,14 +227,19 @@ class SmsService
             'provider' => $this->settingsService->getActiveProvider(),
             'sender_mask' => $this->resolveSenderMask($payload['sender_mask'] ?? null),
             'status' => !empty($payload['scheduled_at']) ? 'scheduled' : 'draft',
-            'audience_type' => $payload['audience_type'] ?? 'manual',
+            'audience_type' => $audienceType,
             'audience_filters' => $payload['audience_filters'] ?? null,
             'recipient_snapshot' => array_values($recipients),
             'total_recipients' => count($recipients),
             'scheduled_at' => !empty($payload['scheduled_at'])
                 ? Carbon::parse($payload['scheduled_at'])
                 : null,
-            'meta' => $payload['meta'] ?? null,
+            'meta' => array_merge($payload['meta'] ?? [], [
+                'consent_basis' => $audienceType === 'customers'
+                    ? 'customer_marketing_consent'
+                    : 'manual_operator_attestation',
+                'consent_snapshot_at' => now()->toIso8601String(),
+            ]),
         ]);
 
         if (($payload['launch_now'] ?? false) === true) {
@@ -194,17 +263,25 @@ class SmsService
 
     public function launchCampaign(SmsCampaign $campaign): SmsCampaign
     {
-        if (in_array($campaign->status, ['processing', 'completed'], true)) {
+        if ($campaign->status === 'completed' || $campaign->messages()->exists()) {
             return $campaign;
         }
 
         $recipients = $this->normalizeRecipients($campaign->recipient_snapshot ?? []);
+        if ($campaign->audience_type === 'customers') {
+            $currentlyConsented = $this->resolveAudienceRecipients(
+                'customers',
+                $campaign->audience_filters ?? []
+            );
+            $recipients = array_values(array_intersect($recipients, $currentlyConsented));
+        }
         if ($recipients === []) {
             $campaign->update([
                 'status' => 'failed',
                 'completed_at' => now(),
                 'meta' => array_merge($campaign->meta ?? [], [
-                    'error' => 'No recipients available for campaign',
+                    'error' => 'No consented recipients available for campaign',
+                    'consent_revalidated_at' => now()->toIso8601String(),
                 ]),
             ]);
             return $campaign->fresh();
@@ -214,6 +291,11 @@ class SmsService
             'status' => 'processing',
             'launched_at' => now(),
             'queued_recipients' => count($recipients),
+            'total_recipients' => count($recipients),
+            'recipient_snapshot' => $recipients,
+            'meta' => array_merge($campaign->meta ?? [], [
+                'consent_revalidated_at' => now()->toIso8601String(),
+            ]),
         ]);
 
         foreach ($recipients as $recipient) {
@@ -234,7 +316,7 @@ class SmsService
             ]);
 
             if ($this->settingsService->getSettings()['queue_enabled']) {
-                SendSmsMessageJob::dispatch($message->id);
+                SendSmsMessageJob::dispatch($message->id)->onQueue('sms-campaigns');
             } else {
                 $this->processQueuedMessage($message);
             }
@@ -360,7 +442,9 @@ class SmsService
         });
 
         if ($this->settingsService->getSettings()['queue_enabled']) {
-            SendSmsMessageJob::dispatch($message->id)->afterCommit();
+            SendSmsMessageJob::dispatch($message->id)
+                ->onQueue($this->queueForMessage($message))
+                ->afterCommit();
         } else {
             $this->processQueuedMessage($message);
         }
@@ -469,6 +553,13 @@ class SmsService
         ];
     }
 
+    private function queueForMessage(SmsMessage $message): string
+    {
+        return $message->channel === 'campaign' || $message->campaign_id
+            ? 'sms-campaigns'
+            : 'sms';
+    }
+
     public function getCampaigns(array $filters = []): LengthAwarePaginator
     {
         return SmsCampaign::query()
@@ -575,18 +666,7 @@ class SmsService
         return match ($audienceType) {
             'customers' => $this->normalizeRecipients(
                 Customer::query()
-                    ->when(!empty($filters['ids']), fn($query) => $query->whereIn('id', $filters['ids']))
-                    ->pluck('phone')
-                    ->all()
-            ),
-            'drivers' => $this->normalizeRecipients(
-                Driver::query()
-                    ->when(!empty($filters['ids']), fn($query) => $query->whereIn('id', $filters['ids']))
-                    ->pluck('phone')
-                    ->all()
-            ),
-            'users' => $this->normalizeRecipients(
-                User::query()
+                    ->where('marketing_consent', true)
                     ->when(!empty($filters['ids']), fn($query) => $query->whereIn('id', $filters['ids']))
                     ->pluck('phone')
                     ->all()

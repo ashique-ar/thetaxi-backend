@@ -255,6 +255,8 @@ class AssignmentController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'notification_id' => $notification->id,
             'acknowledged_at' => $notification->acknowledged_at?->toIso8601String(),
+            'acknowledgement_source' => $notification->acknowledgement_source,
+            'acknowledgement_required' => false,
         ]]);
     }
 

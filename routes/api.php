@@ -196,7 +196,8 @@ Route::prefix('public')->group(function () {
     Route::get('business-feature-flags', [WebsiteSettingController::class, 'businessFeatureFlags']);
 });
 
-Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementController::class, 'deliveryCallback']);
+Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementController::class, 'deliveryCallback'])
+    ->middleware('throttle:sms-webhook');
 
 /*
 |--------------------------------------------------------------------------
@@ -345,21 +346,21 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('overview', [SmsManagementController::class, 'overview']);
         Route::get('settings', [SmsManagementController::class, 'settings']);
         Route::put('settings', [SmsManagementController::class, 'updateSettings']);
-        Route::post('credentials/test', [SmsManagementController::class, 'testCredentials']);
-        Route::post('admin-booking-summary/preview', [SmsManagementController::class, 'previewAdminBookingSummary']);
-        Route::post('templates/preview', [SmsManagementController::class, 'previewTransactionalTemplate']);
-        Route::post('send', [SmsManagementController::class, 'send']);
-        Route::post('test', [SmsManagementController::class, 'sendTest']);
+        Route::post('credentials/test', [SmsManagementController::class, 'testCredentials'])->middleware('throttle:sms-test');
+        Route::post('admin-booking-summary/preview', [SmsManagementController::class, 'previewAdminBookingSummary'])->middleware('throttle:sms-preview');
+        Route::post('templates/preview', [SmsManagementController::class, 'previewTransactionalTemplate'])->middleware('throttle:sms-preview');
+        Route::post('send', [SmsManagementController::class, 'send'])->middleware('throttle:sms-send');
+        Route::post('test', [SmsManagementController::class, 'sendTest'])->middleware('throttle:sms-test');
         Route::get('messages', [SmsManagementController::class, 'messages']);
         Route::get('reports/compliance', [SmsManagementController::class, 'complianceReport']);
         Route::get('messages/{smsMessage}', [SmsManagementController::class, 'showMessage']);
-        Route::post('messages/{smsMessage}/retry', [SmsManagementController::class, 'retryMessage']);
+        Route::post('messages/{smsMessage}/retry', [SmsManagementController::class, 'retryMessage'])->middleware('throttle:sms-retry');
         Route::get('messages/{smsMessage}/status', [SmsManagementController::class, 'checkMessageStatus']);
         Route::post('messages/reconcile-processing', [SmsManagementController::class, 'reconcileProcessing']);
         Route::get('campaigns', [SmsManagementController::class, 'campaigns']);
-        Route::post('campaigns', [SmsManagementController::class, 'createCampaign']);
+        Route::post('campaigns', [SmsManagementController::class, 'createCampaign'])->middleware('throttle:sms-campaign');
         Route::get('campaigns/{smsCampaign}', [SmsManagementController::class, 'showCampaign']);
-        Route::post('campaigns/{smsCampaign}/launch', [SmsManagementController::class, 'launchCampaign']);
+        Route::post('campaigns/{smsCampaign}/launch', [SmsManagementController::class, 'launchCampaign'])->middleware('throttle:sms-campaign');
         Route::get('balance', [SmsManagementController::class, 'balance']);
         Route::get('masks', [SmsManagementController::class, 'masks']);
     });
