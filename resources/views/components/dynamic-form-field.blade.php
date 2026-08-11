@@ -427,10 +427,9 @@
 
     {{-- ===== PACKAGE SELECT (special) ===== --}}
     @case('package_select')
-        @if(isset($servicePackages) && $servicePackages->isNotEmpty())
+        @if(isset($servicePackages) && $servicePackages->count() > 1)
         <div class="booking-field package-selector-field">
             <label class="input-label">{{ $label }}</label>
-            @if($servicePackages->count() > 1)
             {{-- Only show package selector if there are 2 or more packages --}}
 
                 
@@ -453,20 +452,13 @@
                         </label>
                     @endforeach
                 </div>
-            @else
-            {{-- If only one package, auto-select it with hidden input --}}
-            <input type="hidden" name="{{ $submitAs }}" value="{{ $servicePackages->first()->id }}">
-            <div class="single-search-box single-package-display" aria-label="{{ $label }}">
-                <span class="package-name">{{ $servicePackages->first()->name }}</span>
-                @if($servicePackages->first()->max_km_per_day)
-                    <span class="package-detail">{{ number_format($servicePackages->first()->max_km_per_day) }} km</span>
-                @endif
-            </div>
-            @endif
             @error($submitAs)
                 <span class="text-danger small">{{ $message }}</span>
             @enderror
         </div>
+        @elseif(isset($servicePackages) && $servicePackages->count() === 1)
+            {{-- One package is authoritative and does not need a visible selector. --}}
+            <input type="hidden" name="{{ $submitAs }}" value="{{ $servicePackages->first()->id }}">
         @endif
         @break
 
