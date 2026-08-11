@@ -1,6 +1,7 @@
 <?php
 
 use App\Services\Sms\Providers\EsmsProvider;
+use App\Services\Sms\Exceptions\SmsBlackoutException;
 use Illuminate\Support\Facades\Http;
 
 it('uses the configured API key for sending even when login credentials and a URL key exist', function () {
@@ -34,6 +35,33 @@ it('uses the configured API key for sending even when login credentials and a UR
         && $request->url() === 'https://e-sms.dialog.lk/api/v2/sms'
         && $request->hasHeader('Authorization', 'Bearer configured-api-key')
     );
+});
+
+it('turns an HTTP blackout response into a deferred provider exception', function () {
+    Http::fake([
+        'https://e-sms.dialog.lk/api/v2/sms' => Http::response([
+            'status' => 'failed',
+            'comment' => 'You are not eligible to create campaigns during black-out time',
+            'data' => null,
+            'errCode' => 118,
+        ], 400),
+    ]);
+
+    $provider = new EsmsProvider([
+        'base_url' => 'https://e-sms.dialog.lk/api',
+        'api_key' => 'configured-api-key',
+    ]);
+
+    expect(fn () => $provider->sendSingle([
+        'recipient' => '94767706768',
+        'message' => 'Company SMS test message',
+        'sender_mask' => 'TheTaxi',
+    ]))->toThrow(
+        SmsBlackoutException::class,
+        'errCode 118: Campaigns cannot be created during the system blackout period',
+    );
+
+    Http::assertSentCount(1);
 });
 
 it('refreshes an expired configured API key through login and retries once', function () {

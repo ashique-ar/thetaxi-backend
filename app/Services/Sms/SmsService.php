@@ -2,6 +2,7 @@
 
 namespace App\Services\Sms;
 
+use App\Services\Sms\Exceptions\SmsBlackoutException;
 use App\Jobs\LaunchSmsCampaignJob;
 use App\Jobs\SendSmsMessageJob;
 use App\Models\Customer;
@@ -361,6 +362,20 @@ class SmsService
                 'sent_at' => now(),
                 'error_message' => null,
             ]);
+        } catch (SmsBlackoutException $exception) {
+            $message->update([
+                'status' => 'queued',
+                'provider_status' => 'blackout_deferred',
+                'provider_status_at' => now(),
+                'error_message' => $exception->getMessage(),
+                'failed_at' => null,
+                'processing_at' => null,
+                'meta' => array_merge($message->meta ?? [], [
+                    'provider_retry_at' => $exception->retryAt->format(DATE_ATOM),
+                ]),
+            ]);
+
+            throw $exception;
         } catch (Throwable $exception) {
             $message->update([
                 'status' => 'failed',

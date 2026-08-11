@@ -2,6 +2,8 @@
 
 namespace App\Services\Sms\Providers;
 
+use App\Services\Sms\Exceptions\SmsBlackoutException;
+use Illuminate\Http\Client\RequestException;
 use App\Contracts\Sms\SmsProviderInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
@@ -218,6 +220,7 @@ class EsmsProvider implements SmsProviderInterface
 
         $status = strtolower((string) ($this->extractValue($response, ['status']) ?? ''));
         if ($status !== 'success') {
+            $this->throwIfBlackout($response);
             throw new RuntimeException($this->describeFailure($response, self::POST_ERROR_CODES));
         }
 
@@ -483,13 +486,21 @@ class EsmsProvider implements SmsProviderInterface
 
         try {
             $response = $request($token);
-        } catch (\Illuminate\Http\Client\RequestException $exception) {
+        } catch (RequestException $exception) {
             $errorPayload = $exception->response->json();
             $errCode = is_array($errorPayload)
                 ? (string) ($this->extractValue($errorPayload, ['errCode']) ?? '')
                 : '';
 
             if ($errCode !== self::TOKEN_EXPIRED_ERROR_CODE) {
+                if (is_array($errorPayload)) {
+                    $this->throwIfBlackout($errorPayload);
+                    throw new RuntimeException(
+                        $this->describeFailure($errorPayload, self::POST_ERROR_CODES),
+                        previous: $exception,
+                    );
+                }
+
                 throw $exception;
             }
 
@@ -507,6 +518,25 @@ class EsmsProvider implements SmsProviderInterface
         }
 
         return $response;
+    }
+
+    private function throwIfBlackout(array $response): void
+    {
+        $errCode = (string) ($this->extractValue($response, ['errCode']) ?? '');
+        if (!in_array($errCode, ['118', '2013'], true)) {
+            return;
+        }
+
+        $now = now('Asia/Colombo');
+        $retryAt = $now->copy()->setTime(8, 5);
+        if ($now->greaterThanOrEqualTo($retryAt)) {
+            $retryAt->addDay();
+        }
+
+        throw new SmsBlackoutException(
+            $this->describeFailure($response, self::POST_ERROR_CODES),
+            $retryAt,
+        );
     }
 
     private function tokenCacheKey(): string

@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Models\Sms\SmsMessage;
+use App\Services\Sms\Exceptions\SmsBlackoutException;
 use App\Services\Sms\SmsService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -32,7 +33,11 @@ class SendSmsMessageJob implements ShouldQueue
             return;
         }
 
-        $smsService->processQueuedMessage($message);
+        try {
+            $smsService->processQueuedMessage($message);
+        } catch (SmsBlackoutException $exception) {
+            $this->release($exception->retryAt);
+        }
     }
 
     public function failed(Throwable $exception): void
