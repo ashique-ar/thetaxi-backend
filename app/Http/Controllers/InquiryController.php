@@ -6,6 +6,7 @@ use App\Mail\InquiryConfirmationMail;
 use App\Models\Inquiry;
 use App\Models\InquiryServicePage;
 use App\Services\MailDispatchService;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Log;
@@ -14,7 +15,10 @@ class InquiryController extends Controller
 {
     protected MailDispatchService $mailDispatchService;
 
-    public function __construct(MailDispatchService $mailDispatchService)
+    public function __construct(
+        MailDispatchService $mailDispatchService,
+        protected SmsAutomationService $smsAutomationService
+    )
     {
         $this->mailDispatchService = $mailDispatchService;
     }
@@ -61,6 +65,8 @@ class InquiryController extends Controller
                 'source' => 'web',
                 'payload' => $payload,
             ]);
+
+            $this->queueInquirySms($inquiry);
 
             $this->mailDispatchService->sendToCustomer(
                 $meta['email'],
@@ -138,6 +144,8 @@ class InquiryController extends Controller
                 'payload' => $payload,
             ]);
 
+            $this->queueInquirySms($inquiry);
+
             $this->mailDispatchService->sendToCustomer(
                 $meta['email'],
                 new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
@@ -154,6 +162,18 @@ class InquiryController extends Controller
             return back()
                 ->withInput()
                 ->with('error', 'An error occurred while submitting your inquiry. Please try again.');
+        }
+    }
+
+    private function queueInquirySms(Inquiry $inquiry): void
+    {
+        try {
+            $this->smsAutomationService->queueWebsiteInquiryReceived($inquiry);
+        } catch (\Throwable $exception) {
+            Log::error('Website inquiry SMS could not be queued', [
+                'inquiry_id' => $inquiry->id,
+                'error' => $exception->getMessage(),
+            ]);
         }
     }
 

@@ -106,7 +106,7 @@ class BookingLifecycleController extends Controller
 
             $booking = Booking::find($request->input('booking_id'));
             if ($booking) {
-                $this->smsAutomation->queueTripStart($booking);
+                $this->smsAutomation->queueDriverDispatched($booking, $dispatch);
             }
 
             return response()->json([

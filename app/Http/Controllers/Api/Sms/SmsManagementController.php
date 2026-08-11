@@ -80,9 +80,47 @@ class SmsManagementController extends Controller
             'sms_default_sender_mask' => ['nullable', 'string', 'max:50'],
             'sms_allow_mask_override' => ['required', 'boolean'],
             'sms_queue_enabled' => ['required', 'boolean'],
+            'sms_dry_run' => ['required', 'boolean'],
             'sms_bulk_chunk_size' => ['required', 'integer', 'min:1', 'max:1000'],
             'sms_webhook_secret' => ['nullable', 'string', 'max:255'],
             'sms_booking_status_enabled' => ['required', 'boolean'],
+            'sms_booking_confirmation_enabled' => ['sometimes', 'boolean'],
+            'sms_quotation_requested_enabled' => ['sometimes', 'boolean'],
+            'sms_inquiry_received_enabled' => ['sometimes', 'boolean'],
+            'sms_driver_dispatched_enabled' => ['sometimes', 'boolean'],
+            'sms_driver_arrived_enabled' => ['sometimes', 'boolean'],
+            'sms_trip_completion_enabled' => ['sometimes', 'boolean'],
+            'sms_payment_confirmation_enabled' => ['sometimes', 'boolean'],
+            'sms_trip_completion_scope' => ['sometimes', 'string', 'in:booking,item'],
+            'sms_driver_assignment_fallback_enabled' => ['sometimes', 'boolean'],
+            'sms_admin_booking_summary_enabled' => ['sometimes', 'boolean'],
+            'sms_admin_booking_summary_numbers' => [
+                'sometimes',
+                'required_if:sms_admin_booking_summary_enabled,true',
+                'array',
+                'min:1',
+                'max:2',
+                function (string $attribute, mixed $value, \Closure $fail): void {
+                    $normalized = array_map(function (mixed $number): string {
+                        $digits = preg_replace('/\D+/', '', (string) $number);
+                        return str_starts_with($digits, '0') ? '94' . substr($digits, 1) : $digits;
+                    }, is_array($value) ? $value : []);
+
+                    if (count($normalized) !== count(array_unique($normalized))) {
+                        $fail('The admin booking summary numbers must be different.');
+                    }
+                },
+            ],
+            'sms_admin_booking_summary_numbers.*' => ['required', 'string', 'distinct', 'regex:/^(?:\+?94|0)?7\d{8}$/'],
+            'sms_booking_confirmation_template' => ['sometimes', 'string', 'max:1000'],
+            'sms_quotation_requested_template' => ['sometimes', 'string', 'max:1000'],
+            'sms_inquiry_received_template' => ['sometimes', 'string', 'max:1000'],
+            'sms_driver_dispatched_template' => ['sometimes', 'string', 'max:1500'],
+            'sms_driver_arrived_template' => ['sometimes', 'string', 'max:1500'],
+            'sms_trip_completion_template' => ['sometimes', 'string', 'max:1500'],
+            'sms_payment_confirmation_template' => ['sometimes', 'string', 'max:1500'],
+            'sms_driver_assignment_fallback_template' => ['sometimes', 'string', 'max:1500'],
+            'sms_admin_booking_summary_template' => ['sometimes', 'string', 'max:2000'],
             'sms_esms_base_url' => ['nullable', 'url'],
             'sms_esms_username' => ['nullable', 'string', 'max:255'],
             'sms_esms_password' => ['nullable', 'string', 'max:255'],

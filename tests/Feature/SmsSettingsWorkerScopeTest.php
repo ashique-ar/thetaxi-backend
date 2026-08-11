@@ -33,6 +33,7 @@ it('saves the SMS API key globally for queue workers and in the active company s
         'sms_provider' => 'esms',
         'sms_allow_mask_override' => true,
         'sms_queue_enabled' => true,
+        'sms_dry_run' => false,
         'sms_bulk_chunk_size' => 250,
         'sms_booking_status_enabled' => false,
         'sms_esms_api_key' => 'configured-api-key',

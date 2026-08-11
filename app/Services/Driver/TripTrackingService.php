@@ -16,6 +16,7 @@ use App\Models\DriverAssignment;
 use App\Models\DriverAssignmentStop;
 use App\Services\BookingLifecycleService;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -39,6 +40,7 @@ class TripTrackingService
         private WaitingTimeService $waitingTimeService,
         private BookingLifecycleService $bookingLifecycleService,
         private ?BookingPaymentLedgerService $paymentLedger = null,
+        private ?SmsAutomationService $smsAutomationService = null,
     ) {}
 
     /**
@@ -177,6 +179,11 @@ class TripTrackingService
         if ($dispatch && $dispatch->dispatch_status === DispatchStatus::DISPATCHED) {
             $dispatch->update(['dispatch_status' => DispatchStatus::IN_PROGRESS]);
         }
+
+        $booking = $assignment->booking ?: Booking::query()->find($assignment->booking_id);
+        if ($booking) {
+            $this->smsAutomationService?->recordTripStarted($booking, $assignment->fresh());
+        }
     }
 
     /**
@@ -268,6 +275,12 @@ class TripTrackingService
             );
             $packageCharges = $this->syncBookingLifecycleAfterDriverTripCompletion($assignment, $finalLocation, $now);
             $paymentSummary = $this->syncTripEndPaymentCollection($assignment, $finalLocation, $now);
+
+            $completedAssignment = $assignment->fresh();
+            $completedBooking = Booking::query()->find($assignment->booking_id);
+            if ($completedBooking) {
+                $this->smsAutomationService?->queueTripCompleted($completedBooking, $completedAssignment);
+            }
 
             return [
                 'assignment_id' => $assignment->id,

@@ -200,7 +200,12 @@ class PaymentController extends Controller
 
                     $amount   = $transaction->amount ?? 0;
                     $currency = $transaction->currency ?? 'LKR';
-                    $this->smsAutomation->queuePaymentConfirmation($booking, (float) $amount, $currency);
+                    $this->smsAutomation->queuePaymentConfirmation(
+                        $booking,
+                        (float) $amount,
+                        $currency,
+                        (string) ($request->input('payment_id') ?? $request->input('transaction_id'))
+                    );
                 }
             } elseif (in_array($request->input('status'), ['failed', 'cancelled'], true)) {
                 $booking = Booking::find($transaction->booking_id);

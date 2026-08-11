@@ -174,9 +174,6 @@ class AssignmentService
             $booking = Booking::find($params['booking_id']);
             if ($booking) {
                 $driver = Driver::find($params['driver_id']);
-                $driverName = $driver?->full_name ?? $driver?->name ?? 'Your driver';
-                $this->smsAutomation->queueDriverAssignment($booking, $driverName);
-
                 if ($driver) {
                     SendCustomerDriverAssignedNotificationJob::dispatch($booking, $driver)
                         ->onQueue(config('services.firebase.customer_queue', 'customer-notifications'));

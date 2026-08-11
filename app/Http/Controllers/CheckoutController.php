@@ -20,6 +20,7 @@ use App\Services\WebXPayService;
 use App\Services\CurrencyService;
 use App\Services\PromoCodeService;
 use App\Services\WebsiteSettingsService;
+use App\Services\Sms\SmsAutomationService;
 use App\Services\PaymentEventService;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
@@ -51,7 +52,8 @@ class CheckoutController extends Controller
         MailDispatchService $mailDispatchService,
         PromoCodeService $promoCodeService,
         WebsiteSettingsService $websiteSettingsService,
-        PaymentEventService $paymentEventService
+        PaymentEventService $paymentEventService,
+        protected SmsAutomationService $smsAutomationService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->customerService = $customerService;
@@ -870,6 +872,8 @@ class CheckoutController extends Controller
             // Reload booking with eager loaded relations for email
             $booking = $this->reloadBookingForEmail($booking);
 
+            $this->smsAutomationService->queueWebsiteQuotationRequested($booking);
+
             // Send quotation request email to customer
             try {
                 Log::info('Quotation Request: Sending quotation email to customer', [
@@ -1109,6 +1113,10 @@ class CheckoutController extends Controller
 
             // Reload booking with eager loaded relations for email
             $booking = $this->reloadBookingForEmail($booking);
+
+            // Website bookings send automatically. The staff-only confirmation
+            // checkbox is intentionally not used in this public checkout path.
+            $this->smsAutomationService->queueBookingConfirmation($booking, true);
 
             // Send confirmation email to customer
             try {

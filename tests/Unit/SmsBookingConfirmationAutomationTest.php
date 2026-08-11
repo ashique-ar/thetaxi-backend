@@ -1,0 +1,435 @@
+<?php
+
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
+use App\Models\Customer;
+use App\Models\Booking\BookingDispatch;
+use App\Models\Driver\Driver;
+use App\Models\DriverAssignment;
+use App\Models\Inquiry;
+use App\Models\Vehicle\Vehicle;
+use App\Models\Vehicle\VehicleMake;
+use App\Models\Vehicle\VehicleModel;
+use App\Models\User;
+use App\Services\Sms\SmsAutomationService;
+use App\Services\Sms\BookingCommunicationActivityService;
+use App\Services\Sms\SmsService;
+use App\Services\Sms\SmsSettingsService;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
+
+uses(Tests\TestCase::class);
+
+it('queues one customer confirmation and one consolidated summary per configured admin number', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => true,
+        'admin_booking_summary_enabled' => true,
+        'admin_booking_summary_numbers' => ['94771234567', '94777654321'],
+        'booking_confirmation_template' => 'Confirmed {booking_number} at {pickup_datetime}',
+        'admin_booking_summary_template' => 'ADMIN {booking_number} {customer_name} {item_count} {total}',
+    ]);
+
+    $payloads = [];
+    $sms->shouldReceive('queueSingleMessage')->times(3)->andReturnUsing(
+        function (array $payload) use (&$payloads) {
+            $payloads[] = $payload;
+            return new \App\Models\Sms\SmsMessage();
+        }
+    );
+
+    $user = new User();
+    $user->setRawAttributes(['first_name' => 'Nadia', 'last_name' => 'Perera', 'phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+
+    $first = new BookingItem();
+    $first->setRawAttributes([
+        'from_date' => '2026-08-20 10:30:00',
+        'pickup_location' => json_encode(['address' => 'Colombo']),
+        'dropoff_location' => json_encode(['address' => 'Kandy']),
+        'currency' => 'LKR',
+        'total_price' => 5000,
+    ]);
+    $second = new BookingItem();
+    $second->setRawAttributes(['total_price' => 2500]);
+
+    $booking = new Booking();
+    $booking->setRawAttributes([
+        'booking_number' => 'BK-1001',
+        'currency' => 'LKR',
+        'total_estimated' => 7500,
+        'confirmed_at' => Carbon::parse('2026-08-11 09:00:00'),
+    ]);
+    $booking->id = '11111111-1111-1111-1111-111111111111';
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection([$first, $second]));
+
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking);
+
+    expect(array_column($payloads, 'event_key'))->toBe([
+        'booking.confirmed',
+        'admin.booking_confirmed_summary',
+        'admin.booking_confirmed_summary',
+    ])->and(array_column($payloads, 'recipient'))->toBe([
+        '0770000000',
+        '94771234567',
+        '94777654321',
+    ])->and(array_unique(array_column($payloads, 'idempotency_key')))->toHaveCount(3)
+        ->and($payloads[1]['message'])->toContain('ADMIN BK-1001 Nadia Perera 2 7,500.00')
+        ->and($payloads[1]['source'])->toBe('automation')
+        ->and($payloads[1]['booking_id'])->toBe($booking->id);
+});
+
+it('does not queue admin summaries when the policy is disabled', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => false,
+        'admin_booking_summary_enabled' => false,
+        'admin_booking_summary_numbers' => ['94771234567'],
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['booking_number' => 'BK-1002']);
+    $booking->id = '22222222-2222-2222-2222-222222222222';
+    $booking->setRelation('customer', null);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking);
+});
+
+it('honours the internal confirmation choice without suppressing configured admin summaries', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => true,
+        'admin_booking_summary_enabled' => true,
+        'admin_booking_summary_numbers' => ['94771234567'],
+        'booking_confirmation_template' => 'CUSTOMER {booking_number}',
+        'admin_booking_summary_template' => 'ADMIN {booking_number}',
+    ]);
+
+    $payload = null;
+    $sms->shouldReceive('queueSingleMessage')->once()->andReturnUsing(
+        function (array $message) use (&$payload) {
+            $payload = $message;
+            return new \App\Models\Sms\SmsMessage();
+        }
+    );
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-choice', 'booking_number' => 'BK-CHOICE']);
+    $booking->setRelation('customer', null);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking, false);
+
+    expect($payload['event_key'])->toBe('admin.booking_confirmed_summary')
+        ->and($payload['recipient'])->toBe('94771234567')
+        ->and($payload['message'])->toBe('ADMIN BK-CHOICE');
+});
+
+it('queues item-scoped dispatched and assignment-scoped arrived customer messages', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->twice()->andReturn([
+        'enabled' => true,
+        'driver_dispatched_enabled' => true,
+        'driver_arrived_enabled' => true,
+        'driver_dispatched_template' => 'ON WAY {driver_name} {driver_mobile} {vehicle_number}',
+        'driver_arrived_template' => 'ARRIVED {driver_name} {vehicle_number}',
+    ]);
+
+    $payloads = [];
+    $sms->shouldReceive('queueSingleMessage')->twice()->andReturnUsing(
+        function (array $payload) use (&$payloads) {
+            $payloads[] = $payload;
+            return new \App\Models\Sms\SmsMessage();
+        }
+    );
+
+    $customerUser = new User();
+    $customerUser->setRawAttributes(['first_name' => 'Nadia', 'last_name' => 'Perera', 'phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $customerUser);
+
+    $driverUser = new User();
+    $driverUser->setRawAttributes(['first_name' => 'Kamal', 'last_name' => 'Silva', 'phone' => '0771111111']);
+    $driver = new Driver();
+    $driver->setRawAttributes(['id' => 'driver-1']);
+    $driver->setRelation('user', $driverUser);
+
+    $make = new VehicleMake();
+    $make->setRawAttributes(['name' => 'Toyota']);
+    $model = new VehicleModel();
+    $model->setRawAttributes(['name' => 'Axio']);
+    $vehicle = new Vehicle();
+    $vehicle->setRawAttributes(['id' => 'vehicle-1', 'license_plate' => 'CAB-1234']);
+    $vehicle->setRelation('make', $make);
+    $vehicle->setRelation('model', $model);
+
+    $item = new BookingItem();
+    $item->setRawAttributes(['id' => 'item-1', 'from_date' => '2026-08-20 10:30:00']);
+    $item->setRelation('vehicle', $vehicle);
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-1', 'booking_number' => 'BK-2001']);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection([$item]));
+
+    $dispatch = new BookingDispatch();
+    $dispatch->setRawAttributes(['id' => 'dispatch-1', 'booking_item_id' => 'item-1', 'dispatched_at' => Carbon::now()]);
+    $dispatch->setRelation('driver', $driver);
+    $dispatch->setRelation('vehicle', $vehicle);
+
+    $assignment = new DriverAssignment();
+    $assignment->setRawAttributes(['id' => 'assignment-1', 'booking_item_id' => 'item-1', 'pickup_arrived_at' => Carbon::now()]);
+    $assignment->setRelation('driver', $driver);
+    $assignment->setRelation('bookingItem', $item);
+
+    $automation = new SmsAutomationService($settings, $sms);
+    $automation->queueDriverDispatched($booking, $dispatch);
+    $automation->queueDriverArrived($booking, $assignment);
+
+    expect(array_column($payloads, 'event_key'))->toBe(['driver.dispatched', 'driver.arrived'])
+        ->and($payloads[0]['booking_item_id'])->toBe('item-1')
+        ->and($payloads[0]['driver_assignment_id'])->toBeNull()
+        ->and($payloads[1]['driver_assignment_id'])->toBe('assignment-1')
+        ->and($payloads[0]['message'])->toContain('ON WAY Kamal Silva 0771111111 CAB-1234')
+        ->and($payloads[1]['message'])->toContain('ARRIVED Kamal Silva CAB-1234')
+        ->and($payloads[0]['idempotency_key'])->not->toBe($payloads[1]['idempotency_key']);
+});
+
+it('does not call the legacy customer assignment SMS automation from assignment creation', function (): void {
+    $source = file_get_contents(app_path('Services/AssignmentService.php'));
+
+    expect($source)->not->toContain('queueDriverAssignment(')
+        ->and($source)->toContain('SendCustomerDriverAssignedNotificationJob::dispatch');
+});
+
+it('routes direct internal confirmation SMS through the explicit request choice', function (): void {
+    $source = file_get_contents(app_path('Services/BookingFlowService.php'));
+
+    expect($source)->toContain("\$params['send_confirmation_sms'] ?? false")
+        ->and($source)->toContain('smsAutomationService->queueBookingConfirmation(')
+        ->and($source)->not->toContain("'template_key' => 'booking_confirmation'");
+});
+
+it('queues automatic website quotation and inquiry acknowledgements with stable identities', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->twice()->andReturn([
+        'enabled' => true,
+        'quotation_requested_enabled' => true,
+        'inquiry_received_enabled' => true,
+        'quotation_requested_template' => 'QUOTE {booking_number} {customer_name}',
+        'inquiry_received_template' => 'INQUIRY {inquiry_number} {customer_name} {inquiry_type}',
+    ]);
+
+    $payloads = [];
+    $sms->shouldReceive('queueSingleMessage')->twice()->andReturnUsing(
+        function (array $payload) use (&$payloads) {
+            $payloads[] = $payload;
+            return new \App\Models\Sms\SmsMessage();
+        }
+    );
+
+    $user = new User();
+    $user->setRawAttributes(['first_name' => 'Nadia', 'last_name' => 'Perera', 'phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'website-quote-1', 'booking_number' => 'QT000101']);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection());
+
+    $inquiry = new Inquiry();
+    $inquiry->setRawAttributes([
+        'id' => 'website-inquiry-1',
+        'inquiry_number' => 'INQ000101',
+        'name' => 'Nadia Perera',
+        'phone' => '0770000000',
+        'inquiry_type' => 'general',
+    ]);
+
+    $automation = new SmsAutomationService($settings, $sms);
+    $automation->queueWebsiteQuotationRequested($booking);
+    $automation->queueWebsiteInquiryReceived($inquiry);
+
+    expect(array_column($payloads, 'event_key'))->toBe([
+        'website.quotation_requested',
+        'website.inquiry_received',
+    ])->and($payloads[0]['message'])->toBe('QUOTE QT000101 Nadia Perera')
+        ->and($payloads[1]['message'])->toBe('INQUIRY INQ000101 Nadia Perera general')
+        ->and($payloads[0]['idempotency_key'])->not->toBe($payloads[1]['idempotency_key']);
+});
+
+it('keeps automatic public SMS hooks in website controllers only', function (): void {
+    $checkout = file_get_contents(app_path('Http/Controllers/CheckoutController.php'));
+    $inquiries = file_get_contents(app_path('Http/Controllers/InquiryController.php'));
+    $apiSubmission = file_get_contents(app_path('Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'));
+
+    expect($checkout)->toContain('queueWebsiteQuotationRequested($booking)')
+        ->and($checkout)->toContain('queueBookingConfirmation($booking, true)')
+        ->and($inquiries)->toContain('queueWebsiteInquiryReceived($inquiry)')
+        ->and($apiSubmission)->not->toContain('queueWebsiteQuotationRequested');
+});
+
+it('uses the canonical typed event contract and exposes a provider-safe dry run', function (): void {
+    $automation = file_get_contents(app_path('Services/Sms/SmsAutomationService.php'));
+    $service = file_get_contents(app_path('Services/Sms/SmsService.php'));
+    $job = file_get_contents(app_path('Jobs/SendSmsMessageJob.php'));
+
+    expect($automation)->toContain('TransactionalSmsEvent::BookingConfirmed->value')
+        ->and($automation)->toContain('private function resolveBooking')
+        ->and($service)->toContain("'status' => \$dryRun ? 'dry_run'")
+        ->and($service)->toContain('if ($dryRun)')
+        ->and($job)->toContain('public array $backoff = [30, 120, 300]')
+        ->and($job)->toContain('public function failed(Throwable $exception)');
+});
+
+it('records skipped automation decisions for the communication timeline', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $activities = Mockery::mock(BookingCommunicationActivityService::class);
+
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => false,
+        'admin_booking_summary_enabled' => false,
+        'admin_booking_summary_numbers' => [],
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+    $activities->shouldReceive('record')->once()->with(Mockery::on(
+        fn(array $activity): bool => $activity['event_key'] === 'booking.confirmed'
+            && $activity['result_status'] === 'disabled'
+            && $activity['booking_id'] === 'booking-disabled'
+    ))->andReturn(new \App\Models\Booking\BookingActivity());
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-disabled', 'booking_number' => 'BK-DISABLED']);
+    $booking->setRelation('customer', null);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms, $activities))->queueBookingConfirmation($booking);
+});
+
+it('keeps non-queued provider execution outside the lifecycle transaction', function (): void {
+    $source = file_get_contents(app_path('Services/Sms/SmsService.php'));
+    $migration = file_get_contents(database_path('migrations/2026_08_11_000002_create_booking_activities_table.php'));
+
+    expect($source)->toContain('DB::afterCommit(function () use ($message)')
+        ->and($migration)->toContain("Schema::create('booking_activities'")
+        ->and($migration)->toContain("\$table->string('result_status')->index()")
+        ->and($migration)->toContain("\$table->string('idempotency_key')->unique()");
+});
+
+it('records trip start without SMS and queues optional aggregate completion once', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $activities = Mockery::mock(BookingCommunicationActivityService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'trip_completion_enabled' => true,
+        'trip_completion_scope' => 'booking',
+        'trip_completion_template' => 'COMPLETED {booking_number}',
+    ]);
+
+    $activities->shouldReceive('record')->once()->with(Mockery::on(
+        fn(array $activity): bool => $activity['event_key'] === 'trip.started'
+            && $activity['channel'] === 'timeline'
+            && $activity['result_status'] === 'recorded'
+    ))->andReturn(new \App\Models\Booking\BookingActivity());
+    $activities->shouldReceive('recordMessage')->once()->andReturn(new \App\Models\Booking\BookingActivity());
+
+    $message = new \App\Models\Sms\SmsMessage();
+    $message->setRawAttributes(['status' => 'queued', 'event_key' => 'trip.completed']);
+    $message->wasRecentlyCreated = true;
+    $sms->shouldReceive('queueSingleMessage')->once()->with(Mockery::on(
+        fn(array $payload): bool => $payload['event_key'] === 'trip.completed'
+            && $payload['booking_item_id'] === null
+            && $payload['driver_assignment_id'] === null
+            && $payload['message'] === 'COMPLETED BK-COMPLETE'
+    ))->andReturn($message);
+
+    $user = new User();
+    $user->setRawAttributes(['first_name' => 'Nadia', 'last_name' => 'Perera', 'phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-complete', 'booking_number' => 'BK-COMPLETE', 'status' => 'completed']);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection());
+    $assignment = new DriverAssignment();
+    $assignment->setRawAttributes(['id' => 'assignment-complete', 'booking_item_id' => 'item-complete']);
+
+    $automation = new SmsAutomationService($settings, $sms, $activities);
+    $automation->recordTripStarted($booking, $assignment);
+    $automation->queueTripCompleted($booking, $assignment);
+});
+
+it('ships every documented transactional template in the settings migration', function (): void {
+    $migration = file_get_contents(database_path('migrations/2026_08_11_000003_seed_transactional_sms_templates.php'));
+
+    foreach ([
+        'sms_inquiry_received_template',
+        'sms_quotation_requested_template',
+        'sms_booking_confirmation_template',
+        'sms_driver_assignment_fallback_template',
+        'sms_driver_dispatched_template',
+        'sms_driver_arrived_template',
+        'sms_trip_completion_template',
+        'sms_payment_confirmation_template',
+        'sms_admin_booking_summary_template',
+    ] as $templateKey) {
+        expect($migration)->toContain($templateKey);
+    }
+
+    expect($migration)->toContain("'sms_dry_run' => 'true'")
+        ->and($migration)->toContain('if (!$exists)');
+});
+
+it('deduplicates payment SMS by provider payment reference', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'payment_confirmation_enabled' => true,
+        'payment_confirmation_template' => 'PAID {booking_number} {currency} {amount} {payment_reference}',
+    ]);
+
+    $payload = null;
+    $sms->shouldReceive('queueSingleMessage')->once()->andReturnUsing(function (array $data) use (&$payload) {
+        $payload = $data;
+        $message = new \App\Models\Sms\SmsMessage();
+        $message->setRawAttributes(['status' => 'queued']);
+        $message->wasRecentlyCreated = true;
+        return $message;
+    });
+
+    $user = new User();
+    $user->setRawAttributes(['phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-payment', 'booking_number' => 'BK-PAID']);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms))->queuePaymentConfirmation($booking, 2500, 'LKR', 'PAY-1001');
+
+    expect($payload['event_key'])->toBe('payment.received')
+        ->and($payload['message'])->toBe('PAID BK-PAID LKR 2,500.00 PAY-1001')
+        ->and($payload['idempotency_key'])->toBe(hash('sha256', implode('|', [
+            'booking', 'booking-payment', 'PAY-1001', 'payment.received', '94770000000',
+        ])));
+});

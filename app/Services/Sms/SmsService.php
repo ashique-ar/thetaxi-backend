@@ -12,6 +12,7 @@ use App\Models\User;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use RuntimeException;
 use Throwable;
 
@@ -58,34 +59,72 @@ class SmsService
             throw new RuntimeException('Invalid recipient number');
         }
 
-        $queueEnabled = $this->settingsService->getSettings()['queue_enabled'];
+        $settings = $this->settingsService->getSettings();
+        $queueEnabled = $settings['queue_enabled'];
+        $dryRun = ($payload['source'] ?? 'manual') === 'automation'
+            && !empty($settings['dry_run']);
 
-        $message = SmsMessage::create([
+        $attributes = [
             'campaign_id' => $payload['campaign_id'] ?? null,
             'provider' => $this->settingsService->getActiveProvider(),
             'channel' => $payload['channel'] ?? 'single',
+            'source' => $payload['source'] ?? 'manual',
             'context_type' => $payload['context_type'] ?? null,
             'context_id' => $payload['context_id'] ?? null,
+            'booking_id' => $payload['booking_id'] ?? null,
+            'booking_item_id' => $payload['booking_item_id'] ?? null,
+            'driver_assignment_id' => $payload['driver_assignment_id'] ?? null,
             'template_key' => $payload['template_key'] ?? null,
+            'event_key' => $payload['event_key'] ?? null,
+            'idempotency_key' => $payload['idempotency_key'] ?? null,
             'recipient' => (string) ($payload['recipient'] ?? ''),
             'normalized_recipient' => $normalizedRecipient,
             'sender_mask' => $this->resolveSenderMask($payload['sender_mask'] ?? null),
             'message' => trim((string) ($payload['message'] ?? '')),
-            'status' => $queueEnabled ? 'queued' : 'pending',
+            'status' => $dryRun ? 'dry_run' : ($queueEnabled ? 'queued' : 'pending'),
             'scheduled_at' => isset($payload['scheduled_at']) && $payload['scheduled_at']
                 ? Carbon::parse($payload['scheduled_at'])
                 : null,
-            'queued_at' => now(),
-            'meta' => $payload['meta'] ?? null,
-        ]);
+            'triggered_at' => isset($payload['triggered_at']) && $payload['triggered_at']
+                ? Carbon::parse($payload['triggered_at'])
+                : now(),
+            'queued_at' => $dryRun ? null : now(),
+            'meta' => array_merge($payload['meta'] ?? [], [
+                'dry_run' => $dryRun,
+            ]),
+        ];
 
-        if ($queueEnabled) {
-            SendSmsMessageJob::dispatch($message->id);
-        } else {
-            $this->processQueuedMessage($message);
+        $idempotencyKey = $attributes['idempotency_key'];
+        $message = $idempotencyKey
+            ? SmsMessage::firstOrCreate(['idempotency_key' => $idempotencyKey], $attributes)
+            : SmsMessage::create($attributes);
+
+        if (!$message->wasRecentlyCreated) {
+            return $message;
         }
 
-        return $message->fresh();
+        $wasRecentlyCreated = $message->wasRecentlyCreated;
+
+        if ($dryRun) {
+            $result = $message->fresh();
+            $result->wasRecentlyCreated = $wasRecentlyCreated;
+            return $result;
+        }
+
+        if ($queueEnabled) {
+            SendSmsMessageJob::dispatch($message->id)->afterCommit();
+        } else {
+            DB::afterCommit(function () use ($message): void {
+                $freshMessage = SmsMessage::query()->find($message->id);
+                if ($freshMessage) {
+                    $this->processQueuedMessage($freshMessage);
+                }
+            });
+        }
+
+        $result = $message->fresh();
+        $result->wasRecentlyCreated = $wasRecentlyCreated;
+        return $result;
     }
 
     public function queueBulkMessages(array $payload): Collection

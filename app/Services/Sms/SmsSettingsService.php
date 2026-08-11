@@ -26,12 +26,94 @@ class SmsSettingsService
                 $settings['sms_queue_enabled'] ?? true,
                 true
             ),
+            'dry_run' => $this->toBool(
+                $settings['sms_dry_run'] ?? false,
+                false
+            ),
             'bulk_chunk_size' => max(1, (int) ($settings['sms_bulk_chunk_size'] ?: 250)),
             'webhook_secret' => $settings['sms_webhook_secret'] ?: null,
             'booking_status_enabled' => $this->toBool(
                 $settings['sms_booking_status_enabled'] ?? false,
                 false
             ),
+            'booking_confirmation_enabled' => $this->toBool(
+                $settings['sms_booking_confirmation_enabled'] ?? false,
+                false
+            ),
+            'quotation_requested_enabled' => $this->toBool(
+                $settings['sms_quotation_requested_enabled'] ?? false,
+                false
+            ),
+            'inquiry_received_enabled' => $this->toBool(
+                $settings['sms_inquiry_received_enabled'] ?? false,
+                false
+            ),
+            'driver_dispatched_enabled' => $this->toBool(
+                $settings['sms_driver_dispatched_enabled'] ?? false,
+                false
+            ),
+            'driver_arrived_enabled' => $this->toBool(
+                $settings['sms_driver_arrived_enabled'] ?? false,
+                false
+            ),
+            'trip_completion_enabled' => $this->toBool(
+                $settings['sms_trip_completion_enabled'] ?? false,
+                false
+            ),
+            'payment_confirmation_enabled' => $this->toBool(
+                $settings['sms_payment_confirmation_enabled'] ?? false,
+                false
+            ),
+            'trip_completion_scope' => in_array(($settings['sms_trip_completion_scope'] ?? 'booking'), ['booking', 'item'], true)
+                ? $settings['sms_trip_completion_scope']
+                : 'booking',
+            'driver_assignment_fallback_enabled' => $this->toBool(
+                $settings['sms_driver_assignment_fallback_enabled'] ?? false,
+                false
+            ),
+            'admin_booking_summary_enabled' => $this->toBool(
+                $settings['sms_admin_booking_summary_enabled'] ?? false,
+                false
+            ),
+            'admin_booking_summary_numbers' => $this->adminNumbers(
+                $settings['sms_admin_booking_summary_numbers'] ?? []
+            ),
+            'booking_confirmation_template' => trim((string) (
+                $settings['sms_booking_confirmation_template']
+                    ?? 'Your booking with TheTaxi is confirmed. Booking #: {booking_number}. Pickup: {pickup_datetime}. For assistance: 011 286 1111.'
+            )),
+            'quotation_requested_template' => trim((string) (
+                $settings['sms_quotation_requested_template']
+                    ?? 'Thank you for requesting a quotation from TheTaxi. Reference: {booking_number}. Our team will contact you shortly. Assistance: 011 286 1111.'
+            )),
+            'inquiry_received_template' => trim((string) (
+                $settings['sms_inquiry_received_template']
+                    ?? 'Thank you for contacting TheTaxi. Inquiry reference: {inquiry_number}. We have received your inquiry and will contact you shortly. Assistance: 011 286 1111.'
+            )),
+            'driver_dispatched_template' => trim((string) (
+                $settings['sms_driver_dispatched_template']
+                    ?? "Your Taxi is on the way. Booking #: {booking_number}. Driver: {driver_name}. Mobile: {driver_mobile}. Vehicle: {vehicle_description}. Vehicle No: {vehicle_number}. TheTaxi: 011 286 1111."
+            )),
+            'driver_arrived_template' => trim((string) (
+                $settings['sms_driver_arrived_template']
+                    ?? 'Your Taxi has arrived at the pickup location. Booking #: {booking_number}. Driver: {driver_name}. Vehicle: {vehicle_number}. Mobile: {driver_mobile}.'
+            )),
+            'trip_completion_template' => trim((string) (
+                $settings['sms_trip_completion_template']
+                    ?? "Thank you for travelling with TheTaxi.\n\nBooking #: {booking_number}\nYour trip has been completed.\n\nWe hope you had a pleasant journey.\n\nwww.thetaxi.lk"
+            )),
+            'payment_confirmation_template' => trim((string) (
+                $settings['sms_payment_confirmation_template']
+                    ?? "Payment received for your TheTaxi booking.\n\nBooking #: {booking_number}\nAmount: {currency} {amount}\nReference: {payment_reference}\n\nThank you."
+            )),
+            'driver_assignment_fallback_template' => trim((string) (
+                $settings['sms_driver_assignment_fallback_template']
+                    ?? "New booking assigned.\n\nBooking #: {booking_number}\nPickup: {pickup_datetime}\nCustomer: {customer_name}\n\nPlease check TheTaxi Driver App."
+            )),
+            'admin_booking_summary_template' => trim((string) (
+                $settings['sms_admin_booking_summary_template']
+                    ?? "NEW BOOKING CONFIRMED\nBooking: #{booking_number}\nCustomer: {customer_name}\nMobile: {customer_mobile}\nPickup: {pickup_datetime}\nFrom: {origin}\nTo: {destination}\nItems/Trips: {item_count}\nTotal: {currency} {total}"
+            )),
             'providers' => [
                 'esms' => [
                     'base_url' => rtrim(
@@ -79,5 +161,31 @@ class SmsSettingsService
             ['1', 'true', 'yes', 'on'],
             true
         );
+    }
+
+    private function adminNumbers(mixed $value): array
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : preg_split('/[,\r\n]+/', $value);
+        }
+
+        if (!is_array($value)) {
+            return [];
+        }
+
+        return array_values(array_slice(array_unique(array_filter(array_map(
+            static function (mixed $number): string {
+                $digits = preg_replace('/\D+/', '', (string) $number);
+                if (str_starts_with($digits, '0')) {
+                    return '94' . substr($digits, 1);
+                }
+                if (str_starts_with($digits, '7') && strlen($digits) === 9) {
+                    return '94' . $digits;
+                }
+                return $digits;
+            },
+            $value
+        ))), 0, 2));
     }
 }

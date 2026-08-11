@@ -5,12 +5,15 @@ namespace App\Http\Controllers\Api\Agent;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 class AgentOperationalController extends Controller
 {
+    public function __construct(private readonly SmsAutomationService $smsAutomationService) {}
+
     public function profile(Request $request): JsonResponse
     {
         $agent = $request->attributes->get('agent')->load('user');
@@ -64,9 +67,14 @@ class AgentOperationalController extends Controller
             'status' => 'required|string|max:50',
         ]);
 
+        $previousStatus = (string) $booking->status;
         $booking->update([
             'status' => $data['status'],
         ]);
+
+        if ($data['status'] === 'confirmed' && $previousStatus !== 'confirmed') {
+            $this->smsAutomationService->queueBookingConfirmation($booking->fresh());
+        }
 
         return response()->json([
             'status' => 'success',

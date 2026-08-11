@@ -27,7 +27,6 @@ use App\Services\GoogleMapsService;
 use App\Services\InvoiceService;
 use App\Services\MailDispatchService;
 use App\Services\PricingVariableService;
-use App\Services\Sms\SmsService;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
@@ -455,7 +454,7 @@ it('runs configured contractual pricing through approval dispatch driver complet
         Mockery::mock(AssignmentService::class),
         Mockery::mock(AvailabilityEnforcementService::class),
         Mockery::mock(MailDispatchService::class),
-        Mockery::mock(SmsService::class),
+        Mockery::mock(\App\Services\Sms\SmsAutomationService::class),
     );
     $transform = new ReflectionMethod($flow, 'transformCalculationResult');
     $confirmedSnapshot = ['base_pricing' => $transform->invoke($flow, [

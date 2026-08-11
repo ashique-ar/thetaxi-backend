@@ -36,7 +36,7 @@ use Illuminate\Support\Str;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
 use App\Services\MailDispatchService;
-use App\Services\Sms\SmsService;
+use App\Services\Sms\SmsAutomationService;
 use App\Mail\GeneralMail;
 use Illuminate\Notifications\DatabaseNotification;
 use Ramsey\Uuid\Uuid;
@@ -71,7 +71,7 @@ class BookingFlowService
     protected AssignmentService $assignmentService;
     protected AvailabilityEnforcementService $availabilityEnforcement;
     protected MailDispatchService $mailDispatchService;
-    protected SmsService $smsService;
+    protected SmsAutomationService $smsAutomationService;
 
     public function __construct(
         CurrencyService $currencyService,
@@ -79,14 +79,14 @@ class BookingFlowService
         AssignmentService $assignmentService,
         AvailabilityEnforcementService $availabilityEnforcement,
         MailDispatchService $mailDispatchService,
-        SmsService $smsService
+        SmsAutomationService $smsAutomationService
     ) {
         $this->currencyService = $currencyService;
         $this->pricingVariableService = $pricingVariableService;
         $this->assignmentService = $assignmentService;
         $this->availabilityEnforcement = $availabilityEnforcement;
         $this->mailDispatchService = $mailDispatchService;
-        $this->smsService = $smsService;
+        $this->smsAutomationService = $smsAutomationService;
     }
 
     /**
@@ -2537,6 +2537,11 @@ class BookingFlowService
             if (method_exists($this, 'sendBookingConfirmation')) {
                 $this->sendBookingConfirmation($booking);
             }
+
+            $this->smsAutomationService->queueBookingConfirmation(
+                $booking,
+                filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL)
+            );
 
             $this->createFutureRecurringBookings($booking, $params);
 
@@ -7474,7 +7479,6 @@ class BookingFlowService
             $customer = $booking->customer ?? ($booking->customer_id ? Customer::find($booking->customer_id) : null);
 
             $customerEmail = $customer?->email ?? $booking->notification_email ?? null;
-            $customerPhone = $customer?->phone ?? null;
             $customerName = $customer ? trim(($customer->first_name ?? '') . ' ' . ($customer->last_name ?? '')) : 'Valued Customer';
 
             // Send confirmation email to customer
@@ -7505,23 +7509,6 @@ class BookingFlowService
                 }
             }
 
-            // Send SMS confirmation to customer if phone available
-            if ($customerPhone) {
-                try {
-                    $this->smsService->queueSingleMessage([
-                        'recipient' => $customerPhone,
-                        'message' => "Your booking #{$bookingNumber} has been confirmed. Confirmation: {$confirmationNumber}.",
-                        'context_type' => 'booking',
-                        'context_id' => (string) $booking->id,
-                        'template_key' => 'booking_confirmation',
-                    ]);
-                } catch (\Throwable $e) {
-                    Log::warning('Failed to send booking confirmation SMS', [
-                        'booking_id' => $booking->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
         } catch (\Throwable $e) {
             Log::warning('sendBookingConfirmation failed', [
                 'booking_id' => $booking->id,
@@ -9955,6 +9942,7 @@ class BookingFlowService
     public function updateBookingStatus(string $bookingId, string $status, ?string $reason, string $userId): array
     {
         $booking = Booking::findOrFail($bookingId);
+        $previousStatus = (string) $booking->status;
 
         if ($status === 'cancelled') {
             $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
@@ -9963,6 +9951,10 @@ class BookingFlowService
         }
 
         $booking->refresh();
+
+        if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+            $this->smsAutomationService->queueBookingConfirmation($booking);
+        }
 
         return [
             'booking_id' => $bookingId,

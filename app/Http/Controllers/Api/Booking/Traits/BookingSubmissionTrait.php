@@ -99,6 +99,7 @@ trait BookingSubmissionTrait
                 },
             ],
             'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
+            'send_confirmation_sms' => ['sometimes', 'boolean'],
         ];
 
         if ($usesDropoffTime) {
