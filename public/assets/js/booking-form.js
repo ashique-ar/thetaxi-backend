@@ -3181,16 +3181,16 @@
 
         // Pickup address and coords
         const pickupAddress = getFirstValue(['pickup_location', 'pickup', 'from', 'from_location', 'pickup_address']);
-        const pickupLat = getFirstValue(['pickup_lat', 'pickup_latitude', 'from_lat', 'from_latitude']);
-        const pickupLng = getFirstValue(['pickup_lng', 'pickup_longitude', 'from_lng', 'from_longitude']);
+        const pickupLat = getFirstValue(['pickup_lat', 'pickup_location_lat', 'pickup_latitude', 'from_lat', 'from_location_lat', 'from_latitude']);
+        const pickupLng = getFirstValue(['pickup_lng', 'pickup_location_lng', 'pickup_longitude', 'from_lng', 'from_location_lng', 'from_longitude']);
         ensureHidden('pickup_location', pickupAddress);
         ensureHidden('pickup_lat', pickupLat);
         ensureHidden('pickup_lng', pickupLng);
 
         // Dropoff address and coords
         const dropoffAddress = getFirstValue(['dropoff_location', 'dropoff', 'to', 'to_location', 'dropoff_address']);
-        const dropoffLat = getFirstValue(['dropoff_lat', 'dropoff_latitude', 'to_lat', 'to_latitude']);
-        const dropoffLng = getFirstValue(['dropoff_lng', 'dropoff_longitude', 'to_lng', 'to_longitude']);
+        const dropoffLat = getFirstValue(['dropoff_lat', 'dropoff_location_lat', 'dropoff_latitude', 'to_lat', 'to_location_lat', 'to_latitude']);
+        const dropoffLng = getFirstValue(['dropoff_lng', 'dropoff_location_lng', 'dropoff_longitude', 'to_lng', 'to_location_lng', 'to_longitude']);
         ensureHidden('dropoff_location', dropoffAddress);
         ensureHidden('dropoff_lat', dropoffLat);
         ensureHidden('dropoff_lng', dropoffLng);
@@ -3233,6 +3233,10 @@
                 // At submission time, fill untouched controls so both custom and
                 // server-side validation receive the same dynamic fallback values.
                 applyConfiguredSearchDefaults(form);
+                // Service Type fields may submit as pickup_location/dropoff_location
+                // or other mapped keys. Canonicalize them before client validation,
+                // not after it, so background defaults include their coordinates.
+                ensureCanonicalSearchFields(form);
 
                 // ALWAYS validate FIRST - prevent submission if invalid
                 if (!validateForm(form)) {
@@ -3344,6 +3348,7 @@
                 control.value = resolveValue(configuredValue, control);
                 if (control.classList.contains('location-search') || ['pickup', 'dropoff', 'from', 'to'].includes(control.name)) {
                     control.setAttribute('data-is-default', 'true');
+                    control.setAttribute('data-place-selected', 'true');
                 }
                 control.dispatchEvent(new Event('change', { bubbles: true }));
             }
