@@ -217,6 +217,7 @@ class AssignmentController extends Controller
                     'trip_count' => $booking->bookingItems->count(),
                     'duration_days' => $pricingMetrics['duration_days'],
                     'duration_hours' => $pricingMetrics['duration_hours'],
+                    'duration_minutes' => $pricingMetrics['duration_minutes'],
                     'hire_km' => $pricingMetrics['hire_km'],
                     'waiting_hours' => $pricingMetrics['waiting_hours'],
                     'waiting_charge' => $pricingMetrics['waiting_charge'],
@@ -456,23 +457,46 @@ class AssignmentController extends Controller
         $kmCalculations = is_array($kmCalculations) ? $kmCalculations : [];
         $summary = is_array($pricingBreakdown['summary'] ?? null) ? $pricingBreakdown['summary'] : [];
         $basePricing = is_array($pricingBreakdown['base_pricing'] ?? null) ? $pricingBreakdown['base_pricing'] : [];
-        $variables = $pricingBreakdown['calculation_metadata']['variables_used']
+        $finalPricing = is_array($pricingBreakdown['final_pricing'] ?? null)
+            ? $pricingBreakdown['final_pricing']
+            : [];
+        $finalAuditInputs = is_array($finalPricing['audit']['inputs'] ?? null)
+            ? $finalPricing['audit']['inputs']
+            : [];
+        $finalDistanceDetails = is_array($finalPricing['distance_details'] ?? null)
+            ? $finalPricing['distance_details']
+            : [];
+        $finalKmCalculations = is_array($finalPricing['km_calculations'] ?? null)
+            ? $finalPricing['km_calculations']
+            : [];
+        $variables = $finalPricing['calculation_metadata']['resolved_variables']
+            ?? $finalPricing['calculation_metadata']['variables_used']
+            ?? $pricingBreakdown['calculation_metadata']['resolved_variables']
+            ?? $basePricing['calculation_metadata']['resolved_variables']
+            ?? $pricingBreakdown['calculation_metadata']['variables_used']
             ?? $basePricing['calculation_metadata']['variables_used']
             ?? [];
         $variables = is_array($variables) ? $variables : [];
 
         $hireKm = $this->firstNumeric([
+            $finalAuditInputs['distance_km'] ?? null,
+            $finalDistanceDetails['journey_distance'] ?? null,
+            $finalDistanceDetails['actual_journey_distance'] ?? null,
+            $finalKmCalculations['journey_distance'] ?? null,
+            $assignment?->total_distance_km,
             $distanceDetails['journey_distance'] ?? null,
             $distanceDetails['actual_journey_distance'] ?? null,
             $kmCalculations['journey_distance'] ?? null,
             $kmCalculations['actual_journey_distance'] ?? null,
             $pricingBreakdown['total_journey_distance_km'] ?? null,
             $metadata['total_journey_distance_km'] ?? null,
-            $assignment?->total_distance_km,
         ]);
 
         $waitingSeconds = $assignment?->total_waiting_time_seconds;
         $waitingHours = $this->firstNumeric([
+            isset($finalAuditInputs['waiting_minutes'])
+                ? ((float) $finalAuditInputs['waiting_minutes'] / 60)
+                : null,
             $variables['waiting_hours'] ?? null,
             $pricingBreakdown['waiting_hours'] ?? null,
             $basePricing['waiting_hours'] ?? null,
@@ -501,6 +525,8 @@ class AssignmentController extends Controller
                 $bookingItem?->unit_price,
             ]),
             'total_amount' => $this->firstNumeric([
+                $finalPricing['audit']['final_base'] ?? null,
+                $finalPricing['total_amount'] ?? null,
                 $summary['grand_total'] ?? null,
                 $summary['total'] ?? null,
                 $basePricing['total_amount'] ?? null,
@@ -508,18 +534,36 @@ class AssignmentController extends Controller
             ]),
             'duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
             'duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'duration_minutes' => $this->firstNumeric([
+                $finalAuditInputs['duration_minutes'] ?? null,
+                $assignment?->trip_started_at && $assignment?->trip_completed_at
+                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
+                    : null,
+                $bookingItem?->duration_minutes,
+                $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null,
+            ]),
             'journey_duration_seconds' => $this->firstNumeric([
+                isset($finalAuditInputs['duration_minutes'])
+                    ? ((float) $finalAuditInputs['duration_minutes'] * 60)
+                    : null,
+                $assignment?->trip_started_at && $assignment?->trip_completed_at
+                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+                    : null,
                 $metadata['journey_duration_seconds'] ?? null,
                 $distanceDetails['journey_duration_seconds'] ?? null,
                 $distanceDetails['duration_seconds'] ?? null,
             ]),
             'hire_km' => $hireKm,
             'included_km' => $this->firstNumeric([
+                $finalDistanceDetails['allowed_km'] ?? null,
+                $finalKmCalculations['allowed_km'] ?? null,
                 $distanceDetails['allowed_km'] ?? null,
                 $kmCalculations['allowed_km'] ?? null,
                 $distanceDetails['included_km'] ?? null,
             ]),
             'extra_km' => $this->firstNumeric([
+                $finalDistanceDetails['extra_km'] ?? null,
+                $finalKmCalculations['extra_km'] ?? null,
                 $distanceDetails['extra_km'] ?? null,
                 $kmCalculations['extra_km'] ?? null,
             ]),

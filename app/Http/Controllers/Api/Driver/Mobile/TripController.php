@@ -9,6 +9,7 @@ use App\Http\Requests\Driver\Mobile\PickupArrivedRequest;
 use App\Models\DriverAssignment;
 use App\Models\DriverAssignmentStop;
 use App\Services\Driver\DriverAuthService;
+use App\Services\Driver\MobileAssignmentService;
 use App\Services\Driver\TripTrackingService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\JsonResponse;
@@ -19,6 +20,7 @@ class TripController extends Controller
     public function __construct(
         private DriverAuthService $authService,
         private TripTrackingService $tripTrackingService,
+        private MobileAssignmentService $assignmentService,
         private SmsAutomationService $smsAutomationService
     ) {}
 
@@ -422,6 +424,8 @@ class TripController extends Controller
             }
 
             $summary = $this->tripTrackingService->endTrip($assignment, $request->validated());
+            $completedAssignment = $assignment->fresh();
+            $summary['assignment'] = $this->assignmentService->buildAssignmentPayload($completedAssignment);
 
             return response()->json([
                 'status' => 'success',

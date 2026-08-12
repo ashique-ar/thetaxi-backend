@@ -57,6 +57,26 @@ it('does not expose internal pricing structures through driver pricing metrics',
         ->not->toContain("'total_amount'");
 });
 
+it('projects completed trip metrics from canonical final pricing before booking estimates', function () {
+    $mobileSource = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+    $internalSource = file_get_contents(app_path('Http/Controllers/Api/AssignmentController.php'));
+    $tripControllerSource = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/TripController.php'));
+
+    foreach ([$mobileSource, $internalSource] as $source) {
+        $metrics = Str::between($source, 'private function buildPricingMetrics(', 'private function firstNumeric(');
+
+        expect($metrics)
+            ->toContain("\$finalPricing['audit']['inputs']")
+            ->toContain("\$finalAuditInputs['duration_minutes']")
+            ->toContain("\$finalAuditInputs['distance_km']")
+            ->toContain("\$finalAuditInputs['waiting_minutes']")
+            ->toContain("\$finalPricing['audit']['final_base']");
+    }
+
+    expect($tripControllerSource)
+        ->toContain("\$summary['assignment'] = \$this->assignmentService->buildAssignmentPayload(\$completedAssignment)");
+});
+
 it('returns canonical assignment and stop actions from the shared trip state owner', function () {
     $assignmentSource = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
     $tripSource = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
