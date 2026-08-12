@@ -499,11 +499,25 @@ class MobileAssignmentService
         $payload['duration_days'] = $pricingMetrics['duration_days'];
         $payload['duration_hours'] = $pricingMetrics['duration_hours'];
         $payload['duration_minutes'] = $pricingMetrics['duration_minutes'];
+        $payload['included_duration_days'] = $pricingMetrics['included_duration_days'];
+        $payload['included_duration_hours'] = $pricingMetrics['included_duration_hours'];
+        $payload['included_duration_minutes'] = $pricingMetrics['included_duration_minutes'];
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
         $payload['waiting_minutes'] = $pricingMetrics['waiting_minutes'];
         $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
         $payload['pricing_metrics'] = $this->driverPricingMetrics($pricingMetrics);
+        $payload['operational_metrics'] = [
+            'distance_km' => $assignment->total_distance_km !== null
+                ? round((float) $assignment->total_distance_km, 3)
+                : null,
+            'duration_minutes' => $assignment->trip_started_at && $assignment->trip_completed_at
+                ? round($assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60, 3)
+                : null,
+            'waiting_seconds' => $assignment->total_waiting_time_seconds !== null
+                ? (int) $assignment->total_waiting_time_seconds
+                : null,
+        ];
         $payload['booking_number'] = $booking?->booking_number;
         $payload['service_type_name'] = $bookingItem?->serviceType?->name ?? $assignment->service_type;
         $payload['customer_name'] = $this->resolveCustomerName($assignment);
@@ -772,6 +786,7 @@ class MobileAssignmentService
             $waitingSeconds !== null ? ((int) $waitingSeconds / 3600) : null,
         ]);
         $waitingMinutes = $this->firstNumeric([
+            $finalAuditInputs['waiting_minutes'] ?? null,
             $variables['waiting_minutes'] ?? null,
             $pricingBreakdown['waiting_minutes'] ?? null,
             $basePricing['waiting_minutes'] ?? null,
@@ -808,8 +823,12 @@ class MobileAssignmentService
                 $basePricing['total_amount'] ?? null,
                 $bookingItem?->total_price,
             ]),
-            'duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
-            'duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'duration_days' => isset($finalAuditInputs['duration_minutes'])
+                ? (int) ceil((float) $finalAuditInputs['duration_minutes'] / 1440)
+                : ($bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null),
+            'duration_hours' => isset($finalAuditInputs['duration_minutes'])
+                ? round((float) $finalAuditInputs['duration_minutes'] / 60, 3)
+                : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null),
             'duration_minutes' => $this->firstNumeric([
                 $finalAuditInputs['duration_minutes'] ?? null,
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
@@ -829,6 +848,11 @@ class MobileAssignmentService
                 $distanceDetails['journey_duration_seconds'] ?? null,
                 $distanceDetails['duration_seconds'] ?? null,
             ]),
+            'included_duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
+            'included_duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'included_duration_minutes' => $bookingItem?->duration_minutes !== null
+                ? (int) $bookingItem->duration_minutes
+                : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null),
             'hire_km' => $hireKm,
             'included_km' => $this->firstNumeric([
                 $finalDistanceDetails['allowed_km'] ?? null,
@@ -863,6 +887,9 @@ class MobileAssignmentService
             'duration_days',
             'duration_hours',
             'duration_minutes',
+            'included_duration_days',
+            'included_duration_hours',
+            'included_duration_minutes',
             'journey_duration_seconds',
             'hire_km',
             'included_km',

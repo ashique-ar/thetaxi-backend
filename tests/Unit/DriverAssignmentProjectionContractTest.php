@@ -77,6 +77,28 @@ it('projects completed trip metrics from canonical final pricing before booking 
         ->toContain("\$summary['assignment'] = \$this->assignmentService->buildAssignmentPayload(\$completedAssignment)");
 });
 
+it('returns one complete measured and priced contract for fixed-route and open-package completions', function () {
+    $trackingSource = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+    $mobileSource = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+
+    $pricingSummary = Str::between(
+        $trackingSource,
+        'private function resolveCanonicalFinalPricingSummary(',
+        'private function syncTripEndPaymentCollection('
+    );
+
+    expect($pricingSummary)
+        ->not->toContain('!$this->isOpenPackageAssignment($assignment)')
+        ->toContain("final_pricing.audit")
+        ->and($trackingSource)
+        ->toContain("'final_pricing'              => \$this->resolveCanonicalFinalPricingSummary(\$assignment)")
+        ->toContain("'final_pricing' => \$this->resolveCanonicalFinalPricingSummary(\$assignment)")
+        ->and($mobileSource)
+        ->toContain("\$payload['operational_metrics']")
+        ->toContain("'included_duration_minutes'")
+        ->toContain("\$finalAuditInputs['waiting_minutes'] ?? null");
+});
+
 it('returns canonical assignment and stop actions from the shared trip state owner', function () {
     $assignmentSource = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
     $tripSource = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));

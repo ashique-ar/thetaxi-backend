@@ -220,6 +220,7 @@ class AssignmentController extends Controller
                     'duration_minutes' => $pricingMetrics['duration_minutes'],
                     'hire_km' => $pricingMetrics['hire_km'],
                     'waiting_hours' => $pricingMetrics['waiting_hours'],
+                    'waiting_minutes' => $pricingMetrics['waiting_minutes'],
                     'waiting_charge' => $pricingMetrics['waiting_charge'],
                     'total_price' => $pricingMetrics['total_amount'],
                     'booking_total_amount' => (float) ($booking->total_actual ?? $booking->total_estimated ?? 0),
@@ -502,6 +503,22 @@ class AssignmentController extends Controller
             $basePricing['waiting_hours'] ?? null,
             $waitingSeconds !== null ? ((int) $waitingSeconds / 3600) : null,
         ]);
+        $waitingMinutes = $this->firstNumeric([
+            $finalAuditInputs['waiting_minutes'] ?? null,
+            $variables['waiting_minutes'] ?? null,
+            $pricingBreakdown['waiting_minutes'] ?? null,
+            $basePricing['waiting_minutes'] ?? null,
+            $waitingSeconds !== null ? ((int) $waitingSeconds / 60) : null,
+            $waitingHours !== null ? $waitingHours * 60 : null,
+        ]);
+        $actualDurationMinutes = $this->firstNumeric([
+            $finalAuditInputs['duration_minutes'] ?? null,
+            $assignment?->trip_started_at && $assignment?->trip_completed_at
+                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
+                : null,
+            $bookingItem?->duration_minutes,
+            $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null,
+        ]);
 
         $waitingRate = $this->firstNumeric([
             $variables['waiting_charge_per_hour'] ?? null,
@@ -532,16 +549,18 @@ class AssignmentController extends Controller
                 $basePricing['total_amount'] ?? null,
                 $bookingItem?->total_price,
             ]),
-            'duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
-            'duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
-            'duration_minutes' => $this->firstNumeric([
-                $finalAuditInputs['duration_minutes'] ?? null,
-                $assignment?->trip_started_at && $assignment?->trip_completed_at
-                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
-                    : null,
-                $bookingItem?->duration_minutes,
-                $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null,
-            ]),
+            'duration_days' => isset($finalAuditInputs['duration_minutes'])
+                ? (int) ceil((float) $finalAuditInputs['duration_minutes'] / 1440)
+                : ($bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null),
+            'duration_hours' => isset($finalAuditInputs['duration_minutes'])
+                ? round((float) $finalAuditInputs['duration_minutes'] / 60, 3)
+                : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null),
+            'duration_minutes' => $actualDurationMinutes,
+            'included_duration_days' => $bookingItem?->duration_days !== null ? (int) $bookingItem->duration_days : null,
+            'included_duration_hours' => $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours : null,
+            'included_duration_minutes' => $bookingItem?->duration_minutes !== null
+                ? (int) $bookingItem->duration_minutes
+                : ($bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null),
             'journey_duration_seconds' => $this->firstNumeric([
                 isset($finalAuditInputs['duration_minutes'])
                     ? ((float) $finalAuditInputs['duration_minutes'] * 60)
@@ -568,6 +587,7 @@ class AssignmentController extends Controller
                 $kmCalculations['extra_km'] ?? null,
             ]),
             'waiting_hours' => $waitingHours,
+            'waiting_minutes' => $waitingMinutes,
             'waiting_rate_per_hour' => $waitingRate,
             'waiting_charge' => $waitingCharge,
             'pricing_breakdown' => $pricingBreakdown,

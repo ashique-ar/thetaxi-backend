@@ -104,6 +104,7 @@ class TripTrackingService
             'pickup_location' => $pickupLocation,
             'pickup_arrival' => $pickupArrival,
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+            'trip_completed_at' => $assignment->trip_completed_at?->toIso8601String(),
             'stops' => $this->mapStopsForMobile($stops),
             'current_stop' => $this->mapStopForMobile($this->resolveCurrentStop($stops)),
             'allowed_actions' => $this->getAssignmentAllowedActions($assignment, $stops),
@@ -113,6 +114,10 @@ class TripTrackingService
             'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
             'waiting_period_count' => $waitingTime['waiting_period_count'],
             'route_point_count' => $assignment->routePoints()->count(),
+            'total_duration_minutes' => $assignment->trip_started_at && $assignment->trip_completed_at
+                ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
+                : null,
+            'hire_completed' => $assignment->trip_phase === TripPhase::COMPLETED,
         ];
     }
 
@@ -216,6 +221,10 @@ class TripTrackingService
                 'route_point_count'          => $assignment->routePoints()->count(),
                 'hire_completed'             => true,
                 'payment'                    => $this->mapBookingPaymentSummary($assignment->booking),
+                'final_pricing'              => $this->resolveCanonicalFinalPricingSummary($assignment),
+                'package_charges'            => $this->isOpenPackageAssignment($assignment)
+                    ? $this->resolveCanonicalFinalPricingSummary($assignment)
+                    : null,
             ];
         }
 
@@ -298,6 +307,7 @@ class TripTrackingService
                 'route_point_count' => $assignment->routePoints()->count(),
                 'hire_completed' => true,
                 'package_charges' => $packageCharges,
+                'final_pricing' => $this->resolveCanonicalFinalPricingSummary($assignment),
                 'payment' => $paymentSummary,
             ];
         });
@@ -1054,7 +1064,7 @@ class TripTrackingService
 
     private function resolveCanonicalFinalPricingSummary(DriverAssignment $assignment): ?array
     {
-        if (!$this->isOpenPackageAssignment($assignment) || !$assignment->booking_item_id) {
+        if (!$assignment->booking_item_id) {
             return null;
         }
 
