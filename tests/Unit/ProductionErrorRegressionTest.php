@@ -3,6 +3,7 @@
 use App\Mail\GeneralMail;
 use App\Http\Controllers\Api\LoyaltyController;
 use App\Models\LoyaltyTier;
+use Illuminate\Support\Str;
 
 function productionRegressionPath(string $path): string
 {
@@ -20,8 +21,16 @@ it('passes the general email body under a non-reserved Blade variable', function
         ->toHaveKey('emailBody', "First line\nSecond line")
         ->not->toHaveKey('message')
         ->and($view)
-        ->toContain('e($emailBody)')
-        ->not->toContain('e($message)');
+        ->toContain('$generalEmailBody = $emailBody')
+        ->toContain('is_string($message)')
+        ->toContain('e($generalEmailBody)');
+
+    $previewController = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/EmailTestController.php'));
+    $generalPreview = Str::between($previewController, 'public function testGeneral()', 'public function testInquiryConfirmation()');
+
+    expect($generalPreview)
+        ->toContain("'emailBody' => \$message")
+        ->not->toContain("'message' => \$message");
 });
 
 it('uses the Carbon period class provided by the Carbon package', function (): void {

@@ -70,7 +70,7 @@ class EmailTestController
         $message = "Thank you for choosing {$companyName}!\n\nWe are excited to serve you with our premium car rental services. If you have any questions, please don't hesitate to contact us.\n\nBest regards,\n{$companyName} Team";
 
         return view('emails.general', [
-            'message' => $message,
+            'emailBody' => $message,
         ]);
     }
 
