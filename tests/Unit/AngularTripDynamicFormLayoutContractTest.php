@@ -6,6 +6,7 @@ it('keeps Angular Add Trip responsive layout aligned with the Laravel dynamic fo
     $component = file_get_contents($portalRoot . '/trip-form-editor.component.ts');
     $template = file_get_contents($portalRoot . '/trip-form-editor.component.html');
     $styles = file_get_contents($portalRoot . '/trip-form-editor.component.scss');
+    $bookingFlow = file_get_contents($portalRoot . '/../booking-flow-single-view/booking-flow-single-view.component.ts');
     $laravelStyles = file_get_contents($backendRoot . '/public/assets/css/booking-form.css');
 
     expect($component)
@@ -21,7 +22,10 @@ it('keeps Angular Add Trip responsive layout aligned with the Laravel dynamic fo
         ->toContain('.field-width-auto')
         ->toContain('.field-tablet-auto { grid-column: span 6; }')
         ->toContain('.field-mobile-auto { grid-column: span 12; }')
-        ->toContain('@container trip-editor')
+        ->toContain('@container trip-editor (max-width: 48rem)')
+        ->and($bookingFlow)
+        ->toContain("width: '1200px'")
+        ->toContain("maxWidth: '96vw'")
         ->and($laravelStyles)
         ->toContain('.dynamic-field-width-full')
         ->toContain('.dynamic-field-tablet-auto')
