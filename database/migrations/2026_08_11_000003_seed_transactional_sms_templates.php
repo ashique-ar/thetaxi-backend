@@ -18,7 +18,7 @@ return new class extends Migration
         'sms_trip_completion_scope' => 'booking',
         'sms_driver_assignment_fallback_enabled' => 'false',
         'sms_admin_booking_summary_enabled' => 'false',
-        'sms_dry_run' => 'true',
+        'sms_dry_run' => 'false',
         'sms_inquiry_received_template' => "Thank you for contacting TheTaxi.\n\nRef #: {inquiry_number}\n\nWe have received your inquiry and our team will contact you shortly.\n\nCall: 011 286 1111\nwww.thetaxi.lk",
         'sms_quotation_requested_template' => "Thank you for requesting a quotation from TheTaxi.\n\nRef #: {booking_number}\n\nWe have received your request and our team will contact you shortly.\n\nCall: 011 286 1111\nwww.thetaxi.lk",
         'sms_booking_confirmation_template' => "Your booking with TheTaxi is confirmed.\n\nBooking #: {booking_number}\nPickup: {pickup_datetime}\n\nFor assistance: 011 286 1111",

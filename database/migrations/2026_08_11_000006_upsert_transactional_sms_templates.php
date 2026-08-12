@@ -19,7 +19,7 @@ return new class extends Migration
         'sms_driver_assignment_fallback_enabled' => 'false',
         'sms_driver_assignment_fallback_timeout_minutes' => '10',
         'sms_admin_booking_summary_enabled' => 'false',
-        'sms_dry_run' => 'true',
+        'sms_dry_run' => 'false',
         'sms_cost_per_segment' => '0',
         'sms_cost_currency' => 'LKR',
         'sms_inquiry_received_template' => "Thank you for contacting TheTaxi.\n\nRef #: {inquiry_number}\n\nWe have received your inquiry and our team will contact you shortly.\n\nCall: 011 286 1111\nwww.thetaxi.lk",
@@ -49,11 +49,6 @@ return new class extends Migration
             }
 
             if ($query->exists()) {
-                $query->update([
-                    'value' => $value,
-                    'updated_at' => now(),
-                ]);
-
                 continue;
             }
 

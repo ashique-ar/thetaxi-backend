@@ -434,8 +434,21 @@ it('ships every documented transactional template in the settings migration', fu
         expect($migration)->toContain($templateKey);
     }
 
-    expect($migration)->toContain("'sms_dry_run' => 'true'")
+    expect($migration)->toContain("'sms_dry_run' => 'false'")
         ->and($migration)->toContain('if (!$exists)');
+});
+
+it('keeps live SMS delivery enabled across fresh installs and later settings migrations', function (): void {
+    $seedMigration = file_get_contents(database_path('migrations/2026_08_11_000003_seed_transactional_sms_templates.php'));
+    $upsertMigration = file_get_contents(database_path('migrations/2026_08_11_000006_upsert_transactional_sms_templates.php'));
+    $activationMigration = file_get_contents(database_path('migrations/2026_08_12_000001_disable_sms_dry_run.php'));
+
+    expect($seedMigration)->toContain("'sms_dry_run' => 'false'")
+        ->and($upsertMigration)->toContain("'sms_dry_run' => 'false'")
+        ->and($upsertMigration)->not->toContain("\$query->update([")
+        ->and($activationMigration)->toContain("->where('type', 'sms_dry_run')")
+        ->and($activationMigration)->toContain("'value' => 'false'")
+        ->and($activationMigration)->toContain('Do not silently disable live SMS delivery during a rollback.');
 });
 
 it('deduplicates payment SMS by provider payment reference', function (): void {
