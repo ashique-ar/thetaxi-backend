@@ -5179,6 +5179,13 @@ class BookingFlowService
             } else {
                 throw new \Exception('No vehicle groups specified for pricing calculation');
             }
+        } catch (\InvalidArgumentException $e) {
+            Log::notice('Pricing calculation rejected invalid input', [
+                'error' => $e->getMessage(),
+                'params' => $params
+            ]);
+
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Pricing calculation failed', [
                 'error' => $e->getMessage(),

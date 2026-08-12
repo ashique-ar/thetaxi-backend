@@ -47,7 +47,7 @@ class GeneralMail extends Mailable implements ShouldQueue
         return new Content(
             view: 'emails.general',
             with: [
-                'message' => $this->emailData['message'],
+                'emailBody' => $this->emailData['message'],
                 'data' => $this->emailData['data'] ?? []
             ]
         );

@@ -9,7 +9,7 @@
 @section('content')
     <div class="highlight-box">
         <p style="margin: 0; font-size: 15px; line-height: 1.7; color: #333;">
-            {!! nl2br(e($message)) !!}
+            {!! nl2br(e($emailBody)) !!}
         </p>
     </div>
 @endsection

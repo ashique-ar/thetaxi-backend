@@ -279,8 +279,8 @@ class SmsAutomationService
         }
 
         $dispatch = $dispatch->exists
-            ? BookingDispatch::query()->with(['driver.user', 'vehicle.make', 'vehicle.model'])->findOrFail($dispatch->getKey())
-            : tap($dispatch)->loadMissing(['driver.user', 'vehicle.make', 'vehicle.model']);
+            ? BookingDispatch::query()->with(['driver.user', 'vehicle.group.make', 'vehicle.group.model'])->findOrFail($dispatch->getKey())
+            : tap($dispatch)->loadMissing(['driver.user', 'vehicle.group.make', 'vehicle.group.model']);
         $phone = $booking->customer?->phone;
         if (!$phone || !$dispatch->driver || !$dispatch->vehicle) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverDispatched, 'missing_data', 'Recipient, driver, or vehicle data is missing.', $dispatch->booking_item_id);
@@ -315,8 +315,8 @@ class SmsAutomationService
         }
 
         $assignment = $assignment->exists
-            ? DriverAssignment::query()->with(['driver.user', 'bookingItem.vehicle.make', 'bookingItem.vehicle.model'])->findOrFail($assignment->getKey())
-            : tap($assignment)->loadMissing(['driver.user', 'bookingItem.vehicle.make', 'bookingItem.vehicle.model']);
+            ? DriverAssignment::query()->with(['driver.user', 'bookingItem.vehicle.group.make', 'bookingItem.vehicle.group.model'])->findOrFail($assignment->getKey())
+            : tap($assignment)->loadMissing(['driver.user', 'bookingItem.vehicle.group.make', 'bookingItem.vehicle.group.model']);
         $phone = $booking->customer?->phone;
         $vehicle = $assignment->bookingItem?->vehicle;
         if (!$phone || !$assignment->driver || !$vehicle) {
@@ -619,8 +619,8 @@ class SmsAutomationService
     {
         $userName = trim((string) ($driver->user?->first_name ?? '') . ' ' . (string) ($driver->user?->last_name ?? ''));
         $driverName = trim((string) ($driver->full_name ?? $driver->name ?? $userName));
-        $make = trim((string) ($vehicle->make?->name ?? ''));
-        $model = trim((string) ($vehicle->model?->name ?? ''));
+        $make = trim((string) ($vehicle->group?->make?->name ?? ''));
+        $model = trim((string) ($vehicle->group?->model?->name ?? ''));
 
         return [
             'driver_name' => $driverName !== '' ? $driverName : 'Driver',

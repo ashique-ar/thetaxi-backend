@@ -207,10 +207,12 @@ it('queues item-scoped dispatched and assignment-scoped arrived customer message
     $make->setRawAttributes(['name' => 'Toyota']);
     $model = new VehicleModel();
     $model->setRawAttributes(['name' => 'Axio']);
+    $group = new \App\Models\Vehicle\VehicleGroup();
+    $group->setRelation('make', $make);
+    $group->setRelation('model', $model);
     $vehicle = new Vehicle();
     $vehicle->setRawAttributes(['id' => 'vehicle-1', 'license_plate' => 'CAB-1234']);
-    $vehicle->setRelation('make', $make);
-    $vehicle->setRelation('model', $model);
+    $vehicle->setRelation('group', $group);
 
     $item = new BookingItem();
     $item->setRawAttributes(['id' => 'item-1', 'from_date' => '2026-08-20 10:30:00']);

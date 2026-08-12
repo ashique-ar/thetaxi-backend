@@ -76,6 +76,7 @@ class BookingLifecycleController extends Controller
             'agreements_signed' => 'nullable|boolean',
             'notes' => 'nullable|string',
             'condition' => 'nullable|array',
+            'allow_repeat_dispatch_for_testing' => 'nullable|boolean',
         ]);
 
         try {
@@ -97,6 +98,7 @@ class BookingLifecycleController extends Controller
                     'handover_time' => $request->input('handover_time'),
                     'handover_location' => $request->input('handover_location'),
                     'booking_item_id' => $request->input('booking_item_id'),
+                    'allow_repeat_dispatch_for_testing' => $request->boolean('allow_repeat_dispatch_for_testing'),
                 ], [
                     'dispatched_by' => Auth::id()
                 ])

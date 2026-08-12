@@ -3,13 +3,14 @@
 use App\Http\Controllers\Api\LoyaltyController;
 use App\Models\Customer;
 use App\Models\LoyaltyTier;
+use App\Models\LoyaltyPointTransaction;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 
 uses(RefreshDatabase::class);
 
-it('persists manual additions and penalties with an attributed reputation audit', function (): void {
+it('persists manual additions and penalties in the UUID-native loyalty ledger', function (): void {
     $actor = User::create([
         'first_name' => 'Operations',
         'last_name' => 'Manager',
@@ -33,10 +34,11 @@ it('persists manual additions and penalties with an attributed reputation audit'
 
     expect($additionResponse->getStatusCode())->toBe(200)
         ->and($customerUser->fresh()->getPoints())->toBe(25);
-    $this->assertDatabaseHas('reputations', [
-        'payee_id' => $customerUser->id,
-        'name' => 'manual_bonus',
-        'point' => 25,
+    $this->assertDatabaseHas('loyalty_point_transactions', [
+        'customer_id' => $customer->id,
+        'type' => 'adjusted',
+        'points' => 25,
+        'balance_after' => 25,
     ]);
 
     $penalty = Request::create('/api/customers/' . $customer->id . '/loyalty/adjustments', 'POST', [
@@ -50,13 +52,14 @@ it('persists manual additions and penalties with an attributed reputation audit'
 
     expect($penaltyResponse->getStatusCode())->toBe(200)
         ->and($customerUser->fresh()->getPoints())->toBe(20);
-    $this->assertDatabaseHas('reputations', [
-        'payee_id' => $customerUser->id,
-        'name' => 'manual_penalty',
-        'point' => -5,
+    $this->assertDatabaseHas('loyalty_point_transactions', [
+        'customer_id' => $customer->id,
+        'type' => 'adjusted',
+        'points' => -5,
+        'balance_after' => 20,
     ]);
 
-    $meta = json_decode((string) $customerUser->reputations()->where('name', 'manual_penalty')->value('meta'), true);
+    $meta = LoyaltyPointTransaction::query()->where('points', -5)->firstOrFail()->metadata;
     expect($meta)->toMatchArray([
         'reason' => 'Duplicate points correction',
         'adjustment_type' => 'penalty',

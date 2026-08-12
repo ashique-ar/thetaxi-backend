@@ -12,6 +12,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class LoyaltyController extends Controller
@@ -88,7 +89,8 @@ class LoyaltyController extends Controller
     public function getCustomerLoyaltyHistory(Customer $customer): JsonResponse
     {
         $user = $customer->user;
-        $history = $user->reputations()
+        $history = LoyaltyPointTransaction::query()
+            ->where('customer_id', $customer->id)
             ->latest()
             ->paginate(20);
         
@@ -323,9 +325,7 @@ class LoyaltyController extends Controller
         $customerPoints = Customer::query()
             ->join('users', 'customers.user_id', '=', 'users.id')
             ->whereNull('customers.deleted_at');
-        $reputations = DB::table('reputations')
-            ->join('customers', 'reputations.payee_id', '=', 'customers.user_id')
-            ->whereNull('customers.deleted_at');
+        $transactions = LoyaltyPointTransaction::query()->completed();
 
         return response()->json([
             'status' => 'success',
@@ -333,8 +333,8 @@ class LoyaltyController extends Controller
                 'total_members' => (clone $customerPoints)->count(),
                 'members_with_points' => (clone $customerPoints)->where('users.reputation', '>', 0)->count(),
                 'outstanding_points' => (int) (clone $customerPoints)->sum('users.reputation'),
-                'points_issued' => (int) (clone $reputations)->where('reputations.point', '>', 0)->sum('reputations.point'),
-                'points_deducted' => abs((int) (clone $reputations)->where('reputations.point', '<', 0)->sum('reputations.point')),
+                'points_issued' => (int) (clone $transactions)->where('points', '>', 0)->sum('points'),
+                'points_deducted' => abs((int) (clone $transactions)->where('points', '<', 0)->sum('points')),
                 'average_balance' => round((float) ((clone $customerPoints)->avg('users.reputation') ?? 0), 2),
             ],
         ]);
@@ -407,43 +407,31 @@ class LoyaltyController extends Controller
             ]);
         }
 
-        $query = User::select([
-            'users.id',
-            'users.first_name',
-            'users.last_name',
-            'users.email',
-            'users.reputation',
-            'customers.id as customer_id',
-            'reputations.id as reputation_id',
-            'reputations.point',
-            'reputations.name as activity_type',
-            'reputations.meta',
-            'reputations.created_at'
-        ])
-        ->join('reputations', 'users.id', '=', 'reputations.payee_id')
-        ->join('customers', 'users.id', '=', 'customers.user_id');
+        $query = LoyaltyPointTransaction::query()
+            ->completed()
+            ->with('customer.user');
 
         // Apply period filter
         if ($period !== 'all') {
             $date = now();
             switch ($period) {
                 case 'day':
-                    $query->whereDate('reputations.created_at', $date);
+                    $query->whereDate('created_at', $date);
                     break;
                 case 'week':
-                    $query->whereBetween('reputations.created_at', [
+                    $query->whereBetween('created_at', [
                         $date->startOfWeek(),
                         $date->endOfWeek()
                     ]);
                     break;
                 case 'month':
-                    $query->whereMonth('reputations.created_at', $date->month)
-                          ->whereYear('reputations.created_at', $date->year);
+                    $query->whereMonth('created_at', $date->month)
+                          ->whereYear('created_at', $date->year);
                     break;
             }
         }
 
-        $activity = $query->orderByDesc('reputations.created_at')
+        $activity = $query->orderByDesc('created_at')
                          ->limit($limit)
                          ->get();
 
@@ -451,23 +439,20 @@ class LoyaltyController extends Controller
             'status' => 'success',
             'data' => [
                 'activity' => $activity->map(function ($item) {
-                    $meta = is_array($item->meta) ? $item->meta : json_decode((string) $item->meta, true);
-                    $manualType = data_get($meta, 'adjustment_type');
-                    $actionType = str_starts_with((string) $item->activity_type, 'manual_')
-                        ? 'adjusted'
-                        : ($item->point >= 0 ? 'earned' : 'redeemed');
+                    $meta = $item->metadata ?? [];
+                    $customer = $item->customer;
+                    $user = $customer?->user;
 
                     return [
-                        'id' => (string) $item->reputation_id,
+                        'id' => (string) $item->id,
                         'customer_id' => $item->customer_id,
-                        'customer_name' => trim($item->first_name . ' ' . $item->last_name),
-                        'customer_email' => $item->email,
-                        'action_type' => $actionType,
-                        'points' => (int) $item->point,
-                        'current_points' => (int) $item->reputation,
-                        'tier' => $this->getLoyaltyTier((int) $item->reputation)['name'],
-                        'description' => data_get($meta, 'reason')
-                            ?: ($manualType ? ucfirst($manualType) . ' adjustment' : (string) $item->activity_type),
+                        'customer_name' => trim(($user?->first_name ?? '') . ' ' . ($user?->last_name ?? '')) ?: 'Unknown customer',
+                        'customer_email' => $user?->email,
+                        'action_type' => $item->type,
+                        'points' => (int) $item->points,
+                        'current_points' => (int) $item->balance_after,
+                        'tier' => $this->getLoyaltyTier((int) $item->balance_after)['name'],
+                        'description' => data_get($meta, 'reason') ?: $item->description,
                         'created_at' => $item->created_at,
                     ];
                 }),
@@ -496,29 +481,21 @@ class LoyaltyController extends Controller
                 'activity_at',
             ]);
 
-            User::query()
-                ->select([
-                    'customers.id as customer_id',
-                    'users.first_name',
-                    'users.last_name',
-                    'users.email',
-                    'reputations.point',
-                    'reputations.name as activity_type',
-                    'reputations.created_at as activity_at',
-                ])
-                ->join('reputations', 'users.id', '=', 'reputations.payee_id')
-                ->join('customers', 'users.id', '=', 'customers.user_id')
-                ->orderBy('reputations.created_at')
-                ->orderBy('reputations.id')
+            LoyaltyPointTransaction::query()
+                ->completed()
+                ->with('customer.user')
+                ->orderBy('created_at')
+                ->orderBy('id')
                 ->chunk(500, function ($rows) use ($output): void {
                     foreach ($rows as $row) {
+                        $user = $row->customer?->user;
                         fputcsv($output, [
                             $this->csvValue($row->customer_id),
-                            $this->csvValue(trim($row->first_name . ' ' . $row->last_name)),
-                            $this->csvValue($row->email),
-                            (int) $row->point,
-                            $this->csvValue($row->activity_type),
-                            $row->activity_at,
+                            $this->csvValue(trim(($user?->first_name ?? '') . ' ' . ($user?->last_name ?? ''))),
+                            $this->csvValue($user?->email),
+                            (int) $row->points,
+                            $this->csvValue($row->type),
+                            $row->created_at,
                         ]);
                     }
                 });
@@ -552,14 +529,22 @@ class LoyaltyController extends Controller
 
             $user->forceFill(['reputation' => $balanceBefore + $points])->save();
 
-            $user->reputations()->create([
-                'name' => 'manual_' . $type,
-                'point' => $points,
-                'meta' => json_encode([
+            LoyaltyPointTransaction::create([
+                'customer_id' => $customer->id,
+                'type' => 'adjusted',
+                'points' => $points,
+                'balance_before' => $balanceBefore,
+                'balance_after' => $balanceBefore + $points,
+                'reference_number' => 'MANUAL-' . Str::upper(Str::random(16)),
+                'description' => $reason,
+                'processed_by' => $actorId,
+                'processed_at' => now(),
+                'status' => 'completed',
+                'metadata' => [
                     'reason' => $reason,
                     'adjustment_type' => $type,
                     'processed_by' => $actorId,
-                ], JSON_THROW_ON_ERROR),
+                ],
             ]);
 
             return [
@@ -599,6 +584,16 @@ class LoyaltyController extends Controller
     private function tierBenefits(LoyaltyTier $tier): array
     {
         $benefits = $tier->privileges ?? [];
+        if ($benefits === [] && $tier->getRawOriginal('privileges') !== null) {
+            $benefits = $tier->getRawOriginal('privileges');
+        }
+        if (is_string($benefits)) {
+            $decoded = json_decode($benefits, true);
+            $benefits = is_array($decoded) ? $decoded : [$benefits];
+        }
+        if (!is_array($benefits)) {
+            $benefits = [];
+        }
 
         if ($tier->priority_booking) {
             $benefits[] = 'Priority booking';
@@ -610,7 +605,7 @@ class LoyaltyController extends Controller
             $benefits[] = 'Priority support';
         }
 
-        return array_values(array_unique($benefits));
+        return array_values(array_unique(array_filter($benefits, 'is_scalar')));
     }
 
     /**

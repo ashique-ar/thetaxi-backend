@@ -1,0 +1,74 @@
+<?php
+
+use App\Mail\GeneralMail;
+use App\Http\Controllers\Api\LoyaltyController;
+use App\Models\LoyaltyTier;
+
+function productionRegressionPath(string $path): string
+{
+    return dirname(__DIR__, 2) . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $path);
+}
+
+it('passes the general email body under a non-reserved Blade variable', function (): void {
+    $content = (new GeneralMail([
+        'subject' => 'Production regression',
+        'message' => "First line\nSecond line",
+    ]))->content();
+    $view = file_get_contents(productionRegressionPath('resources/views/emails/general.blade.php'));
+
+    expect($content->with)
+        ->toHaveKey('emailBody', "First line\nSecond line")
+        ->not->toHaveKey('message')
+        ->and($view)
+        ->toContain('e($emailBody)')
+        ->not->toContain('e($message)');
+});
+
+it('uses the Carbon period class provided by the Carbon package', function (): void {
+    $source = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Vehicle/VehicleController.php'));
+
+    expect($source)
+        ->toContain('use Carbon\\CarbonPeriod;')
+        ->not->toContain('use Illuminate\\Support\\CarbonPeriod;');
+});
+
+it('passes the explicit repeat-dispatch testing flag through the API controller', function (): void {
+    $source = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Booking/BookingLifecycleController.php'));
+
+    expect($source)
+        ->toContain("'allow_repeat_dispatch_for_testing' => 'nullable|boolean'")
+        ->toContain("'allow_repeat_dispatch_for_testing' => \$request->boolean('allow_repeat_dispatch_for_testing')");
+});
+
+it('loads vehicle make and model through the vehicle group for SMS automation', function (): void {
+    $source = file_get_contents(productionRegressionPath('app/Services/Sms/SmsAutomationService.php'));
+
+    expect($source)
+        ->toContain('vehicle.group.make')
+        ->toContain('vehicle.group.model')
+        ->not->toContain("'vehicle.make'")
+        ->not->toContain("'vehicle.model'");
+});
+
+it('uses the UUID-native loyalty ledger instead of joining legacy integer reputation owners', function (): void {
+    $source = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/LoyaltyController.php'));
+
+    expect($source)
+        ->toContain('LoyaltyPointTransaction::query()')
+        ->not->toContain("join('reputations'");
+});
+
+it('normalizes legacy string tier privileges before removing duplicates', function (): void {
+    $tier = new LoyaltyTier();
+    $tier->setRawAttributes([
+        'privileges' => '"Airport lounge access"',
+        'priority_booking' => false,
+        'free_cancellation' => false,
+        'priority_support' => true,
+    ]);
+    $method = new ReflectionMethod(LoyaltyController::class, 'tierBenefits');
+    $controller = (new ReflectionClass(LoyaltyController::class))->newInstanceWithoutConstructor();
+
+    expect($method->invoke($controller, $tier))
+        ->toBe(['Airport lounge access', 'Priority support']);
+});
