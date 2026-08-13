@@ -106,6 +106,11 @@ class SmsAutomationService
                 'customer_name' => 'Example Customer',
                 'customer_mobile' => '0771234567',
                 'pickup_datetime' => now()->addDay()->setTime(9, 30)->format('d/m/Y h:i A'),
+                'pickup_date' => now()->addDay()->format('d/m/Y'),
+                'pickup_time' => '09:30 AM',
+                'dropoff_datetime' => now()->addDay()->setTime(11, 30)->format('d/m/Y h:i A'),
+                'dropoff_date' => now()->addDay()->format('d/m/Y'),
+                'dropoff_time' => '11:30 AM',
                 'origin' => 'Colombo Fort',
                 'destination' => 'Bandaranaike International Airport',
                 'item_count' => '1',
@@ -130,6 +135,11 @@ class SmsAutomationService
             'customer_name' => 'Example Customer',
             'customer_mobile' => '0771234567',
             'pickup_datetime' => now()->addDay()->setTime(9, 30)->format('d/m/Y h:i A'),
+            'pickup_date' => now()->addDay()->format('d/m/Y'),
+            'pickup_time' => '09:30 AM',
+            'dropoff_datetime' => now()->addDay()->setTime(11, 30)->format('d/m/Y h:i A'),
+            'dropoff_date' => now()->addDay()->format('d/m/Y'),
+            'dropoff_time' => '11:30 AM',
             'origin' => 'Colombo Fort',
             'destination' => 'Bandaranaike International Airport',
             'item_count' => '1',
@@ -287,7 +297,7 @@ class SmsAutomationService
             return;
         }
 
-        $variables = array_merge($this->bookingVariables($booking), $this->driverVehicleVariables(
+        $variables = array_merge($this->bookingVariables($booking, $dispatch->booking_item_id), $this->driverVehicleVariables(
             $dispatch->driver,
             $dispatch->vehicle
         ));
@@ -324,7 +334,7 @@ class SmsAutomationService
             return;
         }
 
-        $variables = array_merge($this->bookingVariables($booking), $this->driverVehicleVariables(
+        $variables = array_merge($this->bookingVariables($booking, $assignment->booking_item_id), $this->driverVehicleVariables(
             $assignment->driver,
             $vehicle
         ));
@@ -362,7 +372,10 @@ class SmsAutomationService
 
         $message = $this->smsService->queueSingleMessage([
             'recipient' => $driverPhone,
-            'message' => $this->render($settings['driver_assignment_fallback_template'], $this->bookingVariables($booking)),
+            'message' => $this->render(
+                $settings['driver_assignment_fallback_template'],
+                $this->bookingVariables($booking, $assignment->booking_item_id)
+            ),
             'channel' => 'transactional',
             'source' => 'fallback',
             'context_type' => 'driver_assignment',
@@ -427,7 +440,10 @@ class SmsAutomationService
             $booking,
             TransactionalSmsEvent::TripCompleted->value,
             $phone,
-            $this->render($settings['trip_completion_template'], $this->bookingVariables($booking)),
+            $this->render(
+                $settings['trip_completion_template'],
+                $this->bookingVariables($booking, $scope === 'item' ? $assignment->booking_item_id : null)
+            ),
             $assignment->trip_completed_at ?? $booking->completed_at ?? now(),
             ['audience' => 'customer', 'completion_scope' => $scope],
             $scope === 'item' ? $assignment->booking_item_id : null,
@@ -577,17 +593,30 @@ class SmsAutomationService
         ]);
     }
 
-    private function bookingVariables(Booking $booking): array
+    private function bookingVariables(Booking $booking, ?string $bookingItemId = null): array
     {
         $items = $booking->bookingItems;
-        $firstItem = $items->first();
-        $pickup = $firstItem?->from_date ? Carbon::parse($firstItem->from_date) : null;
+        $firstItem = $bookingItemId
+            ? ($items->firstWhere('id', $bookingItemId) ?? $items->first())
+            : $items->first();
+
+        $pickupDate = $this->formatBookingDate($firstItem?->from_date);
+        $pickupTime = $this->formatBookingTime($firstItem?->from_time);
+        $dropoffDate = $this->formatBookingDate($firstItem?->to_date);
+        $dropoffTime = $this->formatBookingTime($firstItem?->to_time);
 
         return [
             'booking_number' => (string) ($booking->booking_number ?: $booking->id),
             'customer_name' => (string) ($booking->customer?->full_name ?: 'Customer'),
             'customer_mobile' => (string) ($booking->customer?->phone ?: '-'),
-            'pickup_datetime' => $pickup?->format('d/m/Y h:i A') ?? 'To be confirmed',
+            // Booking dates and times are persisted in separate columns. Never infer the
+            // customer-facing time from the date column's midnight/timezone component.
+            'pickup_datetime' => $this->formatBookingDateTime($pickupDate, $pickupTime),
+            'pickup_date' => $pickupDate,
+            'pickup_time' => $pickupTime,
+            'dropoff_datetime' => $this->formatBookingDateTime($dropoffDate, $dropoffTime),
+            'dropoff_date' => $dropoffDate,
+            'dropoff_time' => $dropoffTime,
             'origin' => $this->locationLabel($firstItem?->pickup_location),
             'destination' => $this->locationLabel($firstItem?->dropoff_location),
             'item_count' => (string) max(1, $items->count()),
@@ -599,6 +628,49 @@ class SmsAutomationService
                 ?? $items->sum('total_price')
             ), 2, '.', ','),
         ];
+    }
+
+    private function formatBookingDate(mixed $date): string
+    {
+        if (!$date) {
+            return 'To be confirmed';
+        }
+
+        try {
+            return Carbon::parse($date)->format('d/m/Y');
+        } catch (\Throwable) {
+            return 'To be confirmed';
+        }
+    }
+
+    private function formatBookingTime(mixed $time): string
+    {
+        $value = trim((string) $time);
+        if ($value === '') {
+            return 'To be confirmed';
+        }
+
+        foreach (['H:i:s', 'H:i'] as $format) {
+            try {
+                $parsed = Carbon::createFromFormat($format, $value);
+                if ($parsed !== false && $parsed->format($format) === $value) {
+                    return $parsed->format('h:i A');
+                }
+            } catch (\Throwable) {
+                // Try the next supported database time representation.
+            }
+        }
+
+        return 'To be confirmed';
+    }
+
+    private function formatBookingDateTime(string $date, string $time): string
+    {
+        if ($date === 'To be confirmed') {
+            return $date;
+        }
+
+        return $time === 'To be confirmed' ? $date . ' (time to be confirmed)' : $date . ' ' . $time;
     }
 
     private function locationLabel(mixed $location): string

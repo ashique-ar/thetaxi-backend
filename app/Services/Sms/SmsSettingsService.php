@@ -87,7 +87,7 @@ class SmsSettingsService
             ),
             'booking_confirmation_template' => trim((string) (
                 $settings['sms_booking_confirmation_template']
-                    ?? 'Your booking with TheTaxi is confirmed. Booking #: {booking_number}. Pickup: {pickup_datetime}. For assistance: 011 286 1111.'
+                    ?? 'Your booking with TheTaxi is confirmed. Booking #: {booking_number}. Pickup date: {pickup_date}. Pickup time: {pickup_time}. For assistance: 011 286 1111.'
             )),
             'quotation_requested_template' => trim((string) (
                 $settings['sms_quotation_requested_template']
@@ -99,11 +99,11 @@ class SmsSettingsService
             )),
             'driver_dispatched_template' => trim((string) (
                 $settings['sms_driver_dispatched_template']
-                    ?? "Your Taxi is on the way. Booking #: {booking_number}. Driver: {driver_name}. Mobile: {driver_mobile}. Vehicle: {vehicle_description}. Vehicle No: {vehicle_number}. TheTaxi: 011 286 1111."
+                    ?? "Your Taxi is on the way. Booking #: {booking_number}. Pickup: {pickup_date} {pickup_time}. Driver: {driver_name}. Mobile: {driver_mobile}. Vehicle: {vehicle_description}. Vehicle No: {vehicle_number}. TheTaxi: 011 286 1111."
             )),
             'driver_arrived_template' => trim((string) (
                 $settings['sms_driver_arrived_template']
-                    ?? 'Your Taxi has arrived at the pickup location. Booking #: {booking_number}. Driver: {driver_name}. Vehicle: {vehicle_number}. Mobile: {driver_mobile}.'
+                    ?? 'Your Taxi has arrived at the pickup location. Booking #: {booking_number}. Scheduled pickup: {pickup_date} {pickup_time}. Driver: {driver_name}. Vehicle: {vehicle_number}. Mobile: {driver_mobile}.'
             )),
             'trip_completion_template' => trim((string) (
                 $settings['sms_trip_completion_template']
@@ -115,11 +115,11 @@ class SmsSettingsService
             )),
             'driver_assignment_fallback_template' => trim((string) (
                 $settings['sms_driver_assignment_fallback_template']
-                    ?? "New booking assigned.\n\nBooking #: {booking_number}\nPickup: {pickup_datetime}\nCustomer: {customer_name}\n\nPlease check TheTaxi Driver App."
+                    ?? "New booking assigned.\n\nBooking #: {booking_number}\nPickup date: {pickup_date}\nPickup time: {pickup_time}\nCustomer: {customer_name}\n\nPlease check TheTaxi Driver App."
             )),
             'admin_booking_summary_template' => trim((string) (
                 $settings['sms_admin_booking_summary_template']
-                    ?? "NEW BOOKING CONFIRMED\nBooking: #{booking_number}\nCustomer: {customer_name}\nMobile: {customer_mobile}\nPickup: {pickup_datetime}\nFrom: {origin}\nTo: {destination}\nItems/Trips: {item_count}\nTotal: {currency} {total}"
+                    ?? "NEW BOOKING CONFIRMED\nBooking: #{booking_number}\nCustomer: {customer_name}\nMobile: {customer_mobile}\nPickup date: {pickup_date}\nPickup time: {pickup_time}\nFrom: {origin}\nTo: {destination}\nItems/Trips: {item_count}\nTotal: {currency} {total}"
             )),
             'providers' => [
                 'esms' => [

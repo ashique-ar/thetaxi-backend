@@ -173,6 +173,40 @@ it('honours the internal confirmation choice without suppressing configured admi
         ->and($payload['message'])->toBe('ADMIN BK-CHOICE');
 });
 
+it('renders booking schedule times from the dedicated time columns', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'cost_per_segment' => 0,
+        'cost_currency' => 'LKR',
+    ]);
+
+    $item = new BookingItem();
+    $item->setRawAttributes([
+        'id' => 'item-time-source',
+        'from_date' => '2026-08-20 00:00:00',
+        'from_time' => '16:45:00',
+        'to_date' => '2026-08-20 00:00:00',
+        'to_time' => '18:05:00',
+    ]);
+
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-time-source', 'booking_number' => 'BK-TIME']);
+    $booking->setRelation('customer', null);
+    $booking->setRelation('bookingItems', new Collection([$item]));
+
+    $preview = (new SmsAutomationService($settings, $sms))->previewTransactionalTemplate(
+        'booking.confirmed',
+        '{pickup_date}|{pickup_time}|{pickup_datetime}|{dropoff_time}|{dropoff_datetime}',
+        $booking
+    );
+
+    expect($preview['message'])
+        ->toBe('20/08/2026|04:45 PM|20/08/2026 04:45 PM|06:05 PM|20/08/2026 06:05 PM')
+        ->not->toContain('12:00 AM')
+        ->not->toContain('05:30 AM');
+});
+
 it('queues item-scoped dispatched and assignment-scoped arrived customer messages', function (): void {
     $settings = Mockery::mock(SmsSettingsService::class);
     $sms = Mockery::mock(SmsService::class);
@@ -180,8 +214,8 @@ it('queues item-scoped dispatched and assignment-scoped arrived customer message
         'enabled' => true,
         'driver_dispatched_enabled' => true,
         'driver_arrived_enabled' => true,
-        'driver_dispatched_template' => 'ON WAY {driver_name} {driver_mobile} {vehicle_number}',
-        'driver_arrived_template' => 'ARRIVED {driver_name} {vehicle_number}',
+        'driver_dispatched_template' => 'ON WAY {pickup_datetime} {driver_name} {driver_mobile} {vehicle_number}',
+        'driver_arrived_template' => 'ARRIVED {pickup_datetime} {driver_name} {vehicle_number}',
     ]);
 
     $payloads = [];
@@ -215,7 +249,7 @@ it('queues item-scoped dispatched and assignment-scoped arrived customer message
     $vehicle->setRelation('group', $group);
 
     $item = new BookingItem();
-    $item->setRawAttributes(['id' => 'item-1', 'from_date' => '2026-08-20 10:30:00']);
+    $item->setRawAttributes(['id' => 'item-1', 'from_date' => '2026-08-20 00:00:00', 'from_time' => '10:30:00']);
     $item->setRelation('vehicle', $vehicle);
 
     $booking = new Booking();
@@ -243,8 +277,8 @@ it('queues item-scoped dispatched and assignment-scoped arrived customer message
         ->and($payloads[1]['recipient'])->toBe('0770000000')
         ->and($payloads[0]['driver_assignment_id'])->toBeNull()
         ->and($payloads[1]['driver_assignment_id'])->toBe('assignment-1')
-        ->and($payloads[0]['message'])->toContain('ON WAY Kamal Silva 0771111111 CAB-1234')
-        ->and($payloads[1]['message'])->toContain('ARRIVED Kamal Silva CAB-1234')
+        ->and($payloads[0]['message'])->toContain('ON WAY 20/08/2026 10:30 AM Kamal Silva 0771111111 CAB-1234')
+        ->and($payloads[1]['message'])->toContain('ARRIVED 20/08/2026 10:30 AM Kamal Silva CAB-1234')
         ->and($payloads[0]['idempotency_key'])->not->toBe($payloads[1]['idempotency_key']);
 });
 
@@ -449,6 +483,17 @@ it('keeps live SMS delivery enabled across fresh installs and later settings mig
         ->and($activationMigration)->toContain("->where('type', 'sms_dry_run')")
         ->and($activationMigration)->toContain("'value' => 'false'")
         ->and($activationMigration)->toContain('Do not silently disable live SMS delivery during a rollback.');
+});
+
+it('migrates shipped SMS templates to explicit booking time tokens without overwriting custom text', function (): void {
+    $migration = file_get_contents(database_path('migrations/2026_08_13_120000_use_booking_time_columns_in_sms_templates.php'));
+
+    expect($migration)
+        ->toContain('{pickup_date}')
+        ->toContain('{pickup_time}')
+        ->toContain("->where('value', \$templates['old'])")
+        ->toContain('Business-owned')
+        ->toContain("whereNull('company_id')");
 });
 
 it('deduplicates payment SMS by provider payment reference', function (): void {
