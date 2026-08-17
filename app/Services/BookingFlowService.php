@@ -2480,6 +2480,7 @@ class BookingFlowService
             $booking->confirmed_at = now();
             $booking->requires_approval = false;
             $booking->approval_status = 'not_required';
+            $booking->skip_all_emails = filter_var($params['skip_confirmation_emails'] ?? false, FILTER_VALIDATE_BOOL);
 
             if (method_exists(Booking::class, 'generateConfirmationNumber')) {
                 $booking->confirmation_number = Booking::generateConfirmationNumber();
@@ -2534,9 +2535,7 @@ class BookingFlowService
                 $this->createBookingAssignments($booking, $params, 'active');
             }
 
-            $skipConfirmationEmails = filter_var($params['skip_confirmation_emails'] ?? false, FILTER_VALIDATE_BOOL);
-
-            if (!$skipConfirmationEmails && method_exists($this, 'sendBookingConfirmation')) {
+            if (!$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
                 $this->sendBookingConfirmation($booking);
             }
 

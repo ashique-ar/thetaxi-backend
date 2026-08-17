@@ -255,6 +255,9 @@ class Booking extends BaseModel
         'notification_whatsapp',
         'notification_push',
 
+        // Internal/test booking controls
+        'skip_all_emails',
+
         // Booking confirmations and numbers
         'booking_number',
         'confirmation_number',
@@ -336,6 +339,7 @@ class Booking extends BaseModel
         'requires_approval' => 'boolean',
         'has_overrides' => 'boolean',
         'confirmed' => 'boolean',
+        'skip_all_emails' => 'boolean',
 
         // json
         'pricing_snapshot' => 'array',

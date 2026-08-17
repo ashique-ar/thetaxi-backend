@@ -116,6 +116,17 @@ class InvoiceService
             return;
         }
 
+        $suppressingBooking = $invoice->booking ?? Booking::find($invoice->booking_id);
+        if ($suppressingBooking && $suppressingBooking->skip_all_emails) {
+            $invoice->update([
+                'email_sent_at' => Carbon::now('UTC'),
+                'email_sending_at' => null,
+                'email_last_error' => null,
+            ]);
+            Log::info('Invoice email skipped — booking has emails suppressed', ['invoice_id' => $invoice->id]);
+            return;
+        }
+
         if (!$invoice->customer_email) {
             Log::warning('Invoice email skipped — no customer email', ['invoice_id' => $invoice->id]);
             return;

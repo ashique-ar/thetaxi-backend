@@ -26,7 +26,12 @@ class BookingLifecycleNotification extends Notification implements ShouldQueue
     {
         $channels = ['database'];
 
-        if ($this->emailEnabled && (bool) ($this->booking->notification_email ?? true) && !empty($notifiable->email)) {
+        if (
+            $this->emailEnabled
+            && (bool) ($this->booking->notification_email ?? true)
+            && !($this->booking->skip_all_emails ?? false)
+            && !empty($notifiable->email)
+        ) {
             $channels[] = 'mail';
         }
 
