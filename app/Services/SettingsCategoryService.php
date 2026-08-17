@@ -631,6 +631,12 @@ class SettingsCategoryService
                     'type' => 'textarea',
                     'placeholder' => 'Thank you for choosing us. Safe travels!',
                     'description' => 'Text to include in email footers'
+                ],
+                'email_header_subtitle' => [
+                    'label' => 'Email Header Subtitle',
+                    'type' => 'text',
+                    'placeholder' => 'Premium Taxi Service',
+                    'description' => 'Tagline shown under the company name in the email header'
                 ]
             ]
         ];

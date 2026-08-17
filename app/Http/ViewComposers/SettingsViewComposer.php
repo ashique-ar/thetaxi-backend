@@ -84,6 +84,10 @@ class SettingsViewComposer
                     'social_youtube',
                     'social_tiktok',
 
+                    // Email essentials
+                    'email_header_subtitle',
+                    'email_footer_text',
+
                     // Header essentials
                     'header_help_label',
                     'header_cart_label',
@@ -493,7 +497,8 @@ class SettingsViewComposer
                     'company_phone' => '',
                     'primary_color' => '#BF2629',
                     'secondary_color' => '#717171',
-                    'tertiary_color' => '#FFFFFF'
+                    'tertiary_color' => '#FFFFFF',
+                    'email_header_subtitle' => 'Premium Taxi Service'
                 ];
 
                 $settings = $this->settingsService->withCanonicalBranding(array_merge($defaults, $essentialSettings));
@@ -510,7 +515,8 @@ class SettingsViewComposer
                     'company_phone' => '',
                     'primary_color' => '#BF2629',
                     'secondary_color' => '#717171',
-                    'tertiary_color' => '#FFFFFF'
+                    'tertiary_color' => '#FFFFFF',
+                    'email_header_subtitle' => 'Premium Taxi Service'
                 ]);
             }
         });

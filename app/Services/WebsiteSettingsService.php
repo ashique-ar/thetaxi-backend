@@ -75,6 +75,7 @@ class WebsiteSettingsService
         'booking_reminder_enabled',
         'contact_form_notification',
         'email_footer_text',
+        'email_header_subtitle',
     ];
     private const CATEGORY_METHODS = [
         'general' => 'getGeneralSettings',
@@ -960,7 +961,8 @@ class WebsiteSettingsService
             'booking_confirmation_enabled',
             'booking_reminder_enabled',
             'contact_form_notification',
-            'email_footer_text'
+            'email_footer_text',
+            'email_header_subtitle'
         ];
 
         return $this->getMultiple($types);

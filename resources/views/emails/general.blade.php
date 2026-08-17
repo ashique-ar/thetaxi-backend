@@ -4,7 +4,7 @@
 
 @section('header_title', ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company'))
 
-@section('header_subtitle', 'Premium Car Rental Services')
+@section('header_subtitle', $settings['email_header_subtitle'] ?? 'Premium Taxi Service')
 
 @section('content')
     @php

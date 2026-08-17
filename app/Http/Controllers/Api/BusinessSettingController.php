@@ -90,6 +90,7 @@ class BusinessSettingController extends Controller
             'booking_reminder_enabled',
             'contact_form_notification',
             'email_footer_text',
+            'email_header_subtitle',
         ],
     ];
 
