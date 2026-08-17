@@ -2534,7 +2534,9 @@ class BookingFlowService
                 $this->createBookingAssignments($booking, $params, 'active');
             }
 
-            if (method_exists($this, 'sendBookingConfirmation')) {
+            $skipConfirmationEmails = filter_var($params['skip_confirmation_emails'] ?? false, FILTER_VALIDATE_BOOL);
+
+            if (!$skipConfirmationEmails && method_exists($this, 'sendBookingConfirmation')) {
                 $this->sendBookingConfirmation($booking);
             }
 

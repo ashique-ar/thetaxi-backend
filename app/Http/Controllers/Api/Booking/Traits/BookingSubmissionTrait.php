@@ -211,6 +211,8 @@ trait BookingSubmissionTrait
                 },
             ],
             'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
+            'send_confirmation_sms' => ['sometimes', 'boolean'],
+            'skip_confirmation_emails' => ['sometimes', 'boolean'],
         ];
 
         if ($usesDropoffTime) {
