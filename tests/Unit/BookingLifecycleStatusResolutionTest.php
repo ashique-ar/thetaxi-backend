@@ -64,6 +64,21 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->assertTrue(true);
     }
 
+    public function test_item_dispatch_status_overrides_a_stale_confirmed_parent_for_operations(): void
+    {
+        $booking = $this->modelWithoutConstructor(Booking::class, ['status' => 'confirmed']);
+        $item = $this->modelWithoutConstructor(BookingItem::class, ['completed_at' => null]);
+        $dispatch = $this->modelWithoutConstructor(BookingDispatch::class, [
+            'dispatch_status' => DispatchStatus::IN_PROGRESS->value,
+        ]);
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'resolveSelectedItemLifecycleStatus');
+
+        $status = $method->invoke($service, $booking, $item, $dispatch, null);
+
+        $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $status);
+    }
+
     public function test_final_telemetry_uses_exact_minutes_and_rejects_reversed_ranges(): void
     {
         $resolver = new FinalPricingTelemetryResolver();

@@ -1475,8 +1475,16 @@ class BookingLifecycleService
         array $completionData = [],
         ?string $bookingItemId = null
     ): Booking {
-        $bookingForStatus = Booking::query()->findOrFail($bookingId);
-        $currentStatus = $bookingForStatus->getLifecycleStatus();
+        $bookingForStatus = Booking::query()
+            ->with(['bookingItems', 'dispatch', 'dispatches', 'qc', 'qcs'])
+            ->findOrFail($bookingId);
+        $contextForStatus = $this->resolveLifecycleContext($bookingForStatus, $bookingItemId);
+        $currentStatus = $this->resolveSelectedItemLifecycleStatus(
+            $bookingForStatus,
+            $contextForStatus['booking_item'],
+            $this->resolveItemDispatch($bookingForStatus, $contextForStatus),
+            $this->resolveItemQc($bookingForStatus, $contextForStatus)
+        );
         if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
             $completedAt = isset($completionData['actual_return_time'])
                 ? Carbon::parse($completionData['actual_return_time'])->utc()
@@ -1486,7 +1494,9 @@ class BookingLifecycleService
             // an in-progress trip after an administrative force-end retry.
             $this->closeDriverAssignmentsForCompletion(
                 $bookingId,
-                null,
+                (string) $bookingForStatus->status === 'completed'
+                    ? null
+                    : $contextForStatus['booking_item_id'],
                 $completedAt,
                 $completionData
             );
