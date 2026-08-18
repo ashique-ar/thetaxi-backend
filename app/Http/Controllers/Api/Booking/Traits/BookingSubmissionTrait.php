@@ -227,6 +227,13 @@ trait BookingSubmissionTrait
 
         Validator::make($params, $rules)->validate();
 
+        // This endpoint is only ever hit by staff confirming a booking directly in the
+        // admin portal (the corporate self-service portal and the public website create
+        // bookings through their own separate flows). The customer should still get their
+        // confirmation email, but staff already know they made the booking, so skip the
+        // internal copy (info@ / mail.customer_cc / mail.bcc_all) that normally rides along.
+        $params['notify_internal_team'] = false;
+
         $booking = $this->bookingFlowService->confirmBooking($params);
 
         return response()->json([

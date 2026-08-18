@@ -2536,7 +2536,8 @@ class BookingFlowService
             }
 
             if (!$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
-                $this->sendBookingConfirmation($booking);
+                $notifyInternalTeam = filter_var($params['notify_internal_team'] ?? true, FILTER_VALIDATE_BOOL);
+                $this->sendBookingConfirmation($booking, $notifyInternalTeam);
             }
 
             $this->smsAutomationService->queueBookingConfirmation(
@@ -7477,7 +7478,7 @@ class BookingFlowService
     /**
      * Send booking confirmation notifications
      */
-    private function sendBookingConfirmation(Booking $booking): void
+    private function sendBookingConfirmation(Booking $booking, bool $notifyInternalTeam = true): void
     {
         $bookingNumber = $booking->booking_number ?? (string) $booking->id;
         $confirmationNumber = $booking->confirmation_number ?? $bookingNumber;
@@ -7506,7 +7507,8 @@ class BookingFlowService
                                 'booking_number' => $bookingNumber,
                                 'confirmation_number' => $confirmationNumber,
                             ],
-                        ])
+                        ]),
+                        $notifyInternalTeam
                     );
                 } catch (\Throwable $e) {
                     Log::warning('Failed to send booking confirmation email', [

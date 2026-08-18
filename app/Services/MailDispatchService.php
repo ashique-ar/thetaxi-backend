@@ -14,8 +14,14 @@ class MailDispatchService
 {
     /**
      * Send a customer-facing email with required CC/BCC rules.
+     *
+     * @param bool $includeInternalCopy Whether to also copy the internal mailbox
+     *     (from-address sender copy + mail.customer_cc + mail.bcc_all). The customer
+     *     always receives the email regardless of this flag — it only controls the
+     *     internal copy, e.g. staff-confirmed admin-portal bookings pass false since
+     *     the staff member already knows the booking exists.
      */
-    public function sendToCustomer(string $email, Mailable $mailable): void
+    public function sendToCustomer(string $email, Mailable $mailable, bool $includeInternalCopy = true): void
     {
         if (!$email) {
             Log::warning('Skipping customer email send; missing recipient.', [
@@ -24,13 +30,13 @@ class MailDispatchService
             return;
         }
 
-        $includeSenderCopy = $this->shouldIncludeSenderCopy($mailable);
+        $includeSenderCopy = $includeInternalCopy && $this->shouldIncludeSenderCopy($mailable);
         $toRecipients = $this->normalizeRecipients(array_merge(
             [$email],
             $includeSenderCopy ? $this->fromAddressRecipients() : []
         ));
         $pending = Mail::to($toRecipients);
-        $recipients = $this->resolveCustomerRecipients($mailable);
+        $recipients = $includeInternalCopy ? $this->resolveCustomerRecipients($mailable) : ['cc' => [], 'bcc' => []];
 
         if (!empty($recipients['cc'])) {
             $pending->cc($recipients['cc']);
