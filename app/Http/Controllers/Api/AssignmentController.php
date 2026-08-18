@@ -326,6 +326,7 @@ class AssignmentController extends Controller
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
                             'booking_item_id' => $assignment->booking_item_id,
+                            'decline_reason' => $assignment->decline_reason,
                             'driver' => $assignment->driver ? [
                                 'id' => $assignment->driver->id,
                                 'name' => $assignment->driver->user ? 
@@ -1352,7 +1353,6 @@ class AssignmentController extends Controller
                     'skip_reason' => $stop->skip_reason,
                 ];
             })
-            ->filter(fn ($stop) => $this->isValidCoordinate($stop['latitude'], $stop['longitude']))
             ->values()
             ->all();
     }

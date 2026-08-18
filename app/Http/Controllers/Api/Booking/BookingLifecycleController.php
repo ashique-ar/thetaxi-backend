@@ -462,13 +462,15 @@ class BookingLifecycleController extends Controller
             'distance_km' => 'nullable|numeric|min:0',
             'waiting_minutes' => 'nullable|integer|min:0',
             'notes' => 'nullable|string|max:2000',
-            'send_customer_sms' => 'required|boolean',
+            'send_customer_sms' => 'nullable|boolean',
+            'send_customer_email' => 'nullable|boolean',
         ]);
 
         try {
-            $sendCustomerSms = (bool) $validated['send_customer_sms'];
+            $sendCustomerSms = (bool) ($validated['send_customer_sms'] ?? false);
+            $sendCustomerEmail = (bool) ($validated['send_customer_email'] ?? false);
             $completionData = $validated;
-            unset($completionData['send_customer_sms'], $completionData['booking_item_id']);
+            unset($completionData['send_customer_sms'], $completionData['send_customer_email'], $completionData['booking_item_id']);
             $result = $this->lifecycleService->forceCompleteBooking(
                 $bookingId,
                 $completionData,
@@ -484,6 +486,7 @@ class BookingLifecycleController extends Controller
                 'data' => $result,
                 'aggregate_completed' => $aggregateCompleted,
                 'customer_sms_requested' => $sendCustomerSms,
+                'customer_email_requested' => $sendCustomerEmail,
                 'message' => $aggregateCompleted
                     ? 'Hire force ended successfully'
                     : 'Booking item force ended; remaining items are still active',

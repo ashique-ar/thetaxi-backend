@@ -209,8 +209,9 @@ class MobileAssignmentService
     }
 
     /**
-     * Prevent stale assignment rows from resurfacing completed/cancelled hires
-     * in driver-facing active and upcoming views.
+     * Prevent undispatched bookings and completed/cancelled hires
+     * from surfacing in driver-facing active and upcoming views.
+     * Only bookings/items that have been dispatched by portal dispatchers are shown to driver.
      */
     private function excludeTerminalBookings(Builder $query): void
     {
@@ -218,6 +219,18 @@ class MobileAssignmentService
             $assignmentQuery->whereDoesntHave('booking')
                 ->orWhereHas('booking', fn (Builder $bookingQuery) => $bookingQuery
                     ->whereNotIn('status', $this->terminalBookingStatuses()));
+        })
+        ->where(function (Builder $assignmentQuery) {
+            // Require associated dispatch row or active trip phase already in progress
+            $assignmentQuery->whereHas('booking.dispatches', function (Builder $dispatchQuery) {
+                $dispatchQuery->whereNotNull('dispatched_at')
+                    ->where('dispatch_status', '!=', 'cancelled');
+            })
+            ->orWhereIn('trip_phase', [
+                TripPhase::ACCEPTED,
+                TripPhase::PICKUP_ARRIVED,
+                TripPhase::IN_PROGRESS,
+            ]);
         });
     }
 

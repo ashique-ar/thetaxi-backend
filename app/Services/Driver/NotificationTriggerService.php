@@ -48,15 +48,23 @@ class NotificationTriggerService
             ['fallback_due_at' => now()->addMinutes($this->smsSettings?->getSettings()['driver_assignment_fallback_timeout_minutes'] ?? 10)]
         );
 
-        SendAssignmentNotificationJob::dispatch($assignment, 1, ['notification_id' => $tracking->id])
-            ->onQueue(config('services.firebase.queue', 'driver-notifications'));
+        // Send immediately on current request thread for instant mobile arrival
+        try {
+            $this->processAssignmentNotificationAttempt($assignment, 1, ['notification_id' => $tracking->id]);
+        } catch (\Throwable $e) {
+            Log::warning('Instant notification delivery failed, queueing job', [
+                'assignment_id' => $assignment->id,
+                'error' => $e->getMessage(),
+            ]);
+            SendAssignmentNotificationJob::dispatch($assignment, 1, ['notification_id' => $tracking->id])
+                ->onQueue(config('services.firebase.queue', 'driver-notifications'));
+        }
 
         SendDriverAssignmentFallbackSmsJob::dispatch($tracking->id)
             ->delay($tracking->fallback_due_at);
 
-        Log::info('Queued assignment notification', [
+        Log::info('Triggered assignment notification (instant + queued fallback)', [
             'assignment_id' => $assignment->id,
-            'queue' => config('services.firebase.queue', 'driver-notifications'),
             'notification_id' => $tracking->id,
         ]);
 
