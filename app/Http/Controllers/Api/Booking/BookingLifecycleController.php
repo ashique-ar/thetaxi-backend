@@ -419,7 +419,7 @@ class BookingLifecycleController extends Controller
             $booking = Booking::find($request->input('booking_id'));
             $aggregateCompleted = (string) ($booking?->status ?? '') === 'completed';
             if ($aggregateCompleted) {
-                $this->smsAutomation->queueTripEnd($booking);
+                $this->smsAutomation->queueTripEnd($booking, $request->input('booking_item_id'));
             }
 
             return response()->json([
@@ -462,23 +462,28 @@ class BookingLifecycleController extends Controller
             'distance_km' => 'nullable|numeric|min:0',
             'waiting_minutes' => 'nullable|integer|min:0',
             'notes' => 'nullable|string|max:2000',
+            'send_customer_sms' => 'required|boolean',
         ]);
 
         try {
+            $sendCustomerSms = (bool) $validated['send_customer_sms'];
+            $completionData = $validated;
+            unset($completionData['send_customer_sms'], $completionData['booking_item_id']);
             $result = $this->lifecycleService->forceCompleteBooking(
                 $bookingId,
-                $validated,
+                $completionData,
                 $validated['booking_item_id'] ?? null
             );
             $aggregateCompleted = (string) $result->status === 'completed';
-            if ($aggregateCompleted) {
-                $this->smsAutomation->queueTripEnd($result);
+            if ($aggregateCompleted && $sendCustomerSms) {
+                $this->smsAutomation->queueTripEnd($result, $validated['booking_item_id'] ?? null);
             }
 
             return response()->json([
                 'status' => 'success',
                 'data' => $result,
                 'aggregate_completed' => $aggregateCompleted,
+                'customer_sms_requested' => $sendCustomerSms,
                 'message' => $aggregateCompleted
                     ? 'Hire force ended successfully'
                     : 'Booking item force ended; remaining items are still active',

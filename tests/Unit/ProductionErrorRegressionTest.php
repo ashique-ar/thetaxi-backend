@@ -59,6 +59,30 @@ it('loads vehicle make and model through the vehicle group for SMS automation', 
         ->not->toContain("'vehicle.model'");
 });
 
+it('provides the portal lifecycle trip end SMS bridge used after completion', function (): void {
+    $automation = file_get_contents(productionRegressionPath('app/Services/Sms/SmsAutomationService.php'));
+    $controller = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Booking/BookingLifecycleController.php'));
+
+    expect($automation)
+        ->toContain('public function queueTripEnd(Booking $booking, ?string $bookingItemId = null): void')
+        ->toContain("->where('trip_phase', 'completed')")
+        ->toContain('$this->queueTripCompleted($booking, $assignment)')
+        ->and($controller)
+        ->toContain("queueTripEnd(\$result, \$validated['booking_item_id'] ?? null)");
+});
+
+it('requires an explicit customer SMS decision for administrative force completion', function (): void {
+    $controller = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Booking/BookingLifecycleController.php'));
+    $dialog = file_get_contents(productionRegressionPath('../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/dialogs/force-end-hire-dialog.component.ts'));
+
+    expect($controller)
+        ->toContain("'send_customer_sms' => 'required|boolean'")
+        ->toContain('if ($aggregateCompleted && $sendCustomerSms)')
+        ->and($dialog)
+        ->toContain('Send trip-completion SMS to the customer?')
+        ->toContain("send_customer_sms: value.send_customer_sms === 'yes'");
+});
+
 it('uses the UUID-native loyalty ledger instead of joining legacy integer reputation owners', function (): void {
     $source = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/LoyaltyController.php'));
 

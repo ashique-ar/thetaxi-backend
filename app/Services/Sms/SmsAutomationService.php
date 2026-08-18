@@ -452,6 +452,35 @@ class SmsAutomationService
         );
     }
 
+    /**
+     * Queue the completion notification from an admin/lifecycle completion.
+     * Driver completion already owns its assignment, while portal completion
+     * only has the booking and optional selected booking item.
+     */
+    public function queueTripEnd(Booking $booking, ?string $bookingItemId = null): void
+    {
+        $assignment = DriverAssignment::query()
+            ->where('booking_id', $booking->getKey())
+            ->when($bookingItemId, fn ($query) => $query->where('booking_item_id', $bookingItemId))
+            ->where('trip_phase', 'completed')
+            ->orderByDesc('trip_completed_at')
+            ->orderByDesc('updated_at')
+            ->first();
+
+        if (!$assignment) {
+            $this->recordBookingDecision(
+                $this->resolveBooking($booking),
+                TransactionalSmsEvent::TripCompleted,
+                'missing_assignment',
+                'Trip completion was recorded without a completed driver assignment.',
+                $bookingItemId
+            );
+            return;
+        }
+
+        $this->queueTripCompleted($booking, $assignment);
+    }
+
     public function queuePaymentConfirmation(
         Booking $booking,
         float $amount,
