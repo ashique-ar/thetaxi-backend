@@ -35,6 +35,7 @@ beforeEach(function () {
         'booking_dispatches',
         'booking_items',
         'vehicle_pricing_calculation_definitions',
+        'business_settings',
         'vehicles',
         'users',
         'bookings',
@@ -54,6 +55,14 @@ beforeEach(function () {
         $table->boolean('is_corporate_booking')->default(false);
         $table->uuid('corporate_account_id')->nullable();
         $table->uuid('employee_id')->nullable();
+        $table->decimal('total_actual', 12, 2)->nullable();
+        $table->decimal('base_amount', 12, 2)->default(0);
+        $table->string('currency', 3)->default('LKR');
+        $table->decimal('actual_distance', 8, 2)->nullable();
+        $table->integer('actual_duration')->nullable();
+        $table->json('pricing_snapshot')->nullable();
+        $table->json('duration_metrics')->nullable();
+        $table->json('distance_metrics')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -64,6 +73,14 @@ beforeEach(function () {
         $table->string('availability_status')->nullable();
         $table->uuid('created_user_id')->nullable();
         $table->uuid('updated_user_id')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+
+    Schema::create('service_types', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('name')->nullable();
+        $table->string('context')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -124,6 +141,26 @@ beforeEach(function () {
         $table->timestamps();
         $table->softDeletes();
     });
+
+    Schema::create('business_settings', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('type')->nullable();
+        $table->text('value')->nullable();
+        $table->uuid('created_user_id')->nullable();
+        $table->uuid('updated_user_id')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    // PricingContextPolicyService resolves a real (unmocked) WebsiteSettingsService
+    // from the container, independent of the mocked instance passed to
+    // BookingLifecycleService below. Force "separate" pricing mode so
+    // synchronizeFinalPricing()'s normalizeCalculationParams() short-circuits
+    // instead of looking up a service_types table this fixture doesn't have.
+    DB::table('business_settings')->insert([
+        'id' => '00000000-0000-0000-0000-000000000002',
+        'type' => 'internal_pricing_mode',
+        'value' => 'separate',
+    ]);
 
     Schema::create('booking_dispatches', function (Blueprint $table) {
         $table->uuid('id')->primary();
@@ -588,4 +625,130 @@ it('owns QC and repairs per item and blocks aggregate completion until every ite
     $secondDetails = $lifecycle->getQCDetails($this->booking->id, $second->id);
     expect($firstDetails['id'])->toBe($firstQc->id)
         ->and($secondDetails['id'])->toBe($secondQc->id);
+});
+
+it('completes the trip and defers invoicing when active definitions exist but none match the booking', function () {
+    $first = $this->items[0];
+    $second = $this->items[1];
+    BookingDispatch::where('booking_item_id', $second->id)->delete();
+    Vehicle::whereKey($second->vehicle_id)->delete();
+    $second->delete();
+
+    $first->update([
+        'service_type_id' => '77777777-7777-4777-8777-777777777777',
+        'vehicle_group_id' => '88888888-8888-4888-8888-888888888888',
+    ]);
+    DB::table('vehicle_pricing_calculation_definitions')->insert([
+        'id' => '99999999-9999-4999-8999-999999999999',
+        'service_type_id' => '77777777-7777-4777-8777-777777777777',
+        'name' => 'Unreachable weekday-only price',
+        'status' => 'active',
+        'formula' => 'base_charge',
+        'variables' => json_encode([]),
+        'conditions' => json_encode([['field' => 'is_weekend', 'operator' => '=', 'value' => true]]),
+        'priority' => 10,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    // Active definitions exist for the service type, but none of them can
+    // price this booking (simulates PricingDefinitionOrchestrator finding no
+    // matching candidate and BookingFlowService falling back).
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')->once()->andReturn([
+        'total_amount' => 0,
+        'breakdown' => [],
+        'calculation_metadata' => [
+            'fallback_used' => true,
+            'requires_quotation' => true,
+            'reason' => 'No calculation definition could price this scenario',
+            'reason_code' => 'no_matching_calculation_definition',
+            'candidate_failures' => [
+                [
+                    'definition_id' => '99999999-9999-4999-8999-999999999999',
+                    'reason' => 'conditions_not_met',
+                    'message' => null,
+                    'missing_variables' => [],
+                ],
+            ],
+        ],
+    ]);
+
+    // The safety guard this replaces was designed to prevent exactly this:
+    // invoicing off an unresolved price. It must still never fire.
+    $this->invoiceService->shouldNotReceive('generateAndSend');
+
+    $dispatch = $this->lifecycle->processReturn($this->booking->id, [
+        'returned_by' => '00000000-0000-0000-0000-000000000001',
+        'actual_return_time' => now()->toIso8601String(),
+        'skip_qc' => true,
+    ]);
+
+    expect($dispatch->booking_item_id)->toBe($first->id)
+        ->and($first->fresh()->completed_at)->not->toBeNull()
+        ->and($this->booking->fresh()->status)->toBe('completed');
+
+    $audit = data_get($first->fresh()->metadata, 'final_pricing_audit');
+    expect($audit['status'])->toBe('pending_manual_pricing')
+        ->and($audit['reason'])->toBe('no_matching_calculation_definition')
+        ->and($audit['candidate_failures'][0]['reason'])->toBe('conditions_not_met');
+});
+
+it('resolves pending final pricing and fires the deferred invoice once retried after the fix', function () {
+    $first = $this->items[0];
+    $second = $this->items[1];
+    BookingDispatch::where('booking_item_id', $second->id)->delete();
+    Vehicle::whereKey($second->vehicle_id)->delete();
+    $second->delete();
+
+    $first->update([
+        'service_type_id' => '77777777-7777-4777-8777-777777777777',
+        'vehicle_group_id' => '88888888-8888-4888-8888-888888888888',
+        'status' => 'completed',
+        'completed_at' => now(),
+        'returned_at' => now(),
+        'final_priced_at' => now(),
+        'metadata' => [
+            'final_pricing_audit' => [
+                'status' => 'pending_manual_pricing',
+                'reason' => 'no_matching_calculation_definition',
+                'candidate_failures' => [
+                    ['definition_id' => '99999999-9999-4999-8999-999999999999', 'reason' => 'conditions_not_met'],
+                ],
+            ],
+        ],
+    ]);
+    $this->booking->update(['status' => 'completed', 'completed_at' => now()]);
+    DB::table('vehicle_pricing_calculation_definitions')->insert([
+        'id' => '99999999-9999-4999-8999-999999999999',
+        'service_type_id' => '77777777-7777-4777-8777-777777777777',
+        'name' => 'Now-fixed price',
+        'status' => 'active',
+        'formula' => 'base_charge',
+        'variables' => json_encode([]),
+        'conditions' => json_encode([]),
+        'priority' => 10,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+
+    // Ops corrected the configuration; the same booking now resolves cleanly.
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')->once()->andReturn([
+        'total_amount' => 120,
+        'pricing_scope' => [
+            'calculation_definition_id' => '99999999-9999-4999-8999-999999999999',
+            'calculation_definition_name' => 'Now-fixed price',
+        ],
+        'calculation_metadata' => ['resolved_variables' => []],
+        'adjustment_details' => ['adjustments' => []],
+        'breakdown' => [],
+    ]);
+    $this->invoiceService->shouldReceive('generateAndSend')->once()->andReturnNull();
+
+    $result = $this->lifecycle->retryPendingFinalPricing($first->id);
+
+    expect($result['retried'])->toBeTrue()
+        ->and($result['resolved'])->toBeTrue();
+
+    $audit = data_get($first->fresh()->metadata, 'final_pricing_audit');
+    expect($audit['status'])->toBe('calculated');
 });

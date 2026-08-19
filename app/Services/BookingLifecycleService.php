@@ -1047,19 +1047,25 @@ class BookingLifecycleService
                 // Driver-mobile and direct-return completion paths do not pass
                 // through completeBooking(), so invoice only after final pricing
                 // has been synchronized above.
-                try {
-                    $this->invoiceService->generateAndSend($booking->fresh([
-                        'customer.user',
-                        'bookingItems.serviceType',
-                        'bookingItems.vehicle.group',
-                        'bookingItems.driver.user',
-                        'bookingAddons',
-                    ]));
-                } catch (\Throwable $e) {
-                    Log::error('Invoice generation failed after direct return completion', [
+                if ($this->isPricingPendingReview($finalPricing)) {
+                    Log::warning('Invoice deferred: final pricing pending manual review', [
                         'booking_id' => $booking->id,
-                        'error' => $e->getMessage(),
                     ]);
+                } else {
+                    try {
+                        $this->invoiceService->generateAndSend($booking->fresh([
+                            'customer.user',
+                            'bookingItems.serviceType',
+                            'bookingItems.vehicle.group',
+                            'bookingItems.driver.user',
+                            'bookingAddons',
+                        ]));
+                    } catch (\Throwable $e) {
+                        Log::error('Invoice generation failed after direct return completion', [
+                            'booking_id' => $booking->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
 
@@ -1407,20 +1413,26 @@ class BookingLifecycleService
             );
 
             // Generate and email invoice on completion
-            try {
-                $this->invoiceService->generateAndSend($booking->fresh([
-                    'customer.user',
-                    'bookingItems.serviceType',
-                    'bookingItems.vehicle.group',
-                    'bookingItems.driver.user',
-                    'bookingAddons',
-                ]));
-            } catch (\Throwable $e) {
-                // Invoice failure must not roll back the booking completion.
-                Log::error('Invoice generation failed on booking completion', [
+            if ($this->isPricingPendingReview($completionData['final_pricing'] ?? null)) {
+                Log::warning('Invoice deferred: final pricing pending manual review', [
                     'booking_id' => $bookingId,
-                    'error'      => $e->getMessage(),
                 ]);
+            } else {
+                try {
+                    $this->invoiceService->generateAndSend($booking->fresh([
+                        'customer.user',
+                        'bookingItems.serviceType',
+                        'bookingItems.vehicle.group',
+                        'bookingItems.driver.user',
+                        'bookingAddons',
+                    ]));
+                } catch (\Throwable $e) {
+                    // Invoice failure must not roll back the booking completion.
+                    Log::error('Invoice generation failed on booking completion', [
+                        'booking_id' => $bookingId,
+                        'error'      => $e->getMessage(),
+                    ]);
+                }
             }
 
             // Award loyalty points (non-blocking)
@@ -1830,6 +1842,75 @@ class BookingLifecycleService
         return $booking->fresh(['bookingItems', 'dispatches']);
     }
 
+    /**
+     * Re-attempt final pricing for a booking item whose prior completion left
+     * it flagged pending_manual_pricing (see synchronizeFinalPricing). Intended
+     * for the bookings:retry-final-pricing scheduled command: once the missing
+     * calculation definition/rate/condition is corrected, this resolves the
+     * price and fires the invoice that was withheld at completion time.
+     *
+     * @return array{retried: bool, resolved: bool, audit: array<string, mixed>}
+     */
+    public function retryPendingFinalPricing(string $bookingItemId): array
+    {
+        return DB::transaction(function () use ($bookingItemId) {
+            $bookingItem = BookingItem::query()
+                ->whereKey($bookingItemId)
+                ->lockForUpdate()
+                ->first();
+            if (!$bookingItem) {
+                return ['retried' => false, 'resolved' => false, 'audit' => []];
+            }
+
+            $currentAudit = data_get($bookingItem->metadata, 'final_pricing_audit', []);
+            if (!$this->isPricingPendingReview($currentAudit)) {
+                return ['retried' => false, 'resolved' => true, 'audit' => $currentAudit];
+            }
+
+            $booking = Booking::query()
+                ->lockForUpdate()
+                ->with(['dispatches', 'bookingItems'])
+                ->findOrFail($bookingItem->booking_id);
+            $context = $this->resolveLifecycleContext($booking, $bookingItem->id);
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
+
+            $audit = $this->synchronizeFinalPricing(
+                $booking,
+                $context,
+                $dispatch,
+                [],
+                'pricing_retry'
+            );
+
+            $resolved = !$this->isPricingPendingReview($audit);
+            if ($resolved && (string) $booking->status === 'completed') {
+                if ($booking->bookingItems->count() > 1) {
+                    if (!$this->bookingHasPendingPricingReview($booking->fresh(['bookingItems']))) {
+                        $this->runAggregateCompletionEffects($booking->fresh());
+                    }
+                } else {
+                    try {
+                        $this->invoiceService->generateAndSend($booking->fresh([
+                            'customer.user',
+                            'bookingItems.serviceType',
+                            'bookingItems.vehicle.group',
+                            'bookingItems.driver.user',
+                            'bookingAddons',
+                        ]));
+                    } catch (\Throwable $e) {
+                        Log::error('Invoice generation failed after final-pricing retry resolved the price', [
+                            'booking_id' => (string) $booking->id,
+                            'booking_item_id' => $bookingItemId,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            return ['retried' => true, 'resolved' => $resolved, 'audit' => $audit];
+        });
+    }
+
     // ========================
     // HELPER METHODS
     // ========================
@@ -2224,9 +2305,37 @@ class BookingLifecycleService
 
         if (!$definitionId) {
             if ($activeDefinitions->isNotEmpty()) {
-                throw new \DomainException(
-                    'Final pricing could not resolve an active calculation definition. Completion was stopped to prevent an incorrect invoice.'
-                );
+                // Active definitions exist for this service type, but none of them
+                // could actually price this booking (contradictory conditions, a
+                // missing rate row for this vehicle group, or an invalid formula
+                // result). Do not invoice off an unresolved price, but also do not
+                // block the caller (trip/booking completion) on it: flag it for
+                // manual review and let a scheduled job retry once the underlying
+                // configuration is fixed. See PricingDefinitionOrchestrator for the
+                // candidate_failures detail captured below.
+                $candidateFailures = data_get($result, 'calculation_metadata.candidate_failures', []);
+                $audit['status'] = 'pending_manual_pricing';
+                $audit['reason'] = 'no_matching_calculation_definition';
+                $audit['candidate_failures'] = $candidateFailures;
+                $audit['calculation_example']['status'] = 'not_calculated';
+                $audit['calculation_example']['note'] = 'Active calculation definitions exist but none matched this booking; pricing is pending manual review.';
+                $bookingItem->update([
+                    'metadata' => array_merge($metadata, ['final_pricing_audit' => $audit]),
+                ]);
+
+                Log::error('Final pricing pending manual review: no active calculation definition matched this booking', [
+                    'booking_id' => (string) $booking->id,
+                    'booking_item_id' => (string) $bookingItem->id,
+                    'service_type_id' => (string) $bookingItem->service_type_id,
+                    'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
+                    'assignment_id' => $assignment?->id,
+                    'candidate_ids' => $activeDefinitions->pluck('id')->all(),
+                    'candidate_failures' => $candidateFailures,
+                ]);
+
+                $this->alertOpsPricingResolutionFailed($booking, $bookingItem, $audit);
+
+                return $audit;
             }
             $audit['reason'] = 'no_active_calculation_definition';
             $audit['calculation_example']['status'] = 'not_calculated';
@@ -2420,6 +2529,63 @@ class BookingLifecycleService
         $booking->update($bookingUpdates);
 
         return $audit;
+    }
+
+    /**
+     * True when a final-pricing audit (as returned by synchronizeFinalPricing)
+     * could not resolve a price and is awaiting manual/config correction.
+     * Callers must not invoice off this booking item until it clears.
+     */
+    private function isPricingPendingReview(?array $finalPricingAudit): bool
+    {
+        return ($finalPricingAudit['status'] ?? null) === 'pending_manual_pricing';
+    }
+
+    /**
+     * True when any billable item on the booking still has pricing pending
+     * review. Used to gate aggregate (whole-booking) invoice generation.
+     */
+    private function bookingHasPendingPricingReview(Booking $booking): bool
+    {
+        return $booking->bookingItems
+            ->reject(fn (BookingItem $item) => in_array((string) $item->status, ['cancelled', 'rejected'], true))
+            ->contains(fn (BookingItem $item) => $this->isPricingPendingReview(
+                data_get($item->metadata, 'final_pricing_audit')
+            ));
+    }
+
+    /**
+     * Best-effort ops notification the moment pricing resolution fails.
+     * Failure to send must never affect trip/booking completion.
+     */
+    private function alertOpsPricingResolutionFailed(Booking $booking, BookingItem $bookingItem, array $audit): void
+    {
+        $opsEmail = $this->websiteSettingsService->get(
+            'pricing_alert_email',
+            $this->websiteSettingsService->get('company_email')
+        );
+        if (empty($opsEmail)) {
+            return;
+        }
+
+        try {
+            \Illuminate\Support\Facades\Mail::to($opsEmail)->queue(new \App\Mail\PricingResolutionFailedMail([
+                'booking_id' => (string) $booking->id,
+                'booking_number' => $booking->booking_number,
+                'booking_item_id' => (string) $bookingItem->id,
+                'service_type_id' => (string) $bookingItem->service_type_id,
+                'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
+                'reason' => $audit['reason'] ?? 'no_matching_calculation_definition',
+                'candidate_failures' => $audit['candidate_failures'] ?? [],
+                'detected_at' => Carbon::now('UTC')->toIso8601String(),
+            ]));
+        } catch (\Throwable $e) {
+            Log::error('Failed to send ops alert for pending final pricing', [
+                'booking_id' => (string) $booking->id,
+                'booking_item_id' => (string) $bookingItem->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
@@ -2845,19 +3011,25 @@ class BookingLifecycleService
 
     private function runAggregateCompletionEffects(Booking $booking): void
     {
-        try {
-            $this->invoiceService->generateAndSend($booking->fresh([
-                'customer.user',
-                'bookingItems.serviceType',
-                'bookingItems.vehicle.group',
-                'bookingItems.driver.user',
-                'bookingAddons',
-            ]));
-        } catch (\Throwable $e) {
-            Log::error('Aggregate invoice generation failed after all booking items completed', [
+        if ($this->bookingHasPendingPricingReview($booking)) {
+            Log::warning('Aggregate invoice deferred: one or more items have final pricing pending manual review', [
                 'booking_id' => $booking->id,
-                'error' => $e->getMessage(),
             ]);
+        } else {
+            try {
+                $this->invoiceService->generateAndSend($booking->fresh([
+                    'customer.user',
+                    'bookingItems.serviceType',
+                    'bookingItems.vehicle.group',
+                    'bookingItems.driver.user',
+                    'bookingAddons',
+                ]));
+            } catch (\Throwable $e) {
+                Log::error('Aggregate invoice generation failed after all booking items completed', [
+                    'booking_id' => $booking->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
         try {

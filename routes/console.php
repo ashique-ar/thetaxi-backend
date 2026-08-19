@@ -40,6 +40,10 @@ Schedule::command('corporate-transport:generate-bookings')
     ->everyFifteenMinutes()
     ->withoutOverlapping(10);
 
+// Schedule::command('bookings:retry-final-pricing')
+//     ->everyFifteenMinutes()
+//     ->withoutOverlapping(10);
+
 if (config('queue.scheduled_worker.enabled')) {
     Schedule::command(sprintf(
         'queue:work %s --stop-when-empty --queue=%s --tries=%d --timeout=%d --sleep=%d --max-time=%d',
