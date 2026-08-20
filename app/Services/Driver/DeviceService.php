@@ -50,8 +50,6 @@ class DeviceService
             'os_version' => $deviceData['os_version'] ?? null,
             'app_version' => $deviceData['app_version'] ?? null,
             'app_build' => $deviceData['app_build'] ?? null,
-            'push_token' => $deviceData['push_token'] ?? null,
-            'push_provider' => $deviceData['push_provider'] ?? null,
             'ip_address' => $deviceData['ip_address'] ?? null,
             'locale' => $deviceData['locale'] ?? null,
             'timezone' => $deviceData['timezone'] ?? null,
@@ -59,6 +57,15 @@ class DeviceService
             'is_active' => true,
             'last_active_at' => $now,
         ];
+
+        // A normal device refresh often omits FCM fields. Do not erase a
+        // previously registered token; explicit deactivation owns clearing it.
+        if (!empty($deviceData['push_token'])) {
+            $updateData['push_token'] = $deviceData['push_token'];
+        }
+        if (!empty($deviceData['push_provider'])) {
+            $updateData['push_provider'] = $deviceData['push_provider'];
+        }
         
         // Add fingerprint if provided
         if ($deviceFingerprint) {

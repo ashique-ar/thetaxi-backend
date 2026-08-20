@@ -83,6 +83,17 @@ it('requires an explicit customer SMS decision for administrative force completi
         ->toContain("send_customer_sms: value.send_customer_sms === 'yes'");
 });
 
+it('preserves a registered mobile push token during a general device refresh', function (): void {
+    $service = file_get_contents(productionRegressionPath('app/Services/Driver/DeviceService.php'));
+    $registration = Str::between($service, 'public function registerDevice', 'public function updatePushToken');
+
+    expect($registration)
+        ->toContain("if (!empty(\$deviceData['push_token']))")
+        ->toContain("\$updateData['push_token'] = \$deviceData['push_token']")
+        ->not->toContain("'push_token' => \$deviceData['push_token'] ?? null")
+        ->not->toContain("'push_provider' => \$deviceData['push_provider'] ?? null");
+});
+
 it('uses the UUID-native loyalty ledger instead of joining legacy integer reputation owners', function (): void {
     $source = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/LoyaltyController.php'));
 
