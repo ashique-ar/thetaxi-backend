@@ -49,6 +49,42 @@ it('passes the explicit repeat-dispatch testing flag through the API controller'
         ->toContain("'allow_repeat_dispatch_for_testing' => \$request->boolean('allow_repeat_dispatch_for_testing')");
 });
 
+it('treats missing selected-item dispatch details as an empty successful read', function (): void {
+    $service = file_get_contents(productionRegressionPath('app/Services/BookingLifecycleService.php'));
+    $controller = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Booking/BookingLifecycleController.php'));
+    $portal = file_get_contents(productionRegressionPath('../portal-thetaxi/src/app/modules/booking/components/booking-management/booking-management.component.ts'));
+
+    expect($service)
+        ->toContain('public function getOngoingDetails(string $bookingId, ?string $bookingItemId = null): ?array')
+        ->toContain('public function getDispatchDetails(string $bookingId, ?string $bookingItemId = null): ?array')
+        ->not->toContain("throw new \\Exception('No dispatch found for this booking')")
+        ->and($controller)
+        ->toContain('No ongoing dispatch details are available for the selected booking item')
+        ->toContain('No dispatch details are available for the selected booking item')
+        ->and($portal)
+        ->toContain('response.data.lifecycle_contract?.dispatch_status')
+        ->toContain('summary?.lifecycle_contract?.dispatch_status');
+});
+
+it('requires an explicit opt-in before internal booking confirmation emails are enabled', function (): void {
+    $submission = file_get_contents(productionRegressionPath('app/Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'));
+    $bookingFlow = file_get_contents(productionRegressionPath('app/Services/BookingFlowService.php'));
+    $dialog = file_get_contents(productionRegressionPath('../portal-thetaxi/src/app/modules/booking/components/booking-flow/dialogs/booking-confirmation-sms-dialog.component.ts'));
+    $portal = file_get_contents(productionRegressionPath('../portal-thetaxi/src/app/modules/booking/components/booking-flow-single-view/booking-flow-single-view.component.ts'));
+
+    expect($submission)
+        ->toContain("'send_confirmation_emails' => ['sometimes', 'boolean']")
+        ->not->toContain("'skip_confirmation_emails' => ['sometimes', 'boolean']")
+        ->and($bookingFlow)
+        ->toContain("\$params['send_confirmation_emails'] ?? false")
+        ->and($dialog)
+        ->toContain('Send emails for this booking')
+        ->toContain('readonly sendEmails = signal(false)')
+        ->and($portal)
+        ->toContain('payload.send_confirmation_emails = sendConfirmationEmails')
+        ->not->toContain('payload.skip_confirmation_emails');
+});
+
 it('loads vehicle make and model through the vehicle group for SMS automation', function (): void {
     $source = file_get_contents(productionRegressionPath('app/Services/Sms/SmsAutomationService.php'));
 

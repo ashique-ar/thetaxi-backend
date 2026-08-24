@@ -546,7 +546,9 @@ class BookingLifecycleController extends Controller
             return response()->json([
                 'status' => 'success',
                 'data' => $details,
-                'message' => 'Ongoing details retrieved successfully'
+                'message' => $details
+                    ? 'Ongoing details retrieved successfully'
+                    : 'No ongoing dispatch details are available for the selected booking item'
             ]);
         } catch (\Exception $e) {
             Log::error('Error getting ongoing details', [
@@ -576,7 +578,9 @@ class BookingLifecycleController extends Controller
             return response()->json([
                 'status' => 'success',
                 'data' => $details,
-                'message' => 'Dispatch details retrieved successfully'
+                'message' => $details
+                    ? 'Dispatch details retrieved successfully'
+                    : 'No dispatch details are available for the selected booking item'
             ]);
         } catch (\Exception $e) {
             Log::error('Error getting dispatch details', [

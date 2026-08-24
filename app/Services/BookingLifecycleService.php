@@ -4002,7 +4002,7 @@ class BookingLifecycleService
     /**
      * Get ongoing details for a booking
      */
-    public function getOngoingDetails(string $bookingId, ?string $bookingItemId = null): array
+    public function getOngoingDetails(string $bookingId, ?string $bookingItemId = null): ?array
     {
         $booking = Booking::with([
             'dispatch.vehicle',
@@ -4017,7 +4017,7 @@ class BookingLifecycleService
 
         $dispatch = $this->resolveItemDispatch($booking, $context);
         if (!$dispatch) {
-            throw new \Exception('No dispatch found for this booking');
+            return null;
         }
 
         $vehicle = $dispatch->vehicle ?: $context['vehicle'];
@@ -4056,7 +4056,7 @@ class BookingLifecycleService
     /**
      * Get dispatch details for a booking
      */
-    public function getDispatchDetails(string $bookingId, ?string $bookingItemId = null): array
+    public function getDispatchDetails(string $bookingId, ?string $bookingItemId = null): ?array
     {
         $booking = Booking::with([
             'dispatch.vehicle',
@@ -4070,7 +4070,7 @@ class BookingLifecycleService
 
         $dispatch = $this->resolveItemDispatch($booking, $context);
         if (!$dispatch) {
-            throw new \Exception('No dispatch found for this booking');
+            return null;
         }
 
         $vehicle = $dispatch->vehicle ?: $context['vehicle'];

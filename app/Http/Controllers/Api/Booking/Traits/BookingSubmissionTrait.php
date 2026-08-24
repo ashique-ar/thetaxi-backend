@@ -212,7 +212,7 @@ trait BookingSubmissionTrait
             ],
             'payment_responsibility' => ['sometimes', 'string', Rule::in(['customer', 'corporate', 'company'])],
             'send_confirmation_sms' => ['sometimes', 'boolean'],
-            'skip_confirmation_emails' => ['sometimes', 'boolean'],
+            'send_confirmation_emails' => ['sometimes', 'boolean'],
         ];
 
         if ($usesDropoffTime) {
@@ -230,8 +230,9 @@ trait BookingSubmissionTrait
         // This endpoint is only ever hit by staff confirming a booking directly in the
         // admin portal (the corporate self-service portal and the public website create
         // bookings through their own separate flows). The customer should still get their
-        // confirmation email, but staff already know they made the booking, so skip the
-        // internal copy (info@ / mail.customer_cc / mail.bcc_all) that normally rides along.
+        // confirmation email only when the operator explicitly opts in. Staff already know
+        // they made the booking, so always skip the internal copy (info@ / mail.customer_cc /
+        // mail.bcc_all) that normally rides along.
         $params['notify_internal_team'] = false;
 
         $booking = $this->bookingFlowService->confirmBooking($params);
