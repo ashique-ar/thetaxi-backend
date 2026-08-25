@@ -10712,6 +10712,11 @@ class BookingFlowService
         // Query through booking_items which contains the date fields
         $bookingItems = BookingItem::where('booking_items.vehicle_id', $vehicle->id)
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            // Keep the join aligned with Booking's SoftDeletes and active global
+            // scopes. Otherwise the joined row exists but the eager-loaded booking
+            // is null, and conflict formatting dereferences a missing relation.
+            ->whereNull('bookings.deleted_at')
+            ->where('bookings.is_active', true)
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
                 $q->where('bookings.id', '!=', $excludeBookingId);
@@ -10803,6 +10808,8 @@ class BookingFlowService
         // Query driver assignments with correct column names
         $driverAssignments = DriverAssignment::where('driver_id', $driver->id)
             ->join('bookings', 'driver_assignments.booking_id', '=', 'bookings.id')
+            ->whereNull('bookings.deleted_at')
+            ->where('bookings.is_active', true)
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
             ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
                 $q->where('bookings.id', '!=', $excludeBookingId);

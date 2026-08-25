@@ -70,7 +70,12 @@ trait BookingAvailabilityTrait
                 'message' => 'Vehicle groups retrieved successfully'
             ]);
         } catch (\Exception $e) {
-            Log::error('Error getting vehicle groups availability: ' . $e->getMessage());
+            Log::error('Error getting vehicle groups availability', [
+                'error' => $e->getMessage(),
+                'exception' => get_class($e),
+                'file' => $e->getFile(),
+                'line' => $e->getLine(),
+            ]);
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to get vehicle groups availability',

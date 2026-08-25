@@ -1368,16 +1368,22 @@ Route::middleware(['auth:api'])->group(function () {
         // Assignment Management Routes
         Route::group(['prefix' => 'assignments', 'middleware' => 'booking.operations.telemetry'], function () {
             Route::get('{bookingId}/details', [AssignmentController::class, 'getAssignmentDetails'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:bookings.view');
             Route::post('{bookingId}/payments/receive', [AssignmentController::class, 'receivePayment'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
             Route::post('{bookingId}/payment-schedule', [AssignmentController::class, 'addPaymentScheduleItem'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
             Route::post('{bookingId}/payment-schedule/generate', [AssignmentController::class, 'generatePaymentSchedule'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
             Route::put('{bookingId}/commission-owner', [AssignmentController::class, 'setCommissionOwner'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:collection-commissions.manage');
             Route::post('{bookingId}/security-deposits/{receipt}/refund', [AssignmentController::class, 'refundSecurityDeposit'])
+                ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
             Route::post('swap', [AssignmentController::class, 'performSwap'])
                 ->middleware('permission:bookings.update');
