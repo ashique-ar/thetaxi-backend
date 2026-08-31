@@ -9,6 +9,7 @@ use App\Http\Requests\Corporate\UpsertCorporateServiceDistancePolicyRequest;
 use App\Http\Resources\Corporate\CorporateDistancePolicyResource;
 use App\Http\Resources\Corporate\CorporateServiceDistancePolicyResource;
 use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateContractLocation;
 use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
 use App\Services\CorporateDistancePolicyService;
@@ -21,8 +22,8 @@ class CorporateDistancePolicyController extends Controller
         private CorporateDistancePolicyService $service,
         private BookingFlowService $bookingFlow,
     ) {
-        $this->middleware('permission:corporates.view')->only(['show', 'services', 'preview']);
-        $this->middleware('permission:corporates.edit|corporates.manage')->only(['update', 'updateService']);
+        $this->middleware('permission:corporates.view')->only(['show', 'services', 'preview', 'locations']);
+        $this->middleware('permission:corporates.edit|corporates.manage')->only(['update', 'updateService', 'storeLocation', 'updateLocation']);
     }
 
     public function show(Corporate $corporate): JsonResponse
@@ -52,6 +53,34 @@ class CorporateDistancePolicyController extends Controller
             'status' => 'success',
             'data' => ['services' => $this->service->servicePolicies($corporate)],
         ]);
+    }
+
+    public function locations(Corporate $corporate): JsonResponse
+    {
+        $locations = CorporateContractLocation::query()->where('is_active', true)
+            ->where(fn ($query) => $query->where('corporate_id', $corporate->id)->orWhere(fn ($operator) => $operator->whereNull('corporate_id')->where('owner_type', 'operator')))
+            ->orderBy('owner_type')->orderBy('name')->get()->map->only(['id', 'corporate_id', 'owner_type', 'name', 'address', 'latitude', 'longitude', 'is_active']);
+        return response()->json(['status' => 'success', 'data' => ['locations' => $locations]]);
+    }
+
+    public function storeLocation(\Illuminate\Http\Request $request, Corporate $corporate): JsonResponse
+    {
+        $data = $this->locationData($request, $corporate);
+        $location = CorporateContractLocation::create($data);
+        return response()->json(['status' => 'success', 'data' => ['location' => $location->only(['id', 'corporate_id', 'owner_type', 'name', 'address', 'latitude', 'longitude', 'is_active'])]], 201);
+    }
+
+    public function updateLocation(\Illuminate\Http\Request $request, Corporate $corporate, CorporateContractLocation $location): JsonResponse
+    {
+        abort_unless($location->corporate_id === $corporate->id, 404);
+        $location->update($this->locationData($request, $corporate));
+        return response()->json(['status' => 'success', 'data' => ['location' => $location->fresh()->only(['id', 'corporate_id', 'owner_type', 'name', 'address', 'latitude', 'longitude', 'is_active'])]]);
+    }
+
+    private function locationData(\Illuminate\Http\Request $request, Corporate $corporate): array
+    {
+        $data = $request->validate(['owner_type' => ['required', \Illuminate\Validation\Rule::in(['corporate', 'customer', 'named_contract'])], 'name' => ['required', 'string', 'max:150'], 'address' => ['required', 'string', 'max:2000'], 'latitude' => ['required', 'numeric', 'between:-90,90'], 'longitude' => ['required', 'numeric', 'between:-180,180'], 'is_active' => ['required', 'boolean']]);
+        return $data + ['corporate_id' => $corporate->id];
     }
 
     public function preview(PreviewCorporateDistancePolicyRequest $request, Corporate $corporate): JsonResponse

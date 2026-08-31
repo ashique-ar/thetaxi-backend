@@ -1,12 +1,16 @@
 <?php
 
 use App\Http\Controllers\Api\Corporate\CorporateBookingController;
+use App\Services\BookingObservabilityService;
 use App\Services\CorporateBookingService;
 
 uses(Tests\TestCase::class);
 
 it('creates an audited replacement decision while retaining the prior contractual distances', function () {
-    $controller = new CorporateBookingController(Mockery::mock(CorporateBookingService::class));
+    $controller = new CorporateBookingController(
+        Mockery::mock(CorporateBookingService::class),
+        Mockery::mock(BookingObservabilityService::class),
+    );
     $method = new ReflectionMethod($controller, 'applyContractualDistanceOverrideToSnapshot');
     $snapshot = [
         'base_pricing' => [
@@ -37,6 +41,7 @@ it('creates an audited replacement decision while retaining the prior contractua
 
 it('keeps corporate live progress minimal time bounded and separate from raw tracking', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateBookingController.php'));
+    $observability = file_get_contents(app_path('Services/BookingObservabilityService.php'));
     $live = Str::between($controller, 'public function liveProgress(', 'public function overrideContractualDistance(');
     $routes = file_get_contents(base_path('routes/api.php'));
 
@@ -47,9 +52,11 @@ it('keeps corporate live progress minimal time bounded and separate from raw tra
         ->and($live)
         ->toContain("'raw_tracking' => false")
         ->toContain('addHours(2)')
-        ->toContain('subMinutes(5)')
         ->not->toContain('RoutePoint')
         ->not->toContain('routePoints')
         ->not->toContain('history')
-        ->not->toContain('session');
+        ->not->toContain('session')
+        ->and($observability)
+        ->toContain('$age <= 120')
+        ->toContain('$age <= 300');
 });

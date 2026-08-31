@@ -4693,6 +4693,7 @@ class BookingFlowService
             'adjustment_details' => $adjustmentDetails,
             'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
             'distance_policy' => $contractual['distance_policy'] ?? null,
+            'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
             'service_type_id' => $params['service_type_id'] ?? null,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -4707,6 +4708,7 @@ class BookingFlowService
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
             'distance_policy' => $contractual['distance_policy'] ?? null,
+            'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
             'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
             'calculation_metadata' => [

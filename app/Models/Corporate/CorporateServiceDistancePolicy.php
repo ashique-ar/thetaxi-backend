@@ -15,6 +15,7 @@ class CorporateServiceDistancePolicy extends BaseModel
         'movement_rate_method', 'outbound_rate', 'return_rate',
         'maximum_outbound_km', 'maximum_return_km', 'effective_from',
         'effective_until', 'is_active', 'created_user_id', 'updated_user_id',
+        'route_template_override', 'route_anchor_sequence_override',
     ];
 
     protected $casts = [
@@ -23,6 +24,7 @@ class CorporateServiceDistancePolicy extends BaseModel
         'outbound_rate' => 'decimal:2', 'return_rate' => 'decimal:2',
         'maximum_outbound_km' => 'decimal:2', 'maximum_return_km' => 'decimal:2',
         'effective_from' => 'datetime', 'effective_until' => 'datetime', 'is_active' => 'boolean',
+        'route_anchor_sequence_override' => 'array',
     ];
 
     public function corporate()

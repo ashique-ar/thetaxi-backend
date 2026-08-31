@@ -17,6 +17,9 @@ class CorporateDistancePolicyResource extends JsonResource
             'name' => $this->name,
             'is_default' => (bool) $this->is_default,
             'default_service_mode' => $this->default_service_mode,
+            'route_contract_version' => max(2, (int) ($this->route_contract_version ?: 1)),
+            'route_template' => $this->route_template ?: 'full_movement',
+            'route_anchor_sequence' => $this->route_anchor_sequence,
             'defined_origin' => [
                 'address' => $this->origin_address,
                 'latitude' => $this->origin_latitude,

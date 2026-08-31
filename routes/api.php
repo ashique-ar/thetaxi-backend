@@ -1902,6 +1902,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
             Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
             Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
+            Route::get('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'locations']);
+            Route::post('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'storeLocation']);
+            Route::put('{corporate}/distance-pricing-policy/locations/{location}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateLocation']);
             Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
             Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
         });

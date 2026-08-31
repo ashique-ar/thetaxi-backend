@@ -15,6 +15,8 @@ class CorporateServiceDistancePolicyResource extends JsonResource
             'id' => $this->id,
             'application_mode' => $this->application_mode,
             'policy_id' => $this->policy_id,
+            'route_template_override' => $this->route_template_override,
+            'route_anchor_sequence_override' => $this->route_anchor_sequence_override,
             'origin_location_override' => $this->origin_location_override,
             'return_location_override' => $this->return_location_override,
             'include_origin_to_pickup' => $this->include_origin_to_pickup,

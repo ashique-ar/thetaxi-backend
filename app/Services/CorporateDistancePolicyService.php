@@ -7,6 +7,7 @@ use App\Http\Resources\Corporate\CorporateServiceDistancePolicyResource;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateDistancePricingPolicy;
 use App\Models\Corporate\CorporateServiceDistancePolicy;
+use App\Models\Corporate\CorporateContractLocation;
 use App\Models\Service\ServiceType;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -27,6 +28,7 @@ class CorporateDistancePolicyService
 
     public function saveDefaultPolicy(Corporate $corporate, array $data): CorporateDistancePricingPolicy
     {
+        $this->validateAnchorOwnership($corporate, $data['route_anchor_sequence'] ?? []);
         return DB::transaction(function () use ($corporate, $data) {
             $policy = $this->defaultPolicy($corporate) ?? new CorporateDistancePricingPolicy;
             $before = $policy->exists ? $policy->toArray() : null;
@@ -103,6 +105,7 @@ class CorporateDistancePolicyService
                 ]);
             }
         }
+        $this->validateAnchorOwnership($corporate, $data['route_anchor_sequence_override'] ?? []);
 
         return DB::transaction(function () use ($corporate, $serviceType, $data) {
             $override = $corporate->serviceDistancePolicies()
@@ -137,5 +140,20 @@ class CorporateDistancePolicyService
                 'after' => $model->fresh()->toArray(),
             ],
         ]);
+    }
+
+    private function validateAnchorOwnership(Corporate $corporate, array $anchors): void
+    {
+        foreach ($anchors as $index => $anchor) {
+            if (empty($anchor['location_id'])) continue;
+            $location = CorporateContractLocation::find($anchor['location_id']);
+            $type = $anchor['type'] ?? null;
+            $valid = $location && ($type === 'operator_location'
+                ? $location->owner_type === 'operator' && $location->corporate_id === null
+                : $location->corporate_id === $corporate->id && in_array($location->owner_type, ['corporate', 'customer', 'named_contract'], true));
+            if (! $valid) {
+                throw ValidationException::withMessages(["route_anchor_sequence.{$index}.location_id" => 'The selected contractual location does not belong to the required owner.']);
+            }
+        }
     }
 }

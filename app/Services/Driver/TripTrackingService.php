@@ -1396,6 +1396,7 @@ class TripTrackingService
         $distanceItems = is_array($distanceMetrics['items'] ?? null) ? $distanceMetrics['items'] : [];
         $distanceItems[(string) $bookingItem->id] = [
             'source' => 'driver_route_points',
+            'actual_distance' => $totalDistance !== null ? round($totalDistance, 2) : null,
             'actual_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
             'telemetry_complete' => $totalDistance !== null,
             'pricing_effect' => $contractualDistance
