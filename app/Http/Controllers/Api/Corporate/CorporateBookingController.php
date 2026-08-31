@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\StoreCorporateBookingRequest;
+use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Models\Booking\Booking;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Corporate\CorporateDepartment;
@@ -16,6 +17,8 @@ use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CorporateBookingController extends Controller
 {
@@ -363,18 +366,17 @@ class CorporateBookingController extends Controller
         ]);
     }
 
-    public function export(Request $request): JsonResponse
+    public function export(CorporateReportFiltersRequest $request): StreamedResponse
     {
-        $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to']);
+        $filters = $request->safe()->except(['page', 'per_page']);
 
         $filePath = $this->bookingService->exportBookings(
             $request->corporate_id,
             $filters
         );
 
-        return response()->json([
-            'status' => 'success',
-            'data'   => ['file_path' => $filePath],
+        return Storage::download($filePath, basename($filePath), [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
 

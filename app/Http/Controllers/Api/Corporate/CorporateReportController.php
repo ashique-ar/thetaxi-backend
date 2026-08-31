@@ -3,9 +3,11 @@
 namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Services\CorporateBookingService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class CorporateReportController extends Controller
 {
@@ -17,9 +19,9 @@ class CorporateReportController extends Controller
         $this->middleware('permission:view_reports');
     }
 
-    public function bookingHistory(Request $request): JsonResponse
+    public function bookingHistory(CorporateReportFiltersRequest $request): JsonResponse
     {
-        $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to']);
+        $filters = $request->validated();
 
         $bookings = $this->bookingService->getBookingsForCorporate(
             $request->corporate_id,
@@ -28,13 +30,19 @@ class CorporateReportController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['bookings' => $bookings],
+            'data' => $bookings->items(),
+            'meta' => [
+                'current_page' => $bookings->currentPage(),
+                'per_page' => $bookings->perPage(),
+                'total' => $bookings->total(),
+                'last_page' => $bookings->lastPage(),
+            ],
         ]);
     }
 
-    public function summaryStats(Request $request): JsonResponse
+    public function summaryStats(CorporateReportFiltersRequest $request): JsonResponse
     {
-        $filters = $request->only(['date_from', 'date_to']);
+        $filters = $request->validated();
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,
@@ -43,22 +51,22 @@ class CorporateReportController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data'   => ['stats' => $stats],
+            'data' => $stats,
         ]);
     }
 
-    public function exportCsv(Request $request): JsonResponse
+    public function exportCsv(CorporateReportFiltersRequest $request): StreamedResponse
     {
-        $filters = $request->only(['status', 'department_id', 'division_id', 'date_from', 'date_to']);
+        $filters = $request->safe()->except(['page', 'per_page']);
 
         $filePath = $this->bookingService->exportBookings(
             $request->corporate_id,
             $filters
         );
 
-        return response()->json([
-            'status' => 'success',
-            'data'   => ['file_path' => $filePath],
+        return Storage::download($filePath, basename($filePath), [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
     }
+
 }

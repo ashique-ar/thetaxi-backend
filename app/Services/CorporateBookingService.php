@@ -844,15 +844,29 @@ class CorporateBookingService
     {
         $query = Booking::where('corporate_account_id', $corporateId);
 
-        if (!empty($filters['date_from'])) {
-            $query->whereDate('created_at', '>=', $filters['date_from']);
-        }
-        if (!empty($filters['date_to'])) {
-            $query->whereDate('created_at', '<=', $filters['date_to']);
+        $bookingFilters = $filters;
+        unset($bookingFilters['date_from'], $bookingFilters['date_to']);
+        $this->applyBookingFilters($query, $bookingFilters);
+
+        if (!empty($filters['date_from']) || !empty($filters['date_to'])) {
+            $query->whereHas('bookingItems', function ($itemQuery) use ($filters) {
+                if (!empty($filters['date_from'])) {
+                    $itemQuery->whereDate('from_date', '>=', $filters['date_from']);
+                }
+                if (!empty($filters['date_to'])) {
+                    $itemQuery->whereDate('to_date', '<=', $filters['date_to']);
+                }
+            });
         }
 
         $totalCount = (clone $query)->count();
-        $totalCost = (clone $query)->sum('total_estimated');
+        $estimatedValue = (float) (clone $query)->sum('total_estimated');
+        $finalizedValue = (float) (clone $query)->whereNotNull('total_actual')->sum('total_actual');
+        $finalizedBookingCount = (clone $query)->whereNotNull('total_actual')->count();
+        $tripQuery = $this->corporateBookingItemQuery($corporateId);
+        $tripQuery->setEagerLoads([]);
+        $this->applyBookingItemFilters($tripQuery, $filters);
+        $tripCount = (clone $tripQuery)->count('booking_items.id');
 
         $byStatus = (clone $query)
             ->select('status')
@@ -870,8 +884,17 @@ class CorporateBookingService
             ->toArray();
 
         return [
+            'total_bookings' => $totalCount,
+            'booking_count' => $totalCount,
+            'trip_count' => $tripCount,
             'total_count' => $totalCount,
-            'total_cost' => (float) $totalCost,
+            'total_cost' => $estimatedValue,
+            'estimated_value' => $estimatedValue,
+            'finalized_value' => $finalizedValue,
+            'finalized_booking_count' => $finalizedBookingCount,
+            'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
+            'by_status' => $byStatus,
+            'by_department' => $byDepartment,
             'bookings_by_status' => $byStatus,
             'bookings_by_department' => $byDepartment,
         ];

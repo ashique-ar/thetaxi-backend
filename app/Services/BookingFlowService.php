@@ -10735,12 +10735,13 @@ class BookingFlowService
 
         foreach ($bookingItems as $item) {
             $booking = $item->booking;
+            $customerName = trim((string) ($booking->customer?->first_name ?? '') . ' ' . (string) ($booking->customer?->last_name ?? ''));
             $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
             $canOverride = $this->canOverrideBooking($booking);
 
             $conflicts[] = [
                 'booking_id' => $booking->id,
-                'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
+                'customer_name' => $customerName !== '' ? $customerName : 'Unknown',
                 'from' => is_string($item->from_date) ? $item->from_date : $item->from_date->format('Y-m-d H:i'),
                 'to' => is_string($item->to_date) ? $item->to_date : $item->to_date->format('Y-m-d H:i'),
                 'status' => $booking->status,
@@ -10763,7 +10764,7 @@ class BookingFlowService
         // Logic for determining if booking can be overridden
         // This could be based on booking status, customer type, priority, etc.
         return in_array($booking->status, ['pending', 'draft']) ||
-            $booking->customer->priority_level === 'low' ||
+            $booking->customer?->priority_level === 'low' ||
             $booking->created_at->diffInHours(now()) < 24;
     }
 
@@ -10775,7 +10776,7 @@ class BookingFlowService
         // Determine priority based on various factors
         if ($booking->status === 'confirmed')
             return 'high';
-        if ($booking->customer->priority_level === 'premium')
+        if ($booking->customer?->priority_level === 'premium')
             return 'high';
         if ($booking->status === 'pending')
             return 'medium';
@@ -10833,12 +10834,13 @@ class BookingFlowService
 
         foreach ($driverAssignments as $assignment) {
             $booking = $assignment->booking;
+            $customerName = trim((string) ($booking->customer?->first_name ?? '') . ' ' . (string) ($booking->customer?->last_name ?? ''));
             $overlapType = $this->determineOverlapType($fromDate, $toDate, $assignment->assigned_from, $assignment->assigned_to);
             $canOverride = $this->canOverrideBooking($booking);
 
             $conflicts[] = [
                 'booking_id' => $booking->id,
-                'customer_name' => $booking->customer->first_name . ' ' . $booking->customer->last_name,
+                'customer_name' => $customerName !== '' ? $customerName : 'Unknown',
                 'from' => $assignment->assigned_from->format('Y-m-d H:i'),
                 'to' => $assignment->assigned_to->format('Y-m-d H:i'),
                 'status' => $booking->status,
