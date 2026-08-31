@@ -6,6 +6,7 @@ use App\Http\Controllers\BookingController;
 use App\Http\Requests\BookingSearchRequest;
 use App\Models\Service\ServiceType;
 use Illuminate\Support\Facades\Validator;
+use App\Services\WebsiteSettingsService;
 use Tests\TestCase;
 
 class DynamicDateTimeFieldContractTest extends TestCase
@@ -59,6 +60,41 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertStringContainsString("get('site_timezone', config('app.timezone', 'UTC'))", $request);
         $this->assertStringContainsString('now($siteTimezone)->addHours($advanceHours)', $request);
         $this->assertStringContainsString("['date', 'datetime']", $request);
+    }
+
+    public function test_airport_transfer_search_rejects_a_time_inside_the_minimum_advance_window(): void
+    {
+        $siteNow = now('Asia/Colombo');
+        $request = new class extends BookingSearchRequest {
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'date' => ['type' => 'date', 'required' => true],
+                    'transfer_time_control' => [
+                        'type' => 'time',
+                        'required' => true,
+                        'submit_as' => 'transfer_time',
+                    ],
+                ], false, false, null];
+            }
+        };
+        $request->initialize([
+            'service_type' => 'airport_transfers',
+            'date' => $siteNow->copy()->addHours(12)->format('Y-m-d'),
+            'transfer_time' => $siteNow->copy()->addHours(12)->format('H:i'),
+        ]);
+
+        $settings = $this->mock(WebsiteSettingsService::class);
+        $settings->shouldReceive('getBookingSettings')->once()->andReturn([
+            'booking_advance_hours' => 24,
+        ]);
+        $settings->shouldReceive('get')->once()->with('site_timezone', 'UTC')->andReturn('Asia/Colombo');
+
+        $validator = Validator::make($request->all(), $request->rules());
+        $request->withValidator($validator);
+
+        $this->assertTrue($validator->fails());
+        $this->assertArrayHasKey('date', $validator->errors()->toArray());
     }
 
     private function requestWithConfiguredDateTime(): BookingSearchRequest

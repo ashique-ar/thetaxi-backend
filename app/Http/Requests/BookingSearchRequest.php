@@ -580,7 +580,7 @@ class BookingSearchRequest extends FormRequest
                 return;
             }
 
-            $advanceHours = (int) ($settings['booking_advance_hours'] ?? 0);
+            $advanceHours = max(0, (int) ($settings['booking_advance_hours'] ?? 0));
             $maxDays = (int) ($settings['booking_max_days'] ?? 0);
 
             $siteTimezone = $this->normalizeSiteTimezone($siteTimezone ?? null);
@@ -1044,44 +1044,48 @@ class BookingSearchRequest extends FormRequest
             $timeField = $this->filled('from_time') ? 'from_time' : null;
         }
 
-        if (!$dateField && $this->filled('service_type')) {
+        // The date may use a legacy canonical name while its paired time uses a
+        // form-specific submit_as key (for example transfer_time). Always inspect
+        // the active form config when either half of the pickup timestamp is missing.
+        if ((!$dateField || !$timeField) && $this->filled('service_type')) {
             try {
                 [$configuredFields] = $this->resolveServiceFormConfig((string) $this->input('service_type'));
 
-                foreach ($configuredFields as $fieldName => $config) {
-                    if (!is_array($config) || !in_array(($config['type'] ?? null), ['date', 'datetime'], true)) {
-                        continue;
-                    }
-
-                    $submitAs = (string) ($config['submit_as'] ?? $fieldName);
-                    $isDropoff = str_contains(strtolower((string) $fieldName), 'dropoff')
-                        || str_contains(strtolower((string) $fieldName), 'return')
-                        || str_contains(strtolower($submitAs), 'dropoff')
-                        || str_contains(strtolower($submitAs), 'return')
-                        || str_contains(strtolower($submitAs), 'to_');
-
-                    if (!$isDropoff && $this->filled($submitAs)) {
-                        $dateField = $submitAs;
-
-                        if (($config['type'] ?? null) === 'date') {
-                            foreach ($configuredFields as $timeFieldName => $timeConfig) {
-                                if (!is_array($timeConfig) || ($timeConfig['type'] ?? null) !== 'time') {
-                                    continue;
-                                }
-
-                                $timeSubmitAs = (string) ($timeConfig['submit_as'] ?? $timeFieldName);
-                                $normalizedTimeName = strtolower((string) $timeFieldName . ' ' . $timeSubmitAs);
-                                $isDropoffTime = str_contains($normalizedTimeName, 'dropoff')
-                                    || str_contains($normalizedTimeName, 'return')
-                                    || str_contains(strtolower($timeSubmitAs), 'to_');
-
-                                if (!$isDropoffTime && $this->filled($timeSubmitAs)) {
-                                    $timeField = $timeSubmitAs;
-                                    break;
-                                }
-                            }
+                if (!$dateField) {
+                    foreach ($configuredFields as $fieldName => $config) {
+                        if (!is_array($config) || !in_array(($config['type'] ?? null), ['date', 'datetime'], true)) {
+                            continue;
                         }
-                        break;
+
+                        $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+                        $normalizedName = strtolower((string) $fieldName . ' ' . $submitAs);
+                        $isDropoff = str_contains($normalizedName, 'dropoff')
+                            || str_contains($normalizedName, 'return')
+                            || str_contains(strtolower($submitAs), 'to_');
+
+                        if (!$isDropoff && $this->filled($submitAs)) {
+                            $dateField = $submitAs;
+                            break;
+                        }
+                    }
+                }
+
+                if ($dateField && !$timeField && !str_contains((string) $this->input($dateField), 'T')) {
+                    foreach ($configuredFields as $fieldName => $config) {
+                        if (!is_array($config) || ($config['type'] ?? null) !== 'time') {
+                            continue;
+                        }
+
+                        $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+                        $normalizedName = strtolower((string) $fieldName . ' ' . $submitAs);
+                        $isDropoff = str_contains($normalizedName, 'dropoff')
+                            || str_contains($normalizedName, 'return')
+                            || str_contains(strtolower($submitAs), 'to_');
+
+                        if (!$isDropoff && $this->filled($submitAs)) {
+                            $timeField = $submitAs;
+                            break;
+                        }
                     }
                 }
             } catch (\Throwable $exception) {

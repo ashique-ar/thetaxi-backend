@@ -245,7 +245,7 @@
     // Booking advance hours
     try {
         $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
-        $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 4);
+        $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 0);
         $bookingNoticeHtml = trim((string) ($bookingSettings['booking_notice_html'] ?? ''));
     } catch (Exception $e) {
         $bookingAdvanceHours = 0;
