@@ -8216,6 +8216,7 @@ class BookingFlowService
         $query = BookingItem::query()
             ->with([
                 'booking.customer.user:id,first_name,last_name,email,phone',
+                'booking.employeeUser:id,first_name,last_name,email,phone',
                 'booking.createdBy:id,first_name,last_name',
                 'booking.vehicleAssignments' => function ($q) {
                     $q->where('status', '!=', 'cancelled')
@@ -8288,6 +8289,15 @@ class BookingFlowService
                             ->orWhere('confirmation_number', 'like', "%{$search}%")
                             ->orWhereHas('customer.user', function ($userQuery) use ($search) {
                                 $userQuery->where('first_name', 'like', "%{$search}%")
+                                    ->orWhere('last_name', 'like', "%{$search}%")
+                                    ->orWhere('email', 'like', "%{$search}%")
+                                    ->orWhere('phone', 'like', "%{$search}%");
+                            })
+                            ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
+                                $corporateQuery->where('name', 'like', "%{$search}%");
+                            })
+                            ->orWhereHas('employeeUser', function ($employeeUserQuery) use ($search) {
+                                $employeeUserQuery->where('first_name', 'like', "%{$search}%")
                                     ->orWhere('last_name', 'like', "%{$search}%")
                                     ->orWhere('email', 'like', "%{$search}%")
                                     ->orWhere('phone', 'like', "%{$search}%");
@@ -8790,6 +8800,7 @@ class BookingFlowService
         $booking = $item->booking;
         $customer = $booking?->customer;
         $customerUser = $customer?->user;
+        $employeeUser = $booking?->employeeUser;
 
         $itemVehicle = $item->vehicle;
         $itemDriver = $item->driver;
@@ -8978,11 +8989,18 @@ class BookingFlowService
                     'phone' => $customerUser?->phone,
                 ],
             ],
-            'corporate' => $booking?->is_corporate_booking ? [
+            'corporate' => $bookingSource === 'corporate' ? [
                 'id' => (string) $booking->corporate_account_id,
                 'name' => $booking->corporateAccount?->name ?? null,
                 'department' => $booking->corporateDepartment?->name ?? null,
                 'division' => $booking->corporateDivision?->name ?? null,
+            ] : null,
+            'employee' => $bookingSource === 'corporate' && $employeeUser ? [
+                'id' => (string) $employeeUser->id,
+                'employee_code' => null,
+                'name' => trim(($employeeUser?->first_name ?? '') . ' ' . ($employeeUser?->last_name ?? '')) ?: null,
+                'email' => $employeeUser?->email,
+                'phone' => $employeeUser?->phone,
             ] : null,
             'vehicle' => $itemVehicle ? [
                 'id' => (string) $itemVehicle->id,

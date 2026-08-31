@@ -623,6 +623,11 @@ class Booking extends BaseModel
             ->where('corporate_id', $this->corporate_account_id);
     }
 
+    public function employeeUser()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'employee_id');
+    }
+
     /**
      * Get the latest approval record.
      *
