@@ -75,7 +75,12 @@ class DynamicDateTimeFieldContractTest extends TestCase
                         'required' => true,
                         'submit_as' => 'transfer_time',
                     ],
-                ], false, false, null];
+                ], false, false, null, [
+                    'dates' => [
+                        'from_date' => 'date',
+                        'from_time' => 'transfer_time_control',
+                    ],
+                ]];
             }
         };
         $request->initialize([
@@ -129,6 +134,16 @@ class DynamicDateTimeFieldContractTest extends TestCase
             'The pickup date and time must be in the future.',
             $validator->errors()->first('date')
         );
+    }
+
+    public function test_dynamic_mapping_resolves_config_keys_to_submitted_date_and_time_names(): void
+    {
+        $request = file_get_contents(app_path('Http/Requests/BookingSearchRequest.php'));
+
+        $this->assertStringContainsString("data_get(\$fieldMappings, 'dates.from_date')", $request);
+        $this->assertStringContainsString("data_get(\$fieldMappings, 'dates.from_time')", $request);
+        $this->assertStringContainsString('resolveMappedRequestField', $request);
+        $this->assertStringContainsString("['submit_as'] ?? \$mapping", $request);
     }
 
     private function requestWithConfiguredDateTime(): BookingSearchRequest

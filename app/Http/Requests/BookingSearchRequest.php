@@ -891,8 +891,11 @@ class BookingSearchRequest extends FormRequest
         $fields = is_array($resolvedPublicConfig['fields'] ?? null)
             ? $resolvedPublicConfig['fields']
             : [];
+        $fieldMappings = is_array($resolvedPublicConfig['field_mappings'] ?? null)
+            ? $resolvedPublicConfig['field_mappings']
+            : [];
 
-        return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id];
+        return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id, $fieldMappings];
     }
 
     /**
@@ -1048,7 +1051,25 @@ class BookingSearchRequest extends FormRequest
         // the active form config when either half of the pickup timestamp is missing.
         if ((!$dateField || !$timeField) && $this->filled('service_type')) {
             try {
-                [$configuredFields] = $this->resolveServiceFormConfig((string) $this->input('service_type'));
+                $resolvedConfig = $this->resolveServiceFormConfig((string) $this->input('service_type'));
+                $configuredFields = is_array($resolvedConfig[0] ?? null) ? $resolvedConfig[0] : [];
+                $fieldMappings = is_array($resolvedConfig[4] ?? null) ? $resolvedConfig[4] : [];
+
+                $mappedDateField = $this->resolveMappedRequestField(
+                    data_get($fieldMappings, 'dates.from_date'),
+                    $configuredFields
+                );
+                $mappedTimeField = $this->resolveMappedRequestField(
+                    data_get($fieldMappings, 'dates.from_time'),
+                    $configuredFields
+                );
+
+                if ($mappedDateField && $this->filled($mappedDateField)) {
+                    $dateField = $mappedDateField;
+                }
+                if ($mappedTimeField && $this->filled($mappedTimeField)) {
+                    $timeField = $mappedTimeField;
+                }
 
                 if (!$dateField) {
                     foreach ($configuredFields as $fieldName => $config) {
@@ -1126,5 +1147,34 @@ class BookingSearchRequest extends FormRequest
         return in_array($timezone, timezone_identifiers_list(), true)
             ? $timezone
             : (string) config('app.timezone', 'UTC');
+    }
+
+    /**
+     * Convert a canonical field mapping (config key or submit_as value) into the
+     * actual request key emitted by the dynamic public form.
+     */
+    private function resolveMappedRequestField(mixed $mapping, array $configuredFields): ?string
+    {
+        $mapping = trim((string) $mapping);
+        if ($mapping === '') {
+            return null;
+        }
+
+        if (isset($configuredFields[$mapping]) && is_array($configuredFields[$mapping])) {
+            return (string) ($configuredFields[$mapping]['submit_as'] ?? $mapping);
+        }
+
+        foreach ($configuredFields as $fieldName => $config) {
+            if (!is_array($config)) {
+                continue;
+            }
+
+            $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+            if ($submitAs === $mapping) {
+                return $submitAs;
+            }
+        }
+
+        return $mapping;
     }
 }
