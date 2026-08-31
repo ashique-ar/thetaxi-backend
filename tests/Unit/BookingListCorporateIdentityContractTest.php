@@ -12,8 +12,13 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->toContain("->orWhereHas('corporateAccount'")
         ->toContain("->orWhereHas('employeeUser'")
         ->and($mapper)
+        ->toContain("if (\$bookingSource === 'corporate')")
+        ->toContain("\$booking?->corporateAccount?->name")
         ->toContain("'corporate' => \$bookingSource === 'corporate'")
         ->toContain("'employee' => \$bookingSource === 'corporate' && \$employeeUser")
         ->toContain("'email' => \$employeeUser?->email")
         ->toContain("'phone' => \$employeeUser?->phone");
+
+    expect($source)
+        ->toContain("filled(\$booking->corporate_account_id)");
 });

@@ -8801,6 +8801,7 @@ class BookingFlowService
         $customer = $booking?->customer;
         $customerUser = $customer?->user;
         $employeeUser = $booking?->employeeUser;
+        $bookingSource = $this->resolveBookingListSource($booking);
 
         $itemVehicle = $item->vehicle;
         $itemDriver = $item->driver;
@@ -8864,6 +8865,9 @@ class BookingFlowService
         $customerName = trim(($customerUser?->first_name ?? '') . ' ' . ($customerUser?->last_name ?? ''));
         if ($customerName === '') {
             $customerName = $customer?->name ?? 'Unknown Customer';
+        }
+        if ($bookingSource === 'corporate') {
+            $customerName = trim((string) ($booking?->corporateAccount?->name ?? '')) ?: 'Corporate account';
         }
 
         $driverName = trim(($itemDriverUser?->first_name ?? '') . ' ' . ($itemDriverUser?->last_name ?? ''));
@@ -8956,8 +8960,6 @@ class BookingFlowService
         $listFromTime = $firstTrip?->from_time ?? $item->from_time ?? null;
         $listToDate = $lastTrip?->to_date ?? $lastTrip?->from_date ?? $item->to_date ?? null;
         $listToTime = $lastTrip?->to_time ?? $lastTrip?->from_time ?? $item->to_time ?? null;
-        $bookingSource = $this->resolveBookingListSource($booking);
-
         return [
             'id' => (string) $item->id,
             'booking_id' => (string) $item->booking_id,
@@ -8980,13 +8982,13 @@ class BookingFlowService
                 'id' => (string) ($customer?->id ?? ''),
                 'code' => $customer?->code,
                 'name' => $customerName,
-                'email' => $customerUser?->email,
-                'phone' => $customerUser?->phone,
+                'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $customerUser?->email) : $customerUser?->email,
+                'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $customerUser?->phone) : $customerUser?->phone,
                 'user' => [
-                    'first_name' => $customerUser?->first_name,
-                    'last_name' => $customerUser?->last_name,
-                    'email' => $customerUser?->email,
-                    'phone' => $customerUser?->phone,
+                    'first_name' => $bookingSource === 'corporate' ? null : $customerUser?->first_name,
+                    'last_name' => $bookingSource === 'corporate' ? null : $customerUser?->last_name,
+                    'email' => $bookingSource === 'corporate' ? ($employeeUser?->email ?? $customerUser?->email) : $customerUser?->email,
+                    'phone' => $bookingSource === 'corporate' ? ($employeeUser?->phone ?? $customerUser?->phone) : $customerUser?->phone,
                 ],
             ],
             'corporate' => $bookingSource === 'corporate' ? [
@@ -9073,7 +9075,7 @@ class BookingFlowService
             return 'internal';
         }
 
-        if ((bool) ($booking->is_corporate_booking ?? false)) {
+        if ((bool) ($booking->is_corporate_booking ?? false) || filled($booking->corporate_account_id)) {
             return 'corporate';
         }
 
