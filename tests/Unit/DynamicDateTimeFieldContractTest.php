@@ -97,6 +97,40 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertArrayHasKey('date', $validator->errors()->toArray());
     }
 
+    public function test_search_rejects_a_past_time_today_even_when_advance_hours_is_zero(): void
+    {
+        $siteNow = now('Asia/Colombo');
+        $request = new class extends BookingSearchRequest {
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'date' => ['type' => 'date', 'required' => true],
+                    'time' => ['type' => 'time', 'required' => true],
+                ], false, false, null];
+            }
+        };
+        $request->initialize([
+            'service_type' => 'airport_transfers',
+            'date' => $siteNow->format('Y-m-d'),
+            'time' => $siteNow->copy()->subMinute()->format('H:i'),
+        ]);
+
+        $settings = $this->mock(WebsiteSettingsService::class);
+        $settings->shouldReceive('getBookingSettings')->once()->andReturn([
+            'booking_advance_hours' => 0,
+        ]);
+        $settings->shouldReceive('get')->once()->with('site_timezone', 'UTC')->andReturn('Asia/Colombo');
+
+        $validator = Validator::make($request->all(), $request->rules());
+        $request->withValidator($validator);
+
+        $this->assertTrue($validator->fails());
+        $this->assertSame(
+            'The pickup date and time must be in the future.',
+            $validator->errors()->first('date')
+        );
+    }
+
     private function requestWithConfiguredDateTime(): BookingSearchRequest
     {
         $request = new class extends BookingSearchRequest {

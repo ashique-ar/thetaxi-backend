@@ -589,22 +589,21 @@ class BookingSearchRequest extends FormRequest
                 return;
             }
 
-            if ($advanceHours > 0) {
-                // Website date/time inputs are local wall-clock values. Comparing
-                // them in Laravel's UTC timezone made the Sri Lankan website allow
-                // bookings roughly 5.5 hours earlier than configured.
-                $minimumDateTime = now($siteTimezone)->addHours($advanceHours);
-                if ($startDateTime->lt($minimumDateTime)) {
+            // Always validate the complete local pickup timestamp. Date-only rules
+            // allow a past time on today's date; advanceHours=0 must still mean now,
+            // not midnight at the start of today.
+            $minimumDateTime = now($siteTimezone)->addHours($advanceHours);
+            if ($startDateTime->lt($minimumDateTime)) {
+                if ($advanceHours > 0) {
                     $customNotice = trim((string) ($settings['booking_notice_html'] ?? ''));
                     $message = $customNotice !== ''
                         ? trim(html_entity_decode(strip_tags(str_replace(['<br>', '<br/>', '<br />'], "\n", $customNotice))))
                         : "Bookings must be made at least {$advanceHours} hours in advance.";
-
-                    $validator->errors()->add(
-                        $dateField,
-                        $message
-                    );
+                } else {
+                    $message = 'The pickup date and time must be in the future.';
                 }
+
+                $validator->errors()->add($dateField, $message);
             }
 
             if ($maxDays > 0) {
