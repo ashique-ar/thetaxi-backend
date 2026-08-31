@@ -299,9 +299,15 @@ class FinancialAccountSettlementService
 
     public function sendDocument(FinancialAccountSettlement $settlement, FinancialSettlementDocument $document): void
     {
-        $email=$settlement->owner_type==='corporate'?Corporate::whereKey($settlement->owner_id)->value('contact_email'):Customer::with('user')->find($settlement->owner_id)?->user?->email;
-        if(!$email){$document->update(['last_error'=>'No billing email is recorded for this account.']);$this->audit('account_settlement',$settlement->id,'invoice_delivery_failed',null,$settlement->status,null,['invoice_number'=>$document->invoice_number,'document_id'=>$document->id,'reason'=>'billing_email_missing'],auth()->id());return;}
-        try{Mail::raw('Please find attached account invoice '.$document->invoice_number.' for settlement '.$settlement->settlement_number.'.',function($message)use($email,$document){$message->to($email)->subject('Account invoice '.$document->invoice_number)->attach(Storage::disk($document->pdf_disk)->path($document->pdf_path));});$document->update(['sent_at'=>now(),'sent_to'=>$email,'last_error'=>null]);$this->audit('account_settlement',$settlement->id,'invoice_sent',null,$document->status,null,['invoice_number'=>$document->invoice_number,'document_id'=>$document->id,'sent_to'=>$email],auth()->id());}
+        $recipients = $settlement->owner_type === 'corporate'
+            ? collect(data_get($settlement->billing_terms_snapshot, 'recipients', []))->filter()->values()
+            : collect([Customer::with('user')->find($settlement->owner_id)?->user?->email])->filter()->values();
+        if ($settlement->owner_type === 'corporate' && $recipients->isEmpty()) {
+            $recipients = collect([Corporate::whereKey($settlement->owner_id)->value('contact_email')])->filter()->values();
+        }
+        if($recipients->isEmpty()){$document->update(['last_error'=>'No billing email is recorded for this account.']);$this->audit('account_settlement',$settlement->id,'invoice_delivery_failed',null,$settlement->status,null,['invoice_number'=>$document->invoice_number,'document_id'=>$document->id,'reason'=>'billing_email_missing'],auth()->id());return;}
+        $sentTo = $recipients->implode(',');
+        try{Mail::raw('Please find attached account invoice '.$document->invoice_number.' for settlement '.$settlement->settlement_number.'.',function($message)use($recipients,$document){$message->to($recipients->all())->subject('Account invoice '.$document->invoice_number)->attach(Storage::disk($document->pdf_disk)->path($document->pdf_path));});$document->update(['sent_at'=>now(),'sent_to'=>$sentTo,'last_error'=>null]);$this->audit('account_settlement',$settlement->id,'invoice_sent',null,$document->status,null,['invoice_number'=>$document->invoice_number,'document_id'=>$document->id,'sent_to'=>$recipients->all()],auth()->id());}
         catch(\Throwable $e){$document->update(['last_error'=>$e->getMessage()]);$this->audit('account_settlement',$settlement->id,'invoice_delivery_failed',null,$settlement->status,null,['invoice_number'=>$document->invoice_number,'document_id'=>$document->id,'error_class'=>get_class($e)],auth()->id());}
     }
 

@@ -1254,6 +1254,55 @@ class BookingLifecycleService
     // ========================
     // COMPLETION STAGE
     // ========================
+
+    /**
+     * Reconcile a persisted driver completion through the canonical booking-item
+     * completion path. This repairs legacy rows without completing sibling items.
+     */
+    public function reconcileCompletedDriverAssignment(string $assignmentId): bool
+    {
+        $assignment = DriverAssignment::query()
+            ->with(['booking.bookingItems'])
+            ->findOrFail($assignmentId);
+
+        if ($assignment->trip_phase?->value !== TripPhase::COMPLETED->value
+            || !$assignment->trip_completed_at
+            || !$assignment->booking) {
+            return false;
+        }
+
+        $bookingItems = $assignment->booking->bookingItems;
+        $bookingItem = $assignment->booking_item_id
+            ? $bookingItems->firstWhere('id', $assignment->booking_item_id)
+            : ($bookingItems->count() === 1 ? $bookingItems->first() : null);
+
+        if (!$bookingItem) {
+            throw new \DomainException(
+                'A completed driver assignment could not be mapped safely to a booking item.'
+            );
+        }
+
+        if ($bookingItem->completed_at && (string) $bookingItem->status === 'completed') {
+            return false;
+        }
+
+        $this->completeBooking(
+            (string) $assignment->booking_id,
+            [
+                'activity_source' => 'driver_completion_reconciliation',
+                'actual_start_time' => $assignment->trip_started_at?->toIso8601String(),
+                'actual_return_time' => $assignment->trip_completed_at->toIso8601String(),
+                'actual_distance' => $assignment->total_distance_km !== null
+                    ? (float) $assignment->total_distance_km
+                    : null,
+                'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
+                'completed_by_driver' => true,
+            ],
+            (string) $bookingItem->id
+        );
+
+        return true;
+    }
     
     /**
      * Complete booking lifecycle

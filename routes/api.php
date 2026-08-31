@@ -1848,6 +1848,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('reports/summary-stats', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'summaryStats']);
         Route::get('reports/export', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'exportCsv']);
 
+        // Corporate finance projection (company-scoped and finance-permission protected)
+        Route::get('finance/account', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'account']);
+        Route::get('finance/settlements/{settlement}', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'show'])->whereUuid('settlement');
+        Route::get('finance/settlements/{settlement}/invoice', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'invoice'])->whereUuid('settlement');
+        Route::get('finance/settlements/{settlement}/statement', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'statement'])->whereUuid('settlement');
+
         // Vehicle Groups (read-only for corporate users)
         Route::get('vehicle-groups', function (\Illuminate\Http\Request $request) {
             $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
@@ -1882,6 +1888,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
 
         Route::middleware('ensure.internal')->group(function () {
+            Route::get('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
+            Route::post('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
+            Route::patch('{corporate}/billing/terms/{term}/end', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
+            Route::post('{corporate}/billing/preview', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
+            Route::post('{corporate}/billing/generate', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
+            Route::post('{corporate}/billing/settlements/{settlement}/issue', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
             Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
             Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
             Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);

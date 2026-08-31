@@ -22,6 +22,7 @@ class CorporateBookingService
         protected BookingFlowService $bookingFlowService,
         protected ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         protected CorporateSubmittedResponseProjector $submittedResponseProjector,
+        protected CorporateFinancialProjectionService $financialProjection,
     )
     {
     }
@@ -883,6 +884,15 @@ class CorporateBookingService
             ->pluck('count', 'department_name')
             ->toArray();
 
+        $financial = [];
+        if (($filters['can_view_payments'] ?? false) === true) {
+            $financial = ['financial_metrics_visible' => true, ...$this->financialProjection->summarizeBookings(
+                (clone $query)->get(['bookings.id', 'bookings.total_actual'])
+            )];
+        } else {
+            $financial = ['financial_metrics_visible' => false];
+        }
+
         return [
             'total_bookings' => $totalCount,
             'booking_count' => $totalCount,
@@ -897,6 +907,7 @@ class CorporateBookingService
             'by_department' => $byDepartment,
             'bookings_by_status' => $byStatus,
             'bookings_by_department' => $byDepartment,
+            ...$financial,
         ];
     }
 

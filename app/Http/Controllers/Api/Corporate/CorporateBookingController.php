@@ -383,6 +383,7 @@ class CorporateBookingController extends Controller
     public function stats(Request $request): JsonResponse
     {
         $filters = $request->only(['date_from', 'date_to']);
+        $filters['can_view_payments'] = $this->canViewPayments($request);
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,

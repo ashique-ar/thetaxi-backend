@@ -43,6 +43,7 @@ class CorporateReportController extends Controller
     public function summaryStats(CorporateReportFiltersRequest $request): JsonResponse
     {
         $filters = $request->validated();
+        $filters['can_view_payments'] = $request->user()->can('view_payments');
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,

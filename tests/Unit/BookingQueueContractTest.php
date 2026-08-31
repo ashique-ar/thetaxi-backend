@@ -26,6 +26,9 @@ it('scopes operational queue predicates to booking items', function () {
         ->toContain("whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')")
         ->toContain("whereColumn('booking_qcs.booking_item_id', 'booking_items.id')")
         ->toContain("whereColumn('driver_assignments.booking_item_id', 'booking_items.id')")
+        ->toContain("whereNull('booking_items.completed_at')")
+        ->toContain("whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])")
+        ->toContain("whereDoesntHave('booking.driverAssignments'")
         ->toContain("'payment_pending', 'payment_attention'");
 });
 

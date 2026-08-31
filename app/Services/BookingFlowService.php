@@ -8607,13 +8607,20 @@ class BookingFlowService
                     $driverQuery->where('booking_items.is_self_driven', true)
                         ->orWhereNotNull('booking_items.driver_id');
                 }),
-            'active' => $query->whereHas('booking', function ($bookingQuery) {
+            'active' => $query
+                ->whereNull('booking_items.completed_at')
+                ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
+                ->whereHas('booking', function ($bookingQuery) {
                 $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
                     $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
                         ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
                 })->orWhereHas('dispatches', function ($dispatchQuery) {
                     $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                        ->whereIn('dispatch_status', ['dispatched', 'in_progress']);
+                        ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                        ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
+                            $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
+                                ->where('trip_phase', 'completed');
+                        });
                 });
             }),
             'return_due' => $query->whereHas('booking', function ($bookingQuery) {
