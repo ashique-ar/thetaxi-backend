@@ -53,6 +53,14 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertStringContainsString('type="datetime-local"', $publicField);
     }
 
+    public function test_minimum_advance_validation_uses_the_site_timezone_and_dynamic_fields(): void
+    {
+        $request = file_get_contents(app_path('Http/Requests/BookingSearchRequest.php'));
+        $this->assertStringContainsString("get('site_timezone', config('app.timezone', 'UTC'))", $request);
+        $this->assertStringContainsString('now($siteTimezone)->addHours($advanceHours)', $request);
+        $this->assertStringContainsString("['date', 'datetime']", $request);
+    }
+
     private function requestWithConfiguredDateTime(): BookingSearchRequest
     {
         $request = new class extends BookingSearchRequest {

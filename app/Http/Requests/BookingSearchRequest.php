@@ -572,7 +572,9 @@ class BookingSearchRequest extends FormRequest
     {
         $validator->after(function ($validator) {
             try {
-                $settings = app(WebsiteSettingsService::class)->getBookingSettings();
+                $settingsService = app(WebsiteSettingsService::class);
+                $settings = $settingsService->getBookingSettings();
+                $siteTimezone = $settingsService->get('site_timezone', config('app.timezone', 'UTC'));
             } catch (\Exception $e) {
                 Log::warning('Failed to load booking settings for validation', ['error' => $e->getMessage()]);
                 return;
@@ -581,13 +583,17 @@ class BookingSearchRequest extends FormRequest
             $advanceHours = (int) ($settings['booking_advance_hours'] ?? 0);
             $maxDays = (int) ($settings['booking_max_days'] ?? 0);
 
-            [$dateField, $startDateTime] = $this->resolveStartDateTime();
+            $siteTimezone = $this->normalizeSiteTimezone($siteTimezone ?? null);
+            [$dateField, $startDateTime] = $this->resolveStartDateTime($siteTimezone);
             if (!$startDateTime) {
                 return;
             }
 
             if ($advanceHours > 0) {
-                $minimumDateTime = now()->addHours($advanceHours);
+                // Website date/time inputs are local wall-clock values. Comparing
+                // them in Laravel's UTC timezone made the Sri Lankan website allow
+                // bookings roughly 5.5 hours earlier than configured.
+                $minimumDateTime = now($siteTimezone)->addHours($advanceHours);
                 if ($startDateTime->lt($minimumDateTime)) {
                     $customNotice = trim((string) ($settings['booking_notice_html'] ?? ''));
                     $message = $customNotice !== ''
@@ -1022,7 +1028,7 @@ class BookingSearchRequest extends FormRequest
     /**
      * Resolve the primary booking start date/time field for validation.
      */
-    protected function resolveStartDateTime(): array
+    protected function resolveStartDateTime(string $timezone): array
     {
         $dateField = null;
         $timeField = null;
@@ -1038,12 +1044,61 @@ class BookingSearchRequest extends FormRequest
             $timeField = $this->filled('from_time') ? 'from_time' : null;
         }
 
+        if (!$dateField && $this->filled('service_type')) {
+            try {
+                [$configuredFields] = $this->resolveServiceFormConfig((string) $this->input('service_type'));
+
+                foreach ($configuredFields as $fieldName => $config) {
+                    if (!is_array($config) || !in_array(($config['type'] ?? null), ['date', 'datetime'], true)) {
+                        continue;
+                    }
+
+                    $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+                    $isDropoff = str_contains(strtolower((string) $fieldName), 'dropoff')
+                        || str_contains(strtolower((string) $fieldName), 'return')
+                        || str_contains(strtolower($submitAs), 'dropoff')
+                        || str_contains(strtolower($submitAs), 'return')
+                        || str_contains(strtolower($submitAs), 'to_');
+
+                    if (!$isDropoff && $this->filled($submitAs)) {
+                        $dateField = $submitAs;
+
+                        if (($config['type'] ?? null) === 'date') {
+                            foreach ($configuredFields as $timeFieldName => $timeConfig) {
+                                if (!is_array($timeConfig) || ($timeConfig['type'] ?? null) !== 'time') {
+                                    continue;
+                                }
+
+                                $timeSubmitAs = (string) ($timeConfig['submit_as'] ?? $timeFieldName);
+                                $normalizedTimeName = strtolower((string) $timeFieldName . ' ' . $timeSubmitAs);
+                                $isDropoffTime = str_contains($normalizedTimeName, 'dropoff')
+                                    || str_contains($normalizedTimeName, 'return')
+                                    || str_contains(strtolower($timeSubmitAs), 'to_');
+
+                                if (!$isDropoffTime && $this->filled($timeSubmitAs)) {
+                                    $timeField = $timeSubmitAs;
+                                    break;
+                                }
+                            }
+                        }
+                        break;
+                    }
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to resolve configured booking start field', [
+                    'service_type' => $this->input('service_type'),
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+        }
+
         if (!$dateField) {
             return [null, null];
         }
 
-        $date = $this->getCarbonDate($dateField);
-        if (!$date) {
+        try {
+            $date = Carbon::parse((string) $this->input($dateField), $timezone);
+        } catch (\Throwable $exception) {
             return [$dateField, null];
         }
 
@@ -1059,5 +1114,14 @@ class BookingSearchRequest extends FormRequest
         }
 
         return [$dateField, $date];
+    }
+
+    private function normalizeSiteTimezone(mixed $timezone): string
+    {
+        $timezone = trim((string) $timezone);
+
+        return in_array($timezone, timezone_identifiers_list(), true)
+            ? $timezone
+            : (string) config('app.timezone', 'UTC');
     }
 }
