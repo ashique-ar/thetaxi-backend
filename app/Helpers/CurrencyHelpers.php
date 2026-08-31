@@ -82,3 +82,28 @@ if (!function_exists('getAvailableCurrencies')) {
         return app(CurrencyService::class)->getAvailableCurrenciesForDisplay();
     }
 }
+
+if (!function_exists('getBookingDisplayCurrency')) {
+    /**
+     * Resolve the currency of the monetary snapshot stored for a booking.
+     *
+     * Public checkout stores converted amounts together with display_currency in
+     * workflow_data. Prefer that snapshot currency so delayed emails cannot pair
+     * a converted amount with a later/default booking currency label.
+     */
+    function getBookingDisplayCurrency(object $booking): string
+    {
+        $workflowData = $booking->workflow_data ?? [];
+
+        if (is_string($workflowData)) {
+            $workflowData = json_decode($workflowData, true);
+        }
+
+        $snapshotCurrency = is_array($workflowData)
+            ? ($workflowData['display_currency'] ?? null)
+            : null;
+        $currencyCode = strtoupper(trim((string) ($snapshotCurrency ?: ($booking->currency ?? 'LKR'))));
+
+        return preg_match('/^[A-Z]{3}$/', $currencyCode) ? $currencyCode : 'LKR';
+    }
+}

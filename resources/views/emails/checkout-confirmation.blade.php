@@ -16,7 +16,8 @@
 
 @section('content')
     @php
-        $currencySymbol = getCurrencySymbol($booking->currency);
+        // Keep all persisted checkout amounts paired with their snapshot currency.
+        $currencySymbol = getBookingDisplayCurrency($booking);
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];

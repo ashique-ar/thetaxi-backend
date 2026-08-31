@@ -104,7 +104,8 @@
             <span class="icon">🚗</span> Vehicle Wise Trip Details
         </h2>
         @php
-            $currencySymbol = getCurrencySymbol($booking->currency ?? 'LKR');
+            // Keep all persisted checkout amounts paired with their snapshot currency.
+            $currencySymbol = getBookingDisplayCurrency($booking);
         @endphp
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)

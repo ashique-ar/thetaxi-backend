@@ -8,7 +8,9 @@
 
 @section('content')
     @php
-        $currencySymbol = getCurrencySymbol($booking->currency ?? 'LKR');
+        // Use the checkout snapshot currency for every amount in this email.
+        // The ISO code is intentionally shown instead of an ambiguous symbol.
+        $currencySymbol = getBookingDisplayCurrency($booking);
         $customerName = $booking->customer?->full_name ?? 'Valued Customer';
         $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
         $isFallbackPaymentLink = $paymentLink === route('checkout');
