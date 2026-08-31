@@ -8965,6 +8965,7 @@ class BookingFlowService
             ] : null,
             'customer' => [
                 'id' => (string) ($customer?->id ?? ''),
+                'code' => $customer?->code,
                 'name' => $customerName,
                 'email' => $customerUser?->email,
                 'phone' => $customerUser?->phone,
@@ -8995,6 +8996,7 @@ class BookingFlowService
             ] : null,
             'driver' => $itemDriver ? [
                 'id' => (string) $itemDriver->id,
+                'code' => $itemDriver->code,
                 'name' => $driverName,
                 'license_number' => $itemDriver->license_number ?? $itemDriver->license_no,
                 'user' => [

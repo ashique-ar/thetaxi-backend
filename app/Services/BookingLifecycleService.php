@@ -29,6 +29,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Collection;
 use Carbon\Carbon;
 
 /**
@@ -1262,7 +1263,7 @@ class BookingLifecycleService
     public function reconcileCompletedDriverAssignment(string $assignmentId): bool
     {
         $assignment = DriverAssignment::query()
-            ->with(['booking.bookingItems'])
+            ->with(['booking.bookingItems', 'booking.dispatches'])
             ->findOrFail($assignmentId);
 
         if ($assignment->trip_phase?->value !== TripPhase::COMPLETED->value
@@ -1271,15 +1272,29 @@ class BookingLifecycleService
             return false;
         }
 
-        $bookingItems = $assignment->booking->bookingItems;
-        $bookingItem = $assignment->booking_item_id
-            ? $bookingItems->firstWhere('id', $assignment->booking_item_id)
-            : ($bookingItems->count() === 1 ? $bookingItems->first() : null);
+        $bookingItems = $assignment->booking->bookingItems->values();
+        $bookingItem = $this->resolveCompletedAssignmentBookingItem($assignment, $bookingItems);
 
         if (!$bookingItem) {
             throw new \DomainException(
-                'A completed driver assignment could not be mapped safely to a booking item.'
+                'A completed driver assignment could not be mapped safely to a booking item. '
+                .json_encode([
+                    'booking_id' => (string) $assignment->booking_id,
+                    'stored_booking_item_id' => $assignment->booking_item_id,
+                    'candidate_booking_item_ids' => $bookingItems->pluck('id')->map(fn ($id) => (string) $id)->all(),
+                ])
             );
+        }
+
+        if ((string) $assignment->booking_item_id !== (string) $bookingItem->id) {
+            $previousBookingItemId = $assignment->booking_item_id;
+            $assignment->forceFill(['booking_item_id' => $bookingItem->id])->save();
+            Log::warning('Repaired completed driver assignment booking item link', [
+                'assignment_id' => (string) $assignment->id,
+                'booking_id' => (string) $assignment->booking_id,
+                'previous_booking_item_id' => $previousBookingItemId,
+                'booking_item_id' => (string) $bookingItem->id,
+            ]);
         }
 
         if ($bookingItem->completed_at && (string) $bookingItem->status === 'completed') {
@@ -1303,6 +1318,63 @@ class BookingLifecycleService
         );
 
         return true;
+    }
+
+    private function resolveCompletedAssignmentBookingItem(DriverAssignment $assignment, Collection $bookingItems): ?BookingItem
+    {
+        if ($assignment->booking_item_id) {
+            $storedItem = $bookingItems->first(
+                fn (BookingItem $item): bool => (string) $item->id === (string) $assignment->booking_item_id
+            );
+            if ($storedItem) {
+                return $storedItem;
+            }
+        }
+
+        if ($bookingItems->count() === 1) {
+            return $bookingItems->first();
+        }
+
+        $validItemIds = $bookingItems->pluck('id')->map(fn ($id) => (string) $id);
+        $dispatchItemIds = $assignment->booking->dispatches
+            ->filter(fn (BookingDispatch $dispatch): bool =>
+                (string) $dispatch->driver_id === (string) $assignment->driver_id
+                && $dispatch->booking_item_id
+                && $validItemIds->contains((string) $dispatch->booking_item_id)
+            )
+            ->pluck('booking_item_id')
+            ->map(fn ($id) => (string) $id)
+            ->unique()
+            ->values();
+        if ($dispatchItemIds->count() === 1) {
+            return $bookingItems->first(fn (BookingItem $item): bool => (string) $item->id === $dispatchItemIds->first());
+        }
+
+        $driverMatches = $bookingItems->filter(
+            fn (BookingItem $item): bool => (string) $item->driver_id === (string) $assignment->driver_id
+        )->values();
+        if ($driverMatches->count() === 1) {
+            return $driverMatches->first();
+        }
+
+        $timeMatches = $bookingItems->filter(function (BookingItem $item) use ($assignment): bool {
+            $fromMatches = $assignment->assigned_from && $item->from_date
+                && $assignment->assigned_from->diffInMinutes($item->from_date) <= 5;
+            $toMatches = $assignment->assigned_to && $item->to_date
+                && $assignment->assigned_to->diffInMinutes($item->to_date) <= 5;
+
+            return $fromMatches && $toMatches;
+        })->values();
+        if ($timeMatches->count() === 1) {
+            return $timeMatches->first();
+        }
+
+        $remainingItems = $bookingItems->filter(
+            fn (BookingItem $item): bool => !$item->completed_at
+                && !in_array((string) $item->status, ['cancelled', 'rejected'], true)
+        )->values();
+
+        return $remainingItems->count() === 1 ? $remainingItems->first() : null;
     }
     
     /**

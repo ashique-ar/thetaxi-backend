@@ -20,9 +20,17 @@ class ReconcileCompletedDriverHires extends Command
         $assignments = DriverAssignment::query()
             ->where('trip_phase', TripPhase::COMPLETED->value)
             ->whereNotNull('trip_completed_at')
-            ->whereHas('booking.bookingItems', function ($query) {
-                $query->whereNull('completed_at')
-                    ->whereNotIn('status', ['cancelled', 'rejected']);
+            ->where(function ($query) {
+                $query->whereHas('bookingItem', function ($itemQuery) {
+                    $itemQuery->whereNull('completed_at')
+                        ->whereNotIn('status', ['cancelled', 'rejected']);
+                })->orWhere(function ($legacyQuery) {
+                    $legacyQuery->whereDoesntHave('bookingItem')
+                        ->whereHas('booking.bookingItems', function ($itemQuery) {
+                            $itemQuery->whereNull('completed_at')
+                                ->whereNotIn('status', ['cancelled', 'rejected']);
+                        });
+                });
             })
             ->orderBy('trip_completed_at')
             ->limit($limit)

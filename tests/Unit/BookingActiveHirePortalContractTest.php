@@ -22,12 +22,36 @@ it('connects the active hire paginator to server page parameters', function () {
 
     expect($component)
         ->toContain('onPageChange(event: PageEvent)')
-        ->toContain('page: event.pageIndex + 1')
-        ->toContain('per_page: event.pageSize');
+        ->toContain('loadOngoingHires(event.pageIndex + 1, event.pageSize)');
     expect($template)
         ->toContain('<mat-paginator ui-table-pagination')
         ->toContain('[length]="pagination().total"')
         ->toContain('(page)="onPageChange($event)"');
+});
+
+it('keeps UUIDs as internal values and renders readable active-hire identifiers', function () {
+    $template = file_get_contents(
+        __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.html'
+    );
+    $backend = file_get_contents(__DIR__ . '/../../app/Services/BookingFlowService.php');
+
+    expect($template)
+        ->not->toContain('{{ hire.customer_id }}')
+        ->not->toContain('{{ hire.driver_id }}')
+        ->not->toContain('{{ selectedHire()?.id }}')
+        ->toContain('hire.customer_code || hire.customer_phone || hire.item_code')
+        ->toContain('hire.driver_code || hire.driver_license');
+    $component = file_get_contents(
+        __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts'
+    );
+    expect($component)
+        ->not->toContain('Customer: ${value.customer_id}')
+        ->not->toContain('Vehicle: ${value.vehicle_id}')
+        ->not->toContain('Driver: ${value.driver_id}')
+        ->not->toContain('hire-${hire.id}-report.pdf');
+    expect($backend)
+        ->toContain("'code' => \$customer?->code")
+        ->toContain("'code' => \$itemDriver->code");
 });
 
 it('accepts every implemented operations queue through either request parameter', function () {

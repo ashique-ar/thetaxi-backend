@@ -14,6 +14,8 @@ it('reconciles completed driver assignments through item-scoped canonical comple
         ->toContain("TripPhase::COMPLETED->value")
         ->toContain("'completed_by_driver' => true")
         ->toContain("'suppress_completion_emails' => true")
+        ->toContain('resolveCompletedAssignmentBookingItem')
+        ->toContain('Repaired completed driver assignment booking item link')
         ->toContain('$this->completeBooking(')
         ->toContain('(string) $bookingItem->id');
 });
@@ -34,5 +36,6 @@ it('provides a bounded repair command for existing inconsistent hires', function
         ->toContain('bookings:reconcile-driver-completions')
         ->toContain('reconcileCompletedDriverAssignment')
         ->toContain("whereNotNull('trip_completed_at')")
+        ->toContain("whereDoesntHave('bookingItem')")
         ->toContain('limit($limit)');
 });
