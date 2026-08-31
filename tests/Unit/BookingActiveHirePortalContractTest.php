@@ -7,7 +7,27 @@ it('filters active hires on the server before booking pagination', function () {
 
     expect($portalService)
         ->toContain("operations_queue: 'active'")
-        ->toContain("per_page: 100");
+        ->toContain('page: filters.page || 1')
+        ->toContain('per_page: filters.per_page || 25')
+        ->toContain('response?.data?.pagination');
+});
+
+it('connects the active hire paginator to server page parameters', function () {
+    $component = file_get_contents(
+        __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts'
+    );
+    $template = file_get_contents(
+        __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.html'
+    );
+
+    expect($component)
+        ->toContain('onPageChange(event: PageEvent)')
+        ->toContain('page: event.pageIndex + 1')
+        ->toContain('per_page: event.pageSize');
+    expect($template)
+        ->toContain('<mat-paginator ui-table-pagination')
+        ->toContain('[length]="pagination().total"')
+        ->toContain('(page)="onPageChange($event)"');
 });
 
 it('accepts every implemented operations queue through either request parameter', function () {

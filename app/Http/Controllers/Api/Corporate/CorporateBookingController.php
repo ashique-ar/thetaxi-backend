@@ -203,6 +203,54 @@ class CorporateBookingController extends Controller
         ]]);
     }
 
+    public function timeline(Request $request, string $id): JsonResponse
+    {
+        $booking = $this->authorizedBooking($request, $id);
+        $validated = $request->validate(['booking_item_id' => ['nullable', 'uuid']]);
+        $itemId = $validated['booking_item_id'] ?? null;
+        if ($itemId && ! $booking->bookingItems()->whereKey($itemId)->exists()) {
+            abort(404);
+        }
+
+        $events = collect([
+            ['type' => 'requested', 'label' => 'Booking requested', 'occurred_at' => $booking->created_at],
+            ['type' => 'approval_requested', 'label' => 'Approval requested', 'occurred_at' => $booking->approval_requested_at],
+            ['type' => 'approved', 'label' => 'Booking approved', 'occurred_at' => $booking->approval_at],
+            ['type' => 'confirmed', 'label' => 'Booking confirmed', 'occurred_at' => $booking->confirmed_at],
+        ]);
+
+        $assignments = DriverAssignment::query()->where('booking_id', $booking->id)
+            ->when($itemId, fn ($query) => $query->where('booking_item_id', $itemId))->get();
+        foreach ($assignments as $assignment) {
+            foreach (['assigned' => $assignment->created_at, 'driver_confirmed' => $assignment->confirmed_at, 'trip_started' => $assignment->trip_started_at, 'trip_completed' => $assignment->trip_completed_at] as $type => $at) {
+                $events->push(['type' => $type, 'label' => str($type)->replace('_', ' ')->title()->toString(), 'occurred_at' => $at, 'booking_item_id' => $assignment->booking_item_id]);
+            }
+        }
+
+        $booking->bookingItems()->when($itemId, fn ($query) => $query->whereKey($itemId))->get()->each(function ($item) use ($events) {
+            $events->push(['type' => 'final_priced', 'label' => 'Final pricing completed', 'occurred_at' => $item->final_priced_at, 'booking_item_id' => $item->id]);
+            $events->push(['type' => 'completed', 'label' => 'Trip completed', 'occurred_at' => $item->completed_at, 'booking_item_id' => $item->id]);
+        });
+
+        if ($this->canViewPayments($request)) {
+            $settlements = \App\Models\Finance\FinancialAccountSettlement::query()
+                ->where('owner_type', 'corporate')->where('owner_id', $request->corporate_id)
+                ->whereHas('items', fn ($query) => $query->where('booking_id', $booking->id))->get();
+            foreach ($settlements as $settlement) {
+                $events->push(['type' => 'invoiced', 'label' => 'Invoice issued', 'occurred_at' => $settlement->issued_at]);
+                $events->push(['type' => 'paid', 'label' => 'Payment completed', 'occurred_at' => $settlement->paid_at]);
+            }
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            'booking_id' => $booking->id,
+            'booking_item_id' => $itemId,
+            'events' => $events->filter(fn ($event) => filled($event['occurred_at']))->sortBy('occurred_at')->values()
+                ->map(fn ($event) => array_merge($event, ['occurred_at' => $event['occurred_at']->toISOString()])),
+            'financial_events_visible' => $this->canViewPayments($request),
+        ]]);
+    }
+
     public function overrideContractualDistance(Request $request, string $id): JsonResponse
     {
         if (! $this->canViewPayments($request)) {

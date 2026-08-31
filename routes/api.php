@@ -1730,11 +1730,12 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('corporate')->middleware(['ensure.corporate'])->group(function () {
+        Route::get('workspace', [\App\Http\Controllers\Api\Corporate\CorporateWorkspaceController::class, 'dashboard']);
         // Department Management
         Route::get('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'index']);
-        Route::post('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'store']);
-        Route::put('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'update']);
-        Route::delete('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'destroy']);
+        Route::post('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'store'])->middleware('permission:manage_departments');
+        Route::put('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'update'])->middleware('permission:manage_departments');
+        Route::delete('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'destroy'])->middleware('permission:manage_departments');
 
         // Division Management (nested under departments for index/store)
         Route::get('departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'index']);
@@ -1744,7 +1745,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Employee Management
         Route::get('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'index']);
-        Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store']);
+        Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
         Route::get('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'show']);
         Route::put('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'update']);
         Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
@@ -1831,6 +1832,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('bookings/for-employee', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'storeForEmployee']);
         Route::post('bookings/{id}/recurring/cancel', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'cancelRecurring']);
         Route::get('bookings/{id}/live-progress', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'liveProgress']);
+        Route::get('bookings/{id}/timeline', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'timeline']);
         Route::post('bookings/{id}/contractual-distance-override', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'overrideContractualDistance'])
             ->middleware('permission:approve_bookings');
         Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
@@ -1847,6 +1849,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('reports/booking-history', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'bookingHistory']);
         Route::get('reports/summary-stats', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'summaryStats']);
         Route::get('reports/export', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'exportCsv']);
+        Route::get('reports/management', [\App\Http\Controllers\Api\Corporate\CorporateManagementReportController::class, 'show']);
+        Route::get('reports/management/export/{format}', [\App\Http\Controllers\Api\Corporate\CorporateManagementReportController::class, 'export'])->whereIn('format', ['csv', 'xls', 'pdf']);
+        Route::apiResource('report-schedules', \App\Http\Controllers\Api\Corporate\CorporateReportScheduleController::class)->only(['index', 'store', 'update', 'destroy']);
 
         // Corporate finance projection (company-scoped and finance-permission protected)
         Route::get('finance/account', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'account']);

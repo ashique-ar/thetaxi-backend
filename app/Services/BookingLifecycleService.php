@@ -1297,6 +1297,7 @@ class BookingLifecycleService
                     : null,
                 'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
                 'completed_by_driver' => true,
+                'suppress_completion_emails' => true,
             ],
             (string) $bookingItem->id
         );
@@ -1462,7 +1463,12 @@ class BookingLifecycleService
             );
 
             // Generate and email invoice on completion
-            if ($this->isPricingPendingReview($completionData['final_pricing'] ?? null)) {
+            if ((bool) ($completionData['suppress_completion_emails'] ?? false)) {
+                Log::info('Completion invoice email suppressed', [
+                    'booking_id' => $bookingId,
+                    'source' => $completionData['activity_source'] ?? 'booking_completion',
+                ]);
+            } elseif ($this->isPricingPendingReview($completionData['final_pricing'] ?? null)) {
                 Log::warning('Invoice deferred: final pricing pending manual review', [
                     'booking_id' => $bookingId,
                 ]);
@@ -1800,7 +1806,10 @@ class BookingLifecycleService
                 $completionData
             );
             if ($newlyCompleted) {
-                $this->runAggregateCompletionEffects($booking->fresh());
+                $this->runAggregateCompletionEffects(
+                    $booking->fresh(),
+                    (bool) ($completionData['suppress_completion_emails'] ?? false)
+                );
             }
 
             return $booking->fresh(['bookingItems', 'dispatches']);
@@ -1885,7 +1894,10 @@ class BookingLifecycleService
             $completionData
         );
         if ($newlyCompleted) {
-            $this->runAggregateCompletionEffects($booking->fresh());
+            $this->runAggregateCompletionEffects(
+                $booking->fresh(),
+                (bool) ($completionData['suppress_completion_emails'] ?? false)
+            );
         }
 
         return $booking->fresh(['bookingItems', 'dispatches']);
@@ -3058,9 +3070,13 @@ class BookingLifecycleService
         ]);
     }
 
-    private function runAggregateCompletionEffects(Booking $booking): void
+    private function runAggregateCompletionEffects(Booking $booking, bool $suppressCompletionEmails = false): void
     {
-        if ($this->bookingHasPendingPricingReview($booking)) {
+        if ($suppressCompletionEmails) {
+            Log::info('Aggregate completion invoice email suppressed', [
+                'booking_id' => $booking->id,
+            ]);
+        } elseif ($this->bookingHasPendingPricingReview($booking)) {
             Log::warning('Aggregate invoice deferred: one or more items have final pricing pending manual review', [
                 'booking_id' => $booking->id,
             ]);
