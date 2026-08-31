@@ -308,7 +308,10 @@ class GooglePlacesController extends Controller
         $placeId = $request->input('place_id');
 
         // Check cache first
-        $cacheKey = "place_details:" . $placeId;
+        // Google Place IDs are opaque and can exceed the database cache
+        // table's 255-character key limit once the application prefix is
+        // added. A digest keeps the key deterministic and bounded.
+        $cacheKey = 'place_details:' . hash('sha256', $placeId);
         $cachedResult = Cache::get($cacheKey);
 
         if ($cachedResult) {

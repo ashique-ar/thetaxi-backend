@@ -11728,21 +11728,23 @@ class BookingFlowService
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
 
-            // Extract pricing if available
+            // An incomplete draft may be saved before any trip or vehicle
+            // group is selected. That is valid and is not a pricing failure.
             $pricing = [];
-            try {
-                // Determine if we should call multi-trip or single-trip pricing
-                $pricing = $this->calculatePricing($params);
-                $totals = $this->extractTotalsFromPricing($pricing);
+            if ($this->hasDraftPricingInputs($params)) {
+                try {
+                    $pricing = $this->calculatePricing($params);
+                    $totals = $this->extractTotalsFromPricing($pricing);
 
-                $booking->pricing_snapshot = $totals['pricing_snapshot'];
-                $booking->base_amount = $totals['base_amount'];
-                $booking->addons_cost = $totals['addons_cost'];
-                $booking->discount_amount = $totals['discount_amount'];
-                $booking->total_estimated = $totals['total_estimated'];
-                $booking->total_actual = $totals['total_estimated'];
-            } catch (\Exception $e) {
-                Log::warning("Pricing calculation failed during draft save: " . $e->getMessage());
+                    $booking->pricing_snapshot = $totals['pricing_snapshot'];
+                    $booking->base_amount = $totals['base_amount'];
+                    $booking->addons_cost = $totals['addons_cost'];
+                    $booking->discount_amount = $totals['discount_amount'];
+                    $booking->total_estimated = $totals['total_estimated'];
+                    $booking->total_actual = $totals['total_estimated'];
+                } catch (\Exception $e) {
+                    Log::warning("Pricing calculation failed during draft save: " . $e->getMessage());
+                }
             }
 
             $booking->workflow_step = 'draft';
@@ -11772,6 +11774,14 @@ class BookingFlowService
 
             return $booking->load(['customer', 'bookingItems']);
         });
+    }
+
+    private function hasDraftPricingInputs(array $params): bool
+    {
+        return !empty($params['vehicle_group_id'])
+            || !empty($params['vehicle_groups'])
+            || !empty($params['vehicles'])
+            || !empty($params['booking_items']);
     }
 
     private function prepareDraftForTransition(array $params): ?Booking

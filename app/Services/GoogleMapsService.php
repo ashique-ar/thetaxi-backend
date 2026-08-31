@@ -159,14 +159,23 @@ class GoogleMapsService
             return trim($loc);
         }
 
-        // place_id first (best precision)
-        if (!empty($loc['place_id'])) {
-            return 'place_id:' . $loc['place_id'];
-        }
-
         // lat/lng variants
         $lat = $loc['lat'] ?? $loc['latitude'] ?? null;
         $lng = $loc['lng'] ?? $loc['longitude'] ?? null;
+
+        // Airport selectors may use an IATA code (for example, CMB) as their
+        // local identifier. It is not a Google Place ID, so use the supplied
+        // coordinates instead of sending an invalid place_id to Google.
+        $placeId = trim((string) ($loc['place_id'] ?? ''));
+        $looksLikeAirportCode = preg_match('/^[A-Z0-9]{3}$/i', $placeId) === 1;
+        if ($looksLikeAirportCode && is_numeric($lat) && is_numeric($lng)) {
+            return $lat . ',' . $lng;
+        }
+
+        // A genuine Google Place ID remains the most precise location input.
+        if ($placeId !== '') {
+            return 'place_id:' . $placeId;
+        }
 
         if (is_numeric($lat) && is_numeric($lng)) {
             return $lat . ',' . $lng;
