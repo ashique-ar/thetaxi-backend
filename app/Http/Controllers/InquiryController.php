@@ -145,11 +145,11 @@ class InquiryController extends Controller
     private function rejectSpamOrDuplicatePayload(Request $request, array $meta): bool
     {
         $message = Str::lower((string) ($meta['message'] ?? ''));
-        $spamScore = $this->solicitationSpamScore($message);
+        $identityReason = $this->invalidInquiryIdentityReason((string) ($meta['name'] ?? ''));
 
-        if ($spamScore >= 3) {
-            Log::notice('Sales solicitation inquiry discarded', [
-                'score' => $spamScore,
+        if ($identityReason !== null) {
+            Log::notice('Inquiry with invalid identity discarded', [
+                'reason' => $identityReason,
                 'ip_address' => $request->ip(),
                 'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
             ]);
@@ -175,55 +175,35 @@ class InquiryController extends Controller
         return false;
     }
 
-    private function solicitationSpamScore(string $message): int
+    private function invalidInquiryIdentityReason(string $name): ?string
     {
-        $score = 0;
-        $signals = [
-            3 => [
-                'to unsubscribe',
-                'free audit',
-                'no-obligation site audit',
-                'high-quality backlinks',
-                'social media management',
-                'marketing services',
-                'custom crm',
-                'crm systems',
-            ],
-            2 => [
-                'more customers',
-                'more clients',
-                'more visitors',
-                'seo',
-                'search visibility',
-                'redesign your website',
-                'refreshed website',
-                'reply "yes"',
-                'reply “yes”',
-                'reply yes',
-            ],
-            1 => [
-                'website design',
-                'online stores',
-                'voice-over',
-                'send over samples',
-                'schedule a call',
-                'grab a time',
-            ],
-        ];
+        $name = trim($name);
 
-        foreach ($signals as $weight => $phrases) {
-            foreach ($phrases as $phrase) {
-                if (str_contains($message, $phrase)) {
-                    $score += $weight;
-                }
-            }
+        if ($name === '') {
+            return null;
         }
 
-        if (preg_match('/https?:\/\//i', $message) === 1) {
-            $score++;
+        if (Str::length($name) > 120 || preg_match('/[\r\n]/u', $name) === 1) {
+            return 'invalid_length_or_lines';
         }
 
-        return $score;
+        if (preg_match('/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/|\b))/iu', $name) === 1) {
+            return 'url_in_name';
+        }
+
+        if (preg_match('/[<>]|&#?\w+;|@/u', $name) === 1) {
+            return 'markup_or_address_in_name';
+        }
+
+        if (preg_match('/\p{N}/u', $name) === 1) {
+            return 'number_in_name';
+        }
+
+        if (preg_match('/\p{L}/u', $name) !== 1) {
+            return 'name_without_letters';
+        }
+
+        return null;
     }
 
     /**

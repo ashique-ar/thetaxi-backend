@@ -61,24 +61,36 @@ it('allows a human-paced submission carrying the encrypted form token', function
     ]))->toBeFalse();
 });
 
-it('discards sales solicitation that behaves like a real browser submission', function (): void {
+it('discards the screenshot attack that puts a link and amount in the name', function (): void {
     expect(inquiryPayloadSpamCheck([
-        'email' => 'sales@example.com',
+        'name' => 'Вам перевод 135207 руб. забрать тут https://example.buzz/abc',
+        'email' => 'attacker@example.com',
         'phone' => '123456789',
-        'message' => 'I found SEO opportunities to bring you more customers. I can send a free audit; reply YES.',
+        'message' => 'General inquiry',
     ]))->toBeTrue();
 });
 
 it('allows a genuine transport itinerary without sales-spam signals', function (): void {
     expect(inquiryPayloadSpamCheck([
+        'name' => 'Meghana Shivaramaiah',
         'email' => 'traveller@example.com',
         'phone' => '+94771234567',
         'message' => 'Please quote airport pickup to Bentota for four passengers and a return trip to Colombo.',
     ]))->toBeFalse();
 });
 
+it('allows genuine unicode names without weakening identity validation', function (): void {
+    expect(inquiryPayloadSpamCheck([
+        'name' => 'Анна Петрова',
+        'email' => 'anna@example.com',
+        'phone' => '+94771234568',
+        'message' => 'Please quote an airport transfer to Colombo.',
+    ]))->toBeFalse();
+});
+
 it('discards an exact repeat inquiry for twenty four hours', function (): void {
     $meta = [
+        'name' => 'Repeat Traveller',
         'email' => 'repeat@example.com',
         'phone' => '+94770001122',
         'message' => 'Please quote a van from Colombo to Galle tomorrow.',
