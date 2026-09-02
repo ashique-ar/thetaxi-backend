@@ -89,7 +89,7 @@ trait BookingSubmissionTrait
             'payment_collection_method' => [
                 'sometimes',
                 'string',
-                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'advance_then_balance', 'deposit_then_balance', 'pay_at_end', 'account_credit', 'complimentary', 'other']),
                 function ($attribute, $value, $fail) use ($params) {
                     $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
                     $responsibility = $params['payment_responsibility'] ?? null;
@@ -201,7 +201,7 @@ trait BookingSubmissionTrait
             'payment_collection_method' => [
                 'sometimes',
                 'string',
-                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'advance_then_balance', 'deposit_then_balance', 'pay_at_end', 'account_credit', 'complimentary', 'other']),
                 function ($attribute, $value, $fail) use ($params) {
                     $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
                     $responsibility = $params['payment_responsibility'] ?? null;
@@ -337,7 +337,7 @@ trait BookingSubmissionTrait
                 'payment_collection_method' => [
                     'sometimes',
                     'string',
-                    Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'other']),
+                    Rule::in(['cash_to_driver', 'online', 'monthly_invoice', 'bank_transfer', 'card', 'advance_then_balance', 'deposit_then_balance', 'pay_at_end', 'account_credit', 'complimentary', 'other']),
                     function ($attribute, $value, $fail) use ($params) {
                         $isCorporate = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
                         $responsibility = $params['payment_responsibility'] ?? null;

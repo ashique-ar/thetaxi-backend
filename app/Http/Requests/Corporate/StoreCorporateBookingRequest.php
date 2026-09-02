@@ -3,10 +3,36 @@
 namespace App\Http\Requests\Corporate;
 
 use App\Models\Corporate\Corporate;
+use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateDivision;
+use App\Models\Corporate\CorporateEmployee;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\Schema;
 
 class StoreCorporateBookingRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (! $this->has('booking_party_mode')) {
+            $this->merge([
+                'booking_party_mode' => $this->filled('corporate_contact') && ! $this->filled('employee_id')
+                    ? 'general'
+                    : 'employee',
+            ]);
+        }
+
+        if (! $this->filled('payment_collection_method')) {
+            $corporateId = $this->attributes->get('corporate_id') ?? $this->input('corporate_id');
+            $this->merge([
+                'payment_collection_method' => $corporateId
+                    && Schema::hasTable('corporates')
+                    && Schema::hasColumn('corporates', 'default_payment_arrangement')
+                    ? (Corporate::query()->whereKey($corporateId)->value('default_payment_arrangement') ?: 'monthly_invoice')
+                    : 'monthly_invoice',
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;
@@ -15,6 +41,8 @@ class StoreCorporateBookingRequest extends FormRequest
     public function rules(): array
     {
         return [
+            'booking_party_mode' => ['required', 'string', 'in:employee,general'],
+            'payment_collection_method' => ['required', 'string', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'service_type_id' => ['nullable', 'uuid'],
             'service_type' => ['nullable', 'uuid'],
             'vehicle_group_id' => ['nullable', 'uuid'],
@@ -27,6 +55,8 @@ class StoreCorporateBookingRequest extends FormRequest
             'recurrence_end_date' => ['nullable', 'required_if:is_recurring,true', 'date', 'after:from_date'],
             'recurrence_days' => ['nullable', 'array'],
             'employee_id' => ['nullable', 'uuid'],
+            'corporate_department_id' => ['nullable', 'uuid'],
+            'corporate_division_id' => ['nullable', 'uuid'],
             'booking_items' => ['nullable', 'array', 'min:1'],
             'booking_items.*.service_type_id' => ['nullable', 'uuid'],
             'booking_items.*.service_type' => ['nullable', 'uuid'],
@@ -49,6 +79,9 @@ class StoreCorporateBookingRequest extends FormRequest
             'override_reasons' => ['nullable', 'array'],
             'approval_reason' => ['nullable', 'string'],
             'corporate_contact' => ['nullable', 'array'],
+            'corporate_contact.name' => ['required_if:booking_party_mode,general', 'nullable', 'string', 'max:255'],
+            'corporate_contact.email' => ['nullable', 'email', 'max:255'],
+            'corporate_contact.phone' => ['required_if:booking_party_mode,general', 'nullable', 'string', 'max:50'],
             'service_package_id' => ['nullable', 'uuid'],
             'package_id' => ['nullable', 'uuid'],
             'has_overrides' => ['nullable', 'boolean'],
@@ -62,7 +95,7 @@ class StoreCorporateBookingRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
-            $corporateId = $this->input('corporate_id');
+            $corporateId = $this->attributes->get('corporate_id') ?? $this->input('corporate_id');
             $vehicleGroupId = $this->input('vehicle_group_id');
 
             if ($corporateId && $vehicleGroupId) {
@@ -74,6 +107,27 @@ class StoreCorporateBookingRequest extends FormRequest
                         'The selected vehicle group is not assigned to your corporate.'
                     );
                 }
+            }
+
+            if ($corporateId && $this->filled('employee_id') && ! CorporateEmployee::query()
+                ->where('corporate_id', $corporateId)
+                ->whereKey($this->input('employee_id'))
+                ->exists()) {
+                $validator->errors()->add('employee_id', 'The selected employee does not belong to your corporate.');
+            }
+
+            if ($corporateId && $this->filled('corporate_department_id') && ! CorporateDepartment::query()
+                    ->where('corporate_id', $corporateId)
+                    ->whereKey($this->input('corporate_department_id'))
+                    ->exists()) {
+                $validator->errors()->add('corporate_department_id', 'The selected department does not belong to your corporate.');
+            }
+
+            if ($corporateId && $this->filled('corporate_division_id') && ! CorporateDivision::query()
+                ->whereHas('department', fn ($query) => $query->where('corporate_id', $corporateId))
+                ->whereKey($this->input('corporate_division_id'))
+                ->exists()) {
+                $validator->errors()->add('corporate_division_id', 'The selected division does not belong to your corporate.');
             }
         });
     }

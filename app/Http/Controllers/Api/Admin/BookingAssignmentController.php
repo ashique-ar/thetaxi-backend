@@ -254,6 +254,7 @@ class BookingAssignmentController extends Controller
      */
     public function createBookingAssignment(Request $request, BookingItem $bookingItem): JsonResponse
     {
+        $bookingItem->loadMissing('serviceType');
         $request->validate([
             'vehicle_id' => 'nullable|uuid|exists:vehicles,id',
             'driver_id' => 'nullable|uuid|exists:drivers,id',
@@ -263,6 +264,13 @@ class BookingAssignmentController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'At least one of vehicle_id or driver_id is required',
+            ], 422);
+        }
+
+        if ($request->driver_id && $bookingItem->serviceType?->type === 'self_drive') {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'A driver cannot be assigned to a self-drive service.',
             ], 422);
         }
 

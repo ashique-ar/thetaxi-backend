@@ -31,6 +31,7 @@ class UpdateCorporateRequest extends FormRequest
             'approval_required' => ['boolean'],
             'exempt_coordinator_from_approval' => ['boolean'],
             'coordinator_can_view_payments' => ['boolean'],
+            'default_payment_arrangement' => ['sometimes', 'required', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
         ];
     }
 }

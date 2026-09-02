@@ -2,8 +2,8 @@
     "openapi": "3.0.3",
     "info": {
         "title": "TheTaxi Driver Mobile API",
-        "version": "2.4.0",
-        "description": "Interactive API documentation generated from the full Driver Postman collection. Complete-trip calculates final amount first. Cash collection is handled by a separate collect-payment endpoint when `payment.collection_required` is true."
+        "version": "2.5.0",
+        "description": "Complete canonical Driver Mobile API contract. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true."
     },
     "servers": [
         {
@@ -78,6 +78,133 @@
                         "type": "object"
                     }
                 }
+            },
+            "DriverAssignmentService": {
+                "type": "object",
+                "description": "Stable service identity included in every canonical driver assignment projection.",
+                "required": [
+                    "name",
+                    "type"
+                ],
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "nullable": true
+                    },
+                    "code": {
+                        "type": "string",
+                        "nullable": true,
+                        "example": "day_rental"
+                    },
+                    "name": {
+                        "type": "string",
+                        "example": "Day Chauffeur Package"
+                    },
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "with_driver",
+                            "self_drive"
+                        ]
+                    }
+                }
+            },
+            "DriverExecutionCapabilities": {
+                "type": "object",
+                "description": "Server-owned execution behavior. allowed_actions remains authoritative for lifecycle mutations.",
+                "required": [
+                    "requires_driver",
+                    "execution_mode",
+                    "uses_hire_meter",
+                    "route_mode",
+                    "requires_destination",
+                    "supports_multiple_stops",
+                    "tracks_waiting",
+                    "collects_payment",
+                    "shows_pricing"
+                ],
+                "properties": {
+                    "requires_driver": {
+                        "type": "boolean"
+                    },
+                    "execution_mode": {
+                        "type": "string",
+                        "enum": [
+                            "trip",
+                            "day_hire"
+                        ]
+                    },
+                    "uses_hire_meter": {
+                        "type": "boolean"
+                    },
+                    "route_mode": {
+                        "type": "string",
+                        "enum": [
+                            "fixed_route",
+                            "open_package"
+                        ]
+                    },
+                    "requires_destination": {
+                        "type": "boolean"
+                    },
+                    "supports_multiple_stops": {
+                        "type": "boolean"
+                    },
+                    "tracks_waiting": {
+                        "type": "boolean"
+                    },
+                    "collects_payment": {
+                        "type": "boolean"
+                    },
+                    "shows_pricing": {
+                        "type": "boolean",
+                        "description": "True only when the driver must see and collect a cash-based fare."
+                    }
+                }
+            },
+            "DriverBookingParty": {
+                "type": "object",
+                "description": "The traveler the driver should contact. Corporate employee/general-contact identity takes precedence over the account owner.",
+                "required": [
+                    "type",
+                    "traveler_type",
+                    "traveler_name"
+                ],
+                "properties": {
+                    "type": {
+                        "type": "string",
+                        "enum": [
+                            "individual",
+                            "corporate"
+                        ]
+                    },
+                    "account_name": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "traveler_type": {
+                        "type": "string",
+                        "enum": [
+                            "customer",
+                            "employee",
+                            "general_contact"
+                        ]
+                    },
+                    "traveler_name": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "traveler_phone": {
+                        "type": "string",
+                        "nullable": true
+                    },
+                    "traveler_email": {
+                        "type": "string",
+                        "format": "email",
+                        "nullable": true
+                    }
+                }
             }
         }
     },
@@ -115,6 +242,104 @@
                         }
                     }
                 },
+                "responses": {
+                    "200": {
+                        "description": "Forced Update Required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "current_version": {
+                                                    "type": "string",
+                                                    "example": "1.0.0"
+                                                },
+                                                "latest_version": {
+                                                    "type": "string",
+                                                    "example": "1.1.0"
+                                                },
+                                                "update_required": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "mandatory_update": {
+                                                    "type": "boolean",
+                                                    "example": true
+                                                },
+                                                "can_continue": {
+                                                    "type": "boolean",
+                                                    "example": false
+                                                },
+                                                "message": {
+                                                    "type": "string",
+                                                    "example": "A new driver app version is available. Please update to continue."
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": {
+                                        "current_version": "1.0.0",
+                                        "latest_version": "1.1.0",
+                                        "update_required": true,
+                                        "mandatory_update": true,
+                                        "can_continue": false,
+                                        "message": "A new driver app version is available. Please update to continue."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            "get": {
+                "tags": [
+                    "App Settings"
+                ],
+                "summary": "Check driver app version (GET)",
+                "description": "GET form of the canonical public pre-login version check. POST is preferred; both methods return the same response contract.",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "version",
+                        "in": "query",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 50
+                        },
+                        "example": "1.2.0"
+                    },
+                    {
+                        "name": "build_number",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "integer",
+                            "minimum": 1
+                        },
+                        "example": 120
+                    },
+                    {
+                        "name": "platform",
+                        "in": "query",
+                        "required": false,
+                        "schema": {
+                            "type": "string",
+                            "maxLength": 50
+                        },
+                        "example": "android"
+                    }
+                ],
                 "responses": {
                     "200": {
                         "description": "Forced Update Required",
@@ -3929,15 +4154,18 @@
                                                     },
                                                     "fare_amount": {
                                                         "type": "number",
-                                                        "example": 25000
+                                                        "example": 25000,
+                                                        "nullable": true
                                                     },
                                                     "total_amount": {
                                                         "type": "number",
-                                                        "example": 25000
+                                                        "example": 25000,
+                                                        "nullable": true
                                                     },
                                                     "currency": {
                                                         "type": "string",
-                                                        "example": "LKR"
+                                                        "example": "LKR",
+                                                        "nullable": true
                                                     },
                                                     "booking_number": {
                                                         "type": "string",
@@ -4017,6 +4245,19 @@
                                                     },
                                                     "trip_completed_at": {
                                                         "nullable": true
+                                                    },
+                                                    "pricing_visible": {
+                                                        "type": "boolean",
+                                                        "description": "True only when monetary fields may be shown to the driver."
+                                                    },
+                                                    "booking_party": {
+                                                        "$ref": "#/components/schemas/DriverBookingParty"
+                                                    },
+                                                    "service": {
+                                                        "$ref": "#/components/schemas/DriverAssignmentService"
+                                                    },
+                                                    "execution_capabilities": {
+                                                        "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                     }
                                                 }
                                             }
@@ -4081,7 +4322,33 @@
                                             },
                                             "scheduled_from": "2026-05-21T08:00:00+05:30",
                                             "scheduled_to": "2026-05-21T16:00:00+05:30",
-                                            "trip_completed_at": null
+                                            "trip_completed_at": null,
+                                            "pricing_visible": true,
+                                            "booking_party": {
+                                                "type": "corporate",
+                                                "account_name": "Acme Holdings",
+                                                "traveler_type": "employee",
+                                                "traveler_name": "Nimal Perera",
+                                                "traveler_phone": "+94771111111",
+                                                "traveler_email": "nimal@example.com"
+                                            },
+                                            "service": {
+                                                "id": "service-type-uuid",
+                                                "code": "day_rental",
+                                                "name": "Day Chauffeur Package",
+                                                "type": "with_driver"
+                                            },
+                                            "execution_capabilities": {
+                                                "requires_driver": true,
+                                                "execution_mode": "day_hire",
+                                                "uses_hire_meter": true,
+                                                "route_mode": "open_package",
+                                                "requires_destination": false,
+                                                "supports_multiple_stops": false,
+                                                "tracks_waiting": true,
+                                                "collects_payment": true,
+                                                "shows_pricing": true
+                                            }
                                         }
                                     ],
                                     "meta": {
@@ -4167,15 +4434,18 @@
                                                 },
                                                 "fare_amount": {
                                                     "type": "number",
-                                                    "example": 25000
+                                                    "example": 25000,
+                                                    "nullable": true
                                                 },
                                                 "total_amount": {
                                                     "type": "number",
-                                                    "example": 25000
+                                                    "example": 25000,
+                                                    "nullable": true
                                                 },
                                                 "currency": {
                                                     "type": "string",
-                                                    "example": "LKR"
+                                                    "example": "LKR",
+                                                    "nullable": true
                                                 },
                                                 "booking_number": {
                                                     "type": "string",
@@ -4255,6 +4525,19 @@
                                                 },
                                                 "trip_completed_at": {
                                                     "nullable": true
+                                                },
+                                                "pricing_visible": {
+                                                    "type": "boolean",
+                                                    "description": "True only when monetary fields may be shown to the driver."
+                                                },
+                                                "booking_party": {
+                                                    "$ref": "#/components/schemas/DriverBookingParty"
+                                                },
+                                                "service": {
+                                                    "$ref": "#/components/schemas/DriverAssignmentService"
+                                                },
+                                                "execution_capabilities": {
+                                                    "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                 }
                                             }
                                         }
@@ -4296,7 +4579,33 @@
                                         },
                                         "scheduled_from": "2026-05-21T08:00:00+05:30",
                                         "scheduled_to": "2026-05-21T16:00:00+05:30",
-                                        "trip_completed_at": null
+                                        "trip_completed_at": null,
+                                        "pricing_visible": true,
+                                        "booking_party": {
+                                            "type": "corporate",
+                                            "account_name": "Acme Holdings",
+                                            "traveler_type": "employee",
+                                            "traveler_name": "Nimal Perera",
+                                            "traveler_phone": "+94771111111",
+                                            "traveler_email": "nimal@example.com"
+                                        },
+                                        "service": {
+                                            "id": "service-type-uuid",
+                                            "code": "day_rental",
+                                            "name": "Day Chauffeur Package",
+                                            "type": "with_driver"
+                                        },
+                                        "execution_capabilities": {
+                                            "requires_driver": true,
+                                            "execution_mode": "day_hire",
+                                            "uses_hire_meter": true,
+                                            "route_mode": "open_package",
+                                            "requires_destination": false,
+                                            "supports_multiple_stops": false,
+                                            "tracks_waiting": true,
+                                            "collects_payment": true,
+                                            "shows_pricing": true
+                                        }
                                     }
                                 }
                             }
@@ -4390,15 +4699,18 @@
                                                 },
                                                 "fare_amount": {
                                                     "type": "number",
-                                                    "example": 12500
+                                                    "example": 12500,
+                                                    "nullable": true
                                                 },
                                                 "total_amount": {
                                                     "type": "number",
-                                                    "example": 12500
+                                                    "example": 12500,
+                                                    "nullable": true
                                                 },
                                                 "currency": {
                                                     "type": "string",
-                                                    "example": "LKR"
+                                                    "example": "LKR",
+                                                    "nullable": true
                                                 },
                                                 "booking_number": {
                                                     "type": "string",
@@ -4497,6 +4809,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -4567,6 +4898,19 @@
                                                             "example": "item-uuid"
                                                         }
                                                     }
+                                                },
+                                                "pricing_visible": {
+                                                    "type": "boolean",
+                                                    "description": "True only when monetary fields may be shown to the driver."
+                                                },
+                                                "booking_party": {
+                                                    "$ref": "#/components/schemas/DriverBookingParty"
+                                                },
+                                                "service": {
+                                                    "$ref": "#/components/schemas/DriverAssignmentService"
+                                                },
+                                                "execution_capabilities": {
+                                                    "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                 }
                                             }
                                         }
@@ -4611,7 +4955,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -4640,7 +4988,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -4672,7 +5024,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -4698,6 +5054,32 @@
                                         },
                                         "booking_item": {
                                             "id": "item-uuid"
+                                        },
+                                        "pricing_visible": true,
+                                        "booking_party": {
+                                            "type": "corporate",
+                                            "account_name": "Acme Holdings",
+                                            "traveler_type": "employee",
+                                            "traveler_name": "Nimal Perera",
+                                            "traveler_phone": "+94771111111",
+                                            "traveler_email": "nimal@example.com"
+                                        },
+                                        "service": {
+                                            "id": "service-type-uuid",
+                                            "code": "airport_transfer",
+                                            "name": "Airport Transfer",
+                                            "type": "with_driver"
+                                        },
+                                        "execution_capabilities": {
+                                            "requires_driver": true,
+                                            "execution_mode": "trip",
+                                            "uses_hire_meter": false,
+                                            "route_mode": "fixed_route",
+                                            "requires_destination": true,
+                                            "supports_multiple_stops": true,
+                                            "tracks_waiting": true,
+                                            "collects_payment": true,
+                                            "shows_pricing": true
                                         }
                                     }
                                 }
@@ -4833,15 +5215,18 @@
                                                 },
                                                 "fare_amount": {
                                                     "type": "number",
-                                                    "example": 12500
+                                                    "example": 12500,
+                                                    "nullable": true
                                                 },
                                                 "total_amount": {
                                                     "type": "number",
-                                                    "example": 12500
+                                                    "example": 12500,
+                                                    "nullable": true
                                                 },
                                                 "currency": {
                                                     "type": "string",
-                                                    "example": "LKR"
+                                                    "example": "LKR",
+                                                    "nullable": true
                                                 },
                                                 "booking_number": {
                                                     "type": "string",
@@ -4940,6 +5325,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -5010,6 +5414,19 @@
                                                             "example": "item-uuid"
                                                         }
                                                     }
+                                                },
+                                                "pricing_visible": {
+                                                    "type": "boolean",
+                                                    "description": "True only when monetary fields may be shown to the driver."
+                                                },
+                                                "booking_party": {
+                                                    "$ref": "#/components/schemas/DriverBookingParty"
+                                                },
+                                                "service": {
+                                                    "$ref": "#/components/schemas/DriverAssignmentService"
+                                                },
+                                                "execution_capabilities": {
+                                                    "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                 }
                                             }
                                         }
@@ -5054,7 +5471,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -5083,7 +5504,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -5115,7 +5540,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -5141,6 +5570,32 @@
                                         },
                                         "booking_item": {
                                             "id": "item-uuid"
+                                        },
+                                        "pricing_visible": true,
+                                        "booking_party": {
+                                            "type": "corporate",
+                                            "account_name": "Acme Holdings",
+                                            "traveler_type": "employee",
+                                            "traveler_name": "Nimal Perera",
+                                            "traveler_phone": "+94771111111",
+                                            "traveler_email": "nimal@example.com"
+                                        },
+                                        "service": {
+                                            "id": "service-type-uuid",
+                                            "code": "airport_transfer",
+                                            "name": "Airport Transfer",
+                                            "type": "with_driver"
+                                        },
+                                        "execution_capabilities": {
+                                            "requires_driver": true,
+                                            "execution_mode": "trip",
+                                            "uses_hire_meter": false,
+                                            "route_mode": "fixed_route",
+                                            "requires_destination": true,
+                                            "supports_multiple_stops": true,
+                                            "tracks_waiting": true,
+                                            "collects_payment": true,
+                                            "shows_pricing": true
                                         }
                                     }
                                 }
@@ -5291,15 +5746,18 @@
                                                     },
                                                     "fare_amount": {
                                                         "type": "number",
-                                                        "example": 12500
+                                                        "example": 12500,
+                                                        "nullable": true
                                                     },
                                                     "total_amount": {
                                                         "type": "number",
-                                                        "example": 12500
+                                                        "example": 12500,
+                                                        "nullable": true
                                                     },
                                                     "currency": {
                                                         "type": "string",
-                                                        "example": "LKR"
+                                                        "example": "LKR",
+                                                        "nullable": true
                                                     },
                                                     "booking_number": {
                                                         "type": "string",
@@ -5398,6 +5856,25 @@
                                                                         },
                                                                         "contact_note": {
                                                                             "nullable": true
+                                                                        },
+                                                                        "kind": {
+                                                                            "type": "string",
+                                                                            "enum": [
+                                                                                "corporate_employee",
+                                                                                "external_contact"
+                                                                            ]
+                                                                        },
+                                                                        "name": {
+                                                                            "type": "string",
+                                                                            "nullable": true
+                                                                        },
+                                                                        "phone": {
+                                                                            "type": "string",
+                                                                            "nullable": true
+                                                                        },
+                                                                        "note": {
+                                                                            "type": "string",
+                                                                            "nullable": true
                                                                         }
                                                                     }
                                                                 },
@@ -5469,6 +5946,19 @@
                                                                 "example": "item-uuid"
                                                             }
                                                         }
+                                                    },
+                                                    "pricing_visible": {
+                                                        "type": "boolean",
+                                                        "description": "True only when monetary fields may be shown to the driver."
+                                                    },
+                                                    "booking_party": {
+                                                        "$ref": "#/components/schemas/DriverBookingParty"
+                                                    },
+                                                    "service": {
+                                                        "$ref": "#/components/schemas/DriverAssignmentService"
+                                                    },
+                                                    "execution_capabilities": {
+                                                        "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                     }
                                                 }
                                             }
@@ -5535,7 +6025,11 @@
                                                         "employee_id": null,
                                                         "contact_name": "Passenger Two",
                                                         "contact_phone": "+94770000000",
-                                                        "contact_note": null
+                                                        "contact_note": null,
+                                                        "kind": "external_contact",
+                                                        "name": "Passenger Two",
+                                                        "phone": "+94770000000",
+                                                        "note": null
                                                     },
                                                     "arrived_at": null,
                                                     "arrived_latitude": null,
@@ -5564,7 +6058,11 @@
                                                         "employee_id": null,
                                                         "contact_name": "Passenger Two",
                                                         "contact_phone": "+94770000000",
-                                                        "contact_note": null
+                                                        "contact_note": null,
+                                                        "kind": "external_contact",
+                                                        "name": "Passenger Two",
+                                                        "phone": "+94770000000",
+                                                        "note": null
                                                     },
                                                     "arrived_at": null,
                                                     "arrived_latitude": null,
@@ -5596,7 +6094,11 @@
                                                         "employee_id": null,
                                                         "contact_name": "Passenger Two",
                                                         "contact_phone": "+94770000000",
-                                                        "contact_note": null
+                                                        "contact_note": null,
+                                                        "kind": "external_contact",
+                                                        "name": "Passenger Two",
+                                                        "phone": "+94770000000",
+                                                        "note": null
                                                     },
                                                     "arrived_at": null,
                                                     "arrived_latitude": null,
@@ -5622,6 +6124,32 @@
                                             },
                                             "booking_item": {
                                                 "id": "item-uuid"
+                                            },
+                                            "pricing_visible": true,
+                                            "booking_party": {
+                                                "type": "corporate",
+                                                "account_name": "Acme Holdings",
+                                                "traveler_type": "employee",
+                                                "traveler_name": "Nimal Perera",
+                                                "traveler_phone": "+94771111111",
+                                                "traveler_email": "nimal@example.com"
+                                            },
+                                            "service": {
+                                                "id": "service-type-uuid",
+                                                "code": "airport_transfer",
+                                                "name": "Airport Transfer",
+                                                "type": "with_driver"
+                                            },
+                                            "execution_capabilities": {
+                                                "requires_driver": true,
+                                                "execution_mode": "trip",
+                                                "uses_hire_meter": false,
+                                                "route_mode": "fixed_route",
+                                                "requires_destination": true,
+                                                "supports_multiple_stops": true,
+                                                "tracks_waiting": true,
+                                                "collects_payment": true,
+                                                "shows_pricing": true
                                             }
                                         }
                                     ],
@@ -6086,6 +6614,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -6186,6 +6733,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -6296,7 +6862,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6325,7 +6895,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6357,7 +6931,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6390,7 +6968,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -6597,6 +7179,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -6697,6 +7298,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -6807,7 +7427,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6836,7 +7460,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6868,7 +7496,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -6901,7 +7533,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -7150,6 +7786,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -7250,6 +7905,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -7383,6 +8057,25 @@
                                                                 },
                                                                 "contact_note": {
                                                                     "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
+                                                                    "nullable": true
                                                                 }
                                                             }
                                                         },
@@ -7463,7 +8156,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -7492,7 +8189,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -7524,7 +8225,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -7557,7 +8262,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -7598,7 +8307,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": "2026-05-21T08:30:00+05:30",
                                             "arrived_latitude": null,
@@ -7804,6 +8517,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -7904,6 +8636,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -8037,6 +8788,25 @@
                                                                 },
                                                                 "contact_note": {
                                                                     "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
+                                                                    "nullable": true
                                                                 }
                                                             }
                                                         },
@@ -8115,7 +8885,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8144,7 +8918,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8176,7 +8954,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8209,7 +8991,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -8250,7 +9036,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -8453,6 +9243,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -8553,6 +9362,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -8686,6 +9514,25 @@
                                                                 },
                                                                 "contact_note": {
                                                                     "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
+                                                                    "nullable": true
                                                                 }
                                                             }
                                                         },
@@ -8764,7 +9611,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8793,7 +9644,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8825,7 +9680,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -8858,7 +9717,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -8899,7 +9762,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -9102,6 +9969,25 @@
                                                                     },
                                                                     "contact_note": {
                                                                         "nullable": true
+                                                                    },
+                                                                    "kind": {
+                                                                        "type": "string",
+                                                                        "enum": [
+                                                                            "corporate_employee",
+                                                                            "external_contact"
+                                                                        ]
+                                                                    },
+                                                                    "name": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "phone": {
+                                                                        "type": "string",
+                                                                        "nullable": true
+                                                                    },
+                                                                    "note": {
+                                                                        "type": "string",
+                                                                        "nullable": true
                                                                     }
                                                                 }
                                                             },
@@ -9202,6 +10088,25 @@
                                                                     "example": "+94770000000"
                                                                 },
                                                                 "contact_note": {
+                                                                    "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
                                                                     "nullable": true
                                                                 }
                                                             }
@@ -9335,6 +10240,25 @@
                                                                 },
                                                                 "contact_note": {
                                                                     "nullable": true
+                                                                },
+                                                                "kind": {
+                                                                    "type": "string",
+                                                                    "enum": [
+                                                                        "corporate_employee",
+                                                                        "external_contact"
+                                                                    ]
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "phone": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                },
+                                                                "note": {
+                                                                    "type": "string",
+                                                                    "nullable": true
                                                                 }
                                                             }
                                                         },
@@ -9412,7 +10336,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -9441,7 +10369,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -9473,7 +10405,11 @@
                                                     "employee_id": null,
                                                     "contact_name": "Passenger Two",
                                                     "contact_phone": "+94770000000",
-                                                    "contact_note": null
+                                                    "contact_note": null,
+                                                    "kind": "external_contact",
+                                                    "name": "Passenger Two",
+                                                    "phone": "+94770000000",
+                                                    "note": null
                                                 },
                                                 "arrived_at": null,
                                                 "arrived_latitude": null,
@@ -9506,7 +10442,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -9547,7 +10487,11 @@
                                                 "employee_id": null,
                                                 "contact_name": "Passenger Two",
                                                 "contact_phone": "+94770000000",
-                                                "contact_note": null
+                                                "contact_note": null,
+                                                "kind": "external_contact",
+                                                "name": "Passenger Two",
+                                                "phone": "+94770000000",
+                                                "note": null
                                             },
                                             "arrived_at": null,
                                             "arrived_latitude": null,
@@ -9790,7 +10734,8 @@
                                                             "type": "string",
                                                             "example": "LKR"
                                                         }
-                                                    }
+                                                    },
+                                                    "nullable": true
                                                 },
                                                 "payment": {
                                                     "type": "object",
@@ -9846,8 +10791,16 @@
                                                         },
                                                         "payment_notes": {
                                                             "nullable": true
+                                                        },
+                                                        "pricing_visible": {
+                                                            "type": "boolean",
+                                                            "description": "False for office, corporate-account, or already-settled payment arrangements."
                                                         }
                                                     }
+                                                },
+                                                "pricing_visible": {
+                                                    "type": "boolean",
+                                                    "description": "Controls whether final_pricing and package_charges are exposed."
                                                 }
                                             }
                                         }
@@ -9910,8 +10863,10 @@
                                             "payment_collected_amount": null,
                                             "payment_collected_at": null,
                                             "payment_collected_by_driver_id": null,
-                                            "payment_notes": null
-                                        }
+                                            "payment_notes": null,
+                                            "pricing_visible": true
+                                        },
+                                        "pricing_visible": true
                                     }
                                 }
                             }
@@ -10086,6 +11041,10 @@
                                                         "payment_notes": {
                                                             "type": "string",
                                                             "example": "Cash collected by driver"
+                                                        },
+                                                        "pricing_visible": {
+                                                            "type": "boolean",
+                                                            "description": "False for office, corporate-account, or already-settled payment arrangements."
                                                         }
                                                     }
                                                 }
@@ -10113,7 +11072,8 @@
                                             "payment_collected_amount": 28760,
                                             "payment_collected_at": "2026-05-21T16:07:00+05:30",
                                             "payment_collected_by_driver_id": "driver-uuid",
-                                            "payment_notes": "Cash collected by driver"
+                                            "payment_notes": "Cash collected by driver",
+                                            "pricing_visible": true
                                         }
                                     }
                                 }
@@ -10333,15 +11293,18 @@
                                                             },
                                                             "fare_amount": {
                                                                 "type": "number",
-                                                                "example": 12500
+                                                                "example": 12500,
+                                                                "nullable": true
                                                             },
                                                             "total_amount": {
                                                                 "type": "number",
-                                                                "example": 12500
+                                                                "example": 12500,
+                                                                "nullable": true
                                                             },
                                                             "currency": {
                                                                 "type": "string",
-                                                                "example": "LKR"
+                                                                "example": "LKR",
+                                                                "nullable": true
                                                             },
                                                             "booking_number": {
                                                                 "type": "string",
@@ -10440,6 +11403,25 @@
                                                                                 },
                                                                                 "contact_note": {
                                                                                     "nullable": true
+                                                                                },
+                                                                                "kind": {
+                                                                                    "type": "string",
+                                                                                    "enum": [
+                                                                                        "corporate_employee",
+                                                                                        "external_contact"
+                                                                                    ]
+                                                                                },
+                                                                                "name": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
+                                                                                },
+                                                                                "phone": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
+                                                                                },
+                                                                                "note": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
                                                                                 }
                                                                             }
                                                                         },
@@ -10510,6 +11492,19 @@
                                                                         "example": "item-uuid"
                                                                     }
                                                                 }
+                                                            },
+                                                            "pricing_visible": {
+                                                                "type": "boolean",
+                                                                "description": "True only when monetary fields may be shown to the driver."
+                                                            },
+                                                            "booking_party": {
+                                                                "$ref": "#/components/schemas/DriverBookingParty"
+                                                            },
+                                                            "service": {
+                                                                "$ref": "#/components/schemas/DriverAssignmentService"
+                                                            },
+                                                            "execution_capabilities": {
+                                                                "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                             }
                                                         }
                                                     }
@@ -10561,7 +11556,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -10590,7 +11589,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -10622,7 +11625,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -10648,6 +11655,32 @@
                                                 },
                                                 "booking_item": {
                                                     "id": "item-uuid"
+                                                },
+                                                "pricing_visible": true,
+                                                "booking_party": {
+                                                    "type": "corporate",
+                                                    "account_name": "Acme Holdings",
+                                                    "traveler_type": "employee",
+                                                    "traveler_name": "Nimal Perera",
+                                                    "traveler_phone": "+94771111111",
+                                                    "traveler_email": "nimal@example.com"
+                                                },
+                                                "service": {
+                                                    "id": "service-type-uuid",
+                                                    "code": "airport_transfer",
+                                                    "name": "Airport Transfer",
+                                                    "type": "with_driver"
+                                                },
+                                                "execution_capabilities": {
+                                                    "requires_driver": true,
+                                                    "execution_mode": "trip",
+                                                    "uses_hire_meter": false,
+                                                    "route_mode": "fixed_route",
+                                                    "requires_destination": true,
+                                                    "supports_multiple_stops": true,
+                                                    "tracks_waiting": true,
+                                                    "collects_payment": true,
+                                                    "shows_pricing": true
                                                 }
                                             }
                                         ]
@@ -10758,15 +11791,18 @@
                                                             },
                                                             "fare_amount": {
                                                                 "type": "number",
-                                                                "example": 12500
+                                                                "example": 12500,
+                                                                "nullable": true
                                                             },
                                                             "total_amount": {
                                                                 "type": "number",
-                                                                "example": 12500
+                                                                "example": 12500,
+                                                                "nullable": true
                                                             },
                                                             "currency": {
                                                                 "type": "string",
-                                                                "example": "LKR"
+                                                                "example": "LKR",
+                                                                "nullable": true
                                                             },
                                                             "booking_number": {
                                                                 "type": "string",
@@ -10865,6 +11901,25 @@
                                                                                 },
                                                                                 "contact_note": {
                                                                                     "nullable": true
+                                                                                },
+                                                                                "kind": {
+                                                                                    "type": "string",
+                                                                                    "enum": [
+                                                                                        "corporate_employee",
+                                                                                        "external_contact"
+                                                                                    ]
+                                                                                },
+                                                                                "name": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
+                                                                                },
+                                                                                "phone": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
+                                                                                },
+                                                                                "note": {
+                                                                                    "type": "string",
+                                                                                    "nullable": true
                                                                                 }
                                                                             }
                                                                         },
@@ -10935,6 +11990,19 @@
                                                                         "example": "item-uuid"
                                                                     }
                                                                 }
+                                                            },
+                                                            "pricing_visible": {
+                                                                "type": "boolean",
+                                                                "description": "True only when monetary fields may be shown to the driver."
+                                                            },
+                                                            "booking_party": {
+                                                                "$ref": "#/components/schemas/DriverBookingParty"
+                                                            },
+                                                            "service": {
+                                                                "$ref": "#/components/schemas/DriverAssignmentService"
+                                                            },
+                                                            "execution_capabilities": {
+                                                                "$ref": "#/components/schemas/DriverExecutionCapabilities"
                                                             }
                                                         }
                                                     }
@@ -10987,7 +12055,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -11016,7 +12088,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -11048,7 +12124,11 @@
                                                             "employee_id": null,
                                                             "contact_name": "Passenger Two",
                                                             "contact_phone": "+94770000000",
-                                                            "contact_note": null
+                                                            "contact_note": null,
+                                                            "kind": "external_contact",
+                                                            "name": "Passenger Two",
+                                                            "phone": "+94770000000",
+                                                            "note": null
                                                         },
                                                         "arrived_at": null,
                                                         "arrived_latitude": null,
@@ -11074,9 +12154,333 @@
                                                 },
                                                 "booking_item": {
                                                     "id": "item-uuid"
+                                                },
+                                                "pricing_visible": true,
+                                                "booking_party": {
+                                                    "type": "corporate",
+                                                    "account_name": "Acme Holdings",
+                                                    "traveler_type": "employee",
+                                                    "traveler_name": "Nimal Perera",
+                                                    "traveler_phone": "+94771111111",
+                                                    "traveler_email": "nimal@example.com"
+                                                },
+                                                "service": {
+                                                    "id": "service-type-uuid",
+                                                    "code": "airport_transfer",
+                                                    "name": "Airport Transfer",
+                                                    "type": "with_driver"
+                                                },
+                                                "execution_capabilities": {
+                                                    "requires_driver": true,
+                                                    "execution_mode": "trip",
+                                                    "uses_hire_meter": false,
+                                                    "route_mode": "fixed_route",
+                                                    "requires_destination": true,
+                                                    "supports_multiple_stops": true,
+                                                    "tracks_waiting": true,
+                                                    "collects_payment": true,
+                                                    "shows_pricing": true
                                                 }
                                             }
                                         ]
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/location/health": {
+            "post": {
+                "tags": [
+                    "Location Tracking"
+                ],
+                "summary": "Report mobile location health",
+                "description": "Reports GPS queue/fix health to operations monitoring. This is telemetry acknowledgement and does not upload route points.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "state",
+                                    "queue_count"
+                                ],
+                                "properties": {
+                                    "state": {
+                                        "type": "string",
+                                        "enum": [
+                                            "healthy",
+                                            "recovered",
+                                            "delayed",
+                                            "severe_gap",
+                                            "blocked",
+                                            "queue_pressure"
+                                        ]
+                                    },
+                                    "queue_count": {
+                                        "type": "integer",
+                                        "minimum": 0
+                                    },
+                                    "oldest_queue_age_seconds": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "nullable": true
+                                    },
+                                    "last_fix_age_seconds": {
+                                        "type": "integer",
+                                        "minimum": 0,
+                                        "nullable": true
+                                    },
+                                    "app_version": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    },
+                                    "app_build": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    }
+                                }
+                            },
+                            "example": {
+                                "state": "recovered",
+                                "queue_count": 0,
+                                "oldest_queue_age_seconds": 0,
+                                "last_fix_age_seconds": 5,
+                                "app_version": "1.2.0",
+                                "app_build": "120"
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Health report acknowledged",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "acknowledged": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": {
+                                        "acknowledged": true
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Authenticated user is not a driver",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/assignments/{assignment_id}/acknowledge": {
+            "post": {
+                "tags": [
+                    "Booking Assignments"
+                ],
+                "summary": "Acknowledge assignment notification",
+                "description": "Records that the driver opened the assignment notification. It does not accept the assignment.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "assignment_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Notification acknowledged",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "notification_id": {
+                                                    "type": "string",
+                                                    "format": "uuid"
+                                                },
+                                                "acknowledged_at": {
+                                                    "type": "string",
+                                                    "format": "date-time",
+                                                    "nullable": true
+                                                },
+                                                "acknowledgement_source": {
+                                                    "type": "string",
+                                                    "example": "opened"
+                                                },
+                                                "acknowledgement_required": {
+                                                    "type": "boolean",
+                                                    "example": false
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Authenticated user is not a driver",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Assignment not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Assignment notification cannot be acknowledged",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
                                     }
                                 }
                             }

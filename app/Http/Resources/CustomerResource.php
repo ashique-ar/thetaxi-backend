@@ -42,6 +42,7 @@ class CustomerResource extends JsonResource
             'city'            => $this->city,
             'postal_code'     => $this->postal_code,
             'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
+            'default_payment_arrangement' => $this->default_payment_arrangement ?: 'cash_to_driver',
             'created_at'      => $this->created_at,
             'updated_at'      => $this->updated_at,
         ];

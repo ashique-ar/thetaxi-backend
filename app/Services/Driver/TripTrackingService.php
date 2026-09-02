@@ -16,6 +16,7 @@ use App\Models\DriverAssignment;
 use App\Models\DriverAssignmentStop;
 use App\Services\BookingLifecycleService;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\BookingPaymentPolicy;
 use App\Services\Sms\SmsAutomationService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
@@ -225,9 +226,13 @@ class TripTrackingService
                 'completion_evidence'        => data_get($assignment->bookingItem?->metadata, 'driver_route_evidence.completion'),
                 'route_point_count'          => $assignment->routePoints()->count(),
                 'hire_completed'             => true,
-                'payment'                    => $this->mapBookingPaymentSummary($assignment->booking),
-                'final_pricing'              => $this->resolveCanonicalFinalPricingSummary($assignment),
-                'package_charges'            => $this->isOpenPackageAssignment($assignment)
+                'pricing_visible'            => $this->driverCanViewPricing($assignment->booking),
+                'payment'                    => $this->mapDriverPaymentSummary($assignment->booking),
+                'final_pricing'              => $this->driverCanViewPricing($assignment->booking)
+                    ? $this->resolveCanonicalFinalPricingSummary($assignment)
+                    : null,
+                'package_charges'            => $this->driverCanViewPricing($assignment->booking)
+                    && $this->isOpenPackageAssignment($assignment)
                     ? $this->resolveCanonicalFinalPricingSummary($assignment)
                     : null,
             ];
@@ -321,9 +326,12 @@ class TripTrackingService
                 'completion_evidence' => $completionEvidence,
                 'route_point_count' => $assignment->routePoints()->count(),
                 'hire_completed' => true,
-                'package_charges' => $packageCharges,
-                'final_pricing' => $this->resolveCanonicalFinalPricingSummary($assignment),
-                'payment' => $paymentSummary,
+                'pricing_visible' => $this->driverCanViewPricing($completedBooking),
+                'package_charges' => $this->driverCanViewPricing($completedBooking) ? $packageCharges : null,
+                'final_pricing' => $this->driverCanViewPricing($completedBooking)
+                    ? $this->resolveCanonicalFinalPricingSummary($assignment)
+                    : null,
+                'payment' => $this->mapDriverPaymentSummary($completedBooking, $paymentSummary),
             ];
         });
     }
@@ -685,6 +693,10 @@ class TripTrackingService
             'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
             'contact' => [
                 'employee_id' => $stop->location['employee_id'] ?? null,
+                'kind' => !empty($stop->location['employee_id']) ? 'corporate_employee' : 'external_contact',
+                'name' => $stop->location['contact_name'] ?? null,
+                'phone' => $stop->location['contact_phone'] ?? null,
+                'note' => $stop->location['contact_note'] ?? null,
                 'contact_name' => $stop->location['contact_name'] ?? null,
                 'contact_phone' => $stop->location['contact_phone'] ?? null,
                 'contact_note' => $stop->location['contact_note'] ?? null,
@@ -729,11 +741,17 @@ class TripTrackingService
         }
 
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+        $primaryPickupContact = is_array($metadata['primary_pickup_contact'] ?? null)
+            ? $metadata['primary_pickup_contact']
+            : [];
+        $primaryDropoffContact = is_array($metadata['primary_dropoff_contact'] ?? null)
+            ? $metadata['primary_dropoff_contact']
+            : [];
 
         $routeStops = [];
         $routeStops[] = $this->makeRouteStop(
             'pickup',
-            $bookingItem->pickup_location,
+            $this->mergeLocationContact($bookingItem->pickup_location, $primaryPickupContact),
             null,
             $bookingItem->pickup_latitude,
             $bookingItem->pickup_longitude,
@@ -792,7 +810,7 @@ class TripTrackingService
 
         $routeStops[] = $this->makeRouteStop(
             'dropoff',
-            $bookingItem->dropoff_location,
+            $this->mergeLocationContact($bookingItem->dropoff_location, $primaryDropoffContact),
             null,
             $bookingItem->dropoff_latitude,
             $bookingItem->dropoff_longitude,
@@ -800,6 +818,28 @@ class TripTrackingService
         );
 
         return $this->prepareRouteStopsForPersistence($bookingItem, array_values(array_filter($routeStops)));
+    }
+
+    private function mergeLocationContact(mixed $location, array $contact): mixed
+    {
+        if (empty($contact)) {
+            return $location;
+        }
+
+        $normalizedLocation = is_array($location) ? $location : $this->normalizeLocation($location);
+        if (!is_array($normalizedLocation)) {
+            $normalizedLocation = [];
+        }
+
+        return array_merge(
+            $normalizedLocation,
+            array_intersect_key($contact, array_flip([
+                'employee_id',
+                'contact_name',
+                'contact_phone',
+                'contact_note',
+            ]))
+        );
     }
 
     private function makeRouteStop(
@@ -1237,22 +1277,25 @@ class TripTrackingService
         if ($collectedAmount > $outstanding) {
             throw new \InvalidArgumentException('PAYMENT_AMOUNT_EXCEEDS_OUTSTANDING');
         }
-        $totalCollected = round($previouslyCollected + $collectedAmount, 2);
         $now = Carbon::now('UTC');
 
-        ($this->paymentLedger ?? app(BookingPaymentLedgerService::class))->receive($booking, [
+        $ledgerSummary = ($this->paymentLedger ?? app(BookingPaymentLedgerService::class))->receive($booking, [
             'amount' => $collectedAmount,
             'payment_method' => 'driver_cash',
-            'payment_stage' => $totalCollected >= $fareAmount ? 'final_payment' : 'part_payment',
+            'payment_stage' => $collectedAmount >= $outstanding ? 'final_payment' : 'part_payment',
             'received_at' => $now,
             'notes' => $paymentData['payment_notes'] ?? null,
             'received_via' => 'driver',
             'driver_id' => $assignment->driver_id,
             'idempotency_key' => $paymentData['idempotency_key'] ?? null,
         ], null);
+        // The ledger owns idempotency. Derive status from its persisted summary,
+        // never by adding the submitted amount again on a mobile retry.
+        $actualCollected = round((float) ($ledgerSummary['paid_amount'] ?? 0), 2);
+        $outstandingAfterReceipt = round((float) ($ledgerSummary['due_amount'] ?? max(0, $fareAmount - $actualCollected)), 2);
         $booking->refresh()->update([
             'payment_collected_by_driver_id' => $assignment->driver_id,
-            'payment_collection_status' => $totalCollected >= $fareAmount ? 'driver_collected' : 'partially_collected',
+            'payment_collection_status' => $outstandingAfterReceipt <= 0 ? 'driver_collected' : 'partially_collected',
             'driver_collection_status' => 'collected_unsettled',
             'payment_type' => 'cash',
         ]);
@@ -1266,14 +1309,17 @@ class TripTrackingService
 
     private function bookingRequiresDriverCollection($booking): bool
     {
-        $method = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? $booking->payment_type ?? ''));
-        return in_array($method, ['cash_to_driver', 'cash', 'driver_cash', 'pay_to_driver', 'advance_then_balance', 'deposit_then_balance', 'pay_at_end'], true);
+        return app(BookingPaymentPolicy::class)->requiresDriverCollection($booking);
+    }
+
+    private function driverCanViewPricing($booking): bool
+    {
+        return app(BookingPaymentPolicy::class)->driverCanViewPricing($booking);
     }
 
     private function bookingUsesMonthlyInvoice($booking): bool
     {
-        $method = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? $booking->payment_type ?? ''));
-        return in_array($method, ['monthly_invoice', 'corporate', 'company_billing', 'credit'], true) || str_contains($method, 'corp');
+        return app(BookingPaymentPolicy::class)->isMonthlyCorporateCredit($booking);
     }
 
     private function resolveBookingFareAmount($booking): float
@@ -1305,6 +1351,26 @@ class TripTrackingService
             'payment_collected_at' => $booking->payment_collected_at?->toIso8601String(),
             'payment_collected_by_driver_id' => $booking->payment_collected_by_driver_id,
             'payment_notes' => $booking->payment_notes,
+        ];
+    }
+
+    private function mapDriverPaymentSummary($booking, ?array $summary = null): ?array
+    {
+        if (! $booking) {
+            return null;
+        }
+
+        $summary ??= $this->mapBookingPaymentSummary($booking);
+        if ($this->bookingRequiresDriverCollection($booking)) {
+            return $summary;
+        }
+
+        return [
+            'payment_collection_method' => $booking->payment_collection_method,
+            'payment_collection_status' => $booking->payment_collection_status,
+            'collection_required' => false,
+            'collection_message' => $this->resolvePaymentCollectionMessage($booking),
+            'pricing_visible' => false,
         ];
     }
 

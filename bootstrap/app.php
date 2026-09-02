@@ -47,6 +47,7 @@ return Application::configure(basePath: dirname(__DIR__))
             'agent.api.access' => \App\Http\Middleware\EnsureAgentApiAccess::class,
             'booking.operations.telemetry' => \App\Http\Middleware\BookingOperationsTelemetry::class,
             'pricing.context' => \App\Http\Middleware\ApplyPricingContextPolicy::class,
+            'api.deprecated' => \App\Http\Middleware\DeprecatedApiRoute::class,
         ]);
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);

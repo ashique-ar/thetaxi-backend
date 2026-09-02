@@ -44,6 +44,7 @@ class CreateCustomerRequest extends FormRequest
             'country_id' => ['nullable', 'exists:countries,id'],
             'state_id' => ['nullable', 'exists:states,id'],
             'city' => ['nullable', 'string'],
+            'default_payment_arrangement' => ['nullable', 'in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'payment_methods' => ['nullable', 'array'],
             'payment_methods.*.id' => ['nullable', 'uuid'],
             'payment_methods.*.method_type' => ['required_with:payment_methods', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],

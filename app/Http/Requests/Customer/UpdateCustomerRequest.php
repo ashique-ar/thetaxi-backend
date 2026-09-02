@@ -70,6 +70,7 @@ class UpdateCustomerRequest extends FormRequest
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
+            'default_payment_arrangement' => ['sometimes', 'required', 'in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'payment_methods' => ['sometimes', 'nullable', 'array'],
             'payment_methods.*.id' => ['nullable', 'uuid'],
             'payment_methods.*.method_type' => ['required_with:payment_methods', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],

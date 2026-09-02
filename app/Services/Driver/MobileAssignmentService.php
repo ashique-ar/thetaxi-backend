@@ -7,6 +7,7 @@ use App\Events\AssignmentStatusChanged;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
+use App\Services\BookingPaymentPolicy;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Builder;
@@ -36,6 +37,8 @@ class MobileAssignmentService
             ->with([
                 'booking',
                 'booking.customer.user',
+                'booking.employeeUser',
+                'booking.corporateAccount',
                 'bookingItem',
                 'bookingItem.serviceType',
                 'bookingItem.vehicle.owner',
@@ -462,9 +465,11 @@ class MobileAssignmentService
         $booking = $assignment->booking;
         $bookingItem = $assignment->bookingItem;
         $customerUser = $booking?->customer?->user;
+        $bookingParty = $this->resolveBookingParty($assignment);
 
         $paymentDetails = $this->resolvePaymentDetails($assignment);
-        $fareAmount = $this->resolveFareAmount($assignment);
+        $pricingVisible = app(BookingPaymentPolicy::class)->driverCanViewPricing($booking);
+        $fareAmount = $pricingVisible ? $this->resolveFareAmount($assignment) : null;
         $pricingMetrics = $this->buildPricingMetrics($bookingItem, $assignment);
         $notification = Schema::hasTable('driver_assignment_notifications')
             ? \App\Models\Driver\DriverAssignmentNotification::query()
@@ -503,12 +508,10 @@ class MobileAssignmentService
         $payload['payment_collection_status'] = $paymentDetails['payment_collection_status'];
         $payload['payment_collection_required'] = $paymentDetails['payment_collection_required'];
         $payload['payment_instruction'] = $paymentDetails['payment_instruction'];
+        $payload['pricing_visible'] = $pricingVisible;
         $payload['amount_to_collect'] = $paymentDetails['payment_collection_required']
             ? max(0, round($fareAmount - (float)($booking?->payment_collected_amount ?? 0), 2))
             : null;
-        $payload['fare_amount'] = $fareAmount;
-        $payload['total_amount'] = $fareAmount;
-        $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
         $payload['duration_days'] = $pricingMetrics['duration_days'];
         $payload['duration_hours'] = $pricingMetrics['duration_hours'];
         $payload['duration_minutes'] = $pricingMetrics['duration_minutes'];
@@ -518,8 +521,13 @@ class MobileAssignmentService
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
         $payload['waiting_minutes'] = $pricingMetrics['waiting_minutes'];
-        $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
-        $payload['pricing_metrics'] = $this->driverPricingMetrics($pricingMetrics);
+        if ($pricingVisible) {
+            $payload['fare_amount'] = $fareAmount;
+            $payload['total_amount'] = $fareAmount;
+            $payload['currency'] = $bookingItem?->currency ?? $booking?->currency;
+            $payload['waiting_charge'] = $pricingMetrics['waiting_charge'];
+            $payload['pricing_metrics'] = $this->driverPricingMetrics($pricingMetrics);
+        }
         $payload['operational_metrics'] = [
             'distance_km' => $assignment->total_distance_km !== null
                 ? round((float) $assignment->total_distance_km, 3)
@@ -532,16 +540,41 @@ class MobileAssignmentService
                 : null,
         ];
         $payload['booking_number'] = $booking?->booking_number;
-        $payload['service_type_name'] = $bookingItem?->serviceType?->name ?? $assignment->service_type;
-        $payload['customer_name'] = $this->resolveCustomerName($assignment);
-        $payload['customer_phone'] = $customerUser?->phone;
-        $payload['customer_email'] = $customerUser?->email;
+        $serviceType = $bookingItem?->serviceType;
+        $payload['service_type_name'] = $serviceType?->name ?? $assignment->service_type;
+        $payload['booking_party'] = $bookingParty;
+        // Retain the legacy customer fields until all supported mobile releases
+        // consume booking_party. They now follow the same traveler precedence.
+        $payload['customer_name'] = $bookingParty['traveler_name'];
+        $payload['customer_phone'] = $bookingParty['traveler_phone'];
+        $payload['customer_email'] = $bookingParty['traveler_email'] ?? $customerUser?->email;
         $payload['pickup_location_label'] = $this->extractLocationLabel($bookingItem?->pickup_location);
         $payload['dropoff_location_label'] = $this->extractLocationLabel($bookingItem?->dropoff_location);
         $itemMetadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
         $isOpenPackage = ($itemMetadata['trip_mode'] ?? null) === 'open_package';
         $payload['trip_mode'] = $isOpenPackage ? 'open_package' : 'fixed_route';
         $payload['destination_known'] = !$isOpenPackage;
+        $requiresDriver = ($serviceType?->type ?? 'with_driver') !== 'self_drive';
+        $payload['service'] = [
+            'id' => $serviceType?->id,
+            'code' => $serviceType?->code,
+            'name' => $serviceType?->name ?? $assignment->service_type,
+            'type' => $serviceType?->type ?? 'with_driver',
+        ];
+        $payload['execution_capabilities'] = [
+            'requires_driver' => $requiresDriver,
+            'execution_mode' => $serviceType?->pricing_mode === 'day' ? 'day_hire' : 'trip',
+            'uses_hire_meter' => $serviceType?->pricing_mode === 'day',
+            'route_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',
+            'requires_destination' => ! $isOpenPackage,
+            'supports_multiple_stops' => (bool) (
+                $serviceType?->allow_multiple_pickup_locations
+                || $serviceType?->allow_multiple_dropoff_locations
+            ),
+            'tracks_waiting' => $requiresDriver,
+            'collects_payment' => (bool) $paymentDetails['payment_collection_required'],
+            'shows_pricing' => $pricingVisible,
+        ];
         $payload['driver_message'] = $isOpenPackage
             ? 'Open chauffeur package - destination decided during trip'
             : null;
@@ -641,7 +674,9 @@ class MobileAssignmentService
     private function sumAssignmentEarnings(Collection $assignments): float
     {
         return round($assignments->sum(function ($assignment) {
-            return $this->resolveFareAmount($assignment);
+            return app(BookingPaymentPolicy::class)->driverCanViewPricing($assignment->booking)
+                ? $this->resolveFareAmount($assignment)
+                : 0;
         }), 2);
     }
 
@@ -658,6 +693,50 @@ class MobileAssignmentService
 
         $name = trim(($customerUser->first_name ?? '') . ' ' . ($customerUser->last_name ?? ''));
         return $name !== '' ? $name : null;
+    }
+
+    private function resolveBookingParty(DriverAssignment $assignment): array
+    {
+        $booking = $assignment->booking;
+        $customerUser = $booking?->customer?->user;
+        $employeeUser = $booking?->employeeUser;
+        $workflowData = is_array($booking?->workflow_data) ? $booking->workflow_data : [];
+        $corporateContact = is_array($workflowData['corporate_contact'] ?? null)
+            ? $workflowData['corporate_contact']
+            : [];
+        $isCorporate = (bool) ($booking?->is_corporate_booking || $booking?->corporate_account_id);
+
+        $employeeName = $employeeUser
+            ? trim(($employeeUser->first_name ?? '') . ' ' . ($employeeUser->last_name ?? ''))
+            : '';
+        $generalName = trim((string) ($corporateContact['name'] ?? ''));
+        $legacyName = $this->resolveCustomerName($assignment);
+
+        $travelerType = 'customer';
+        $travelerName = $legacyName;
+        $travelerPhone = $customerUser?->phone;
+        $travelerEmail = $customerUser?->email;
+
+        if ($isCorporate && $employeeUser) {
+            $travelerType = 'employee';
+            $travelerName = $employeeName !== '' ? $employeeName : $legacyName;
+            $travelerPhone = $employeeUser->phone ?: $customerUser?->phone;
+            $travelerEmail = $employeeUser->email ?: $customerUser?->email;
+        } elseif ($isCorporate && !empty($corporateContact)) {
+            $travelerType = 'general_contact';
+            $travelerName = $generalName !== '' ? $generalName : $legacyName;
+            $travelerPhone = $corporateContact['phone'] ?? $customerUser?->phone;
+            $travelerEmail = $corporateContact['email'] ?? $customerUser?->email;
+        }
+
+        return [
+            'type' => $isCorporate ? 'corporate' : 'individual',
+            'account_name' => $isCorporate ? $booking?->corporateAccount?->name : null,
+            'traveler_type' => $travelerType,
+            'traveler_name' => $travelerName,
+            'traveler_phone' => $travelerPhone,
+            'traveler_email' => $travelerEmail,
+        ];
     }
 
     private function resolvePaymentType(DriverAssignment $assignment): string
@@ -693,25 +772,33 @@ class MobileAssignmentService
             ];
         }
 
-        if (in_array($method, ['online', 'webxpay', 'credit_card', 'debit_card', 'stripe', 'paypal'], true)) {
+        if (in_array($method, ['online', 'webxpay', 'credit_card', 'debit_card', 'card', 'bank_transfer', 'cheque', 'stripe', 'paypal', 'other'], true)) {
             $paid = in_array($status, ['online_paid', 'paid', 'success'], true) || $booking?->payment_status === 'paid';
             return [
-                'payment_type' => 'online',
-                'payment_collection_method' => 'online',
+                'payment_type' => in_array($method, ['card', 'bank_transfer', 'cheque'], true) ? $method : 'online',
+                'payment_collection_method' => $method ?: 'online',
                 'payment_collection_status' => $status ?: 'pending',
                 'payment_collection_required' => false,
-                'payment_instruction' => $paid ? 'Paid online' : 'Online payment pending',
+                'payment_instruction' => $paid ? 'Payment settled' : 'Payment handled by office - do not collect cash',
             ];
         }
 
+        $cashMethod = in_array($method, ['cash_to_driver', 'cash', 'driver_cash', 'pay_to_driver'], true)
+            ? 'cash_to_driver'
+            : $method;
+
+        $collectionRequired = app(BookingPaymentPolicy::class)->requiresDriverCollection($booking);
+
         return [
             'payment_type' => 'cash',
-            'payment_collection_method' => $method ?: 'cash_to_driver',
+            'payment_collection_method' => $cashMethod ?: 'cash_to_driver',
             'payment_collection_status' => $status ?: 'pending',
-            'payment_collection_required' => true,
-            'payment_instruction' => in_array($method,['advance_then_balance','deposit_then_balance'],true)
-                ? 'Collect only the outstanding balance from the customer'
-                : 'Collect payment from customer',
+            'payment_collection_required' => $collectionRequired,
+            'payment_instruction' => ! $collectionRequired
+                ? 'Payment already settled - do not collect cash'
+                : (in_array($method,['advance_then_balance','deposit_then_balance'],true)
+                    ? 'Collect only the outstanding balance from the customer'
+                    : 'Collect payment from customer'),
         ];
     }
 

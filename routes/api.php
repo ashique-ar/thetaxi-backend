@@ -1145,8 +1145,10 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('drivers/availability', [BookingFlowController::class, 'getAvailableDrivers'])
                 ->middleware('permission:bookings.view');
 
-            Route::get('/availability/vehicle', [BookingFlowController::class, 'getAvailableVehicleGroups']);
-            Route::get('/availability/driver', [BookingFlowController::class, 'getAvailableDrivers']);
+            Route::get('/availability/vehicle', [BookingFlowController::class, 'getAvailableVehicleGroups'])
+                ->middleware('api.deprecated:/api/booking-flow/vehicle-groups/availability');
+            Route::get('/availability/driver', [BookingFlowController::class, 'getAvailableDrivers'])
+                ->middleware('api.deprecated:/api/booking-flow/drivers/availability');
 
 
             // Conflict Checking Routes - Updated to match frontend service
@@ -1157,9 +1159,9 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Alternative route names for backward compatibility
             Route::post('check-vehicle-conflicts/{vehicleId}', [BookingFlowController::class, 'checkVehicleConflicts'])
-                ->middleware('permission:bookings.create|bookings.update');
+                ->middleware(['permission:bookings.create|bookings.update', 'api.deprecated:/api/booking-flow/vehicles/{vehicleId}/conflicts']);
             Route::post('check-driver-conflicts/{driverId}', [BookingFlowController::class, 'checkDriverConflicts'])
-                ->middleware('permission:bookings.create|bookings.update');
+                ->middleware(['permission:bookings.create|bookings.update', 'api.deprecated:/api/booking-flow/drivers/{driverId}/conflicts']);
 
             // Pricing Routes - Updated to match frontend service
             Route::post('pricing/calculate', [BookingFlowController::class, 'calculatePricing'])
@@ -1179,9 +1181,9 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Alternative route names for backward compatibility
             Route::get('available-addons', [BookingFlowController::class, 'getAvailableAddons'])
-                ->middleware(['permission:bookings.view', 'pricing.context']);
+                ->middleware(['permission:bookings.view', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/available']);
             Route::post('process-addon-dependencies', [BookingFlowController::class, 'processAddonDependencies'])
-                ->middleware(['permission:bookings.create', 'pricing.context']);
+                ->middleware(['permission:bookings.create', 'pricing.context', 'api.deprecated:/api/booking-flow/addons/process-dependencies']);
 
             // Self-Driven Routes - Updated to match frontend service
             Route::get('customers/{customerId}/self-driven-eligibility', [BookingFlowController::class, 'validateSelfDrivenEligibility'])

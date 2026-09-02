@@ -578,7 +578,7 @@ it('runs configured contractual pricing through approval dispatch driver complet
     $this->tripService->startTrip($assignment->fresh());
     $assignment->update(['trip_started_at' => now()->subMinutes(2)]);
     RoutePoint::create([
-        'assignment_id' => $assignment->id, 'latitude' => 7.20, 'longitude' => 80.20, 'recorded_at' => now()->subMinute(),
+        'assignment_id' => $assignment->id, 'latitude' => 7.20, 'longitude' => 80.20, 'recorded_at' => now()->subSeconds(20),
     ]);
     RoutePoint::create([
         'assignment_id' => $assignment->id, 'latitude' => 7.2001, 'longitude' => 80.2001, 'recorded_at' => now(),
@@ -786,10 +786,10 @@ it('persists actual completion and route distance once without a pricing owner',
         'trip_started_at' => now()->subMinutes(2),
     ]);
     RoutePoint::create([
-        'assignment_id' => $assignment->id, 'latitude' => 6.90, 'longitude' => 79.80, 'recorded_at' => now()->subMinute(),
+        'assignment_id' => $assignment->id, 'latitude' => 6.90, 'longitude' => 79.80, 'recorded_at' => now()->subSeconds(20),
     ]);
     RoutePoint::create([
-        'assignment_id' => $assignment->id, 'latitude' => 6.91, 'longitude' => 79.81, 'recorded_at' => now(),
+        'assignment_id' => $assignment->id, 'latitude' => 6.9001, 'longitude' => 79.8001, 'recorded_at' => now(),
     ]);
 
     $summary = $this->tripService->endTrip($assignment, ['latitude' => 6.95, 'longitude' => 79.85]);

@@ -63,7 +63,15 @@ class CorporateBookingController extends Controller
     public function store(StoreCorporateBookingRequest $request): JsonResponse
     {
         $employee = $request->attributes->get('corporate_employee');
+        $partyMode = $request->validated('booking_party_mode');
         $selectedEmployeeId = $request->validated('employee_id');
+
+        if ($partyMode === 'general' && !$request->user()->can('create_bookings_for_others')) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Creating a booking for a general corporate passenger requires permission to book for others.',
+            ], 403);
+        }
 
         if (
             $selectedEmployeeId
@@ -76,7 +84,9 @@ class CorporateBookingController extends Controller
             ], 403);
         }
 
-        $booking = $this->bookingService->createBooking($employee, $request->validated());
+        $booking = $partyMode === 'general'
+            ? $this->bookingService->createGeneralBooking($employee, $request->validated())
+            : $this->bookingService->createBooking($employee, $request->validated());
 
         return response()->json([
             'status'  => 'success',
@@ -120,7 +130,7 @@ class CorporateBookingController extends Controller
         $employee = $request->attributes->get('corporate_employee');
         $user = $request->user();
 
-        if (!$user->can('view_all_bookings') && $booking->employee_id !== $employee->user_id) {
+        if (!$user->can('view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'You do not have permission to view this booking.',
@@ -349,10 +359,18 @@ class CorporateBookingController extends Controller
     {
         $booking = Booking::where('corporate_account_id', $request->corporate_id)->findOrFail($id);
         $employee = $request->attributes->get('corporate_employee');
-        if (! $request->user()->can('view_all_bookings') && $booking->employee_id !== $employee?->user_id) {
+        if (! $request->user()->can('view_all_bookings') && ! $this->isOwnedByActor($booking, $employee?->user_id)) {
             abort(403, 'You do not have permission to view this booking.');
         }
         return $booking;
+    }
+
+    private function isOwnedByActor(Booking $booking, ?string $userId): bool
+    {
+        return $userId !== null && (
+            (string) $booking->employee_id === $userId
+            || (string) $booking->created_by_user_id === $userId
+        );
     }
 
     public function cancelRecurring(Request $request, string $id): JsonResponse
@@ -368,7 +386,7 @@ class CorporateBookingController extends Controller
         $employee = $request->attributes->get('corporate_employee');
         $user = $request->user();
 
-        if (!$user->can('view_all_bookings') && $booking->employee_id !== $employee->user_id) {
+        if (!$user->can('view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'You do not have permission to cancel this booking.',
@@ -399,6 +417,7 @@ class CorporateBookingController extends Controller
 
         $bookings = $this->bookingService->getBookingsForEmployee(
             $employee->user_id,
+            $request->corporate_id,
             $filters
         );
 

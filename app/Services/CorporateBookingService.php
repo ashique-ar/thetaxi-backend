@@ -8,7 +8,9 @@ use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingItem;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\Corporate\CorporateEmployeeLocation;
 use App\Models\Customer;
+use App\Models\Service\ServicePackage;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Auth;
@@ -77,6 +79,55 @@ class CorporateBookingService
 
             if ($needsApproval) {
                 $this->notifyApprovalRequested($booking, $employee);
+            }
+
+            return $booking->fresh();
+        });
+    }
+
+    /**
+     * Create a corporate-funded booking for a passenger who is not an employee.
+     */
+    public function createGeneralBooking(CorporateEmployee $requester, array $data): Booking
+    {
+        $corporate = $requester->corporate;
+        $data = $this->prepareCorporateBookingPayload($corporate, $data);
+
+        return DB::transaction(function () use ($requester, $corporate, $data) {
+            $needsApproval = $corporate->approval_required && ! $corporate->exempt_coordinator_from_approval;
+            $params = array_merge($data, [
+                'customer_id' => null,
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => null,
+                'corporate_department_id' => null,
+                'corporate_division_id' => null,
+                'created_by_user_id' => $requester->user_id,
+            ]);
+
+            $booking = $needsApproval
+                ? $this->bookingFlowService->submitBookingForApproval($params)
+                : $this->bookingFlowService->confirmBooking($params);
+
+            $this->applyCorporateRequestStatus($booking, $needsApproval, $requester->user_id);
+            $booking->update([
+                'is_corporate_booking' => true,
+                'corporate_account_id' => $corporate->id,
+                'employee_id' => null,
+                'corporate_department_id' => null,
+                'corporate_division_id' => null,
+                'created_by_user_id' => $requester->user_id,
+            ]);
+
+            $this->logAudit('general_corporate_booking_created', 'Booking', $booking->id, [
+                'corporate_id' => $corporate->id,
+                'coordinator_id' => $requester->user_id,
+                'needs_approval' => $needsApproval,
+                'passenger' => data_get($data, 'corporate_contact.name'),
+            ]);
+
+            if ($needsApproval) {
+                $this->notifyApprovalRequested($booking, $requester);
             }
 
             return $booking->fresh();
@@ -173,11 +224,26 @@ class CorporateBookingService
 
     private function prepareCorporateBookingPayload(Corporate $corporate, array $data): array
     {
+        $data['payment_collection_method'] = $data['payment_collection_method']
+            ?? $corporate->default_payment_arrangement
+            ?? 'monthly_invoice';
+        $data['payment_responsibility'] = in_array($data['payment_collection_method'], ['monthly_invoice'], true)
+            ? 'corporate'
+            : 'customer';
+        // Use the same canonical dynamic-field and booking-item normalization as
+        // internal submissions before applying corporate ownership restrictions.
+        $data = $this->bookingFlowService->normalizeDynamicCalculationParams($data);
         $items = $this->bookingItemsFromPayload($data);
 
         foreach ($items as $index => $item) {
+            $serviceTypeId = $item['service_type_id'] ?? ($item['service_type'] ?? null);
             $this->validateVehicleGroup($corporate, $item['vehicle_group_id'] ?? null);
-            $this->validateServiceType($corporate, $item['service_type_id'] ?? ($item['service_type'] ?? null));
+            $this->validateServiceType($corporate, $serviceTypeId);
+            $this->validateServicePackage(
+                $serviceTypeId,
+                $item['service_package_id'] ?? ($item['package_id'] ?? data_get($item, 'metadata.service_package_id')),
+            );
+            $this->validateStopOwnership($corporate, is_array($item['metadata'] ?? null) ? $item['metadata'] : []);
 
             unset($items[$index]['vehicle_id'], $items[$index]['driver_id']);
         }
@@ -202,6 +268,56 @@ class CorporateBookingService
         );
 
         return $data;
+    }
+
+    private function validateServicePackage(?string $serviceTypeId, ?string $packageId): void
+    {
+        if (! $packageId) {
+            return;
+        }
+
+        if (! $serviceTypeId || ! ServicePackage::query()
+            ->whereKey($packageId)
+            ->where('service_type_id', $serviceTypeId)
+            ->where('is_active', true)
+            ->exists()) {
+            abort(422, 'The selected package is not available for this service.');
+        }
+    }
+
+    private function validateStopOwnership(Corporate $corporate, array $metadata): void
+    {
+        $contacts = array_filter([
+            $metadata['primary_pickup_contact'] ?? null,
+            $metadata['primary_dropoff_contact'] ?? null,
+            ...$this->arrayValue($metadata['ordered_additional_stops'] ?? null),
+            ...$this->arrayValue($metadata['additional_pickup_locations'] ?? null),
+            ...$this->arrayValue($metadata['additional_dropoff_locations'] ?? null),
+        ], 'is_array');
+
+        foreach ($contacts as $contact) {
+            $employeeId = $contact['employee_id'] ?? null;
+            if ($employeeId && ! CorporateEmployee::query()
+                ->where('corporate_id', $corporate->id)
+                ->whereKey($employeeId)
+                ->exists()) {
+                abort(422, 'A selected stop employee does not belong to your corporate.');
+            }
+
+            $locationId = $contact['employee_location_id'] ?? null;
+            if ($locationId && ! CorporateEmployeeLocation::query()
+                ->whereKey($locationId)
+                ->whereHas('employee', fn ($query) => $query->where('corporate_id', $corporate->id))
+                ->when($employeeId, fn ($query) => $query->where('corporate_employee_id', $employeeId))
+                ->exists()) {
+                abort(422, 'A selected stop location does not belong to your corporate employee.');
+            }
+        }
+    }
+
+    private function arrayValue(mixed $value): array
+    {
+        return is_array($value) ? array_values($value) : [];
     }
 
     private function bookingItemsFromPayload(array $data): array
@@ -365,15 +481,9 @@ class CorporateBookingService
     /**
      * Get paginated bookings for a specific employee.
      */
-    public function getBookingsForEmployee(string $userId, array $filters = []): LengthAwarePaginator
+    public function getBookingsForEmployee(string $userId, string $corporateId, array $filters = []): LengthAwarePaginator
     {
-        $query = BookingItem::query()
-            ->whereHas('booking', function ($bookingQuery) use ($userId) {
-                $bookingQuery
-                    ->where('employee_id', $userId)
-                    ->where('is_corporate_booking', true);
-            })
-            ->with($this->corporateBookingItemRelations());
+        $query = $this->corporateActorBookingItemQuery($userId, $corporateId);
 
         $this->applyBookingItemFilters($query, $filters);
 
@@ -384,6 +494,21 @@ class CorporateBookingService
             ->paginate((int) ($filters['per_page'] ?? 15));
 
         return $this->transformBookingItemPaginator($paginator, $filters);
+    }
+
+    private function corporateActorBookingItemQuery(string $userId, string $corporateId)
+    {
+        return BookingItem::query()
+            ->whereHas('booking', function ($bookingQuery) use ($userId, $corporateId) {
+                $bookingQuery
+                    ->where('corporate_account_id', $corporateId)
+                    ->where('is_corporate_booking', true)
+                    ->where(function ($ownerQuery) use ($userId) {
+                        $ownerQuery->where('employee_id', $userId)
+                            ->orWhere('created_by_user_id', $userId);
+                    });
+            })
+            ->with($this->corporateBookingItemRelations());
     }
 
     /**
@@ -441,7 +566,7 @@ class CorporateBookingService
             'createdBy',
         ]);
 
-        $payload = $this->mapBooking($booking, $canViewPayments);
+        $payload = $this->mapBooking($booking, true);
         $payload['trips'] = $booking->bookingItems->map(function ($item) use ($canViewPayments) {
             $trip = [
                 'id' => $item->id,
@@ -488,7 +613,7 @@ class CorporateBookingService
             ])->values(),
         ];
         $payload['visibility'] = [
-            'can_view_payments' => $canViewPayments,
+            'can_view_payments' => true,
             'booking_scope' => $bookingScope,
             'corporate_id' => $booking->corporate_account_id,
             'department_id' => $booking->corporate_department_id,
@@ -562,7 +687,7 @@ class CorporateBookingService
 
     private function transformBookingPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
+        $canViewPayments = true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(Booking $booking) => $this->mapBooking($booking, $canViewPayments))
         );
@@ -599,7 +724,7 @@ class CorporateBookingService
 
     private function transformBookingItemPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = (bool) ($filters['can_view_payments'] ?? false);
+        $canViewPayments = true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
         );
@@ -708,7 +833,8 @@ class CorporateBookingService
             'updated_at' => $this->dateIso($item->updated_at),
         ];
 
-        if ($canViewPayments) {
+        $canViewBookingPayments = $canViewPayments || $this->isCashBooking($booking);
+        if ($canViewBookingPayments) {
             $payload += [
                 'total_cost' => (float) ($item->total_price ?? 0),
                 'currency' => $item->currency ?? $booking?->currency,
@@ -794,7 +920,7 @@ class CorporateBookingService
             'updated_at' => $this->dateIso($booking->updated_at),
         ];
 
-        if ($canViewPayments) {
+        if ($canViewPayments || $this->isCashBooking($booking)) {
             $payload += [
                 'total_cost' => (float) ($booking->total_estimated ?? $booking->total_actual ?? 0),
                 'currency' => $booking->currency,
@@ -808,6 +934,11 @@ class CorporateBookingService
         }
 
         return $payload;
+    }
+
+    private function isCashBooking(?Booking $booking): bool
+    {
+        return strtolower((string) $booking?->payment_collection_method) === 'cash_to_driver';
     }
 
     private function locationLabel(mixed $location): ?string

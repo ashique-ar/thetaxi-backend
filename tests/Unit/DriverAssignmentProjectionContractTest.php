@@ -39,6 +39,34 @@ it('keeps the documented driver assignment fields in the allowlisted projection'
     }
 });
 
+it('projects corporate traveler identity and canonical nested stop contacts', function () {
+    $assignment = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+    $tracking = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+
+    expect($assignment)
+        ->toContain("\$payload['booking_party'] = \$bookingParty")
+        ->toContain("'traveler_type' => \$travelerType")
+        ->toContain("'traveler_phone' => \$travelerPhone")
+        ->toContain("\$workflowData['corporate_contact']")
+        ->toContain("\$booking?->employeeUser")
+        ->and($tracking)
+        ->toContain("'kind' => !empty(\$stop->location['employee_id'])")
+        ->toContain("'name' => \$stop->location['contact_name'] ?? null")
+        ->toContain("'phone' => \$stop->location['contact_phone'] ?? null")
+        ->toContain("'note' => \$stop->location['contact_note'] ?? null");
+});
+
+it('hydrates primary pickup and final dropoff contacts from booking item snapshots', function () {
+    $tracking = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+
+    expect($tracking)
+        ->toContain("\$metadata['primary_pickup_contact']")
+        ->toContain("\$metadata['primary_dropoff_contact']")
+        ->toContain('mergeLocationContact($bookingItem->pickup_location, $primaryPickupContact)')
+        ->toContain('mergeLocationContact($bookingItem->dropoff_location, $primaryDropoffContact)')
+        ->toContain("'contact_phone'");
+});
+
 it('does not expose internal pricing structures through driver pricing metrics', function () {
     $source = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
     $projection = Str::between(
@@ -91,8 +119,8 @@ it('returns one complete measured and priced contract for fixed-route and open-p
         ->not->toContain('!$this->isOpenPackageAssignment($assignment)')
         ->toContain("final_pricing.audit")
         ->and($trackingSource)
-        ->toContain("'final_pricing'              => \$this->resolveCanonicalFinalPricingSummary(\$assignment)")
-        ->toContain("'final_pricing' => \$this->resolveCanonicalFinalPricingSummary(\$assignment)")
+        ->toContain("'final_pricing'              => \$this->driverCanViewPricing")
+        ->toContain("'final_pricing' => \$this->driverCanViewPricing")
         ->and($mobileSource)
         ->toContain("\$payload['operational_metrics']")
         ->toContain("'included_duration_minutes'")
@@ -256,7 +284,7 @@ it('builds driver navigation stops only from booked passenger route fields', fun
         ->not->toContain('pricing_only');
 });
 
-it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.4', function () {
+it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.5', function () {
     $documentation = json_decode(
         file_get_contents(public_path('docs/driver-mobile-api.openapi.json')),
         true,
@@ -266,7 +294,7 @@ it('keeps supported driver app version and lifecycle endpoints compatible with O
     $driverRoutes = file_get_contents(base_path('routes/api_driver.php'));
     $publicRoutes = file_get_contents(base_path('routes/api_public.php'));
 
-    expect(data_get($documentation, 'info.version'))->toBe('2.4.0')
+    expect(data_get($documentation, 'info.version'))->toBe('2.5.0')
         ->and(data_get($documentation, 'paths./api/driver/version-check.post'))->toBeArray()
         ->and(data_get($documentation, 'paths./api/public/driver-mobile/version-check.post'))->toBeArray()
         ->and($driverRoutes)->toContain("Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'versionCheck'])")
@@ -295,4 +323,64 @@ it('keeps assignment creation time separate from the scheduled trip window', fun
         ->and($lifecycle)->toContain(
             "\$selectedItem?->from_time ?? \$booking->from_time"
         );
+});
+
+it('projects stable service execution capabilities and blocks self-drive driver assignments', function () {
+    $projection = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+    $assignment = file_get_contents(app_path('Services/AssignmentService.php'));
+    $bookingFlow = file_get_contents(app_path('Services/BookingFlowService.php'));
+    $documentation = json_decode(
+        file_get_contents(public_path('docs/driver-mobile-api.openapi.json')),
+        true,
+        512,
+        JSON_THROW_ON_ERROR,
+    );
+
+    expect($projection)
+        ->toContain("\$payload['execution_capabilities']")
+        ->toContain("'requires_driver' => \$requiresDriver")
+        ->toContain("'route_mode' => \$isOpenPackage ? 'open_package' : 'fixed_route'")
+        ->and($assignment)->toContain("serviceType?->type === 'self_drive'")
+        ->and($bookingFlow)->toContain("serviceType?->type !== 'self_drive'")
+        ->and(data_get($documentation, 'components.schemas.DriverAssignmentService.properties.code.type'))->toBe('string')
+        ->and(data_get($documentation, 'components.schemas.DriverExecutionCapabilities.properties.route_mode.enum'))
+        ->toBe(['fixed_route', 'open_package']);
+});
+
+it('keeps general corporate passengers distinct from employees and company-scoped', function () {
+    $request = file_get_contents(app_path('Http/Requests/Corporate/StoreCorporateBookingRequest.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateBookingController.php'));
+    $service = file_get_contents(app_path('Services/CorporateBookingService.php'));
+
+    expect($request)
+        ->toContain("'booking_party_mode' => ['required', 'string', 'in:employee,general']")
+        ->toContain("The selected employee does not belong to your corporate")
+        ->and($controller)->toContain("create_bookings_for_others")
+        ->toContain("createGeneralBooking")
+        ->and($service)->toContain("public function createGeneralBooking")
+        ->toContain("'employee_id' => null")
+        ->toContain("'customer_id' => null");
+});
+
+it('derives driver cash status from the idempotent payment ledger result', function () {
+    $tracking = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+
+    expect($tracking)
+        ->toContain('$ledgerSummary = ($this->paymentLedger ?? app(BookingPaymentLedgerService::class))->receive')
+        ->toContain("\$ledgerSummary['due_amount']")
+        ->not->toContain('$totalCollected = round($previouslyCollected + $collectedAmount');
+});
+
+it('hides monetary pricing from drivers unless collection is required', function () {
+    $assignment = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+    $tracking = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));
+
+    expect($assignment)
+        ->toContain("\$payload['pricing_visible'] = \$pricingVisible")
+        ->toContain("if (\$pricingVisible) {")
+        ->toContain("'shows_pricing' => \$pricingVisible")
+        ->and($tracking)
+        ->toContain('private function mapDriverPaymentSummary(')
+        ->toContain("'pricing_visible' => false")
+        ->toContain("'final_pricing' => \$this->driverCanViewPricing");
 });

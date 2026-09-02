@@ -70,6 +70,7 @@ class Customer extends BaseModel
         'marketing_consent',
         'marketing_consent_date',
         'marketing_consent_ip',
+        'default_payment_arrangement',
     ];
 
     /**

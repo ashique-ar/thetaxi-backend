@@ -73,15 +73,24 @@ class CorporateMonthlyBillingService
             ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)->where('corporate_account_id', $corporateId))
             ->whereDate('from_date', '>=', $start->toDateString())
             ->whereDate('to_date', '<=', $end->toDateString())
-            ->with(['booking:id,booking_number,corporate_account_id,status,currency', 'serviceType:id,name'])
+            ->with(['booking:id,booking_number,corporate_account_id,status,currency,payment_collection_method', 'serviceType:id,name'])
             ->orderBy('from_date')->get();
 
-        $eligible = $periodItems->filter(fn($item) => $item->status === 'completed' && $item->final_priced_at && !$alreadyBilledIds->contains((string) $item->id));
+        $eligible = $periodItems->filter(fn($item) =>
+            $item->booking?->payment_collection_method === 'monthly_invoice'
+            && $item->status === 'completed'
+            && $item->final_priced_at
+            && ! $alreadyBilledIds->contains((string) $item->id)
+        );
         $excluded = $periodItems->reject(fn($item) => $eligible->contains('id', $item->id))->map(fn($item) => [
             'booking_id' => $item->booking_id,
             'booking_item_id' => $item->id,
             'booking_number' => $item->booking?->booking_number,
-            'reason' => $alreadyBilledIds->contains((string) $item->id) ? 'already_billed' : ($item->status !== 'completed' ? 'not_completed' : 'final_pricing_pending'),
+            'reason' => $item->booking?->payment_collection_method !== 'monthly_invoice'
+                ? 'not_monthly_corporate_credit'
+                : ($alreadyBilledIds->contains((string) $item->id)
+                    ? 'already_billed'
+                    : ($item->status !== 'completed' ? 'not_completed' : 'final_pricing_pending')),
         ])->values();
 
         $groups = $eligible->groupBy('booking_id')->map(function ($items) {

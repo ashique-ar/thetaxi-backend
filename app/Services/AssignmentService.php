@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Driver\Driver;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Models\DriverAssignment;
 use App\Jobs\SendCustomerDriverAssignedNotificationJob;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class AssignmentService
 {
@@ -147,6 +149,15 @@ class AssignmentService
     public function createDriverAssignment(array $params): DriverAssignment
     {
         return DB::transaction(function () use ($params) {
+            $bookingItem = ! empty($params['booking_item_id'])
+                ? BookingItem::with('serviceType')->find($params['booking_item_id'])
+                : null;
+            if ($bookingItem?->serviceType?->type === 'self_drive') {
+                throw ValidationException::withMessages([
+                    'driver_id' => 'A driver cannot be assigned to a self-drive service.',
+                ]);
+            }
+
             $userId = Auth::id() ?? ($params['assigned_by'] ?? ($params['created_user_id'] ?? null));
             
             $assignment = DriverAssignment::create([

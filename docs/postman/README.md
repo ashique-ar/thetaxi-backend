@@ -25,6 +25,7 @@ Content-Type: application/json
 ```
 
 Public endpoints:
+- `GET /api/driver/version-check`
 - `POST /api/driver/version-check`
 - `POST /api/public/driver-mobile/version-check`
 - `POST /api/driver/auth/login`
@@ -104,6 +105,7 @@ Notifications:
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---:|---|
+| GET | `/api/driver/version-check` | No | Query-parameter form of the primary version check |
 | POST | `/api/driver/version-check` | No | Primary pre-login app version check |
 | POST | `/api/public/driver-mobile/version-check` | No | Compatibility alias |
 
@@ -126,6 +128,7 @@ Notifications:
 | POST | `/api/driver/heartbeat` | Yes | Keep driver active |
 | POST | `/api/driver/location` | Yes | Update current GPS point |
 | POST | `/api/driver/location/bulk` | Yes | Upload buffered GPS points |
+| POST | `/api/driver/location/health` | Yes | Report GPS fix and offline queue health |
 | GET | `/api/driver/location/history` | Yes | Route history by session or assignment |
 | GET | `/api/driver/sessions` | Yes | List driver sessions |
 | GET | `/api/driver/sessions/{session_id}` | Yes | Session detail with route replay |
@@ -159,6 +162,7 @@ Notifications:
 | GET | `/api/driver/assignments` | Yes | List assignments |
 | GET | `/api/driver/assignments/current` | Yes | Current assignment |
 | POST | `/api/driver/assignments/{assignment_id}/accept` | Yes | Accept assignment |
+| POST | `/api/driver/assignments/{assignment_id}/acknowledge` | Yes | Record that the assignment notification was opened |
 | POST | `/api/driver/assignments/{assignment_id}/decline` | Yes | Decline assignment |
 | GET | `/api/driver/hires` | Yes | Completed hires |
 | GET | `/api/driver/earnings/summary` | Yes | Today/week/month earnings |
@@ -592,6 +596,7 @@ Response:
 Errors:
 - `LOCATION_NO_SESSION`
 - `LOCATION_RATE_LIMITED`
+- `LOCATION_ASSIGNMENT_AMBIGUOUS`
 
 ### Bulk Location Upload
 
@@ -622,6 +627,7 @@ Rules:
 - `locations` must contain 1 to 1000 points.
 - Each point requires `latitude`, `longitude`, and `recorded_at`.
 - Duplicate points are skipped.
+- Inspect per-point `outcomes`, `quarantined_count`, and `retryable_count`; do not assume every submitted point was persisted.
 
 Response:
 
@@ -633,6 +639,11 @@ Response:
     "saved_count": 2,
     "skipped_count": 1,
     "duplicate_count": 1,
+    "accepted_count": 2,
+    "quarantined_count": 0,
+    "retryable_count": 0,
+    "outcomes": [],
+    "correlation_id": "correlation-uuid",
     "latest_saved_point": {
       "id": "route-point-uuid",
       "latitude": 6.9285,
@@ -641,6 +652,27 @@ Response:
   }
 }
 ```
+
+### Location Health
+
+```http
+POST /api/driver/location/health
+```
+
+Report mobile-side GPS queue/fix health independently from route-point upload:
+
+```json
+{
+  "state": "recovered",
+  "queue_count": 0,
+  "oldest_queue_age_seconds": 0,
+  "last_fix_age_seconds": 5,
+  "app_version": "1.2.0",
+  "app_build": "120"
+}
+```
+
+`state` must be one of `healthy`, `recovered`, `delayed`, `severe_gap`, `blocked`, or `queue_pressure`. A successful response returns `data.acknowledged: true`; it does not mean queued route points were uploaded.
 
 ### Location History
 
@@ -848,6 +880,7 @@ List response:
 GET /api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}
 GET /api/driver/assignments/current
 POST /api/driver/assignments/{{assignment_id}}/accept
+POST /api/driver/assignments/{{assignment_id}}/acknowledge
 POST /api/driver/assignments/{{assignment_id}}/decline
 ```
 
@@ -875,11 +908,37 @@ Assignment response shape:
     "destination_known": true,
     "driver_message": null,
     "payment_type": "cash",
+    "pricing_visible": true,
     "fare_amount": 12500,
     "total_amount": 12500,
     "currency": "LKR",
     "booking_number": "BK-2026-0001",
     "service_type_name": "Airport Transfer",
+    "service": {
+      "id": "service-type-uuid",
+      "code": "airport_transfer",
+      "name": "Airport Transfer",
+      "type": "with_driver"
+    },
+    "execution_capabilities": {
+      "requires_driver": true,
+      "execution_mode": "trip",
+      "uses_hire_meter": false,
+      "route_mode": "fixed_route",
+      "requires_destination": true,
+      "supports_multiple_stops": true,
+      "tracks_waiting": true,
+      "collects_payment": true,
+      "shows_pricing": true
+    },
+    "booking_party": {
+      "type": "corporate",
+      "account_name": "Acme Holdings",
+      "traveler_type": "employee",
+      "traveler_name": "Nimal Perera",
+      "traveler_phone": "+94771111111",
+      "traveler_email": "nimal@example.com"
+    },
     "customer_name": "John Customer",
     "customer_phone": "+94771111111",
     "customer_email": "customer@example.com",
@@ -894,6 +953,26 @@ Assignment response shape:
   }
 }
 ```
+
+`booking_party` is the authoritative traveler/contact identity. The legacy `customer_name`, `customer_phone`, and `customer_email` fields remain temporarily compatible and follow the same traveler precedence. Use `execution_capabilities` to choose the UI mode, but use server-returned `allowed_actions` to authorize lifecycle buttons.
+
+When `pricing_visible` or `execution_capabilities.shows_pricing` is false, monetary fields such as `fare_amount`, `total_amount`, `currency`, `waiting_charge`, and `pricing_metrics` are intentionally omitted. Do not infer or display a fare. This applies to corporate/office-paid and already-settled hires.
+
+Acknowledging only records that the notification was opened:
+
+```json
+{
+  "status": "success",
+  "data": {
+    "notification_id": "notification-uuid",
+    "acknowledged_at": "2026-09-02T11:30:00+05:30",
+    "acknowledgement_source": "opened",
+    "acknowledgement_required": false
+  }
+}
+```
+
+It does not accept the assignment; call the accept endpoint separately when `allowed_actions` permits it.
 
 Open package assignment response shape:
 
@@ -1080,6 +1159,8 @@ POST /api/driver/assignments/{{assignment_id}}/collect-payment
 
 If `payment.collection_required` is false, do not collect cash. Follow `payment.collection_message`.
 
+For corporate, office-paid, card, bank-transfer, cheque, other non-driver collection, or already-settled hires, completion returns `pricing_visible: false`; `final_pricing` and `package_charges` are `null`, and the compact `payment` object contains collection instructions without monetary totals. Never reconstruct pricing on the mobile client.
+
 Complete response:
 
 ```json
@@ -1104,6 +1185,7 @@ Complete response:
     },
     "route_point_count": 75,
     "hire_completed": true,
+    "pricing_visible": true,
     "payment": {
       "payment_collection_method": "cash_to_driver",
       "payment_collection_status": "pending_collection",
@@ -1347,14 +1429,14 @@ Common trip stop errors:
 
 1. List Assignments.
 2. Accept Assignment.
-3. Get Trip Status.
-4. Confirm Pickup Arrival.
-5. Start Trip.
-6. Process stops if `is_multi_stop` is true.
-7. Complete Trip.
-8. If `payment.collection_required` is true, collect cash and call Collect Cash Payment.
-9. Check Hires.
-10. Check Earnings.
+3. Acknowledge Assignment Notification when the assignment was opened from push/inbox.
+4. Get Trip Status.
+5. Confirm Pickup Arrival.
+6. Start Trip.
+7. Process stops if `is_multi_stop` is true.
+8. Complete Trip.
+9. If `payment.collection_required` is true, collect cash and call Collect Cash Payment.
+10. Check Hires and Earnings.
 
 ### Open Package Hire
 
@@ -1417,6 +1499,13 @@ Recommended workflow for this project:
 - When backend endpoints change, update the repo JSON first, then import/sync the same JSON into the shared workspace.
 
 ## Version History
+
+### v2.5 (2026-09-02)
+- Added complete route coverage for assignment acknowledgement and mobile location-health reporting, including GET version-check support.
+- Documented canonical `service`, `execution_capabilities`, and `booking_party` assignment projections.
+- Added nested stop contact aliases (`kind`, `name`, `phone`, `note`) while retaining legacy contact keys.
+- Documented conditional pricing visibility and the rule that mobile must not infer hidden corporate/office-paid pricing.
+- Updated buffered-location outcome/correlation fields and completion payment guidance.
 
 ### v2.4 (2026-06-19)
 - Changed driver payment flow: complete trip first, then collect cash only if `payment.collection_required` is true.

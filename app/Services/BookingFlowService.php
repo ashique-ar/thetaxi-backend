@@ -11346,6 +11346,7 @@ class BookingFlowService
 
         $assignmentParams = [
             'booking_id' => $booking->id,
+            'booking_item_id' => $bookingItem->id,
             'customer_name' => $customerName,
             'service_type' => $bookingItem->serviceType ? $bookingItem->serviceType->name : ($params['service_type'] ?? 'Unknown Service'),
             'assigned_from' => $this->bookingDateTime($bookingItem->from_date, $bookingItem->from_time),
@@ -11395,7 +11396,7 @@ class BookingFlowService
         }
 
         // Create driver assignment if driver is selected and not self-driven
-        if ($bookingItem->driver_id && !($params['is_self_driven'] ?? false)) {
+        if ($bookingItem->driver_id && $bookingItem->serviceType?->type !== 'self_drive') {
             try {
                 $driverAssignmentParams = array_merge($assignmentParams, [
                     'driver_id' => $bookingItem->driver_id,
@@ -11963,6 +11964,15 @@ class BookingFlowService
             ?? ($isExplicitlyNonCorporate && !$hasExplicitPaymentMethod ? null : $booking?->payment_collection_method)
             ?? null;
         if (!$hasExplicitPaymentMethod && !$rawMethod) {
+            $corporateId = $params['corporate_account_id'] ?? $booking?->corporate_account_id;
+            $customerId = $params['customer_id'] ?? $booking?->customer_id;
+            $rawMethod = $isCorporateBooking && $corporateId && Schema::hasColumn('corporates', 'default_payment_arrangement')
+                ? \App\Models\Corporate\Corporate::query()->whereKey($corporateId)->value('default_payment_arrangement')
+                : ($customerId && Schema::hasColumn('customers', 'default_payment_arrangement')
+                    ? \App\Models\Customer::query()->whereKey($customerId)->value('default_payment_arrangement')
+                    : null);
+        }
+        if (!$hasExplicitPaymentMethod && !$rawMethod) {
             $serviceTypeId = $params['service_type_id'] ?? data_get($params, 'booking_items.0.service_type_id');
             if ($serviceTypeId) {
                 $service = \App\Models\Service\ServiceType::find($serviceTypeId);
@@ -12002,12 +12012,13 @@ class BookingFlowService
             ?? $booking?->payment_collection_status
             ?? null;
 
-        if (!in_array($status, ['pending', 'driver_collected', 'online_paid', 'billable', 'invoiced', 'paid', 'failed', 'refunded'], true)) {
+        if (!in_array($status, ['pending', 'partially_collected', 'driver_collected', 'online_paid', 'billable', 'invoiced', 'paid', 'failed', 'refunded'], true)) {
             $status = $method === 'monthly_invoice' ? 'billable' : 'pending';
         }
 
         $legacyPaymentStatus = match ($status) {
             'driver_collected', 'online_paid', 'paid' => 'paid',
+            'partially_collected' => 'partially_paid',
             'failed' => 'failed',
             'refunded' => 'refunded',
             default => match ($method) {
@@ -12039,6 +12050,9 @@ class BookingFlowService
                 'advance_then_balance' => 'advance_then_balance',
                 'deposit_then_balance' => 'deposit_then_balance',
                 'online' => 'online_payment',
+                'card' => 'card_payment',
+                'bank_transfer' => 'bank_transfer',
+                'other' => 'office_payment',
                 'complimentary' => 'complimentary',
                 default => 'driver_collection',
             },

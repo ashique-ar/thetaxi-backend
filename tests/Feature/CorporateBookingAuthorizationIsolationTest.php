@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Api\Corporate\CorporateBookingController;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
+use App\Http\Requests\Corporate\StoreCorporateBookingRequest;
 use App\Models\Booking\BookingItem;
 use App\Services\CorporateBookingService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -18,6 +19,9 @@ beforeEach(function () {
     Schema::dropIfExists('bookings');
     Schema::dropIfExists('corporate_divisions');
     Schema::dropIfExists('corporate_departments');
+    Schema::dropIfExists('corporate_employees');
+    Schema::dropIfExists('corporate_employee_locations');
+    Schema::dropIfExists('service_packages');
 
     Schema::create('bookings', function (Blueprint $table) {
         $table->uuid('id')->primary();
@@ -25,6 +29,7 @@ beforeEach(function () {
         $table->uuid('employee_id')->nullable();
         $table->uuid('corporate_department_id')->nullable();
         $table->uuid('corporate_division_id')->nullable();
+        $table->uuid('created_by_user_id')->nullable();
         $table->boolean('is_corporate_booking')->default(false);
         $table->string('status')->nullable();
         $table->decimal('total_estimated', 12, 2)->nullable();
@@ -56,6 +61,127 @@ beforeEach(function () {
         $table->timestamps();
         $table->softDeletes();
     });
+    Schema::create('corporate_employees', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('corporate_id');
+        $table->uuid('user_id');
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('corporate_employee_locations', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('corporate_employee_id');
+        $table->string('label')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('service_packages', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('service_type_id');
+        $table->boolean('is_active')->default(true);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+});
+
+it('validates general and employee booking parties inside the authenticated corporate', function () {
+    $companyA = '20000000-0000-4000-8000-000000000001';
+    $companyB = '20000000-0000-4000-8000-000000000002';
+    $employeeA = '30000000-0000-4000-8000-000000000001';
+    $employeeB = '30000000-0000-4000-8000-000000000002';
+    $departmentA = '40000000-0000-4000-8000-000000000001';
+    $departmentB = '40000000-0000-4000-8000-000000000002';
+    $divisionA = '50000000-0000-4000-8000-000000000001';
+    $divisionB = '50000000-0000-4000-8000-000000000002';
+
+    DB::table('corporate_employees')->insert([
+        ['id' => $employeeA, 'corporate_id' => $companyA, 'user_id' => '60000000-0000-4000-8000-000000000001'],
+        ['id' => $employeeB, 'corporate_id' => $companyB, 'user_id' => '60000000-0000-4000-8000-000000000002'],
+    ]);
+    DB::table('corporate_departments')->insert([
+        ['id' => $departmentA, 'corporate_id' => $companyA, 'name' => 'A'],
+        ['id' => $departmentB, 'corporate_id' => $companyB, 'name' => 'B'],
+    ]);
+    DB::table('corporate_divisions')->insert([
+        ['id' => $divisionA, 'department_id' => $departmentA, 'name' => 'A1'],
+        ['id' => $divisionB, 'department_id' => $departmentB, 'name' => 'B1'],
+    ]);
+
+    $validate = function (array $payload) use ($companyA): StoreCorporateBookingRequest {
+        $request = StoreCorporateBookingRequest::create('/api/corporate/bookings', 'POST', $payload);
+        $request->attributes->set('corporate_id', $companyA);
+        $request->setContainer(app())->setRedirector(app('redirect'));
+        $request->validateResolved();
+        return $request;
+    };
+
+    $general = $validate([
+        'booking_party_mode' => 'general',
+        'corporate_contact' => ['name' => 'Visitor A', 'phone' => '+94770000001'],
+    ]);
+    expect($general->validated('booking_party_mode'))->toBe('general')
+        ->and($general->validated('corporate_contact.name'))->toBe('Visitor A');
+
+    expect(fn () => $validate([
+        'booking_party_mode' => 'general',
+        'corporate_contact' => ['name' => 'Missing Phone'],
+    ]))->toThrow(ValidationException::class);
+
+    expect(fn () => $validate([
+        'booking_party_mode' => 'employee',
+        'employee_id' => $employeeB,
+        'corporate_department_id' => $departmentB,
+        'corporate_division_id' => $divisionB,
+    ]))->toThrow(ValidationException::class);
+
+    expect(fn () => $validate([
+        'booking_party_mode' => 'employee',
+        'employee_id' => $employeeA,
+        'corporate_department_id' => $departmentA,
+        'corporate_division_id' => $divisionA,
+    ]))->not->toThrow(ValidationException::class);
+});
+
+it('rejects foreign stop contacts and packages from another service', function () {
+    $companyA = '20000000-0000-4000-8000-000000000001';
+    $companyB = '20000000-0000-4000-8000-000000000002';
+    $employeeA = '30000000-0000-4000-8000-000000000001';
+    $employeeB = '30000000-0000-4000-8000-000000000002';
+    $locationA = '40000000-0000-4000-8000-000000000001';
+    $locationB = '40000000-0000-4000-8000-000000000002';
+    $serviceA = '50000000-0000-4000-8000-000000000001';
+    $serviceB = '50000000-0000-4000-8000-000000000002';
+    $packageA = '60000000-0000-4000-8000-000000000001';
+
+    DB::table('corporate_employees')->insert([
+        ['id' => $employeeA, 'corporate_id' => $companyA, 'user_id' => '70000000-0000-4000-8000-000000000001'],
+        ['id' => $employeeB, 'corporate_id' => $companyB, 'user_id' => '70000000-0000-4000-8000-000000000002'],
+    ]);
+    DB::table('corporate_employee_locations')->insert([
+        ['id' => $locationA, 'corporate_employee_id' => $employeeA],
+        ['id' => $locationB, 'corporate_employee_id' => $employeeB],
+    ]);
+    DB::table('service_packages')->insert([
+        'id' => $packageA,
+        'service_type_id' => $serviceA,
+        'is_active' => true,
+    ]);
+
+    $corporate = new \App\Models\Corporate\Corporate();
+    $corporate->setRawAttributes(['id' => $companyA]);
+    $service = app(CorporateBookingService::class);
+    $stops = new ReflectionMethod($service, 'validateStopOwnership');
+    $packages = new ReflectionMethod($service, 'validateServicePackage');
+
+    expect(fn () => $stops->invoke($service, $corporate, [
+        'primary_pickup_contact' => ['employee_id' => $employeeA, 'employee_location_id' => $locationA],
+    ]))->not->toThrow(Throwable::class)
+        ->and(fn () => $stops->invoke($service, $corporate, [
+            'ordered_additional_stops' => [['employee_id' => $employeeB, 'employee_location_id' => $locationB]],
+        ]))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
+        ->and(fn () => $packages->invoke($service, $serviceA, $packageA))->not->toThrow(Throwable::class)
+        ->and(fn () => $packages->invoke($service, $serviceB, $packageA))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 });
 
 it('keeps corporate booking item queries isolated to the authenticated company', function () {
@@ -74,6 +200,27 @@ it('keeps corporate booking item queries isolated to the authenticated company',
     $query->setEagerLoads([]);
 
     expect($query->pluck('booking_items.id')->all())->toBe(['item-a']);
+});
+
+it('shows an actor employee bookings and general bookings they created only in the active corporate', function () {
+    DB::table('bookings')->insert([
+        ['id' => 'booking-own', 'corporate_account_id' => 'company-a', 'employee_id' => 'actor-a', 'is_corporate_booking' => true],
+        ['id' => 'booking-general', 'corporate_account_id' => 'company-a', 'created_by_user_id' => 'actor-a', 'is_corporate_booking' => true],
+        ['id' => 'booking-foreign', 'corporate_account_id' => 'company-b', 'created_by_user_id' => 'actor-a', 'is_corporate_booking' => true],
+    ]);
+    DB::table('booking_items')->insert([
+        ['id' => 'item-own', 'booking_id' => 'booking-own'],
+        ['id' => 'item-general', 'booking_id' => 'booking-general'],
+        ['id' => 'item-foreign', 'booking_id' => 'booking-foreign'],
+    ]);
+
+    $service = app(CorporateBookingService::class);
+    $method = new ReflectionMethod($service, 'corporateActorBookingItemQuery');
+    $query = $method->invoke($service, 'actor-a', 'company-a');
+    $query->setEagerLoads([]);
+
+    expect($query->orderBy('booking_items.id')->pluck('booking_items.id')->all())
+        ->toBe(['item-general', 'item-own']);
 });
 
 it('uses one corporate department status and travel window for multi trip rows and summary bookings', function () {

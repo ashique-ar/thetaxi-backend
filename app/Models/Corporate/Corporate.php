@@ -22,6 +22,7 @@ class Corporate extends BaseModel
         'approval_required',
         'exempt_coordinator_from_approval',
         'coordinator_can_view_payments',
+        'default_payment_arrangement',
         'created_user_id',
         'updated_user_id',
     ];
