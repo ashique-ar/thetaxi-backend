@@ -8296,11 +8296,19 @@ class BookingFlowService
                             ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
                                 $corporateQuery->where('name', 'like', "%{$search}%");
                             })
-                            ->orWhereHas('employeeUser', function ($employeeUserQuery) use ($search) {
-                                $employeeUserQuery->where('first_name', 'like', "%{$search}%")
-                                    ->orWhere('last_name', 'like', "%{$search}%")
-                                    ->orWhere('email', 'like', "%{$search}%")
-                                    ->orWhere('phone', 'like', "%{$search}%");
+                            ->orWhereExists(function ($employeeUserQuery) use ($search) {
+                                $employeeUserQuery->selectRaw('1')
+                                    ->from('users')
+                                    // Legacy databases created bookings.employee_id as varchar.
+                                    // Cast the UUID column to text so PostgreSQL can compare both safely.
+                                    ->whereRaw('users.id::text = bookings.employee_id')
+                                    ->whereNull('users.deleted_at')
+                                    ->where(function ($identityQuery) use ($search) {
+                                        $identityQuery->where('users.first_name', 'like', "%{$search}%")
+                                            ->orWhere('users.last_name', 'like', "%{$search}%")
+                                            ->orWhere('users.email', 'like', "%{$search}%")
+                                            ->orWhere('users.phone', 'like', "%{$search}%");
+                                    });
                             });
                     })
                     ->orWhereHas('serviceType', function ($serviceTypeQuery) use ($search) {

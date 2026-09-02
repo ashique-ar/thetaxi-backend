@@ -74,7 +74,7 @@ return new class extends Migration {
             $table->uuid('corporate_account_id')->nullable();
             $table->string('cost_center')->nullable();
             $table->string('project_code')->nullable();
-            $table->string('employee_id')->nullable();
+            $table->uuid('employee_id')->nullable();
 
             $table->jsonb('review_notes')->nullable();
 
