@@ -33,6 +33,7 @@
     data-phone-preferred-countries="{{ implode(',', $phonePreferredCountries) }}"
     action="{{ route($formAction) }}" method="POST">
     @csrf
+    @include('inquiry.partials.spam-protection', ['honeypotId' => 'service-inquiry-company-website'])
     <input type="hidden" name="inquiry_service_page_id" value="{{ $servicePage->id }}">
     <input type="hidden" name="service_slug" value="{{ $servicePage->slug }}">
     @if (!empty($servicePage->inquiry_type))

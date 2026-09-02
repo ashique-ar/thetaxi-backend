@@ -81,14 +81,7 @@
                             <form action="{{ route('contact.store') }}" method="POST">
                                 @csrf
                                 <input type="hidden" name="inquiry_type" value="general">
-                                <input type="hidden" name="_inquiry_form_token"
-                                    value="{{ \Illuminate\Support\Facades\Crypt::encryptString((string) now()->timestamp) }}">
-                                <div aria-hidden="true"
-                                    style="position:absolute;left:-10000px;top:auto;width:1px;height:1px;overflow:hidden;">
-                                    <label for="contact-company-website">Company website</label>
-                                    <input id="contact-company-website" type="text" name="company_website"
-                                        value="" tabindex="-1" autocomplete="off">
-                                </div>
+                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'contact-company-website'])
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">

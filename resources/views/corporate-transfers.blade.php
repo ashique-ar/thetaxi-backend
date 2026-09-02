@@ -58,6 +58,7 @@
                             <form id="corporate-transport-form" class="filter-input show "
                                 data-service="corporate-transport" action="{{ route('booking.enquiry') }}" method="POST">
                                 @csrf
+                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'corporate-company-website'])
                                 <input type="hidden" name="service_type" value="corporate-transport">
                                 <input type="hidden" name="inquiry_type" value="corporate">
 

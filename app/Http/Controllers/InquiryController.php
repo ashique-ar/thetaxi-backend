@@ -29,7 +29,7 @@ class InquiryController extends Controller
      */
     public function store(Request $request)
     {
-        if ($request->routeIs('contact.store') && $this->rejectSpamGeneralInquiry($request)) {
+        if ($this->rejectAutomatedInquiry($request)) {
             return back()->with('success', 'Thank you for your inquiry! Our team will get back to you soon.');
         }
 
@@ -93,16 +93,16 @@ class InquiryController extends Controller
     }
 
     /**
-     * Silently discard automated submissions to the public General Inquiry form.
+     * Silently discard automated submissions to every public inquiry form.
      *
      * The encrypted page token prevents scripts from posting directly without first
      * loading the form, while the off-screen field catches form-filling bots.
      */
-    private function rejectSpamGeneralInquiry(Request $request): bool
+    private function rejectAutomatedInquiry(Request $request): bool
     {
         $reason = null;
 
-        if (trim((string) $request->input('company_website')) !== '') {
+        if (trim((string) $request->input('_inquiry_website')) !== '') {
             $reason = 'honeypot_filled';
         } else {
             try {
@@ -121,7 +121,7 @@ class InquiryController extends Controller
             return false;
         }
 
-        Log::notice('Spam General Inquiry discarded', [
+        Log::notice('Automated public inquiry discarded', [
             'reason' => $reason,
             'ip_address' => $request->ip(),
             'user_agent' => $request->userAgent(),

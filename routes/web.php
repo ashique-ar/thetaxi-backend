@@ -128,7 +128,9 @@ Route::get('/currency/available', [CurrencyController::class, 'available'])->nam
 // Booking routes
 // Support GET for search (so public search forms don't require CSRF tokens) while keeping POST for compatibility
 Route::match(['get', 'post'], '/booking/search', [BookingController::class, 'search'])->name('booking.search');
-Route::post('/booking/enquiry', [InquiryController::class, 'store'])->name('booking.enquiry');
+Route::post('/booking/enquiry', [InquiryController::class, 'store'])
+    ->middleware('throttle:5,10')
+    ->name('booking.enquiry');
 Route::post('/booking/request-quotation', [BookingController::class, 'requestQuotation'])->name('booking.request-quotation');
 Route::get('/booking/status', [CustomerBookingStatusController::class, 'show'])->name('booking.status');
 Route::post('/booking/status', [CustomerBookingStatusController::class, 'lookup'])

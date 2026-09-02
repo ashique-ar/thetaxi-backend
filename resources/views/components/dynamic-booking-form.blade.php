@@ -144,9 +144,13 @@
       data-has-search-context="{{ $hasSearchContext ? 'true' : 'false' }}"
       data-field-defaults="{{ base64_encode(json_encode($clientFieldDefaults)) }}"
       action="{{ $actionRoute }}"
-      method="GET"
+      method="{{ $isInquiry ? 'POST' : 'GET' }}"
       novalidate>
 
+    @if ($isInquiry)
+        @csrf
+        @include('inquiry.partials.spam-protection', ['honeypotId' => $formId . '-company-website'])
+    @endif
     <input type="hidden" name="service_type" value="{{ $serviceCode }}">
 
     @php $currentLayoutRow = null; @endphp
