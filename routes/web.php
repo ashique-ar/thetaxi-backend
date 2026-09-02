@@ -117,7 +117,9 @@ Route::get('/corporate-transfers', [InquiryServicePageController::class, 'show']
 
 
 // contact.store
-Route::post('/contact', [InquiryController::class, 'store'])->name('contact.store');
+Route::post('/contact', [InquiryController::class, 'store'])
+    ->middleware('throttle:3,10')
+    ->name('contact.store');
 
 // Currency routes
 Route::post('/currency/switch', [CurrencyController::class, 'switch'])->name('currency.switch');

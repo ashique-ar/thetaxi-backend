@@ -9,6 +9,7 @@ use App\Services\MailDispatchService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
 
 class InquiryController extends Controller
@@ -28,6 +29,10 @@ class InquiryController extends Controller
      */
     public function store(Request $request)
     {
+        if ($request->routeIs('contact.store') && $this->rejectSpamGeneralInquiry($request)) {
+            return back()->with('success', 'Thank you for your inquiry! Our team will get back to you soon.');
+        }
+
         $servicePage = $this->resolveInquiryServicePage($request);
         if ($request->filled('inquiry_service_page_id') || $request->filled('service_slug')) {
             if (!$servicePage) {
@@ -85,6 +90,44 @@ class InquiryController extends Controller
                 ->withInput()
                 ->with('error', 'An error occurred while submitting your inquiry. Please try again.');
         }
+    }
+
+    /**
+     * Silently discard automated submissions to the public General Inquiry form.
+     *
+     * The encrypted page token prevents scripts from posting directly without first
+     * loading the form, while the off-screen field catches form-filling bots.
+     */
+    private function rejectSpamGeneralInquiry(Request $request): bool
+    {
+        $reason = null;
+
+        if (trim((string) $request->input('company_website')) !== '') {
+            $reason = 'honeypot_filled';
+        } else {
+            try {
+                $startedAt = (int) Crypt::decryptString((string) $request->input('_inquiry_form_token'));
+                $formAge = now()->timestamp - $startedAt;
+
+                if ($startedAt <= 0 || $formAge < 2 || $formAge > 21600) {
+                    $reason = 'invalid_form_age';
+                }
+            } catch (\Throwable) {
+                $reason = 'invalid_form_token';
+            }
+        }
+
+        if ($reason === null) {
+            return false;
+        }
+
+        Log::notice('Spam General Inquiry discarded', [
+            'reason' => $reason,
+            'ip_address' => $request->ip(),
+            'user_agent' => $request->userAgent(),
+        ]);
+
+        return true;
     }
 
     /**
