@@ -132,6 +132,23 @@ class StatusController extends Controller
             // Check for active trip tracking session
             $activeTrip = $this->assignmentService->getActiveTripAssignment($driver);
 
+            // Personal devices cannot be prevented from disabling Android
+            // connectivity or Location, but the application must not offer a
+            // second path that deliberately closes tracking during a hire.
+            // Keep this guard server-owned so an older or modified client
+            // cannot bypass the mobile UI restriction.
+            if ($activeTrip) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Complete the active hire before going offline.',
+                    'error_code' => 'STATUS_ACTIVE_TRIP_REQUIRES_ONLINE',
+                    'data' => [
+                        'assignment_id' => $activeTrip->id,
+                        'trip_phase' => $activeTrip->trip_phase->value,
+                    ],
+                ], 409);
+            }
+
             $session = $this->sessionService->endSession($driver, $request->validated());
 
             $responseData = [
@@ -139,15 +156,6 @@ class StatusController extends Controller
             ];
 
             $message = 'Driver is now offline';
-
-            if ($activeTrip) {
-                $responseData['trip_warning'] = 'Trip is still in progress. The trip tracking session remains active.';
-                $responseData['active_trip'] = [
-                    'assignment_id' => $activeTrip->id,
-                    'trip_phase' => $activeTrip->trip_phase->value,
-                ];
-                $message = 'Driver is now offline. Warning: trip is still in progress.';
-            }
 
             return response()->json([
                 'status' => 'success',

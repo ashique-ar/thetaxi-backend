@@ -22,3 +22,17 @@ it('fails closed when an advertised release is not confirmed published and valid
         ->and($controller)->toContain('advertised_release_published')
         ->toContain('mandatory_release_validated');
 });
+
+it('provides a read-only release inspection gate with complete provenance fields', function () {
+    $command = file_get_contents(app_path('Console/Commands/InspectDriverMobileRelease.php'));
+
+    expect($command)
+        ->toContain('driver-mobile:inspect-release')
+        ->toContain("'commit_sha'")
+        ->toContain("'play_track'")
+        ->toContain("'rollout_percentage'")
+        ->toContain("'release_date'")
+        ->toContain("'ready_to_advertise'")
+        ->toContain("'ready_for_mandatory_update'")
+        ->toContain("'read_only' => true");
+});

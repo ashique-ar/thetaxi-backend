@@ -26,10 +26,12 @@ it('detects historical route risks without changing raw evidence or legacy dista
 
     $report = app(HistoricalRouteEvidenceAuditService::class)->inspect($assignment);
 
-    expect($report['issue_codes'])->toContain('cross_day_points', 'outside_lifecycle_window', 'long_gps_gap', 'legacy_distance_value_present')
+    expect($report['issue_codes'])->toContain('cross_day_points', 'outside_lifecycle_window', 'long_gps_gap', 'legacy_calculator_version_unknown', 'legacy_distance_value_present')
         ->and($report['legacy_distance_km'])->toBe(52.61)
         ->and($report['mutation_performed'])->toBeFalse()
         ->and($report['pricing_effect'])->toBe('none')
+        ->and($report['raw_evidence_fingerprint'])->toMatch('/^[a-f0-9]{64}$/')
+        ->and($report['calculation_version'])->not->toBeEmpty()
         ->and($points->map->getAttributes()->all())->toBe($before);
 });
 
@@ -38,6 +40,7 @@ it('registers a report-only command with no correction option', function () {
     expect($command)->toContain('bookings:audit-route-evidence')
         ->toContain("'read_only' => true")
         ->toContain("'corrections_authorized' => false")
+        ->toContain("'calculation_policy_version' => config('route_evidence.policy_version')")
         ->not->toContain('save(')
         ->not->toContain('update(')
         ->not->toContain('delete(');

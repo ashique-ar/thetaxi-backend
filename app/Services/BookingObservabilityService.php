@@ -133,6 +133,7 @@ class BookingObservabilityService
 
     public function trackingSummary(Booking $booking, string $bookingItemId): array
     {
+        $bookingItem = $booking->bookingItems()->whereKey($bookingItemId)->first();
         $assignment = $this->assignmentForItem($booking, $bookingItemId);
         $latest = $assignment ? $this->routeQuery($assignment)->latest('recorded_at')->first() : null;
         $totalPoints = $assignment ? $this->routeQuery($assignment)->count() : 0;
@@ -161,6 +162,7 @@ class BookingObservabilityService
             'route_truncated' => false,
             'has_replay' => $totalPoints > 0,
             'distance_evidence' => $distanceEvidence,
+            'completion_evidence' => data_get($bookingItem?->metadata, 'driver_route_evidence.completion'),
             'pricing_effect' => 'none',
             'generated_at' => now()->utc()->toIso8601String(),
         ];

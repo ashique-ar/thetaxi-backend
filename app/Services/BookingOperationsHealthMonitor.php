@@ -124,6 +124,23 @@ class BookingOperationsHealthMonitor
         }
     }
 
+    public function recordIncompleteTrackingCompletion(array $context): void
+    {
+        $safeContext = array_filter([
+            'booking_id' => $context['booking_id'] ?? null,
+            'booking_item_id' => $context['booking_item_id'] ?? null,
+            'assignment_id' => $context['assignment_id'] ?? null,
+            'driver_id' => $context['driver_id'] ?? null,
+            'outage_kind' => $context['outage_kind'] ?? null,
+            'state' => 'completion_evidence_incomplete',
+            'pricing_effect' => 'none',
+        ], fn ($value) => $value !== null && $value !== '');
+
+        if ($this->acquire('incomplete-tracking-completion', $safeContext)) {
+            Log::warning('booking_tracking_completion_evidence_incomplete', $safeContext);
+        }
+    }
+
     private function acquire(string $signal, array $context): bool
     {
         $seconds = max(1, (int) config('booking_observability.health_alert_throttle_seconds', 900));

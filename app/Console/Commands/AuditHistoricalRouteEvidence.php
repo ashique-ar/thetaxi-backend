@@ -29,6 +29,8 @@ class AuditHistoricalRouteEvidence extends Command
             'generated_at' => now('UTC')->toIso8601String(),
             'read_only' => true,
             'corrections_authorized' => false,
+            'calculation_policy_version' => config('route_evidence.policy_version'),
+            'scope' => ['booking_id' => $this->option('booking') ?: null],
             'items' => $rows,
         ];
         $json = json_encode($report, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR);

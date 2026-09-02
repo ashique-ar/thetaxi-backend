@@ -11,6 +11,7 @@ use App\Models\DriverAssignmentStop;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\MobileAssignmentService;
 use App\Services\Driver\TripTrackingService;
+use App\Services\BookingOperationsHealthMonitor;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -430,6 +431,15 @@ class TripController extends Controller
             $summary = $this->tripTrackingService->endTrip($assignment, $request->validated());
             $completedAssignment = $assignment->fresh();
             $summary['assignment'] = $this->assignmentService->buildAssignmentPayload($completedAssignment);
+            if (data_get($summary, 'completion_evidence.operations_review_required') === true) {
+                app(BookingOperationsHealthMonitor::class)->recordIncompleteTrackingCompletion([
+                    'booking_id' => $assignment->booking_id,
+                    'booking_item_id' => $assignment->booking_item_id,
+                    'assignment_id' => $assignment->id,
+                    'driver_id' => $assignment->driver_id,
+                    'outage_kind' => data_get($summary, 'completion_evidence.outage_kind'),
+                ]);
+            }
 
             return response()->json([
                 'status' => 'success',

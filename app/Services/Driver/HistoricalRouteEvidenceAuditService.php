@@ -4,6 +4,7 @@ namespace App\Services\Driver;
 
 use App\Models\DriverAssignment;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 
 class HistoricalRouteEvidenceAuditService
 {
@@ -24,6 +25,7 @@ class HistoricalRouteEvidenceAuditService
             $outsideWindow > 0 ? 'outside_lifecycle_window' : null,
             $result['gap_count'] > 0 ? 'long_gps_gap' : null,
             !$result['distance_trustworthy'] ? 'insufficient_or_untrusted_coverage' : null,
+            $assignment->total_distance_km !== null ? 'legacy_calculator_version_unknown' : null,
             $assignment->total_distance_km !== null ? 'legacy_distance_value_present' : null,
         ]));
 
@@ -35,9 +37,27 @@ class HistoricalRouteEvidenceAuditService
             'legacy_distance_km' => $assignment->total_distance_km !== null ? (float) $assignment->total_distance_km : null,
             'evidence' => $result,
             'raw_point_count' => $points->count(),
+            'raw_evidence_fingerprint' => $this->evidenceFingerprint($points),
+            'calculation_version' => $result['calculation_version'] ?? null,
             'outside_window_point_count' => $outsideWindow,
             'mutation_performed' => false,
             'pricing_effect' => 'none',
         ];
+    }
+
+    private function evidenceFingerprint(Collection $points): string
+    {
+        $canonical = $points
+            ->sortBy(fn ($point) => sprintf('%s|%s', Carbon::parse($point->recorded_at)->utc()->format('Y-m-d\TH:i:s.u\Z'), $point->id ?? ''))
+            ->map(fn ($point) => implode('|', [
+                (string) ($point->id ?? ''),
+                Carbon::parse($point->recorded_at)->utc()->format('Y-m-d\TH:i:s.u\Z'),
+                number_format((float) $point->latitude, 7, '.', ''),
+                number_format((float) $point->longitude, 7, '.', ''),
+                $point->accuracy === null ? '' : number_format((float) $point->accuracy, 2, '.', ''),
+            ]))
+            ->implode("\n");
+
+        return hash('sha256', $canonical);
     }
 }

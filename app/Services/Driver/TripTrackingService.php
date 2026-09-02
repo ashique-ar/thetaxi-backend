@@ -215,9 +215,14 @@ class TripTrackingService
                 'waiting_period_count'       => $waitingTime['waiting_period_count'],
                 'pickup_coordinates'         => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates'        => [
-                    'latitude'  => (float) ($finalLocation['latitude']  ?? $assignment->final_latitude),
-                    'longitude' => (float) ($finalLocation['longitude'] ?? $assignment->final_longitude),
+                    'latitude'  => ($finalLocation['latitude'] ?? $assignment->final_latitude) !== null
+                        ? (float) ($finalLocation['latitude'] ?? $assignment->final_latitude)
+                        : null,
+                    'longitude' => ($finalLocation['longitude'] ?? $assignment->final_longitude) !== null
+                        ? (float) ($finalLocation['longitude'] ?? $assignment->final_longitude)
+                        : null,
                 ],
+                'completion_evidence'        => data_get($assignment->bookingItem?->metadata, 'driver_route_evidence.completion'),
                 'route_point_count'          => $assignment->routePoints()->count(),
                 'hire_completed'             => true,
                 'payment'                    => $this->mapBookingPaymentSummary($assignment->booking),
@@ -239,6 +244,9 @@ class TripTrackingService
 
         return DB::transaction(function () use ($assignment, $finalLocation) {
             $now = Carbon::now('UTC');
+            $trackingUnavailable = (bool) ($finalLocation['tracking_unavailable_acknowledged'] ?? false);
+            $finalLatitude = $trackingUnavailable ? null : ($finalLocation['latitude'] ?? null);
+            $finalLongitude = $trackingUnavailable ? null : ($finalLocation['longitude'] ?? null);
 
             // Close open waiting records
             $this->waitingTimeService->closeOpenWaitingRecords($assignment);
@@ -257,8 +265,8 @@ class TripTrackingService
                 'status' => 'completed',
                 'trip_completed_at' => $now,
                 'actual_end' => $now,
-                'final_latitude' => $finalLocation['latitude'],
-                'final_longitude' => $finalLocation['longitude'],
+                'final_latitude' => $finalLatitude,
+                'final_longitude' => $finalLongitude,
                 'total_distance_km' => $totalDistance,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
             ]);
@@ -284,6 +292,12 @@ class TripTrackingService
             );
             $packageCharges = $this->syncBookingLifecycleAfterDriverTripCompletion($assignment, $finalLocation, $now);
             $paymentSummary = $this->syncTripEndPaymentCollection($assignment, $finalLocation, $now);
+            $completionEvidence = $this->persistCompletionEvidence(
+                $assignment,
+                $finalLocation,
+                $now,
+                $trackingUnavailable
+            );
 
             $completedAssignment = $assignment->fresh();
             $completedBooking = Booking::query()->find($assignment->booking_id);
@@ -301,9 +315,10 @@ class TripTrackingService
                 'waiting_period_count' => $waitingTime['waiting_period_count'],
                 'pickup_coordinates' => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates' => [
-                    'latitude' => (float) $finalLocation['latitude'],
-                    'longitude' => (float) $finalLocation['longitude'],
+                    'latitude' => $finalLatitude !== null ? (float) $finalLatitude : null,
+                    'longitude' => $finalLongitude !== null ? (float) $finalLongitude : null,
                 ],
+                'completion_evidence' => $completionEvidence,
                 'route_point_count' => $assignment->routePoints()->count(),
                 'hire_completed' => true,
                 'package_charges' => $packageCharges,
@@ -311,6 +326,38 @@ class TripTrackingService
                 'payment' => $paymentSummary,
             ];
         });
+    }
+
+    private function persistCompletionEvidence(
+        DriverAssignment $assignment,
+        array $finalLocation,
+        Carbon $completedAt,
+        bool $trackingUnavailable
+    ): array {
+        $evidence = [
+            'status' => $trackingUnavailable ? 'incomplete' : 'recorded',
+            'tracking_unavailable_acknowledged' => $trackingUnavailable,
+            'outage_kind' => $trackingUnavailable ? ($finalLocation['tracking_outage_kind'] ?? 'fresh_fix_unavailable') : null,
+            'driver_reason' => $trackingUnavailable ? trim((string) ($finalLocation['tracking_unavailable_reason'] ?? '')) : null,
+            'client_recorded_at' => $finalLocation['client_recorded_at'] ?? null,
+            'server_completed_at' => $completedAt->toIso8601String(),
+            'final_location_recorded' => !$trackingUnavailable,
+            'pricing_effect' => 'none',
+            'operations_review_required' => $trackingUnavailable,
+        ];
+
+        $bookingItem = $assignment->bookingItem()->lockForUpdate()->first();
+        if ($bookingItem) {
+            $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+            $routeEvidence = is_array($metadata['driver_route_evidence'] ?? null)
+                ? $metadata['driver_route_evidence']
+                : [];
+            $routeEvidence['completion'] = $evidence;
+            $metadata['driver_route_evidence'] = $routeEvidence;
+            $bookingItem->update(['metadata' => $metadata]);
+        }
+
+        return $evidence;
     }
 
     /**
@@ -1361,15 +1408,16 @@ class TripTrackingService
 
         $waitingMinutes = (int) ceil(($waitingTime['total_waiting_time_seconds'] ?? 0) / 60);
         $finalAddress = $finalLocation['final_address'] ?? $finalLocation['address'] ?? null;
+        $hasFinalCoordinates = isset($finalLocation['latitude'], $finalLocation['longitude']);
         $finalDropoff = [
             'address' => $finalAddress,
-            'latitude' => $finalLocation['latitude'],
-            'longitude' => $finalLocation['longitude'],
+            'latitude' => $finalLocation['latitude'] ?? null,
+            'longitude' => $finalLocation['longitude'] ?? null,
         ];
 
         // A contractual snapshot fixes billable coordinates/distance. Keep that
         // immutable while still recording the driver's operational measurements.
-        if (!$contractualDistance) {
+        if (!$contractualDistance && $hasFinalCoordinates) {
             $bookingItem->update([
                 'dropoff_location' => $finalDropoff,
                 'dropoff_latitude' => $finalLocation['latitude'],
