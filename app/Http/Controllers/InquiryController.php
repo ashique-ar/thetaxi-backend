@@ -9,8 +9,10 @@ use App\Services\MailDispatchService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 class InquiryController extends Controller
 {
@@ -47,6 +49,10 @@ class InquiryController extends Controller
         $type = $this->resolveInquiryType($request);
         $validated = $request->validate($this->rulesForType($type));
         $meta = $this->buildInquiryMeta($type, $validated);
+
+        if ($this->rejectSpamOrDuplicatePayload($request, $meta)) {
+            return back()->with('success', $meta['success_message']);
+        }
 
         try {
             $payload = [
@@ -131,6 +137,96 @@ class InquiryController extends Controller
     }
 
     /**
+     * Reject human-like sales spam and exact repeat submissions before any
+     * inquiry, SMS, or email is created.
+     *
+     * @param array<string, mixed> $meta
+     */
+    private function rejectSpamOrDuplicatePayload(Request $request, array $meta): bool
+    {
+        $message = Str::lower((string) ($meta['message'] ?? ''));
+        $spamScore = $this->solicitationSpamScore($message);
+
+        if ($spamScore >= 3) {
+            Log::notice('Sales solicitation inquiry discarded', [
+                'score' => $spamScore,
+                'ip_address' => $request->ip(),
+                'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
+            ]);
+
+            return true;
+        }
+
+        $fingerprint = hash('sha256', implode('|', [
+            Str::lower(trim((string) ($meta['email'] ?? ''))),
+            preg_replace('/\D+/', '', (string) ($meta['phone'] ?? '')),
+            preg_replace('/\s+/', ' ', trim($message)),
+        ]));
+
+        if (!Cache::add('public-inquiry-submission:' . $fingerprint, true, now()->addDay())) {
+            Log::notice('Duplicate public inquiry discarded', [
+                'ip_address' => $request->ip(),
+                'fingerprint' => substr($fingerprint, 0, 12),
+            ]);
+
+            return true;
+        }
+
+        return false;
+    }
+
+    private function solicitationSpamScore(string $message): int
+    {
+        $score = 0;
+        $signals = [
+            3 => [
+                'to unsubscribe',
+                'free audit',
+                'no-obligation site audit',
+                'high-quality backlinks',
+                'social media management',
+                'marketing services',
+                'custom crm',
+                'crm systems',
+            ],
+            2 => [
+                'more customers',
+                'more clients',
+                'more visitors',
+                'seo',
+                'search visibility',
+                'redesign your website',
+                'refreshed website',
+                'reply "yes"',
+                'reply “yes”',
+                'reply yes',
+            ],
+            1 => [
+                'website design',
+                'online stores',
+                'voice-over',
+                'send over samples',
+                'schedule a call',
+                'grab a time',
+            ],
+        ];
+
+        foreach ($signals as $weight => $phrases) {
+            foreach ($phrases as $phrase) {
+                if (str_contains($message, $phrase)) {
+                    $score += $weight;
+                }
+            }
+        }
+
+        if (preg_match('/https?:\/\//i', $message) === 1) {
+            $score++;
+        }
+
+        return $score;
+    }
+
+    /**
      * Store a dynamic inquiry submission tied to a service page.
      */
     protected function storeDynamicInquiry(Request $request, InquiryServicePage $servicePage)
@@ -158,6 +254,10 @@ class InquiryController extends Controller
             return back()
                 ->withInput()
                 ->with('error', 'Please provide a valid email address to submit your inquiry.');
+        }
+
+        if ($this->rejectSpamOrDuplicatePayload($request, $meta)) {
+            return back()->with('success', $meta['success_message']);
         }
 
         try {

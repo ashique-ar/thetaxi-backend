@@ -14,6 +14,14 @@ function generalInquirySpamCheck(array $input): bool
     return $method->invoke($controller, $request);
 }
 
+function inquiryPayloadSpamCheck(array $meta): bool
+{
+    $controller = (new ReflectionClass(InquiryController::class))->newInstanceWithoutConstructor();
+    $method = new ReflectionMethod(InquiryController::class, 'rejectSpamOrDuplicatePayload');
+
+    return $method->invoke($controller, Request::create('/contact', 'POST'), $meta);
+}
+
 it('rate limits both public inquiry submission routes', function (): void {
     $contactRoute = Route::getRoutes()->getByName('contact.store');
     $bookingRoute = Route::getRoutes()->getByName('booking.enquiry');
@@ -51,4 +59,31 @@ it('allows a human-paced submission carrying the encrypted form token', function
         '_inquiry_website' => '',
         '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
     ]))->toBeFalse();
+});
+
+it('discards sales solicitation that behaves like a real browser submission', function (): void {
+    expect(inquiryPayloadSpamCheck([
+        'email' => 'sales@example.com',
+        'phone' => '123456789',
+        'message' => 'I found SEO opportunities to bring you more customers. I can send a free audit; reply YES.',
+    ]))->toBeTrue();
+});
+
+it('allows a genuine transport itinerary without sales-spam signals', function (): void {
+    expect(inquiryPayloadSpamCheck([
+        'email' => 'traveller@example.com',
+        'phone' => '+94771234567',
+        'message' => 'Please quote airport pickup to Bentota for four passengers and a return trip to Colombo.',
+    ]))->toBeFalse();
+});
+
+it('discards an exact repeat inquiry for twenty four hours', function (): void {
+    $meta = [
+        'email' => 'repeat@example.com',
+        'phone' => '+94770001122',
+        'message' => 'Please quote a van from Colombo to Galle tomorrow.',
+    ];
+
+    expect(inquiryPayloadSpamCheck($meta))->toBeFalse()
+        ->and(inquiryPayloadSpamCheck($meta))->toBeTrue();
 });
