@@ -14,6 +14,8 @@ use App\Services\BookingOperationsHealthMonitor;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
 
 /**
  * Driver Mobile Location Controller
@@ -106,7 +108,6 @@ class LocationController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to update location',
                 'error_code' => 'LOCATION_UPDATE_FAILED',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -223,7 +224,6 @@ class LocationController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to retrieve location history',
                 'error_code' => 'LOCATION_HISTORY_FAILED',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -237,6 +237,7 @@ class LocationController extends Controller
     public function bulkUpdate(BulkLocationUpdateRequest $request): JsonResponse
     {
         $driver = null;
+        $correlationId = (string) Str::uuid();
         try {
             $driver = $this->authService->getDriver($request->user());
 
@@ -252,6 +253,14 @@ class LocationController extends Controller
                 $driver,
                 $request->validated()['locations']
             );
+            Log::info('Buffered driver locations processed', [
+                'correlation_id' => $correlationId,
+                'driver_id' => $driver->id,
+                'accepted_count' => $result['accepted_count'],
+                'duplicate_count' => $result['duplicate_count'],
+                'quarantined_count' => $result['quarantined_count'],
+                'retryable_count' => $result['retryable_count'],
+            ]);
 
             return response()->json([
                 'status' => 'success',
@@ -260,6 +269,11 @@ class LocationController extends Controller
                     'saved_count' => $result['saved_count'],
                     'skipped_count' => $result['skipped_count'],
                     'duplicate_count' => $result['duplicate_count'],
+                    'accepted_count' => $result['accepted_count'],
+                    'quarantined_count' => $result['quarantined_count'],
+                    'retryable_count' => $result['retryable_count'],
+                    'outcomes' => $result['outcomes'],
+                    'correlation_id' => $correlationId,
                     'latest_saved_point' => $result['latest_saved_point']
                         ? new RoutePointResource($result['latest_saved_point'])
                         : null,
@@ -287,14 +301,37 @@ class LocationController extends Controller
                 'buffered',
                 $e
             );
+            Log::error('Buffered driver locations failed', [
+                'correlation_id' => $correlationId,
+                'driver_id' => $driver?->id,
+                'exception_class' => $e::class,
+            ]);
 
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to process buffered locations',
                 'error_code' => 'LOCATION_BULK_UPDATE_FAILED',
-                'error' => $e->getMessage()
+                'correlation_id' => $correlationId,
             ], 500);
         }
+    }
+
+    public function health(Request $request): JsonResponse
+    {
+        $driver = $this->authService->getDriver($request->user());
+        if (!$driver) {
+            return response()->json(['status' => 'error', 'message' => 'User is not registered as a driver', 'error_code' => 'LOCATION_NOT_DRIVER'], 403);
+        }
+        $validated = $request->validate([
+            'state' => ['required', 'in:healthy,recovered,delayed,severe_gap,blocked,queue_pressure'],
+            'queue_count' => ['required', 'integer', 'min:0'],
+            'oldest_queue_age_seconds' => ['nullable', 'integer', 'min:0'],
+            'last_fix_age_seconds' => ['nullable', 'integer', 'min:0'],
+            'app_version' => ['nullable', 'string', 'max:50'],
+            'app_build' => ['nullable', 'string', 'max:50'],
+        ]);
+        $this->healthMonitor->recordDriverTrackingHealth($this->locationHealthContext($driver), $validated);
+        return response()->json(['status' => 'success', 'data' => ['acknowledged' => true]]);
     }
 
     private function applyRecordedAtFilters($query, ?string $from, ?string $to): void

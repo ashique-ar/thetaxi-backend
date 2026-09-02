@@ -23,6 +23,10 @@ class PickupArrivedRequest extends FormRequest
         return [
             'latitude' => ['required', 'numeric', 'between:-90,90'],
             'longitude' => ['required', 'numeric', 'between:-180,180'],
+            // Nullable during the mobile rollout so older installed builds keep
+            // working; current builds always send both fields.
+            'idempotency_key' => ['nullable', 'uuid'],
+            'client_recorded_at' => ['nullable', 'date'],
         ];
     }
 

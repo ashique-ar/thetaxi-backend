@@ -355,6 +355,10 @@ class TripController extends Controller
 
     private function startTripByAssignment(Request $request, string $assignmentId): JsonResponse
     {
+        $request->validate([
+            'idempotency_key' => ['nullable', 'uuid'],
+            'client_recorded_at' => ['nullable', 'date'],
+        ]);
         try {
             $driver = $this->authService->getDriver($request->user());
 

@@ -13,12 +13,15 @@ use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Invoice;
+use App\Services\Driver\RouteEvidenceService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 class BookingObservabilityService
 {
+    public function __construct(private readonly RouteEvidenceService $routeEvidence) {}
+
     public function trace(Booking $booking, ?string $bookingItemId, ?string $cursor = null, int $limit = 50, string $filter = 'all'): array
     {
         $decodedCursor = $cursor ? $this->decodeCursor($cursor) : null;
@@ -135,6 +138,13 @@ class BookingObservabilityService
         $totalPoints = $assignment ? $this->routeQuery($assignment)->count() : 0;
         $lastReportedAt = $latest?->recorded_at?->utc();
         $driver = $assignment?->driver;
+        $distanceEvidence = $assignment
+            ? $this->routeEvidence->calculate(
+                $assignment->routePoints()->orderBy('recorded_at')->orderBy('id')->get(),
+                $assignment->trip_started_at?->copy()->utc(),
+                ($assignment->trip_completed_at ?? $assignment->actual_end ?? now('UTC'))->copy()->utc()
+            )
+            : $this->routeEvidence->calculate(collect(), null, null);
 
         return [
             'booking_id' => (string) $booking->id,
@@ -150,6 +160,8 @@ class BookingObservabilityService
             'total_points' => $totalPoints,
             'route_truncated' => false,
             'has_replay' => $totalPoints > 0,
+            'distance_evidence' => $distanceEvidence,
+            'pricing_effect' => 'none',
             'generated_at' => now()->utc()->toIso8601String(),
         ];
     }

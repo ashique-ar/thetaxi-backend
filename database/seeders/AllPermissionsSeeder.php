@@ -177,6 +177,7 @@ class AllPermissionsSeeder extends Seeder
         'bookings.qc_inspect',
         'bookings.tracking_export',
         'bookings.tracking_replay',
+        'bookings.tracking_estimate',
         'collection-commissions.pay',
         'create_bookings',
         'create_bookings_for_others',

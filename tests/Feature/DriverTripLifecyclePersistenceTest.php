@@ -332,7 +332,6 @@ it('persists single and buffered tracking without changing contractual pricing s
         'recorded_at' => now()->subMinutes(2)->toIso8601String(),
     ]);
     $bulk = $locations->syncBufferedLocations($driver->fresh(), [[
-        'assignment_id' => 'client-supplied-assignment-is-ignored',
         'latitude' => 6.92,
         'longitude' => 79.82,
         'recorded_at' => now()->subMinute()->toIso8601String(),
@@ -351,6 +350,82 @@ it('persists single and buffered tracking without changing contractual pricing s
         ->and($item->fresh()->pricing_breakdown)->toBe($contractualSnapshot)
         ->and((float) $booking->fresh()->total_estimated)->toBe(5000.0)
         ->and((float) $item->fresh()->total_price)->toBe(5000.0);
+});
+
+it('rejects stale and cross-context recovery without rewriting raw claims', function () {
+    $driver = Driver::create(['code' => 'RECOVERY-CONTEXT']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => now()->subMinutes(10),
+    ]);
+    $session = DriverSession::create([
+        'driver_id' => $driver->id,
+        'assignment_id' => $assignment->id,
+        'status' => 'active',
+        'start_time' => now()->subMinutes(15),
+    ]);
+
+    $result = (new LocationService())->syncBufferedLocations($driver, [[
+        'latitude' => 7.20,
+        'longitude' => 80.20,
+        'recorded_at' => now()->subDay()->toIso8601String(),
+        'session_id' => $session->id,
+        'assignment_id' => $assignment->id,
+    ], [
+        'latitude' => 7.21,
+        'longitude' => 80.21,
+        'recorded_at' => now()->subMinute()->toIso8601String(),
+        'session_id' => '00000000-0000-0000-0000-000000000001',
+        'assignment_id' => $assignment->id,
+    ], [
+        'latitude' => 7.22,
+        'longitude' => 80.22,
+        'recorded_at' => now()->subMinute()->toIso8601String(),
+        'session_id' => $session->id,
+        'assignment_id' => $assignment->id,
+    ]]);
+
+    expect($result['accepted_count'])->toBe(1)
+        ->and($result['quarantined_count'])->toBe(2)
+        ->and(collect($result['outcomes'])->pluck('reason')->all())->toBe([
+            'outside_session_window', 'session_context_mismatch', 'accepted',
+        ])
+        ->and(RoutePoint::where('session_id', $session->id)->count())->toBe(1);
+});
+
+it('accepts same-trip offline recovery idempotently', function () {
+    $driver = Driver::create(['code' => 'RECOVERY-IDEMPOTENT']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => now()->subMinutes(10),
+    ]);
+    $session = DriverSession::create([
+        'driver_id' => $driver->id,
+        'assignment_id' => $assignment->id,
+        'status' => 'active',
+        'start_time' => now()->subMinutes(15),
+    ]);
+    $point = [
+        'latitude' => 7.20,
+        'longitude' => 80.20,
+        'recorded_at' => now()->subMinute()->startOfSecond()->toIso8601String(),
+        'session_id' => $session->id,
+        'trip_id' => $assignment->id,
+    ];
+    $service = new LocationService();
+
+    $first = $service->syncBufferedLocations($driver, [$point]);
+    $second = $service->syncBufferedLocations($driver->fresh(), [$point]);
+
+    expect($first['accepted_count'])->toBe(1)
+        ->and($second['accepted_count'])->toBe(0)
+        ->and($second['duplicate_count'])->toBe(1)
+        ->and($second['outcomes'][0]['reason'])->toBe('duplicate')
+        ->and(RoutePoint::where('session_id', $session->id)->count())->toBe(1);
 });
 
 it('projects only chronologically ordered booked stops and excludes pricing-only locations', function () {
@@ -501,11 +576,12 @@ it('runs configured contractual pricing through approval dispatch driver complet
     $this->assignmentService->acceptAssignment($driver, $assignment);
     $this->tripService->confirmPickupArrival($assignment->fresh(), ['latitude' => 7.20, 'longitude' => 80.20]);
     $this->tripService->startTrip($assignment->fresh());
+    $assignment->update(['trip_started_at' => now()->subMinutes(2)]);
     RoutePoint::create([
         'assignment_id' => $assignment->id, 'latitude' => 7.20, 'longitude' => 80.20, 'recorded_at' => now()->subMinute(),
     ]);
     RoutePoint::create([
-        'assignment_id' => $assignment->id, 'latitude' => 7.40, 'longitude' => 80.40, 'recorded_at' => now(),
+        'assignment_id' => $assignment->id, 'latitude' => 7.2001, 'longitude' => 80.2001, 'recorded_at' => now(),
     ]);
     $this->tripService->endTrip($assignment->fresh(), ['latitude' => 7.50, 'longitude' => 80.50]);
 
@@ -704,7 +780,11 @@ it('enforces stop order and preserves submitted arrival coordinates', function (
 });
 
 it('persists actual completion and route distance once without a pricing owner', function () {
-    $assignment = DriverAssignment::create(['trip_phase' => TripPhase::IN_PROGRESS, 'status' => 'active']);
+    $assignment = DriverAssignment::create([
+        'trip_phase' => TripPhase::IN_PROGRESS,
+        'status' => 'active',
+        'trip_started_at' => now()->subMinutes(2),
+    ]);
     RoutePoint::create([
         'assignment_id' => $assignment->id, 'latitude' => 6.90, 'longitude' => 79.80, 'recorded_at' => now()->subMinute(),
     ]);

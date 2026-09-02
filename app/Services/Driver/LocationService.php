@@ -249,33 +249,40 @@ class LocationService
         }
 
         $activeAssignmentId = $this->getActiveAssignmentId($driver);
-        $normalizedLocations = collect($locations)
-            ->map(function (array $locationData) use ($activeAssignmentId) {
-                $recordedAt = Carbon::parse($locationData['recorded_at'])->utc();
+        $activeAssignment = $activeAssignmentId ? DriverAssignment::find($activeAssignmentId) : null;
+        $outcomes = [];
+        $normalizedLocations = collect($locations)->map(function (array $locationData, int $index) use (
+            $session, $activeAssignment, $activeAssignmentId, &$outcomes
+        ) {
+            $recordedAt = Carbon::parse($locationData['recorded_at'])->utc();
+            $claimedSessionId = $locationData['session_id'] ?? $locationData['tracking_session_id'] ?? null;
+            $claimedAssignmentId = $locationData['assignment_id'] ?? $locationData['trip_id'] ?? null;
+            $reason = $this->recoveryRejectionReason(
+                $recordedAt,
+                $locationData,
+                $claimedSessionId,
+                $claimedAssignmentId,
+                $session,
+                $activeAssignment
+            );
+            if ($reason) {
+                $outcomes[$index] = ['index' => $index, 'status' => 'quarantined', 'reason' => $reason];
+                return null;
+            }
 
-                return [
-                    'session_id' => null,
-                    // Never trust a buffered client assignment ID. Scope every point
-                    // to the authenticated driver's currently active assignment.
-                    'assignment_id' => $activeAssignmentId,
-                    'latitude' => (float) $locationData['latitude'],
-                    'longitude' => (float) $locationData['longitude'],
-                    'altitude' => array_key_exists('altitude', $locationData) ? $locationData['altitude'] : null,
-                    'speed' => array_key_exists('speed', $locationData) ? $locationData['speed'] : null,
-                    'heading' => array_key_exists('heading', $locationData) ? $locationData['heading'] : null,
-                    'accuracy' => array_key_exists('accuracy', $locationData) ? $locationData['accuracy'] : null,
-                    'recorded_at' => $recordedAt,
-                    'dedupe_key' => $this->buildLocationDedupeKey(
-                        $recordedAt,
-                        (float) $locationData['latitude'],
-                        (float) $locationData['longitude']
-                    ),
-                ];
-            })
-            ->sortBy(function (array $locationData) {
-                return $locationData['recorded_at']->timestamp;
-            })
-            ->values();
+            return [
+                'index' => $index,
+                'assignment_id' => $activeAssignmentId,
+                'latitude' => (float) $locationData['latitude'],
+                'longitude' => (float) $locationData['longitude'],
+                'altitude' => $locationData['altitude'] ?? null,
+                'speed' => $locationData['speed'] ?? null,
+                'heading' => $locationData['heading'] ?? null,
+                'accuracy' => $locationData['accuracy'] ?? null,
+                'recorded_at' => $recordedAt,
+                'dedupe_key' => $this->buildLocationDedupeKey($recordedAt, (float) $locationData['latitude'], (float) $locationData['longitude']),
+            ];
+        })->filter()->sortBy(fn (array $point) => $point['recorded_at']->timestamp)->values();
 
         if ($normalizedLocations->isEmpty()) {
             return [
@@ -283,6 +290,10 @@ class LocationService
                 'skipped_count' => 0,
                 'duplicate_count' => 0,
                 'latest_saved_point' => null,
+                'accepted_count' => 0,
+                'quarantined_count' => count($outcomes),
+                'retryable_count' => 0,
+                'outcomes' => array_values($outcomes),
             ];
         }
 
@@ -315,7 +326,8 @@ class LocationService
             &$payloadSeenKeys,
             &$savedCount,
             &$duplicateCount,
-            &$latestSavedPoint
+            &$latestSavedPoint,
+            &$outcomes
         ) {
             $now = Carbon::now('UTC');
 
@@ -324,6 +336,7 @@ class LocationService
 
                 if (isset($payloadSeenKeys[$dedupeKey]) || $existingKeys->has($dedupeKey)) {
                     $duplicateCount++;
+                    $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'duplicate', 'reason' => 'duplicate'];
                     continue;
                 }
 
@@ -343,6 +356,7 @@ class LocationService
 
                 $savedCount++;
                 $latestSavedPoint = $routePoint;
+                $outcomes[$locationData['index']] = ['index' => $locationData['index'], 'status' => 'accepted', 'reason' => 'accepted'];
             }
 
             if ($latestSavedPoint) {
@@ -359,7 +373,37 @@ class LocationService
             'skipped_count' => $duplicateCount,
             'duplicate_count' => $duplicateCount,
             'latest_saved_point' => $latestSavedPoint,
+            'accepted_count' => $savedCount,
+            'quarantined_count' => collect($outcomes)->where('status', 'quarantined')->count(),
+            'retryable_count' => 0,
+            'outcomes' => collect($outcomes)->sortKeys()->values()->all(),
         ];
+    }
+
+    private function recoveryRejectionReason(
+        Carbon $recordedAt,
+        array $locationData,
+        ?string $claimedSessionId,
+        ?string $claimedAssignmentId,
+        DriverSession $session,
+        ?DriverAssignment $assignment
+    ): ?string {
+        if ($claimedSessionId && (string) $claimedSessionId !== (string) $session->id) {
+            return 'session_context_mismatch';
+        }
+        if ($claimedAssignmentId && (!$assignment || (string) $claimedAssignmentId !== (string) $assignment->id)) {
+            return 'assignment_context_mismatch';
+        }
+        if ($recordedAt->gt(Carbon::now('UTC')->addMinutes(5))) return 'timestamp_in_future';
+        if ($session->start_time && $recordedAt->lt($session->start_time)) return 'outside_session_window';
+        if ($session->end_time && $recordedAt->gt($session->end_time)) return 'outside_session_window';
+        $assignmentStartedAt = $assignment?->confirmed_at;
+        if ($assignmentStartedAt && $recordedAt->lt($assignmentStartedAt)) return 'outside_assignment_window';
+        if (($assignment?->trip_completed_at || $assignment?->actual_end)
+            && $recordedAt->gt($assignment->trip_completed_at ?? $assignment->actual_end)) return 'outside_assignment_window';
+        if (($locationData['accuracy'] ?? null) !== null
+            && (float) $locationData['accuracy'] > RouteEvidenceService::MAX_ACCURACY_METERS) return 'accuracy_too_poor';
+        return null;
     }
 
     private function buildLocationDedupeKey(Carbon $recordedAt, float $latitude, float $longitude): string

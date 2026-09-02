@@ -55,6 +55,7 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
     Route::prefix('location')->group(function () {
         Route::post('', [LocationController::class, 'update']);
         Route::post('bulk', [LocationController::class, 'bulkUpdate']);
+        Route::post('health', [LocationController::class, 'health']);
         Route::get('history', [LocationController::class, 'history']);
     });
     

@@ -1,0 +1,39 @@
+{
+  "scenario_id": "anonymized-stale-recovery-gap-v1",
+  "anonymization": "Synthetic identifiers and translated coordinates preserve only timing and distance characteristics.",
+  "session": {
+    "session_id": "session-current",
+    "assignment_id": "assignment-current",
+    "trip_id": "trip-current",
+    "started_at": "2026-09-01T11:01:18Z"
+  },
+  "raw_points": [
+    {"point_id":"stale-1","recorded_at":"2026-08-31T15:44:32Z","received_at":"2026-09-01T11:01:22Z","latitude":7.100000,"longitude":80.100000,"accuracy":9.0,"session_id":"session-previous","assignment_id":"assignment-previous","trip_id":"trip-previous"},
+    {"point_id":"stale-2","recorded_at":"2026-08-31T15:44:47Z","received_at":"2026-09-01T11:01:23Z","latitude":7.100100,"longitude":80.100100,"accuracy":8.0,"session_id":"session-previous","assignment_id":"assignment-previous","trip_id":"trip-previous"},
+    {"point_id":"stale-3","recorded_at":"2026-08-31T15:45:02Z","received_at":"2026-09-01T11:01:24Z","latitude":7.100200,"longitude":80.100200,"accuracy":8.0,"session_id":"session-previous","assignment_id":"assignment-previous","trip_id":"trip-previous"},
+    {"point_id":"current-1","recorded_at":"2026-09-01T11:02:18Z","received_at":"2026-09-01T11:02:19Z","latitude":7.200000,"longitude":80.200000,"accuracy":7.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-2","recorded_at":"2026-09-01T11:02:33Z","received_at":"2026-09-01T11:02:34Z","latitude":7.200000,"longitude":80.200128,"accuracy":7.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-3","recorded_at":"2026-09-01T11:02:48Z","received_at":"2026-09-01T11:02:49Z","latitude":7.200000,"longitude":80.200255,"accuracy":6.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-4","recorded_at":"2026-09-01T11:03:03Z","received_at":"2026-09-01T11:03:04Z","latitude":7.200000,"longitude":80.200383,"accuracy":6.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-5","recorded_at":"2026-09-01T11:03:18Z","received_at":"2026-09-01T11:03:19Z","latitude":7.200000,"longitude":80.200510,"accuracy":7.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-6","recorded_at":"2026-09-01T11:03:33Z","received_at":"2026-09-01T11:03:34Z","latitude":7.200000,"longitude":80.200638,"accuracy":8.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-7","recorded_at":"2026-09-01T11:03:48Z","received_at":"2026-09-01T11:03:49Z","latitude":7.200000,"longitude":80.200765,"accuracy":7.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-8","recorded_at":"2026-09-01T11:04:03Z","received_at":"2026-09-01T11:04:04Z","latitude":7.200000,"longitude":80.200893,"accuracy":6.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"},
+    {"point_id":"current-9","recorded_at":"2026-09-01T11:04:18Z","received_at":"2026-09-01T11:04:19Z","latitude":7.200000,"longitude":80.201020,"accuracy":7.0,"session_id":"session-current","assignment_id":"assignment-current","trip_id":"trip-current"}
+  ],
+  "expected": {
+    "recorded_point_count": 12,
+    "accepted_point_count": 9,
+    "rejected_point_count": 3,
+    "rejected_point_ids": ["stale-1", "stale-2", "stale-3"],
+    "rejection_reason": "session_context_mismatch",
+    "longest_gap_seconds": 69436,
+    "recorded_distance_km": 0.113,
+    "coverage_status": "insufficient",
+    "distance_trustworthy": false,
+    "legacy_distance_km": 52.61,
+    "legacy_distance_trustworthy": false,
+    "calculation_version": "contiguous-v2",
+    "pricing_effect": "none"
+  }
+}

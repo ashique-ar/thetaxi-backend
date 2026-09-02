@@ -1405,6 +1405,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::get('route-replay', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'routeReplay'])
                 ->middleware('permission:bookings.tracking_replay');
+            Route::post('route-estimates', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'generateOperationalEstimate'])
+                ->middleware('permission:bookings.tracking_estimate');
             Route::get('route-replay/export', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'exportRouteReplay'])
                 ->middleware('permission:bookings.tracking_export');
             Route::get('communications', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'communications'])

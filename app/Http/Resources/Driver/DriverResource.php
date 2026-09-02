@@ -75,7 +75,7 @@ class DriverResource extends JsonResource
             ],
             'current_booking_id' => $activeAssignment?->booking_id,
             'current_booking_number' => $activeAssignment?->booking?->booking_number,
-            'rating' => (float) ($this->rating ?? 0),
+            'rating' => (float) ($this->average_rating ?? 0),
             'total_trips' => (int) ($this->total_trips ?? 0),
             'assigned_vehicle' => $this->whenLoaded('defaultVehicle', fn () => $this->defaultVehicle ? [
                 'id' => $this->defaultVehicle->id,

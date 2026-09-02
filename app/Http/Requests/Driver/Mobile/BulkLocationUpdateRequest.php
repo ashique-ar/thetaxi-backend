@@ -23,6 +23,9 @@ class BulkLocationUpdateRequest extends FormRequest
             'locations.*.accuracy' => ['nullable', 'numeric', 'min:0'],
             'locations.*.recorded_at' => ['required', 'date'],
             'locations.*.assignment_id' => ['nullable', 'uuid'],
+            'locations.*.trip_id' => ['nullable', 'uuid'],
+            'locations.*.session_id' => ['nullable', 'uuid'],
+            'locations.*.tracking_session_id' => ['nullable', 'uuid'],
         ];
     }
 }

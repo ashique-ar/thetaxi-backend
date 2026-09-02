@@ -145,7 +145,7 @@ it('preserves actual movement but blocks route-based repricing of contractual sn
 
     expect($sync)
         ->toContain('$contractualDistance = $this->hasContractualDistanceSnapshot($booking, $bookingItem)')
-        ->toContain("'actual_distance' => round(\$totalDistance, 2)")
+        ->toContain("'actual_distance' => \$totalDistance !== null ? round(\$totalDistance, 2) : null")
         ->toContain("'source' => 'driver_route_points'")
         ->toContain("'pricing_effect' => \$contractualDistance")
         ->toContain("? 'none_contractual_snapshot'")

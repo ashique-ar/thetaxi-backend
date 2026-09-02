@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\AuditLog;
 use App\Services\BookingObservabilityService;
 use App\Services\BookingOperationsHealthMonitor;
+use App\Services\Driver\RouteProviderGateway;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -17,6 +18,7 @@ class BookingObservabilityController extends Controller
     public function __construct(
         private readonly BookingObservabilityService $observability,
         private readonly BookingOperationsHealthMonitor $healthMonitor,
+        private readonly RouteProviderGateway $routeProviderGateway,
     ) {}
 
     public function trace(Request $request, Booking $booking): JsonResponse
@@ -39,6 +41,9 @@ class BookingObservabilityController extends Controller
     {
         $itemId = $this->validatedItemId($request, $booking, true);
         $data = $this->observability->trackingSummary($booking, $itemId);
+        $data['tracking_health'] = $this->healthMonitor->latestDriverTrackingHealth(
+            isset($data['assignment_id']) ? (string) $data['assignment_id'] : null
+        );
         $this->healthMonitor->recordTrackingFreshness($data);
         return response()->json(['status' => 'success', 'data' => $data]);
     }
@@ -67,6 +72,35 @@ class BookingObservabilityController extends Controller
             'returned_points' => $data['returned_points'],
         ]);
         return response()->json(['status' => 'success', 'data' => $data]);
+    }
+
+    public function generateOperationalEstimate(Request $request, Booking $booking): JsonResponse
+    {
+        $itemId = $this->validatedItemId($request, $booking, true);
+        $validated = $request->validate([
+            'purpose' => ['required', 'in:operational_gap_estimate'],
+            'provider' => ['required', 'in:auto,osrm,google'],
+            'idempotency_key' => ['required', 'uuid'],
+            'metered_cost_confirmed' => ['required', 'boolean'],
+        ]);
+        $item = $booking->bookingItems()->whereKey($itemId)->firstOrFail();
+
+        try {
+            $estimate = $this->routeProviderGateway->estimate(
+                $item,
+                $validated['purpose'],
+                $validated['provider'],
+                $validated['idempotency_key'],
+                (bool) $validated['metered_cost_confirmed'],
+            );
+            return response()->json(['status' => 'success', 'data' => $estimate]);
+        } catch (\RuntimeException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'An operational route estimate is not available right now.',
+                'error_code' => 'ROUTE_ESTIMATE_UNAVAILABLE',
+            ], 503);
+        }
     }
 
     public function exportRouteReplay(Request $request, Booking $booking): StreamedResponse

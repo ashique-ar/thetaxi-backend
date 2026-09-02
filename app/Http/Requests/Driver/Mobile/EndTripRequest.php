@@ -29,6 +29,8 @@ class EndTripRequest extends FormRequest
             'notes' => ['nullable', 'string', 'max:1000'],
             'collected_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_notes' => ['nullable', 'string', 'max:1000'],
+            'idempotency_key' => ['nullable', 'uuid'],
+            'client_recorded_at' => ['nullable', 'date'],
         ];
     }
 

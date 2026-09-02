@@ -38,6 +38,10 @@ class LocationUpdateRequest extends FormRequest
             'heading' => ['nullable', 'numeric', 'between:0,360'],
             'accuracy' => ['nullable', 'numeric', 'min:0'],
             'recorded_at' => ['nullable', 'date'],
+            'assignment_id' => ['nullable', 'uuid'],
+            'trip_id' => ['nullable', 'uuid'],
+            'session_id' => ['nullable', 'uuid'],
+            'tracking_session_id' => ['nullable', 'uuid'],
         ];
     }
 

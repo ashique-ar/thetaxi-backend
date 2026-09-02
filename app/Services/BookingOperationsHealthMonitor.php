@@ -62,6 +62,56 @@ class BookingOperationsHealthMonitor
         }
     }
 
+    public function recordDriverTrackingHealth(array $context, array $health): void
+    {
+        $state = (string) ($health['state'] ?? 'unknown');
+        $safeContext = array_filter([
+            'driver_id' => $context['driver_id'] ?? null,
+            'session_id' => $context['session_id'] ?? null,
+            'assignment_id' => $context['assignment_id'] ?? null,
+            'booking_id' => $context['booking_id'] ?? null,
+            'booking_item_id' => $context['booking_item_id'] ?? null,
+            'state' => $state,
+            'queue_count' => isset($health['queue_count']) ? (int) $health['queue_count'] : null,
+            'oldest_queue_age_seconds' => isset($health['oldest_queue_age_seconds']) ? (int) $health['oldest_queue_age_seconds'] : null,
+            'last_fix_age_seconds' => isset($health['last_fix_age_seconds']) ? (int) $health['last_fix_age_seconds'] : null,
+            'app_version' => $health['app_version'] ?? null,
+            'app_build' => $health['app_build'] ?? null,
+        ], fn ($value) => $value !== null && $value !== '');
+
+        if (!empty($safeContext['assignment_id'])) {
+            $key = $this->driverTrackingHealthKey((string) $safeContext['assignment_id']);
+            $previous = Cache::get($key, []);
+            $current = array_merge($safeContext, [
+                'reported_at' => now()->toIso8601String(),
+            ]);
+            if ($state !== 'healthy' && $state !== 'recovered') {
+                $current['last_issue'] = [
+                    'state' => $state,
+                    'reported_at' => $current['reported_at'],
+                ];
+            } elseif (is_array($previous) && isset($previous['last_issue'])) {
+                $current['last_issue'] = $previous['last_issue'];
+            }
+            Cache::put($key, $current, now()->addHours(6));
+        }
+
+        if (!in_array($state, ['healthy', 'recovered'], true) && $this->acquire('driver-tracking-' . $state, $safeContext)) {
+            $level = in_array($state, ['blocked', 'severe_gap'], true) ? 'error' : 'warning';
+            Log::$level('booking_driver_tracking_health', $safeContext);
+        }
+    }
+
+    public function latestDriverTrackingHealth(?string $assignmentId): ?array
+    {
+        if (!$assignmentId) {
+            return null;
+        }
+
+        $health = Cache::get($this->driverTrackingHealthKey($assignmentId));
+        return is_array($health) ? $health : null;
+    }
+
     public function recordSettlementMismatch(string $settlementId, array $issueCodes): void
     {
         $safeContext = [
@@ -84,5 +134,10 @@ class BookingOperationsHealthMonitor
     private function ageSeconds(?string $timestamp): ?int
     {
         return $timestamp ? (int) Carbon::parse($timestamp)->diffInSeconds(now(), true) : null;
+    }
+
+    private function driverTrackingHealthKey(string $assignmentId): string
+    {
+        return 'booking-driver-tracking-health:' . $assignmentId;
     }
 }

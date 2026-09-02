@@ -42,6 +42,14 @@ Schedule::command('corporate-transport:generate-bookings')
     ->everyFifteenMinutes()
     ->withoutOverlapping(10);
 
+// Closes out booking items whose driver has already completed the trip
+// (driver_assignments.trip_phase = completed) but whose booking item never
+// got marked completed — otherwise these keep showing as "active" hires
+// indefinitely in the ongoing-hire-management operations queue.
+Schedule::command('bookings:reconcile-driver-completions')
+    ->everyTwoMinutes()
+    ->withoutOverlapping(5);
+
 // Schedule::command('bookings:retry-final-pricing')
 //     ->everyFifteenMinutes()
 //     ->withoutOverlapping(10);

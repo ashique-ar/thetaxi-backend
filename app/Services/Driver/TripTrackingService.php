@@ -1485,50 +1485,24 @@ class TripTrackingService
      */
     public function calculateTripDistance(DriverAssignment $assignment): ?float
     {
+        $evidence = $this->calculateTripEvidence($assignment);
+        return $evidence['distance_trustworthy']
+            ? round((float) $evidence['recorded_distance_km'], 2)
+            : null;
+    }
+
+    public function calculateTripEvidence(DriverAssignment $assignment): array
+    {
         $points = $assignment->routePoints()
             ->orderBy('recorded_at', 'asc')
-            ->get(['latitude', 'longitude']);
+            ->orderBy('id', 'asc')
+            ->get(['id', 'latitude', 'longitude', 'accuracy', 'recorded_at']);
 
-        // Location uploads made during a short assignment/session state gap can
-        // be valid trip telemetry while having a null assignment_id. Recover
-        // only points from this driver's active session and actual trip window;
-        // never include points owned by another assignment.
-        if ($assignment->trip_started_at) {
-            $session = $assignment->driver?->activeSession;
-            if ($session) {
-                $sessionPoints = RoutePoint::query()
-                    ->where('session_id', $session->id)
-                    ->where(function ($query) use ($assignment) {
-                        $query->where('assignment_id', $assignment->id)
-                            ->orWhereNull('assignment_id');
-                    })
-                    ->where('recorded_at', '>=', $assignment->trip_started_at)
-                    ->where('recorded_at', '<=', $assignment->trip_completed_at ?? Carbon::now('UTC'))
-                    ->orderBy('recorded_at', 'asc')
-                    ->get(['latitude', 'longitude']);
-
-                if ($sessionPoints->count() > $points->count()) {
-                    $points = $sessionPoints;
-                }
-            }
-        }
-
-        if ($points->count() < 2) {
-            return null;
-        }
-
-        $totalDistance = 0.0;
-
-        for ($i = 1; $i < $points->count(); $i++) {
-            $totalDistance += $this->haversineDistance(
-                (float) $points[$i - 1]->latitude,
-                (float) $points[$i - 1]->longitude,
-                (float) $points[$i]->latitude,
-                (float) $points[$i]->longitude
-            );
-        }
-
-        return round($totalDistance, 2);
+        return app(RouteEvidenceService::class)->calculate(
+            $points,
+            $assignment->trip_started_at?->copy()->utc(),
+            ($assignment->trip_completed_at ?? $assignment->actual_end ?? Carbon::now('UTC'))->copy()->utc()
+        );
     }
 
     /**
