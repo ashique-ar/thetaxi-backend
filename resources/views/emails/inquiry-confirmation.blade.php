@@ -20,7 +20,7 @@
             'requirements' => 'Requirements', 'message' => 'Message',
         ];
         $excludedDetailFields = [
-            '_token', '_inquiry_form_token', '_inquiry_website',
+            '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
             'inquiry_type', 'inquiry_service_page_id', 'service_slug', 'service_type',
         ];
         $displayedDetailFields = [

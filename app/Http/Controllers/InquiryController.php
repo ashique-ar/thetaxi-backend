@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
@@ -136,6 +137,10 @@ class InquiryController extends Controller
         }
 
         if ($reason === null) {
+            $reason = $this->turnstileFailureReason($request);
+        }
+
+        if ($reason === null) {
             return false;
         }
 
@@ -159,7 +164,59 @@ class InquiryController extends Controller
             '_token',
             '_inquiry_form_token',
             '_inquiry_website',
+            'cf-turnstile-response',
         ]);
+    }
+
+    private function turnstileFailureReason(Request $request): ?string
+    {
+        if (!config('services.turnstile.enabled')) {
+            return null;
+        }
+
+        $secret = (string) config('services.turnstile.secret_key');
+        $responseToken = (string) $request->input('cf-turnstile-response');
+
+        if ($secret === '' || (string) config('services.turnstile.site_key') === '') {
+            Log::critical('Turnstile is enabled without complete credentials.');
+            return 'turnstile_not_configured';
+        }
+
+        if ($responseToken === '') {
+            return 'turnstile_token_missing';
+        }
+
+        try {
+            $verification = Http::asForm()
+                ->connectTimeout(2)
+                ->timeout(5)
+                ->post((string) config('services.turnstile.verify_url'), [
+                    'secret' => $secret,
+                    'response' => $responseToken,
+                    'remoteip' => $request->ip(),
+                ]);
+
+            if (!$verification->successful()) {
+                return 'turnstile_service_failure';
+            }
+
+            $result = $verification->json();
+            if (($result['success'] ?? false) !== true) {
+                return 'turnstile_rejected';
+            }
+
+            if (!empty($result['action']) && $result['action'] !== 'public_inquiry') {
+                return 'turnstile_action_mismatch';
+            }
+        } catch (\Throwable $exception) {
+            Log::warning('Turnstile verification failed closed', [
+                'error' => $exception->getMessage(),
+            ]);
+
+            return 'turnstile_unavailable';
+        }
+
+        return null;
     }
 
     /**
@@ -176,6 +233,15 @@ class InquiryController extends Controller
         if ($identityReason !== null) {
             Log::notice('Inquiry with invalid identity discarded', [
                 'reason' => $identityReason,
+                'ip_address' => $request->ip(),
+                'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
+            ]);
+
+            return true;
+        }
+
+        if (preg_match('/(?:https?:\/\/|www\.|\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/|\b))/iu', $message) === 1) {
+            Log::notice('Inquiry containing an external link discarded', [
                 'ip_address' => $request->ip(),
                 'email_domain' => Str::afterLast(Str::lower((string) ($meta['email'] ?? '')), '@'),
             ]);

@@ -3,7 +3,12 @@
 use App\Http\Controllers\InquiryController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
+use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Route;
+
+beforeEach(function (): void {
+    config()->set('services.turnstile.enabled', false);
+});
 
 function generalInquirySpamCheck(array $input): bool
 {
@@ -54,6 +59,45 @@ it('discards direct posts without a valid form token', function (): void {
     expect(generalInquirySpamCheck([]))->toBeTrue();
 });
 
+it('fails closed when Turnstile is enabled but no challenge token is supplied', function (): void {
+    config()->set('services.turnstile', [
+        'enabled' => true,
+        'site_key' => 'site-key',
+        'secret_key' => 'secret-key',
+        'verify_url' => 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+    ]);
+
+    expect(generalInquirySpamCheck([
+        'name' => 'Valid Traveller',
+        '_inquiry_website' => '',
+        '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
+    ]))->toBeTrue();
+});
+
+it('allows an inquiry only after successful server side Turnstile verification', function (): void {
+    config()->set('services.turnstile', [
+        'enabled' => true,
+        'site_key' => 'site-key',
+        'secret_key' => 'secret-key',
+        'verify_url' => 'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+    ]);
+    Http::fake([
+        'challenges.cloudflare.com/*' => Http::response([
+            'success' => true,
+            'action' => 'public_inquiry',
+        ]),
+    ]);
+
+    expect(generalInquirySpamCheck([
+        'name' => 'Valid Traveller',
+        '_inquiry_website' => '',
+        '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
+        'cf-turnstile-response' => 'single-use-browser-token',
+    ]))->toBeFalse();
+
+    Http::assertSentCount(1);
+});
+
 it('allows a human-paced submission carrying the encrypted form token', function (): void {
     expect(generalInquirySpamCheck([
         '_inquiry_website' => '',
@@ -67,6 +111,15 @@ it('discards the screenshot attack that puts a link and amount in the name', fun
         'email' => 'attacker@example.com',
         'phone' => '123456789',
         'message' => 'General inquiry',
+    ]))->toBeTrue();
+});
+
+it('discards the latest screenshot attack when the link is moved into the message', function (): void {
+    expect(inquiryPayloadSpamCheck([
+        'name' => 'Clunnible',
+        'email' => 'attacker@example.com',
+        'phone' => '82819851441',
+        'message' => 'General inquiry Message: получить тут https://example.buzz/token',
     ]))->toBeTrue();
 });
 
