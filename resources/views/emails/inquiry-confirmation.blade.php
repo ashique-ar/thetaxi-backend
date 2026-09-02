@@ -20,7 +20,8 @@
             'requirements' => 'Requirements', 'message' => 'Message',
         ];
         $excludedDetailFields = [
-            '_token', 'inquiry_type', 'inquiry_service_page_id', 'service_slug', 'service_type',
+            '_token', '_inquiry_form_token', '_inquiry_website',
+            'inquiry_type', 'inquiry_service_page_id', 'service_slug', 'service_type',
         ];
         $displayedDetailFields = [
             'company_name', 'contact_person', 'name', 'email', 'phone', 'country',

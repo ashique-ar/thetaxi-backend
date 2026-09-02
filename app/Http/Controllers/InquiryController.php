@@ -58,7 +58,7 @@ class InquiryController extends Controller
             $payload = [
                 'type' => $type,
                 'service_type' => $request->input('service_type'),
-                'form' => $request->except('_token'),
+                'form' => $this->sanitizedInquiryFormInput($request),
                 'meta' => [
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),
@@ -108,9 +108,21 @@ class InquiryController extends Controller
     {
         $reason = null;
 
-        if (trim((string) $request->input('_inquiry_website')) !== '') {
+        foreach (['name', 'contact_person', 'full_name'] as $identityField) {
+            if (!$request->filled($identityField)) {
+                continue;
+            }
+
+            $identityReason = $this->invalidInquiryIdentityReason((string) $request->input($identityField));
+            if ($identityReason !== null) {
+                $reason = $identityField . ':' . $identityReason;
+                break;
+            }
+        }
+
+        if ($reason === null && trim((string) $request->input('_inquiry_website')) !== '') {
             $reason = 'honeypot_filled';
-        } else {
+        } elseif ($reason === null) {
             try {
                 $startedAt = (int) Crypt::decryptString((string) $request->input('_inquiry_form_token'));
                 $formAge = now()->timestamp - $startedAt;
@@ -134,6 +146,20 @@ class InquiryController extends Controller
         ]);
 
         return true;
+    }
+
+    /**
+     * Keep security controls out of persisted inquiry data and outgoing emails.
+     *
+     * @return array<string, mixed>
+     */
+    private function sanitizedInquiryFormInput(Request $request): array
+    {
+        return $request->except([
+            '_token',
+            '_inquiry_form_token',
+            '_inquiry_website',
+        ]);
     }
 
     /**
@@ -246,7 +272,7 @@ class InquiryController extends Controller
                 'service_page_id' => $servicePage->id,
                 'service_code' => $servicePage->code,
                 'form_id' => $form->id,
-                'form' => $request->except('_token'),
+                'form' => $this->sanitizedInquiryFormInput($request),
                 'meta' => [
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),

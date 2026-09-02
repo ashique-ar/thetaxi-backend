@@ -70,6 +70,29 @@ it('discards the screenshot attack that puts a link and amount in the name', fun
     ]))->toBeTrue();
 });
 
+it('rejects an invalid raw name before form mapping or validation', function (): void {
+    expect(generalInquirySpamCheck([
+        'name' => 'Вам перевод 114721 руб. получить тут https://example.buzz/token',
+        '_inquiry_website' => '',
+        '_inquiry_form_token' => Crypt::encryptString((string) (now()->timestamp - 10)),
+    ]))->toBeTrue();
+});
+
+it('never persists anti spam fields as inquiry form data', function (): void {
+    $controller = (new ReflectionClass(InquiryController::class))->newInstanceWithoutConstructor();
+    $method = new ReflectionMethod(InquiryController::class, 'sanitizedInquiryFormInput');
+    $request = Request::create('/contact', 'POST', [
+        'name' => 'Valid Traveller',
+        '_token' => 'csrf-token',
+        '_inquiry_form_token' => 'encrypted-age-token',
+        '_inquiry_website' => '',
+    ]);
+
+    expect($method->invoke($controller, $request))->toBe(['name' => 'Valid Traveller'])
+        ->and(file_get_contents(resource_path('views/emails/inquiry-confirmation.blade.php')))
+        ->toContain("'_inquiry_form_token', '_inquiry_website'");
+});
+
 it('allows a genuine transport itinerary without sales-spam signals', function (): void {
     expect(inquiryPayloadSpamCheck([
         'name' => 'Meghana Shivaramaiah',
