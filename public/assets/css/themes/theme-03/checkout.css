@@ -1,12 +1,40 @@
 /**
  * Theme 03 checkout entry point.
  *
- * The release gate prevents this placeholder foundation from being selected
- * in production. Phase 5 will add the complete paper-ledger checkout design.
+ * Complete paper-ledger workflow. Business behavior remains shared.
  */
 
 body.theme-theme-03 .checkout-page,
 body.theme-theme-03 .checkout-success {
     background: var(--t3-paper);
     color: var(--t3-text);
+}
+
+body.theme-theme-03 .checkout-workflow--theme-03 { padding: var(--t3-section-space) 0; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form-wrapper { overflow: hidden; border: 1px solid var(--t3-line); border-radius: 0; background: #fffdf8; box-shadow: 12px 12px 0 var(--t3-stone); }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form-title { padding: 24px 28px; border-bottom: 5px solid var(--t3-ink); background: #fffaf2; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form { padding: clamp(22px, 4vw, 38px); }
+body.theme-theme-03 .checkout-workflow--theme-03 .form-section-divider { margin: 28px 0 20px; padding-top: 20px; border-top: 1px solid var(--t3-line); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.terms-conditions-section, .payment-type-selection .card, .quotation-notice, .checkout-option-panel) { border: 1px solid var(--t3-line) !important; border-radius: 0 !important; background: #fffaf2 !important; box-shadow: none !important; }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.payment-option, .term-item) { border-bottom: 1px solid var(--t3-line); border-radius: 0 !important; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-sidebar-stack { position: sticky; top: 110px; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-sidebar-stack > .checkout-form-wrapper { border-color: var(--t3-ink); box-shadow: 12px 12px 0 rgb(54 45 37 / 20%); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-cart-item, .checkout-item-addons, .checkout-item-extra-km) { margin: 0; border: 0 !important; border-bottom: 1px solid var(--t3-line) !important; border-radius: 0 !important; background: #fffdf8 !important; }
+body.theme-theme-03 .checkout-workflow--theme-03 .checkout-item-toggle { min-height: 44px; border-radius: 0; }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-addon-header, .checkout-extra-km-header, .promo-code-checkout-wrapper) { padding: 14px; border: 1px solid var(--t3-line); border-radius: 0; background: var(--t3-stone); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-selected-addon-row, .checkout-extra-km-panel, .return-trip-breakdown) { border-radius: 0 !important; background: #fffaf2 !important; }
+body.theme-theme-03 .checkout-workflow--theme-03 .pricing-area { padding-top: 20px; border-top: 5px solid var(--t3-ink); }
+body.theme-theme-03 .checkout-workflow--theme-03 .total-row { padding-top: 16px; border-top: 2px solid var(--t3-accent); }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-remove-item-btn, .checkout-clear-cart-btn) { min-width: 44px; min-height: 44px; border-radius: 0; }
+body.theme-theme-03 .checkout-workflow--theme-03 :where(.apply-promo-checkout-btn, .checkout-toggle-addons, .checkout-toggle-extra-km) { min-height: 44px; border-radius: 0; }
+
+@media (max-width: 991px) {
+    body.theme-theme-03 .checkout-workflow--theme-03 .checkout-sidebar-stack { position: static; }
+}
+
+@media (max-width: 767px) {
+    body.theme-theme-03 .checkout-workflow--theme-03 { padding-block: 42px; }
+    body.theme-theme-03 .checkout-workflow--theme-03 :where(.checkout-form-title, .checkout-form) { padding-inline: 18px; }
+    body.theme-theme-03 .checkout-workflow--theme-03 .checkout-cart-item .item-area { align-items: flex-start; }
+    body.theme-theme-03 .checkout-workflow--theme-03 :where(button, .btn, input, select) { max-width: 100%; }
 }

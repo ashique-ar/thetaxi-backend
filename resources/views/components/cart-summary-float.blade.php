@@ -160,7 +160,7 @@
 @endonce
 
 <!-- Cart Summary Float (Hidden by default, shown when items added) -->
-<div id="cartSummaryFloat" class="cart-summary-float" style="display: none;">
+<div id="cartSummaryFloat" class="cart-summary-float {{ theme_class('cart-summary-float') }}" style="display: none;">
     <div class="cart-float-content">
         {{-- Cart Header with icon and close button --}}
         <div class="cart-float-header">

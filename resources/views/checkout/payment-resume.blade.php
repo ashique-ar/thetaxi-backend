@@ -40,7 +40,7 @@
     </div>
     <!-- End Breadcrumb section -->
     <!-- Email-style Payment Resume Page -->
-    <div class="checkout-success pt-100 mb-100">
+    <div class="checkout-success {{ theme_class('payment-resume') }} pt-100 mb-100">
         <div class="container">
             <div class="row justify-content-center">
                 <!-- Content -->

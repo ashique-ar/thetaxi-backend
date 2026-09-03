@@ -37,10 +37,10 @@ it('keeps the Theme 04 hero on existing managed banner owners', function () {
     expect($this->hero)
         ->toContain("\$settings['banner_heading']")
         ->toContain("\$settings['banner_subheading']")
-        ->toContain("\$settings['banner_image']")
+        ->toContain('get_hero_slides($settings)')
         ->toContain("\$settings['site_tagline']")
-        ->toContain('loading="eager"')
-        ->toContain('fetchpriority="high"')
+        ->toContain('shared-hero-swiper')
+        ->toContain("@include('partials.hero-media'")
         ->not->toContain('<form')
         ->not->toContain('<script');
 });

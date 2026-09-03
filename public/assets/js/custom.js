@@ -377,28 +377,43 @@
       prevEl: ".top-offer-text-slider-prev",
     },
   });
-  // Home2 Banner Slider
-  var swiper = new Swiper(".home2-banner-slider", {
-    slidesPerView: 1,
-    speed: 1500,
-    spaceBetween: 24,
-    autoplay: {
-      delay: 3000,
-      pauseOnMouseEnter: true,
-      disableOnInteraction: false,
-    },
-    effect: "fade",
-    fadeEffect: {
-      crossFade: true,
-    },
-    navigation: {
-      nextEl: ".banner-slider-next",
-      prevEl: ".banner-slider-prev",
-    },
-    pagination: {
-      el: ".banner-pagination",
-      clickable: true,
-    },
+  // Shared image/video hero slider for every website theme.
+  document.querySelectorAll(".shared-hero-swiper").forEach(function (slider) {
+    if (slider.dataset.heroReady === "true") return;
+    slider.dataset.heroReady = "true";
+    var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    var pagination = slider.querySelector(".shared-hero-pagination");
+    var instance = new Swiper(slider, {
+      slidesPerView: 1,
+      speed: reduceMotion ? 0 : 900,
+      effect: "fade",
+      allowTouchMove: slider.querySelectorAll(".swiper-slide").length > 1,
+      autoplay: reduceMotion || slider.querySelectorAll(".swiper-slide").length < 2 ? false : {
+        delay: 6000,
+        pauseOnMouseEnter: true,
+        disableOnInteraction: false,
+      },
+      fadeEffect: { crossFade: true },
+      pagination: pagination ? { el: pagination, clickable: true } : undefined,
+      on: {
+        init: function () { syncHeroVideo(this); },
+        slideChangeTransitionStart: function () { syncHeroVideo(this); },
+      },
+    });
+
+    function syncHeroVideo(hero) {
+      hero.slides.forEach(function (slide, index) {
+        var video = slide.querySelector("video");
+        if (!video) return;
+        if (index === hero.activeIndex && !reduceMotion) {
+          video.currentTime = 0;
+          var playback = video.play();
+          if (playback && typeof playback.catch === "function") playback.catch(function () {});
+        } else {
+          video.pause();
+        }
+      });
+    }
   });
   // Home2 Destination Slider
   var swiper = new Swiper(".home2-destination-slider", {

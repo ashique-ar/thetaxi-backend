@@ -21,7 +21,8 @@ it('gives the standalone payment redirect a Theme 04 state without changing its 
         ->toContain('name="payment"')
         ->toContain('name="secret_key"')
         ->toContain("document.getElementById('webxpay-form').submit()")
-        ->not->toContain('body.theme-theme-03 .container');
+        ->toContain('body.theme-theme-03 .container')
+        ->toContain('body.theme-theme-04 .container');
 });
 
 it('gives Theme 04 a route-aware page shell and late page override bundle', function () {

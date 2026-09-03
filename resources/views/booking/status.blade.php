@@ -3,7 +3,7 @@
 @section('title', 'Booking Status')
 
 @section('content')
-<div class="container py-5">
+<div class="container {{ theme_class('booking-status') }} py-5">
     <div class="row justify-content-center">
         <div class="col-lg-8">
             <div class="card shadow-sm border-0">

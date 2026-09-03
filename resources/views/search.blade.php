@@ -83,7 +83,7 @@
     <!-- End Booking Form Section -->
 
     <!-- Vehicle Results Section -->
-    <div class="package-standard-wrapper" id="vehicleResultsSection">
+    <div class="package-standard-wrapper {{ theme_class('discovery-results') }}" id="vehicleResultsSection">
         <div class="container">
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">

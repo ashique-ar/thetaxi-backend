@@ -92,7 +92,7 @@
     @endphp
 
     <!-- Checkout Page Start-->
-    <div class="checkout-page" id="checkoutContentStart">
+    <div class="checkout-page {{ theme_class('checkout-workflow') }}" id="checkoutContentStart">
         <div class="container">
             @if (empty($cart))
                 <div class="alert alert-warning text-center">

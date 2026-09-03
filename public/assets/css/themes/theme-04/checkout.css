@@ -1,12 +1,39 @@
 /**
  * Theme 04 checkout entry point.
  *
- * Theme 04 remains release-gated. Phase 5 will provide the complete
- * Executive Redline checkout presentation without inheriting Theme 01/02.
+ * Complete Executive Redline workflow based on the canonical reference.
  */
 
 body.theme-theme-04 .checkout-page,
 body.theme-theme-04 .checkout-success {
     background: var(--t4-surface);
     color: var(--t4-text);
+}
+
+body.theme-theme-04 .checkout-workflow--theme-04 { padding: var(--t4-section) 0; background: var(--t4-surface-soft); }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-wrapper { overflow: hidden; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; box-shadow: none; }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-title { padding: 22px 26px; border-bottom: 4px solid var(--t4-accent); background: #fff; }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form { padding: clamp(22px, 4vw, 36px); }
+body.theme-theme-04 .checkout-workflow--theme-04 .form-section-divider { margin: 28px 0 20px; padding-top: 20px; border-top: 1px solid var(--t4-line); }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.terms-conditions-section, .payment-type-selection .card, .quotation-notice, .checkout-option-panel) { border: 1px solid var(--t4-line) !important; border-radius: 8px !important; background: #fff !important; box-shadow: none !important; }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.payment-option, .term-item) { border-bottom: 1px solid var(--t4-line); }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack { position: sticky; top: 96px; }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack > .checkout-form-wrapper { border-top: 4px solid var(--t4-accent); box-shadow: var(--t4-shadow); }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-cart-item, .checkout-item-addons, .checkout-item-extra-km) { margin: 0; border: 0 !important; border-bottom: 1px solid var(--t4-line) !important; border-radius: 0 !important; background: #fff !important; }
+body.theme-theme-04 .checkout-workflow--theme-04 .checkout-item-toggle { min-height: 44px; }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-addon-header, .checkout-extra-km-header, .promo-code-checkout-wrapper) { padding: 14px; border: 1px solid var(--t4-line); border-radius: 7px; background: var(--t4-surface-soft); }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-selected-addon-row, .checkout-extra-km-panel, .return-trip-breakdown) { border-radius: 7px !important; background: #fff !important; }
+body.theme-theme-04 .checkout-workflow--theme-04 .pricing-area { padding-top: 20px; border-top: 3px solid var(--t4-text); }
+body.theme-theme-04 .checkout-workflow--theme-04 .total-row { padding-top: 16px; border-top: 2px solid var(--t4-accent); }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-remove-item-btn, .checkout-clear-cart-btn, .apply-promo-checkout-btn, .checkout-toggle-addons, .checkout-toggle-extra-km) { min-height: 44px; border-radius: 6px; }
+
+@media (max-width: 991px) {
+    body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack { position: static; }
+}
+
+@media (max-width: 767px) {
+    body.theme-theme-04 .checkout-workflow--theme-04 { padding-block: 38px; }
+    body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-form-title, .checkout-form) { padding-inline: 18px; }
+    body.theme-theme-04 .checkout-workflow--theme-04 .checkout-cart-item .item-area { align-items: flex-start; }
+    body.theme-theme-04 .checkout-workflow--theme-04 :where(button, .btn, input, select) { max-width: 100%; }
 }

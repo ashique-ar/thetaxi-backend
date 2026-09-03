@@ -1367,3 +1367,8 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
         margin-top: -72px !important;
     }
 }
+body.theme-theme-02 .shared-hero-slider .shared-hero-swiper,
+body.theme-theme-02 .shared-hero-slider .swiper-wrapper,
+body.theme-theme-02 .shared-hero-slider .swiper-slide,
+body.theme-theme-02 .shared-hero-slide__media { width: 100%; height: 100%; }
+body.theme-theme-02 .shared-hero-slide__media { display: block; object-fit: cover; }

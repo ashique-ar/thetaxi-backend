@@ -82,7 +82,7 @@
 
 
     <!-- Email-style Success Page -->
-    <div class="checkout-success py-5">
+    <div class="checkout-success {{ theme_class('checkout-success') }} py-5">
         <div class="container">
             <div class="row justify-content-center">
                 <div class="col-lg-10 card p-4">

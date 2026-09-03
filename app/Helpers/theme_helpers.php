@@ -148,3 +148,80 @@ if (!function_exists('theme_class')) {
         return "{$baseClass}--{$activeTheme}";
     }
 }
+
+if (!function_exists('get_hero_slides')) {
+    /**
+     * Normalize the shared homepage hero media without changing its CMS owner.
+     * Generic slides take precedence; the Theme 02 array and single banner
+     * fields remain backward-compatible fallbacks.
+     *
+     * @return array<int, array{type:string,desktop:?string,mobile:?string,video:?string,poster:?string,alt:string}>
+     */
+    function get_hero_slides(array $settings): array
+    {
+        $rawSlides = $settings['hero_slides'] ?? null;
+        $decoded = is_string($rawSlides) ? json_decode($rawSlides, true) : $rawSlides;
+        $slides = [];
+
+        if (is_array($decoded)) {
+            foreach ($decoded as $index => $slide) {
+                if (!is_array($slide)) {
+                    continue;
+                }
+
+                $type = ($slide['type'] ?? 'image') === 'video' ? 'video' : 'image';
+                $desktop = $slide['desktop'] ?? $slide['image'] ?? null;
+                $mobile = $slide['mobile'] ?? $slide['mobile_image'] ?? null;
+                $video = $slide['video'] ?? null;
+                $poster = $slide['poster'] ?? $desktop;
+
+                if (($type === 'video' && empty($video)) || ($type === 'image' && empty($desktop))) {
+                    continue;
+                }
+
+                $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster') + [
+                    'alt' => trim(($settings['banner_heading'] ?? 'Banner') . ' slide ' . ($index + 1)),
+                ];
+            }
+        }
+
+        if (empty($slides)) {
+            $legacy = $settings['theme_02_slider_images'] ?? null;
+            $legacy = is_string($legacy) ? json_decode($legacy, true) : $legacy;
+            if (is_array($legacy)) {
+                foreach ($legacy as $index => $slide) {
+                    if (!is_array($slide) || empty($slide['desktop'] ?? $slide['image'] ?? null)) {
+                        continue;
+                    }
+                    $slides[] = [
+                        'type' => 'image',
+                        'desktop' => $slide['desktop'] ?? $slide['image'],
+                        'mobile' => $slide['mobile'] ?? $slide['mobile_image'] ?? null,
+                        'video' => null,
+                        'poster' => null,
+                        'alt' => trim(($settings['banner_heading'] ?? 'Banner') . ' slide ' . ($index + 1)),
+                    ];
+                }
+            }
+        }
+
+        if (empty($slides) && !empty($settings['banner_video'])) {
+            $slides[] = [
+                'type' => 'video', 'desktop' => null, 'mobile' => null,
+                'video' => $settings['banner_video'], 'poster' => $settings['banner_image'] ?? null,
+                'alt' => $settings['banner_heading'] ?? 'Banner video',
+            ];
+        }
+
+        if (empty($slides)) {
+            $slides[] = [
+                'type' => 'image',
+                'desktop' => $settings['banner_image'] ?? 'assets/img/home4/home4-banner-img.jpg',
+                'mobile' => null, 'video' => null, 'poster' => null,
+                'alt' => $settings['banner_heading'] ?? 'Banner',
+            ];
+        }
+
+        return $slides;
+    }
+}

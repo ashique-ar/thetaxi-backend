@@ -186,6 +186,64 @@ body.theme-theme-03.theme-page-vehicle-details .vehicle-details-section { margin
 body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-gallery, .vehicle-details-image, .main-vehicle-image) { border-radius: 0; background: #fffdf8; box-shadow: 14px 14px 0 var(--t3-stone); }
 body.theme-theme-03.theme-page-vehicle-details :where(.booking-form-card, .booking-form-shell) { border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
 
+/* Phase 4 discovery ownership: real search/detail/component hooks. */
+body.theme-theme-03.theme-page-search .discovery-results--theme-03 {
+    margin: 0;
+    padding: var(--t3-section-space) 0;
+    background: var(--t3-paper);
+}
+body.theme-theme-03.theme-page-search .search-summary-card {
+    padding: clamp(22px, 4vw, 38px);
+    border: 0;
+    border-left: 6px solid var(--t3-accent);
+    border-radius: 0;
+    background: var(--t3-ink) !important;
+    color: var(--t3-text-on-dark);
+    box-shadow: 12px 12px 0 var(--t3-stone);
+}
+body.theme-theme-03.theme-page-search .search-summary-card :where(.duration-text, .date-range, .distance-info, .duration-info, .package-info, .vehicle-groups-label, .vehicle-groups-count) { color: inherit !important; }
+body.theme-theme-03.theme-page-search .search-summary-footer { border-top-color: rgb(255 255 255 / 22%) !important; }
+body.theme-theme-03.theme-page-search .vehicle-results-grid { row-gap: clamp(28px, 5vw, 54px) !important; }
+body.theme-theme-03.theme-page-search .vehicle-card-wrapper { min-width: 0; }
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 {
+    height: 100%;
+    overflow: hidden;
+    border: 1px solid var(--t3-line) !important;
+    border-radius: 0 !important;
+    background: #fffdf8 !important;
+    box-shadow: 10px 10px 0 var(--t3-stone) !important;
+}
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 :where(.vehicle-card-content, .vehicle-actions) { padding-inline: 22px; }
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 .vehicle-image-container { min-height: 220px; border-bottom: 1px solid var(--t3-line); background: var(--t3-stone); }
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 .vehicle-img { width: 100%; height: 220px; object-fit: contain; }
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 :where(.availability-badge, .category-badge, .discount-badge, .recommended-badge) { border-radius: 0 !important; }
+body.theme-theme-03.theme-page-search .vehicle-card--theme-03 .vehicle-actions { display: grid; gap: 8px; margin-top: auto; padding-bottom: 22px; }
+body.theme-theme-03.theme-page-search .no-results-card { padding: clamp(36px, 7vw, 78px); border: 1px solid var(--t3-line); border-radius: 0; background: #fffdf8; box-shadow: 12px 12px 0 var(--t3-stone); }
+body.theme-theme-03.theme-page-search :where(#requestQuotationModal, #newSearchModal) .modal-content { border: 0; border-radius: 0; background: #fffdf8; box-shadow: 18px 18px 0 var(--t3-stone); }
+body.theme-theme-03.theme-page-search :where(#requestQuotationModal, #newSearchModal) .modal-header { border-bottom: 5px solid var(--t3-accent); background: var(--t3-ink) !important; color: var(--t3-text-on-dark) !important; }
+
+body.theme-theme-03.theme-page-vehicle-details .vehicle-details--theme-03 { margin: 0; padding: var(--t3-section-space) 0 !important; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-image-gallery { padding: clamp(18px, 4vw, 38px); border-top: 6px solid var(--t3-ink); background: #fffdf8; box-shadow: 14px 14px 0 var(--t3-stone); }
+body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { display: grid; min-height: 420px; padding: clamp(20px, 5vw, 54px); place-items: center; }
+body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image img { max-height: 440px; object-fit: contain; }
+body.theme-theme-03.theme-page-vehicle-details .thumbnail-img { border: 1px solid var(--t3-line); border-radius: 0 !important; background: var(--t3-stone); }
+body.theme-theme-03.theme-page-vehicle-details .thumbnail-img.active { border-color: var(--t3-accent); box-shadow: 0 0 0 2px var(--t3-accent); }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-info-card { padding: clamp(24px, 5vw, 52px); border-left: 5px solid var(--t3-accent); background: #fffdf8; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-title { font-family: var(--t3-font-display); font-size: clamp(2.3rem, 5vw, 4.6rem); font-weight: 500; line-height: .95; }
+body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t3-line); border-left: 1px solid var(--t3-line); }
+body.theme-theme-03.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t3-line); border-bottom: 1px solid var(--t3-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+body.theme-theme-03.theme-page-vehicle-details .booking-form-card { position: sticky; top: 110px; }
+body.theme-theme-03.theme-page-vehicle-details .booking-shell-header { border-bottom: 5px solid var(--t3-accent); border-radius: 0 !important; background: var(--t3-ink) !important; color: var(--t3-text-on-dark) !important; }
+body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-price-summary, .vehicle-actions-card) { border: 1px solid var(--t3-line); border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 10px 10px 0 var(--t3-stone); }
+
+body.theme-theme-03 :where(.distance-details-section--theme-03, .distance-details-section) { border: 1px solid var(--t3-line) !important; border-left: 4px solid var(--t3-accent) !important; border-radius: 0 !important; background: #fffaf2 !important; }
+body.theme-theme-03 :where(.distance-details-section--theme-03, .distance-details-section) :where(h5, small, strong, span) { color: var(--t3-text) !important; }
+body.theme-theme-03 :where(.pls-dropdown-trigger, .pls-dropdown-list) { border: 1px solid var(--t3-line) !important; border-radius: 0 !important; background: #fffdf8 !important; box-shadow: none !important; }
+body.theme-theme-03 .pls-dropdown-option:is(:hover, .pls-selected) { background: var(--t3-stone) !important; color: var(--t3-ink) !important; }
+body.theme-theme-03 :where(.booking-textarea, .dynamic-conditional-location input, .custom-location-box input) { max-width: 100%; }
+body.theme-theme-03 .cart-summary-float--theme-03 { right: max(20px, env(safe-area-inset-right)); bottom: max(20px, env(safe-area-inset-bottom)); overflow: hidden; border: 1px solid rgb(255 255 255 / 20%); border-radius: 0; background: var(--t3-ink); box-shadow: 14px 14px 0 rgb(54 45 37 / 20%); }
+body.theme-theme-03 .cart-summary-float--theme-03 :where(.cart-float-header, .cart-float-body, .cart-float-footer) { background: var(--t3-ink) !important; }
+
 /* Service builders: editorial split hero, intentionally unlike Theme 04. */
 body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section { position: relative; min-height: 680px; margin: 0 !important; padding: 0 !important; overflow: hidden; border-radius: 0 !important; background: var(--t3-ink); }
 body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-video-area { position: absolute; inset: 0 0 0 50%; min-height: 0; width: 50%; height: 100%; border-radius: 0; filter: saturate(0.55) contrast(1.08); }
@@ -209,10 +267,23 @@ body.theme-theme-03.theme-page-checkout :where(.checkout-form-wrapper, .checkout
 body.theme-theme-03.theme-page-checkout :where(.order-summary, .cart-summary, .checkout-summary) { border-radius: 0 !important; background: var(--t3-ink) !important; color: var(--t3-text-on-dark) !important; }
 body.theme-theme-03:is(.theme-page-checkout-success, .theme-page-checkout-payment-resume) .checkout-success { margin: 0 !important; padding: var(--t3-section-space) 0; }
 body.theme-theme-03.theme-page-booking-status .t3-site-main > .container { padding-block: var(--t3-section-space) !important; }
+body.theme-theme-03 .checkout-success--theme-03 > .container > .row > .card,
+body.theme-theme-03 .payment-resume--theme-03 > .container > .row > .card { overflow: hidden; border: 1px solid var(--t3-line) !important; border-top: 7px solid var(--t3-ink) !important; border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 16px 16px 0 var(--t3-stone) !important; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.reference-box, .highlight-box, .booking-item-email, .payment-benefits) { border: 1px solid var(--t3-line) !important; border-left: 4px solid var(--t3-accent) !important; border-radius: 0 !important; background: #fffaf2 !important; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section { padding-block: 22px; border-bottom: 1px solid var(--t3-line); }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) .section-title { font-family: var(--t3-font-display); font-size: clamp(1.75rem, 4vw, 2.8rem); }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.info-table, .info-table td, .info-table th) { border-color: var(--t3-line) !important; }
+body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) :where(.status-badge, .service-type-badge, .btn) { border-radius: 0 !important; }
+body.theme-theme-03 .payment-resume--theme-03 #payment-resume-form .submit-btn { min-height: 48px; border: 1px solid var(--t3-ink); background: var(--t3-ink); color: var(--t3-text-on-dark); }
+body.theme-theme-03 .payment-callback--theme-03 .alert { padding: clamp(28px, 6vw, 58px); border: 1px solid var(--t3-line); border-left: 6px solid var(--t3-warning); border-radius: 0; background: #fffaf2; box-shadow: 12px 12px 0 var(--t3-stone); }
+body.theme-theme-03 .booking-status--theme-03 > .row > div > .card { border: 1px solid var(--t3-line) !important; border-left: 6px solid var(--t3-accent) !important; border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
+body.theme-theme-03 .booking-status--theme-03 .progress { height: 8px; border-radius: 0; background: var(--t3-stone); }
+body.theme-theme-03 .booking-status--theme-03 .progress-bar { background: var(--t3-accent); }
 
 @media (max-width: 991px) {
     body.theme-theme-03:not(.theme-page-home) .breadcrumb-section { min-height: 280px; }
     body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-content { width: min(68%, 700px); }
+    body.theme-theme-03.theme-page-vehicle-details .booking-form-card { position: static; }
 }
 
 @media (max-width: 767px) {
@@ -227,6 +298,11 @@ body.theme-theme-03.theme-page-booking-status .t3-site-main > .container { paddi
     body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-content > :where(h1, p) { color: var(--t3-ink) !important; }
     body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-content h1 { font-size: clamp(2.5rem, 11vw, 3.5rem); }
     body.theme-theme-03.theme-page-rate-chart .rate-chart-hero h1 { font-size: clamp(2.5rem, 11vw, 3.4rem); }
+    body.theme-theme-03.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { width: 100%; }
+    body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { min-height: 280px; }
+    body.theme-theme-03 .cart-summary-float--theme-03 { right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); width: auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
+    body.theme-theme-03 .cart-summary-float--theme-03 .cart-float-body { max-height: min(38dvh, 300px); }
+    body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) > .container > .row > .card { padding: 18px !important; box-shadow: 8px 8px 0 var(--t3-stone) !important; }
 }
 
 @media (prefers-reduced-motion: reduce) {

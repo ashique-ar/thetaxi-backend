@@ -1,20 +1,21 @@
 @php
     $theme04HeroHeading = $settings['banner_heading'] ?? 'All-in-one Travel Booking.';
     $theme04HeroSubheading = $settings['banner_subheading'] ?? 'Best travel agency in world-wide & achieve "World Travel Award"';
-    $theme04HeroImage = $settings['banner_image'] ?? 'assets/img/home4/home4-banner-img.jpg';
+    $heroSlides = get_hero_slides($settings);
     $theme04HeroBrand = $settings['brand_short_name'] ?? $settings['site_name'] ?? $settings['brand_name'] ?? 'Company';
     $theme04HeroCaption = $settings['site_tagline'] ?? $settings['brand_tagline'] ?? null;
 @endphp
 
 <section class="t4-hero" aria-labelledby="t4-hero-title">
-    <div class="t4-hero__media">
-        <img
-            src="{{ s3_asset($theme04HeroImage) }}"
-            alt="{{ $theme04HeroHeading }}"
-            width="1920"
-            height="1080"
-            loading="eager"
-            fetchpriority="high">
+    <div class="t4-hero__media shared-hero-slider">
+        <div class="swiper shared-hero-swiper">
+            <div class="swiper-wrapper">
+                @foreach ($heroSlides as $index => $slide)
+                    <div class="swiper-slide">@include('partials.hero-media', compact('slide', 'index'))</div>
+                @endforeach
+            </div>
+            @if (count($heroSlides) > 1)<div class="shared-hero-pagination" aria-label="Banner slides"></div>@endif
+        </div>
     </div>
     <div class="container t4-hero__frame">
         <div class="t4-hero__copy">

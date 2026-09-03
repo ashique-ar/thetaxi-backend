@@ -45,7 +45,7 @@ it('preserves search and inquiry routes plus submitted service identity', functi
     expect($this->dynamicForm)
         ->toContain("route('booking.enquiry')")
         ->toContain("route('booking.search')")
-        ->toContain('method="GET"')
+        ->toContain("method=\"{{ \$isInquiry ? 'POST' : 'GET' }}\"")
         ->toContain('name="service_type"')
         ->toContain('value="{{ $serviceCode }}"')
         ->toContain('button type="submit"')

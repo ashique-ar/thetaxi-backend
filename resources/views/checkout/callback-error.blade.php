@@ -3,7 +3,7 @@
 @section('title', 'Payment Callback')
 
 @section('content')
-    <div class="container pt-100 mb-100">
+    <div class="container {{ theme_class('payment-callback') }} pt-100 mb-100">
         <div class="alert alert-warning">
             <h4>Payment Callback Received</h4>
             <p>{{ $message ?? 'We could not find your booking based on the payment gateway response.' }}</p>

@@ -5229,3 +5229,9 @@ body.theme-theme-03 .t3-error-page__content p {
         transition-duration: 0.01ms !important;
     }
 }
+body.theme-theme-03 .shared-hero-slider .shared-hero-swiper,
+body.theme-theme-03 .shared-hero-slider .swiper-wrapper,
+body.theme-theme-03 .shared-hero-slider .swiper-slide,
+body.theme-theme-03 .shared-hero-slide__media { width: 100%; height: 100%; }
+body.theme-theme-03 .shared-hero-slide__media { display: block; object-fit: cover; }
+body.theme-theme-03 .shared-hero-pagination { position: absolute; z-index: 4; right: 20px; bottom: 18px; left: auto; width: auto; }

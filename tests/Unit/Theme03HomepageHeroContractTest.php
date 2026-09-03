@@ -13,7 +13,7 @@ it('keeps the Theme 03 hero on the existing homepage content owners', function (
     expect($this->hero)
         ->toContain("\$settings['banner_heading']")
         ->toContain("\$settings['banner_subheading']")
-        ->toContain("\$settings['banner_image']")
+        ->toContain('get_hero_slides($settings)')
         ->toContain("\$settings['site_name']")
         ->toContain("\$settings['site_tagline']")
         ->not->toContain('theme_02_slider_images')
@@ -32,17 +32,20 @@ it('preserves the separate shared booking-form boundary after the hero', functio
         ->and($this->home)->toContain('class="home-booking-form-section');
 });
 
-it('uses semantic eager above-the-fold media without adding runtime slider behavior', function () {
+it('uses semantic shared mixed media with eager first-slide loading', function () {
+    $media = file_get_contents(dirname(__DIR__, 2) . '/resources/views/partials/hero-media.blade.php');
     expect($this->hero)
         ->toContain('<section class="t3-hero" aria-labelledby="t3-hero-title">')
         ->toContain('<h1 id="t3-hero-title">')
         ->toContain('<figure class="t3-hero__visual">')
-        ->toContain('width="1600"')
-        ->toContain('height="1100"')
-        ->toContain('loading="eager"')
-        ->toContain('fetchpriority="high"')
-        ->not->toContain('swiper')
+        ->toContain('shared-hero-swiper')
+        ->toContain("@include('partials.hero-media'")
         ->not->toContain('<script');
+    expect($media)->toContain('width="1920"')
+        ->toContain('height="1080"')
+        ->toContain("\$index === 0 ? 'eager' : 'lazy'")
+        ->toContain('fetchpriority="high"')
+        ->toContain('<video');
 });
 
 it('provides an isolated asymmetric responsive hero composition', function () {

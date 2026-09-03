@@ -19,7 +19,7 @@
     }
 @endphp
 
-<div class="distance-details-section"
+<div class="distance-details-section {{ theme_class('distance-details-section') }}"
     style="background: #f8fafc; border-radius: 6px; padding: {{ $compact ? '8px' : '12px' }}; margin: {{ $compact ? '8px 0' : '15px 0' }}; border-left: 4px solid #3b82f6;">
     <h5
         style="font-size: {{ $compact ? '12px' : '13px' }}; color: #374151; margin-bottom: {{ $compact ? '6px' : '8px' }}; font-weight: 600;">

@@ -270,6 +270,19 @@ class WebsiteSettingController extends Controller
             $settings = $category === 'booking'
                 ? $this->normalizeBookingWorkflowSettings($request->settings)
                 : $request->settings;
+
+            if ($category === 'appearance' && array_key_exists('active_theme', $settings)) {
+                $requestedTheme = is_string($settings['active_theme']) ? $settings['active_theme'] : null;
+                if (!in_array($requestedTheme, get_allowed_themes(), true)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Validation failed',
+                        'errors' => ['settings.active_theme' => ['The selected website theme is not available.']],
+                    ], 422);
+                }
+
+                $settings['active_theme'] = normalize_theme_identifier($requestedTheme);
+            }
             $validSettings = array_flip($this->settingsService->getCategoryKeys($category));
             $invalidSettings = array_values(array_diff(array_keys($settings), array_keys($validSettings)));
 
@@ -347,7 +360,8 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => $settings,
+            'meta' => ['theme_options' => $this->releasedThemeOptions()],
         ]);
     }
 
@@ -464,8 +478,26 @@ class WebsiteSettingController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $settings
+            'data' => $settings,
+            'meta' => ['theme_options' => $this->releasedThemeOptions()],
         ]);
+    }
+
+    /** @return array<int, array{value:string,label:string,description:string,preview:?string}> */
+    private function releasedThemeOptions(): array
+    {
+        $themes = config('website_themes.themes', []);
+
+        return collect(get_allowed_themes())->map(function (string $identifier) use ($themes): array {
+            $theme = $themes[$identifier] ?? [];
+
+            return [
+                'value' => $identifier,
+                'label' => (string) ($theme['label'] ?? $identifier),
+                'description' => (string) ($theme['description'] ?? ''),
+                'preview' => isset($theme['preview']) && is_string($theme['preview']) ? $theme['preview'] : null,
+            ];
+        })->values()->all();
     }
 
     /**

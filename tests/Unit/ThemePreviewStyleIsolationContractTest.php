@@ -64,7 +64,8 @@ it('keeps legacy homepage styles out of both preview themes without replaying wh
         ->toContain('.featured-vehicles-section');
 
     expect($this->theme04)
-        ->toContain('.theme-page-home .t4-booking-panel+.t4-services')
+        ->toContain('.theme-page-home .t4-booking-panel+:where(')
+        ->toContain('.t4-services,')
         ->toContain('padding-top: 54px');
 });
 

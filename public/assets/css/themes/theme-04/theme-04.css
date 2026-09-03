@@ -450,7 +450,24 @@ body.theme-theme-04 .t4-booking-panel {
     pointer-events: none;
 }
 
-body.theme-theme-04.theme-page-home .t4-booking-panel+.t4-services {
+/*
+ * The journey desk overlaps the hero. Any conditional homepage section can be
+ * its next rendered sibling when the sections before it have no managed data.
+ * Keep that first live section clear of the desk without adding placeholder
+ * wrappers or coupling independently managed sections to one another.
+ */
+body.theme-theme-04.theme-page-home .t4-booking-panel+:where(
+    .t4-partners,
+    .t4-fleet,
+    .t4-services,
+    .t4-destinations,
+    .t4-activities,
+    .t4-offers,
+    .t4-proof,
+    .t4-testimonials,
+    .t4-stories,
+    .t4-faq
+) {
     padding-top: 54px;
 }
 
@@ -2177,3 +2194,9 @@ body.theme-theme-04 .t4-error-page__card p {
         transition-duration: 0.01ms !important;
     }
 }
+body.theme-theme-04 .shared-hero-slider .shared-hero-swiper,
+body.theme-theme-04 .shared-hero-slider .swiper-wrapper,
+body.theme-theme-04 .shared-hero-slider .swiper-slide,
+body.theme-theme-04 .shared-hero-slide__media { width: 100%; height: 100%; }
+body.theme-theme-04 .shared-hero-slide__media { display: block; object-fit: cover; }
+body.theme-theme-04 .shared-hero-pagination { position: absolute; z-index: 4; right: 24px; bottom: 22px; left: auto; width: auto; }

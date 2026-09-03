@@ -207,6 +207,7 @@ class WebsiteSettingsService
             'banner_award_text',
             'banner_video',
             'banner_image',
+            'hero_slides',
             'theme_02_slider_images',
             'banner_background',
             'homepage_breadcrumb_image',

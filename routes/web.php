@@ -157,6 +157,10 @@ Route::get('/rate-chart', [RateChartController::class, 'index'])->name('rate-cha
 Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
     ->name('inquiry-services.show');
 
+// Named CMS discovery endpoints must precede the generic content catch-alls.
+Route::get('/content/search', [CmsController::class, 'search'])->name('cms.search');
+Route::get('/content/featured', [CmsController::class, 'featured'])->name('cms.featured');
+
 // Dynamic CMS content routes - these handle all content types dynamically
 Route::get('/{contentType}', [CmsController::class, 'index'])
     ->name('cms.index')

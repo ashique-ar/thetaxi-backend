@@ -90,7 +90,7 @@
         </div>
     </div>
 
-    <div class="vehicle-details-wrapper py-5">
+    <div class="vehicle-details-wrapper {{ theme_class('vehicle-details') }} py-5">
         <div class="container">
             <div class="row g-4">
                 <div class="col-lg-8">
