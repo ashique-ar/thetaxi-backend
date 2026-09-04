@@ -1,117 +1,168 @@
 <?php
 
-use App\Http\Controllers\Api\Booking\BookingFlowController;
-use App\Http\Controllers\Api\Booking\BookingLifecycleController;
-use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
-use App\Http\Controllers\Api\Customer\Mobile\DeviceController as CustomerMobileDeviceController;
-use App\Http\Controllers\Api\AssignmentController;
-use App\Http\Controllers\Api\CollectionCommissionController;
-use App\Http\Controllers\Api\BookingRouteUsageController;
-use App\Http\Controllers\Api\FinancialSettlementController;
-use App\Http\Controllers\Api\AgreementController;
-use App\Http\Controllers\Api\AuditLogController;
-use App\Http\Controllers\Api\GooglePlacesController;
-use App\Http\Controllers\Api\MedicalRecordController;
-use App\Http\Controllers\Api\ReportsController;
-use App\Http\Controllers\Api\SystemController;
-use App\Http\Controllers\Api\SystemBackupController;
-use App\Http\Controllers\Api\UtilityController;
-use App\Http\Controllers\Api\UserContextController;
-use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Api\Agent\AgentController;
+use App\Http\Controllers\Api\Admin\BookingAssignmentController;
+use App\Http\Controllers\Api\Admin\BookingFormTabController;
+use App\Http\Controllers\Api\Admin\FAQCategoryController;
+use App\Http\Controllers\Api\Admin\FAQController;
+use App\Http\Controllers\Api\Admin\PopupController;
+use App\Http\Controllers\Api\Admin\PromoCodeController;
 use App\Http\Controllers\Api\Agent\AgentApiController;
-use App\Http\Controllers\Api\Agent\AgentOperationalController;
 use App\Http\Controllers\Api\Agent\AgentApiSessionController;
 use App\Http\Controllers\Api\Agent\AgentCommissionController;
+use App\Http\Controllers\Api\Agent\AgentController;
+use App\Http\Controllers\Api\Agent\AgentOperationalController;
+use App\Http\Controllers\Api\AgreementController;
+use App\Http\Controllers\Api\AirportController;
+use App\Http\Controllers\Api\AnalyticsController;
+use App\Http\Controllers\Api\AssignmentController;
+use App\Http\Controllers\Api\AuditLogController;
+use App\Http\Controllers\Api\Auth\AuthController;
+use App\Http\Controllers\Api\Auth\SocialAuthController;
+use App\Http\Controllers\Api\Auth\TwoFactorController;
+use App\Http\Controllers\Api\AvailabilityController;
 use App\Http\Controllers\Api\Booking\BookingChannelController;
+use App\Http\Controllers\Api\Booking\BookingFlowController;
+use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\BookingStatusController;
+use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
+use App\Http\Controllers\Api\BookingObservabilityController;
+use App\Http\Controllers\Api\BookingRouteUsageController;
 use App\Http\Controllers\Api\BusinessSettingController;
-use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\CMS\FooterLinkController;
+use App\Http\Controllers\Api\CMS\NavigationMenuController;
+use App\Http\Controllers\Api\CollectionCommissionController;
 use App\Http\Controllers\Api\Company\RegionController;
+use App\Http\Controllers\Api\CompanyController;
+use App\Http\Controllers\Api\Corporate\AdminCorporateBookingController;
+use App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController;
+use App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController;
+use App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController;
+use App\Http\Controllers\Api\Corporate\CorporateApprovalController;
+use App\Http\Controllers\Api\Corporate\CorporateAuditLogController;
+use App\Http\Controllers\Api\Corporate\CorporateBookingController;
+use App\Http\Controllers\Api\Corporate\CorporateController;
+use App\Http\Controllers\Api\Corporate\CorporateDepartmentController;
+use App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController;
+use App\Http\Controllers\Api\Corporate\CorporateDivisionController;
+use App\Http\Controllers\Api\Corporate\CorporateEmployeeController;
+use App\Http\Controllers\Api\Corporate\CorporateFinanceController;
+use App\Http\Controllers\Api\Corporate\CorporateManagementReportController;
+use App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController;
+use App\Http\Controllers\Api\Corporate\CorporateReportController;
+use App\Http\Controllers\Api\Corporate\CorporateReportScheduleController;
+use App\Http\Controllers\Api\Corporate\CorporateRoleController;
+use App\Http\Controllers\Api\Corporate\CorporateStaffTransportController;
+use App\Http\Controllers\Api\Corporate\CorporateWorkspaceController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\CurrencyController;
-use App\Http\Controllers\Api\Driver\DriverController;
+use App\Http\Controllers\Api\Customer\Mobile\DeviceController as CustomerMobileDeviceController;
+use App\Http\Controllers\Api\CustomerController;
+use App\Http\Controllers\Api\DocumentController;
 use App\Http\Controllers\Api\Driver\DriverBattaRuleController;
+use App\Http\Controllers\Api\Driver\DriverController;
 use App\Http\Controllers\Api\Driver\DriverHireSettlementController;
 use App\Http\Controllers\Api\Driver\DriverLogController;
 use App\Http\Controllers\Api\DrivingLicenseController;
 use App\Http\Controllers\Api\DrivingLicenseTypeController;
-use App\Http\Controllers\Api\DocumentController;
+use App\Http\Controllers\Api\EmailTestController;
+use App\Http\Controllers\Api\FileUploadController;
+use App\Http\Controllers\Api\FinancialSettlementController;
+use App\Http\Controllers\Api\GamificationController;
+use App\Http\Controllers\Api\GooglePlacesController;
+use App\Http\Controllers\Api\HealthController;
+use App\Http\Controllers\Api\Hr\ActingAppointmentController;
+use App\Http\Controllers\Api\Hr\AssetOperationsController;
+use App\Http\Controllers\Api\Hr\AttendanceDeviceController;
+use App\Http\Controllers\Api\Hr\AttendanceIngestionController;
+use App\Http\Controllers\Api\Hr\AttendanceResultController;
+use App\Http\Controllers\Api\Hr\EngagementController;
+use App\Http\Controllers\Api\Hr\EssController;
+use App\Http\Controllers\Api\Hr\HikvisionManagementController;
+use App\Http\Controllers\Api\Hr\HrAnalyticsController;
+use App\Http\Controllers\Api\Hr\HrGovernanceController;
+use App\Http\Controllers\Api\Hr\HrIntegrationDeliveryController;
+use App\Http\Controllers\Api\Hr\HrNotificationController;
+use App\Http\Controllers\Api\Hr\HrReportingController;
+use App\Http\Controllers\Api\Hr\KnowledgeController;
+use App\Http\Controllers\Api\Hr\LearningController;
+use App\Http\Controllers\Api\Hr\LifecycleController;
+use App\Http\Controllers\Api\Hr\MealProgrammeController;
+use App\Http\Controllers\Api\Hr\MealVarianceController;
+use App\Http\Controllers\Api\Hr\PayrollStatutoryController;
+use App\Http\Controllers\Api\Hr\PeopleCoreController;
+use App\Http\Controllers\Api\Hr\PerformanceController;
+use App\Http\Controllers\Api\Hr\RecruitmentController;
+use App\Http\Controllers\Api\Hr\RelationsCaseController;
+use App\Http\Controllers\Api\Hr\ReportingLineController;
+use App\Http\Controllers\Api\Hr\SafetyController;
+use App\Http\Controllers\Api\Hr\ServiceOperationsController;
+use App\Http\Controllers\Api\Hr\TalentController;
+use App\Http\Controllers\Api\Hr\TravelController;
+use App\Http\Controllers\Api\Hr\WorkforceController;
+use App\Http\Controllers\Api\Hr\WorkforcePlanningController;
 use App\Http\Controllers\Api\ImageGalleryController;
 use App\Http\Controllers\Api\InquiryController;
 use App\Http\Controllers\Api\InquiryFormController;
 use App\Http\Controllers\Api\InquiryServicePageController;
+use App\Http\Controllers\Api\InquiryServicePageSectionController;
+use App\Http\Controllers\Api\InvoiceController;
+use App\Http\Controllers\Api\LoyaltyController;
+use App\Http\Controllers\Api\MedicalRecordController;
+use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationLogController;
 use App\Http\Controllers\Api\NotificationTemplateController;
-use App\Http\Controllers\Api\PublicInquiryServiceController;
-use App\Http\Controllers\Api\PhoneCallController;
+use App\Http\Controllers\Api\PaymentController;
 use App\Http\Controllers\Api\PaymentMethodController;
-use App\Http\Controllers\Api\StaffSensitivePaymentMethodController;
-use App\Http\Controllers\Api\Sales\SalesProfileController;
-use App\Http\Controllers\Api\Sales\SalesReportingAssignmentController;
-use App\Http\Controllers\Api\Sales\SalesBookingAttributionController;
+use App\Http\Controllers\Api\PermissionController;
+use App\Http\Controllers\Api\PhoneCallController;
+use App\Http\Controllers\Api\PublicInquiryServiceController;
+use App\Http\Controllers\Api\ReportsController;
+use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\Sales\BookingPaymentAdjustmentController;
 use App\Http\Controllers\Api\Sales\CollectionScheduleWorkflowController;
-use App\Http\Controllers\Api\Sales\SalesEvidenceController;
-use App\Http\Controllers\Api\Sales\PaymentFinalityController;
-use App\Http\Controllers\Api\Sales\PaymentLedgerReconciliationController;
 use App\Http\Controllers\Api\Sales\CommissionConfigurationController;
 use App\Http\Controllers\Api\Sales\CommissionDecisionController;
 use App\Http\Controllers\Api\Sales\CommissionHoldController;
 use App\Http\Controllers\Api\Sales\CommissionRecoveryController;
 use App\Http\Controllers\Api\Sales\CommissionStatementController;
+use App\Http\Controllers\Api\Sales\PaymentFinalityController;
+use App\Http\Controllers\Api\Sales\PaymentLedgerReconciliationController;
+use App\Http\Controllers\Api\Sales\SalesBookingAttributionController;
 use App\Http\Controllers\Api\Sales\SalesCrmController;
-use App\Http\Controllers\Api\Sales\SalesPerformanceController;
 use App\Http\Controllers\Api\Sales\SalesDashboardController;
-use App\Http\Controllers\Api\Hr\PeopleCoreController;
-use App\Http\Controllers\Api\Hr\ReportingLineController;
-use App\Http\Controllers\Api\Hr\ActingAppointmentController;
-use App\Http\Controllers\Api\Hr\AttendanceIngestionController;
-use App\Http\Controllers\Api\Hr\AttendanceDeviceController;
-use App\Http\Controllers\Api\Hr\AttendanceResultController;
-use App\Http\Controllers\Api\Hr\WorkforceController;
-use App\Http\Controllers\Api\Hr\PayrollStatutoryController;
-use App\Http\Controllers\Api\Hr\EssController;
-use App\Http\Controllers\Api\Hr\RecruitmentController;
-use App\Http\Controllers\Api\Hr\LifecycleController;
-use App\Http\Controllers\Api\Hr\PerformanceController;
-use App\Http\Controllers\Api\Hr\LearningController;
-use App\Http\Controllers\Api\Hr\ServiceOperationsController;
-use App\Http\Controllers\Api\Hr\AssetOperationsController;
-use App\Http\Controllers\Api\Hr\TravelController;
-use App\Http\Controllers\Api\Hr\KnowledgeController;
-use App\Http\Controllers\Api\Hr\TalentController;
-use App\Http\Controllers\Api\Hr\MealProgrammeController;
-use App\Http\Controllers\Api\Hr\MealVarianceController;
-use App\Http\Controllers\Api\Hr\HrIntegrationDeliveryController;
-use App\Http\Controllers\Api\Hr\RelationsCaseController;
-use App\Http\Controllers\Api\Hr\SafetyController;
-use App\Http\Controllers\Api\Hr\EngagementController;
-use App\Http\Controllers\Api\Hr\HrAnalyticsController;
-use App\Http\Controllers\Api\Hr\WorkforcePlanningController;
-use App\Http\Controllers\Api\Hr\HrReportingController;
-use App\Http\Controllers\Api\Hr\HrNotificationController;
-use App\Http\Controllers\Api\Hr\HrGovernanceController;
-use App\Http\Controllers\Api\ServiceTypeController;
-use App\Http\Controllers\Api\Service\ServicePackageController;
+use App\Http\Controllers\Api\Sales\SalesEvidenceController;
+use App\Http\Controllers\Api\Sales\SalesPerformanceController;
+use App\Http\Controllers\Api\Sales\SalesProfileController;
+use App\Http\Controllers\Api\Sales\SalesReportingAssignmentController;
 use App\Http\Controllers\Api\Service\ServiceFormConfigController;
+use App\Http\Controllers\Api\Service\ServicePackageController;
+use App\Http\Controllers\Api\ServiceTypeController;
 use App\Http\Controllers\Api\Sms\SmsManagementController;
-use App\Http\Controllers\Api\AirportController;
+use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\StaffSensitivePaymentMethodController;
 use App\Http\Controllers\Api\StateController;
+use App\Http\Controllers\Api\SystemBackupController;
+use App\Http\Controllers\Api\SystemController;
+use App\Http\Controllers\Api\TermsController;
+use App\Http\Controllers\Api\UserContextController;
+use App\Http\Controllers\Api\UserController;
+use App\Http\Controllers\Api\UtilityController;
+use App\Http\Controllers\Api\Vehicle\VehicleAddonCategoryController;
 use App\Http\Controllers\Api\Vehicle\VehicleAddonController;
 use App\Http\Controllers\Api\Vehicle\VehicleCategoryController;
 use App\Http\Controllers\Api\Vehicle\VehicleClassController;
-use App\Http\Controllers\Api\Vehicle\VehicleContractTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleCommissionController;
+use App\Http\Controllers\Api\Vehicle\VehicleContractTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleController;
+use App\Http\Controllers\Api\Vehicle\VehicleDiscountController;
 use App\Http\Controllers\Api\Vehicle\VehicleDistanceMultiplierController;
-use App\Http\Controllers\Api\Vehicle\VehicleFuelTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleFinanceProviderController;
+use App\Http\Controllers\Api\Vehicle\VehicleFuelTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleGradeController;
 use App\Http\Controllers\Api\Vehicle\VehicleGroupController;
 use App\Http\Controllers\Api\Vehicle\VehicleImageController;
-use App\Http\Controllers\Api\Vehicle\VehicleInsuranceController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceClaimController;
+use App\Http\Controllers\Api\Vehicle\VehicleInsuranceController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceProviderController;
 use App\Http\Controllers\Api\Vehicle\VehicleInsuranceTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleLeaseController;
@@ -121,42 +172,28 @@ use App\Http\Controllers\Api\Vehicle\VehicleMakeController;
 use App\Http\Controllers\Api\Vehicle\VehicleModelController;
 use App\Http\Controllers\Api\Vehicle\VehicleOwnerController;
 use App\Http\Controllers\Api\Vehicle\VehicleOwnerTypeController;
-use App\Http\Controllers\Api\Vehicle\VehicleRevenueLicenseController;
-
-use App\Http\Controllers\Api\Vehicle\VehicleTransmissionController;
-use App\Http\Controllers\Api\Vehicle\VehicleDiscountController;
-use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingSlabDefinitionController;
-use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehicleGroupPricingController;
-use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionController;
-use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\KmRangePricingController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\PriceAdjustmentController;
 use App\Http\Controllers\Api\Vehicle\VehiclePricing\PricingContextPolicyController;
-
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehicleGroupPricingController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCalculationDefinitionController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinitionController;
+use App\Http\Controllers\Api\Vehicle\VehiclePricing\VehiclePricingSlabDefinitionController;
+use App\Http\Controllers\Api\Vehicle\VehicleRevenueLicenseController;
+use App\Http\Controllers\Api\Vehicle\VehicleTransmissionController;
 use App\Http\Controllers\Api\VipTypeController;
+use App\Http\Controllers\Api\Website\AIContentController;
 use App\Http\Controllers\Api\Website\CmsContentController;
 use App\Http\Controllers\Api\Website\CmsContentTypeController;
-use App\Http\Controllers\Api\Website\AIContentController;
 use App\Http\Controllers\Api\Website\WebsiteSettingController;
-use App\Http\Controllers\Api\CMS\NavigationMenuController;
-use App\Http\Controllers\Api\CMS\FooterLinkController;
-use App\Http\Controllers\Api\Auth\AuthController;
-use App\Http\Controllers\Api\Auth\TwoFactorController;
-use App\Http\Controllers\Api\Auth\SocialAuthController;
-use App\Http\Controllers\Api\UserController;
-use App\Http\Controllers\Api\RoleController;
-use App\Http\Controllers\Api\PermissionController;
-use App\Http\Controllers\Api\GamificationController;
-use App\Http\Controllers\Api\LoyaltyController;
-use App\Http\Controllers\Api\AnalyticsController;
-use App\Http\Controllers\Api\AvailabilityController;
-use App\Http\Controllers\Api\NotificationController;
-use App\Http\Controllers\Api\FileUploadController;
-use App\Http\Controllers\Api\PaymentController;
-use App\Http\Controllers\Api\InvoiceController;
-use App\Http\Controllers\Api\CustomerController;
-use App\Http\Controllers\Api\StaffController;
 use App\Http\Controllers\BookingController;
+use App\Http\Controllers\CartController;
+use App\Http\Resources\ServiceTypeResource;
+use App\Models\Corporate\Corporate;
+use App\Models\Service\ServiceType;
+use App\Services\Pricing\PricingContextPolicyService;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
@@ -236,7 +273,7 @@ Route::prefix('public')->group(function () {
     Route::post('return-trip/calculate', [ServicePackageController::class, 'calculateReturnPrice']);
 
     // Branding settings (public - no auth required)
-    Route::get('branding', [\App\Http\Controllers\Api\Website\WebsiteSettingController::class, 'branding']);
+    Route::get('branding', [WebsiteSettingController::class, 'branding']);
 
     // Non-sensitive module availability flags used before portal route authorization.
     Route::get('business-feature-flags', [WebsiteSettingController::class, 'businessFeatureFlags']);
@@ -298,8 +335,8 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::get('service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('permission:bookings.view|bookings.create|create_bookings|view_all_bookings|corporate.view|system.view');
-    Route::get('booking-flow/service-types', function (\Illuminate\Http\Request $request) {
-        $context = app(\App\Services\Pricing\PricingContextPolicyService::class)
+    Route::get('booking-flow/service-types', function (Request $request) {
+        $context = app(PricingContextPolicyService::class)
             ->effectiveContext((string) $request->input('context', 'portal'));
         $ownerType = (string) $request->input('owner_type', '');
         $ownerId = (string) $request->input('owner_id', '');
@@ -311,7 +348,7 @@ Route::middleware(['auth:api'])->group(function () {
             $ownerId = '';
         }
 
-        $query = \App\Models\Service\ServiceType::query()
+        $query = ServiceType::query()
             ->where('is_active', true);
 
         if ($context !== 'all') {
@@ -326,10 +363,10 @@ Route::middleware(['auth:api'])->group(function () {
             });
         }
 
-        if ($fallbackContext !== '' && !(clone $query)->exists()) {
+        if ($fallbackContext !== '' && ! (clone $query)->exists()) {
             $fallbackOwnerType = (string) $request->input('fallback_owner_type', '');
             $fallbackOwnerId = (string) $request->input('fallback_owner_id', '');
-            $query = \App\Models\Service\ServiceType::query()
+            $query = ServiceType::query()
                 ->where('is_active', true)
                 ->forContext($fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
         }
@@ -339,7 +376,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->orderBy('name')
             ->paginate(min(max($perPage, 1), 500));
 
-        return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
+        return ServiceTypeResource::collection($serviceTypes);
     })->middleware('pricing.context');
     Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('auth:api');
@@ -441,7 +478,6 @@ Route::middleware(['auth:api'])->group(function () {
     Route::delete('permissions/{permission}', [PermissionController::class, 'destroy'])->middleware('permission:permissions.manage');
     Route::get('permissions/{permission}/roles', [PermissionController::class, 'roles'])->middleware('permission:permissions.view');
     Route::get('permissions/{permission}/users', [PermissionController::class, 'users'])->middleware('permission:permissions.view');
-
 
     /*
     |--------------------------------------------------------------------------
@@ -786,421 +822,446 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     Route::prefix('hr/people')->middleware('ensure.internal')->group(function () {
-        Route::get('directory', [PeopleCoreController::class,'index'])->middleware('permission:hr.people.view');
-        Route::get('organization', [PeopleCoreController::class,'organization'])->middleware('permission:hr.people.view');
-        Route::post('organization-units', [PeopleCoreController::class,'storeOrganizationUnit'])->middleware('permission:hr.people.manage');
-        Route::get('staff/{staffId}/employment-history', [PeopleCoreController::class,'employmentHistory'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::get('staff/{staffId}/timeline', [PeopleCoreController::class,'timeline'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::post('staff/{staffId}/rehire-cases', [PeopleCoreController::class,'prepareRehire'])->whereUuid('staffId')->middleware('permission:hr.people.rehire.prepare');
-        Route::post('rehire-cases/{case}/approve', [PeopleCoreController::class,'approveRehire'])->whereUuid('case')->middleware('permission:hr.people.rehire.approve');
-        Route::get('staff/{staffId}/profile-versions', [PeopleCoreController::class,'profileVersions'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::post('staff/{staffId}/profile-versions', [PeopleCoreController::class,'storeProfileVersion'])->whereUuid('staffId')->middleware('permission:hr.people.manage');
-        Route::get('staff/{staffId}/records', [PeopleCoreController::class,'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::post('staff/{staffId}/records', [PeopleCoreController::class,'storeRecord'])->whereUuid('staffId')->middleware('permission:hr.people.manage');
+        Route::get('directory', [PeopleCoreController::class, 'index'])->middleware('permission:hr.people.view');
+        Route::get('organization', [PeopleCoreController::class, 'organization'])->middleware('permission:hr.people.view');
+        Route::post('organization-units', [PeopleCoreController::class, 'storeOrganizationUnit'])->middleware('permission:hr.people.manage');
+        Route::get('staff/{staffId}/employment-history', [PeopleCoreController::class, 'employmentHistory'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::get('staff/{staffId}/timeline', [PeopleCoreController::class, 'timeline'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::post('staff/{staffId}/rehire-cases', [PeopleCoreController::class, 'prepareRehire'])->whereUuid('staffId')->middleware('permission:hr.people.rehire.prepare');
+        Route::post('rehire-cases/{case}/approve', [PeopleCoreController::class, 'approveRehire'])->whereUuid('case')->middleware('permission:hr.people.rehire.approve');
+        Route::get('staff/{staffId}/profile-versions', [PeopleCoreController::class, 'profileVersions'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::post('staff/{staffId}/profile-versions', [PeopleCoreController::class, 'storeProfileVersion'])->whereUuid('staffId')->middleware('permission:hr.people.manage');
+        Route::get('staff/{staffId}/records', [PeopleCoreController::class, 'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::post('staff/{staffId}/records', [PeopleCoreController::class, 'storeRecord'])->whereUuid('staffId')->middleware('permission:hr.people.manage');
     });
     Route::prefix('hr/employees')->middleware('ensure.internal')->group(function () {
-        Route::get('', [PeopleCoreController::class,'index'])->middleware('permission:hr.people.view');
-        Route::get('{staffId}', [PeopleCoreController::class,'show'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::get('{staffId}/employment-history', [PeopleCoreController::class,'employmentHistory'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::get('{staffId}/timeline', [PeopleCoreController::class,'timeline'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::get('{staffId}/profile-versions', [PeopleCoreController::class,'profileVersions'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::get('{staffId}/records', [PeopleCoreController::class,'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
-        Route::put('{staffId}/custom-fields/{definitionId}', [PeopleCoreController::class,'putStaffCustomFieldValue'])->whereUuid('staffId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
+        Route::get('', [PeopleCoreController::class, 'index'])->middleware('permission:hr.people.view');
+        Route::get('{staffId}', [PeopleCoreController::class, 'show'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::get('{staffId}/employment-history', [PeopleCoreController::class, 'employmentHistory'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::get('{staffId}/timeline', [PeopleCoreController::class, 'timeline'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::get('{staffId}/profile-versions', [PeopleCoreController::class, 'profileVersions'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::get('{staffId}/records', [PeopleCoreController::class, 'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
+        Route::put('{staffId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putStaffCustomFieldValue'])->whereUuid('staffId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
     Route::prefix('hr/organization')->middleware('ensure.internal')->group(function () {
-        Route::get('units', [PeopleCoreController::class,'organization'])->middleware('permission:hr.organization.view');
-        Route::get('chart', [PeopleCoreController::class,'organizationChart'])->middleware('permission:hr.organization.view');
-        Route::post('units', [PeopleCoreController::class,'storeOrganizationUnit'])->middleware('permission:hr.organization.manage');
-        Route::put('units/{unitId}', [PeopleCoreController::class,'updateOrganizationUnit'])->whereUuid('unitId')->middleware('permission:hr.organization.manage');
-        Route::get('job-families', [PeopleCoreController::class,'jobFamilies'])->middleware('permission:hr.organization.view');
-        Route::post('job-families', [PeopleCoreController::class,'storeJobFamily'])->middleware('permission:hr.organization.manage');
-        Route::put('job-families/{familyId}', [PeopleCoreController::class,'updateJobFamily'])->whereUuid('familyId')->middleware('permission:hr.organization.manage');
-        Route::get('job-grades', [PeopleCoreController::class,'jobGrades'])->middleware('permission:hr.organization.view');
-        Route::post('job-grades', [PeopleCoreController::class,'storeJobGrade'])->middleware('permission:hr.organization.manage');
-        Route::put('job-grades/{gradeId}', [PeopleCoreController::class,'updateJobGrade'])->whereUuid('gradeId')->middleware('permission:hr.organization.manage');
-        Route::get('designations', [PeopleCoreController::class,'designations'])->middleware('permission:hr.organization.view');
-        Route::post('designations', [PeopleCoreController::class,'storeDesignation'])->middleware('permission:hr.organization.manage');
-        Route::put('designations/{designationId}', [PeopleCoreController::class,'updateDesignation'])->whereUuid('designationId')->middleware('permission:hr.organization.manage');
-        Route::get('positions', [PeopleCoreController::class,'positions'])->middleware('permission:hr.organization.view');
-        Route::post('positions', [PeopleCoreController::class,'storePosition'])->middleware('permission:hr.organization.manage');
-        Route::put('positions/{positionId}', [PeopleCoreController::class,'updatePosition'])->whereUuid('positionId')->middleware('permission:hr.organization.manage');
-        Route::get('payroll-groups', [PeopleCoreController::class,'payrollGroups'])->middleware('permission:hr.organization.view');
-        Route::post('payroll-groups', [PeopleCoreController::class,'storePayrollGroup'])->middleware('permission:hr.organization.manage');
-        Route::put('payroll-groups/{groupId}', [PeopleCoreController::class,'updatePayrollGroup'])->whereUuid('groupId')->middleware('permission:hr.organization.manage');
-        Route::get('document-types', [PeopleCoreController::class,'documentTypes'])->middleware('permission:hr.organization.view');
-        Route::post('document-types', [PeopleCoreController::class,'storeDocumentType'])->middleware('permission:hr.organization.manage');
-        Route::put('document-types/{typeId}', [PeopleCoreController::class,'updateDocumentType'])->whereUuid('typeId')->middleware('permission:hr.organization.manage');
-        Route::get('work-calendars', [PeopleCoreController::class,'workCalendars'])->middleware('permission:hr.organization.view');
-        Route::post('work-calendars', [PeopleCoreController::class,'storeWorkCalendar'])->middleware('permission:hr.organization.manage');
-        Route::get('work-calendars/{calendarId}/days', [PeopleCoreController::class,'workCalendarDays'])->whereUuid('calendarId')->middleware('permission:hr.organization.view');
-        Route::post('work-calendars/{calendarId}/days', [PeopleCoreController::class,'storeWorkCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.organization.manage');
-        Route::get('reporting-lines', [ReportingLineController::class,'index'])->middleware('permission:hr.reporting-lines.view');
-        Route::get('reporting-line-staff-options', [ReportingLineController::class,'staffOptions'])->middleware('permission:hr.reporting-lines.view');
-        Route::post('reporting-lines', [ReportingLineController::class,'store'])->middleware('permission:hr.reporting-lines.manage');
-        Route::post('reporting-lines/{lineId}/end', [ReportingLineController::class,'end'])->whereUuid('lineId')->middleware('permission:hr.reporting-lines.manage');
-        Route::get('acting-appointments', [ActingAppointmentController::class,'index'])->middleware('permission:hr.acting-appointments.view');
-        Route::get('acting-appointment-references', [ActingAppointmentController::class,'references'])->middleware('permission:hr.acting-appointments.view');
-        Route::post('acting-appointments', [ActingAppointmentController::class,'store'])->middleware('permission:hr.acting-appointments.manage');
-        Route::post('acting-appointments/{appointmentId}/approve', [ActingAppointmentController::class,'approve'])->whereUuid('appointmentId')->middleware('permission:hr.acting-appointments.approve');
-        Route::get('custom-fields', [PeopleCoreController::class,'customFieldDefinitions'])->middleware('permission:hr.custom-fields.view');
-        Route::post('custom-fields', [PeopleCoreController::class,'storeCustomFieldDefinition'])->middleware('permission:hr.custom-fields.manage');
-        Route::put('custom-fields/{definitionId}', [PeopleCoreController::class,'updateCustomFieldDefinition'])->whereUuid('definitionId')->middleware('permission:hr.custom-fields.manage');
-        Route::get('subjects/{ownerType}/{ownerId}/custom-fields', [PeopleCoreController::class,'subjectCustomFieldValues'])->whereUuid('ownerId')->middleware('permission:hr.custom-fields.values.view');
-        Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class,'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
+        Route::get('units', [PeopleCoreController::class, 'organization'])->middleware('permission:hr.organization.view');
+        Route::get('chart', [PeopleCoreController::class, 'organizationChart'])->middleware('permission:hr.organization.view');
+        Route::post('units', [PeopleCoreController::class, 'storeOrganizationUnit'])->middleware('permission:hr.organization.manage');
+        Route::put('units/{unitId}', [PeopleCoreController::class, 'updateOrganizationUnit'])->whereUuid('unitId')->middleware('permission:hr.organization.manage');
+        Route::get('job-families', [PeopleCoreController::class, 'jobFamilies'])->middleware('permission:hr.organization.view');
+        Route::post('job-families', [PeopleCoreController::class, 'storeJobFamily'])->middleware('permission:hr.organization.manage');
+        Route::put('job-families/{familyId}', [PeopleCoreController::class, 'updateJobFamily'])->whereUuid('familyId')->middleware('permission:hr.organization.manage');
+        Route::get('job-grades', [PeopleCoreController::class, 'jobGrades'])->middleware('permission:hr.organization.view');
+        Route::post('job-grades', [PeopleCoreController::class, 'storeJobGrade'])->middleware('permission:hr.organization.manage');
+        Route::put('job-grades/{gradeId}', [PeopleCoreController::class, 'updateJobGrade'])->whereUuid('gradeId')->middleware('permission:hr.organization.manage');
+        Route::get('designations', [PeopleCoreController::class, 'designations'])->middleware('permission:hr.organization.view');
+        Route::post('designations', [PeopleCoreController::class, 'storeDesignation'])->middleware('permission:hr.organization.manage');
+        Route::put('designations/{designationId}', [PeopleCoreController::class, 'updateDesignation'])->whereUuid('designationId')->middleware('permission:hr.organization.manage');
+        Route::get('positions', [PeopleCoreController::class, 'positions'])->middleware('permission:hr.organization.view');
+        Route::post('positions', [PeopleCoreController::class, 'storePosition'])->middleware('permission:hr.organization.manage');
+        Route::put('positions/{positionId}', [PeopleCoreController::class, 'updatePosition'])->whereUuid('positionId')->middleware('permission:hr.organization.manage');
+        Route::get('payroll-groups', [PeopleCoreController::class, 'payrollGroups'])->middleware('permission:hr.organization.view');
+        Route::post('payroll-groups', [PeopleCoreController::class, 'storePayrollGroup'])->middleware('permission:hr.organization.manage');
+        Route::put('payroll-groups/{groupId}', [PeopleCoreController::class, 'updatePayrollGroup'])->whereUuid('groupId')->middleware('permission:hr.organization.manage');
+        Route::get('document-types', [PeopleCoreController::class, 'documentTypes'])->middleware('permission:hr.organization.view');
+        Route::post('document-types', [PeopleCoreController::class, 'storeDocumentType'])->middleware('permission:hr.organization.manage');
+        Route::put('document-types/{typeId}', [PeopleCoreController::class, 'updateDocumentType'])->whereUuid('typeId')->middleware('permission:hr.organization.manage');
+        Route::get('work-calendars', [PeopleCoreController::class, 'workCalendars'])->middleware('permission:hr.organization.view');
+        Route::post('work-calendars', [PeopleCoreController::class, 'storeWorkCalendar'])->middleware('permission:hr.organization.manage');
+        Route::get('work-calendars/{calendarId}/days', [PeopleCoreController::class, 'workCalendarDays'])->whereUuid('calendarId')->middleware('permission:hr.organization.view');
+        Route::post('work-calendars/{calendarId}/days', [PeopleCoreController::class, 'storeWorkCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.organization.manage');
+        Route::get('reporting-lines', [ReportingLineController::class, 'index'])->middleware('permission:hr.reporting-lines.view');
+        Route::get('reporting-line-staff-options', [ReportingLineController::class, 'staffOptions'])->middleware('permission:hr.reporting-lines.view');
+        Route::post('reporting-lines', [ReportingLineController::class, 'store'])->middleware('permission:hr.reporting-lines.manage');
+        Route::post('reporting-lines/{lineId}/end', [ReportingLineController::class, 'end'])->whereUuid('lineId')->middleware('permission:hr.reporting-lines.manage');
+        Route::get('acting-appointments', [ActingAppointmentController::class, 'index'])->middleware('permission:hr.acting-appointments.view');
+        Route::get('acting-appointment-references', [ActingAppointmentController::class, 'references'])->middleware('permission:hr.acting-appointments.view');
+        Route::post('acting-appointments', [ActingAppointmentController::class, 'store'])->middleware('permission:hr.acting-appointments.manage');
+        Route::post('acting-appointments/{appointmentId}/approve', [ActingAppointmentController::class, 'approve'])->whereUuid('appointmentId')->middleware('permission:hr.acting-appointments.approve');
+        Route::get('custom-fields', [PeopleCoreController::class, 'customFieldDefinitions'])->middleware('permission:hr.custom-fields.view');
+        Route::post('custom-fields', [PeopleCoreController::class, 'storeCustomFieldDefinition'])->middleware('permission:hr.custom-fields.manage');
+        Route::put('custom-fields/{definitionId}', [PeopleCoreController::class, 'updateCustomFieldDefinition'])->whereUuid('definitionId')->middleware('permission:hr.custom-fields.manage');
+        Route::get('subjects/{ownerType}/{ownerId}/custom-fields', [PeopleCoreController::class, 'subjectCustomFieldValues'])->whereUuid('ownerId')->middleware('permission:hr.custom-fields.values.view');
+        Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
     Route::prefix('hr/attendance')->group(function () {
-        Route::get('devices', [AttendanceDeviceController::class,'index'])->middleware('permission:hr.attendance.devices.view');
-        Route::post('connectors', [AttendanceDeviceController::class,'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
-        Route::post('devices', [AttendanceDeviceController::class,'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
-        Route::put('devices/{deviceId}', [AttendanceDeviceController::class,'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
-        Route::post('devices/{deviceId}/probe', [AttendanceDeviceController::class,'probe'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
-        Route::post('devices/{deviceId}/sync', [AttendanceDeviceController::class,'sync'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
-        Route::get('devices/{deviceId}/people', [AttendanceDeviceController::class,'devicePeople'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.view');
-        Route::post('devices/{deviceId}/people', [AttendanceDeviceController::class,'provisionDevicePerson'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
-        Route::get('sync-runs', [AttendanceDeviceController::class,'syncRuns'])->middleware('permission:hr.attendance.devices.view');
-        Route::get('mapping-candidates', [AttendanceDeviceController::class,'mappingCandidates'])->middleware('permission:hr.attendance.mappings.manage');
-        Route::get('legacy-staff-gaps', [AttendanceDeviceController::class,'legacyStaffGaps'])->middleware('permission:staff.edit-all');
-        Route::get('person-mappings', [AttendanceDeviceController::class,'mappings'])->middleware('permission:hr.attendance.devices.view');
-        Route::post('person-mappings', [AttendanceDeviceController::class,'storeMapping'])->middleware('permission:hr.attendance.mappings.manage');
-        Route::post('person-mappings/{mappingId}/approve', [AttendanceDeviceController::class,'approveMapping'])->whereUuid('mappingId')->middleware('permission:hr.attendance.mappings.approve');
-        Route::get('health', [AttendanceDeviceController::class,'health'])->middleware('permission:hr.attendance.devices.view');
-        Route::get('raw-events', [AttendanceDeviceController::class,'rawEvents'])->middleware('permission:hr.attendance.devices.view');
-        Route::get('quarantine', [AttendanceDeviceController::class,'quarantine'])->middleware('permission:hr.attendance.devices.view');
-        Route::post('quarantine/{itemId}/resolve', [AttendanceDeviceController::class,'resolveQuarantine'])->whereUuid('itemId')->middleware('permission:hr.attendance.quarantine.resolve');
-        Route::get('access-commands', [AttendanceDeviceController::class,'accessCommands'])->middleware('permission:hr.attendance.access.request');
-        Route::post('access-commands', [AttendanceDeviceController::class,'requestAccess'])->middleware('permission:hr.attendance.access.request');
-        Route::post('access-commands/{commandId}/approve', [AttendanceDeviceController::class,'approveAccess'])->whereUuid('commandId')->middleware('permission:hr.attendance.access.approve');
-        Route::get('results', [AttendanceResultController::class,'index'])->middleware('permission:hr.attendance.results.view');
-        Route::post('results/calculate', [AttendanceResultController::class,'calculate'])->middleware('permission:hr.attendance.results.calculate');
-        Route::get('calendars', [AttendanceResultController::class,'calendars'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
-        Route::get('calendars/{calendarId}/days', [AttendanceResultController::class,'calendarDays'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
-        Route::post('calendars', [AttendanceResultController::class,'storeCalendar'])->middleware('permission:hr.attendance.config.manage');
-        Route::post('calendars/{calendarId}/days', [AttendanceResultController::class,'storeCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
-        Route::get('shifts', [AttendanceResultController::class,'shifts'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
-        Route::post('shifts', [AttendanceResultController::class,'storeShift'])->middleware('permission:hr.attendance.config.manage');
-        Route::get('policies', [AttendanceResultController::class,'policies'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
-        Route::post('policies', [AttendanceResultController::class,'storePolicy'])->middleware('permission:hr.attendance.config.manage');
-        Route::post('policies/{policyId}/approve', [AttendanceResultController::class,'approvePolicy'])->whereUuid('policyId')->middleware('permission:hr.attendance.config.approve');
-        Route::get('rosters', [AttendanceResultController::class,'rosters'])->middleware('permission:hr.attendance.results.view');
-        Route::post('rosters', [AttendanceResultController::class,'storeRoster'])->middleware('permission:hr.attendance.config.manage');
-        Route::post('rosters/bulk', [AttendanceResultController::class,'storeRosterBulk'])->middleware('permission:hr.attendance.config.manage');
-        Route::post('rosters/{rosterId}/approve', [AttendanceResultController::class,'approveRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.approve');
-        Route::get('corrections', [AttendanceResultController::class,'corrections'])->middleware('permission:hr.attendance.results.view');
-        Route::post('corrections', [AttendanceResultController::class,'requestCorrection'])->middleware('permission:hr.attendance.corrections.request');
-        Route::post('corrections/{correctionId}/approve', [AttendanceResultController::class,'approveCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
-        Route::post('corrections/{correctionId}/reject', [AttendanceResultController::class,'rejectCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
-        Route::get('exceptions', [AttendanceResultController::class,'exceptions'])->middleware('permission:hr.attendance.results.view');
-        Route::post('exceptions/{exceptionId}/resolve', [AttendanceResultController::class,'resolveException'])->whereUuid('exceptionId')->middleware('permission:hr.attendance.exceptions.resolve');
-        Route::get('periods', [AttendanceResultController::class,'periods'])->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
-        Route::post('periods', [AttendanceResultController::class,'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
-        Route::post('periods/{periodId}/transition', [AttendanceResultController::class,'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage');
+        Route::get('devices', [AttendanceDeviceController::class, 'index'])->middleware('permission:hr.attendance.devices.view');
+        Route::post('connectors', [AttendanceDeviceController::class, 'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices', [AttendanceDeviceController::class, 'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
+        Route::put('devices/{deviceId}', [AttendanceDeviceController::class, 'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices/{deviceId}/probe', [AttendanceDeviceController::class, 'probe'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices/{deviceId}/sync', [AttendanceDeviceController::class, 'sync'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::get('devices/{deviceId}/people', [AttendanceDeviceController::class, 'devicePeople'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.view');
+        Route::post('devices/{deviceId}/people', [AttendanceDeviceController::class, 'provisionDevicePerson'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::put('devices/{deviceId}/people/{employeeNumber}', [AttendanceDeviceController::class, 'updateDevicePerson'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::put('devices/{deviceId}/people/{employeeNumber}/status', [AttendanceDeviceController::class, 'updateDevicePersonStatus'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('devices/{deviceId}/people/{employeeNumber}/credentials', [AttendanceDeviceController::class, 'credentials'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::post('devices/{deviceId}/people/{employeeNumber}/cards', [AttendanceDeviceController::class, 'setCard'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::delete('devices/{deviceId}/people/{employeeNumber}/cards/{fingerprint}', [AttendanceDeviceController::class, 'deleteCard'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::post('devices/{deviceId}/people/{employeeNumber}/pin', [AttendanceDeviceController::class, 'setPin'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::put('devices/{deviceId}/people/{employeeNumber}/disposition', [AttendanceDeviceController::class, 'disposition'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::post('devices/{deviceId}/people/bulk-mapping', [AttendanceDeviceController::class, 'bulkMapping'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('sync-runs', [AttendanceDeviceController::class, 'syncRuns'])->middleware('permission:hr.attendance.devices.view');
+        Route::get('mapping-candidates', [AttendanceDeviceController::class, 'mappingCandidates'])->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('legacy-staff-gaps', [AttendanceDeviceController::class, 'legacyStaffGaps'])->middleware('permission:staff.edit-all');
+        Route::get('person-mappings', [AttendanceDeviceController::class, 'mappings'])->middleware('permission:hr.attendance.devices.view');
+        Route::post('person-mappings', [AttendanceDeviceController::class, 'storeMapping'])->middleware('permission:hr.attendance.mappings.manage');
+        Route::post('person-mappings/{mappingId}/approve', [AttendanceDeviceController::class, 'approveMapping'])->whereUuid('mappingId')->middleware('permission:hr.attendance.mappings.approve');
+        Route::get('health', [AttendanceDeviceController::class, 'health'])->middleware('permission:hr.attendance.devices.view');
+        Route::get('raw-events', [AttendanceDeviceController::class, 'rawEvents'])->middleware('permission:hr.attendance.devices.view');
+        Route::get('quarantine', [AttendanceDeviceController::class, 'quarantine'])->middleware('permission:hr.attendance.devices.view');
+        Route::post('quarantine/{itemId}/resolve', [AttendanceDeviceController::class, 'resolveQuarantine'])->whereUuid('itemId')->middleware('permission:hr.attendance.quarantine.resolve');
+        Route::get('access-commands', [AttendanceDeviceController::class, 'accessCommands'])->middleware('permission:hr.attendance.access.request');
+        Route::post('access-commands', [AttendanceDeviceController::class, 'requestAccess'])->middleware('permission:hr.attendance.access.request');
+        Route::post('access-commands/{commandId}/approve', [AttendanceDeviceController::class, 'approveAccess'])->whereUuid('commandId')->middleware('permission:hr.attendance.access.approve');
+        Route::get('access-groups', [HikvisionManagementController::class, 'groups'])->middleware('permission:hr.attendance.access.request');
+        Route::post('access-groups', [HikvisionManagementController::class, 'storeGroup'])->middleware('permission:hr.attendance.access.approve');
+        Route::post('access-commands/{id}/retry', [HikvisionManagementController::class, 'retryCommand'])->whereUuid('id')->middleware('permission:hr.attendance.access.approve');
+        Route::get('devices/{id}/diagnostics', [HikvisionManagementController::class, 'diagnostics'])->whereUuid('id')->middleware('permission:hr.attendance.devices.manage');
+        Route::put('devices/{id}/time-configuration', [HikvisionManagementController::class, 'updateTime'])->whereUuid('id')->middleware('permission:hr.attendance.devices.manage');
+        Route::put('devices/{id}/safe-settings', [HikvisionManagementController::class, 'updateSettings'])->whereUuid('id')->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices/{id}/rotate-credentials', [HikvisionManagementController::class, 'rotateCredentials'])->whereUuid('id')->middleware('permission:hr.attendance.devices.manage');
+        Route::get('device-alerts', [HikvisionManagementController::class, 'alerts'])->middleware('permission:hr.attendance.devices.view');
+        Route::post('device-alerts/{id}/resolve', [HikvisionManagementController::class, 'resolveAlert'])->whereUuid('id')->middleware('permission:hr.attendance.devices.manage');
+        Route::get('maintenance-commands', [HikvisionManagementController::class, 'maintenanceCommands'])->middleware('permission:hr.attendance.maintenance.execute');
+        Route::post('devices/{id}/reboot-requests', [HikvisionManagementController::class, 'requestReboot'])->whereUuid('id')->middleware('permission:hr.attendance.maintenance.execute');
+        Route::post('maintenance-commands/{id}/approve', [HikvisionManagementController::class, 'approveReboot'])->whereUuid('id')->middleware('permission:hr.attendance.maintenance.approve');
+        Route::get('results', [AttendanceResultController::class, 'index'])->middleware('permission:hr.attendance.results.view');
+        Route::post('results/calculate', [AttendanceResultController::class, 'calculate'])->middleware('permission:hr.attendance.results.calculate');
+        Route::get('calendars', [AttendanceResultController::class, 'calendars'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::get('calendars/{calendarId}/days', [AttendanceResultController::class, 'calendarDays'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::post('calendars', [AttendanceResultController::class, 'storeCalendar'])->middleware('permission:hr.attendance.config.manage');
+        Route::put('calendars/{calendarId}', [AttendanceResultController::class, 'updateCalendar'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
+        Route::post('calendars/{calendarId}/days', [AttendanceResultController::class, 'storeCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
+        Route::put('calendars/{calendarId}/days/{dayId}', [AttendanceResultController::class, 'updateCalendarDay'])->whereUuid(['calendarId','dayId'])->middleware('permission:hr.attendance.config.manage');
+        Route::get('shifts', [AttendanceResultController::class, 'shifts'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::post('shifts', [AttendanceResultController::class, 'storeShift'])->middleware('permission:hr.attendance.config.manage');
+        Route::put('shifts/{shiftId}', [AttendanceResultController::class, 'updateShift'])->whereUuid('shiftId')->middleware('permission:hr.attendance.config.manage');
+        Route::get('policies', [AttendanceResultController::class, 'policies'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::post('policies', [AttendanceResultController::class, 'storePolicy'])->middleware('permission:hr.attendance.config.manage');
+        Route::put('policies/{policyId}', [AttendanceResultController::class, 'updatePolicy'])->whereUuid('policyId')->middleware('permission:hr.attendance.config.manage');
+        Route::post('policies/{policyId}/approve', [AttendanceResultController::class, 'approvePolicy'])->whereUuid('policyId')->middleware('permission:hr.attendance.config.approve');
+        Route::get('rosters', [AttendanceResultController::class, 'rosters'])->middleware('permission:hr.attendance.results.view');
+        Route::post('rosters', [AttendanceResultController::class, 'storeRoster'])->middleware('permission:hr.attendance.config.manage');
+        Route::put('rosters/{rosterId}', [AttendanceResultController::class, 'updateRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.manage');
+        Route::post('rosters/bulk', [AttendanceResultController::class, 'storeRosterBulk'])->middleware('permission:hr.attendance.config.manage');
+        Route::post('rosters/{rosterId}/approve', [AttendanceResultController::class, 'approveRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.approve');
+        Route::get('corrections', [AttendanceResultController::class, 'corrections'])->middleware('permission:hr.attendance.results.view');
+        Route::post('corrections', [AttendanceResultController::class, 'requestCorrection'])->middleware('permission:hr.attendance.corrections.request');
+        Route::post('corrections/{correctionId}/approve', [AttendanceResultController::class, 'approveCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
+        Route::post('corrections/{correctionId}/reject', [AttendanceResultController::class, 'rejectCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
+        Route::get('exceptions', [AttendanceResultController::class, 'exceptions'])->middleware('permission:hr.attendance.results.view');
+        Route::post('exceptions/{exceptionId}/resolve', [AttendanceResultController::class, 'resolveException'])->whereUuid('exceptionId')->middleware('permission:hr.attendance.exceptions.resolve');
+        Route::get('periods', [AttendanceResultController::class, 'periods'])->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
+        Route::post('periods', [AttendanceResultController::class, 'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
+        Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage');
     });
     Route::prefix('hr/workforce')->group(function () {
-        Route::get('references', [WorkforceController::class,'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
-        Route::get('leave/requests', [WorkforceController::class,'leaveRequests'])->middleware('permission:hr.leave.view');
-        Route::get('leave/balances', [WorkforceController::class,'leaveBalances'])->middleware('permission:hr.leave.view');
-        Route::get('leave/team-calendar', [WorkforceController::class,'teamCalendar'])->middleware('permission:hr.leave.view');
-        Route::post('leave/requests', [WorkforceController::class,'submitLeave'])->middleware('permission:hr.leave.request');
-        Route::post('leave/requests/{id}/decide', [WorkforceController::class,'decideLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
-        Route::post('leave/requests/{id}/cancel', [WorkforceController::class,'cancelLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
-        Route::post('leave/requests/{id}/confirm-return', [WorkforceController::class,'confirmLeaveReturn'])->whereUuid('id')->middleware('permission:hr.leave.request');
-        Route::post('leave/requests/{id}/extend', [WorkforceController::class,'extendLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
-        Route::post('leave/requests/{id}/recall', [WorkforceController::class,'recallLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
-        Route::post('leave/balance-accounts/{accountId}/entries', [WorkforceController::class,'postBalance'])->whereUuid('accountId')->middleware('permission:hr.leave.balances.post');
-        Route::get('leave/types', [WorkforceController::class,'leaveTypes'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
-        Route::post('leave/types', [WorkforceController::class,'storeLeaveType'])->middleware('permission:hr.leave.config.manage');
-        Route::get('leave/policies', [WorkforceController::class,'leavePolicies'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
-        Route::post('leave/policies', [WorkforceController::class,'storeLeavePolicy'])->middleware('permission:hr.leave.config.manage');
-        Route::post('leave/policies/{id}/approve', [WorkforceController::class,'approveLeavePolicy'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
-        Route::get('leave/policy-assignments', [WorkforceController::class,'leavePolicyAssignments'])->middleware('permission:hr.leave.view');
-        Route::post('leave/policy-assignments', [WorkforceController::class,'assignLeavePolicy'])->middleware('permission:hr.leave.config.manage');
-        Route::post('leave/policy-assignments/{id}/approve', [WorkforceController::class,'approveLeaveAssignment'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
-        Route::get('work-requests', [WorkforceController::class,'workRequests'])->middleware('permission:hr.work-requests.view');
-        Route::post('work-requests', [WorkforceController::class,'submitWork'])->middleware('permission:hr.work-requests.request');
-        Route::post('work-requests/{id}/decide', [WorkforceController::class,'decideWork'])->whereUuid('id')->middleware('permission:hr.work-requests.approve');
-        Route::get('work-request-policies', [WorkforceController::class,'workRequestPolicies'])->middleware('permission:hr.work-requests.config.manage|hr.work-requests.config.approve');
-        Route::post('work-request-policies', [WorkforceController::class,'storeWorkPolicy'])->middleware('permission:hr.work-requests.config.manage');
-        Route::post('work-request-policies/{id}/approve', [WorkforceController::class,'approveWorkPolicy'])->whereUuid('id')->middleware('permission:hr.work-requests.config.approve');
-        Route::get('timesheets', [WorkforceController::class,'timesheets'])->middleware('permission:hr.timesheets.view');
-        Route::post('timesheets', [WorkforceController::class,'saveTimesheet'])->middleware('permission:hr.timesheets.manage');
-        Route::post('timesheets/{id}/transition', [WorkforceController::class,'transitionTimesheet'])->whereUuid('id')->middleware('permission:hr.timesheets.view');
-        Route::get('payroll-inputs', [WorkforceController::class,'payrollInputs'])->middleware('permission:hr.payroll-inputs.view');
+        Route::get('references', [WorkforceController::class, 'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
+        Route::get('leave/requests', [WorkforceController::class, 'leaveRequests'])->middleware('permission:hr.leave.view');
+        Route::get('leave/balances', [WorkforceController::class, 'leaveBalances'])->middleware('permission:hr.leave.view');
+        Route::get('leave/team-calendar', [WorkforceController::class, 'teamCalendar'])->middleware('permission:hr.leave.view');
+        Route::post('leave/requests', [WorkforceController::class, 'submitLeave'])->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/decide', [WorkforceController::class, 'decideLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
+        Route::post('leave/requests/{id}/cancel', [WorkforceController::class, 'cancelLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/confirm-return', [WorkforceController::class, 'confirmLeaveReturn'])->whereUuid('id')->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/extend', [WorkforceController::class, 'extendLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/recall', [WorkforceController::class, 'recallLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
+        Route::post('leave/balance-accounts/{accountId}/entries', [WorkforceController::class, 'postBalance'])->whereUuid('accountId')->middleware('permission:hr.leave.balances.post');
+        Route::get('leave/types', [WorkforceController::class, 'leaveTypes'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
+        Route::post('leave/types', [WorkforceController::class, 'storeLeaveType'])->middleware('permission:hr.leave.config.manage');
+        Route::get('leave/policies', [WorkforceController::class, 'leavePolicies'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
+        Route::post('leave/policies', [WorkforceController::class, 'storeLeavePolicy'])->middleware('permission:hr.leave.config.manage');
+        Route::post('leave/policies/{id}/approve', [WorkforceController::class, 'approveLeavePolicy'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
+        Route::get('leave/policy-assignments', [WorkforceController::class, 'leavePolicyAssignments'])->middleware('permission:hr.leave.view');
+        Route::post('leave/policy-assignments', [WorkforceController::class, 'assignLeavePolicy'])->middleware('permission:hr.leave.config.manage');
+        Route::post('leave/policy-assignments/{id}/approve', [WorkforceController::class, 'approveLeaveAssignment'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
+        Route::get('work-requests', [WorkforceController::class, 'workRequests'])->middleware('permission:hr.work-requests.view');
+        Route::post('work-requests', [WorkforceController::class, 'submitWork'])->middleware('permission:hr.work-requests.request');
+        Route::post('work-requests/{id}/decide', [WorkforceController::class, 'decideWork'])->whereUuid('id')->middleware('permission:hr.work-requests.approve');
+        Route::get('work-request-policies', [WorkforceController::class, 'workRequestPolicies'])->middleware('permission:hr.work-requests.config.manage|hr.work-requests.config.approve');
+        Route::post('work-request-policies', [WorkforceController::class, 'storeWorkPolicy'])->middleware('permission:hr.work-requests.config.manage');
+        Route::post('work-request-policies/{id}/approve', [WorkforceController::class, 'approveWorkPolicy'])->whereUuid('id')->middleware('permission:hr.work-requests.config.approve');
+        Route::get('timesheets', [WorkforceController::class, 'timesheets'])->middleware('permission:hr.timesheets.view');
+        Route::post('timesheets', [WorkforceController::class, 'saveTimesheet'])->middleware('permission:hr.timesheets.manage');
+        Route::post('timesheets/{id}/transition', [WorkforceController::class, 'transitionTimesheet'])->whereUuid('id')->middleware('permission:hr.timesheets.view');
+        Route::get('payroll-inputs', [WorkforceController::class, 'payrollInputs'])->middleware('permission:hr.payroll-inputs.view');
     });
     Route::prefix('hr/payroll')->middleware('ensure.internal')->group(function () {
-        Route::get('context', [PayrollStatutoryController::class,'context'])->middleware('permission:hr.payroll.statutory.view');
-        Route::get('epf-etf-policies', [PayrollStatutoryController::class,'epfEtfPolicies'])->middleware('permission:hr.payroll.statutory.view');
-        Route::post('epf-etf-policies', [PayrollStatutoryController::class,'storeEpfEtfPolicy'])->middleware('permission:hr.payroll.statutory.manage');
-        Route::post('epf-etf-policies/{policy}/approve', [PayrollStatutoryController::class,'approveEpfEtfPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
-        Route::post('epf-etf-policies/preview', [PayrollStatutoryController::class,'previewEpfEtfContribution'])->middleware('permission:hr.payroll.statutory.view');
-        Route::get('gratuity-policies', [PayrollStatutoryController::class,'gratuityPolicies'])->middleware('permission:hr.payroll.statutory.view');
-        Route::post('gratuity-policies', [PayrollStatutoryController::class,'storeGratuityPolicy'])->middleware('permission:hr.payroll.statutory.manage');
-        Route::post('gratuity-policies/{policy}/approve', [PayrollStatutoryController::class,'approveGratuityPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
-        Route::post('gratuity-policies/preview', [PayrollStatutoryController::class,'previewGratuityEntitlement'])->middleware('permission:hr.payroll.statutory.view');
+        Route::get('context', [PayrollStatutoryController::class, 'context'])->middleware('permission:hr.payroll.statutory.view');
+        Route::get('epf-etf-policies', [PayrollStatutoryController::class, 'epfEtfPolicies'])->middleware('permission:hr.payroll.statutory.view');
+        Route::post('epf-etf-policies', [PayrollStatutoryController::class, 'storeEpfEtfPolicy'])->middleware('permission:hr.payroll.statutory.manage');
+        Route::post('epf-etf-policies/{policy}/approve', [PayrollStatutoryController::class, 'approveEpfEtfPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
+        Route::post('epf-etf-policies/preview', [PayrollStatutoryController::class, 'previewEpfEtfContribution'])->middleware('permission:hr.payroll.statutory.view');
+        Route::get('gratuity-policies', [PayrollStatutoryController::class, 'gratuityPolicies'])->middleware('permission:hr.payroll.statutory.view');
+        Route::post('gratuity-policies', [PayrollStatutoryController::class, 'storeGratuityPolicy'])->middleware('permission:hr.payroll.statutory.manage');
+        Route::post('gratuity-policies/{policy}/approve', [PayrollStatutoryController::class, 'approveGratuityPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
+        Route::post('gratuity-policies/preview', [PayrollStatutoryController::class, 'previewGratuityEntitlement'])->middleware('permission:hr.payroll.statutory.view');
     });
-    Route::prefix('hr/ess')->group(function(){
-        Route::get('my-requests',[EssController::class,'myRequests'])->middleware('permission:hr.ess.use');
-        Route::get('my-requests/{id}',[EssController::class,'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
-        Route::get('approval-inbox',[EssController::class,'inbox'])->middleware('permission:hr.mss.approve');
-        Route::post('delegations',[EssController::class,'delegate'])->middleware('permission:hr.mss.delegate');
-        Route::post('delegations/{id}/approve',[EssController::class,'approveDelegation'])->whereUuid('id')->middleware('permission:hr.mss.delegations.approve');
+    Route::prefix('hr/ess')->group(function () {
+        Route::get('my-requests', [EssController::class, 'myRequests'])->middleware('permission:hr.ess.use');
+        Route::get('my-requests/{id}', [EssController::class, 'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
+        Route::get('approval-inbox', [EssController::class, 'inbox'])->middleware('permission:hr.mss.approve');
+        Route::post('delegations', [EssController::class, 'delegate'])->middleware('permission:hr.mss.delegate');
+        Route::post('delegations/{id}/approve', [EssController::class, 'approveDelegation'])->whereUuid('id')->middleware('permission:hr.mss.delegations.approve');
     });
-    Route::prefix('hr/recruitment')->group(function(){
-        Route::get('requisitions',[RecruitmentController::class,'requisitions'])->middleware('permission:hr.recruitment.view');
-        Route::post('requisitions',[RecruitmentController::class,'storeRequisition'])->middleware('permission:hr.recruitment.manage');
-        Route::post('requisitions/{id}/approve',[RecruitmentController::class,'approveRequisition'])->whereUuid('id')->middleware('permission:hr.recruitment.approve');
-        Route::get('candidates',[RecruitmentController::class,'candidates'])->middleware('permission:hr.recruitment.view');
-        Route::post('candidates',[RecruitmentController::class,'storeCandidate'])->middleware('permission:hr.recruitment.manage');
-        Route::get('applications',[RecruitmentController::class,'applications'])->middleware('permission:hr.recruitment.view');
-        Route::post('applications',[RecruitmentController::class,'apply'])->middleware('permission:hr.recruitment.manage');
-        Route::post('applications/{id}/transition',[RecruitmentController::class,'transition'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
-        Route::get('applications/{id}/interviews',[RecruitmentController::class,'interviews'])->whereUuid('id')->middleware('permission:hr.recruitment.view');
-        Route::post('applications/{id}/interviews',[RecruitmentController::class,'storeInterview'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
-        Route::post('applications/{id}/offers',[RecruitmentController::class,'storeOffer'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
-        Route::post('offers/{offerId}/decide',[RecruitmentController::class,'decideOffer'])->whereUuid('offerId')->middleware('permission:hr.recruitment.approve');
-        Route::get('applications/{id}/conversion',[RecruitmentController::class,'conversion'])->whereUuid('id')->middleware('permission:hr.recruitment.convert');
-        Route::get('interviews/mine',[RecruitmentController::class,'myInterviews'])->middleware('permission:hr.ess.use');
-        Route::post('interviews/{interviewId}/action',[RecruitmentController::class,'interviewAction'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.manage');
-        Route::post('interviews/{interviewId}/feedback',[RecruitmentController::class,'storeInterviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.ess.use');
-        Route::get('interviews/{interviewId}/feedback',[RecruitmentController::class,'interviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.approve');
-        Route::get('analytics',[RecruitmentController::class,'analytics'])->middleware('permission:hr.recruitment.view');
+    Route::prefix('hr/recruitment')->group(function () {
+        Route::get('requisitions', [RecruitmentController::class, 'requisitions'])->middleware('permission:hr.recruitment.view');
+        Route::post('requisitions', [RecruitmentController::class, 'storeRequisition'])->middleware('permission:hr.recruitment.manage');
+        Route::post('requisitions/{id}/approve', [RecruitmentController::class, 'approveRequisition'])->whereUuid('id')->middleware('permission:hr.recruitment.approve');
+        Route::get('candidates', [RecruitmentController::class, 'candidates'])->middleware('permission:hr.recruitment.view');
+        Route::post('candidates', [RecruitmentController::class, 'storeCandidate'])->middleware('permission:hr.recruitment.manage');
+        Route::get('applications', [RecruitmentController::class, 'applications'])->middleware('permission:hr.recruitment.view');
+        Route::post('applications', [RecruitmentController::class, 'apply'])->middleware('permission:hr.recruitment.manage');
+        Route::post('applications/{id}/transition', [RecruitmentController::class, 'transition'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
+        Route::get('applications/{id}/interviews', [RecruitmentController::class, 'interviews'])->whereUuid('id')->middleware('permission:hr.recruitment.view');
+        Route::post('applications/{id}/interviews', [RecruitmentController::class, 'storeInterview'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
+        Route::post('applications/{id}/offers', [RecruitmentController::class, 'storeOffer'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
+        Route::post('offers/{offerId}/decide', [RecruitmentController::class, 'decideOffer'])->whereUuid('offerId')->middleware('permission:hr.recruitment.approve');
+        Route::get('applications/{id}/conversion', [RecruitmentController::class, 'conversion'])->whereUuid('id')->middleware('permission:hr.recruitment.convert');
+        Route::get('interviews/mine', [RecruitmentController::class, 'myInterviews'])->middleware('permission:hr.ess.use');
+        Route::post('interviews/{interviewId}/action', [RecruitmentController::class, 'interviewAction'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.manage');
+        Route::post('interviews/{interviewId}/feedback', [RecruitmentController::class, 'storeInterviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.ess.use');
+        Route::get('interviews/{interviewId}/feedback', [RecruitmentController::class, 'interviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.approve');
+        Route::get('analytics', [RecruitmentController::class, 'analytics'])->middleware('permission:hr.recruitment.view');
     });
-    Route::prefix('hr/lifecycle')->group(function(){
-        Route::get('cases',[LifecycleController::class,'cases'])->middleware('permission:hr.lifecycle.view');
-        Route::get('templates',[LifecycleController::class,'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');
-        Route::post('templates',[LifecycleController::class,'storeTemplate'])->middleware('permission:hr.lifecycle.manage');
-        Route::post('templates/{id}/approve',[LifecycleController::class,'approveTemplate'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
-        Route::post('cases',[LifecycleController::class,'openCase'])->middleware('permission:hr.lifecycle.manage');
-        Route::post('tasks/{id}/complete',[LifecycleController::class,'completeTask'])->whereUuid('id')->middleware('permission:hr.lifecycle.manage');
-        Route::post('probation',[LifecycleController::class,'startProbation'])->middleware('permission:hr.lifecycle.manage');
-        Route::post('probation/{id}/decide',[LifecycleController::class,'decideProbation'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
-        Route::post('custody',[LifecycleController::class,'assignCustody'])->middleware('permission:hr.lifecycle.manage');
-        Route::post('staff/{staffId}/changes',[LifecycleController::class,'requestChange'])->whereUuid('staffId')->middleware('permission:hr.lifecycle.change.request');
-        Route::post('changes/{id}/approve',[LifecycleController::class,'approveChange'])->whereUuid('id')->middleware('permission:hr.lifecycle.change.approve');
-        Route::post('exits',[LifecycleController::class,'openExit'])->middleware('permission:hr.lifecycle.exit.request');
-        Route::post('exits/{id}/approve',[LifecycleController::class,'approveExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.approve');
-        Route::post('clearance/{id}/complete',[LifecycleController::class,'completeClearance'])->whereUuid('id')->middleware('permission:hr.lifecycle.clearance');
-        Route::post('exits/{id}/finalize',[LifecycleController::class,'finalizeExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.finalize');
+    Route::prefix('hr/lifecycle')->group(function () {
+        Route::get('cases', [LifecycleController::class, 'cases'])->middleware('permission:hr.lifecycle.view');
+        Route::get('templates', [LifecycleController::class, 'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');
+        Route::post('templates', [LifecycleController::class, 'storeTemplate'])->middleware('permission:hr.lifecycle.manage');
+        Route::post('templates/{id}/approve', [LifecycleController::class, 'approveTemplate'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
+        Route::post('cases', [LifecycleController::class, 'openCase'])->middleware('permission:hr.lifecycle.manage');
+        Route::post('tasks/{id}/complete', [LifecycleController::class, 'completeTask'])->whereUuid('id')->middleware('permission:hr.lifecycle.manage');
+        Route::post('probation', [LifecycleController::class, 'startProbation'])->middleware('permission:hr.lifecycle.manage');
+        Route::post('probation/{id}/decide', [LifecycleController::class, 'decideProbation'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
+        Route::post('custody', [LifecycleController::class, 'assignCustody'])->middleware('permission:hr.lifecycle.manage');
+        Route::post('staff/{staffId}/changes', [LifecycleController::class, 'requestChange'])->whereUuid('staffId')->middleware('permission:hr.lifecycle.change.request');
+        Route::post('changes/{id}/approve', [LifecycleController::class, 'approveChange'])->whereUuid('id')->middleware('permission:hr.lifecycle.change.approve');
+        Route::post('exits', [LifecycleController::class, 'openExit'])->middleware('permission:hr.lifecycle.exit.request');
+        Route::post('exits/{id}/approve', [LifecycleController::class, 'approveExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.approve');
+        Route::post('clearance/{id}/complete', [LifecycleController::class, 'completeClearance'])->whereUuid('id')->middleware('permission:hr.lifecycle.clearance');
+        Route::post('exits/{id}/finalize', [LifecycleController::class, 'finalizeExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.finalize');
     });
-    Route::prefix('hr/performance')->group(function(){
-        Route::get('reviews',[PerformanceController::class,'index'])->middleware('permission:hr.performance.view');
-        Route::get('reviews/{id}',[PerformanceController::class,'show'])->whereUuid('id')->middleware('permission:hr.performance.view');
-        Route::post('cycles',[PerformanceController::class,'storeCycle'])->middleware('permission:hr.performance.configure');
-        Route::post('cycles/{id}/approve',[PerformanceController::class,'approveCycle'])->whereUuid('id')->middleware('permission:hr.performance.approve-config');
-        Route::post('templates',[PerformanceController::class,'storeTemplate'])->middleware('permission:hr.performance.configure');
-        Route::post('templates/{id}/approve',[PerformanceController::class,'approveTemplate'])->whereUuid('id')->middleware('permission:hr.performance.approve-config');
-        Route::post('reviews',[PerformanceController::class,'assign'])->middleware('permission:hr.performance.manage');
-        Route::post('reviews/{id}/sales-kpi',[PerformanceController::class,'linkSalesKpi'])->whereUuid('id')->middleware('permission:hr.performance.manage');
-        Route::post('reviews/{id}/responses',[PerformanceController::class,'respond'])->whereUuid('id')->middleware('permission:hr.performance.respond');
-        Route::post('reviews/{id}/transition',[PerformanceController::class,'transition'])->whereUuid('id')->middleware('permission:hr.performance.transition');
-        Route::post('goals',[PerformanceController::class,'storeGoal'])->middleware('permission:hr.performance.goals.manage');
-        Route::post('achievements',[PerformanceController::class,'storeAchievement'])->middleware('permission:hr.performance.achievements.submit');
-        Route::post('achievements/{id}/decide',[PerformanceController::class,'decideAchievement'])->whereUuid('id')->middleware('permission:hr.performance.achievements.verify');
+    Route::prefix('hr/performance')->group(function () {
+        Route::get('reviews', [PerformanceController::class, 'index'])->middleware('permission:hr.performance.view');
+        Route::get('reviews/{id}', [PerformanceController::class, 'show'])->whereUuid('id')->middleware('permission:hr.performance.view');
+        Route::post('cycles', [PerformanceController::class, 'storeCycle'])->middleware('permission:hr.performance.configure');
+        Route::post('cycles/{id}/approve', [PerformanceController::class, 'approveCycle'])->whereUuid('id')->middleware('permission:hr.performance.approve-config');
+        Route::post('templates', [PerformanceController::class, 'storeTemplate'])->middleware('permission:hr.performance.configure');
+        Route::post('templates/{id}/approve', [PerformanceController::class, 'approveTemplate'])->whereUuid('id')->middleware('permission:hr.performance.approve-config');
+        Route::post('reviews', [PerformanceController::class, 'assign'])->middleware('permission:hr.performance.manage');
+        Route::post('reviews/{id}/sales-kpi', [PerformanceController::class, 'linkSalesKpi'])->whereUuid('id')->middleware('permission:hr.performance.manage');
+        Route::post('reviews/{id}/responses', [PerformanceController::class, 'respond'])->whereUuid('id')->middleware('permission:hr.performance.respond');
+        Route::post('reviews/{id}/transition', [PerformanceController::class, 'transition'])->whereUuid('id')->middleware('permission:hr.performance.transition');
+        Route::post('goals', [PerformanceController::class, 'storeGoal'])->middleware('permission:hr.performance.goals.manage');
+        Route::post('achievements', [PerformanceController::class, 'storeAchievement'])->middleware('permission:hr.performance.achievements.submit');
+        Route::post('achievements/{id}/decide', [PerformanceController::class, 'decideAchievement'])->whereUuid('id')->middleware('permission:hr.performance.achievements.verify');
     });
-    Route::prefix('hr/learning')->group(function(){
-        Route::get('courses',[LearningController::class,'courses'])->middleware('permission:hr.learning.view');
-        Route::post('courses',[LearningController::class,'storeCourse'])->middleware('permission:hr.learning.manage');
-        Route::post('sessions',[LearningController::class,'storeSession'])->middleware('permission:hr.learning.manage');
-        Route::get('requirements',[LearningController::class,'requirements'])->middleware('permission:hr.learning.view');
-        Route::post('requirements',[LearningController::class,'storeRequirement'])->middleware('permission:hr.learning.manage');
-        Route::get('compliance',[LearningController::class,'compliance'])->middleware('permission:hr.learning.view');
-        Route::post('enrollments',[LearningController::class,'enroll'])->middleware('permission:hr.learning.nominate');
-        Route::post('enrollments/{id}/approve',[LearningController::class,'approve'])->whereUuid('id')->middleware('permission:hr.learning.approve');
-        Route::post('enrollments/{id}/complete',[LearningController::class,'complete'])->whereUuid('id')->middleware('permission:hr.learning.complete');
+    Route::prefix('hr/learning')->group(function () {
+        Route::get('courses', [LearningController::class, 'courses'])->middleware('permission:hr.learning.view');
+        Route::post('courses', [LearningController::class, 'storeCourse'])->middleware('permission:hr.learning.manage');
+        Route::post('sessions', [LearningController::class, 'storeSession'])->middleware('permission:hr.learning.manage');
+        Route::get('requirements', [LearningController::class, 'requirements'])->middleware('permission:hr.learning.view');
+        Route::post('requirements', [LearningController::class, 'storeRequirement'])->middleware('permission:hr.learning.manage');
+        Route::get('compliance', [LearningController::class, 'compliance'])->middleware('permission:hr.learning.view');
+        Route::post('enrollments', [LearningController::class, 'enroll'])->middleware('permission:hr.learning.nominate');
+        Route::post('enrollments/{id}/approve', [LearningController::class, 'approve'])->whereUuid('id')->middleware('permission:hr.learning.approve');
+        Route::post('enrollments/{id}/complete', [LearningController::class, 'complete'])->whereUuid('id')->middleware('permission:hr.learning.complete');
     });
-    Route::prefix('hr/service-operations')->group(function(){
-        Route::get('expense-claims',[ServiceOperationsController::class,'claims'])->middleware('permission:hr.expenses.view');
-        Route::get('expense-policies',[ServiceOperationsController::class,'expensePolicyVersions'])->middleware('permission:hr.expenses.policy.manage|hr.expenses.policy.approve');
-        Route::post('expense-policies',[ServiceOperationsController::class,'storePolicy'])->middleware('permission:hr.expenses.policy.manage');
-        Route::post('expense-policies/{id}/approve',[ServiceOperationsController::class,'approvePolicy'])->whereUuid('id')->middleware('permission:hr.expenses.policy.approve');
-        Route::post('expense-claims',[ServiceOperationsController::class,'submitClaim'])->middleware('permission:hr.expenses.submit');
-        Route::post('expense-claims/{id}/decide',[ServiceOperationsController::class,'decideClaim'])->whereUuid('id')->middleware('permission:hr.expenses.approve');
-        Route::get('requests',[ServiceOperationsController::class,'tickets'])->middleware('permission:hr.service-desk.view');
-        Route::post('requests',[ServiceOperationsController::class,'openTicket'])->middleware('permission:hr.service-desk.submit');
-        Route::post('requests/{id}/transition',[ServiceOperationsController::class,'transitionTicket'])->whereUuid('id')->middleware('permission:hr.service-desk.manage');
+    Route::prefix('hr/service-operations')->group(function () {
+        Route::get('expense-claims', [ServiceOperationsController::class, 'claims'])->middleware('permission:hr.expenses.view');
+        Route::get('expense-policies', [ServiceOperationsController::class, 'expensePolicyVersions'])->middleware('permission:hr.expenses.policy.manage|hr.expenses.policy.approve');
+        Route::post('expense-policies', [ServiceOperationsController::class, 'storePolicy'])->middleware('permission:hr.expenses.policy.manage');
+        Route::post('expense-policies/{id}/approve', [ServiceOperationsController::class, 'approvePolicy'])->whereUuid('id')->middleware('permission:hr.expenses.policy.approve');
+        Route::post('expense-claims', [ServiceOperationsController::class, 'submitClaim'])->middleware('permission:hr.expenses.submit');
+        Route::post('expense-claims/{id}/decide', [ServiceOperationsController::class, 'decideClaim'])->whereUuid('id')->middleware('permission:hr.expenses.approve');
+        Route::get('requests', [ServiceOperationsController::class, 'tickets'])->middleware('permission:hr.service-desk.view');
+        Route::post('requests', [ServiceOperationsController::class, 'openTicket'])->middleware('permission:hr.service-desk.submit');
+        Route::post('requests/{id}/transition', [ServiceOperationsController::class, 'transitionTicket'])->whereUuid('id')->middleware('permission:hr.service-desk.manage');
     });
-    Route::prefix('hr/assets')->group(function(){
-        Route::get('types',[AssetOperationsController::class,'types'])->middleware('permission:hr.assets.view');
-        Route::get('items',[AssetOperationsController::class,'items'])->middleware('permission:hr.assets.view');
-        Route::get('custody',[AssetOperationsController::class,'custody'])->middleware('permission:hr.assets.view');
-        Route::get('requests',[AssetOperationsController::class,'requests'])->middleware('permission:hr.assets.view');
-        Route::get('phone-subscriptions',[AssetOperationsController::class,'phoneSubscriptions'])->middleware('permission:hr.assets.view');
-        Route::get('phone-usage',[AssetOperationsController::class,'phoneUsage'])->middleware('permission:hr.assets.view');
-        Route::post('types',[AssetOperationsController::class,'storeType'])->middleware('permission:hr.assets.manage');
-        Route::post('items',[AssetOperationsController::class,'storeItem'])->middleware('permission:hr.assets.manage');
-        Route::post('requests',[AssetOperationsController::class,'requestAsset'])->middleware('permission:hr.assets.request');
-        Route::post('requests/{id}/decide',[AssetOperationsController::class,'decideRequest'])->whereUuid('id')->middleware('permission:hr.assets.approve');
-        Route::post('requests/{id}/issue',[AssetOperationsController::class,'issue'])->whereUuid('id')->middleware('permission:hr.assets.issue');
-        Route::post('custody/{id}/acknowledge',[AssetOperationsController::class,'acknowledge'])->whereUuid('id')->middleware('permission:hr.assets.request');
-        Route::post('custody/{id}/return',[AssetOperationsController::class,'returnCustody'])->whereUuid('id')->middleware('permission:hr.assets.return');
-        Route::post('custody/{id}/exception-decision',[AssetOperationsController::class,'decideReturnException'])->whereUuid('id')->middleware('permission:hr.assets.approve');
-        Route::post('phone-subscriptions',[AssetOperationsController::class,'storePhoneSubscription'])->middleware('permission:hr.assets.phone.manage');
-        Route::post('phone-usage',[AssetOperationsController::class,'storePhoneUsage'])->middleware('permission:hr.assets.phone.manage');
-        Route::post('phone-usage/{id}/decide',[AssetOperationsController::class,'decidePhoneUsage'])->whereUuid('id')->middleware('permission:hr.assets.phone.approve');
+    Route::prefix('hr/assets')->group(function () {
+        Route::get('types', [AssetOperationsController::class, 'types'])->middleware('permission:hr.assets.view');
+        Route::get('items', [AssetOperationsController::class, 'items'])->middleware('permission:hr.assets.view');
+        Route::get('custody', [AssetOperationsController::class, 'custody'])->middleware('permission:hr.assets.view');
+        Route::get('requests', [AssetOperationsController::class, 'requests'])->middleware('permission:hr.assets.view');
+        Route::get('phone-subscriptions', [AssetOperationsController::class, 'phoneSubscriptions'])->middleware('permission:hr.assets.view');
+        Route::get('phone-usage', [AssetOperationsController::class, 'phoneUsage'])->middleware('permission:hr.assets.view');
+        Route::post('types', [AssetOperationsController::class, 'storeType'])->middleware('permission:hr.assets.manage');
+        Route::post('items', [AssetOperationsController::class, 'storeItem'])->middleware('permission:hr.assets.manage');
+        Route::post('requests', [AssetOperationsController::class, 'requestAsset'])->middleware('permission:hr.assets.request');
+        Route::post('requests/{id}/decide', [AssetOperationsController::class, 'decideRequest'])->whereUuid('id')->middleware('permission:hr.assets.approve');
+        Route::post('requests/{id}/issue', [AssetOperationsController::class, 'issue'])->whereUuid('id')->middleware('permission:hr.assets.issue');
+        Route::post('custody/{id}/acknowledge', [AssetOperationsController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.assets.request');
+        Route::post('custody/{id}/return', [AssetOperationsController::class, 'returnCustody'])->whereUuid('id')->middleware('permission:hr.assets.return');
+        Route::post('custody/{id}/exception-decision', [AssetOperationsController::class, 'decideReturnException'])->whereUuid('id')->middleware('permission:hr.assets.approve');
+        Route::post('phone-subscriptions', [AssetOperationsController::class, 'storePhoneSubscription'])->middleware('permission:hr.assets.phone.manage');
+        Route::post('phone-usage', [AssetOperationsController::class, 'storePhoneUsage'])->middleware('permission:hr.assets.phone.manage');
+        Route::post('phone-usage/{id}/decide', [AssetOperationsController::class, 'decidePhoneUsage'])->whereUuid('id')->middleware('permission:hr.assets.phone.approve');
     });
-    Route::prefix('hr/travel')->group(function(){
-        Route::get('requests',[TravelController::class,'index'])->middleware('permission:hr.travel.view');
-        Route::post('requests',[TravelController::class,'store'])->middleware('permission:hr.travel.request');
-        Route::post('requests/{id}/decide',[TravelController::class,'decide'])->whereUuid('id')->middleware('permission:hr.travel.approve');
-        Route::post('requests/{id}/settle',[TravelController::class,'settle'])->whereUuid('id')->middleware('permission:hr.travel.settle');
+    Route::prefix('hr/travel')->group(function () {
+        Route::get('requests', [TravelController::class, 'index'])->middleware('permission:hr.travel.view');
+        Route::post('requests', [TravelController::class, 'store'])->middleware('permission:hr.travel.request');
+        Route::post('requests/{id}/decide', [TravelController::class, 'decide'])->whereUuid('id')->middleware('permission:hr.travel.approve');
+        Route::post('requests/{id}/settle', [TravelController::class, 'settle'])->whereUuid('id')->middleware('permission:hr.travel.settle');
     });
-    Route::prefix('hr/knowledge')->group(function(){
-        Route::get('articles',[KnowledgeController::class,'index'])->middleware('permission:hr.knowledge.view');
-        Route::get('articles/{id}',[KnowledgeController::class,'show'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
-        Route::post('articles',[KnowledgeController::class,'store'])->middleware('permission:hr.knowledge.manage');
-        Route::post('articles/{id}/publish',[KnowledgeController::class,'publish'])->whereUuid('id')->middleware('permission:hr.knowledge.approve');
-        Route::post('articles/{id}/retire',[KnowledgeController::class,'retire'])->whereUuid('id')->middleware('permission:hr.knowledge.manage');
-        Route::post('articles/{id}/acknowledge',[KnowledgeController::class,'acknowledge'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
+    Route::prefix('hr/knowledge')->group(function () {
+        Route::get('articles', [KnowledgeController::class, 'index'])->middleware('permission:hr.knowledge.view');
+        Route::get('articles/{id}', [KnowledgeController::class, 'show'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
+        Route::post('articles', [KnowledgeController::class, 'store'])->middleware('permission:hr.knowledge.manage');
+        Route::post('articles/{id}/publish', [KnowledgeController::class, 'publish'])->whereUuid('id')->middleware('permission:hr.knowledge.approve');
+        Route::post('articles/{id}/retire', [KnowledgeController::class, 'retire'])->whereUuid('id')->middleware('permission:hr.knowledge.manage');
+        Route::post('articles/{id}/acknowledge', [KnowledgeController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
     });
-    Route::prefix('hr/talent')->group(function(){
-        Route::get('development-plans',[TalentController::class,'developmentPlans'])->middleware('permission:hr.development.view');
-        Route::post('development-plans',[TalentController::class,'storeDevelopmentPlan'])->middleware('permission:hr.development.view');
-        Route::post('development-plans/{id}/transition',[TalentController::class,'transitionDevelopmentPlan'])->whereUuid('id')->middleware('permission:hr.development.view');
-        Route::post('reviews/{reviewId}/appeals',[TalentController::class,'submitAppeal'])->whereUuid('reviewId')->middleware('permission:hr.performance.appeal.submit');
-        Route::post('appeals/{id}/decide',[TalentController::class,'decideAppeal'])->whereUuid('id')->middleware('permission:hr.performance.appeal.resolve');
-        Route::post('feedback',[TalentController::class,'giveFeedback'])->middleware('permission:hr.feedback.give');
-        Route::put('profiles/{staffId}',[TalentController::class,'upsertTalentProfile'])->whereUuid('staffId')->middleware('permission:hr.talent.confidential');
-        Route::post('critical-roles',[TalentController::class,'storeCriticalRole'])->middleware('permission:hr.succession.manage');
-        Route::post('critical-roles/{roleId}/successors',[TalentController::class,'nominateSuccessor'])->whereUuid('roleId')->middleware('permission:hr.succession.manage');
-        Route::post('successors/{id}/decide',[TalentController::class,'decideSuccessor'])->whereUuid('id')->middleware('permission:hr.succession.approve');
-        Route::post('recommendations',[TalentController::class,'recommend'])->middleware('permission:hr.talent.recommendations.manage');
-        Route::post('recommendations/{id}/approve',[TalentController::class,'approveRecommendation'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.approve');
-        Route::post('recommendations/{id}/convert-promotion',[TalentController::class,'convertPromotion'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.convert');
+    Route::prefix('hr/talent')->group(function () {
+        Route::get('development-plans', [TalentController::class, 'developmentPlans'])->middleware('permission:hr.development.view');
+        Route::post('development-plans', [TalentController::class, 'storeDevelopmentPlan'])->middleware('permission:hr.development.view');
+        Route::post('development-plans/{id}/transition', [TalentController::class, 'transitionDevelopmentPlan'])->whereUuid('id')->middleware('permission:hr.development.view');
+        Route::post('reviews/{reviewId}/appeals', [TalentController::class, 'submitAppeal'])->whereUuid('reviewId')->middleware('permission:hr.performance.appeal.submit');
+        Route::post('appeals/{id}/decide', [TalentController::class, 'decideAppeal'])->whereUuid('id')->middleware('permission:hr.performance.appeal.resolve');
+        Route::post('feedback', [TalentController::class, 'giveFeedback'])->middleware('permission:hr.feedback.give');
+        Route::put('profiles/{staffId}', [TalentController::class, 'upsertTalentProfile'])->whereUuid('staffId')->middleware('permission:hr.talent.confidential');
+        Route::post('critical-roles', [TalentController::class, 'storeCriticalRole'])->middleware('permission:hr.succession.manage');
+        Route::post('critical-roles/{roleId}/successors', [TalentController::class, 'nominateSuccessor'])->whereUuid('roleId')->middleware('permission:hr.succession.manage');
+        Route::post('successors/{id}/decide', [TalentController::class, 'decideSuccessor'])->whereUuid('id')->middleware('permission:hr.succession.approve');
+        Route::post('recommendations', [TalentController::class, 'recommend'])->middleware('permission:hr.talent.recommendations.manage');
+        Route::post('recommendations/{id}/approve', [TalentController::class, 'approveRecommendation'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.approve');
+        Route::post('recommendations/{id}/convert-promotion', [TalentController::class, 'convertPromotion'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.convert');
     });
-    Route::prefix('hr/meals')->group(function(){
-        Route::get('my-orders',[MealProgrammeController::class,'myOrders'])->middleware('permission:hr.meals.view');
-        Route::post('programs',[MealProgrammeController::class,'storeProgram'])->middleware('permission:hr.meals.configure');
-        Route::post('programs/{id}/approve',[MealProgrammeController::class,'approveProgram'])->whereUuid('id')->middleware('permission:hr.meals.approve-program');
-        Route::post('vendors',[MealProgrammeController::class,'storeVendor'])->middleware('permission:hr.meals.vendor.manage');
-        Route::post('vendors/{id}/financial-decision',[MealProgrammeController::class,'approveVendorFinancials'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
-        Route::post('menus',[MealProgrammeController::class,'storeMenu'])->middleware('permission:hr.meals.configure');
-        Route::put('my-dietary-profile',[MealProgrammeController::class,'saveDietaryProfile'])->middleware('permission:hr.meals.use');
-        Route::post('preferences',[MealProgrammeController::class,'savePreference'])->middleware('permission:hr.meals.use');
-        Route::put('order-override',[MealProgrammeController::class,'overrideOrder'])->middleware('permission:hr.meals.use');
-        Route::post('programs/{id}/generate',[MealProgrammeController::class,'generate'])->whereUuid('id')->middleware('permission:hr.meals.generate');
-        Route::post('programs/{id}/consolidate',[MealProgrammeController::class,'consolidate'])->whereUuid('id')->middleware('permission:hr.meals.generate');
-        Route::post('vendor-orders/{id}/approve',[MealProgrammeController::class,'approveVendorOrder'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
-        Route::post('vendor-orders/{id}/delivery',[MealProgrammeController::class,'recordDelivery'])->whereUuid('id')->middleware('permission:hr.meals.vendor.deliver');
-        Route::post('vendor-orders/{id}/variances',[MealVarianceController::class,'store'])->whereUuid('id')->middleware('permission:hr.meals.reconcile');
-        Route::post('variance-cases/{id}/decide',[MealVarianceController::class,'decide'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
-        Route::post('vendor-orders/{id}/reconcile',[MealVarianceController::class,'reconcile'])->whereUuid('id')->middleware('permission:hr.meals.reconcile');
+    Route::prefix('hr/meals')->group(function () {
+        Route::get('my-orders', [MealProgrammeController::class, 'myOrders'])->middleware('permission:hr.meals.view');
+        Route::post('programs', [MealProgrammeController::class, 'storeProgram'])->middleware('permission:hr.meals.configure');
+        Route::post('programs/{id}/approve', [MealProgrammeController::class, 'approveProgram'])->whereUuid('id')->middleware('permission:hr.meals.approve-program');
+        Route::post('vendors', [MealProgrammeController::class, 'storeVendor'])->middleware('permission:hr.meals.vendor.manage');
+        Route::post('vendors/{id}/financial-decision', [MealProgrammeController::class, 'approveVendorFinancials'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
+        Route::post('menus', [MealProgrammeController::class, 'storeMenu'])->middleware('permission:hr.meals.configure');
+        Route::put('my-dietary-profile', [MealProgrammeController::class, 'saveDietaryProfile'])->middleware('permission:hr.meals.use');
+        Route::post('preferences', [MealProgrammeController::class, 'savePreference'])->middleware('permission:hr.meals.use');
+        Route::put('order-override', [MealProgrammeController::class, 'overrideOrder'])->middleware('permission:hr.meals.use');
+        Route::post('programs/{id}/generate', [MealProgrammeController::class, 'generate'])->whereUuid('id')->middleware('permission:hr.meals.generate');
+        Route::post('programs/{id}/consolidate', [MealProgrammeController::class, 'consolidate'])->whereUuid('id')->middleware('permission:hr.meals.generate');
+        Route::post('vendor-orders/{id}/approve', [MealProgrammeController::class, 'approveVendorOrder'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
+        Route::post('vendor-orders/{id}/delivery', [MealProgrammeController::class, 'recordDelivery'])->whereUuid('id')->middleware('permission:hr.meals.vendor.deliver');
+        Route::post('vendor-orders/{id}/variances', [MealVarianceController::class, 'store'])->whereUuid('id')->middleware('permission:hr.meals.reconcile');
+        Route::post('variance-cases/{id}/decide', [MealVarianceController::class, 'decide'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
+        Route::post('vendor-orders/{id}/reconcile', [MealVarianceController::class, 'reconcile'])->whereUuid('id')->middleware('permission:hr.meals.reconcile');
     });
-    Route::prefix('hr/integration-deliveries')->group(function(){
-        Route::get('pending',[HrIntegrationDeliveryController::class,'pending'])->middleware('permission:hr.integrations.deliver');
-        Route::post('{id}/acknowledge',[HrIntegrationDeliveryController::class,'acknowledge'])->whereUuid('id')->middleware('permission:hr.integrations.acknowledge');
+    Route::prefix('hr/integration-deliveries')->group(function () {
+        Route::get('pending', [HrIntegrationDeliveryController::class, 'pending'])->middleware('permission:hr.integrations.deliver');
+        Route::post('{id}/acknowledge', [HrIntegrationDeliveryController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.integrations.acknowledge');
     });
-    Route::prefix('hr/relations')->group(function(){
-        Route::get('cases',[RelationsCaseController::class,'index'])->middleware('permission:hr.relations.case.view');
-        Route::get('cases/{id}',[RelationsCaseController::class,'show'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
-        Route::post('cases',[RelationsCaseController::class,'store'])->middleware('permission:hr.relations.case.open');
-        Route::post('cases/{id}/team',[RelationsCaseController::class,'nominateTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.manage');
-        Route::post('case-team/{id}/decide',[RelationsCaseController::class,'decideTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.approve');
-        Route::post('cases/{id}/events',[RelationsCaseController::class,'addEvent'])->whereUuid('id')->middleware('permission:hr.relations.case.event');
-        Route::post('cases/{id}/participants',[RelationsCaseController::class,'addParticipant'])->whereUuid('id')->middleware('permission:hr.relations.case.event');
-        Route::post('cases/{id}/hearings',[RelationsCaseController::class,'scheduleHearing'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
-        Route::post('hearings/{id}/complete',[RelationsCaseController::class,'completeHearing'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
-        Route::post('cases/{id}/conflicts',[RelationsCaseController::class,'declareConflict'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
-        Route::post('conflicts/{id}/decide',[RelationsCaseController::class,'decideConflict'])->whereUuid('id')->middleware('permission:hr.relations.team.approve');
-        Route::post('cases/{id}/outcomes',[RelationsCaseController::class,'storeOutcome'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
-        Route::post('outcomes/{id}/approve',[RelationsCaseController::class,'approveOutcome'])->whereUuid('id')->middleware('permission:hr.relations.outcome.approve');
-        Route::post('cases/{id}/appeals',[RelationsCaseController::class,'submitAppeal'])->whereUuid('id')->middleware('permission:hr.relations.appeal.submit');
-        Route::post('appeals/{id}/decide',[RelationsCaseController::class,'decideAppeal'])->whereUuid('id')->middleware('permission:hr.relations.appeal.decide');
-        Route::post('cases/{id}/transition',[RelationsCaseController::class,'transition'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
-        Route::post('cases/{id}/legal-hold',[RelationsCaseController::class,'legalHold'])->whereUuid('id')->middleware('permission:hr.relations.legal-hold');
+    Route::prefix('hr/relations')->group(function () {
+        Route::get('cases', [RelationsCaseController::class, 'index'])->middleware('permission:hr.relations.case.view');
+        Route::get('cases/{id}', [RelationsCaseController::class, 'show'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
+        Route::post('cases', [RelationsCaseController::class, 'store'])->middleware('permission:hr.relations.case.open');
+        Route::post('cases/{id}/team', [RelationsCaseController::class, 'nominateTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.manage');
+        Route::post('case-team/{id}/decide', [RelationsCaseController::class, 'decideTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.approve');
+        Route::post('cases/{id}/events', [RelationsCaseController::class, 'addEvent'])->whereUuid('id')->middleware('permission:hr.relations.case.event');
+        Route::post('cases/{id}/participants', [RelationsCaseController::class, 'addParticipant'])->whereUuid('id')->middleware('permission:hr.relations.case.event');
+        Route::post('cases/{id}/hearings', [RelationsCaseController::class, 'scheduleHearing'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
+        Route::post('hearings/{id}/complete', [RelationsCaseController::class, 'completeHearing'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
+        Route::post('cases/{id}/conflicts', [RelationsCaseController::class, 'declareConflict'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
+        Route::post('conflicts/{id}/decide', [RelationsCaseController::class, 'decideConflict'])->whereUuid('id')->middleware('permission:hr.relations.team.approve');
+        Route::post('cases/{id}/outcomes', [RelationsCaseController::class, 'storeOutcome'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
+        Route::post('outcomes/{id}/approve', [RelationsCaseController::class, 'approveOutcome'])->whereUuid('id')->middleware('permission:hr.relations.outcome.approve');
+        Route::post('cases/{id}/appeals', [RelationsCaseController::class, 'submitAppeal'])->whereUuid('id')->middleware('permission:hr.relations.appeal.submit');
+        Route::post('appeals/{id}/decide', [RelationsCaseController::class, 'decideAppeal'])->whereUuid('id')->middleware('permission:hr.relations.appeal.decide');
+        Route::post('cases/{id}/transition', [RelationsCaseController::class, 'transition'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
+        Route::post('cases/{id}/legal-hold', [RelationsCaseController::class, 'legalHold'])->whereUuid('id')->middleware('permission:hr.relations.legal-hold');
     });
-    Route::prefix('hr/safety')->group(function(){
-        Route::get('incidents',[SafetyController::class,'incidents'])->middleware('permission:hr.safety.view');
-        Route::get('handler-options',[SafetyController::class,'handlerOptions'])->middleware('permission:hr.safety.manage');
-        Route::get('registers',[SafetyController::class,'registers'])->middleware('permission:hr.safety.manage');
-        Route::get('incidents/{id}',[SafetyController::class,'show'])->whereUuid('id')->middleware('permission:hr.safety.view');
-        Route::post('incidents',[SafetyController::class,'report'])->middleware('permission:hr.safety.report');
-        Route::post('incidents/{id}/assign-investigator',[SafetyController::class,'assignInvestigator'])->whereUuid('id')->middleware('permission:hr.safety.manage');
-        Route::post('incidents/{id}/investigations',[SafetyController::class,'storeInvestigation'])->whereUuid('id')->middleware('permission:hr.safety.investigate');
-        Route::post('investigations/{id}/approve',[SafetyController::class,'approveInvestigation'])->whereUuid('id')->middleware('permission:hr.safety.approve');
-        Route::post('actions',[SafetyController::class,'storeAction'])->middleware('permission:hr.safety.manage');
-        Route::post('actions/{id}/complete',[SafetyController::class,'completeAction'])->whereUuid('id')->middleware('permission:hr.safety.action');
-        Route::post('actions/{id}/verify',[SafetyController::class,'verifyAction'])->whereUuid('id')->middleware('permission:hr.safety.approve');
-        Route::post('incidents/{id}/close',[SafetyController::class,'closeIncident'])->whereUuid('id')->middleware('permission:hr.safety.approve');
-        Route::post('fitness-restrictions',[SafetyController::class,'storeRestriction'])->middleware('permission:hr.safety.fitness-restricted');
-        Route::post('hazards',[SafetyController::class,'storeHazard'])->middleware('permission:hr.safety.manage');
-        Route::post('hazards/{id}/transition',[SafetyController::class,'transitionHazard'])->whereUuid('id')->middleware('permission:hr.safety.manage');
-        Route::post('ppe-issuances',[SafetyController::class,'issuePpe'])->middleware('permission:hr.safety.manage');
-        Route::post('inspections',[SafetyController::class,'storeInspection'])->middleware('permission:hr.safety.manage');
-        Route::post('inspections/{id}/complete',[SafetyController::class,'completeInspection'])->whereUuid('id')->middleware('permission:hr.safety.investigate');
-        Route::post('inspections/{id}/verify',[SafetyController::class,'verifyInspection'])->whereUuid('id')->middleware('permission:hr.safety.approve');
-        Route::post('incidents/{id}/external-notifications',[SafetyController::class,'prepareExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.prepare');
-        Route::post('external-notifications/{id}/approve',[SafetyController::class,'approveExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.approve');
-        Route::get('external-notification-queue',[SafetyController::class,'externalNotificationQueue'])->middleware('permission:hr.safety.external.acknowledge');
-        Route::post('external-notifications/{id}/claim',[SafetyController::class,'claimExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
-        Route::post('external-notifications/{id}/acknowledge',[SafetyController::class,'acknowledgeExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
-        Route::post('external-notifications/{id}/fail',[SafetyController::class,'failExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
+    Route::prefix('hr/safety')->group(function () {
+        Route::get('incidents', [SafetyController::class, 'incidents'])->middleware('permission:hr.safety.view');
+        Route::get('handler-options', [SafetyController::class, 'handlerOptions'])->middleware('permission:hr.safety.manage');
+        Route::get('registers', [SafetyController::class, 'registers'])->middleware('permission:hr.safety.manage');
+        Route::get('incidents/{id}', [SafetyController::class, 'show'])->whereUuid('id')->middleware('permission:hr.safety.view');
+        Route::post('incidents', [SafetyController::class, 'report'])->middleware('permission:hr.safety.report');
+        Route::post('incidents/{id}/assign-investigator', [SafetyController::class, 'assignInvestigator'])->whereUuid('id')->middleware('permission:hr.safety.manage');
+        Route::post('incidents/{id}/investigations', [SafetyController::class, 'storeInvestigation'])->whereUuid('id')->middleware('permission:hr.safety.investigate');
+        Route::post('investigations/{id}/approve', [SafetyController::class, 'approveInvestigation'])->whereUuid('id')->middleware('permission:hr.safety.approve');
+        Route::post('actions', [SafetyController::class, 'storeAction'])->middleware('permission:hr.safety.manage');
+        Route::post('actions/{id}/complete', [SafetyController::class, 'completeAction'])->whereUuid('id')->middleware('permission:hr.safety.action');
+        Route::post('actions/{id}/verify', [SafetyController::class, 'verifyAction'])->whereUuid('id')->middleware('permission:hr.safety.approve');
+        Route::post('incidents/{id}/close', [SafetyController::class, 'closeIncident'])->whereUuid('id')->middleware('permission:hr.safety.approve');
+        Route::post('fitness-restrictions', [SafetyController::class, 'storeRestriction'])->middleware('permission:hr.safety.fitness-restricted');
+        Route::post('hazards', [SafetyController::class, 'storeHazard'])->middleware('permission:hr.safety.manage');
+        Route::post('hazards/{id}/transition', [SafetyController::class, 'transitionHazard'])->whereUuid('id')->middleware('permission:hr.safety.manage');
+        Route::post('ppe-issuances', [SafetyController::class, 'issuePpe'])->middleware('permission:hr.safety.manage');
+        Route::post('inspections', [SafetyController::class, 'storeInspection'])->middleware('permission:hr.safety.manage');
+        Route::post('inspections/{id}/complete', [SafetyController::class, 'completeInspection'])->whereUuid('id')->middleware('permission:hr.safety.investigate');
+        Route::post('inspections/{id}/verify', [SafetyController::class, 'verifyInspection'])->whereUuid('id')->middleware('permission:hr.safety.approve');
+        Route::post('incidents/{id}/external-notifications', [SafetyController::class, 'prepareExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.prepare');
+        Route::post('external-notifications/{id}/approve', [SafetyController::class, 'approveExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.approve');
+        Route::get('external-notification-queue', [SafetyController::class, 'externalNotificationQueue'])->middleware('permission:hr.safety.external.acknowledge');
+        Route::post('external-notifications/{id}/claim', [SafetyController::class, 'claimExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
+        Route::post('external-notifications/{id}/acknowledge', [SafetyController::class, 'acknowledgeExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
+        Route::post('external-notifications/{id}/fail', [SafetyController::class, 'failExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
     });
-    Route::prefix('hr/engagement')->group(function(){
-        Route::get('announcements',[EngagementController::class,'announcements'])->middleware('permission:hr.engagement.view');
-        Route::post('announcements',[EngagementController::class,'storeAnnouncement'])->middleware('permission:hr.engagement.manage');
-        Route::post('announcements/{id}/approve',[EngagementController::class,'approveAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.approve');
-        Route::post('announcements/{id}/reject',[EngagementController::class,'rejectAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.approve');
-        Route::post('announcements/{id}/acknowledge',[EngagementController::class,'acknowledgeAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.view');
-        Route::post('surveys',[EngagementController::class,'storeSurvey'])->middleware('permission:hr.surveys.manage');
-        Route::get('surveys',[EngagementController::class,'surveys'])->middleware('permission:hr.surveys.respond');
-        Route::post('surveys/{id}/approve',[EngagementController::class,'approveSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.approve');
-        Route::post('surveys/{id}/reject',[EngagementController::class,'rejectSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.approve');
-        Route::post('surveys/{id}/responses',[EngagementController::class,'respondSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.respond');
-        Route::get('surveys/{id}/results',[EngagementController::class,'surveyResults'])->whereUuid('id')->middleware('permission:hr.surveys.results');
-          Route::post('recognition',[EngagementController::class,'nominateRecognition'])->middleware('permission:hr.recognition.nominate');
-          Route::get('recognition',[EngagementController::class,'recognitionNominations'])->middleware('permission:hr.recognition.nominate');
-          Route::get('recognition/nominee-options',[EngagementController::class,'recognitionNominees'])->middleware('permission:hr.recognition.nominate');
-        Route::post('recognition/{id}/decide',[EngagementController::class,'decideRecognition'])->whereUuid('id')->middleware('permission:hr.recognition.approve');
-        Route::post('wellness/programs',[EngagementController::class,'storeWellnessProgram'])->middleware('permission:hr.wellness.manage');
-        Route::get('wellness/programs',[EngagementController::class,'wellnessPrograms'])->middleware('permission:hr.wellness.view');
-        Route::get('wellness/referrals',[EngagementController::class,'wellnessReferrals'])->middleware('permission:hr.wellness.view');
-        Route::get('wellness/referrals/{id}',[EngagementController::class,'wellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.view');
-        Route::post('wellness/referrals',[EngagementController::class,'requestWellnessReferral'])->middleware('permission:hr.wellness.request');
-        Route::post('wellness/referrals/{id}/consent',[EngagementController::class,'consentWellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.request');
-        Route::post('wellness/referrals/{id}/manage',[EngagementController::class,'manageWellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
-        Route::post('wellness/referrals/{id}/followups',[EngagementController::class,'scheduleWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
-        Route::post('wellness/followups/{id}/complete',[EngagementController::class,'completeWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
+    Route::prefix('hr/engagement')->group(function () {
+        Route::get('announcements', [EngagementController::class, 'announcements'])->middleware('permission:hr.engagement.view');
+        Route::post('announcements', [EngagementController::class, 'storeAnnouncement'])->middleware('permission:hr.engagement.manage');
+        Route::post('announcements/{id}/approve', [EngagementController::class, 'approveAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.approve');
+        Route::post('announcements/{id}/reject', [EngagementController::class, 'rejectAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.approve');
+        Route::post('announcements/{id}/acknowledge', [EngagementController::class, 'acknowledgeAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.view');
+        Route::post('surveys', [EngagementController::class, 'storeSurvey'])->middleware('permission:hr.surveys.manage');
+        Route::get('surveys', [EngagementController::class, 'surveys'])->middleware('permission:hr.surveys.respond');
+        Route::post('surveys/{id}/approve', [EngagementController::class, 'approveSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.approve');
+        Route::post('surveys/{id}/reject', [EngagementController::class, 'rejectSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.approve');
+        Route::post('surveys/{id}/responses', [EngagementController::class, 'respondSurvey'])->whereUuid('id')->middleware('permission:hr.surveys.respond');
+        Route::get('surveys/{id}/results', [EngagementController::class, 'surveyResults'])->whereUuid('id')->middleware('permission:hr.surveys.results');
+        Route::post('recognition', [EngagementController::class, 'nominateRecognition'])->middleware('permission:hr.recognition.nominate');
+        Route::get('recognition', [EngagementController::class, 'recognitionNominations'])->middleware('permission:hr.recognition.nominate');
+        Route::get('recognition/nominee-options', [EngagementController::class, 'recognitionNominees'])->middleware('permission:hr.recognition.nominate');
+        Route::post('recognition/{id}/decide', [EngagementController::class, 'decideRecognition'])->whereUuid('id')->middleware('permission:hr.recognition.approve');
+        Route::post('wellness/programs', [EngagementController::class, 'storeWellnessProgram'])->middleware('permission:hr.wellness.manage');
+        Route::get('wellness/programs', [EngagementController::class, 'wellnessPrograms'])->middleware('permission:hr.wellness.view');
+        Route::get('wellness/referrals', [EngagementController::class, 'wellnessReferrals'])->middleware('permission:hr.wellness.view');
+        Route::get('wellness/referrals/{id}', [EngagementController::class, 'wellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.view');
+        Route::post('wellness/referrals', [EngagementController::class, 'requestWellnessReferral'])->middleware('permission:hr.wellness.request');
+        Route::post('wellness/referrals/{id}/consent', [EngagementController::class, 'consentWellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.request');
+        Route::post('wellness/referrals/{id}/manage', [EngagementController::class, 'manageWellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
+        Route::post('wellness/referrals/{id}/followups', [EngagementController::class, 'scheduleWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
+        Route::post('wellness/followups/{id}/complete', [EngagementController::class, 'completeWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
     });
-    Route::prefix('hr/analytics')->group(function(){
-        Route::get('definitions',[HrAnalyticsController::class,'definitions'])->middleware('permission:hr.analytics.view');
-        Route::post('definitions',[HrAnalyticsController::class,'storeDefinition'])->middleware('permission:hr.analytics.configure');
-        Route::post('definitions/{id}/approve',[HrAnalyticsController::class,'approveDefinition'])->whereUuid('id')->middleware('permission:hr.analytics.approve');
-        Route::post('definitions/{id}/reject',[HrAnalyticsController::class,'rejectDefinition'])->whereUuid('id')->middleware('permission:hr.analytics.approve');
-        Route::post('definitions/{id}/snapshots',[HrAnalyticsController::class,'generate'])->whereUuid('id')->middleware('permission:hr.analytics.generate');
-        Route::get('snapshots',[HrAnalyticsController::class,'snapshotIndex'])->middleware('permission:hr.analytics.view');
-          Route::get('workforce-plans',[WorkforcePlanningController::class,'index'])->middleware('permission:hr.workforce-planning.view');
-          Route::get('workforce-planning/references',[WorkforcePlanningController::class,'references'])->middleware('permission:hr.workforce-planning.manage');
-        Route::get('workforce-plans/{id}',[WorkforcePlanningController::class,'show'])->whereUuid('id')->middleware('permission:hr.workforce-planning.view');
-        Route::post('workforce-plans',[WorkforcePlanningController::class,'store'])->middleware('permission:hr.workforce-planning.manage');
-        Route::post('workforce-plans/{id}/submit',[WorkforcePlanningController::class,'submit'])->whereUuid('id')->middleware('permission:hr.workforce-planning.manage');
-        Route::post('workforce-plans/{id}/decide',[WorkforcePlanningController::class,'decide'])->whereUuid('id')->middleware('permission:hr.workforce-planning.approve');
-        Route::post('workforce-plans/{id}/snapshots',[WorkforcePlanningController::class,'snapshot'])->whereUuid('id')->middleware('permission:hr.workforce-planning.generate');
-        Route::get('report-views',[HrReportingController::class,'views'])->middleware('permission:hr.reporting.view');
-          Route::post('report-views',[HrReportingController::class,'storeView'])->middleware('permission:hr.reporting.view');
-          Route::get('report-recipient-options',[HrReportingController::class,'recipientOptions'])->middleware('permission:hr.reporting.manage');
-        Route::post('report-views/{id}/exports',[HrReportingController::class,'requestExport'])->whereUuid('id')->middleware('permission:hr.reporting.export');
-        Route::get('report-schedules',[HrReportingController::class,'schedules'])->middleware('permission:hr.reporting.view');
-        Route::post('report-schedules',[HrReportingController::class,'storeSchedule'])->middleware('permission:hr.reporting.manage');
-        Route::post('report-schedules/{id}/decide',[HrReportingController::class,'decideSchedule'])->whereUuid('id')->middleware('permission:hr.reporting.approve');
-        Route::get('report-runs',[HrReportingController::class,'runs'])->middleware('permission:hr.reporting.view');
-        Route::get('report-runs/{id}/download',[HrReportingController::class,'download'])->whereUuid('id')->middleware('permission:hr.reporting.export');
-        Route::get('data-quality',[HrReportingController::class,'dataQuality'])->middleware('permission:hr.data-quality.view');
-        Route::post('data-quality/snapshots',[HrReportingController::class,'snapshotQuality'])->middleware('permission:hr.data-quality.generate');
+    Route::prefix('hr/analytics')->group(function () {
+        Route::get('definitions', [HrAnalyticsController::class, 'definitions'])->middleware('permission:hr.analytics.view');
+        Route::post('definitions', [HrAnalyticsController::class, 'storeDefinition'])->middleware('permission:hr.analytics.configure');
+        Route::post('definitions/{id}/approve', [HrAnalyticsController::class, 'approveDefinition'])->whereUuid('id')->middleware('permission:hr.analytics.approve');
+        Route::post('definitions/{id}/reject', [HrAnalyticsController::class, 'rejectDefinition'])->whereUuid('id')->middleware('permission:hr.analytics.approve');
+        Route::post('definitions/{id}/snapshots', [HrAnalyticsController::class, 'generate'])->whereUuid('id')->middleware('permission:hr.analytics.generate');
+        Route::get('snapshots', [HrAnalyticsController::class, 'snapshotIndex'])->middleware('permission:hr.analytics.view');
+        Route::get('workforce-plans', [WorkforcePlanningController::class, 'index'])->middleware('permission:hr.workforce-planning.view');
+        Route::get('workforce-planning/references', [WorkforcePlanningController::class, 'references'])->middleware('permission:hr.workforce-planning.manage');
+        Route::get('workforce-plans/{id}', [WorkforcePlanningController::class, 'show'])->whereUuid('id')->middleware('permission:hr.workforce-planning.view');
+        Route::post('workforce-plans', [WorkforcePlanningController::class, 'store'])->middleware('permission:hr.workforce-planning.manage');
+        Route::post('workforce-plans/{id}/submit', [WorkforcePlanningController::class, 'submit'])->whereUuid('id')->middleware('permission:hr.workforce-planning.manage');
+        Route::post('workforce-plans/{id}/decide', [WorkforcePlanningController::class, 'decide'])->whereUuid('id')->middleware('permission:hr.workforce-planning.approve');
+        Route::post('workforce-plans/{id}/snapshots', [WorkforcePlanningController::class, 'snapshot'])->whereUuid('id')->middleware('permission:hr.workforce-planning.generate');
+        Route::get('report-views', [HrReportingController::class, 'views'])->middleware('permission:hr.reporting.view');
+        Route::post('report-views', [HrReportingController::class, 'storeView'])->middleware('permission:hr.reporting.view');
+        Route::get('report-recipient-options', [HrReportingController::class, 'recipientOptions'])->middleware('permission:hr.reporting.manage');
+        Route::post('report-views/{id}/exports', [HrReportingController::class, 'requestExport'])->whereUuid('id')->middleware('permission:hr.reporting.export');
+        Route::get('report-schedules', [HrReportingController::class, 'schedules'])->middleware('permission:hr.reporting.view');
+        Route::post('report-schedules', [HrReportingController::class, 'storeSchedule'])->middleware('permission:hr.reporting.manage');
+        Route::post('report-schedules/{id}/decide', [HrReportingController::class, 'decideSchedule'])->whereUuid('id')->middleware('permission:hr.reporting.approve');
+        Route::get('report-runs', [HrReportingController::class, 'runs'])->middleware('permission:hr.reporting.view');
+        Route::get('report-runs/{id}/download', [HrReportingController::class, 'download'])->whereUuid('id')->middleware('permission:hr.reporting.export');
+        Route::get('data-quality', [HrReportingController::class, 'dataQuality'])->middleware('permission:hr.data-quality.view');
+        Route::post('data-quality/snapshots', [HrReportingController::class, 'snapshotQuality'])->middleware('permission:hr.data-quality.generate');
     });
-    Route::prefix('hr/notifications')->group(function(){
-        Route::get('templates',[HrNotificationController::class,'templates'])->middleware('permission:hr.notifications.manage');
-        Route::post('templates',[HrNotificationController::class,'storeTemplate'])->middleware('permission:hr.notifications.manage');
-        Route::post('templates/{id}/approve',[HrNotificationController::class,'approveTemplate'])->whereUuid('id')->middleware('permission:hr.notifications.approve');
-        Route::post('templates/{id}/reject',[HrNotificationController::class,'rejectTemplate'])->whereUuid('id')->middleware('permission:hr.notifications.approve');
-        Route::get('preferences',[HrNotificationController::class,'preferences'])->middleware('permission:hr.notifications.preferences');
-        Route::post('preferences',[HrNotificationController::class,'savePreference'])->middleware('permission:hr.notifications.preferences');
-        Route::get('outbox',[HrNotificationController::class,'outbox'])->middleware('permission:hr.notifications.manage');
-        Route::get('delivery-queue',[HrNotificationController::class,'deliveryQueue'])->middleware('permission:hr.notifications.adapter.read');
-        Route::get('receipt-queue',[HrNotificationController::class,'receiptQueue'])->middleware('permission:hr.notifications.adapter.read');
-        Route::post('outbox/{id}/claim',[HrNotificationController::class,'claimDelivery'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.read');
-        Route::post('outbox/{id}/acknowledge',[HrNotificationController::class,'acknowledge'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
-        Route::post('outbox/{id}/receipt',[HrNotificationController::class,'recordReceipt'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
+    Route::prefix('hr/notifications')->group(function () {
+        Route::get('templates', [HrNotificationController::class, 'templates'])->middleware('permission:hr.notifications.manage');
+        Route::post('templates', [HrNotificationController::class, 'storeTemplate'])->middleware('permission:hr.notifications.manage');
+        Route::post('templates/{id}/approve', [HrNotificationController::class, 'approveTemplate'])->whereUuid('id')->middleware('permission:hr.notifications.approve');
+        Route::post('templates/{id}/reject', [HrNotificationController::class, 'rejectTemplate'])->whereUuid('id')->middleware('permission:hr.notifications.approve');
+        Route::get('preferences', [HrNotificationController::class, 'preferences'])->middleware('permission:hr.notifications.preferences');
+        Route::post('preferences', [HrNotificationController::class, 'savePreference'])->middleware('permission:hr.notifications.preferences');
+        Route::get('outbox', [HrNotificationController::class, 'outbox'])->middleware('permission:hr.notifications.manage');
+        Route::get('delivery-queue', [HrNotificationController::class, 'deliveryQueue'])->middleware('permission:hr.notifications.adapter.read');
+        Route::get('receipt-queue', [HrNotificationController::class, 'receiptQueue'])->middleware('permission:hr.notifications.adapter.read');
+        Route::post('outbox/{id}/claim', [HrNotificationController::class, 'claimDelivery'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.read');
+        Route::post('outbox/{id}/acknowledge', [HrNotificationController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
+        Route::post('outbox/{id}/receipt', [HrNotificationController::class, 'recordReceipt'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
     });
-    Route::get('hr/governance/queues',[HrGovernanceController::class,'queues'])->middleware('permission:hr.governance.view');
+    Route::get('hr/governance/queues', [HrGovernanceController::class, 'queues'])->middleware('permission:hr.governance.view');
 
     Route::get('documents/stats', [DocumentController::class, 'stats']);
     Route::get('documents', [DocumentController::class, 'index']);
@@ -1298,7 +1359,7 @@ Route::middleware(['auth:api'])->group(function () {
         // Public CMS routes (no authentication required)
         Route::get('public/cms-contents/published', [CmsContentController::class, 'published'])->name('api.cms-contents.published');
         Route::get('public/{contentTypeSlug}/{contentSlug}', [CmsContentController::class, 'getBySlug'])->name('api.cms-contents.public');
-        
+
         Route::get('business-settings/all/categorized', [BusinessSettingController::class, 'getAllCategorized']);
         Route::put('business-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
 
@@ -1357,8 +1418,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('inquiry-forms', InquiryFormController::class);
         Route::apiResource('inquiry-service-pages', InquiryServicePageController::class);
         // Manage sections for inquiry service pages (CRUD)
-        Route::apiResource('inquiry-service-pages.sections', \App\Http\Controllers\Api\InquiryServicePageSectionController::class);
-        Route::post('inquiry-service-pages/{inquiry_service_page}/sections/reorder', [\App\Http\Controllers\Api\InquiryServicePageSectionController::class, 'reorder']);
+        Route::apiResource('inquiry-service-pages.sections', InquiryServicePageSectionController::class);
+        Route::post('inquiry-service-pages/{inquiry_service_page}/sections/reorder', [InquiryServicePageSectionController::class, 'reorder']);
 
         // Service Configuration API routes for dynamic forms
         Route::get('services/configuration', [BookingController::class, 'getServiceConfiguration'])->name('api.services.configuration');
@@ -1394,7 +1455,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('improve', [AIContentController::class, 'improveContent'])->name('api.ai-content.improve');
         Route::get('status', [AIContentController::class, 'status'])->name('api.ai-content.status');
     });
-
 
     /*
     |--------------------------------------------------------------------------
@@ -1457,7 +1517,7 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('bulk-update-status', [VehicleAddonController::class, 'bulkUpdateStatus']);
                 Route::put('{vehicleAddon}/toggle-status', [VehicleAddonController::class, 'toggleStatus']);
             });
-            Route::apiResource('vehicle-addon-categories', \App\Http\Controllers\Api\Vehicle\VehicleAddonCategoryController::class);
+            Route::apiResource('vehicle-addon-categories', VehicleAddonCategoryController::class);
             Route::apiResource('vehicle-addons', VehicleAddonController::class)
                 ->middleware('pricing.context');
             Route::apiResource('vehicle-categories', VehicleCategoryController::class);
@@ -1490,7 +1550,6 @@ Route::middleware(['auth:api'])->group(function () {
             // Route::apiResource('vehicle-pricing-slab-rates', VehiclePricingSlabRateController::class);
             Route::apiResource('vehicle-transmissions', VehicleTransmissionController::class);
             // Route::apiResource('vehicle-discounts', VehicleDiscountController::class);
-
 
             Route::prefix('pricing-slab-definitions')->middleware('pricing.context')->group(function () {
                 Route::get('/', [VehiclePricingSlabDefinitionController::class, 'index']);
@@ -1540,7 +1599,6 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::post('/import/data', [VehiclePricingCommonRateDefinitionController::class, 'import']);
                 Route::get('/import/template', [VehiclePricingCommonRateDefinitionController::class, 'downloadTemplate']);
             });
-
 
             // Calculation Definitions Management
             Route::prefix('calculation-definitions')->middleware('pricing.context')->group(function () {
@@ -1592,7 +1650,6 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::get('/{id}/usage-statistics', [PriceAdjustmentController::class, 'getUsageStatistics']);
             });
 
-
             // Vehicle Discounts
             Route::prefix('vehicle-discounts')->group(function () {
                 Route::get('/', [VehicleDiscountController::class, 'index']);
@@ -1628,7 +1685,6 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::get('/template/download', [VehicleGroupPricingController::class, 'downloadTemplate']);
             });
 
-
             Route::get('/available', [VehicleController::class, 'getAvailableVehicles']);
             Route::post('/{id}/complete-maintenance', [VehicleController::class, 'completeMaintenanceSchedule']);
         });
@@ -1655,8 +1711,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('vehicles', VehicleController::class);
 
         // Default driver management for vehicles
-        Route::get('vehicles/{vehicle}/default-driver', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'getVehicleDefaultDriver']);
-        Route::put('vehicles/{vehicle}/default-driver', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateVehicleDefaultDriver']);
+        Route::get('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'getVehicleDefaultDriver']);
+        Route::put('vehicles/{vehicle}/default-driver', [BookingAssignmentController::class, 'updateVehicleDefaultDriver']);
     });
 
     Route::group(['prefix' => 'reports'], function () {
@@ -1805,7 +1861,7 @@ Route::middleware(['auth:api'])->group(function () {
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
-        Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
+        Route::get('drivers/with-status', [BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
@@ -1842,8 +1898,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/{driver}/analytics', [DriverController::class, 'analytics']);
 
         // Default vehicle management for drivers
-        Route::get('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'getDriverDefaultVehicle']);
-        Route::put('drivers/{driver}/default-vehicle', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'updateDriverDefaultVehicle'])
+        Route::get('drivers/{driver}/default-vehicle', [BookingAssignmentController::class, 'getDriverDefaultVehicle']);
+        Route::put('drivers/{driver}/default-vehicle', [BookingAssignmentController::class, 'updateDriverDefaultVehicle'])
             ->middleware('permission:drivers.edit');
 
         // Driver device management endpoints
@@ -1926,7 +1982,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::middleware(['permission:bookings.view'])->group(function () {
 
-        Route::group(['prefix' => 'booking-flow',], function () {
+        Route::group(['prefix' => 'booking-flow'], function () {
             // Vehicle Availability Routes - Updated to match frontend service
             Route::get('vehicle-groups/availability', [BookingFlowController::class, 'getAvailableVehicleGroups'])
                 ->middleware('permission:bookings.view');
@@ -2189,30 +2245,28 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('collection-commissions/mark-paid', [CollectionCommissionController::class, 'markPaid'])
             ->middleware('permission:collection-commissions.pay');
 
-        Route::get('bookings/active-trips', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'activeTrips'])
+        Route::get('bookings/active-trips', [BookingObservabilityController::class, 'activeTrips'])
             ->middleware('permission:bookings.view');
 
         Route::prefix('bookings/{booking}')->middleware('booking.operations.telemetry')->group(function () {
-            Route::get('trace', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'trace'])
+            Route::get('trace', [BookingObservabilityController::class, 'trace'])
                 ->middleware('permission:bookings.view');
-            Route::get('tracking-summary', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'trackingSummary'])
+            Route::get('tracking-summary', [BookingObservabilityController::class, 'trackingSummary'])
                 ->middleware('permission:bookings.view');
-            Route::get('route-replay', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'routeReplay'])
+            Route::get('route-replay', [BookingObservabilityController::class, 'routeReplay'])
                 ->middleware('permission:bookings.tracking_replay');
-            Route::post('route-estimates', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'generateOperationalEstimate'])
-                ->middleware('permission:bookings.tracking_estimate');
             Route::get('route-replay/export', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'exportRouteReplay'])
                 ->middleware('permission:bookings.tracking_export');
-            Route::get('communications', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'communications'])
+            Route::get('communications', [BookingObservabilityController::class, 'communications'])
                 ->middleware('permission:bookings.view');
-            Route::get('documents', [\App\Http\Controllers\Api\BookingObservabilityController::class, 'documents'])
+            Route::get('documents', [BookingObservabilityController::class, 'documents'])
                 ->middleware('permission:bookings.view');
         });
 
         Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view');
             Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
-            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType',['customer','corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
+            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
             Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');
@@ -2229,7 +2283,7 @@ Route::middleware(['auth:api'])->group(function () {
         });
 
         // Booking Item Assignment (inline from booking list)
-        Route::post('booking-items/{bookingItem}/assign', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'createBookingAssignment'])
+        Route::post('booking-items/{bookingItem}/assign', [BookingAssignmentController::class, 'createBookingAssignment'])
             ->middleware('permission:bookings.create');
 
         // Booking Lifecycle Management Routes
@@ -2267,7 +2321,6 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.update');
         });
 
-
         Route::group([
             'prefix' => 'public/booking-flow',
             'middleware' => ['throttle:60,1'], // Rate limiting for public endpoints
@@ -2276,7 +2329,6 @@ Route::middleware(['auth:api'])->group(function () {
             // Public availability checking (with limited data)
             Route::get('check-availability', [BookingFlowController::class, 'getAvailableVehicleGroups']);
             Route::post('estimate-pricing', [BookingFlowController::class, 'calculatePricing']);
-
 
             // Self-service booking submission
             Route::post('submit-booking-request', [BookingFlowController::class, 'submitBookingForApproval']);
@@ -2329,7 +2381,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:bookings.create');
     });
 
-
     Route::group([
         'prefix' => 'integration/booking-flow',
         'middleware' => ['throttle:api'],
@@ -2349,7 +2400,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('pricing-update-webhook', [BookingFlowController::class, 'getDynamicPricingAdjustments'])
             ->middleware('permission:api.webhooks');
     });
-
 
     if (app()->environment(['local', 'staging'])) {
         Route::group([
@@ -2461,8 +2511,6 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-
-
     Route::prefix('files')->group(function () {
         Route::post('/upload', [FileUploadController::class, 'uploadFile'])
             ->name('api.files.upload');
@@ -2527,38 +2575,38 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('corporate')->middleware(['ensure.corporate'])->group(function () {
-        Route::get('workspace', [\App\Http\Controllers\Api\Corporate\CorporateWorkspaceController::class, 'dashboard']);
+        Route::get('workspace', [CorporateWorkspaceController::class, 'dashboard']);
         // Department Management
-        Route::get('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'index']);
-        Route::post('departments', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'store'])->middleware('permission:manage_departments');
-        Route::put('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'update'])->middleware('permission:manage_departments');
-        Route::delete('departments/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDepartmentController::class, 'destroy'])->middleware('permission:manage_departments');
+        Route::get('departments', [CorporateDepartmentController::class, 'index']);
+        Route::post('departments', [CorporateDepartmentController::class, 'store'])->middleware('permission:manage_departments');
+        Route::put('departments/{id}', [CorporateDepartmentController::class, 'update'])->middleware('permission:manage_departments');
+        Route::delete('departments/{id}', [CorporateDepartmentController::class, 'destroy'])->middleware('permission:manage_departments');
 
         // Division Management (nested under departments for index/store)
-        Route::get('departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'index']);
-        Route::post('departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'store']);
-        Route::put('divisions/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'update']);
-        Route::delete('divisions/{id}', [\App\Http\Controllers\Api\Corporate\CorporateDivisionController::class, 'destroy']);
+        Route::get('departments/{department}/divisions', [CorporateDivisionController::class, 'index']);
+        Route::post('departments/{department}/divisions', [CorporateDivisionController::class, 'store']);
+        Route::put('divisions/{id}', [CorporateDivisionController::class, 'update']);
+        Route::delete('divisions/{id}', [CorporateDivisionController::class, 'destroy']);
 
         // Employee Management
-        Route::get('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'index']);
-        Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
-        Route::get('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'show']);
-        Route::put('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'update']);
-        Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
-        Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
-        Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
+        Route::get('employees', [CorporateEmployeeController::class, 'index']);
+        Route::post('employees', [CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
+        Route::get('employees/{id}', [CorporateEmployeeController::class, 'show']);
+        Route::put('employees/{id}', [CorporateEmployeeController::class, 'update']);
+        Route::post('employees/{id}/activate', [CorporateEmployeeController::class, 'activate']);
+        Route::post('employees/{id}/deactivate', [CorporateEmployeeController::class, 'deactivate']);
+        Route::post('employees/{id}/role', [CorporateEmployeeController::class, 'assignRole']);
 
         // Role Management
-        Route::get('roles', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'index']);
-        Route::post('roles', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'store']);
-        Route::put('roles/{id}', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'update']);
-        Route::delete('roles/{id}', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'destroy']);
-        Route::get('permissions', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'permissions']);
+        Route::get('roles', [CorporateRoleController::class, 'index']);
+        Route::post('roles', [CorporateRoleController::class, 'store']);
+        Route::put('roles/{id}', [CorporateRoleController::class, 'update']);
+        Route::delete('roles/{id}', [CorporateRoleController::class, 'destroy']);
+        Route::get('permissions', [CorporateRoleController::class, 'permissions']);
 
         // Corporate Profile
-        Route::get('profile', function (\Illuminate\Http\Request $request) {
-            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+        Route::get('profile', function (Request $request) {
+            $corporate = Corporate::findOrFail($request->corporate_id);
 
             return response()->json([
                 'status' => 'success',
@@ -2578,87 +2626,87 @@ Route::middleware(['auth:api'])->group(function () {
             ]);
         });
 
-        Route::get('service-types', function (\Illuminate\Http\Request $request) {
-            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+        Route::get('service-types', function (Request $request) {
+            $corporate = Corporate::findOrFail($request->corporate_id);
             $serviceTypes = $corporate->serviceTypes()
                 ->where('service_types.is_active', true)
                 ->orderBy('service_types.priority')
                 ->orderBy('service_types.name')
                 ->get();
 
-            return \App\Http\Resources\ServiceTypeResource::collection($serviceTypes);
+            return ServiceTypeResource::collection($serviceTypes);
         });
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
-            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
-            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
-            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
+            Route::get('programs', [CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [CorporateStaffTransportController::class, 'updateProgram']);
 
-            Route::get('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'shifts']);
-            Route::post('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeShift']);
-            Route::put('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateShift']);
-            Route::delete('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteShift']);
+            Route::get('programs/{program}/shifts', [CorporateStaffTransportController::class, 'shifts']);
+            Route::post('programs/{program}/shifts', [CorporateStaffTransportController::class, 'storeShift']);
+            Route::put('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'updateShift']);
+            Route::delete('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'deleteShift']);
 
-            Route::get('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'routes']);
-            Route::post('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeRoute']);
-            Route::put('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateRoute']);
-            Route::delete('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteRoute']);
+            Route::get('programs/{program}/routes', [CorporateStaffTransportController::class, 'routes']);
+            Route::post('programs/{program}/routes', [CorporateStaffTransportController::class, 'storeRoute']);
+            Route::put('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'updateRoute']);
+            Route::delete('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'deleteRoute']);
 
-            Route::get('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'members']);
-            Route::post('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeMember']);
-            Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
-            Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
+            Route::get('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'members']);
+            Route::post('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'storeMember']);
+            Route::put('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'updateMember']);
+            Route::delete('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'deleteMember']);
 
-            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
-            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
-            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
-            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
-            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
-            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
-            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
-            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+            Route::post('roster/build', [CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [CorporateStaffTransportController::class, 'generatedBooking']);
         });
 
         // Booking Management
-        Route::get('bookings/my', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'myBookings']);
-        Route::get('bookings/export', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'export']);
-        Route::get('bookings/stats', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'stats']);
-        Route::get('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'index']);
-        Route::post('bookings', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'store']);
-        Route::post('bookings/for-employee', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'storeForEmployee']);
-        Route::post('bookings/{id}/recurring/cancel', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'cancelRecurring']);
-        Route::get('bookings/{id}/live-progress', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'liveProgress']);
-        Route::get('bookings/{id}/timeline', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'timeline']);
-        Route::post('bookings/{id}/contractual-distance-override', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'overrideContractualDistance'])
+        Route::get('bookings/my', [CorporateBookingController::class, 'myBookings']);
+        Route::get('bookings/export', [CorporateBookingController::class, 'export']);
+        Route::get('bookings/stats', [CorporateBookingController::class, 'stats']);
+        Route::get('bookings', [CorporateBookingController::class, 'index']);
+        Route::post('bookings', [CorporateBookingController::class, 'store']);
+        Route::post('bookings/for-employee', [CorporateBookingController::class, 'storeForEmployee']);
+        Route::post('bookings/{id}/recurring/cancel', [CorporateBookingController::class, 'cancelRecurring']);
+        Route::get('bookings/{id}/live-progress', [CorporateBookingController::class, 'liveProgress']);
+        Route::get('bookings/{id}/timeline', [CorporateBookingController::class, 'timeline']);
+        Route::post('bookings/{id}/contractual-distance-override', [CorporateBookingController::class, 'overrideContractualDistance'])
             ->middleware('permission:approve_bookings');
-        Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
+        Route::get('bookings/{id}', [CorporateBookingController::class, 'show']);
 
         // Approval Management
-        Route::get('approvals', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'index']);
-        Route::post('approvals/{bookingId}/approve', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'approve']);
-        Route::post('approvals/{bookingId}/reject', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'reject']);
+        Route::get('approvals', [CorporateApprovalController::class, 'index']);
+        Route::post('approvals/{bookingId}/approve', [CorporateApprovalController::class, 'approve']);
+        Route::post('approvals/{bookingId}/reject', [CorporateApprovalController::class, 'reject']);
 
         // Audit Log
-        Route::get('audit-logs', [\App\Http\Controllers\Api\Corporate\CorporateAuditLogController::class, 'index']);
+        Route::get('audit-logs', [CorporateAuditLogController::class, 'index']);
 
         // Reports
-        Route::get('reports/booking-history', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'bookingHistory']);
-        Route::get('reports/summary-stats', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'summaryStats']);
-        Route::get('reports/export', [\App\Http\Controllers\Api\Corporate\CorporateReportController::class, 'exportCsv']);
-        Route::get('reports/management', [\App\Http\Controllers\Api\Corporate\CorporateManagementReportController::class, 'show']);
-        Route::get('reports/management/export/{format}', [\App\Http\Controllers\Api\Corporate\CorporateManagementReportController::class, 'export'])->whereIn('format', ['csv', 'xls', 'pdf']);
-        Route::apiResource('report-schedules', \App\Http\Controllers\Api\Corporate\CorporateReportScheduleController::class)->only(['index', 'store', 'update', 'destroy']);
+        Route::get('reports/booking-history', [CorporateReportController::class, 'bookingHistory']);
+        Route::get('reports/summary-stats', [CorporateReportController::class, 'summaryStats']);
+        Route::get('reports/export', [CorporateReportController::class, 'exportCsv']);
+        Route::get('reports/management', [CorporateManagementReportController::class, 'show']);
+        Route::get('reports/management/export/{format}', [CorporateManagementReportController::class, 'export'])->whereIn('format', ['csv', 'xls', 'pdf']);
+        Route::apiResource('report-schedules', CorporateReportScheduleController::class)->only(['index', 'store', 'update', 'destroy']);
 
         // Corporate finance projection (company-scoped and finance-permission protected)
-        Route::get('finance/account', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'account']);
-        Route::get('finance/settlements/{settlement}', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'show'])->whereUuid('settlement');
-        Route::get('finance/settlements/{settlement}/invoice', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'invoice'])->whereUuid('settlement');
-        Route::get('finance/settlements/{settlement}/statement', [\App\Http\Controllers\Api\Corporate\CorporateFinanceController::class, 'statement'])->whereUuid('settlement');
+        Route::get('finance/account', [CorporateFinanceController::class, 'account']);
+        Route::get('finance/settlements/{settlement}', [CorporateFinanceController::class, 'show'])->whereUuid('settlement');
+        Route::get('finance/settlements/{settlement}/invoice', [CorporateFinanceController::class, 'invoice'])->whereUuid('settlement');
+        Route::get('finance/settlements/{settlement}/statement', [CorporateFinanceController::class, 'statement'])->whereUuid('settlement');
 
         // Vehicle Groups (read-only for corporate users)
-        Route::get('vehicle-groups', function (\Illuminate\Http\Request $request) {
-            $corporate = \App\Models\Corporate\Corporate::findOrFail($request->corporate_id);
+        Route::get('vehicle-groups', function (Request $request) {
+            $corporate = Corporate::findOrFail($request->corporate_id);
             $vehicleGroups = $corporate->vehicleGroups()->get();
 
             return response()->json([
@@ -2675,84 +2723,84 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('admin/corporates')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'index']);
-        Route::post('/', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'store']);
-        Route::get('{corporate}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'show']);
-        Route::put('{corporate}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'update']);
-        Route::post('{corporate}/activate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'activate']);
-        Route::post('{corporate}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'deactivate']);
-        Route::post('{corporate}/vehicle-groups', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignVehicleGroups']);
-        Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'removeVehicleGroup']);
-        Route::get('{corporate}/service-types', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'serviceTypes'])
+        Route::get('/', [CorporateController::class, 'index']);
+        Route::post('/', [CorporateController::class, 'store']);
+        Route::get('{corporate}', [CorporateController::class, 'show']);
+        Route::put('{corporate}', [CorporateController::class, 'update']);
+        Route::post('{corporate}/activate', [CorporateController::class, 'activate']);
+        Route::post('{corporate}/deactivate', [CorporateController::class, 'deactivate']);
+        Route::post('{corporate}/vehicle-groups', [CorporateController::class, 'assignVehicleGroups']);
+        Route::delete('{corporate}/vehicle-groups/{vehicleGroupId}', [CorporateController::class, 'removeVehicleGroup']);
+        Route::get('{corporate}/service-types', [CorporateController::class, 'serviceTypes'])
             ->middleware('permission:corporates.view');
-        Route::post('{corporate}/service-types', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'assignServiceTypes'])
+        Route::post('{corporate}/service-types', [CorporateController::class, 'assignServiceTypes'])
             ->middleware('permission:corporates.manage');
-        Route::post('{corporate}/initial-admin', [\App\Http\Controllers\Api\Corporate\CorporateController::class, 'createInitialAdmin']);
+        Route::post('{corporate}/initial-admin', [CorporateController::class, 'createInitialAdmin']);
 
         Route::middleware('ensure.internal')->group(function () {
-            Route::get('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
-            Route::post('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
-            Route::patch('{corporate}/billing/terms/{term}/end', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
-            Route::post('{corporate}/billing/preview', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
-            Route::post('{corporate}/billing/generate', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
-            Route::post('{corporate}/billing/settlements/{settlement}/issue', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
-            Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
-            Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
-            Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);
-            Route::get('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'locations']);
-            Route::post('{corporate}/distance-pricing-policy/locations', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'storeLocation']);
-            Route::put('{corporate}/distance-pricing-policy/locations/{location}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateLocation']);
-            Route::post('{corporate}/distance-pricing-policy/preview', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'preview']);
-            Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'updateService']);
+            Route::get('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
+            Route::post('{corporate}/billing/terms', [CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
+            Route::patch('{corporate}/billing/terms/{term}/end', [CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
+            Route::post('{corporate}/billing/preview', [CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
+            Route::post('{corporate}/billing/generate', [CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
+            Route::post('{corporate}/billing/settlements/{settlement}/issue', [CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
+            Route::get('{corporate}/distance-pricing-policy', [CorporateDistancePolicyController::class, 'show']);
+            Route::put('{corporate}/distance-pricing-policy', [CorporateDistancePolicyController::class, 'update']);
+            Route::get('{corporate}/distance-pricing-policy/services', [CorporateDistancePolicyController::class, 'services']);
+            Route::get('{corporate}/distance-pricing-policy/locations', [CorporateDistancePolicyController::class, 'locations']);
+            Route::post('{corporate}/distance-pricing-policy/locations', [CorporateDistancePolicyController::class, 'storeLocation']);
+            Route::put('{corporate}/distance-pricing-policy/locations/{location}', [CorporateDistancePolicyController::class, 'updateLocation']);
+            Route::post('{corporate}/distance-pricing-policy/preview', [CorporateDistancePolicyController::class, 'preview']);
+            Route::put('{corporate}/distance-pricing-policy/services/{serviceType}', [CorporateDistancePolicyController::class, 'updateService']);
         });
 
         // Admin sub-resource routes for departments, divisions, employees, bookings
-        Route::get('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'index']);
-        Route::post('{corporate}/departments', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'store']);
-        Route::get('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'show']);
-        Route::put('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'update']);
-        Route::delete('{corporate}/departments/{department}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDepartmentController::class, 'destroy']);
+        Route::get('{corporate}/departments', [AdminCorporateDepartmentController::class, 'index']);
+        Route::post('{corporate}/departments', [AdminCorporateDepartmentController::class, 'store']);
+        Route::get('{corporate}/departments/{department}', [AdminCorporateDepartmentController::class, 'show']);
+        Route::put('{corporate}/departments/{department}', [AdminCorporateDepartmentController::class, 'update']);
+        Route::delete('{corporate}/departments/{department}', [AdminCorporateDepartmentController::class, 'destroy']);
 
-        Route::get('{corporate}/departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'index']);
-        Route::post('{corporate}/departments/{department}/divisions', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'store']);
-        Route::put('{corporate}/divisions/{division}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'update']);
-        Route::delete('{corporate}/divisions/{division}', [\App\Http\Controllers\Api\Corporate\AdminCorporateDivisionController::class, 'destroy']);
+        Route::get('{corporate}/departments/{department}/divisions', [AdminCorporateDivisionController::class, 'index']);
+        Route::post('{corporate}/departments/{department}/divisions', [AdminCorporateDivisionController::class, 'store']);
+        Route::put('{corporate}/divisions/{division}', [AdminCorporateDivisionController::class, 'update']);
+        Route::delete('{corporate}/divisions/{division}', [AdminCorporateDivisionController::class, 'destroy']);
 
-        Route::get('{corporate}/employees', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'index']);
-        Route::post('{corporate}/employees', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'store']);
-        Route::get('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'show']);
-        Route::put('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'update']);
-        Route::post('{corporate}/employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'activate']);
-        Route::post('{corporate}/employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'deactivate']);
-        Route::post('{corporate}/employees/{id}/role', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'assignRole']);
-        Route::delete('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'destroy']);
+        Route::get('{corporate}/employees', [AdminCorporateEmployeeController::class, 'index']);
+        Route::post('{corporate}/employees', [AdminCorporateEmployeeController::class, 'store']);
+        Route::get('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'show']);
+        Route::put('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'update']);
+        Route::post('{corporate}/employees/{id}/activate', [AdminCorporateEmployeeController::class, 'activate']);
+        Route::post('{corporate}/employees/{id}/deactivate', [AdminCorporateEmployeeController::class, 'deactivate']);
+        Route::post('{corporate}/employees/{id}/role', [AdminCorporateEmployeeController::class, 'assignRole']);
+        Route::delete('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'destroy']);
 
-        Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);
+        Route::post('{corporate}/bookings/for-employee', [AdminCorporateBookingController::class, 'storeForEmployee']);
 
         Route::prefix('{corporate}/staff-transport')->group(function () {
-            Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
-            Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
-            Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
-            Route::get('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'shifts']);
-            Route::post('programs/{program}/shifts', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeShift']);
-            Route::put('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateShift']);
-            Route::delete('programs/{program}/shifts/{shift}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteShift']);
-            Route::get('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'routes']);
-            Route::post('programs/{program}/routes', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeRoute']);
-            Route::put('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateRoute']);
-            Route::delete('programs/{program}/routes/{route}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteRoute']);
-            Route::get('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'members']);
-            Route::post('programs/{program}/routes/{route}/members', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeMember']);
-            Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
-            Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
-            Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
-            Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
-            Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
-            Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
-            Route::post('roster/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setParticipation']);
-            Route::post('generate', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generate']);
-            Route::get('logs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'logs']);
-            Route::get('generated-bookings/{booking}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'generatedBooking']);
+            Route::get('programs', [CorporateStaffTransportController::class, 'programs']);
+            Route::post('programs', [CorporateStaffTransportController::class, 'storeProgram']);
+            Route::put('programs/{program}', [CorporateStaffTransportController::class, 'updateProgram']);
+            Route::get('programs/{program}/shifts', [CorporateStaffTransportController::class, 'shifts']);
+            Route::post('programs/{program}/shifts', [CorporateStaffTransportController::class, 'storeShift']);
+            Route::put('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'updateShift']);
+            Route::delete('programs/{program}/shifts/{shift}', [CorporateStaffTransportController::class, 'deleteShift']);
+            Route::get('programs/{program}/routes', [CorporateStaffTransportController::class, 'routes']);
+            Route::post('programs/{program}/routes', [CorporateStaffTransportController::class, 'storeRoute']);
+            Route::put('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'updateRoute']);
+            Route::delete('programs/{program}/routes/{route}', [CorporateStaffTransportController::class, 'deleteRoute']);
+            Route::get('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'members']);
+            Route::post('programs/{program}/routes/{route}/members', [CorporateStaffTransportController::class, 'storeMember']);
+            Route::put('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'updateMember']);
+            Route::delete('programs/{program}/routes/{route}/members/{member}', [CorporateStaffTransportController::class, 'deleteMember']);
+            Route::post('roster/build', [CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster', [CorporateStaffTransportController::class, 'roster']);
+            Route::get('my-calendar', [CorporateStaffTransportController::class, 'myCalendar']);
+            Route::post('my-calendar/{participation}/status', [CorporateStaffTransportController::class, 'setMyParticipation']);
+            Route::post('roster/{participation}/status', [CorporateStaffTransportController::class, 'setParticipation']);
+            Route::post('generate', [CorporateStaffTransportController::class, 'generate']);
+            Route::get('logs', [CorporateStaffTransportController::class, 'logs']);
+            Route::get('generated-bookings/{booking}', [CorporateStaffTransportController::class, 'generatedBooking']);
         });
     });
 });
@@ -2767,9 +2815,7 @@ Route::middleware(['auth:api'])->group(function () {
 */
 
 Route::post('hr/attendance/ingest', AttendanceIngestionController::class)->middleware('throttle:60,1');
-Route::get('health', \App\Http\Controllers\Api\HealthController::class);
-
-
+Route::get('health', HealthController::class);
 
 /*
 |--------------------------------------------------------------------------
@@ -2783,57 +2829,57 @@ Route::get('health', \App\Http\Controllers\Api\HealthController::class);
 // Admin FAQ Management Routes
 Route::middleware(['auth:api'])->group(function () {
     Route::prefix('admin')->group(function () {
-        Route::get('faq-categories', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'index'])
+        Route::get('faq-categories', [FAQCategoryController::class, 'index'])
             ->middleware('permission:faq-categories.view');
-        Route::get('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'show'])
+        Route::get('faq-categories/{faqCategory}', [FAQCategoryController::class, 'show'])
             ->middleware('permission:faq-categories.view');
-        Route::post('faq-categories', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'store'])
+        Route::post('faq-categories', [FAQCategoryController::class, 'store'])
             ->middleware('permission:faq-categories.create');
-        Route::put('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'update'])
+        Route::put('faq-categories/{faqCategory}', [FAQCategoryController::class, 'update'])
             ->middleware('permission:faq-categories.edit');
-        Route::delete('faq-categories/{faqCategory}', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'destroy'])
+        Route::delete('faq-categories/{faqCategory}', [FAQCategoryController::class, 'destroy'])
             ->middleware('permission:faq-categories.delete');
-        Route::post('faq-categories/bulk-sort', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'bulkUpdateSort'])
+        Route::post('faq-categories/bulk-sort', [FAQCategoryController::class, 'bulkUpdateSort'])
             ->middleware('permission:faq-categories.edit');
-        Route::get('faq-categories/{faqCategory}/faqs', [\App\Http\Controllers\Api\Admin\FAQCategoryController::class, 'faqs'])
+        Route::get('faq-categories/{faqCategory}/faqs', [FAQCategoryController::class, 'faqs'])
             ->middleware('permission:faq-categories.view');
 
-        Route::get('faqs/stats', [\App\Http\Controllers\Api\Admin\FAQController::class, 'stats'])
+        Route::get('faqs/stats', [FAQController::class, 'stats'])
             ->middleware('permission:faqs.view');
-        Route::get('faqs', [\App\Http\Controllers\Api\Admin\FAQController::class, 'index'])
+        Route::get('faqs', [FAQController::class, 'index'])
             ->middleware('permission:faqs.view');
-        Route::get('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'show'])
+        Route::get('faqs/{faq}', [FAQController::class, 'show'])
             ->middleware('permission:faqs.view');
-        Route::post('faqs', [\App\Http\Controllers\Api\Admin\FAQController::class, 'store'])
+        Route::post('faqs', [FAQController::class, 'store'])
             ->middleware('permission:faqs.create');
-        Route::put('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'update'])
+        Route::put('faqs/{faq}', [FAQController::class, 'update'])
             ->middleware('permission:faqs.edit');
-        Route::delete('faqs/{faq}', [\App\Http\Controllers\Api\Admin\FAQController::class, 'destroy'])
+        Route::delete('faqs/{faq}', [FAQController::class, 'destroy'])
             ->middleware('permission:faqs.delete');
-        Route::post('faqs/bulk-update', [\App\Http\Controllers\Api\Admin\FAQController::class, 'bulkUpdate'])
+        Route::post('faqs/bulk-update', [FAQController::class, 'bulkUpdate'])
             ->middleware('permission:faqs.edit');
-        Route::get('faqs/categories/list', [\App\Http\Controllers\Api\Admin\FAQController::class, 'getCategories'])
+        Route::get('faqs/categories/list', [FAQController::class, 'getCategories'])
             ->middleware('permission:faqs.view');
 
         Route::middleware(['permission:settings.view'])->group(function () {
-            Route::get('booking-form-tabs', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'index']);
-            Route::get('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'show']);
+            Route::get('booking-form-tabs', [BookingFormTabController::class, 'index']);
+            Route::get('booking-form-tabs/{id}', [BookingFormTabController::class, 'show']);
         });
-        Route::put('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'update'])
+        Route::put('booking-form-tabs/{id}', [BookingFormTabController::class, 'update'])
             ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/{id}/toggle', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'toggle'])
+        Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/reorder', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'reorder'])
+        Route::post('booking-form-tabs/reorder', [BookingFormTabController::class, 'reorder'])
             ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/bulk-update', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'bulkUpdate'])
+        Route::post('booking-form-tabs/bulk-update', [BookingFormTabController::class, 'bulkUpdate'])
             ->middleware('permission:settings.edit');
 
         // Service Form Configs — DB-driven overrides for DynamicServiceConfigurationService
-        Route::get('service-form-configs', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'index']);
-        Route::get('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'show']);
-        Route::post('service-form-configs', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'store']);
-        Route::put('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'update']);
-        Route::delete('service-form-configs/{serviceCode}', [\App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'destroy']);
+        Route::get('service-form-configs', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'index']);
+        Route::get('service-form-configs/{serviceCode}', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'show']);
+        Route::post('service-form-configs', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'store']);
+        Route::put('service-form-configs/{serviceCode}', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'update']);
+        Route::delete('service-form-configs/{serviceCode}', [App\Http\Controllers\Api\Admin\ServiceFormConfigController::class, 'destroy']);
     });
 });
 
@@ -2857,7 +2903,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('navigation-menus/{navigationMenu}/duplicate', [NavigationMenuController::class, 'duplicate'])
             ->middleware('permission:navigation-menus.create');
 
-        // Footer Link Management  
+        // Footer Link Management
         Route::middleware(['permission:footer-links.view'])->group(function () {
             Route::get('footer-links', [FooterLinkController::class, 'index']);
             Route::get('footer-links/{footerLink}', [FooterLinkController::class, 'show']);
@@ -2904,39 +2950,39 @@ Route::prefix('public')->group(function () {
 Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
     Route::prefix('admin')->group(function () {
         // Popup CRUD operations
-        Route::get('popups/statistics', [\App\Http\Controllers\Api\Admin\PopupController::class, 'statistics'])
+        Route::get('popups/statistics', [PopupController::class, 'statistics'])
             ->name('api.admin.popups.statistics');
-        Route::get('popups', [\App\Http\Controllers\Api\Admin\PopupController::class, 'index'])
+        Route::get('popups', [PopupController::class, 'index'])
             ->name('api.admin.popups.index');
-        Route::get('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'show'])
+        Route::get('popups/{popup}', [PopupController::class, 'show'])
             ->name('api.admin.popups.show');
-        Route::post('popups', [\App\Http\Controllers\Api\Admin\PopupController::class, 'store'])
+        Route::post('popups', [PopupController::class, 'store'])
             ->middleware('permission:popup.create')
             ->name('api.admin.popups.store');
-        Route::put('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'update'])
+        Route::put('popups/{popup}', [PopupController::class, 'update'])
             ->middleware('permission:popup.edit')
             ->name('api.admin.popups.update');
-        Route::delete('popups/{popup}', [\App\Http\Controllers\Api\Admin\PopupController::class, 'destroy'])
+        Route::delete('popups/{popup}', [PopupController::class, 'destroy'])
             ->middleware('permission:popup.delete')
             ->name('api.admin.popups.destroy');
-        Route::patch('popups/{popup}/toggle', [\App\Http\Controllers\Api\Admin\PopupController::class, 'toggle'])
+        Route::patch('popups/{popup}/toggle', [PopupController::class, 'toggle'])
             ->middleware('permission:popup.update')
             ->name('api.admin.popups.toggle');
 
         // Terms & Conditions CRUD (admin)
-        Route::get('terms', [\App\Http\Controllers\Api\TermsController::class, 'index'])
+        Route::get('terms', [TermsController::class, 'index'])
             ->middleware('permission:terms.view')
             ->name('api.admin.terms.index');
-        Route::get('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'show'])
+        Route::get('terms/{id}', [TermsController::class, 'show'])
             ->middleware('permission:terms.view')
             ->name('api.admin.terms.show');
-        Route::post('terms', [\App\Http\Controllers\Api\TermsController::class, 'store'])
+        Route::post('terms', [TermsController::class, 'store'])
             ->middleware('permission:terms.create')
             ->name('api.admin.terms.store');
-        Route::put('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'update'])
+        Route::put('terms/{id}', [TermsController::class, 'update'])
             ->middleware('permission:terms.edit')
             ->name('api.admin.terms.update');
-        Route::delete('terms/{id}', [\App\Http\Controllers\Api\TermsController::class, 'destroy'])
+        Route::delete('terms/{id}', [TermsController::class, 'destroy'])
             ->middleware('permission:terms.delete')
             ->name('api.admin.terms.destroy');
     });
@@ -2944,9 +2990,9 @@ Route::middleware(['auth:api', 'permission:popup.view'])->group(function () {
 
 // Public Popup Routes (No Authentication Required)
 Route::prefix('popups')->group(function () {
-    Route::get('active', [\App\Http\Controllers\Api\Website\PopupController::class, 'getActivePopups'])
+    Route::get('active', [App\Http\Controllers\Api\Website\PopupController::class, 'getActivePopups'])
         ->name('api.popups.active');
-    Route::get('highest-priority', [\App\Http\Controllers\Api\Website\PopupController::class, 'getHighestPriorityPopup'])
+    Route::get('highest-priority', [App\Http\Controllers\Api\Website\PopupController::class, 'getHighestPriorityPopup'])
         ->name('api.popups.highest-priority');
 });
 
@@ -2964,34 +3010,34 @@ Route::prefix('popups')->group(function () {
 Route::middleware(['auth:api', 'permission:promo-code.view'])->group(function () {
     Route::prefix('admin')->group(function () {
         // Promo Code CRUD operations
-        Route::get('promo-codes/statistics', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'statistics'])
+        Route::get('promo-codes/statistics', [PromoCodeController::class, 'statistics'])
             ->name('api.admin.promo-codes.statistics');
-        Route::get('promo-codes', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'index'])
+        Route::get('promo-codes', [PromoCodeController::class, 'index'])
             ->name('api.admin.promo-codes.index');
-        Route::get('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'show'])
+        Route::get('promo-codes/{promoCode}', [PromoCodeController::class, 'show'])
             ->name('api.admin.promo-codes.show');
-        Route::post('promo-codes', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'store'])
+        Route::post('promo-codes', [PromoCodeController::class, 'store'])
             ->middleware('permission:promo-code.create')
             ->name('api.admin.promo-codes.store');
-        Route::put('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'update'])
+        Route::put('promo-codes/{promoCode}', [PromoCodeController::class, 'update'])
             ->middleware('permission:promo-code.update')
             ->name('api.admin.promo-codes.update');
-        Route::delete('promo-codes/{promoCode}', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'destroy'])
+        Route::delete('promo-codes/{promoCode}', [PromoCodeController::class, 'destroy'])
             ->middleware('permission:promo-code.delete')
             ->name('api.admin.promo-codes.destroy');
-        Route::patch('promo-codes/{promoCode}/toggle', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'toggle'])
+        Route::patch('promo-codes/{promoCode}/toggle', [PromoCodeController::class, 'toggle'])
             ->middleware('permission:promo-code.update')
             ->name('api.admin.promo-codes.toggle');
-        Route::get('promo-codes/{promoCode}/analytics', [\App\Http\Controllers\Api\Admin\PromoCodeController::class, 'analytics'])
+        Route::get('promo-codes/{promoCode}/analytics', [PromoCodeController::class, 'analytics'])
             ->name('api.admin.promo-codes.analytics');
     });
 });
 
 // Public Promo Code Routes (Cart Integration)
 Route::prefix('cart')->group(function () {
-    Route::post('apply-promo-code', [\App\Http\Controllers\CartController::class, 'applyPromoCode'])
+    Route::post('apply-promo-code', [CartController::class, 'applyPromoCode'])
         ->name('api.cart.apply-promo-code');
-    Route::post('remove-promo-code', [\App\Http\Controllers\CartController::class, 'removePromoCode'])
+    Route::post('remove-promo-code', [CartController::class, 'removePromoCode'])
         ->name('api.cart.remove-promo-code');
 });
 
@@ -3008,14 +3054,14 @@ Route::prefix('cart')->group(function () {
 
 if (app()->environment(['local', 'testing', 'staging'])) {
     Route::prefix('test-emails')->group(function () {
-        Route::get('/', [\App\Http\Controllers\Api\EmailTestController::class, 'listAll']);
-        Route::get('checkout-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testCheckoutConfirmation']);
-        Route::get('general', [\App\Http\Controllers\Api\EmailTestController::class, 'testGeneral']);
-        Route::get('inquiry-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testInquiryConfirmation']);
-        Route::get('payment-initiated', [\App\Http\Controllers\Api\EmailTestController::class, 'testPaymentInitiated']);
-        Route::get('quotation-request-confirmation', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequestConfirmation']);
-        Route::get('quotation-request-notification', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequestNotification']);
-        Route::get('quotation-request', [\App\Http\Controllers\Api\EmailTestController::class, 'testQuotationRequest']);
+        Route::get('/', [EmailTestController::class, 'listAll']);
+        Route::get('checkout-confirmation', [EmailTestController::class, 'testCheckoutConfirmation']);
+        Route::get('general', [EmailTestController::class, 'testGeneral']);
+        Route::get('inquiry-confirmation', [EmailTestController::class, 'testInquiryConfirmation']);
+        Route::get('payment-initiated', [EmailTestController::class, 'testPaymentInitiated']);
+        Route::get('quotation-request-confirmation', [EmailTestController::class, 'testQuotationRequestConfirmation']);
+        Route::get('quotation-request-notification', [EmailTestController::class, 'testQuotationRequestNotification']);
+        Route::get('quotation-request', [EmailTestController::class, 'testQuotationRequest']);
     });
 }
 

@@ -334,6 +334,8 @@ class AllPermissionsSeeder extends Seeder
         'hr.attendance.quarantine.resolve',
         'hr.attendance.access.request',
         'hr.attendance.access.approve',
+        'hr.attendance.maintenance.execute',
+        'hr.attendance.maintenance.approve',
         'hr.attendance.results.view',
         'hr.attendance.results.calculate',
         'hr.attendance.config.manage',
@@ -582,8 +584,8 @@ class AllPermissionsSeeder extends Seeder
     /**
      * Add baseline permissions without replacing any client-specific choices.
      *
-     * @param array<int, string> $allPermissions
-     * @param array<string, Permission> $permissionModels
+     * @param  array<int, string>  $allPermissions
+     * @param  array<string, Permission>  $permissionModels
      */
     private function seedBaselineRoles(string $guard, array $allPermissions, array $permissionModels): void
     {
@@ -622,6 +624,8 @@ class AllPermissionsSeeder extends Seeder
                 'hr.attendance.quarantine.resolve',
                 'hr.attendance.access.request',
                 'hr.attendance.access.approve',
+                'hr.attendance.maintenance.execute',
+                'hr.attendance.maintenance.approve',
                 'hr.attendance.results.view',
                 'hr.attendance.results.calculate',
                 'hr.attendance.config.manage',
@@ -936,8 +940,8 @@ class AllPermissionsSeeder extends Seeder
             ],
             'sub-admin' => array_values(array_filter(
                 $allPermissions,
-                fn(string $permission) => !preg_match('/^(roles|permissions|system)\./', $permission)
-                && !in_array($permission, self::denyByDefaultPermissions(), true)
+                fn (string $permission) => ! preg_match('/^(roles|permissions|system)\./', $permission)
+                && ! in_array($permission, self::denyByDefaultPermissions(), true)
             )),
             'data-entry' => $this->matchingPermissions(
                 $allPermissions,
@@ -974,7 +978,7 @@ class AllPermissionsSeeder extends Seeder
                     'sales.commission-payouts.pay',
                     'sales.commission-payouts.reverse',
                     'sales.commission-accounting.acknowledge',
-                    'collection-commissions.view-all'
+                    'collection-commissions.view-all',
                 ]
             ))),
             'rep-marketing' => $this->permissionsForResources(
@@ -1036,7 +1040,7 @@ class AllPermissionsSeeder extends Seeder
                 'hr.recognition.nominate',
                 'hr.wellness.view',
                 'hr.wellness.request',
-                'hr.notifications.preferences'
+                'hr.notifications.preferences',
             ],
 
             'sales-manager' => [
@@ -1327,6 +1331,8 @@ class AllPermissionsSeeder extends Seeder
             'hr.attendance.quarantine.resolve',
             'hr.attendance.access.request',
             'hr.attendance.access.approve',
+            'hr.attendance.maintenance.execute',
+            'hr.attendance.maintenance.approve',
             'hr.attendance.results.calculate',
             'hr.attendance.config.manage',
             'hr.attendance.config.approve',
@@ -1444,7 +1450,7 @@ class AllPermissionsSeeder extends Seeder
     /**
      * Preserve the old communication-to-SMS permission migration additively.
      *
-     * @param array<string, Permission> $permissionModels
+     * @param  array<string, Permission>  $permissionModels
      */
     private function mapLegacyCommunicationPermissions(string $guard, array $permissionModels): void
     {
@@ -1480,14 +1486,14 @@ class AllPermissionsSeeder extends Seeder
     }
 
     /**
-     * @param array<int, string> $permissionNames
-     * @param array<string, Permission> $permissionModels
+     * @param  array<int, string>  $permissionNames
+     * @param  array<string, Permission>  $permissionModels
      */
     private function addPermissionsToRole(Role $role, array $permissionNames, array $permissionModels): void
     {
         $permissions = collect($permissionNames)
             ->unique()
-            ->map(fn(string $name) => $permissionModels[$name] ?? null)
+            ->map(fn (string $name) => $permissionModels[$name] ?? null)
             ->filter()
             ->values();
 
@@ -1497,20 +1503,20 @@ class AllPermissionsSeeder extends Seeder
     }
 
     /**
-     * @param array<int, string> $permissions
+     * @param  array<int, string>  $permissions
      * @return array<int, string>
      */
     private function matchingPermissions(array $permissions, string $pattern): array
     {
         return array_values(array_filter(
             $permissions,
-            fn(string $permission) => preg_match($pattern, $permission) === 1
+            fn (string $permission) => preg_match($pattern, $permission) === 1
         ));
     }
 
     /**
-     * @param array<int, string> $resources
-     * @param array<int, string> $actions
+     * @param  array<int, string>  $resources
+     * @param  array<int, string>  $actions
      * @return array<int, string>
      */
     private function permissionsForResources(array $resources, array $actions): array

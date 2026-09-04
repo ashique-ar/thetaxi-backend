@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             // Safe on new and existing client databases. Creates only missing
             // permissions/roles and adds baseline grants without removing any.
             AllPermissionsSeeder::class,
+            SriLankaAttendanceDefaultsSeeder::class,
 
                 // Basic/core seeders (uncomment as needed)
                 // CorporatePermissionsSeeder::class,

@@ -12,15 +12,16 @@ it('adds the missing person-mapping list endpoint so quarantine resolution can s
 it('exposes the mapping list under the existing devices-view permission rather than minting a new one', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($routes)->toContain("Route::get('person-mappings', [AttendanceDeviceController::class,'mappings'])->middleware('permission:hr.attendance.devices.view');");
+    expect($routes)->toContain("Route::get('person-mappings', [AttendanceDeviceController::class, 'mappings'])->middleware('permission:hr.attendance.devices.view');");
 });
 
 it('wires the mapping list into the Angular attendance service and gates the resolve action on the existing quarantine.resolve permission', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-operations/attendance-operations.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-exceptions/attendance-exceptions.component.ts'));
 
-    expect($service)->toContain("personMappings(params: any = {}) { return this.makeGetCall('/hr/attendance/person-mappings', params); }");
+    expect($service)->toContain('personMappings(params: any = {})')->toContain("this.makeGetCall('/hr/attendance/person-mappings', params)");
     expect($component)
-        ->toContain("this.auth.hasPermission('hr.attendance.quarantine.resolve').subscribe(ok=>this.canResolveQuarantine.set(ok));")
-        ->toContain("matchingMappings(providerPersonId:string){return this.mappings().filter(m=>m.provider_person_id===providerPersonId);}");
+        ->toContain("this.auth.hasPermission('hr.attendance.quarantine.resolve')")
+        ->toContain('this.api.personMappings({per_page:200})')
+        ->toContain('if(!this.canResolve()');
 });

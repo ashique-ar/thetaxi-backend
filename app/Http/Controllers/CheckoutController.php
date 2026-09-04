@@ -303,7 +303,7 @@ class CheckoutController extends Controller
         $rules = [
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
             'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
+            'last_name' => 'nullable|string|max:255',
             'phone' => 'required|string|min:5|max:20',
             'phone_country_code' => 'required|string|max:5',
             'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
@@ -327,7 +327,6 @@ class CheckoutController extends Controller
         // Custom validation messages
         $messages = [
             'first_name.required' => 'Please enter your first name.',
-            'last_name.required' => 'Please enter your last name.',
             'phone.required' => 'Please enter your phone number.',
             'phone.min' => 'Phone number is too short.',
             'phone_country_code.required' => 'Please select a valid country for your phone number.',

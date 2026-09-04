@@ -24,7 +24,7 @@ class CreateCustomerRequest extends FormRequest
     {
         return [
             "first_name" => "required|string|max:255",
-            "last_name" => "required|string|max:255",
+            "last_name" => "nullable|string|max:255",
             "email" => "required|email|max:255",
             "phone" => "required|string|max:20",
             "wedding_date" => "nullable|date",
@@ -104,7 +104,6 @@ class CreateCustomerRequest extends FormRequest
     {
         return [
             'first_name.required' => 'First name is required.',
-            'last_name.required' => 'Last name is required.',
             'email.required' => 'Email address is required.',
             'email.email' => 'Please provide a valid email address.',
             'phone.required' => 'Phone number is required.',

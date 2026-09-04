@@ -35,12 +35,12 @@ it('keeps device identity fields (provider, integration_mode, serial_number) imm
 it('registers the device update route under the existing hr.attendance.devices.manage permission', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($routes)->toContain("Route::put('devices/{deviceId}', [AttendanceDeviceController::class,'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');");
+    expect($routes)->toContain("Route::put('devices/{deviceId}', [AttendanceDeviceController::class, 'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');");
 });
 
 it('wires device create/edit and connector create into the previously entirely read-only Angular operations page', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-operations/attendance-operations.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-devices/attendance-devices.component.ts'));
 
     expect($service)
         ->toContain('storeDevice(payload: any)')
@@ -48,8 +48,7 @@ it('wires device create/edit and connector create into the previously entirely r
         ->toContain('updateDevice(deviceId: string, payload: any)')
         ->toContain('this.makePutCall(`/hr/attendance/devices/${deviceId}`, payload)');
     expect($component)
-        ->toContain('startEditDevice(row: any)')
-        ->toContain('this.editingDevice.set(row)')
-        ->toContain("if (password) configuration['password'] = password;")
-        ->toContain("direct_isapi");
+        ->toContain('register()')
+        ->toContain('encrypted_configuration:{ip_address,port,username,password}')
+        ->toContain("integration_mode:['direct_isapi'");
 });

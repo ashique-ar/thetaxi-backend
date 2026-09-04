@@ -126,7 +126,7 @@
                                             <div class="form-inner two mb-25">
                                                 <label>Last Name*</label>
                                                 <input type="text" name="last_name" placeholder="Enter your last name"
-                                                    required value="{{ old('last_name') }}">
+                                                    value="{{ old('last_name') }}">
                                                 @error('last_name')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror

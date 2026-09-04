@@ -93,7 +93,7 @@ class CorporateEmployeeController extends Controller
             'division_id'    => ['nullable', 'uuid', 'exists:corporate_divisions,id'],
             'employee_code'  => ['nullable', 'string', 'max:50'],
             'first_name'     => ['sometimes', 'string', 'max:255'],
-            'last_name'      => ['sometimes', 'string', 'max:255'],
+            'last_name'      => ['sometimes', 'nullable', 'string', 'max:255'],
             'phone'          => ['nullable', 'string', 'max:50'],
             'role'           => ['nullable', 'string', 'max:255'],
             'locations' => ['nullable', 'array'],

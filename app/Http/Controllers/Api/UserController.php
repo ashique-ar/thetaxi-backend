@@ -1004,7 +1004,7 @@ class UserController extends Controller
     {
         $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20'],
             'timezone' => ['nullable', 'string'],
             'language' => ['nullable', 'string', 'max:5'],

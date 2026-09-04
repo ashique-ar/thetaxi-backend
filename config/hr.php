@@ -16,6 +16,7 @@ return [
         'people_core' => env('HR_PEOPLE_CORE_ENABLED', false),
         'attendance_ingestion' => env('HR_ATTENDANCE_INGESTION_ENABLED', false),
         'physical_access_commands' => env('HR_PHYSICAL_ACCESS_COMMANDS_ENABLED', false),
+        'hikvision_maintenance_commands' => env('HR_HIKVISION_MAINTENANCE_COMMANDS_ENABLED', false),
         'attendance_results' => env('HR_ATTENDANCE_RESULTS_ENABLED', false),
         'leave_overtime' => env('HR_LEAVE_OVERTIME_ENABLED', false),
         'payroll' => env('HR_PAYROLL_ENABLED', false),
