@@ -742,6 +742,9 @@
 
                 this.setAttribute("data-place-selected", "false");
                 this.setAttribute("data-is-default", "false");
+                this.dataset.currentValue = "";
+                this.dataset.currentLat = "";
+                this.dataset.currentLng = "";
 
                 // Don't show error while typing — wait for blur
             }
@@ -1196,76 +1199,23 @@
      * Update location data in hidden fields
      */
     function updateLocationData(input, place) {
+        const { latInput, lngInput } = getCoordInputs(input);
+        if (!place.geometry || !latInput || !lngInput) return;
 
-
-        // For airport transfer form FROM
-        if (input.name === "from") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="pickup_lat"]');
-            const lngInput = form.querySelector('input[name="pickup_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
-        } else if (input.name === "to") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="dropoff_lat"]');
-            const lngInput = form.querySelector('input[name="dropoff_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
-        } else if (input.name === "pickup") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="pickup_lat"]');
-            const lngInput = form.querySelector('input[name="pickup_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            } else {
-                console.error('Could not find pickup coordinate fields or place geometry');
-            }
-        } else if (input.name === "dropoff") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="dropoff_lat"]');
-            const lngInput = form.querySelector('input[name="dropoff_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
+        const lat = typeof place.geometry.location.lat === 'function'
+            ? place.geometry.location.lat()
+            : parseFloat(place.geometry.location.lat);
+        const lng = typeof place.geometry.location.lng === 'function'
+            ? place.geometry.location.lng()
+            : parseFloat(place.geometry.location.lng);
+        if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+            input.value = place.formatted_address;
         }
+        latInput.value = lat;
+        lngInput.value = lng;
+        input.dataset.currentValue = input.value.trim();
+        input.dataset.currentLat = String(lat);
+        input.dataset.currentLng = String(lng);
     }
 
     /**
@@ -3168,6 +3118,20 @@
      * Copies visible/alternate inputs into canonical names the backend expects.
      */
     function ensureCanonicalSearchFields(form) {
+        // Restore each untouched rendered field from its own server-rendered
+        // identity before creating compatibility aliases. This keeps coordinates
+        // paired with the visible address instead of borrowing from another field.
+        form.querySelectorAll('input.location-search:not([disabled])').forEach((control) => {
+            const currentValue = String(control.dataset.currentValue || '').trim();
+            const currentLat = String(control.dataset.currentLat || '').trim();
+            const currentLng = String(control.dataset.currentLng || '').trim();
+            if (currentValue && control.value.trim() === currentValue && currentLat && currentLng) {
+                const { latInput, lngInput } = getCoordInputs(control);
+                if (latInput) latInput.value = currentLat;
+                if (lngInput) lngInput.value = currentLng;
+            }
+        });
+
         function getFirstValue(names, preferVisible = false) {
             const candidates = [];
             names.forEach((name) => {

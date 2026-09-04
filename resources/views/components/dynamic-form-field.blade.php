@@ -178,6 +178,9 @@
                                                data-default-value="{{ $defaultValue }}"
                                                data-default-lat="{{ $fieldDefaultLat }}"
                                                data-default-lng="{{ $fieldDefaultLng }}"
+                                               data-current-value="{{ $isActiveVariant ? $fieldValue : '' }}"
+                                               data-current-lat="{{ $isActiveVariant ? ($currentLat ?? '') : '' }}"
+                                               data-current-lng="{{ $isActiveVariant ? ($currentLng ?? '') : '' }}"
                                                {{ $required ? 'required' : '' }}
                                                {{ !$isActiveVariant ? 'disabled' : '' }}
                                                    autocomplete="off">
@@ -208,6 +211,9 @@
                                data-default-value="{{ $defaultValue }}"
                                data-default-lat="{{ $field['default_lat'] ?? '' }}"
                                data-default-lng="{{ $field['default_lng'] ?? '' }}"
+                               data-current-value="{{ $fieldValue }}"
+                               data-current-lat="{{ $currentLat ?? '' }}"
+                               data-current-lng="{{ $currentLng ?? '' }}"
                                value="{{ $fieldValue }}"
                                {{ $required ? 'required' : '' }}
                                autocomplete="off">

@@ -41,4 +41,17 @@ class BookingSearchRetryStateContractTest extends TestCase
         $this->assertStringContainsString("['dropoff', 'to', 'dropoff_location'", $script);
         $this->assertStringContainsString('element.type !== \'hidden\' && element.offsetParent !== null', $script);
     }
+
+    public function test_untouched_rendered_locations_submit_their_own_field_coordinates(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+        $field = file_get_contents(resource_path('views/components/dynamic-form-field.blade.php'));
+
+        $this->assertStringContainsString('data-current-value=', $field);
+        $this->assertStringContainsString('data-current-lat=', $field);
+        $this->assertStringContainsString('data-current-lng=', $field);
+        $this->assertStringContainsString("control.value.trim() === currentValue", $script);
+        $this->assertStringContainsString('latInput.value = currentLat', $script);
+        $this->assertStringContainsString('input.dataset.currentLat = String(lat)', $script);
+    }
 }
