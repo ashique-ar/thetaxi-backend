@@ -29,7 +29,7 @@ it('wires expense-claim decision confidentiality: the submitter cannot decide th
     $decideMethod = substr($service, strpos($service, 'public function decideClaim('));
     $decideMethod = substr($decideMethod, 0, strpos($decideMethod, 'public function tickets('));
 
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/service-operations.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/service-operations/service-operations.component.ts'));
 
     expect($decideMethod)->toContain("abort_if(\$c->submitted_by===\$r->user()->id,409");
     expect($component)->toContain("canDecideClaim(row: any) { return this.canApproveClaims() && row.submitted_by !== this.myUserId && row.status === 'pending_approval'; }");
@@ -41,6 +41,6 @@ it('wires the HR service-desk ticket transition UI onto the existing backend all
 
     expect($backendMap)->toContain("'open'=>['assigned','in_progress']");
 
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/service-operations.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/service-operations/service-operations.component.ts'));
     expect($component)->toContain("open: ['assigned', 'in_progress']");
 });

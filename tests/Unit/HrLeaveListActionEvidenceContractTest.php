@@ -15,7 +15,7 @@ it('exposes the decide, recall, cancel, confirm-return, and extend actions on th
 });
 
 it('gates approve/reject and recall to a non-requester with hr.leave.approve, and self-service actions to the requester or an approver', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/workforce-overview.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/workforce-overview/workforce-overview.component.ts'));
 
     expect($component)
         ->toContain("canDecide(row:any){return this.canApprove()&&!this.isMine(row)&&row.status==='pending_approval';}")

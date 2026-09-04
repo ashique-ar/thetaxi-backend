@@ -28,7 +28,7 @@ it('gates type/policy lists to either the manage or approve permission so an app
 
 it('wires the full leave-type/policy/assignment read+write set into a new Angular configuration page with no dedicated UI before this', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/hr-workforce.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/leave-configuration.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/leave-configuration/leave-configuration.component.ts'));
     $routes = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/hr-workforce.routes.ts'));
 
     expect($service)
@@ -38,5 +38,5 @@ it('wires the full leave-type/policy/assignment read+write set into a new Angula
     expect($component)
         ->toContain("canDecidePolicy(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }")
         ->toContain("canDecideAssignment(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && !row.approved_at; }");
-    expect($routes)->toContain("{ path: 'leave-configuration', loadComponent: () => import('./leave-configuration.component').then(m => m.LeaveConfigurationComponent), canActivate: [createPermissionGuard(['hr.leave.config.manage', 'hr.leave.config.approve'])] },");
+    expect($routes)->toContain("{ path: 'leave-configuration', loadComponent: () => import('./components/leave-configuration/leave-configuration.component').then(m => m.LeaveConfigurationComponent), canActivate: [createPermissionGuard(['hr.leave.config.manage', 'hr.leave.config.approve'])] },");
 });

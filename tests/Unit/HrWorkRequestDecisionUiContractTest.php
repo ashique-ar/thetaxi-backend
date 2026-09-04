@@ -23,7 +23,7 @@ it('wires an Angular decide call for work requests using the existing service ba
 });
 
 it('gates the work-request Approve/Reject UI on hr.work-requests.approve and excludes the requester\'s own request', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/workforce-overview.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/workforce-overview/workforce-overview.component.ts'));
 
     expect($component)
         ->toContain("this.auth.hasPermission('hr.work-requests.approve').subscribe(ok=>this.canApproveWork.set(ok));")

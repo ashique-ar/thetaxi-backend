@@ -19,10 +19,10 @@ it('never treats an unconfigured renewal_reminder_days as an implicit reminder w
 
 it('wires the expiring_soon status and expiry date into the Employee 360 compliance panel', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/hr-people.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/people-detail.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.html'));
 
     expect($service)->toContain("status:'satisfied'|'expiring_soon'|'expired'|'missing';expiry_date?:string|null;");
-    expect($component)
+    expect($template)
         ->toContain("[tone]=\"row.status==='satisfied'?'success':(row.status==='missing'?'danger':'warning')\"")
         ->toContain('@if(row.expiry_date){<p>Expires {{row.expiry_date|date:\'mediumDate\'}}</p>}');
 });

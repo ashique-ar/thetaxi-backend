@@ -25,7 +25,7 @@ it('wires the correction queue and both decisions into the Angular attendance se
 });
 
 it('gates the Angular decide/resolve buttons to a non-requester holding the approve/resolve permission and an open/pending row', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-results.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-results/attendance-results.component.ts'));
 
     expect($component)
         ->toContain("canDecideCorrection(row:any){return this.canApproveCorrections()&&row.requested_by!==this.myUserId&&row.status==='pending_approval';}")

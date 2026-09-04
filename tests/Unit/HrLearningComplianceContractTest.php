@@ -24,10 +24,11 @@ it('registers the compliance route under the existing hr.learning.view permissio
 
 it('wires learning compliance into the existing Angular Learning page', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/hr-talent.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/learning.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/learning/learning.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/learning/learning.component.html'));
 
     expect($service)->toContain("learningCompliance(p:any={}){return this.makeGetCall('/hr/learning/compliance',p)}");
+    expect($template)->toContain('My learning compliance');
     expect($component)
-        ->toContain('My learning compliance')
         ->toContain("this.api.learningCompliance().subscribe({next:r=>this.compliance.set(r.data||[]),error:()=>{}})");
 });

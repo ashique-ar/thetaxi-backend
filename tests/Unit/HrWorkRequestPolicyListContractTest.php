@@ -6,8 +6,8 @@ it('lists work-request policies scoped to the actor legal entity via the existin
     $method = substr($method, 0, strpos($method, 'public function storeWorkPolicy('));
 
     expect($method)
-        ->toContain("\$companyId=\$this->company(\$r,\$r->input('company_id'));")
-        ->toContain("DB::table('hr_work_request_policies')->where('company_id',\$companyId)")
+        ->toContain("\$companyId = \$this->company(\$r, \$r->input('company_id'));")
+        ->toContain("DB::table('hr_work_request_policies')->where('company_id', \$companyId)")
         ->not->toContain('->insert(')
         ->not->toContain('->update(');
 });
@@ -25,7 +25,7 @@ it('gates the new work-request-configuration Angular route on the same OR-permis
 });
 
 it('wires the previously-missing timesheet transition UI onto the existing transitionTimesheet() service call, not a new endpoint', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/workforce-overview.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/workforce-overview/workforce-overview.component.ts'));
 
     expect($component)
         ->toContain('canDecideTimesheet(row:any){return this.canApproveTimesheets()&&row.submitted_by!==this.myUserId&&row.status===\'submitted\';}')

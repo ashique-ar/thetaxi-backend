@@ -20,12 +20,15 @@ it('filters the document listing endpoint by employment spell and a date range w
 });
 
 it('exposes the same filters on the Employee 360 document archive panel using the governed spell and document-type registers', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/people-detail.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.html'));
     $documentTypes = file_get_contents(base_path('../portal-thetaxi/src/app/core/types/document.types.ts'));
 
-    expect($component)
+    expect($template)
         ->toContain('title="Document archive"')
-        ->toContain("*hasPermission=\"'staff-sensitive-documents.view'\"")
+        ->toContain("*hasPermission=\"'staff-sensitive-documents.view'\"");
+
+    expect($component)
         ->toContain('archiveFilterForm=this.fb.group({employment_spell_id:[\'\'],document_type:[\'\'],date_from:[\'\'],date_to:[\'\']});')
         ->toContain('async loadArchive(page:number):Promise<void>')
         ->toContain('this.documents.getDocuments({owner_type:\'staff\',owner_id:this.staffId,employment_spell_id:v.employment_spell_id||undefined,document_type:v.document_type||undefined,date_from:v.date_from||undefined,date_to:v.date_to||undefined,page,per_page:10})');

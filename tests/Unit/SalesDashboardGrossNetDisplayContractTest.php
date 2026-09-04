@@ -29,8 +29,8 @@ it('freezes gross adjustment and net values without rewriting legacy snapshot ro
     $model = file_get_contents(app_path('Models/Sales/SalesKpiSnapshotRow.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_15_103000_govern_net_new_sales_kpi_snapshots.php'));
 
-    expect($model)->toContain("'gross_new_sales_lkr', 'new_sales_adjustment_lkr'")
-        ->toContain("'net_new_sales_lkr', 'new_sales_value_state'")
+    expect($model)->toContain("'gross_new_sales_lkr',\n        'new_sales_adjustment_lkr',")
+        ->toContain("'net_new_sales_lkr',\n        'new_sales_value_state',")
         ->and($migration)->toContain("->decimal('gross_new_sales_lkr', 20, 4)->nullable()")
         ->toContain("->string('new_sales_value_state', 30)->nullable()")
         ->toContain('Net New Sales snapshot evidence exists');

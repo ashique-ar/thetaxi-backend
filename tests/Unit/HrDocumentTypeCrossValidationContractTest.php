@@ -18,14 +18,15 @@ it('does not cross-validate document_type for uploads that are not linked to a g
 });
 
 it('wires the employment-spell document upload into the Employee 360 page using the same governed type register already used for organization administration', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/people-detail.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.html'));
     $documentService = file_get_contents(base_path('../portal-thetaxi/src/app/core/services/document.service.ts'));
     $documentTypes = file_get_contents(base_path('../portal-thetaxi/src/app/core/types/document.types.ts'));
 
     expect($component)
         ->toContain("import { DocumentService } from '@core/services/document.service';")
-        ->toContain("this.documents.uploadDocument({owner_type:'staff',owner_id:this.staffId,employment_spell_id:spellId,")
-        ->toContain("*hasPermission=\"'staff-sensitive-documents.create'\"");
+        ->toContain("this.documents.uploadDocument({owner_type:'staff',owner_id:this.staffId,employment_spell_id:spellId,");
+    expect($template)->toContain("*hasPermission=\"'staff-sensitive-documents.create'\"");
     expect($documentService)->toContain("if (payload.employment_spell_id) {");
     expect($documentTypes)->toContain('employment_spell_id?: string;');
 });

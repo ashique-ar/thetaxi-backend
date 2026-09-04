@@ -36,12 +36,12 @@ it('excludes rejected documents and treats an expired requires_expiry document s
 
 it('exposes document compliance rows to the Angular Employee 360 detail view', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/hr-people.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/people-detail.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.html'));
 
     expect($service)
         ->toContain('document_compliance: DocumentComplianceRow[];')
         ->toContain("status:'satisfied'|'expiring_soon'|'expired'|'missing';expiry_date?:string|null;")
-        ->and($component)
+        ->and($template)
         ->toContain('Required-document compliance')
         ->toContain("[tone]=\"row.status==='satisfied'?'success':(row.status==='missing'?'danger':'warning')\"");
 });

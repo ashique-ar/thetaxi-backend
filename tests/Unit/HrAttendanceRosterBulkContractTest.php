@@ -19,7 +19,7 @@ it('registers the bulk roster route under the same manage permission as the sing
 
 it('wires the bulk roster form into the existing Angular attendance configuration page', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.ts'));
 
     expect($service)->toContain("storeRosterBulk(payload: any) { return this.makePostCall('/hr/attendance/rosters/bulk', payload); }");
     expect($component)

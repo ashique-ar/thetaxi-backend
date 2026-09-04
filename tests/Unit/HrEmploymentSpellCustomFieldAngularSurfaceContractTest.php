@@ -1,12 +1,14 @@
 <?php
 
 it('wires the previously-missing employment-spell Angular surface into the Employee 360 page, reusing the same generic component already used for organization units and positions', function () {
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/people-detail.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-detail/people-detail.component.html'));
 
     expect($component)
-        ->toContain("import { SubjectCustomFieldValuesComponent } from './subject-custom-field-values.component';")
+        ->toContain("import { SubjectCustomFieldValuesComponent } from '../subject-custom-field-values/subject-custom-field-values.component';")
+        ->toContain("toggleSpellAttributes(spellId:string):void{this.attributesSpellId.set(this.attributesSpellId()===spellId?null:spellId)}");
+    expect($template)
         ->toContain('<app-subject-custom-field-values ownerType="employment_spell" [ownerId]="spell.id"></app-subject-custom-field-values>')
-        ->toContain("toggleSpellAttributes(spellId:string):void{this.attributesSpellId.set(this.attributesSpellId()===spellId?null:spellId)}")
         ->toContain('*hasPermission="\'hr.custom-fields.values.view\'"');
 });
 

@@ -25,11 +25,12 @@ it('registers the chart route under the existing hr.organization.view permission
 
 it('wires the chart into the existing Angular organization administration page as a client-side flattened hierarchy', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/hr-people.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/organization-administration.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/organization-administration/organization-administration.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/organization-administration/organization-administration.component.html'));
 
     expect($service)->toContain("organizationChart(params: {as_of?:string}={}):Observable<ApiResponse<{as_of:string;units:OrganizationChartUnit[]}>> {");
+    expect($template)->toContain('Organization chart');
     expect($component)
-        ->toContain('Organization chart')
         ->toContain('private flattenChart(units:OrganizationChartUnit[]):{unit:OrganizationChartUnit;depth:number}[]{')
         ->toContain("managerLabel(unit:OrganizationChartUnit):string{if(!unit.manager_staff_id)return'Unassigned';");
 });

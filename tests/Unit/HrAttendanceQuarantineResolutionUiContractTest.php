@@ -17,7 +17,7 @@ it('exposes the mapping list under the existing devices-view permission rather t
 
 it('wires the mapping list into the Angular attendance service and gates the resolve action on the existing quarantine.resolve permission', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-operations.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-operations/attendance-operations.component.ts'));
 
     expect($service)->toContain("personMappings(params: any = {}) { return this.makeGetCall('/hr/attendance/person-mappings', params); }");
     expect($component)

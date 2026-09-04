@@ -32,7 +32,7 @@ it('gates config lists to either the manage or approve permission so an approve-
 
 it('wires the full calendar/shift/policy/roster read+write set into a new Angular configuration page with no dedicated UI before this', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.ts'));
     $routes = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/hr-attendance.routes.ts'));
 
     expect($service)
@@ -42,5 +42,5 @@ it('wires the full calendar/shift/policy/roster read+write set into a new Angula
     expect($component)
         ->toContain("canDecidePolicy(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }")
         ->toContain("canDecideRoster(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && !row.approved_at; }");
-    expect($routes)->toContain("{ path: 'configuration', loadComponent: () => import('./components/attendance-configuration.component').then(m => m.AttendanceConfigurationComponent), canActivate: [createPermissionGuard(['hr.attendance.config.manage', 'hr.attendance.config.approve'])] },");
+    expect($routes)->toContain("{ path: 'configuration', loadComponent: () => import('./components/attendance-configuration/attendance-configuration.component').then(m => m.AttendanceConfigurationComponent), canActivate: [createPermissionGuard(['hr.attendance.config.manage', 'hr.attendance.config.approve'])] },");
 });

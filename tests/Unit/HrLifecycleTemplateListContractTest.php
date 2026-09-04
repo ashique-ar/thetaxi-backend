@@ -17,7 +17,7 @@ it('gates the template list to either the manage or approve permission so an app
 
 it('wires lifecycle templates into the Angular lifecycle-cases page, including an approved-only template selector for opening a case', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/hr-lifecycle.service.ts'));
-    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/lifecycle-cases.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/components/lifecycle-cases/lifecycle-cases.component.ts'));
 
     expect($service)->toContain("templates(p:any={}){return this.makeGetCall('/hr/lifecycle/templates',p)}");
     expect($component)
