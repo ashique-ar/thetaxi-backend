@@ -214,6 +214,24 @@ class WorkforceController extends Controller
         $projection->work($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
     }
+    /**
+     * §5.8/§5.9-adjacent "other domains" administration gap named in the
+     * QH3-01 status: `storeWorkPolicy()`/`approveWorkPolicy()` existed with
+     * no route to list a policy, so a pending policy could never be found to
+     * approve and `submitWork()`'s required `policy_id` had no discovery
+     * path — the same create-but-no-read shape already closed for leave
+     * types/policies/assignments.
+     */
+    public function workRequestPolicies(Request $r): JsonResponse
+    {
+        $companyId = $this->company($r, $r->input('company_id'));
+        $q = DB::table('hr_work_request_policies')->where('company_id', $companyId)
+            ->select(['id', 'company_id', 'request_kind', 'code', 'version', 'rules', 'status', 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at'])
+            ->when($r->request_kind, fn($b, $v) => $b->where('request_kind', $v))->when($r->status, fn($b, $v) => $b->where('status', $v))->latest('created_at');
+        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows->getCollection()->transform(fn($row) => (array) $row + ['rules' => json_decode($row->rules, true, 512, JSON_THROW_ON_ERROR)]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
     public function storeWorkPolicy(Request $r): JsonResponse
     {
         $this->enabled();

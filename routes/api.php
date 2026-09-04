@@ -897,6 +897,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('work-requests', [WorkforceController::class,'workRequests'])->middleware('permission:hr.work-requests.view');
         Route::post('work-requests', [WorkforceController::class,'submitWork'])->middleware('permission:hr.work-requests.request');
         Route::post('work-requests/{id}/decide', [WorkforceController::class,'decideWork'])->whereUuid('id')->middleware('permission:hr.work-requests.approve');
+        Route::get('work-request-policies', [WorkforceController::class,'workRequestPolicies'])->middleware('permission:hr.work-requests.config.manage|hr.work-requests.config.approve');
         Route::post('work-request-policies', [WorkforceController::class,'storeWorkPolicy'])->middleware('permission:hr.work-requests.config.manage');
         Route::post('work-request-policies/{id}/approve', [WorkforceController::class,'approveWorkPolicy'])->whereUuid('id')->middleware('permission:hr.work-requests.config.approve');
         Route::get('timesheets', [WorkforceController::class,'timesheets'])->middleware('permission:hr.timesheets.view');
@@ -917,11 +918,18 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('requisitions/{id}/approve',[RecruitmentController::class,'approveRequisition'])->whereUuid('id')->middleware('permission:hr.recruitment.approve');
         Route::get('candidates',[RecruitmentController::class,'candidates'])->middleware('permission:hr.recruitment.view');
         Route::post('candidates',[RecruitmentController::class,'storeCandidate'])->middleware('permission:hr.recruitment.manage');
+        Route::get('applications',[RecruitmentController::class,'applications'])->middleware('permission:hr.recruitment.view');
         Route::post('applications',[RecruitmentController::class,'apply'])->middleware('permission:hr.recruitment.manage');
         Route::post('applications/{id}/transition',[RecruitmentController::class,'transition'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
+        Route::get('applications/{id}/interviews',[RecruitmentController::class,'interviews'])->whereUuid('id')->middleware('permission:hr.recruitment.view');
+        Route::post('applications/{id}/interviews',[RecruitmentController::class,'storeInterview'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::post('applications/{id}/offers',[RecruitmentController::class,'storeOffer'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::post('offers/{offerId}/decide',[RecruitmentController::class,'decideOffer'])->whereUuid('offerId')->middleware('permission:hr.recruitment.approve');
         Route::get('applications/{id}/conversion',[RecruitmentController::class,'conversion'])->whereUuid('id')->middleware('permission:hr.recruitment.convert');
+        Route::get('interviews/mine',[RecruitmentController::class,'myInterviews'])->middleware('permission:hr.ess.use');
+        Route::post('interviews/{interviewId}/action',[RecruitmentController::class,'interviewAction'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.manage');
+        Route::post('interviews/{interviewId}/feedback',[RecruitmentController::class,'storeInterviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.ess.use');
+        Route::get('interviews/{interviewId}/feedback',[RecruitmentController::class,'interviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.approve');
         Route::get('analytics',[RecruitmentController::class,'analytics'])->middleware('permission:hr.recruitment.view');
     });
     Route::prefix('hr/lifecycle')->group(function(){
@@ -969,6 +977,7 @@ Route::middleware(['auth:api'])->group(function () {
     });
     Route::prefix('hr/service-operations')->group(function(){
         Route::get('expense-claims',[ServiceOperationsController::class,'claims'])->middleware('permission:hr.expenses.view');
+        Route::get('expense-policies',[ServiceOperationsController::class,'expensePolicyVersions'])->middleware('permission:hr.expenses.policy.manage|hr.expenses.policy.approve');
         Route::post('expense-policies',[ServiceOperationsController::class,'storePolicy'])->middleware('permission:hr.expenses.policy.manage');
         Route::post('expense-policies/{id}/approve',[ServiceOperationsController::class,'approvePolicy'])->whereUuid('id')->middleware('permission:hr.expenses.policy.approve');
         Route::post('expense-claims',[ServiceOperationsController::class,'submitClaim'])->middleware('permission:hr.expenses.submit');
