@@ -247,9 +247,19 @@
         $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
         $bookingAdvanceHours = (int) ($bookingSettings['booking_advance_hours'] ?? 0);
         $bookingNoticeHtml = trim((string) ($bookingSettings['booking_notice_html'] ?? ''));
+        $bookingSiteTimezone = app(\App\Services\WebsiteSettingsService::class)
+            ->get('site_timezone', config('app.timezone', 'UTC'));
     } catch (Exception $e) {
         $bookingAdvanceHours = 0;
         $bookingNoticeHtml = '';
+        $bookingSiteTimezone = config('app.timezone', 'UTC');
+    }
+
+    try {
+        $bookingSiteNow = now($bookingSiteTimezone);
+    } catch (Exception $e) {
+        $bookingSiteTimezone = config('app.timezone', 'UTC');
+        $bookingSiteNow = now($bookingSiteTimezone);
     }
 
     if ($bookingNoticeHtml === '' && $bookingAdvanceHours > 0) {

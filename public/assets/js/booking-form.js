@@ -88,6 +88,7 @@
         initializeDatePickers();
         setDefaultDatesAndLocations();
         hideFreshDynamicFormDefaults();
+        setupAdvanceBookingConstraints();
     }
 
     /**
@@ -105,14 +106,106 @@
         });
     }
 
+    /**
+     * Keep dynamic pickup controls aligned with the database-managed minimum
+     * advance interval. Site wall time comes from Laravel, avoiding browser
+     * timezone differences for international visitors.
+     */
+    function setupAdvanceBookingConstraints() {
+        const parseSiteWallTime = (value) => {
+            const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+            if (!match) return null;
+            return new Date(Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]));
+        };
+        const formatDateValue = (date) =>
+            `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`;
+        const formatTimeValue = (date) =>
+            `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+        const parseDateValue = (value) => {
+            const match = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            return match ? `${match[3]}-${match[2]}-${match[1]}` : String(value || '').slice(0, 10);
+        };
+
+        document.querySelectorAll('.filter-input[data-start-date-field]').forEach((form) => {
+            const dateName = form.dataset.startDateField || '';
+            const timeName = form.dataset.startTimeField || '';
+            if (!dateName) return;
+
+            const dateInput = form.querySelector(`[name="${CSS.escape(dateName)}"]`);
+            const timeInput = timeName ? form.querySelector(`[name="${CSS.escape(timeName)}"]`) : null;
+            if (!dateInput) return;
+
+            const siteWallAtRender = parseSiteWallTime(form.dataset.siteNow);
+            const epochAtRender = Number(form.dataset.siteNowEpoch || 0);
+            const advanceHours = Math.max(0, Number(form.dataset.advanceHours || 0));
+            if (!siteWallAtRender || !epochAtRender) return;
+
+            const minimum = () => {
+                const elapsed = Math.max(0, Date.now() - epochAtRender);
+                const value = new Date(siteWallAtRender.getTime() + elapsed + advanceHours * 3600000);
+                if (value.getUTCSeconds() || value.getUTCMilliseconds()) {
+                    value.setUTCMinutes(value.getUTCMinutes() + 1, 0, 0);
+                }
+                return value;
+            };
+
+            const applyConstraints = (setInitial) => {
+                const min = minimum();
+                const minDate = formatDateValue(min);
+                const minIsoDate = `${min.getUTCFullYear()}-${String(min.getUTCMonth() + 1).padStart(2, '0')}-${String(min.getUTCDate()).padStart(2, '0')}`;
+                const minDateTime = `${minIsoDate}T${formatTimeValue(min)}`;
+
+                if (dateInput.type === 'datetime-local') {
+                    dateInput.min = minDateTime;
+                    if (setInitial && form.dataset.hasSearchContext === 'false') dateInput.value = minDateTime;
+                    return;
+                }
+
+                dateInput.dataset.minDate = minDate;
+                if (dateInput.type === 'date') dateInput.min = minIsoDate;
+
+                if (dateInput._flatpickr) dateInput._flatpickr.set('minDate', minDate);
+                if (dateInput._litepicker && typeof dateInput._litepicker.setOptions === 'function') {
+                    dateInput._litepicker.setOptions({ minDate });
+                }
+
+                const isFresh = form.dataset.hasSearchContext === 'false';
+                if (setInitial && isFresh) {
+                    dateInput.value = minDate;
+                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(minDate, false, 'd/m/Y');
+                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(minDate);
+                }
+
+                if (!timeInput) return;
+                const selectedDate = parseDateValue(dateInput.value);
+                const minimumDate = minIsoDate;
+                const minimumTime = formatTimeValue(min);
+                timeInput.min = selectedDate === minimumDate ? minimumTime : '00:00';
+                if ((setInitial && isFresh) || (selectedDate === minimumDate && timeInput.value < minimumTime)) {
+                    timeInput.value = minimumTime;
+                }
+            };
+
+            dateInput.addEventListener('change', () => applyConstraints(false));
+            applyConstraints(true);
+        });
+    }
+
     function restoreBackgroundDefaultPlaceholders(form) {
         if (form.dataset.hasSearchContext !== 'false') return;
 
         form.querySelectorAll('input.location-search[data-is-default="true"]').forEach((input) => {
+            const { latInput, lngInput } = getCoordInputs(input);
             input.value = '';
             input.setAttribute('data-place-selected', 'false');
             input.setAttribute('data-is-default', 'false');
+            if (latInput) latInput.value = '';
+            if (lngInput) lngInput.value = '';
         });
+
+        // Canonical aliases are transient submission data. Removing generated
+        // fields prevents a failed attempt from outranking the next real choice.
+        form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
     }
 
     /**
@@ -3053,39 +3146,66 @@
      * Copies visible/alternate inputs into canonical names the backend expects.
      */
     function ensureCanonicalSearchFields(form) {
-        function getFirstValue(names) {
-            for (let i = 0; i < names.length; i++) {
-                const el = form.querySelector('[name="' + names[i] + '"]');
-                if (el && typeof el.value !== 'undefined' && el.value !== null && String(el.value).trim() !== '') {
-                    return String(el.value).trim();
-                }
+        function getFirstValue(names, preferVisible = false) {
+            const candidates = [];
+            names.forEach((name) => {
+                form.querySelectorAll('[name="' + name + '"]').forEach((element) => {
+                    if (element.disabled || typeof element.value === 'undefined' || String(element.value || '').trim() === '') return;
+                    candidates.push(element);
+                });
+            });
+
+            if (preferVisible) {
+                const visible = candidates.find((element) => element.type !== 'hidden' && element.offsetParent !== null);
+                if (visible) return String(visible.value).trim();
             }
-            return '';
+
+            const authoritative = candidates.find((element) => element.dataset.canonicalGenerated !== 'true');
+            if (authoritative) return String(authoritative.value).trim();
+            return candidates.length ? String(candidates[0].value).trim() : '';
         }
 
         function ensureHidden(name, value) {
-            let input = form.querySelector('[name="' + name + '"]');
+            const controls = Array.from(form.querySelectorAll('[name="' + name + '"]'));
+            let input = controls.find((element) => element.dataset.canonicalGenerated === 'true');
+            const ownedControl = controls.find((element) => element.dataset.canonicalGenerated !== 'true');
+
+            // A real configured control already owns this canonical name.
+            if (ownedControl) {
+                if (ownedControl.type === 'hidden') ownedControl.value = value || '';
+                return;
+            }
+
             if (!input) {
                 input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = name;
+                input.dataset.canonicalGenerated = 'true';
                 form.appendChild(input);
             }
             input.value = value || '';
         }
 
-        // Pickup address and coords
-        const pickupAddress = getFirstValue(['pickup_location', 'pickup', 'from', 'from_location', 'pickup_address']);
-        const pickupLat = getFirstValue(['pickup_lat', 'pickup_location_lat', 'pickup_latitude', 'from_lat', 'from_location_lat', 'from_latitude']);
-        const pickupLng = getFirstValue(['pickup_lng', 'pickup_location_lng', 'pickup_longitude', 'from_lng', 'from_location_lng', 'from_longitude']);
+        function removeGeneratedAliases() {
+            form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
+        }
+
+        // Always rebuild aliases from current controls. This is essential after
+        // a client-side validation failure followed by a corrected location.
+        removeGeneratedAliases();
+
+        // Pickup address and coords. Visible configured controls win over aliases.
+        const pickupAddress = getFirstValue(['pickup', 'from', 'pickup_location', 'from_location', 'pickup_address'], true);
+        const pickupLat = getFirstValue(['pickup_lat', 'from_lat', 'pickup_location_lat', 'pickup_latitude', 'from_location_lat', 'from_latitude']);
+        const pickupLng = getFirstValue(['pickup_lng', 'from_lng', 'pickup_location_lng', 'pickup_longitude', 'from_location_lng', 'from_longitude']);
         ensureHidden('pickup_location', pickupAddress);
         ensureHidden('pickup_lat', pickupLat);
         ensureHidden('pickup_lng', pickupLng);
 
-        // Dropoff address and coords
-        const dropoffAddress = getFirstValue(['dropoff_location', 'dropoff', 'to', 'to_location', 'dropoff_address']);
-        const dropoffLat = getFirstValue(['dropoff_lat', 'dropoff_location_lat', 'dropoff_latitude', 'to_lat', 'to_location_lat', 'to_latitude']);
-        const dropoffLng = getFirstValue(['dropoff_lng', 'dropoff_location_lng', 'dropoff_longitude', 'to_lng', 'to_location_lng', 'to_longitude']);
+        // Dropoff address and coords. Visible configured controls win over aliases.
+        const dropoffAddress = getFirstValue(['dropoff', 'to', 'dropoff_location', 'to_location', 'dropoff_address'], true);
+        const dropoffLat = getFirstValue(['dropoff_lat', 'to_lat', 'dropoff_location_lat', 'dropoff_latitude', 'to_location_lat', 'to_latitude']);
+        const dropoffLng = getFirstValue(['dropoff_lng', 'to_lng', 'dropoff_location_lng', 'dropoff_longitude', 'to_location_lng', 'to_longitude']);
         ensureHidden('dropoff_location', dropoffAddress);
         ensureHidden('dropoff_lat', dropoffLat);
         ensureHidden('dropoff_lng', dropoffLng);
@@ -3106,11 +3226,9 @@
         ensureHidden('to_time', toTime);
         ensureHidden('return_time', toTime);
 
-        // Service type
         const svc = getFirstValue(['service_type']) || form.getAttribute('data-service') || '';
         ensureHidden('service_type', svc);
 
-        // Package selection
         const packageId = getFirstValue(['package_id', 'service_package_id']);
         ensureHidden('package_id', packageId);
         ensureHidden('service_package_id', packageId);

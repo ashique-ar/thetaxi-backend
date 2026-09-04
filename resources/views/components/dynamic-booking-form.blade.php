@@ -56,6 +56,41 @@
         }
     }
 
+    // Resolve the configured outbound date/time controls. These names are sent to
+    // the browser so advance-booking behavior follows each service's dynamic form.
+    $formConfig = is_array($serviceTypeModel?->form_config) ? $serviceTypeModel->form_config : [];
+    $dateMappings = data_get($formConfig, 'field_mappings.dates', []);
+    $resolveConfiguredControlName = static function ($mapping, array $configuredFields): string {
+        if (!is_string($mapping) || $mapping === '') {
+            return '';
+        }
+        if (isset($configuredFields[$mapping]) && is_array($configuredFields[$mapping])) {
+            return (string) ($configuredFields[$mapping]['submit_as'] ?? $mapping);
+        }
+        foreach ($configuredFields as $key => $fieldConfig) {
+            if (($fieldConfig['submit_as'] ?? $key) === $mapping) {
+                return (string) $mapping;
+            }
+        }
+        return $mapping;
+    };
+    $startDateField = $resolveConfiguredControlName($dateMappings['from_date'] ?? '', $sortedFields);
+    $startTimeField = $resolveConfiguredControlName($dateMappings['from_time'] ?? '', $sortedFields);
+    foreach ($sortedFields as $key => $fieldConfig) {
+        $candidateName = (string) ($fieldConfig['submit_as'] ?? $key);
+        $candidateType = (string) ($fieldConfig['type'] ?? '');
+        $isReturnControl = str_contains(strtolower($candidateName), 'return')
+            || str_contains(strtolower($candidateName), 'dropoff')
+            || $candidateName === 'to_date'
+            || $candidateName === 'to_time';
+        if (!$isReturnControl && $startDateField === '' && in_array($candidateType, ['date', 'datetime'], true)) {
+            $startDateField = $candidateName;
+        }
+        if (!$isReturnControl && $startTimeField === '' && $candidateType === 'time') {
+            $startTimeField = $candidateName;
+        }
+    }
+
     // Backward-compatible return-trip UX for Ride Now.
     // The frontend JS still targets legacy IDs/classes (ride_now-return-*).
     $allowReturnTrip = (bool) ($serviceTypeModel?->allow_return_trip ?? false);
@@ -143,6 +178,11 @@
       data-service="{{ $serviceCode }}"
       data-has-search-context="{{ $hasSearchContext ? 'true' : 'false' }}"
       data-field-defaults="{{ base64_encode(json_encode($clientFieldDefaults)) }}"
+      data-advance-hours="{{ max(0, (int) ($bookingAdvanceHours ?? 0)) }}"
+      data-site-now="{{ ($bookingSiteNow ?? now())->format('Y-m-d H:i:s') }}"
+      data-site-now-epoch="{{ ($bookingSiteNow ?? now())->getTimestampMs() }}"
+      data-start-date-field="{{ $startDateField }}"
+      data-start-time-field="{{ $startTimeField }}"
       action="{{ $actionRoute }}"
       method="{{ $isInquiry ? 'POST' : 'GET' }}"
       novalidate>
