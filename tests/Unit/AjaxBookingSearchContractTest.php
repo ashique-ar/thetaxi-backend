@@ -24,6 +24,10 @@ class AjaxBookingSearchContractTest extends TestCase
         $this->assertStringContainsString("querySelector('#vehicleResultsSection')", $script);
         $this->assertStringContainsString('currentResults.replaceWith(nextResults)', $script);
         $this->assertStringContainsString("form.method.toUpperCase() === 'GET'", $script);
+        $this->assertStringContainsString('new AbortController()', $script);
+        $this->assertStringContainsString("showValidationMessage(message, 'error')", $script);
+        $this->assertStringContainsString("type === 'success' ? '#198754'", $script);
+        $this->assertStringNotContainsString('spinner-border spinner-border-sm', $script);
     }
 
     public function test_distance_failure_alert_is_replaceable_with_ajax_results(): void

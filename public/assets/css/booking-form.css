@@ -1608,6 +1608,18 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     transform: none !important;
 }
 
+.booking-search-submit.ajax-search-loading,
+.booking-search-submit.ajax-search-loading:hover,
+.booking-search-submit.ajax-search-loading:focus {
+    cursor: wait !important;
+    opacity: 0.8 !important;
+}
+
+.booking-search-submit.ajax-search-loading::before,
+.booking-search-submit.ajax-search-loading::after {
+    display: none !important;
+}
+
 /* Keep validation copy below, rather than inside, the bordered control. */
 .filter-wrapper .booking-field > .inline-error-message,
 .t2-filter-wrapper .booking-field > .inline-error-message,

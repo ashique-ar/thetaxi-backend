@@ -239,16 +239,23 @@
     function setSearchLoading(form, loading) {
         const button = form.querySelector('button[type="submit"]');
         if (!button) return;
+        const label = button.querySelector(':scope > span');
 
         if (loading) {
-            button.dataset.originalHtml = button.innerHTML;
+            button.dataset.originalLabel = label ? label.textContent : button.textContent;
             button.disabled = true;
             button.setAttribute('aria-busy', 'true');
-            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Searching...';
+            button.classList.add('ajax-search-loading');
+            if (label) label.textContent = 'Searching...';
+            else button.textContent = 'Searching...';
         } else {
             button.disabled = false;
             button.removeAttribute('aria-busy');
-            if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
+            button.classList.remove('ajax-search-loading');
+            if (button.dataset.originalLabel) {
+                if (label) label.textContent = button.dataset.originalLabel;
+                else button.textContent = button.dataset.originalLabel;
+            }
         }
     }
 
@@ -269,6 +276,8 @@
         if (form.dataset.ajaxSubmitting === 'true') return;
         form.dataset.ajaxSubmitting = 'true';
         setSearchLoading(form, true);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 60000);
 
         try {
             const url = new URL(form.action, window.location.href);
@@ -280,7 +289,8 @@
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                signal: controller.signal
             });
             const payload = await response.json();
             if (!response.ok) {
@@ -293,7 +303,8 @@
 
             const resultsResponse = await fetch(payload.results_url, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                signal: controller.signal
             });
             if (!resultsResponse.ok) throw new Error('Unable to load search results.');
 
@@ -315,8 +326,12 @@
             nextResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
         } catch (error) {
             console.error('AJAX booking search failed', error);
-            showValidationMessage(error.message || 'Search failed. Please try again.');
+            const message = error.name === 'AbortError'
+                ? 'The verified-price search took too long. Please try again.'
+                : (error.message || 'Search failed. Please try again.');
+            showValidationMessage(message, 'error');
         } finally {
+            window.clearTimeout(timeout);
             form.dataset.ajaxSubmitting = 'false';
             setSearchLoading(form, false);
         }
@@ -3803,7 +3818,7 @@
         return isValid;
     }
 
-    function showValidationMessage(message) {
+    function showValidationMessage(message, type = 'error') {
         // Remove existing message
         const existingMessage = document.querySelector(".validation-message");
         if (existingMessage) {
@@ -3817,7 +3832,7 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #dc3545;
+            background: ${type === 'success' ? '#198754' : '#dc3545'};
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
