@@ -221,10 +221,12 @@ class SalesMetricFactService
         // New Sales adjustments" — a signed fact against the frozen acquisition owner that
         // never edits the immutable gross snapshot on sales_booking_attributions itself.
         if (! $adjustment->counts_as_new_sales_adjustment || ! $adjustment->acquisition_sales_profile_id) return;
+        abort_if($adjustment->delta_lkr_amount === null, 409,
+            'A governed LKR value is required before a commercial adjustment can affect New Sales.');
         $this->record([
             'company_id' => $adjustment->company_id, 'sales_profile_id' => $adjustment->acquisition_sales_profile_id,
             'metric_type' => 'new_sales_adjustment', 'business_classification' => 'new_business',
-            'quantity' => 0, 'amount_lkr' => (float) ($adjustment->delta_lkr_amount ?? 0),
+            'quantity' => 0, 'amount_lkr' => (float) $adjustment->delta_lkr_amount,
             'occurred_on' => $adjustment->effective_at->toDateString(), 'occurred_at' => $adjustment->effective_at,
             'source_type' => 'commercial_value_adjustment', 'source_id' => $adjustment->id,
             'source_event' => $adjustment->adjustment_type,

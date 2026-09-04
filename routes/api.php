@@ -872,6 +872,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('leave/requests/{id}/decide', [WorkforceController::class,'decideLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
         Route::post('leave/requests/{id}/cancel', [WorkforceController::class,'cancelLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
         Route::post('leave/requests/{id}/confirm-return', [WorkforceController::class,'confirmLeaveReturn'])->whereUuid('id')->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/extend', [WorkforceController::class,'extendLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
         Route::post('leave/balance-accounts/{accountId}/entries', [WorkforceController::class,'postBalance'])->whereUuid('accountId')->middleware('permission:hr.leave.balances.post');
         Route::post('leave/types', [WorkforceController::class,'storeLeaveType'])->middleware('permission:hr.leave.config.manage');
         Route::post('leave/policies', [WorkforceController::class,'storeLeavePolicy'])->middleware('permission:hr.leave.config.manage');

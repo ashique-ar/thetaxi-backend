@@ -95,6 +95,10 @@ class SalesPeriodCloseService
                 'code' => "metric_{$missingField}", 'count' => $missingCount,
             ];
         }
+        $incompleteNetNewSales = collect($rows)->where('new_sales_value_state', '!=', 'complete')->count();
+        if ($incompleteNetNewSales > 0) $blockers[] = [
+            'code' => 'net_new_sales_lkr_incomplete', 'count' => $incompleteNetNewSales,
+        ];
         $factTotals = DB::table('sales_metric_facts')->selectRaw(
             'metric_type, SUM(quantity) quantity, SUM(amount_lkr) amount_lkr, COUNT(*) fact_count'
         )->where('company_id', $companyId)->whereBetween('occurred_on', [$start->toDateString(), $end->toDateString()])
@@ -102,6 +106,9 @@ class SalesPeriodCloseService
             ->map(fn ($row) => (array) $row)->values()->all();
         $rowTotals = [
             'new_sales_lkr' => $this->sum($rows, 'new_sales_lkr'),
+            'gross_new_sales_lkr' => $this->sum($rows, 'gross_new_sales_lkr'),
+            'new_sales_adjustment_lkr' => $this->sum($rows, 'new_sales_adjustment_lkr'),
+            'net_new_sales_lkr' => $this->sum($rows, 'net_new_sales_lkr'),
             'eligible_collections_lkr' => $this->sum($rows, 'eligible_collections_lkr'),
             'commission_earned_lkr' => $this->sum($rows, 'commission_earned_lkr'),
             'new_bookings_count' => $this->sum($rows, 'new_bookings_count'),
@@ -110,7 +117,13 @@ class SalesPeriodCloseService
         ];
         $factMap = collect($factTotals)->keyBy('metric_type');
         $comparisons = [
-            'new_sales_lkr' => [(float) ($factMap->get('new_sales')['amount_lkr'] ?? 0), $rowTotals['new_sales_lkr']],
+            'gross_new_sales_lkr' => [(float) ($factMap->get('new_sales')['amount_lkr'] ?? 0), $rowTotals['gross_new_sales_lkr']],
+            'new_sales_adjustment_lkr' => [(float) ($factMap->get('new_sales_adjustment')['amount_lkr'] ?? 0), $rowTotals['new_sales_adjustment_lkr']],
+            'net_new_sales_lkr' => [
+                (float) ($factMap->get('new_sales')['amount_lkr'] ?? 0)
+                    + (float) ($factMap->get('new_sales_adjustment')['amount_lkr'] ?? 0),
+                $rowTotals['net_new_sales_lkr'],
+            ],
             'eligible_collections_lkr' => [(float) ($factMap->get('eligible_collection')['amount_lkr'] ?? 0), $rowTotals['eligible_collections_lkr']],
             'commission_earned_lkr' => [(float) ($factMap->get('commission_earned')['amount_lkr'] ?? 0), $rowTotals['commission_earned_lkr']],
             'new_bookings_count' => [(float) ($factMap->get('new_sales')['quantity'] ?? 0), $rowTotals['new_bookings_count']],

@@ -31,7 +31,7 @@ class SalesPerformanceService
 
     public const RANKING_POLICY = [
         'method' => 'lexicographic',
-        'keys' => ['new_sales_achievement_percent', 'collection_achievement_percent', 'new_sales_lkr', 'eligible_collections_lkr'],
+        'keys' => ['new_sales_achievement_percent', 'collection_achievement_percent', 'net_new_sales_lkr', 'eligible_collections_lkr'],
         'direction' => 'descending', 'missing_target' => 'n/a_after_configured_targets', 'ties' => 'equal_display_rank',
         'display_identity' => 'staff_code',
     ];
@@ -795,6 +795,21 @@ class SalesPerformanceService
         );
         $targets = SalesTargetVersion::query()->where('company_id', $companyId)->where('status', 'approved')
             ->whereDate('period_start', '<=', $to)->whereDate('period_end', '>=', $from)->get()->groupBy('sales_profile_id');
+        $adjustmentEvidenceIssues = DB::table('booking_commercial_value_adjustments as adjustment')
+            ->leftJoin('sales_metric_facts as fact', function ($join) {
+                $join->on('fact.source_id', '=', 'adjustment.id')
+                    ->where('fact.source_type', 'commercial_value_adjustment')
+                    ->where('fact.metric_type', 'new_sales_adjustment');
+            })->selectRaw('adjustment.acquisition_sales_profile_id, COUNT(*) issue_count')
+            ->where('adjustment.company_id', $companyId)->where('adjustment.counts_as_new_sales_adjustment', true)
+            ->whereDate('adjustment.effective_at', '>=', $from)->whereDate('adjustment.effective_at', '<=', $to)
+            ->where('adjustment.effective_at', '<=', $cutoff)->where(function ($query) {
+                $query->whereNull('adjustment.delta_lkr_amount')->orWhereNull('fact.id')
+                    ->orWhereColumn('fact.company_id', '!=', 'adjustment.company_id')
+                    ->orWhereColumn('fact.sales_profile_id', '!=', 'adjustment.acquisition_sales_profile_id')
+                    ->orWhereColumn('fact.amount_lkr', '!=', 'adjustment.delta_lkr_amount');
+            })->groupBy('adjustment.acquisition_sales_profile_id')
+            ->pluck('issue_count', 'adjustment.acquisition_sales_profile_id');
 
         $allocationTotals = DB::table('booking_payment_schedule_allocations')->selectRaw('booking_payment_schedule_id, SUM(amount) allocated')
             ->where(fn ($q) => $q->whereNull('deleted_at')->orWhere('deleted_at', '>', $cutoff))
@@ -808,7 +823,7 @@ class SalesPerformanceService
             ->whereRaw('schedule.amount > COALESCE(allocation.allocated, 0)')
             ->groupBy('attribution.collection_sales_profile_id')->get()->keyBy('sales_profile_id');
 
-        $rows = $profiles->map(function (SalesProfile $profile) use ($facts, $collectionFacts, $commissionFacts, $breakdowns, $targets, $overdue, $taskFacts, $from, $to, $overdueAsOf) {
+        $rows = $profiles->map(function (SalesProfile $profile) use ($facts, $collectionFacts, $commissionFacts, $breakdowns, $targets, $adjustmentEvidenceIssues, $overdue, $taskFacts, $from, $to, $overdueAsOf) {
             $metric = fn (string $type, ?string $classification = null, string $field = 'amount') => (float) ($facts->get($profile->id, collect())->first(fn ($fact) => $fact->metric_type === $type && ($classification === null || $fact->business_classification === $classification))?->{$field} ?? 0);
             $target = $this->proratedTargets($targets->get($profile->id, collect()), $from, $to);
             $newTarget = $target['new_sales']['amount_lkr'];
@@ -816,6 +831,8 @@ class SalesPerformanceService
             $newSales = $metric('new_sales', 'new_business');
             $newSalesAdjustment = $metric('new_sales_adjustment', 'new_business');
             $netNewSales = $newSales + $newSalesAdjustment;
+            $adjustmentEvidenceIssueCount = (int) ($adjustmentEvidenceIssues->get($profile->id) ?? 0);
+            $newSalesValueComplete = $adjustmentEvidenceIssueCount === 0;
             $profileCollectionFacts = $collectionFacts->get($profile->id, collect());
             $profileCommissionFacts = $commissionFacts->get($profile->id, collect());
             $breakdownAmount = fn (Collection $source, string $dimension, string $value) => (float) $source
@@ -843,15 +860,12 @@ class SalesPerformanceService
                 'target_period_basis' => $target['period_basis'],
                 'target_proration_applied' => $target['proration_applied'],
                 'target_configuration_snapshot' => $target,
-                'new_sales_lkr' => $newSales,
-                // §5.28: "Dashboards show gross secured value, signed commercial adjustments, and
-                // net value" — additive fields only. `new_sales_lkr`, its achievement percent, target
-                // variance, and the ranking sort key below deliberately stay gross-based/unchanged
-                // pending a coordinated decision to move achievement/ranking to net value across this
-                // frozen KPI/ranking/alert surface.
+                'new_sales_lkr' => $newSalesValueComplete ? $netNewSales : null,
                 'gross_new_sales_lkr' => $newSales,
-                'new_sales_adjustment_lkr' => $newSalesAdjustment,
-                'net_new_sales_lkr' => $netNewSales,
+                'new_sales_adjustment_lkr' => $newSalesValueComplete ? $newSalesAdjustment : null,
+                'net_new_sales_lkr' => $newSalesValueComplete ? $netNewSales : null,
+                'new_sales_value_state' => $newSalesValueComplete ? 'complete' : 'incomplete',
+                'new_sales_adjustment_evidence_issue_count' => $adjustmentEvidenceIssueCount,
                 'new_booking_collections_lkr' => $currentBookingCollections,
                 'existing_booking_collections_lkr' => $priorBookingCollections, 'eligible_collections_lkr' => $collectionTotal,
                 'collection_cohort_state' => $collectionCohortMissing === 0 ? 'complete' : 'incomplete',
@@ -884,15 +898,15 @@ class SalesPerformanceService
                     'missed_next_action_count' => null, 'missed_next_action_lookback_completed_months' => null,
                     'task_deadline_or_history_missing_count' => null, 'task_intervention_evidence_checksum' => null,
                 ]),
-                'new_sales_achievement_percent' => $newTarget === null || $newTarget <= 0 ? null : round($newSales / $newTarget * 100, 4),
+                'new_sales_achievement_percent' => ! $newSalesValueComplete || $newTarget === null || $newTarget <= 0 ? null : round($netNewSales / $newTarget * 100, 4),
                 'collection_achievement_percent' => $collectionTarget === null || $collectionTarget <= 0 ? null : round($collectionTotal / $collectionTarget * 100, 4),
-                'new_sales_target_variance_lkr' => $newTarget === null ? null : round($newSales - $newTarget, 4),
+                'new_sales_target_variance_lkr' => ! $newSalesValueComplete || $newTarget === null ? null : round($netNewSales - $newTarget, 4),
                 'collection_target_variance_lkr' => $collectionTarget === null ? null : round($collectionTotal - $collectionTarget, 4),
             ];
         });
 
         $sorted = $rows->sort(function ($a, $b) {
-            foreach (['new_sales_achievement_percent', 'collection_achievement_percent', 'new_sales_lkr', 'eligible_collections_lkr'] as $key) {
+            foreach (['new_sales_achievement_percent', 'collection_achievement_percent', 'net_new_sales_lkr', 'eligible_collections_lkr'] as $key) {
                 $av = $a[$key] ?? -INF; $bv = $b[$key] ?? -INF;
                 if ($av != $bv) return $bv <=> $av;
             }
@@ -901,7 +915,7 @@ class SalesPerformanceService
         $rank = 0; $previous = null;
         return $sorted->map(function ($row, $index) use (&$rank, &$previous) {
             if ($row['new_sales_achievement_percent'] === null) { $row['display_rank'] = null; return $row; }
-            $key = json_encode(array_intersect_key($row, array_flip(['new_sales_achievement_percent', 'collection_achievement_percent', 'new_sales_lkr', 'eligible_collections_lkr'])));
+            $key = json_encode(array_intersect_key($row, array_flip(['new_sales_achievement_percent', 'collection_achievement_percent', 'net_new_sales_lkr', 'eligible_collections_lkr'])));
             if ($key !== $previous) $rank = $index + 1;
             $previous = $key; $row['display_rank'] = $rank; return $row;
         });
@@ -1037,10 +1051,10 @@ class SalesPerformanceService
             foreach ($snapshot->rows as $row) {
                 $metrics = $row->metric_snapshot;
                 $checks = [];
-                if ($rules['no_new_sales']['enabled'] && (float) $row->new_sales_lkr <= 0) {
+                if ($rules['no_new_sales']['enabled'] && (int) $row->new_bookings_count === 0) {
                     $checks['no_new_sales'] = [$rules['no_new_sales']['severity'],
                         'No factual New Sales were recorded in the completed month.',
-                        ['operator' => 'equals', 'value_lkr' => 0], ['actual_lkr' => (float) $row->new_sales_lkr]];
+                        ['operator' => 'equals', 'quantity' => 0], ['actual_quantity' => (int) $row->new_bookings_count]];
                 }
                 if ($rules['no_sales_activity']['enabled'] && (int) $row->activities_count === 0) {
                     $checks['no_sales_activity'] = [$rules['no_sales_activity']['severity'],
@@ -1096,7 +1110,8 @@ class SalesPerformanceService
                 }
                 $relianceRule = $rules['recurring_commission_reliance'];
                 if ($relianceRule['enabled']) {
-                    if (($metrics['commission_dimension_missing_count'] ?? 0) > 0
+                    if (($metrics['new_sales_value_state'] ?? 'incomplete') !== 'complete'
+                        || ($metrics['commission_dimension_missing_count'] ?? 0) > 0
                         || ($metrics['prior_booking_commission_ratio_percent'] ?? null) === null
                         || $row->new_sales_achievement_percent === null) {
                         $suppressed[] = ['sales_profile_id' => $row->sales_profile_id, 'rule' => 'recurring_commission_reliance',
@@ -1115,17 +1130,39 @@ class SalesPerformanceService
                 }
                 $declineRule = $rules['decline_against_completed_month_average'];
                 if ($declineRule['enabled']) {
-                    $history = DB::table('sales_kpi_snapshot_rows as row')->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
+                    $latestFrozenMonthly = DB::table('sales_kpi_snapshots')
+                        ->selectRaw('company_id, period_start, period_end, MAX(version) latest_version')
+                        ->where('company_id', $snapshot->company_id)->where('status', 'frozen')
+                        ->where('period_type', 'month')->whereDate('period_end', '<', $snapshot->period_start)
+                        ->groupBy('company_id', 'period_start', 'period_end');
+                    $history = DB::table('sales_kpi_snapshot_rows as row')
+                        ->join('sales_kpi_snapshots as snapshot', 'snapshot.id', '=', 'row.snapshot_id')
+                        ->joinSub($latestFrozenMonthly, 'latest', function ($join) {
+                            $join->on('latest.company_id', '=', 'snapshot.company_id')
+                                ->on('latest.period_start', '=', 'snapshot.period_start')
+                                ->on('latest.period_end', '=', 'snapshot.period_end')
+                                ->on('latest.latest_version', '=', 'snapshot.version');
+                        })
                         ->where('row.sales_profile_id', $row->sales_profile_id)->where('snapshot.status', 'frozen')
+                        ->where('snapshot.period_type', 'month')
+                        ->where('row.new_sales_value_state', 'complete')->whereNotNull('row.net_new_sales_lkr')
                         ->whereDate('snapshot.period_end', '<', $snapshot->period_start)->orderByDesc('snapshot.period_end')
-                        ->limit($declineRule['baseline_months'])->get(['snapshot.period_start', 'snapshot.period_end', 'row.new_sales_lkr']);
-                    if ($history->count() !== $declineRule['baseline_months']) {
+                        ->limit($declineRule['baseline_months'])->get(['snapshot.period_start', 'snapshot.period_end', 'row.net_new_sales_lkr']);
+                    $expectedPeriods = collect(range(1, $declineRule['baseline_months']))
+                        ->map(fn (int $monthsBack) => CarbonImmutable::parse($snapshot->period_start)
+                            ->subMonthsNoOverflow($monthsBack)->startOfMonth()->toDateString());
+                    $historyPeriodsComplete = $history->pluck('period_start')
+                        ->map(fn ($periodStart) => CarbonImmutable::parse($periodStart)->toDateString())
+                        ->values()->all() === $expectedPeriods->all();
+                    if (($metrics['new_sales_value_state'] ?? 'incomplete') !== 'complete'
+                        || $row->net_new_sales_lkr === null || $history->count() !== $declineRule['baseline_months']
+                        || ! $historyPeriodsComplete) {
                         $suppressed[] = ['sales_profile_id' => $row->sales_profile_id, 'rule' => 'new_sales_decline',
                             'reason' => 'completed_month_baseline_incomplete', 'available_months' => $history->count(),
                             'required_months' => $declineRule['baseline_months']];
                     } else {
-                        $average = (float) $history->avg('new_sales_lkr');
-                        $decline = $average > 0 ? ($average - (float) $row->new_sales_lkr) / $average * 100 : 0;
+                        $average = (float) $history->avg('net_new_sales_lkr');
+                        $decline = $average > 0 ? ($average - (float) $row->net_new_sales_lkr) / $average * 100 : 0;
                         if ($decline >= $declineRule['percent']) {
                             $checks['new_sales_decline'] = [$declineRule['severity'],
                                 'New Sales declined against the approved completed-calendar-month baseline.',

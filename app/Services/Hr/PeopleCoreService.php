@@ -145,10 +145,28 @@ class PeopleCoreService
     private function createAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actor,string $reason): HrEmploymentAssignment
     {
         $start=$data['effective_from']??$spell->joined_at->toDateString();
+        if(!empty($data['payroll_group_code']))$this->assertPayrollGroupCode($staff->company_id,$data['payroll_group_code'],$start);
         HrEmploymentAssignment::query()->where('staff_id',$staff->id)->whereNull('effective_until')->update(['effective_until'=>$start]);
         $assignment=HrEmploymentAssignment::create(['employment_spell_id'=>$spell->id,'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'position_id'=>$data['position_id']??null,'organization_unit_id'=>$data['organization_unit_id']??null,'manager_staff_id'=>$data['manager_staff_id']??null,'dotted_line_manager_staff_id'=>$data['dotted_line_manager_staff_id']??null,'hr_partner_staff_id'=>$data['hr_partner_staff_id']??null,'cost_centre_code'=>$data['cost_centre_code']??null,'location_code'=>$data['location_code']??null,'payroll_group_code'=>$data['payroll_group_code']??null,'default_shift_code'=>$data['default_shift_code']??null,'work_pattern_code'=>$data['work_pattern_code']??null,'assignment_type'=>'primary','effective_from'=>$start,'change_reason'=>$reason,'snapshot'=>$data,'approved_by'=>$actor]);
         $this->reportingLines->projectAssignmentManagers($assignment,$actor);
         return$assignment;
+    }
+
+    /**
+     * Forward-only referential enforcement: only a newly written assignment's
+     * payroll_group_code must resolve to a governed, effective hr_payroll_groups
+     * row. Pre-existing free-text values on prior assignment rows are left
+     * untouched — retroactively validating them needs a reviewed disposition
+     * decision for any non-matching legacy code, which is explicitly out of
+     * scope for this slice (see §24.16).
+     */
+    private function assertPayrollGroupCode(string $companyId,string $code,string $effectiveAt): void
+    {
+        $exists=DB::table('hr_payroll_groups')->where('company_id',$companyId)->where('code',$code)->where('status','active')
+            ->where('effective_from','<=',$effectiveAt)
+            ->where(fn($range)=>$range->whereNull('effective_until')->orWhere('effective_until','>=',$effectiveAt))
+            ->exists();
+        abort_unless($exists,422,'Payroll group code must reference an active, effective governed payroll group.');
     }
 
     private function timeline(Staff $staff,HrEmploymentSpell $spell,string $domain,string $type,string $title,array $summary,string $key,$at): void

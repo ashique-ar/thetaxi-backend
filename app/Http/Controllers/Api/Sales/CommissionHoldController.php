@@ -42,7 +42,7 @@ class CommissionHoldController extends Controller
                 'commission_adjustment_lkr', 'calculation_checksum', 'reason', 'adjustment_effective_at',
             ]), 'holdResolution' => fn ($q) => $q->select([
                 'id', 'commission_decision_id', 'receipt_finality_event_id', 'resolution_kind',
-                'original_hold_code', 'resolution_checksum', 'resolved_at',
+                'employment_ended_at', 'original_hold_code', 'resolution_checksum', 'resolved_at',
             ])]);
         $this->scope($query, $request, $data['company_id'] ?? null);
         $resolution = $data['resolution'] ?? 'open';

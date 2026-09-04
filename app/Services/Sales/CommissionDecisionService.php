@@ -21,6 +21,7 @@ class CommissionDecisionService
         private readonly DomainEventPublisher $events,
         private readonly SalesMetricFactService $metricFacts,
         private readonly SalesProfileEligibilityService $profileEligibility,
+        private readonly CommissionEmploymentExitResolutionService $employmentExitResolutions,
     ) {}
 
     public function decide(BookingPaymentReceipt $receipt, BookingPaymentReceiptComponent $component): ?SalesCommissionDecision
@@ -101,15 +102,20 @@ class CommissionDecisionService
             }
 
             $handlerId = $this->collectionProfileAt($attribution, $receipt->received_at);
-            $profile = $handlerId ? SalesProfile::query()->withTrashed()->with('staff')->find($handlerId) : null;
+            $profile = $handlerId ? SalesProfile::query()->withTrashed()
+                ->with(['staff' => fn ($query) => $query->withTrashed()])->find($handlerId) : null;
             $base['collection_sales_profile_id'] = $handlerId;
             $base['beneficiary_sales_profile_id'] = $handlerId;
             $base['beneficiary_staff_id'] = $profile?->staff_id;
-            if (! $profile?->staff_id) {
+            if (! $profile?->staff_id || ! $profile->staff) {
                 return $this->hold($base, 'beneficiary_missing', 'No eligible collection handler Staff record exists at receipt time.');
             }
             if ($profile->company_id !== $attribution->company_id) {
                 return $this->hold($base, 'legal_entity_mismatch', 'The collection beneficiary belongs to a different legal entity.');
+            }
+            if (($profile->staff->employment_ended_at && $profile->staff->employment_ended_at->lte($receipt->received_at))
+                || ($profile->staff->deleted_at && $profile->staff->deleted_at->lte($receipt->received_at))) {
+                return $this->hold($base, 'employment_inactive', 'The collection handler Staff identity was inactive at receipt time.');
             }
             if (! $this->profileEligibility->isEligibleAt($profile, ['collection'], $receipt->received_at)) {
                 return $this->hold(
@@ -125,11 +131,6 @@ class CommissionDecisionService
                     'The collection handler was not explicitly commission-eligible at receipt time.',
                 );
             }
-            if (($profile->staff->employment_ended_at && $profile->staff->employment_ended_at->lte($receipt->received_at))
-                || ($profile->staff->deleted_at && $profile->staff->deleted_at->lte($receipt->received_at))) {
-                return $this->hold($base, 'employment_inactive', 'The collection handler Staff identity was inactive at receipt time.');
-            }
-
             $overrides = SalesCommissionStaffOverride::query()
                 ->where('company_id', $attribution->company_id)->where('staff_id', $profile->staff_id)
                 ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
@@ -253,6 +254,7 @@ class CommissionDecisionService
                 'hold_code' => $decision->hold_code, 'commission_amount_lkr' => (string) $decision->commission_amount_lkr,
             ], $decision->decision_at, $decision->idempotency_key);
         $this->metricFacts->projectCommission($decision);
+        $this->employmentExitResolutions->resolve($decision);
         return $decision;
     }
 

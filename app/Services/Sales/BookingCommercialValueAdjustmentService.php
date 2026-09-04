@@ -79,6 +79,8 @@ class BookingCommercialValueAdjustmentService
                 ? round((float) $revision->contractual_lkr_amount, 4) : null;
             $countsAsNewSales = in_array($data['adjustment_type'], self::NEW_SALES_ADJUSTMENT_TYPES, true)
                 && $attribution->business_classification === 'new_business';
+            abort_if($countsAsNewSales && ($context['previous_lkr'] === null || $resultingLkr === null), 409,
+                'A governed LKR value is required before a commercial adjustment can affect New Sales.');
 
             $adjustment = BookingCommercialValueAdjustment::create([
                 'company_id' => $attribution->company_id,
@@ -224,6 +226,10 @@ class BookingCommercialValueAdjustmentService
     {
         $resultingSource = (float) $schedulePreview['contractual_source_amount'];
         $resultingLkr = $schedulePreview['contractual_lkr_amount'] ?? null;
+        $countsAsNewSales = in_array($data['adjustment_type'], self::NEW_SALES_ADJUSTMENT_TYPES, true)
+            && $context['attribution']->business_classification === 'new_business';
+        abort_if($countsAsNewSales && ($context['previous_lkr'] === null || $resultingLkr === null), 409,
+            'A governed LKR value is required before a commercial adjustment can affect New Sales.');
 
         return [
             'adjustment_type' => $data['adjustment_type'],
@@ -235,7 +241,7 @@ class BookingCommercialValueAdjustmentService
             'delta_source_amount' => round($resultingSource - $context['previous_source'], 4),
             'delta_lkr_amount' => ($resultingLkr !== null && $context['previous_lkr'] !== null)
                 ? round((float) $resultingLkr - $context['previous_lkr'], 4) : null,
-            'counts_as_new_sales_adjustment' => in_array($data['adjustment_type'], self::NEW_SALES_ADJUSTMENT_TYPES, true),
+            'counts_as_new_sales_adjustment' => $countsAsNewSales,
             'schedule_reconciliation' => $schedulePreview,
             'preview_checksum' => $schedulePreview['preview_checksum'],
             'write_performed' => false,

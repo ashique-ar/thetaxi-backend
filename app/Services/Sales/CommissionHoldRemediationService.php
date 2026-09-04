@@ -65,6 +65,14 @@ class CommissionHoldRemediationService
             );
         }
 
+        if ($decision->holdResolution?->resolution_kind === 'employment_exit_no_entitlement') {
+            return $this->contract(
+                'profile_eligibility', 'people_core', 'terminal_no_entitlement',
+                $actor, null, null, null,
+                'The canonical Staff employment end predates this receipt. The immutable decision is closed with zero entitlement and creates no metric, statement line, payout, or recovery.',
+            );
+        }
+
         if (self::isFormulaReplayable($code)) {
             return $this->contract(
                 'formula_configuration', 'sales_commission_configuration', 'formula_release_preview',

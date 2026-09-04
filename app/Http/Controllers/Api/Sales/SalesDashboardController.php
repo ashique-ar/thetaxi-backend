@@ -89,6 +89,15 @@ class SalesDashboardController extends Controller
             'commission_one_time_lkr', 'commission_long_term_lkr', 'new_bookings_count',
             'new_customers_count', 'activities_count', 'overdue_collections_lkr'];
         $summary = collect($summaryFields)->mapWithKeys(fn ($field) => [$field => (float) $allRows->sum($field)])->all();
+        $netNewSalesComplete = $allRows->isNotEmpty()
+            && $allRows->every(fn ($row) => $row['new_sales_value_state'] === 'complete');
+        $summary['new_sales_value_state'] = $netNewSalesComplete ? 'complete' : 'incomplete';
+        $summary['new_sales_adjustment_evidence_issue_count'] = (int) $allRows->sum('new_sales_adjustment_evidence_issue_count');
+        if (! $netNewSalesComplete) {
+            $summary['new_sales_lkr'] = null;
+            $summary['new_sales_adjustment_lkr'] = null;
+            $summary['net_new_sales_lkr'] = null;
+        }
         $commissionStatus = $this->commissionStatuses->source(
             $companyId, $ids, $data['from'], $data['to'],
         );
@@ -162,7 +171,7 @@ class SalesDashboardController extends Controller
                     ->on('latest.period_end', '=', 'snapshot.period_end')
                     ->on('latest.latest_version', '=', 'snapshot.version');
             })
-            ->selectRaw('snapshot.id snapshot_id, snapshot.version snapshot_version, snapshot.period_start, snapshot.period_end, snapshot.cutoff_at, snapshot.snapshot_checksum, SUM(row.new_sales_lkr) new_sales_lkr, SUM(row.eligible_collections_lkr) eligible_collections_lkr, SUM(row.commission_new_business_lkr + row.commission_existing_business_lkr) commission_lkr')
+            ->selectRaw('snapshot.id snapshot_id, snapshot.version snapshot_version, snapshot.period_start, snapshot.period_end, snapshot.cutoff_at, snapshot.snapshot_checksum, SUM(row.gross_new_sales_lkr) gross_new_sales_lkr, SUM(row.new_sales_adjustment_lkr) new_sales_adjustment_lkr, SUM(row.net_new_sales_lkr) net_new_sales_lkr, COUNT(*) new_sales_row_count, COUNT(row.net_new_sales_lkr) net_new_sales_row_count, SUM(row.eligible_collections_lkr) eligible_collections_lkr, SUM(row.commission_new_business_lkr + row.commission_existing_business_lkr) commission_lkr')
             ->where('snapshot.company_id', $companyId)->where('snapshot.status', 'frozen')->whereIn('row.sales_profile_id', $ids)
             ->whereDate('snapshot.period_end', '<=', $data['to'])
             ->groupBy('snapshot.id', 'snapshot.version', 'snapshot.period_start', 'snapshot.period_end',
@@ -176,6 +185,17 @@ class SalesDashboardController extends Controller
             $snapshots = $rows->map(fn ($row) => is_string($row->metric_snapshot)
                 ? (json_decode($row->metric_snapshot, true) ?: []) : ((array) $row->metric_snapshot));
             $trend->scope_profile_ids = $rows->pluck('sales_profile_id')->sort()->values()->all();
+            $trend->new_sales_value_state = (int) $trend->new_sales_row_count > 0
+                && (int) $trend->new_sales_row_count === (int) $trend->net_new_sales_row_count
+                ? 'complete' : 'incomplete';
+            $trend->new_sales_lkr = $trend->new_sales_value_state === 'complete'
+                ? (float) $trend->net_new_sales_lkr : null;
+            if ($trend->new_sales_value_state !== 'complete') {
+                $trend->gross_new_sales_lkr = null;
+                $trend->new_sales_adjustment_lkr = null;
+                $trend->net_new_sales_lkr = null;
+            }
+            unset($trend->new_sales_row_count, $trend->net_new_sales_row_count);
             if ($snapshots->isNotEmpty()
                 && $snapshots->every(fn (array $metrics) => array_key_exists('commission_earned_lkr', $metrics))) {
                 $trend->commission_lkr = (float) $snapshots->sum(
@@ -215,7 +235,7 @@ class SalesDashboardController extends Controller
             }
             foreach ([
                 'new_sales_target' => ['state' => 'new_sales_target_state', 'amount' => 'new_sales_target_lkr',
-                    'actual' => 'new_sales_lkr'],
+                    'actual' => 'net_new_sales_lkr'],
                 'collection_target' => ['state' => 'collection_target_state', 'amount' => 'collection_target_lkr',
                     'actual' => 'eligible_collections_lkr'],
             ] as $key => $definition) {
@@ -229,7 +249,8 @@ class SalesDashboardController extends Controller
                 $trend->{$key.'_lkr'} = $configured ? (float) $snapshots->sum(
                     fn (array $metrics) => (float) data_get($metrics, $definition['amount'], 0)) : null;
                 $target = $trend->{$key.'_lkr'};
-                $trend->{$key.'_achievement_percent'} = $target !== null && $target > 0
+                $actualComplete = $key !== 'new_sales_target' || $trend->new_sales_value_state === 'complete';
+                $trend->{$key.'_achievement_percent'} = $actualComplete && $target !== null && $target > 0
                     ? round(((float) $trend->{$definition['actual']}) / $target * 100, 4) : null;
             }
 
@@ -244,7 +265,9 @@ class SalesDashboardController extends Controller
             elseif ($previous->scope_profile_ids !== $trend->scope_profile_ids) $state = 'scope_changed';
             $trend->month_over_month_state = $state;
             foreach (['new_sales_lkr', 'eligible_collections_lkr', 'commission_lkr'] as $metric) {
-                $delta = $state === 'comparable' ? round((float) $trend->{$metric} - (float) $previous->{$metric}, 4) : null;
+                $valuesAvailable = $trend->{$metric} !== null && $previous->{$metric} !== null;
+                $delta = $state === 'comparable' && $valuesAvailable
+                    ? round((float) $trend->{$metric} - (float) $previous->{$metric}, 4) : null;
                 $trend->{'month_over_month_'.$metric} = $delta === null ? null : [
                     'direction' => $delta > 0 ? 'up' : ($delta < 0 ? 'down' : 'flat'),
                     'delta_lkr' => $delta,
@@ -449,13 +472,16 @@ class SalesDashboardController extends Controller
             'Frozen Sales trend snapshot not found.',
         );
 
-        $metricType = ['new_sales' => 'new_sales', 'eligible_collections' => 'eligible_collection',
-            'commission' => 'commission_earned'][$data['metric']];
+        $metricTypes = match ($data['metric']) {
+            'new_sales' => ['new_sales', 'new_sales_adjustment'],
+            'eligible_collections' => ['eligible_collection'],
+            'commission' => ['commission_earned'],
+        };
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->where('fact.company_id', $frozen->company_id)->whereIn('fact.sales_profile_id', $authorizedIds)
-            ->where('fact.metric_type', $metricType)
+            ->whereIn('fact.metric_type', $metricTypes)
             ->whereBetween('fact.occurred_on', [$frozen->period_start, $frozen->period_end])
             ->where('fact.occurred_at', '<=', $frozen->cutoff_at)
             ->when($classification,
@@ -568,7 +594,8 @@ class SalesDashboardController extends Controller
                     'sales_profile_id' => $row->sales_profile_id, 'staff_code' => $row->staff_code,
                     'new_sales_target_state' => data_get($metrics, 'new_sales_target_state', 'not_configured'),
                     'new_sales_target_lkr' => data_get($metrics, 'new_sales_target_lkr'),
-                    'new_sales_actual_lkr' => data_get($metrics, 'new_sales_lkr', 0),
+                    'new_sales_value_state' => data_get($metrics, 'new_sales_value_state', 'incomplete'),
+                    'new_sales_actual_lkr' => data_get($metrics, 'net_new_sales_lkr'),
                     'collection_target_state' => data_get($metrics, 'collection_target_state', 'not_configured'),
                     'collection_target_lkr' => data_get($metrics, 'collection_target_lkr'),
                     'collection_actual_lkr' => data_get($metrics, 'eligible_collections_lkr', 0),
@@ -592,9 +619,13 @@ class SalesDashboardController extends Controller
                 : ($states->contains('ambiguous_configuration') ? 'ambiguous_configuration'
                     : ($states->every(fn ($value) => $value === 'not_configured') ? 'not_configured' : 'partial_configuration'));
             $target = $complete ? round((float) $rows->sum($fields['target']), 4) : null;
-            $actual = round((float) $rows->sum($fields['actual']), 4);
+            $actualComplete = $key !== 'new_sales'
+                || $rows->every(fn ($row) => $row->new_sales_value_state === 'complete'
+                    && $row->new_sales_actual_lkr !== null);
+            $actual = $actualComplete ? round((float) $rows->sum($fields['actual']), 4) : null;
             $aggregate[$key] = ['state' => $state, 'target_lkr' => $target, 'actual_lkr' => $actual,
-                'achievement_percent' => $target !== null && $target > 0 ? round($actual / $target * 100, 4) : null];
+                'achievement_percent' => $actual !== null && $target !== null && $target > 0
+                    ? round($actual / $target * 100, 4) : null];
         }
 
         return response()->json(['status' => 'success', 'data' => [
@@ -631,15 +662,18 @@ class SalesDashboardController extends Controller
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Sales KPI source is outside your current Sales scope.',
         );
-        $metricType = ['new_sales' => 'new_sales', 'eligible_collections' => 'eligible_collection',
-            'commission' => 'commission_earned'][$data['metric']];
+        $metricTypes = match ($data['metric']) {
+            'new_sales' => ['new_sales', 'new_sales_adjustment'],
+            'eligible_collections' => ['eligible_collection'],
+            'commission' => ['commission_earned'],
+        };
         $asOf = now();
         $facts = DB::table('sales_metric_facts as fact')
             ->join('sales_profiles as profile', 'profile.id', '=', 'fact.sales_profile_id')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
             ->where('fact.company_id', $data['company_id'])
             ->whereIn('fact.sales_profile_id', $authorizedIds)
-            ->where('fact.metric_type', $metricType)
+            ->whereIn('fact.metric_type', $metricTypes)
             ->when($data['metric'] === 'new_sales',
                 fn ($query) => $query->where('fact.business_classification', 'new_business'))
             ->when(in_array($data['metric'], ['eligible_collections', 'commission'], true),
@@ -981,8 +1015,14 @@ class SalesDashboardController extends Controller
             ), 'quantity' => null, 'state' => 'complete'];
         }
 
+        if ($metric === 'new_sales') {
+            $complete = $snapshots->every(fn (array $metrics) => data_get($metrics, 'new_sales_value_state') === 'complete'
+                && array_key_exists('net_new_sales_lkr', $metrics));
+            if (! $complete) return ['amount_lkr' => null, 'quantity' => null, 'state' => 'incomplete'];
+        }
+
         $amount = match ($metric) {
-            'new_sales' => $rows->sum(fn ($row) => (float) $row->new_sales_lkr),
+            'new_sales' => $snapshots->sum(fn (array $metrics) => (float) data_get($metrics, 'net_new_sales_lkr')),
             'eligible_collections' => $rows->sum(fn ($row) => (float) $row->eligible_collections_lkr),
             'commission' => $snapshots->every(
                 fn (array $metrics) => array_key_exists('commission_earned_lkr', $metrics)
