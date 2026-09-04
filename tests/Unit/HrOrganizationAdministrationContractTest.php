@@ -17,7 +17,7 @@ it('governs organization changes with locks versions history and replay checks',
 
 it('keeps custom fields metadata driven classified and option bounded',function(){
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
-    expect($controller)->toContain("Rule::in(['staff','organization_unit','position','employment_spell'])")->toContain("Rule::in(['employee','manager','internal','hr_private','legal'])")
-        ->toContain("'custom_fields'=>['prohibited']")->toContain('Select custom fields require at least one option.')->toContain('Only select custom fields may define options.');
+    expect($controller)->toContain("Rule::in(['staff', 'organization_unit', 'position', 'employment_spell'])")->toContain("Rule::in(['employee', 'manager', 'internal', 'hr_private', 'legal'])")
+        ->toContain("'custom_fields' => ['prohibited']")->toContain('Select custom fields require at least one option.')->toContain('Only select custom fields may define options.');
     expect(file_get_contents(app_path('Services/Hr/OrganizationAdministrationService.php')))->toContain('Custom-field owner, key and data type are immutable; create a new definition instead.');
 });

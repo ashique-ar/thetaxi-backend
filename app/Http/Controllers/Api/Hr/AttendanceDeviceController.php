@@ -35,10 +35,16 @@ class AttendanceDeviceController extends Controller
             ->where('company_id', $companyId)
             ->select(['id', 'name', 'topology', 'status', 'last_heartbeat_at', 'capabilities'])
             ->get();
-        $devices = DB::table('hr_attendance_devices')
-            ->where('company_id', $companyId)
-            ->select(['id', 'connector_id', 'provider', 'model', 'serial_number', 'site_code', 'timezone', 'status', 'last_sync_at', 'last_event_at'])
-            ->get();
+        // Connectivity fields (ip_address/port/username) are safe to return to any actor who
+        // can already see this device's site/serial/model; the encrypted `password` sub-key
+        // never round-trips back over the wire once set, matching the connector signing_secret's
+        // existing "shown once at creation, never again" convention.
+        $devices = AttendanceDevice::query()->where('company_id', $companyId)
+            ->get(['id', 'connector_id', 'provider', 'integration_mode', 'model', 'serial_number', 'site_code', 'timezone', 'status', 'last_sync_at', 'last_event_at', 'encrypted_configuration'])
+            ->map(function (AttendanceDevice $device) {
+                $connection = collect($device->encrypted_configuration ?? [])->only(['ip_address', 'port', 'username'])->all();
+                return $device->makeHidden('encrypted_configuration')->toArray() + ['connection' => $connection];
+            });
         $counts = DB::table('hr_attendance_quarantine_items')
             ->where('company_id', $companyId)
             ->where('status', 'open')
@@ -108,6 +114,49 @@ class AttendanceDeviceController extends Controller
         return response()->json(['status' => 'success', 'data' => $device], 201);
     }
 
+    /**
+     * §5.4/QH2-01: storeDevice()/storeConnector() were create-only — a device's IP/port/
+     * credentials (carried in the encrypted_configuration blob, since a direct_isapi device
+     * has no dedicated ip_address column by design — different topologies need different
+     * config shapes) could never be changed after registration, and neither had any Angular
+     * surface at all. This closes the device half: a device's local-network address changes
+     * over time (DHCP lease renewal, re-IP, physical move) and an admin needs to update it
+     * without re-registering the whole device and losing its raw-event/mapping history.
+     */
+    public function updateDevice(Request $request, string $deviceId): JsonResponse
+    {
+        $this->requireAttendanceWrites();
+        $device = AttendanceDevice::query()->find($deviceId);
+        abort_unless($device, 404);
+        $this->authorizedCompanyId($request, $device->company_id);
+        $data = $request->validate([
+            'connector_id' => ['nullable', 'uuid', 'exists:hr_attendance_connectors,id'],
+            'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'],
+            'model' => ['nullable', 'string', 'max:120'],
+            'firmware' => ['nullable', 'string', 'max:100'],
+            'site_code' => ['required', 'string', 'max:80'],
+            'timezone' => ['required', 'timezone'],
+            'capabilities' => ['nullable', 'array'],
+            'encrypted_configuration' => ['nullable', 'array'],
+            'status' => ['required', Rule::in(['active', 'inactive'])],
+        ]);
+        if (! empty($data['connector_id'])) {
+            abort_unless(AttendanceConnector::query()->whereKey($data['connector_id'])->where('company_id', $device->company_id)->exists(), 422, 'Connector and device legal entities must match.');
+        }
+        if (! empty($data['organization_unit_id'])) {
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $device->company_id)->exists(), 422, 'Organization unit and device legal entities must match.');
+        }
+        // encrypted_configuration (which may hold the ISAPI password) is never sent back to the
+        // client by health()/index(), so a client-supplied value only ever carries the fields the
+        // admin actually changed. Merge onto the existing decrypted config rather than replacing
+        // it outright, or editing the IP alone would silently erase an already-stored password.
+        if (array_key_exists('encrypted_configuration', $data)) {
+            $data['encrypted_configuration'] = array_filter((array) $device->encrypted_configuration, fn ($v, $k) => ! array_key_exists($k, $data['encrypted_configuration']), ARRAY_FILTER_USE_BOTH) + $data['encrypted_configuration'];
+        }
+        $device->update($data);
+        return response()->json(['status' => 'success', 'data' => $device->fresh()]);
+    }
+
     public function storeMapping(Request $request): JsonResponse
     {
         $this->requireAttendanceWrites();
@@ -131,6 +180,21 @@ class AttendanceDeviceController extends Controller
             DB::table('hr_attendance_person_mappings')->insert($data + ['id'=>$id,'employee_number_snapshot'=>$staff->code,'enrollment_status'=>'pending','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
             return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_person_mappings')->find($id)], 201);
         });
+    }
+
+    public function mappings(Request $request): JsonResponse
+    {
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending', 'verified'])], 'provider_person_id' => ['nullable', 'string', 'max:160']]);
+        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
+        $query = DB::table('hr_attendance_person_mappings')
+            ->select(['id', 'staff_id', 'device_id', 'provider_person_id', 'employee_number_snapshot', 'enrollment_status', 'effective_from', 'effective_until', 'created_by', 'last_verified_at', 'verified_by'])
+            ->where('company_id', $companyId)
+            ->when($data['staff_id'] ?? null, fn ($builder, $value) => $builder->where('staff_id', $value))
+            ->when($data['status'] ?? null, fn ($builder, $value) => $builder->where('enrollment_status', $value))
+            ->when($data['provider_person_id'] ?? null, fn ($builder, $value) => $builder->where('provider_person_id', $value))
+            ->latest('created_at');
+
+        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
 
     public function approveMapping(Request $request, string $mappingId): JsonResponse

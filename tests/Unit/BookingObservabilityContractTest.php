@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('exposes item-scoped trace and tracking summary behind booking view permission', function () {
     $routes = file_get_contents(base_path('routes/api.php'));

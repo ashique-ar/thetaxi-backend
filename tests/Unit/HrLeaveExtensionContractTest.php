@@ -8,7 +8,7 @@ it('extends an approved leave request only after re-validating policy/notice/bla
         ->toContain("abort_unless(\$row->status === 'approved', 409, 'Only an approved leave request can be extended.');")
         ->toContain("abort_unless(\$newEndDate > \$row->end_date, 422, 'An extension must move the end date later than the current approved end date.');")
         ->toContain("\$policy = DB::table('hr_leave_policies')->where('id', \$row->policy_id)->where('company_id', \$row->company_id)->where('status', 'approved')")
-        ->toContain("abort_if(collect(\$newDays)->contains(fn (\$day) => in_array(\$day['date'], \$blackouts, true)), 422, 'The extension includes a policy blackout date.');")
+        ->toContain("abort_if(collect(\$newDays)->contains(fn(\$day) => in_array(\$day['date'], \$blackouts, true)), 422, 'The extension includes a policy blackout date.');")
         ->toContain("abort_if(\$balance - \$addedMinutes < -\$negative, 409, 'Insufficient available leave balance for the extension.');")
         ->toContain("abort_if(\$overlap, 409, 'Another active leave request overlaps the extension interval.');");
 });

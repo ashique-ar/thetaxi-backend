@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('supports excluding the booking being edited from assignment conflict checks', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Booking/Traits/BookingAvailabilityTrait.php'));

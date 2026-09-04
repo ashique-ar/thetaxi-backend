@@ -8,7 +8,7 @@ it('keeps the People directory workforce-wide and hierarchy scoped', function ()
     expect($routes)
         ->toContain("Route::prefix('hr/employees')->middleware('ensure.internal')")
         ->and($controller)
-        ->toContain("'staff_category'=>\$staff->staff_type")
+        ->toContain("'staff_category' => \$staff->staff_type")
         ->toContain('Sales Profile enrollment and eligibility are managed separately')
         ->not->toContain('SalesProfile::query()')
         ->and($access)
@@ -24,11 +24,11 @@ it('rechecks People mutation subjects and related-record ownership', function ()
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
     $organizationAdmin=file_get_contents(app_path('Services/Hr/OrganizationAdministrationService.php'));
 
-    expect(substr_count($controller,'$this->access->authorize($request->user(),$staff)'))->toBeGreaterThanOrEqual(7)
+    expect(substr_count($controller,'$this->access->authorize($request->user(), $staff)'))->toBeGreaterThanOrEqual(7)
         ->and($controller)
         ->toContain('The employment spell does not belong to this employee.')
         ->toContain('The manager must belong to the employee legal entity.')
-        ->toContain("config('hr.features.people_core',false)")
+        ->toContain("config('hr.features.people_core', false)")
         ->and($organizationAdmin)
         ->toContain('Parent organization unit must belong to your legal entity.');
 });

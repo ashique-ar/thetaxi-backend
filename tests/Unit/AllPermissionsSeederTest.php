@@ -2,7 +2,6 @@
 
 use Database\Seeders\AllPermissionsSeeder;
 
-uses(Tests\TestCase::class);
 
 it('contains every permission referenced by active backend middleware', function () {
     $appFiles = collect(iterator_to_array(

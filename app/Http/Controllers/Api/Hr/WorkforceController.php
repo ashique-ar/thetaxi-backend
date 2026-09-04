@@ -19,7 +19,7 @@ class WorkforceController extends Controller
     public function leaveRequests(Request $r, StaffAccessService $access): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')->whereIn('request.staff_id', $staff)->select(['request.id', 'request.staff_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'type.paid', 'request.start_date', 'request.end_date', 'request.unit', 'request.requested_minutes', 'request.status', 'request.current_approver_staff_id', 'request.created_at'])->when($r->status, fn($b, $v) => $b->where('request.status', $v))->latest('request.created_at');
+        $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')->whereIn('request.staff_id', $staff)->select(['request.id', 'request.staff_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'type.paid', 'request.start_date', 'request.end_date', 'request.unit', 'request.requested_minutes', 'request.status', 'request.current_approver_staff_id', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at', 'request.created_at'])->when($r->status, fn($b, $v) => $b->where('request.status', $v))->latest('request.created_at');
         return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
     }
     public function leaveBalances(Request $r, StaffAccessService $access, LeaveWorkflowService $service): JsonResponse
@@ -90,6 +90,16 @@ class WorkforceController extends Controller
         $projection->leave($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
     }
+    public function recallLeave(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
+    {
+        $d = $r->validate(['recall_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000']]);
+        $row = DB::table('hr_leave_requests')->find($id);
+        abort_unless($row, 404);
+        $access->authorize($r->user(), Staff::query()->findOrFail($row->staff_id), 'view');
+        $row = $service->recall($id, $d['recall_date'], $d['reason'], $r->user()->id);
+        $projection->leave($row, $r->user()->id);
+        return response()->json(['status' => 'success', 'data' => $row]);
+    }
     public function postBalance(Request $r, string $accountId, LeaveWorkflowService $service): JsonResponse
     {
         $d = $r->validate(['entry_type' => ['required', Rule::in(['opening', 'accrual', 'adjustment', 'carry_forward', 'expiry', 'encashment'])], 'minutes' => ['required', 'integer', 'not_in:0'], 'effective_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
@@ -97,6 +107,39 @@ class WorkforceController extends Controller
         abort_unless($account, 404);
         $this->company($r, $account->company_id);
         return response()->json(['status' => 'success', 'data' => $service->postBalance($accountId, $d['entry_type'], $d['minutes'], $d['effective_date'], $d['reason'], $r->user()->id, $d['idempotency_key'])], 201);
+    }
+
+    /**
+     * §5.9 leave configuration: storeLeaveType/storeLeavePolicy/assignLeavePolicy and their
+     * approve actions were POST-only with no route anywhere to list types, list policies
+     * (so a pending policy could never be found to approve it), or list policy assignments —
+     * the exact "create exists, no read-back" gap already closed for Attendance calendars/
+     * shifts/policies/rosters. These three read endpoints close it for Leave configuration.
+     */
+    public function leaveTypes(Request $r): JsonResponse
+    {
+        $companyId = $this->company($r, $r->input('company_id'));
+        $q = DB::table('hr_leave_types')->where('company_id', $companyId)->when($r->status, fn($b, $v) => $b->where('status', $v))->orderBy('name');
+        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+    }
+    public function leavePolicies(Request $r): JsonResponse
+    {
+        $companyId = $this->company($r, $r->input('company_id'));
+        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')->where('policy.company_id', $companyId)
+            ->select(['policy.id', 'policy.leave_type_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'policy.code', 'policy.version', 'policy.rules', 'policy.status', 'policy.effective_from', 'policy.effective_until', 'policy.created_by', 'policy.approved_by', 'policy.approved_at'])
+            ->when($r->status, fn($b, $v) => $b->where('policy.status', $v))->latest('policy.created_at');
+        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows->getCollection()->transform(fn($row) => (array) $row + ['rules' => json_decode($row->rules, true, 512, JSON_THROW_ON_ERROR)]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+    public function leavePolicyAssignments(Request $r, StaffAccessService $access): JsonResponse
+    {
+        $staffIds = $access->scope(Staff::query(), $r->user())->select('id');
+        $q = DB::table('hr_leave_policy_assignments as assignment')->join('hr_leave_policies as policy', 'policy.id', '=', 'assignment.policy_id')
+            ->whereIn('assignment.staff_id', $staffIds)
+            ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at'])
+            ->when($r->staff_id, fn($b, $v) => $b->where('assignment.staff_id', $v))->latest('assignment.created_at');
+        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
     }
 
     public function storeLeaveType(Request $r): JsonResponse

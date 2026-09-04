@@ -2,7 +2,6 @@
 
 use App\Models\Corporate\CorporateDistancePricingPolicy;
 
-uses(Tests\TestCase::class);
 
 it('defaults the contractual return location to the defined origin', function () {
     $policy = new CorporateDistancePricingPolicy([

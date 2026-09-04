@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('reuses a canonical draft for approval and confirmation transitions', function () {
     $service = file_get_contents(app_path('Services/BookingFlowService.php'));

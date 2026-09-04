@@ -78,7 +78,7 @@ class LeaveWorkflowService
             $overrideUsed = false;
             $delegateUsed = false;
             if ($row->current_approver_staff_id && $actorStaff !== $row->current_approver_staff_id) {
-                $delegateUsed = DB::table('hr_approval_delegations')->where('delegator_staff_id', $row->current_approver_staff_id)->where('delegate_staff_id', $actorStaff)->where('status', 'approved')->whereDate('effective_from', '<=', now())->whereDate('effective_until', '>=', now())->get(['request_types'])->contains(fn ($delegation) => in_array('leave', json_decode($delegation->request_types, true), true));
+                $delegateUsed = DB::table('hr_approval_delegations')->where('delegator_staff_id', $row->current_approver_staff_id)->where('delegate_staff_id', $actorStaff)->where('status', 'approved')->whereDate('effective_from', '<=', now())->whereDate('effective_until', '>=', now())->get(['request_types'])->contains(fn($delegation) => in_array('leave', json_decode($delegation->request_types, true), true));
                 if (!$delegateUsed) {
                     abort_unless($overrideAuthorized, 403, 'This leave request is assigned to a different approver.');
                     $overrideUsed = true;
@@ -96,7 +96,8 @@ class LeaveWorkflowService
                 $nextApprover = $approvers[$nextLevel - 1] ?? null;
                 $this->event($row->id, 'approval_level_completed', 'pending_approval', 'pending_approval', $reason, $snapshot + ['completed_level' => $row->approval_level], $actorUserId);
                 DB::table('hr_leave_requests')->where('id', $row->id)->update(['approval_level' => $nextLevel, 'current_approver_staff_id' => $nextApprover, 'updated_at' => now()]);
-                return DB::table('hr_leave_requests')->find($row->id); }$locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
+                return DB::table('hr_leave_requests')->find($row->id);
+            }$locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $action === 'approve', 409, 'Reopen the overlapping locked attendance period before approving leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
             $this->entry($account->id, $row->id, 'reservation_release', $row->reserved_minutes, $row->start_date, 'leave_request', $row->id, 'Release pending reservation', $snapshot, $actorUserId);
@@ -105,9 +106,11 @@ class LeaveWorkflowService
                 $this->entry($account->id, $row->id, 'consumption', -$row->requested_minutes, $row->start_date, 'leave_approval', $row->id, 'Approved leave consumption', $snapshot, $actorUserId);
                 $type = DB::table('hr_leave_types')->find($row->leave_type_id);
                 if (!$type->paid)
-                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave', $row->start_date, $row->requested_minutes, 'leave_request', $row->id, ['request' => $row, 'leave_type' => $type], $actorUserId); }$this->event($row->id, $action, $row->status, $next, $reason, $snapshot, $actorUserId);
+                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave', $row->start_date, $row->requested_minutes, 'leave_request', $row->id, ['request' => $row, 'leave_type' => $type], $actorUserId);
+            }$this->event($row->id, $action, $row->status, $next, $reason, $snapshot, $actorUserId);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['status' => $next, 'decided_at' => now(), 'decided_by' => $actorUserId, 'updated_at' => now()]);
-            return DB::table('hr_leave_requests')->find($row->id); });
+            return DB::table('hr_leave_requests')->find($row->id);
+        });
     }
 
     public function cancel(string $requestId, string $reason, string $actorUserId): object
@@ -117,6 +120,7 @@ class LeaveWorkflowService
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_unless(in_array($row->status, ['pending_approval', 'approved'], true), 409, 'This leave request cannot be cancelled.');
+            abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; the recalled portion cannot also be cancelled.');
             $locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $row->end_date)->whereDate('period_end', '>=', $row->start_date)->exists();
             abort_if($locked && $row->status === 'approved', 409, 'Reopen the overlapping locked attendance period before cancelling approved leave.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
@@ -127,9 +131,11 @@ class LeaveWorkflowService
                 $this->entry($account->id, $row->id, 'consumption_reversal', $row->requested_minutes, $row->start_date, 'leave_cancel', $row->id, 'Cancelled approved leave', $snapshot, $actorUserId);
                 $fact = DB::table('hr_payroll_input_facts')->where('source_type', 'leave_request')->where('source_id', $row->id)->where('status', 'staged')->first();
                 if ($fact)
-                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $row->start_date, -$row->requested_minutes, 'leave_cancel', $row->id, ['reverses_fact_id' => $fact->id, 'reason' => $reason], $actorUserId); }$this->event($row->id, 'cancel', $row->status, 'cancelled', $reason, $snapshot, $actorUserId);
+                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $row->start_date, -$row->requested_minutes, 'leave_cancel', $row->id, ['reverses_fact_id' => $fact->id, 'reason' => $reason], $actorUserId);
+            }$this->event($row->id, 'cancel', $row->status, 'cancelled', $reason, $snapshot, $actorUserId);
             DB::table('hr_leave_requests')->where('id', $row->id)->update(['status' => 'cancelled', 'updated_at' => now()]);
-            return DB::table('hr_leave_requests')->find($row->id); });
+            return DB::table('hr_leave_requests')->find($row->id);
+        });
     }
 
     /**
@@ -150,6 +156,7 @@ class LeaveWorkflowService
             abort_unless($row, 404);
             abort_unless($row->status === 'approved', 409, 'Only an approved leave request can confirm a return to work.');
             abort_if($row->actual_return_date !== null, 409, 'A return to work was already confirmed for this request.');
+            abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled; it cannot also confirm a self-reported return.');
             abort_if($actualReturnDate < $row->start_date, 422, 'The return date cannot be before the leave started.');
             abort_if($actualReturnDate > $row->end_date, 422, 'A return after the approved end date requires the separate extension workflow, not a return-to-work confirmation.');
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
@@ -188,14 +195,15 @@ class LeaveWorkflowService
             abort_unless($row, 404);
             abort_unless($row->status === 'approved', 409, 'Only an approved leave request can be extended.');
             abort_if($row->actual_return_date !== null, 409, 'A return to work was already confirmed for this request.');
+            abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled and cannot be extended.');
             abort_if($row->unit === 'hour', 422, 'Hourly leave cannot be extended by end date; submit a new request for additional hours.');
             abort_unless($newEndDate > $row->end_date, 422, 'An extension must move the end date later than the current approved end date.');
             $extensionStart = CarbonImmutable::parse($row->end_date)->addDay()->toDateString();
             $locked = DB::table('hr_attendance_periods')->where('company_id', $row->company_id)->where('status', 'locked')->whereDate('period_start', '<=', $newEndDate)->whereDate('period_end', '>=', $extensionStart)->exists();
             abort_if($locked, 409, 'Reopen the overlapping locked attendance period before extending approved leave.');
-            $policy = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('status', 'approved')->whereDate('effective_from', '<=', $row->start_date)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->first();
+            $policy = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('status', 'approved')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->first();
             abort_unless($policy, 422, 'No approved leave policy covers the extended interval.');
-            abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $row->staff_id)->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $row->start_date)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->exists(), 422, 'The leave policy is not assigned for the full extended interval.');
+            abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $row->staff_id)->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $row->start_date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $newEndDate))->exists(), 422, 'The leave policy is not assigned for the full extended interval.');
             $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
             $newDays = $this->days(['company_id' => $row->company_id, 'unit' => $row->unit, 'start_date' => $extensionStart, 'end_date' => $newEndDate], $rules);
             $addedMinutes = array_sum(array_column($newDays, 'minutes'));
@@ -203,7 +211,7 @@ class LeaveWorkflowService
             $existingDayCount = DB::table('hr_leave_request_days')->where('leave_request_id', $row->id)->count();
             abort_if($existingDayCount + count($newDays) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The extension exceeds the policy consecutive-day limit.');
             $blackouts = $rules['blackout_dates'] ?? [];
-            abort_if(collect($newDays)->contains(fn ($day) => in_array($day['date'], $blackouts, true)), 422, 'The extension includes a policy blackout date.');
+            abort_if(collect($newDays)->contains(fn($day) => in_array($day['date'], $blackouts, true)), 422, 'The extension includes a policy blackout date.');
             $overlap = DB::table('hr_leave_requests')->where('staff_id', $row->staff_id)->where('id', '!=', $row->id)->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $newEndDate)->whereDate('end_date', '>=', $extensionStart)->exists();
             abort_if($overlap, 409, 'Another active leave request overlaps the extension interval.');
             $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
@@ -223,6 +231,44 @@ class LeaveWorkflowService
         });
     }
 
+    /**
+     * §5.9 recall: employer-initiated early termination of an already-approved
+     * leave request from a specified date, distinct from confirmReturn()
+     * (employee self-reported actual return) and cancel() (full withdrawal by
+     * requester or approver at any time). Recall is never self-actionable —
+     * the requester cannot recall their own request — and is mutually
+     * exclusive with a self-confirmed return-to-work on the same request.
+     */
+    public function recall(string $requestId, string $recallDate, string $reason, string $actorUserId): object
+    {
+        $this->enabled();
+        return DB::transaction(function () use ($requestId, $recallDate, $reason, $actorUserId) {
+            $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
+            abort_unless($row, 404);
+            abort_if($row->requested_by === $actorUserId, 403, 'The leave requester cannot recall their own request; recall is an employer-initiated action.');
+            abort_unless($row->status === 'approved', 409, 'Only an approved leave request can be recalled.');
+            abort_if($row->actual_return_date !== null, 409, 'A return to work was already confirmed for this request.');
+            abort_if($row->recalled_at !== null, 409, 'This leave request was already recalled.');
+            abort_if($recallDate < $row->start_date, 422, 'The recall date cannot be before the leave started.');
+            abort_if($recallDate > $row->end_date, 422, 'The recall date cannot be after the approved end date; use extension or cancellation instead.');
+            $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
+            $unusedDays = DB::table('hr_leave_request_days')->where('leave_request_id', $row->id)->whereDate('leave_date', '>', $recallDate)->get();
+            $reversedMinutes = (int) $unusedDays->sum('minutes');
+            abort_if($reversedMinutes <= 0, 422, 'The recall date leaves no unused reserved leave to release.');
+            $account = $this->account($row->company_id, $row->staff_id, $row->leave_type_id, $row->unit);
+            $this->entry($account->id, $row->id, 'return_release', $reversedMinutes, $recallDate, 'leave_recall', $row->id, 'Unused reserved leave released on recall', $snapshot + ['recall_date' => $recallDate, 'unused_days' => $unusedDays->pluck('leave_date')], $actorUserId);
+            $type = DB::table('hr_leave_types')->find($row->leave_type_id);
+            if (!$type->paid) {
+                $fact = DB::table('hr_payroll_input_facts')->where('source_type', 'leave_request')->where('source_id', $row->id)->where('status', 'staged')->first();
+                if ($fact)
+                    $this->payrollFact($row->company_id, $row->staff_id, 'unpaid_leave_reversal', $recallDate, -$reversedMinutes, 'leave_recall', $row->id, ['reverses_fact_id' => $fact->id, 'recall_date' => $recallDate], $actorUserId);
+            }
+            $this->event($row->id, 'recalled', $row->status, $row->status, $reason, $snapshot + ['recall_date' => $recallDate, 'reversed_minutes' => $reversedMinutes], $actorUserId);
+            DB::table('hr_leave_requests')->where('id', $row->id)->update(['recall_date' => $recallDate, 'recalled_by' => $actorUserId, 'recalled_at' => now(), 'updated_at' => now()]);
+            return DB::table('hr_leave_requests')->find($row->id);
+        });
+    }
+
     public function postBalance(string $accountId, string $entryType, int $minutes, string $effectiveDate, string $reason, string $actorUserId, string $idempotencyKey): LeaveBalanceEntry
     {
         $this->enabled();
@@ -231,7 +277,9 @@ class LeaveWorkflowService
             abort_unless(DB::table('hr_leave_balance_accounts')->where('id', $accountId)->lockForUpdate()->first(), 404);
             if ($existing = LeaveBalanceEntry::query()->where('source_type', 'manual_balance')->where('source_id', $idempotencyKey)->where('entry_type', $entryType)->first()) {
                 abort_unless($existing->account_id === $accountId && (int) $existing->minutes === $minutes && $existing->effective_date->toDateString() === $effectiveDate && $existing->reason === $reason, 409, 'Balance idempotency key was reused with different evidence.');
-                return $existing; }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, 'manual_balance', $idempotencyKey, $reason, ['idempotency_key' => $idempotencyKey], $actorUserId); });
+                return $existing;
+            }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, 'manual_balance', $idempotencyKey, $reason, ['idempotency_key' => $idempotencyKey], $actorUserId);
+        });
     }
 
     public function balance(string $accountId, string $asOf): int
@@ -245,7 +293,9 @@ class LeaveWorkflowService
             abort_unless(DB::table('hr_leave_balance_accounts')->where('id', $accountId)->lockForUpdate()->first(), 404);
             if ($existing = LeaveBalanceEntry::query()->where('source_type', $sourceType)->where('source_id', $sourceId)->where('entry_type', $entryType)->first()) {
                 abort_unless((int) $existing->minutes === $minutes && $existing->effective_date->toDateString() === $effectiveDate && $existing->expires_on?->toDateString() === $expiresOn, 409, 'Automated leave source was reused with different evidence.');
-                return $existing; }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, $sourceType, $sourceId, $reason, $snapshot, $actorUserId, $expiresOn); });
+                return $existing;
+            }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, $sourceType, $sourceId, $reason, $snapshot, $actorUserId, $expiresOn);
+        });
     }
     private function account(string $company, string $staff, string $type, string $unit): object
     {

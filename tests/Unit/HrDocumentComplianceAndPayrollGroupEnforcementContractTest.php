@@ -40,8 +40,8 @@ it('exposes document compliance rows to the Angular Employee 360 detail view', f
 
     expect($service)
         ->toContain('document_compliance: DocumentComplianceRow[];')
-        ->toContain("status:'satisfied'|'expired'|'missing';")
+        ->toContain("status:'satisfied'|'expiring_soon'|'expired'|'missing';expiry_date?:string|null;")
         ->and($component)
         ->toContain('Required-document compliance')
-        ->toContain("[tone]=\"row.status==='satisfied'?'success':(row.status==='expired'?'warning':'danger')\"");
+        ->toContain("[tone]=\"row.status==='satisfied'?'success':(row.status==='missing'?'danger':'warning')\"");
 });

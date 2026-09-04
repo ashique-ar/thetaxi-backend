@@ -46,6 +46,9 @@ class DocumentController extends Controller
             'owner_type' => ['nullable', 'string', 'max:50'],
             'owner_id' => ['nullable', 'uuid'],
             'document_type' => ['nullable', 'string', 'max:50'],
+            'employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'],
+            'date_from' => ['nullable', 'date'],
+            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'status' => ['nullable', 'string', 'in:pending,verified,rejected'],
             'search' => ['nullable', 'string', 'max:255'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -78,6 +81,18 @@ class DocumentController extends Controller
 
         if (!empty($data['document_type'])) {
             $query->where('document_type', $data['document_type']);
+        }
+
+        if (!empty($data['employment_spell_id'])) {
+            $query->where('employment_spell_id', $data['employment_spell_id']);
+        }
+
+        if (!empty($data['date_from'])) {
+            $query->whereDate('created_at', '>=', $data['date_from']);
+        }
+
+        if (!empty($data['date_to'])) {
+            $query->whereDate('created_at', '<=', $data['date_to']);
         }
 
         if (!empty($data['status'])) {
@@ -178,6 +193,14 @@ class DocumentController extends Controller
                 $ownerType === 'staff' && DB::table('hr_employment_spells')->where('id', $data['employment_spell_id'])->where('staff_id', $owner->getKey())->exists(),
                 422,
                 'The employment spell must belong to the document owner.'
+            );
+            // §5.3: uploads linked to a governed employment spell must use an approved
+            // hr_document_types code so §5.1 compliance computation (which joins on this
+            // same code) never silently misses a document filed under an unregistered type.
+            abort_unless(
+                DB::table('hr_document_types')->where('company_id', $owner->company_id)->where('code', $data['document_type'])->where('status', 'active')->exists(),
+                422,
+                'This document type is not an approved code in the governed HR document-type register.'
             );
         }
         $path = $file->store("documents/{$ownerType}/{$owner->getKey()}", $disk);

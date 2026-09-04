@@ -34,7 +34,7 @@ it('uses only primary and dotted lines for People team scope and projects approv
     expect($access)->toContain("whereIn('line_type', ['primary', 'dotted_line'])")
         ->and($people)->toContain('projectAssignmentManagers($assignment,$actor)')
         ->toContain('closeForEmploymentEnd')
-        ->and($reporting)->toContain("'hr_partner' => $assignment->hr_partner_staff_id")
+        ->and($reporting)->toContain('\'hr_partner\' => $assignment->hr_partner_staff_id,')
         ->toContain("'assignment-reporting:'")
         ->toContain("'reporting_line_cancelled'");
 });

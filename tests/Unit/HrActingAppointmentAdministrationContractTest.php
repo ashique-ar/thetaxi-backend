@@ -48,7 +48,7 @@ it('scopes list and reference names through current People access and retains em
         ->toContain("whereIn('appointment.staff_id', \$authorizedStaff)")
         ->toContain("whereIn('staff.id', \$authorizedStaff)")
         ->toContain("authorize(\$request->user(), Staff::query()->whereKey(\$appointment->staff_id)->firstOrFail())")
-        ->and($people)->toContain("'acting_appointments'=>\$actingAppointments");
+        ->and($people)->toContain("'acting_appointments' => \$actingAppointments,");
 });
 
 it('retains appointment events and refuses destructive rollback after use', function () {

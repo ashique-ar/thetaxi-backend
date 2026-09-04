@@ -4,8 +4,8 @@ it('gives People Core its own work-calendar write path independent of the attend
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
 
     expect($controller)
-        ->toContain('public function storeWorkCalendar(Request $request):JsonResponse')
-        ->toContain('public function storeWorkCalendarDay(Request $request,string $calendarId):JsonResponse')
+        ->toContain('public function storeWorkCalendar(Request $request): JsonResponse')
+        ->toContain('public function storeWorkCalendarDay(Request $request, string $calendarId): JsonResponse')
         ->not->toContain("hr.features.attendance_results");
 });
 

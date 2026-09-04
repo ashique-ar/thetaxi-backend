@@ -796,6 +796,7 @@ Route::middleware(['auth:api'])->group(function () {
     });
     Route::prefix('hr/organization')->middleware('ensure.internal')->group(function () {
         Route::get('units', [PeopleCoreController::class,'organization'])->middleware('permission:hr.organization.view');
+        Route::get('chart', [PeopleCoreController::class,'organizationChart'])->middleware('permission:hr.organization.view');
         Route::post('units', [PeopleCoreController::class,'storeOrganizationUnit'])->middleware('permission:hr.organization.manage');
         Route::put('units/{unitId}', [PeopleCoreController::class,'updateOrganizationUnit'])->whereUuid('unitId')->middleware('permission:hr.organization.manage');
         Route::get('job-families', [PeopleCoreController::class,'jobFamilies'])->middleware('permission:hr.organization.view');
@@ -838,6 +839,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('devices', [AttendanceDeviceController::class,'index'])->middleware('permission:hr.attendance.devices.view');
         Route::post('connectors', [AttendanceDeviceController::class,'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices', [AttendanceDeviceController::class,'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
+        Route::put('devices/{deviceId}', [AttendanceDeviceController::class,'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::get('person-mappings', [AttendanceDeviceController::class,'mappings'])->middleware('permission:hr.attendance.devices.view');
         Route::post('person-mappings', [AttendanceDeviceController::class,'storeMapping'])->middleware('permission:hr.attendance.mappings.manage');
         Route::post('person-mappings/{mappingId}/approve', [AttendanceDeviceController::class,'approveMapping'])->whereUuid('mappingId')->middleware('permission:hr.attendance.mappings.approve');
         Route::get('health', [AttendanceDeviceController::class,'health'])->middleware('permission:hr.attendance.devices.view');
@@ -849,18 +852,26 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('access-commands/{commandId}/approve', [AttendanceDeviceController::class,'approveAccess'])->whereUuid('commandId')->middleware('permission:hr.attendance.access.approve');
         Route::get('results', [AttendanceResultController::class,'index'])->middleware('permission:hr.attendance.results.view');
         Route::post('results/calculate', [AttendanceResultController::class,'calculate'])->middleware('permission:hr.attendance.results.calculate');
+        Route::get('calendars', [AttendanceResultController::class,'calendars'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::get('calendars/{calendarId}/days', [AttendanceResultController::class,'calendarDays'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::post('calendars', [AttendanceResultController::class,'storeCalendar'])->middleware('permission:hr.attendance.config.manage');
         Route::post('calendars/{calendarId}/days', [AttendanceResultController::class,'storeCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
+        Route::get('shifts', [AttendanceResultController::class,'shifts'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::post('shifts', [AttendanceResultController::class,'storeShift'])->middleware('permission:hr.attendance.config.manage');
+        Route::get('policies', [AttendanceResultController::class,'policies'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::post('policies', [AttendanceResultController::class,'storePolicy'])->middleware('permission:hr.attendance.config.manage');
         Route::post('policies/{policyId}/approve', [AttendanceResultController::class,'approvePolicy'])->whereUuid('policyId')->middleware('permission:hr.attendance.config.approve');
+        Route::get('rosters', [AttendanceResultController::class,'rosters'])->middleware('permission:hr.attendance.results.view');
         Route::post('rosters', [AttendanceResultController::class,'storeRoster'])->middleware('permission:hr.attendance.config.manage');
+        Route::post('rosters/bulk', [AttendanceResultController::class,'storeRosterBulk'])->middleware('permission:hr.attendance.config.manage');
         Route::post('rosters/{rosterId}/approve', [AttendanceResultController::class,'approveRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.approve');
+        Route::get('corrections', [AttendanceResultController::class,'corrections'])->middleware('permission:hr.attendance.results.view');
         Route::post('corrections', [AttendanceResultController::class,'requestCorrection'])->middleware('permission:hr.attendance.corrections.request');
         Route::post('corrections/{correctionId}/approve', [AttendanceResultController::class,'approveCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
         Route::post('corrections/{correctionId}/reject', [AttendanceResultController::class,'rejectCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
         Route::get('exceptions', [AttendanceResultController::class,'exceptions'])->middleware('permission:hr.attendance.results.view');
         Route::post('exceptions/{exceptionId}/resolve', [AttendanceResultController::class,'resolveException'])->whereUuid('exceptionId')->middleware('permission:hr.attendance.exceptions.resolve');
+        Route::get('periods', [AttendanceResultController::class,'periods'])->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
         Route::post('periods', [AttendanceResultController::class,'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
         Route::post('periods/{periodId}/transition', [AttendanceResultController::class,'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage');
     });
@@ -873,10 +884,14 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('leave/requests/{id}/cancel', [WorkforceController::class,'cancelLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
         Route::post('leave/requests/{id}/confirm-return', [WorkforceController::class,'confirmLeaveReturn'])->whereUuid('id')->middleware('permission:hr.leave.request');
         Route::post('leave/requests/{id}/extend', [WorkforceController::class,'extendLeave'])->whereUuid('id')->middleware('permission:hr.leave.request');
+        Route::post('leave/requests/{id}/recall', [WorkforceController::class,'recallLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');
         Route::post('leave/balance-accounts/{accountId}/entries', [WorkforceController::class,'postBalance'])->whereUuid('accountId')->middleware('permission:hr.leave.balances.post');
+        Route::get('leave/types', [WorkforceController::class,'leaveTypes'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
         Route::post('leave/types', [WorkforceController::class,'storeLeaveType'])->middleware('permission:hr.leave.config.manage');
+        Route::get('leave/policies', [WorkforceController::class,'leavePolicies'])->middleware('permission:hr.leave.config.manage|hr.leave.config.approve');
         Route::post('leave/policies', [WorkforceController::class,'storeLeavePolicy'])->middleware('permission:hr.leave.config.manage');
         Route::post('leave/policies/{id}/approve', [WorkforceController::class,'approveLeavePolicy'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
+        Route::get('leave/policy-assignments', [WorkforceController::class,'leavePolicyAssignments'])->middleware('permission:hr.leave.view');
         Route::post('leave/policy-assignments', [WorkforceController::class,'assignLeavePolicy'])->middleware('permission:hr.leave.config.manage');
         Route::post('leave/policy-assignments/{id}/approve', [WorkforceController::class,'approveLeaveAssignment'])->whereUuid('id')->middleware('permission:hr.leave.config.approve');
         Route::get('work-requests', [WorkforceController::class,'workRequests'])->middleware('permission:hr.work-requests.view');
@@ -911,6 +926,7 @@ Route::middleware(['auth:api'])->group(function () {
     });
     Route::prefix('hr/lifecycle')->group(function(){
         Route::get('cases',[LifecycleController::class,'cases'])->middleware('permission:hr.lifecycle.view');
+        Route::get('templates',[LifecycleController::class,'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');
         Route::post('templates',[LifecycleController::class,'storeTemplate'])->middleware('permission:hr.lifecycle.manage');
         Route::post('templates/{id}/approve',[LifecycleController::class,'approveTemplate'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
         Route::post('cases',[LifecycleController::class,'openCase'])->middleware('permission:hr.lifecycle.manage');
@@ -946,6 +962,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('sessions',[LearningController::class,'storeSession'])->middleware('permission:hr.learning.manage');
         Route::get('requirements',[LearningController::class,'requirements'])->middleware('permission:hr.learning.view');
         Route::post('requirements',[LearningController::class,'storeRequirement'])->middleware('permission:hr.learning.manage');
+        Route::get('compliance',[LearningController::class,'compliance'])->middleware('permission:hr.learning.view');
         Route::post('enrollments',[LearningController::class,'enroll'])->middleware('permission:hr.learning.nominate');
         Route::post('enrollments/{id}/approve',[LearningController::class,'approve'])->whereUuid('id')->middleware('permission:hr.learning.approve');
         Route::post('enrollments/{id}/complete',[LearningController::class,'complete'])->whereUuid('id')->middleware('permission:hr.learning.complete');

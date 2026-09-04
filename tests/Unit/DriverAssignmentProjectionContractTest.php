@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('uses an allowlisted driver assignment projection without raw model serialization', function () {
     $source = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));

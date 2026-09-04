@@ -34,5 +34,5 @@ it('governs document types as a versioned legal-entity register reusing the shar
 it('scopes required-document rules to an approved category list without inventing statutory document requirements', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
 
-    expect($controller)->toContain("Rule::in(['contract','appointment_letter','policy_acknowledgement','certificate','identification','bank_evidence','disciplinary_document','exit_document','other'])");
+    expect($controller)->toContain("Rule::in(['contract', 'appointment_letter', 'policy_acknowledgement', 'certificate', 'identification', 'bank_evidence', 'disciplinary_document', 'exit_document', 'other'])");
 });

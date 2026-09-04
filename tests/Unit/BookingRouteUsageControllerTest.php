@@ -4,7 +4,6 @@ use App\Http\Controllers\Api\BookingRouteUsageController;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
-uses(Tests\TestCase::class);
 
 it('records only normalized booking route evidence when pilot collection is enabled', function () {
     config()->set('booking_observability.route_usage', [

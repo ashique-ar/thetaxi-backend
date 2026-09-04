@@ -8,8 +8,8 @@ it('owns Staff custom-field values behind internal People scope and separate per
     expect($routes)->toContain("Route::prefix('hr/employees')->middleware('ensure.internal')")
         ->toContain("Route::put('{staffId}/custom-fields/{definitionId}'")
         ->toContain('permission:hr.custom-fields.values.manage')
-        ->and($controller)->toContain("authorize(\$request->user(),\$staff)")
-        ->toContain("'custom_field_values'=>\$this->customFieldValues->listForStaff(\$staff,\$request->user())")
+        ->and($controller)->toContain("authorize(\$request->user(), \$staff)")
+        ->toContain("'custom_field_values' => \$this->customFieldValues->listForStaff(\$staff, \$request->user())")
         ->and($seeder)->toContain("'hr.custom-fields.values.view'")
         ->toContain("'hr.custom-fields.sensitive.view'")
         ->toContain("'hr.custom-fields.legal.view'");

@@ -5,7 +5,6 @@ use App\Services\CorporateService;
 use Database\Seeders\CorporateDynamicPricingSeeder;
 use Illuminate\Validation\ValidationException;
 
-uses(Tests\TestCase::class);
 
 it('defines every corporate pricing source explicitly', function () {
     $mapping = (new ReflectionClass(CorporateDynamicPricingSeeder::class))

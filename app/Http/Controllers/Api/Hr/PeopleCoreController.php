@@ -147,6 +147,36 @@ class PeopleCoreController extends Controller
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
+    /**
+     * §5.1/QH1-01: "dated organization chart/HR dashboard." The pre-existing
+     * organization() list is flat and paginated (up to 100 rows per page), so it
+     * cannot render a hierarchy. This read-only endpoint returns every unit
+     * effective on the requested date (default today) for the actor's legal
+     * entity in one response — a chart needs the whole graph, not one page of
+     * it — each carrying its parent, manager identity (reusing the exact
+     * staff/users join pattern already used for reporting-line manager
+     * display), and current active position count. No new schema.
+     */
+    public function organizationChart(Request $request): JsonResponse
+    {
+        $this->ensureEnabled();
+        $data = $request->validate(['as_of' => ['nullable', 'date']]);
+        $companyId = $this->access->actorCompanyId($request->user());
+        $asOf = $data['as_of'] ?? now()->toDateString();
+        $units = DB::table('hr_organization_units as unit')
+            ->leftJoin('staff as manager_staff', 'manager_staff.id', '=', 'unit.manager_staff_id')
+            ->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
+            ->where('unit.company_id', $companyId)->where('unit.effective_from', '<=', $asOf)
+            ->where(fn($q) => $q->whereNull('unit.effective_until')->orWhere('unit.effective_until', '>', $asOf))
+            ->select(['unit.id', 'unit.parent_id', 'unit.unit_type', 'unit.code', 'unit.name', 'unit.status', 'unit.manager_staff_id', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])
+            ->orderBy('unit.name')->get();
+        $positionCounts = DB::table('hr_positions')->where('company_id', $companyId)->where('status', '!=', 'inactive')
+            ->where('effective_from', '<=', $asOf)->where(fn($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $asOf))
+            ->groupBy('organization_unit_id')->selectRaw('organization_unit_id, count(*) as count')->pluck('count', 'organization_unit_id');
+        $rows = $units->map(fn($unit) => (array) $unit + ['position_count' => (int) ($positionCounts[$unit->id] ?? 0)])->values();
+        return response()->json(['status' => 'success', 'data' => ['as_of' => $asOf, 'units' => $rows]]);
+    }
+
     public function storeOrganizationUnit(Request $request): JsonResponse
     {
         $this->ensureEnabled();
@@ -828,7 +858,14 @@ class PeopleCoreController extends Controller
             $matches = $held->get($type->code, collect());
             $current = $matches->first(fn($document) => !$type->requires_expiry || !$document->expiry_date || $document->expiry_date->toDateString() >= $today);
             $status = $current ? 'satisfied' : ($matches->isNotEmpty() ? 'expired' : 'missing');
-            $rows[] = ['document_type_id' => $type->id, 'code' => $type->code, 'name' => $type->name, 'category' => $type->category, 'requires_expiry' => (bool) $type->requires_expiry, 'status' => $status];
+            $expiryDate = $current?->expiry_date?->toDateString();
+            // §5.3 renewal reminder: a satisfied, expiry-tracked document within its own
+            // type's configured renewal_reminder_days window is reported as expiring_soon
+            // rather than satisfied. Read-only computed status only — no notification is sent;
+            // an unconfigured renewal_reminder_days never implies a default reminder window.
+            if ($status === 'satisfied' && $type->requires_expiry && $type->renewal_reminder_days && $expiryDate && $expiryDate <= now()->addDays((int) $type->renewal_reminder_days)->toDateString())
+                $status = 'expiring_soon';
+            $rows[] = ['document_type_id' => $type->id, 'code' => $type->code, 'name' => $type->name, 'category' => $type->category, 'requires_expiry' => (bool) $type->requires_expiry, 'status' => $status, 'expiry_date' => $expiryDate];
         }
 
         return $rows;

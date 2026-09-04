@@ -2,8 +2,6 @@
 
 use Tests\TestCase;
 
-uses(TestCase::class);
-
 it('keeps vehicle-owner commitments independent from finance and lease lifecycle actions', function () {
     $service = file_get_contents(app_path('Services/VehicleLeaseService.php'));
 

@@ -5,7 +5,6 @@ use App\Services\UserContextService;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
-uses(Tests\TestCase::class);
 
 it('rejects corporate portal context from internal policy management', function () {
     $user = new App\Models\User;

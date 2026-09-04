@@ -34,6 +34,18 @@ class AttendanceResultController extends Controller
         return response()->json(['status'=>'success','data'=>$service->calculate($data['company_id'],$data['staff_id'],$data['work_date'],$request->user()->id)]);
     }
 
+    public function calendars(Request $request): JsonResponse
+    {
+        $data=$request->validate(['company_id'=>['nullable','uuid']]); $companyId=$this->actorCompany($request,$data['company_id']??null);
+        return response()->json(['status'=>'success','data'=>DB::table('hr_work_calendars')->where('company_id',$companyId)->orderBy('code')->get()]);
+    }
+
+    public function calendarDays(Request $request,string $calendarId): JsonResponse
+    {
+        $calendar=DB::table('hr_work_calendars')->find($calendarId); abort_unless($calendar,404); $this->sameCompany($request,$calendar->company_id);
+        return response()->json(['status'=>'success','data'=>DB::table('hr_work_calendar_days')->where('calendar_id',$calendarId)->orderBy('calendar_date')->get()]);
+    }
+
     public function storeCalendar(Request $request): JsonResponse
     {
         $this->writes(); $data=$request->validate(['company_id'=>['required','uuid'],'code'=>['required','string','max:80'],'name'=>['required','string','max:255'],'timezone'=>['required','timezone'],'weekly_working_days'=>['required','array','min:1'],'weekly_working_days.*'=>['required',Rule::in(['monday','tuesday','wednesday','thursday','friday','saturday','sunday'])],'effective_from'=>['required','date'],'effective_until'=>['nullable','date','after:effective_from']]); $this->sameCompany($request,$data['company_id']);
@@ -46,10 +58,22 @@ class AttendanceResultController extends Controller
         $id=(string)Str::uuid(); DB::table('hr_work_calendar_days')->insert($data+['id'=>$id,'calendar_id'=>$calendarId,'created_at'=>now(),'updated_at'=>now()]); return response()->json(['status'=>'success','data'=>DB::table('hr_work_calendar_days')->find($id)],201);
     }
 
+    public function shifts(Request $request): JsonResponse
+    {
+        $data=$request->validate(['company_id'=>['nullable','uuid']]); $companyId=$this->actorCompany($request,$data['company_id']??null);
+        return response()->json(['status'=>'success','data'=>DB::table('hr_shift_definitions')->where('company_id',$companyId)->orderBy('code')->get()]);
+    }
+
     public function storeShift(Request $request): JsonResponse
     {
         $this->writes(); $data=$request->validate(['company_id'=>['required','uuid'],'code'=>['required','string','max:80'],'name'=>['required','string','max:255'],'start_time'=>['required','date_format:H:i'],'end_time'=>['required','date_format:H:i'],'ends_next_day'=>['required','boolean'],'unpaid_break_minutes'=>['required','integer','min:0','max:600'],'grace_in_minutes'=>['required','integer','min:0','max:180'],'grace_out_minutes'=>['required','integer','min:0','max:180'],'minimum_half_day_minutes'=>['required','integer','min:1','max:1440'],'minimum_full_day_minutes'=>['required','integer','min:1','max:1440'],'timezone'=>['required','timezone'],'effective_from'=>['required','date'],'effective_until'=>['nullable','date','after:effective_from']]); $this->sameCompany($request,$data['company_id']); abort_if($data['minimum_half_day_minutes']>$data['minimum_full_day_minutes'],422,'Half-day minutes cannot exceed full-day minutes.');
         $id=(string)Str::uuid(); DB::table('hr_shift_definitions')->insert($data+['id'=>$id,'status'=>'active','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]); return response()->json(['status'=>'success','data'=>DB::table('hr_shift_definitions')->find($id)],201);
+    }
+
+    public function policies(Request $request): JsonResponse
+    {
+        $data=$request->validate(['company_id'=>['nullable','uuid'],'status'=>['nullable',Rule::in(['draft','pending_approval','approved'])]]); $companyId=$this->actorCompany($request,$data['company_id']??null);
+        return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_policies')->where('company_id',$companyId)->when($data['status']??null,fn($q,$v)=>$q->where('status',$v))->latest('created_at')->get()]);
     }
 
     public function storePolicy(Request $request): JsonResponse
@@ -63,10 +87,43 @@ class AttendanceResultController extends Controller
         $this->writes(); return DB::transaction(function()use($request,$policyId){$row=DB::table('hr_attendance_policies')->where('id',$policyId)->lockForUpdate()->first();abort_unless($row,404);$this->sameCompany($request,$row->company_id);abort_if($row->created_by===$request->user()->id,409,'Policy creator cannot approve the same policy.');abort_unless($row->status==='pending_approval',409,'Only a pending policy may be approved.');DB::table('hr_attendance_policies')->where('id',$policyId)->update(['status'=>'approved','approved_by'=>$request->user()->id,'approved_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_policies')->find($policyId)]);});
     }
 
+    public function rosters(Request $request,StaffAccessService $access): JsonResponse
+    {
+        $data=$request->validate(['staff_id'=>['nullable','uuid'],'status'=>['nullable',Rule::in(['pending_approval','approved'])]]);
+        $staffIds=$access->scope(Staff::query(),$request->user())->when($data['staff_id']??null,fn($q,$id)=>$q->whereKey($id))->select('id');
+        $query=DB::table('hr_roster_assignments')->whereIn('staff_id',$staffIds)->when(($data['status']??null)==='approved',fn($q)=>$q->whereNotNull('approved_at'))->when(($data['status']??null)==='pending_approval',fn($q)=>$q->whereNull('approved_at'))->latest('created_at');
+        return response()->json(['status'=>'success','data'=>$query->paginate($request->integer('per_page',50))]);
+    }
+
     public function storeRoster(Request $request): JsonResponse
     {
         $this->writes(); $data=$request->validate(['company_id'=>['required','uuid'],'staff_id'=>['required','uuid'],'calendar_id'=>['required','uuid'],'shift_id'=>['required','uuid'],'policy_id'=>['required','uuid'],'effective_from'=>['required','date'],'effective_until'=>['nullable','date','after:effective_from'],'reason'=>['required','string','max:500']]);$this->sameCompany($request,$data['company_id']);
         return DB::transaction(function()use($request,$data){DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->first();foreach(['staff'=>'staff_id','hr_work_calendars'=>'calendar_id','hr_shift_definitions'=>'shift_id','hr_attendance_policies'=>'policy_id']as$table=>$field)abort_unless(DB::table($table)->where('id',$data[$field])->where('company_id',$data['company_id'])->exists(),422,'Roster references must belong to one legal entity.');$overlap=DB::table('hr_roster_assignments')->where('staff_id',$data['staff_id'])->whereDate('effective_from','<',$data['effective_until']??'9999-12-31')->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>',$data['effective_from']))->exists();abort_if($overlap,409,'An overlapping roster already exists.');$id=(string)Str::uuid();DB::table('hr_roster_assignments')->insert($data+['id'=>$id,'created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_roster_assignments')->find($id)],201);});
+    }
+
+    /**
+     * §5.6 QH2-02: "bulk roster assignment" — assigns one shared calendar/shift/policy/effective
+     * window to many staff in one atomic call, reusing storeRoster's exact per-staff legal-entity
+     * and overlap checks. A staff row that already has an overlapping roster is skipped and
+     * reported rather than aborting the whole batch, matching the partial-row-error convention
+     * already used for QS5-02 target import.
+     */
+    public function storeRosterBulk(Request $request): JsonResponse
+    {
+        $this->writes(); $data=$request->validate(['company_id'=>['required','uuid'],'staff_ids'=>['required','array','min:1','max:200'],'staff_ids.*'=>['required','uuid','distinct'],'calendar_id'=>['required','uuid'],'shift_id'=>['required','uuid'],'policy_id'=>['required','uuid'],'effective_from'=>['required','date'],'effective_until'=>['nullable','date','after:effective_from'],'reason'=>['required','string','max:500']]); $this->sameCompany($request,$data['company_id']);
+        return DB::transaction(function()use($request,$data){
+            DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->first();
+            foreach(['hr_work_calendars'=>'calendar_id','hr_shift_definitions'=>'shift_id','hr_attendance_policies'=>'policy_id']as$table=>$field)abort_unless(DB::table($table)->where('id',$data[$field])->where('company_id',$data['company_id'])->exists(),422,'Roster references must belong to one legal entity.');
+            $created=[];$skipped=[];
+            foreach($data['staff_ids']as$staffId){
+                if(!DB::table('staff')->where('id',$staffId)->where('company_id',$data['company_id'])->exists()){$skipped[]=['staff_id'=>$staffId,'reason'=>'Staff does not belong to this legal entity.'];continue;}
+                $overlap=DB::table('hr_roster_assignments')->where('staff_id',$staffId)->whereDate('effective_from','<',$data['effective_until']??'9999-12-31')->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>',$data['effective_from']))->exists();
+                if($overlap){$skipped[]=['staff_id'=>$staffId,'reason'=>'An overlapping roster already exists.'];continue;}
+                $id=(string)Str::uuid();DB::table('hr_roster_assignments')->insert(['id'=>$id,'company_id'=>$data['company_id'],'staff_id'=>$staffId,'calendar_id'=>$data['calendar_id'],'shift_id'=>$data['shift_id'],'policy_id'=>$data['policy_id'],'effective_from'=>$data['effective_from'],'effective_until'=>$data['effective_until']??null,'reason'=>$data['reason'],'created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
+                $created[]=DB::table('hr_roster_assignments')->find($id);
+            }
+            return response()->json(['status'=>'success','data'=>['created'=>$created,'skipped'=>$skipped]],201);
+        });
     }
 
     public function approveRoster(Request $request,string $rosterId): JsonResponse
@@ -78,6 +135,14 @@ class AttendanceResultController extends Controller
     {
         $this->writes();$data=$request->validate(['staff_id'=>['required','uuid'],'work_date'=>['required','date'],'correction_type'=>['required',Rule::in(['missing_punch','wrong_direction','wrong_status','worked_minutes','payable_minutes'])],'requested_values'=>['required','array'],'reason'=>['required','string','max:2000'],'evidence_references'=>['nullable','array'],'idempotency_key'=>['required','string','max:160']]);$staff=Staff::query()->findOrFail($data['staff_id']);$access->authorize($request->user(),$staff,'view');
         $checksum=hash('sha256',json_encode(['staff_id'=>$data['staff_id'],'work_date'=>$data['work_date'],'correction_type'=>$data['correction_type'],'requested_values'=>$data['requested_values'],'reason'=>$data['reason'],'evidence_references'=>$data['evidence_references']??null],JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));if($existing=DB::table('hr_attendance_correction_requests')->where('idempotency_key',$data['idempotency_key'])->first()){abort_unless(hash_equals($existing->request_checksum,$checksum),409,'Correction idempotency key was reused with different evidence.');$projection->attendanceCorrection($existing,$request->user()->id);return response()->json(['status'=>'success','data'=>$existing]);}$current=AttendanceDailyResult::query()->where('staff_id',$staff->id)->whereDate('work_date',$data['work_date'])->latest('result_version')->first();$id=(string)Str::uuid();DB::table('hr_attendance_correction_requests')->insert($this->json($data,['requested_values','evidence_references'])+['id'=>$id,'company_id'=>$staff->company_id,'current_result_id'=>$current?->id,'status'=>'pending_approval','request_checksum'=>$checksum,'requested_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);$row=DB::table('hr_attendance_correction_requests')->find($id);$projection->attendanceCorrection($row,$request->user()->id);return response()->json(['status'=>'success','data'=>$row],201);
+    }
+
+    public function corrections(Request $request,StaffAccessService $access): JsonResponse
+    {
+        $data=$request->validate(['staff_id'=>['nullable','uuid'],'status'=>['nullable',Rule::in(['pending_approval','approved','rejected'])]]);
+        $staffIds=$access->scope(Staff::query(),$request->user())->when($data['staff_id']??null,fn($q,$id)=>$q->whereKey($id))->select('id');
+        $query=DB::table('hr_attendance_correction_requests')->whereIn('staff_id',$staffIds)->select(['id','staff_id','work_date','correction_type','requested_values','reason','status','requested_by','decided_by','decided_at','decision_note','created_at'])->when($data['status']??null,fn($q,$v)=>$q->where('status',$v))->latest('created_at');
+        return response()->json(['status'=>'success','data'=>$query->paginate($request->integer('per_page',50))]);
     }
 
     public function approveCorrection(Request $request,string $correctionId,AttendanceResultService $service,HrDomainRequestProjectionService $projection): JsonResponse
@@ -100,6 +165,12 @@ class AttendanceResultController extends Controller
         $data=$request->validate(['resolution_note'=>['required','string','max:2000']]);return DB::transaction(function()use($request,$exceptionId,$data){$row=DB::table('hr_attendance_exceptions')->where('id',$exceptionId)->lockForUpdate()->first();abort_unless($row,404);$this->sameCompany($request,$row->company_id);abort_unless($row->status==='open',409,'Only open exceptions may be resolved.');DB::table('hr_attendance_exceptions')->where('id',$exceptionId)->update(['status'=>'resolved','resolved_at'=>now(),'resolved_by'=>$request->user()->id,'resolution_note'=>$data['resolution_note'],'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_exceptions')->find($exceptionId)]);});
     }
 
+    public function periods(Request $request): JsonResponse
+    {
+        $data=$request->validate(['company_id'=>['nullable','uuid'],'status'=>['nullable',Rule::in(['open','reviewed','locked'])]]); $companyId=$this->actorCompany($request,$data['company_id']??null);
+        return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_periods')->where('company_id',$companyId)->when($data['status']??null,fn($q,$v)=>$q->where('status',$v))->orderByDesc('period_start')->get()]);
+    }
+
     public function storePeriod(Request $request): JsonResponse
     {
         $this->writes();$data=$request->validate(['company_id'=>['required','uuid'],'period_start'=>['required','date'],'period_end'=>['required','date','after_or_equal:period_start'],'timezone'=>['required','timezone']]);$this->sameCompany($request,$data['company_id']);return DB::transaction(function()use($data){DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->first();$overlap=DB::table('hr_attendance_periods')->where('company_id',$data['company_id'])->whereDate('period_start','<=',$data['period_end'])->whereDate('period_end','>=',$data['period_start'])->exists();abort_if($overlap,409,'Attendance periods cannot overlap.');$id=(string)Str::uuid();DB::table('hr_attendance_periods')->insert($data+['id'=>$id,'status'=>'open','version'=>1,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_periods')->find($id)],201);});
@@ -111,6 +182,7 @@ class AttendanceResultController extends Controller
     }
 
     private function sameCompany(Request $request,string $companyId): void{$actorCompany=Staff::query()->where('user_id',$request->user()->id)->value('company_id');abort_unless($actorCompany&&$actorCompany===$companyId,403,'Attendance data is outside your legal entity.');}
+    private function actorCompany(Request $request,?string $requestedCompanyId): string{$actorCompany=Staff::query()->where('user_id',$request->user()->id)->value('company_id');abort_unless($actorCompany,403,'The authenticated user has no staff legal-entity context.');abort_if($requestedCompanyId&&$requestedCompanyId!==$actorCompany,403,'Attendance data is outside your legal entity.');return $actorCompany;}
     private function writes():void{abort_unless(config('hr.features.attendance_results',false),409,'Attendance result writes are not enabled.');}
     private function json(array $data,array $keys):array{foreach($keys as$key)if(array_key_exists($key,$data))$data[$key]=$data[$key]===null?null:json_encode($data[$key],JSON_THROW_ON_ERROR);return $data;}
 }

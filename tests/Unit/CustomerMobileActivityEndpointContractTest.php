@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Str;
 
-uses(Tests\TestCase::class);
 
 it('keeps customer activity authenticated, ownership scoped, and free of pricing inputs', function () {
     $routes = file_get_contents(base_path('routes/api.php'));

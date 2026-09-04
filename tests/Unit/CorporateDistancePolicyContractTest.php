@@ -10,7 +10,6 @@ use App\Models\Corporate\CorporateServiceDistancePolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
 
-uses(Tests\TestCase::class);
 
 function validCorporateDistancePolicyPayload(): array
 {
