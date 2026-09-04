@@ -120,6 +120,17 @@ class CommissionHoldRemediationService
             );
         }
 
+        if ($code === 'legal_entity_missing') {
+            return $this->contract(
+                'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
+                $actor, 'sales.attributions.correct', '/sales/attribution-operations',
+                'Establish missing legal entity',
+                'Choose the correct acquisition-owner Sales Profile; its own legal entity becomes the frozen attribution entity. This governed command is backdated to the original secured time and requires a subsequent plan-family resolution before the linked commission adjustment becomes previewable.',
+                false,
+                true,
+            );
+        }
+
         if ($code === 'plan_family_missing') {
             return $this->contract(
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
@@ -173,8 +184,11 @@ class CommissionHoldRemediationService
         if ($code === 'fx_snapshot_missing') {
             return $this->contract(
                 'fx_evidence', 'booking_payment_ledger', 'linked_adjustment_required',
-                $actor, null, null, null,
-                'The canonical receipt lacks governed historical FX/LKR evidence. Existing reporting-FX correction commands cannot invent the missing original snapshot; Finance-approved evidence and a dedicated linked adjustment are required.',
+                $actor, 'sales.payment-adjustments.create', '/sales/payment-adjustments',
+                'Establish missing FX/LKR snapshot',
+                'The canonical receipt component lacks governed historical FX/LKR evidence. The existing reporting-FX correction command cannot invent it — it only corrects a component that already has complete evidence. A dedicated Finance-policy-reproducible establishment command records one immutable snapshot for the current unreversed component balance; the linked commission-adjustment preview becomes available only after it exists and reconciles.',
+                false,
+                true,
             );
         }
 
@@ -211,8 +225,10 @@ class CommissionHoldRemediationService
             return $this->contract(
                 'payment_finality', 'booking_payment_ledger', 'linked_adjustment_required',
                 $actor, 'sales.payment-finality.transition', '/sales/payment-finality',
-                'Review canonical finality history',
-                'An unknown finality state cannot be formula-released. Correct only through an authorized linked ledger event and preserve this decision as historical evidence.',
+                'Transition to a recognized finality state',
+                'An unknown finality state cannot be formula-released. Governed-transition the receipt to a recognized confirmed state under an approved policy, then preview the linked commission adjustment; this decision remains immutable historical evidence.',
+                false,
+                true,
             );
         }
 

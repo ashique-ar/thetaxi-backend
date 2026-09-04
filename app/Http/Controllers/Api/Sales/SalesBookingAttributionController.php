@@ -176,6 +176,27 @@ class SalesBookingAttributionController extends Controller
         return response()->json(['status' => 'success', 'data' => $updated]);
     }
 
+    public function establishLegalEntity(Request $request, string $attribution): JsonResponse
+    {
+        $data = $request->validate([
+            'to_sales_profile_id' => ['required', 'uuid'],
+            'reason' => ['required', 'string', 'max:2000'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
+        ]);
+        $attribution = $this->scopedAttribution($request, $attribution);
+        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+
+        $updated = $this->mutations->establishLegalEntity(
+            $attribution,
+            $target,
+            $data['reason'],
+            $data['idempotency_key'],
+            $request->user()->id,
+        );
+
+        return response()->json(['status' => 'success', 'data' => $updated]);
+    }
+
     public function correctCollectionHandler(Request $request, string $attribution): JsonResponse
     {
         $data = $request->validate([

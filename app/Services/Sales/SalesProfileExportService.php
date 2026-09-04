@@ -16,6 +16,8 @@ use Throwable;
 
 class SalesProfileExportService
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     public function purgeExpired(): int
     {
         $purged = 0;
@@ -82,7 +84,7 @@ class SalesProfileExportService
         ?string $sourceIp = null,
     ): SalesProfileExport
     {
-        $retentionDays = config('sales.profile_exports.retention_days');
+        $retentionDays = $this->policySettings->profileExportRetentionDays($companyFilter);
         if (! is_int($retentionDays) || $retentionDays < 1) {
             $this->fail(
                 'CONFIGURATION_MISSING',

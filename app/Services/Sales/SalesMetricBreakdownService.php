@@ -10,6 +10,8 @@ use Illuminate\Support\Str;
 
 class SalesMetricBreakdownService
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     /**
      * Resolve report-relative cohort and stable commission category without
      * exposing or mutating the raw metric-fact dimensions.
@@ -18,7 +20,7 @@ class SalesMetricBreakdownService
      */
     public function resolve(Collection $facts, string $companyId, string $from, string $to): array
     {
-        $timezone = config('sales.business_timezone');
+        $timezone = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required for metric cohort calculations.');
         $fromDate = CarbonImmutable::parse($from, $timezone)->startOfDay();

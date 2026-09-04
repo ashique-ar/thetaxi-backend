@@ -9,10 +9,12 @@ use Illuminate\Support\Facades\DB;
 
 class SalesCollectionAgingStatusService
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     /** @return array<string, mixed> */
     public function source(string $companyId, array $profileIds, string $from, string $to): array
     {
-        $timezoneName = config('sales.business_timezone');
+        $timezoneName = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezoneName) && $timezoneName !== '', 409,
             'An approved Sales business timezone is required for collection aging.');
         try {

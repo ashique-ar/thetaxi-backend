@@ -20,13 +20,12 @@ class SalesPeriodCloseService
         private readonly SalesPerformanceService $performance,
         private readonly SalesAlertPolicyContract $alertPolicyContract,
         private readonly DomainEventPublisher $events,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function preview(string $companyId, string $periodStart, string $cutoffAt): array
     {
-        abort_unless(config('sales.features.performance_snapshots', false), 409,
-            'Sales performance snapshot writes are not enabled.');
-        $timezone = config('sales.business_timezone');
+        $timezone = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezone) && $timezone !== '' && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required before a performance period can close.');
         $start = CarbonImmutable::parse($periodStart, $timezone)->startOfDay();
@@ -40,6 +39,9 @@ class SalesPeriodCloseService
             ->where('period_type', 'month')->where('period_start', $start->utc())
             ->where('period_end', $endExclusiveUtc)->first();
         $blockers = [];
+        if (! $this->policySettings->featureEnabled($companyId, 'performance_snapshots')) {
+            $blockers[] = ['code' => 'performance_snapshots_not_activated', 'count' => 1];
+        }
         if ($cutoff->lt($endExclusiveUtc)) $blockers[] = ['code' => 'period_not_complete', 'count' => 1];
         if ($lock?->state === 'locked') $blockers[] = ['code' => 'period_already_locked', 'count' => 1];
 
@@ -271,6 +273,8 @@ class SalesPeriodCloseService
                     'The period-reopen idempotency key was reused with different evidence.');
                 return $this->result($existing->id);
             }
+            abort_unless($this->policySettings->featureEnabled((string) $lock->company_id, 'performance_snapshots'), 409,
+                'Sales performance snapshot writes are not activated for this legal entity.');
             abort_unless($lock->state === 'locked', 409, 'Only a locked Sales period can be reopened.');
             abort_unless((int) $lock->lock_version === $expectedVersion, 409, 'The Sales period lock version is stale.');
             $version = $expectedVersion + 1;

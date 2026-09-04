@@ -7,6 +7,7 @@ use App\Models\Booking\BookingPaymentSchedule;
 use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\CollectionWorkAgingService;
+use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Console\Command;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
@@ -21,6 +22,7 @@ class ProcessBookingPaymentSchedules extends Command
     public function __construct(
         private readonly CollectionWorkAgingService $aging,
         private readonly BookingPaymentLedgerService $ledger,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {
         parent::__construct();
     }
@@ -209,7 +211,8 @@ class ProcessBookingPaymentSchedules extends Command
 
     private function extendRollingHorizons($asOf, bool $dryRun): array
     {
-        if (config('sales.features.rolling_payment_schedules', false) !== true) {
+        if (config('sales.features.rolling_payment_schedules', false) !== true
+            || ! Schema::hasTable('sales_company_feature_settings')) {
             return [0, 0, 0];
         }
         if (! Schema::hasTable('booking_payment_schedule_rules')
@@ -225,6 +228,9 @@ class ProcessBookingPaymentSchedules extends Command
         BookingPaymentScheduleRule::query()->where('status', 'active')->orderBy('id')
             ->chunkById(100, function ($rules) use ($asOf, $dryRun, &$rulesExtended, &$occurrences, &$failures): void {
                 foreach ($rules as $rule) {
+                    if (! $this->policySettings->featureEnabled((string) $rule->company_id, 'rolling_payment_schedules')) {
+                        continue;
+                    }
                     try {
                         $result = $this->ledger->extendRollingScheduleRule($rule, $asOf, null, $dryRun);
                         if ((int) $result['generated_count'] > 0) {

@@ -20,6 +20,8 @@ use Illuminate\Support\Facades\DB;
 
 class SalesMetricFactService
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     public function record(array $fact): ?SalesMetricFact
     {
         if (empty($fact['company_id']) || empty($fact['sales_profile_id'])) {
@@ -45,7 +47,7 @@ class SalesMetricFactService
                 'The metric source was already projected with different facts.');
             if ($existing) return $existing;
 
-            $timezone = config('sales.business_timezone');
+            $timezone = $this->policySettings->businessTimezone($payload['company_id']);
             $timezoneIsApproved = is_string($timezone) && $timezone !== ''
                 && in_array($timezone, DateTimeZone::listIdentifiers(), true);
             if (! $timezoneIsApproved) {

@@ -15,11 +15,13 @@ use Illuminate\Validation\ValidationException;
 
 class CommissionPayoutService
 {
-    public function __construct(private readonly DomainEventPublisher $events) {}
+    public function __construct(
+        private readonly DomainEventPublisher $events,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function pay(array $statementIds, array $data, string $actorUserId): SalesCommissionPayout
     {
-        abort_unless(config('sales.features.payouts', false), 409, 'Commission payouts are not activated.');
         return DB::transaction(function () use ($statementIds, $data, $actorUserId) {
             $checksum = $this->checksum(['statement_ids' => array_values($statementIds), ...$data]);
             $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
@@ -34,6 +36,8 @@ class CommissionPayoutService
             }
             abort_if($statements->pluck('company_id')->unique()->count() !== 1 || $statements->pluck('staff_id')->unique()->count() !== 1,
                 422, 'A payout cannot cross legal entities or Staff beneficiaries.');
+            abort_unless($this->policySettings->featureEnabled((string) $statements->first()->company_id, 'payouts'), 409,
+                'Commission payouts are not activated for this legal entity.');
             abort_if($statements->contains(fn ($statement) => ! in_array($statement->status, ['approved', 'partially_paid'], true)),
                 422, 'Only approved or partially paid statements can be paid.');
             abort_if($statements->contains(fn ($statement) => in_array($actorUserId, [$statement->prepared_by, $statement->approved_by], true)),
@@ -98,7 +102,6 @@ class CommissionPayoutService
 
     public function reverse(SalesCommissionPayout $original, array $data, string $actorUserId): SalesCommissionPayout
     {
-        abort_unless(config('sales.features.payouts', false), 409, 'Commission payouts are not activated.');
         return DB::transaction(function () use ($original, $data, $actorUserId) {
             $original = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($original->id);
             $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
@@ -107,6 +110,8 @@ class CommissionPayoutService
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout reversal key was already used with different facts.');
                 return $duplicate;
             }
+            abort_unless($this->policySettings->featureEnabled((string) $original->company_id, 'payouts'), 409,
+                'Commission payouts are not activated for this legal entity.');
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');
             if (! empty($data['evidence_file_id'])) {

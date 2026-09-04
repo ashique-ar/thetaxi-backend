@@ -10,6 +10,7 @@ use App\Services\Sales\SalesCommissionStatusService;
 use App\Services\Sales\SalesCollectionAgingStatusService;
 use App\Services\Sales\SalesFrozenCollectionAgingService;
 use App\Services\Sales\SalesMetricBreakdownService;
+use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
 use App\Support\Foundation\CanonicalJson;
@@ -29,6 +30,7 @@ class SalesDashboardController extends Controller
         private readonly SalesCommissionStatusService $commissionStatuses,
         private readonly SalesCollectionAgingStatusService $collectionAging,
         private readonly SalesFrozenCollectionAgingService $frozenAging,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function context(Request $request): JsonResponse
@@ -345,13 +347,15 @@ class SalesDashboardController extends Controller
                 : null,
         ];
         $alertEvidenceEnabled = config('sales.features.performance_alert_evaluations', false);
-        $alertActionsEnabled = config('sales.features.performance_alert_actions', false);
+        $alertEvaluationsEnabled = $this->policySettings->featureEnabled((string) $companyId, 'performance_alert_evaluations');
+        $alertActionEvidenceAvailable = config('sales.features.performance_alert_actions', false);
+        $alertActionsEnabled = $this->policySettings->featureEnabled((string) $companyId, 'performance_alert_actions');
         $alertFields = ['alert.id', 'alert.sales_profile_id', 'staff.code as staff_code', 'alert.alert_type',
             'alert.severity', 'alert.status', 'alert.explanation', 'alert.detected_at', 'alert.assigned_to',
             'owner_staff.code as owner_staff_code'];
         if ($alertEvidenceEnabled) array_push($alertFields,
             'alert.threshold_snapshot', 'alert.comparison_snapshot', 'alert.policy_contract_snapshot');
-        if ($alertActionsEnabled) array_push($alertFields, 'alert.event_version', 'alert.snoozed_until',
+        if ($alertActionEvidenceAvailable) array_push($alertFields, 'alert.event_version', 'alert.snoozed_until',
             'alert.escalation_level', 'alert.escalated_at', 'alert.last_action_at');
         $alertsQuery = DB::table('sales_performance_alerts as alert')
             ->join('sales_kpi_snapshots as alert_snapshot', 'alert_snapshot.id', '=', 'alert.snapshot_id')
@@ -365,7 +369,7 @@ class SalesDashboardController extends Controller
             ->where('alert_snapshot.status', 'frozen')
             ->whereIn('alert.status', ($data['include_resolved_alerts'] ?? false) ? ['open', 'acknowledged', 'resolved'] : ['open', 'acknowledged'])
             ->orderByRaw("CASE alert.severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
-            ->when($alertActionsEnabled, fn ($q) => $q->where(fn ($inner) => $inner->whereNull('alert.snoozed_until')->orWhere('alert.snoozed_until', '<=', now())))
+            ->when($alertActionEvidenceAvailable, fn ($q) => $q->where(fn ($inner) => $inner->whereNull('alert.snoozed_until')->orWhere('alert.snoozed_until', '<=', now())))
             ->orderByDesc('alert.detected_at')->orderBy('alert.id');
         $alerts = $this->paginateQuery($alertsQuery, $alertFields,
             (int) ($data['alerts_page'] ?? 1), (int) ($data['alerts_per_page'] ?? 10),
@@ -383,6 +387,7 @@ class SalesDashboardController extends Controller
             'drilldown_scope' => ['company_id' => $companyId,
                 'sales_profile_id' => $selectedProfile?->id, 'currency' => 'LKR'],
             'upcoming_collections' => $upcoming, 'alerts' => $alerts,
+            'alert_evaluations_enabled' => $alertEvaluationsEnabled,
             'alert_actions_enabled' => $alertActionsEnabled, 'data_quality' => $quality,
             'commission_status' => collect($commissionStatus)->except('rows')->all(),
             'collection_aging' => collect($agingStatus)->except('rows')->all()]]);

@@ -30,6 +30,7 @@ use App\Services\Sales\CommissionHoldService;
 use App\Services\Sales\SalesMetricFactService;
 use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\Sales\RollingPaymentScheduleService;
+use App\Services\Sales\SalesPolicySettingsService;
 use Carbon\CarbonInterface;
 
 class BookingPaymentLedgerService
@@ -39,6 +40,7 @@ class BookingPaymentLedgerService
         private readonly CommissionHoldService $commissionHolds,
         private readonly SalesMetricFactService $metricFacts,
         private readonly RollingPaymentScheduleService $rollingSchedules,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function createRollingScheduleRule(Booking $booking, array $data, string $actorUserId): array
@@ -994,7 +996,8 @@ class BookingPaymentLedgerService
             return ['status' => $policy->official_collection_state];
         }
 
-        return ['status' => config('sales.features.enforce_payment_finality', false) ? 'policy_missing' : 'confirmed'];
+        return ['status' => $companyId && $this->policySettings->featureEnabled($companyId, 'enforce_payment_finality')
+            ? 'policy_missing' : 'confirmed'];
     }
 
     public function transitionReceiptFinality(
@@ -1016,6 +1019,7 @@ class BookingPaymentLedgerService
                 return $receipt;
             }
             abort_if($receipt->finality_status === $toStatus, 422, 'The receipt already has the requested finality status.');
+            $knownStatuses = ['pending_clearance', 'policy_missing', 'confirmed', 'failed'];
             $allowed = [
                 'pending_clearance' => ['confirmed', 'failed'],
                 'policy_missing' => ['pending_clearance', 'confirmed', 'failed'],
@@ -1024,10 +1028,18 @@ class BookingPaymentLedgerService
                 'confirmed' => [],
                 'failed' => [],
             ];
-            abort_unless(in_array($toStatus, $allowed[$receipt->finality_status] ?? [], true), 422, 'The requested receipt-finality transition is not allowed.');
+            // A receipt whose current status is not one of the four states this state machine
+            // recognizes (a payment_finality_unknown commission hold's exact trigger) has no key
+            // in $allowed above and could otherwise never be governed-transitioned out of it at all.
+            // Treat it as permissively as the most-open known state so it can be reclassified.
+            $allowedTargets = in_array($receipt->finality_status, $knownStatuses, true)
+                ? ($allowed[$receipt->finality_status] ?? [])
+                : ['pending_clearance', 'confirmed', 'failed'];
+            abort_unless(in_array($toStatus, $allowedTargets, true), 422, 'The requested receipt-finality transition is not allowed.');
 
             $finalityPolicy = null;
-            if (in_array($receipt->finality_status, ['policy_missing', 'pending_clearance'], true)
+            if ((in_array($receipt->finality_status, ['policy_missing', 'pending_clearance'], true)
+                    || ! in_array($receipt->finality_status, $knownStatuses, true))
                 && $toStatus === 'confirmed') {
                 $policies = BookingPaymentFinalityPolicy::query()
                     ->where('company_id', $receipt->company_id)

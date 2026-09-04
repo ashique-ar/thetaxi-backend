@@ -25,6 +25,7 @@ class CommissionStatementService
         private readonly CommissionCycleResolver $cycles,
         private readonly CommissionBusinessCalendarService $businessCalendars,
         private readonly DomainEventPublisher $events,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function preview(SalesProfile $profile, array $data): array
@@ -34,7 +35,8 @@ class CommissionStatementService
 
     public function generate(SalesProfile $profile, array $data, string $actorUserId): SalesCommissionStatement
     {
-        abort_unless(config('sales.features.statements', false), 409, 'Commission statement generation is not activated.');
+        abort_unless($this->policySettings->featureEnabled((string) $profile->company_id, 'statements'), 409,
+            'Commission statement generation is not activated for this legal entity.');
         return DB::transaction(function () use ($profile, $data, $actorUserId) {
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);

@@ -121,6 +121,7 @@ use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\Sales\BookingPaymentAdjustmentController;
 use App\Http\Controllers\Api\Sales\CollectionScheduleWorkflowController;
 use App\Http\Controllers\Api\Sales\CommissionConfigurationController;
+use App\Http\Controllers\Api\Sales\SalesPolicySettingsController;
 use App\Http\Controllers\Api\Sales\CommissionDecisionController;
 use App\Http\Controllers\Api\Sales\CommissionHoldController;
 use App\Http\Controllers\Api\Sales\CommissionRecoveryController;
@@ -552,6 +553,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-owner', [SalesBookingAttributionController::class, 'correctOwner'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
+        Route::post('attributions/{attribution}/establish-legal-entity', [SalesBookingAttributionController::class, 'establishLegalEntity'])
+            ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-collection-handler', [SalesBookingAttributionController::class, 'correctCollectionHandler'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::get('attributions/{attribution}/plan-family-correction-preview', [SalesBookingAttributionController::class, 'previewPlanFamilyCorrection'])
@@ -569,6 +572,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('bookings/{booking}/payment-adjustments', [BookingPaymentAdjustmentController::class, 'store'])
             ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
         Route::post('bookings/{booking}/payment-adjustments/preview', [BookingPaymentAdjustmentController::class, 'preview'])
+            ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
+        Route::post('bookings/{booking}/payment-adjustments/fx-establishment', [BookingPaymentAdjustmentController::class, 'establishFxSnapshot'])
+            ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
+        Route::post('bookings/{booking}/payment-adjustments/fx-establishment/preview', [BookingPaymentAdjustmentController::class, 'previewFxEstablishment'])
             ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
         Route::get('payment-adjustment-context', [BookingPaymentAdjustmentController::class, 'context'])
             ->middleware('permission:sales.payment-adjustments.create');
@@ -616,6 +623,24 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware('permission:sales.payment-ledger.reconcile');
         Route::post('payment-receipts/{receipt}/repair-components', [PaymentLedgerReconciliationController::class, 'repairComponents'])
             ->whereUuid('receipt')->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('policy-settings/context', [SalesPolicySettingsController::class, 'context'])
+            ->middleware('permission:sales.policy-settings.view');
+        Route::get('policy-settings', [SalesPolicySettingsController::class, 'index'])
+            ->middleware('permission:sales.policy-settings.view');
+        Route::post('policy-settings', [SalesPolicySettingsController::class, 'store'])
+            ->middleware('permission:sales.policy-settings.manage');
+        Route::post('policy-settings/{setting}/approve', [SalesPolicySettingsController::class, 'approve'])
+            ->whereUuid('setting')->middleware('permission:sales.policy-settings.approve');
+        Route::post('policy-settings/features', [SalesPolicySettingsController::class, 'storeFeature'])
+            ->middleware('permission:sales.policy-settings.manage');
+        Route::post('policy-settings/features/{feature}/approve', [SalesPolicySettingsController::class, 'approveFeature'])
+            ->whereUuid('feature')->middleware('permission:sales.policy-settings.approve');
+        Route::post('policy-settings/staff-categories', [SalesPolicySettingsController::class, 'storeStaffCategory'])
+            ->middleware('permission:sales.policy-settings.manage');
+        Route::post('policy-settings/staff-categories/{category}/approve', [SalesPolicySettingsController::class, 'approveStaffCategory'])
+            ->whereUuid('category')->middleware('permission:sales.policy-settings.approve');
+        Route::post('policy-settings/staff-categories/{category}/retire', [SalesPolicySettingsController::class, 'retireStaffCategory'])
+            ->whereUuid('category')->middleware('permission:sales.policy-settings.manage');
         Route::get('commission-configuration-context', [CommissionConfigurationController::class, 'context'])
             ->middleware('permission:sales.commission-config.view');
         Route::get('commission-configuration', [CommissionConfigurationController::class, 'index'])

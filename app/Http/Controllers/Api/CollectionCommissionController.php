@@ -12,9 +12,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use App\Services\Sales\SalesPolicySettingsService;
 
 class CollectionCommissionController extends Controller
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     public function me(Request $request): JsonResponse
     {
         $request->query->remove('staff_id');
@@ -66,7 +69,7 @@ class CollectionCommissionController extends Controller
 
     public function markPaid(Request $request): JsonResponse
     {
-        abort_if(config('sales.features.commission_accrual', false) || config('sales.features.payouts', false), 409,
+        abort_if(config('sales.features.commission_accrual', false), 409,
             'Direct commission payment is disabled. Generate, approve, and pay a commission statement through the Finance workflow.');
         $data = $request->validate([
             'commission_ids' => ['required', 'array', 'min:1'],
@@ -89,6 +92,10 @@ class CollectionCommissionController extends Controller
             if ($commissions->pluck('staff_id')->unique()->count() !== 1) {
                 throw ValidationException::withMessages(['commission_ids' => ['Create a separate payout for each staff member.']]);
             }
+            $companyIds = Staff::query()->whereIn('id', $commissions->pluck('staff_id'))->pluck('company_id')->filter()->unique();
+            abort_unless($companyIds->count() === 1, 422, 'Legacy commissions must resolve to one legal entity before direct payment.');
+            abort_if($this->policySettings->featureEnabled((string) $companyIds->first(), 'payouts'), 409,
+                'Direct commission payment is disabled for this legal entity. Use the approved statement payout workflow.');
             $payout = CollectionCommissionPayout::create([
                 'payout_number' => 'CCP-' . now()->format('YmdHis') . '-' . strtoupper(substr((string) \Illuminate\Support\Str::uuid(), 0, 6)),
                 'period_start' => \Illuminate\Support\Carbon::parse($commissions->min('earned_at'))->toDateString(),
@@ -198,11 +205,18 @@ class CollectionCommissionController extends Controller
             ->log('legacy_collection_commissions_read');
 
         $payload = $response->getData(true);
+        $visibleStaffIds = collect(data_get($payload, 'data.data', []))->pluck('staff_id')->filter()->unique();
+        $companyIds = Staff::query()->whereIn('id', $visibleStaffIds)->pluck('company_id')->filter()->unique();
+        if ($companyIds->isEmpty()) {
+            $companyIds = Staff::query()->where('user_id', $request->user()->id)->whereNull('deleted_at')
+                ->pluck('company_id')->filter()->unique();
+        }
+        $tenantPayoutEnabled = $companyIds->contains(fn ($companyId) => $this->policySettings->featureEnabled((string) $companyId, 'payouts'));
         $payload['compatibility'] = [
             'deprecated' => true,
             'successor' => '/api/sales/commission-statements',
             'direct_payment_available' => ! config('sales.features.commission_accrual', false)
-                && ! config('sales.features.payouts', false),
+                && ! $tenantPayoutEnabled,
         ];
         $response->setData($payload);
         $response->headers->set('Deprecation', 'true');

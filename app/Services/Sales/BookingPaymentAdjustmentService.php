@@ -22,7 +22,10 @@ class BookingPaymentAdjustmentService
         private readonly BookingPaymentLedgerService $ledger,
         private readonly CommissionRecoveryService $commissionRecoveries,
         private readonly SalesMetricFactService $metricFacts,
-    ) {}
+        private readonly SalesPolicySettingsService $policySettings,
+    )
+    {
+    }
 
     public function record(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
     {
@@ -34,19 +37,20 @@ class BookingPaymentAdjustmentService
                 ->where('idempotency_key', $data['idempotency_key'])
                 ->first();
             if ($duplicate) {
-                if (! hash_equals((string) $duplicate->request_payload_checksum, $payloadChecksum)) {
+                if (!hash_equals((string) $duplicate->request_payload_checksum, $payloadChecksum)) {
                     throw ValidationException::withMessages([
                         'idempotency_key' => ['This adjustment key was already used with different facts.'],
                     ]);
                 }
 
                 $recovery = SalesCommissionRecoveryCase::query()->where('payment_adjustment_id', $duplicate->id)->first();
-                if ($recovery) $duplicate->setRelation('commission_recovery_case', $recovery);
+                if ($recovery)
+                    $duplicate->setRelation('commission_recovery_case', $recovery);
                 return $duplicate;
             }
-            $component = ! empty($data['receipt_component_id'])
+            $component = !empty($data['receipt_component_id'])
                 ? BookingPaymentReceiptComponent::query()->whereKey($data['receipt_component_id'])
-                    ->whereHas('receipt', fn ($q) => $q->where('booking_id', $booking->id))
+                    ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))
                     ->lockForUpdate()->firstOrFail()
                 : null;
 
@@ -59,13 +63,15 @@ class BookingPaymentAdjustmentService
                 $data = $this->freezeFxEvidence($component, $earning, $data, true);
                 $data['booking_id'] = $booking->id;
                 $preview = $this->fxPreview($earning, $data);
-                if (! hash_equals($preview['preview_checksum'], (string) ($data['preview_checksum'] ?? ''))) {
+                if (!hash_equals($preview['preview_checksum'], (string) ($data['preview_checksum'] ?? ''))) {
                     throw ValidationException::withMessages(['preview_checksum' => ['The FX correction preview is missing or stale.']]);
                 }
             }
             $data['source_currency'] = strtoupper((string) $data['source_currency']);
-            if (isset($data['fx_source'])) $data['fx_source'] = trim((string) $data['fx_source']);
-            if (isset($data['fx_quote_base'])) $data['fx_quote_base'] = trim((string) $data['fx_quote_base']);
+            if (isset($data['fx_source']))
+                $data['fx_source'] = trim((string) $data['fx_source']);
+            if (isset($data['fx_quote_base']))
+                $data['fx_quote_base'] = trim((string) $data['fx_quote_base']);
             $adjustment = BookingPaymentAdjustment::create([
                 ...$data,
                 'booking_id' => $booking->id,
@@ -149,7 +155,7 @@ class BookingPaymentAdjustmentService
     public function previewReportingFx(Booking $booking, array $data): array
     {
         $component = BookingPaymentReceiptComponent::query()->whereKey($data['receipt_component_id'])
-            ->whereHas('receipt', fn ($q) => $q->where('booking_id', $booking->id))->firstOrFail();
+            ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))->firstOrFail();
         $component->load('receipt');
         $earning = $this->validateDimensions($component, $data);
         $facts = $this->freezeFxEvidence($component, $earning, $data, false);
@@ -157,23 +163,247 @@ class BookingPaymentAdjustmentService
         return $this->fxPreview($earning, $facts);
     }
 
+    /**
+     * Establishes the FX/LKR snapshot for a receipt component whose evidence was never captured
+     * (the fx_snapshot_missing commission hold), as opposed to previewReportingFx()/record()'s
+     * 'reporting_fx' dimension, which only corrects a component that already has complete evidence
+     * and is tied to an existing earned decision — neither precondition holds here. This write is
+     * purely evidentiary: it never mutates the original component/receipt row, and the resulting
+     * commission entitlement is created only through CommissionHoldAdjustmentService's own
+     * checksum-bound, maker-checker-separated preview/append gate.
+     */
+    public function previewFxSnapshotEstablishment(Booking $booking, array $data): array
+    {
+        $component = BookingPaymentReceiptComponent::query()->whereKey($data['receipt_component_id'])
+            ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))->firstOrFail();
+        $component->load('receipt');
+        $facts = $this->validateFxEstablishment($component, $data, $booking);
+
+        return $this->fxEstablishmentPreview($facts);
+    }
+
+    public function establishFxSnapshot(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
+    {
+        return DB::transaction(function () use ($booking, $data, $actorUserId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $payloadChecksum = $this->payloadChecksum($booking->id, $data);
+            $duplicate = BookingPaymentAdjustment::query()
+                ->where('booking_id', $booking->id)->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($duplicate) {
+                if (!hash_equals((string) $duplicate->request_payload_checksum, $payloadChecksum)) {
+                    throw ValidationException::withMessages([
+                        'idempotency_key' => ['This establishment key was already used with different facts.'],
+                    ]);
+                }
+
+                return $duplicate;
+            }
+
+            $component = BookingPaymentReceiptComponent::query()->whereKey($data['receipt_component_id'])
+                ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))
+                ->lockForUpdate()->firstOrFail();
+            $component->load('receipt');
+            $facts = $this->validateFxEstablishment($component, $data, $booking);
+            $preview = $this->fxEstablishmentPreview($facts);
+            if (!hash_equals($preview['preview_checksum'], (string) ($data['preview_checksum'] ?? ''))) {
+                throw ValidationException::withMessages(['preview_checksum' => ['The FX establishment preview is missing or stale.']]);
+            }
+            if (
+                BookingPaymentAdjustment::query()->where('receipt_component_id', $component->id)
+                    ->where('impact_dimension', 'fx_establishment')->lockForUpdate()->exists()
+            ) {
+                throw ValidationException::withMessages(['receipt_component_id' => ['This receipt component already has an immutable established FX snapshot.']]);
+            }
+
+            $adjustment = BookingPaymentAdjustment::create([
+                'booking_id' => $booking->id,
+                'receipt_id' => $component->receipt_id,
+                'receipt_component_id' => $component->id,
+                'company_id' => $component->receipt->company_id,
+                'impact_dimension' => 'fx_establishment',
+                'adjustment_type' => 'fx_establishment',
+                'direction' => 'establish',
+                'source_amount' => $facts['source_amount'],
+                'source_currency' => $facts['source_currency'],
+                'lkr_amount' => $facts['lkr_amount'],
+                'fx_rate_to_lkr' => $facts['fx_rate_to_lkr'],
+                'fx_rate_at' => $facts['fx_rate_at'],
+                'fx_source' => $facts['fx_source'],
+                'fx_quote_base' => $facts['fx_quote_base'],
+                'fx_calculation_mode' => $facts['fx_calculation_mode'],
+                'adjustment_effective_at' => $facts['adjustment_effective_at'],
+                'reason' => $facts['reason'],
+                'reference' => $facts['reference'],
+                'idempotency_key' => $data['idempotency_key'],
+                'preview_checksum' => $preview['preview_checksum'],
+                'request_payload_checksum' => $payloadChecksum,
+                'approved_by' => $actorUserId,
+                'approved_at' => now(),
+                'created_user_id' => $actorUserId,
+            ]);
+
+            $this->events->record(
+                'sales',
+                $adjustment->company_id,
+                'booking_payment_adjustment',
+                $adjustment->id,
+                'sales.payment.fx_established',
+                1,
+                1,
+                [
+                    'booking_id' => $booking->id,
+                    'receipt_id' => $adjustment->receipt_id,
+                    'receipt_component_id' => $adjustment->receipt_component_id,
+                    'source_amount' => (string) $adjustment->source_amount,
+                    'source_currency' => $adjustment->source_currency,
+                    'lkr_amount' => (string) $adjustment->lkr_amount,
+                    'fx_rate_to_lkr' => (string) $adjustment->fx_rate_to_lkr,
+                    'fx_rate_at' => $adjustment->fx_rate_at?->toISOString(),
+                    'fx_source' => $adjustment->fx_source,
+                ],
+                $adjustment->adjustment_effective_at,
+                $adjustment->idempotency_key,
+            );
+
+            return $adjustment;
+        }, 3);
+    }
+
+    private function validateFxEstablishment(BookingPaymentReceiptComponent $component, array $data, Booking $booking): array
+    {
+        if (!$this->policySettings->featureEnabled((string) $component->receipt->company_id, 'fx_corrections')) {
+            throw ValidationException::withMessages(['impact_dimension' => ['FX establishment is disabled until Finance approves the operating policy.']]);
+        }
+        $policy = $this->policySettings->fxCorrectionsPolicy((string) $component->receipt->company_id);
+        if (
+            !$policy['approved_quote_base'] || !in_array(
+                $policy['calculation_mode'] ?? null,
+                ['multiply_source_by_rate', 'divide_source_by_rate'],
+                true
+            )
+            || $policy['max_rate_age_hours'] === null || $policy['rounding_scale'] === null
+        ) {
+            throw ValidationException::withMessages(['impact_dimension' => ['Reporting-FX correction policy is incomplete.']]);
+        }
+        if (($data['fx_quote_base'] ?? null) !== $policy['approved_quote_base']) {
+            throw ValidationException::withMessages(['fx_quote_base' => ['The quote/base convention is not the Finance-approved convention.']]);
+        }
+        if (($data['fx_calculation_mode'] ?? null) !== $policy['calculation_mode']) {
+            throw ValidationException::withMessages(['fx_calculation_mode' => ['The conversion operation is not the Finance-approved operation.']]);
+        }
+        if (!$component->receipt || $component->receipt->booking_id !== $booking->id) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['The receipt component does not belong to this booking.']]);
+        }
+        if ($component->receipt->finality_status !== 'confirmed') {
+            throw ValidationException::withMessages(['receipt_component_id' => ['Only a confirmed receipt component can establish a missing FX snapshot.']]);
+        }
+        if (!$component->receipt->company_id) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['The original receipt has no canonical legal-entity identity.']]);
+        }
+        $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id');
+        if (!$attributionCompanyId || $attributionCompanyId !== $component->receipt->company_id) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
+        }
+        $hasOpenFxHold = SalesCommissionDecision::query()->where('receipt_component_id', $component->id)
+            ->whereIn('status', ['held', 'shadow_held'])->where('hold_code', 'fx_snapshot_missing')->exists();
+        if (!$hasOpenFxHold) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['This receipt component has no open fx_snapshot_missing commission hold to establish evidence for.']]);
+        }
+        if ($component->lkr_amount !== null || $component->receipt->fx_rate_to_lkr !== null) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['The component already has FX/LKR evidence; use the reporting-FX correction command instead.']]);
+        }
+        if (
+            BookingPaymentAdjustment::query()->where('receipt_component_id', $component->id)
+                ->where('impact_dimension', 'fx_establishment')->exists()
+        ) {
+            throw ValidationException::withMessages(['receipt_component_id' => ['This receipt component already has an immutable established FX snapshot.']]);
+        }
+        if (strtoupper((string) $data['source_currency']) !== strtoupper((string) $component->receipt->source_currency)) {
+            throw ValidationException::withMessages(['source_currency' => ['The establishment must retain the original receipt currency.']]);
+        }
+        $sourceBasis = max(0, round((float) $component->source_amount - (float) $component->adjusted_source_amount, 4));
+        if ($sourceBasis <= 0 || round((float) $data['source_amount'], 4) !== $sourceBasis) {
+            throw ValidationException::withMessages(['source_amount' => ['The established source amount must equal the exact current unreversed component balance.']]);
+        }
+        $rateAt = CarbonImmutable::parse($data['fx_rate_at']);
+        $effectiveAt = CarbonImmutable::parse($component->receipt->received_at);
+        if ($rateAt->greaterThan($effectiveAt) || $rateAt->diffInHours($effectiveAt) > (int) $policy['max_rate_age_hours']) {
+            throw ValidationException::withMessages(['fx_rate_at' => ['The established rate is future-dated relative to the original receipt or older than the approved maximum age.']]);
+        }
+        $scale = (int) $policy['rounding_scale'];
+        $suppliedLkr = (float) $data['lkr_amount'];
+        $expectedLkr = round($policy['calculation_mode'] === 'multiply_source_by_rate'
+            ? $sourceBasis * (float) $data['fx_rate_to_lkr']
+            : $sourceBasis / (float) $data['fx_rate_to_lkr'], $scale);
+        if (abs($suppliedLkr - round($suppliedLkr, $scale)) > 0.00005 || abs($expectedLkr - $suppliedLkr) > 0.00005) {
+            throw ValidationException::withMessages(['lkr_amount' => ['The established LKR amount does not reproduce from the approved quote/base and rounding policy.']]);
+        }
+
+        return [
+            'booking_id' => $booking->id,
+            'receipt_component_id' => $component->id,
+            'source_amount' => $sourceBasis,
+            'source_currency' => strtoupper((string) $data['source_currency']),
+            'lkr_amount' => round($suppliedLkr, 4),
+            'fx_rate_to_lkr' => (float) $data['fx_rate_to_lkr'],
+            'fx_rate_at' => $rateAt,
+            'fx_source' => trim((string) $data['fx_source']),
+            'fx_quote_base' => trim((string) $data['fx_quote_base']),
+            'fx_calculation_mode' => $data['fx_calculation_mode'],
+            'adjustment_effective_at' => $effectiveAt,
+            'reason' => trim((string) $data['reason']),
+            'reference' => isset($data['reference']) ? trim((string) $data['reference']) : null,
+        ];
+    }
+
+    private function fxEstablishmentPreview(array $facts): array
+    {
+        $previewFacts = [
+            'booking_id' => $facts['booking_id'],
+            'receipt_component_id' => $facts['receipt_component_id'],
+            'source_amount' => number_format((float) $facts['source_amount'], 4, '.', ''),
+            'source_currency' => $facts['source_currency'],
+            'lkr_amount' => number_format((float) $facts['lkr_amount'], 4, '.', ''),
+            'fx_rate_to_lkr' => number_format((float) $facts['fx_rate_to_lkr'], 10, '.', ''),
+            'fx_rate_at' => $facts['fx_rate_at']->toIso8601String(),
+            'fx_source' => $facts['fx_source'],
+            'fx_quote_base' => $facts['fx_quote_base'],
+            'fx_calculation_mode' => $facts['fx_calculation_mode'],
+            'adjustment_effective_at' => $facts['adjustment_effective_at']->toIso8601String(),
+            'reference' => $facts['reference'],
+        ];
+
+        return [
+            'establishment_allowed' => true,
+            'frozen_facts' => $facts,
+            'preview_facts' => $previewFacts,
+            'preview_checksum' => hash('sha256', CanonicalJson::encode($previewFacts)),
+            'write_performed' => false,
+        ];
+    }
+
     private function validateDimensions(?BookingPaymentReceiptComponent $component, array $data): ?SalesCommissionDecision
     {
         $dimension = $data['impact_dimension'];
-        if ($dimension === 'cash_receipt' && ! $component) {
+        if ($dimension === 'cash_receipt' && !$component) {
             throw ValidationException::withMessages(['receipt_component_id' => ['Cash/receipt adjustments must identify the original receipt component.']]);
         }
         if ($dimension === 'reporting_fx') {
-            if ($data['adjustment_type'] !== 'fx_correction' || ! $component) {
+            if ($data['adjustment_type'] !== 'fx_correction' || !$component) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Reporting-FX corrections must identify an original receipt component.']]);
             }
-            if (! config('sales.features.fx_corrections', false)) {
+            if (!$this->policySettings->featureEnabled((string) $component->receipt->company_id, 'fx_corrections')) {
                 throw ValidationException::withMessages(['impact_dimension' => ['Reporting-FX corrections are disabled until Finance approves the operating policy.']]);
             }
-            $policy = config('sales.fx_corrections', []);
-            if (! $policy['approved_quote_base'] || ! in_array($policy['calculation_mode'] ?? null,
-                ['multiply_source_by_rate', 'divide_source_by_rate'], true)
-                || $policy['max_rate_age_hours'] === null || $policy['rounding_scale'] === null) {
+            $policy = $this->policySettings->fxCorrectionsPolicy((string) $component->receipt->company_id);
+            if (
+                !$policy['approved_quote_base'] || !in_array(
+                    $policy['calculation_mode'] ?? null,
+                    ['multiply_source_by_rate', 'divide_source_by_rate'],
+                    true
+                )
+                || $policy['max_rate_age_hours'] === null || $policy['rounding_scale'] === null
+            ) {
                 throw ValidationException::withMessages(['impact_dimension' => ['Reporting-FX correction policy is incomplete.']]);
             }
             if (($data['fx_quote_base'] ?? null) !== $policy['approved_quote_base']) {
@@ -185,15 +415,17 @@ class BookingPaymentAdjustmentService
             if ($component->receipt->finality_status !== 'confirmed') {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Only a confirmed receipt component can receive a reporting-FX correction.']]);
             }
-            if (! $component->receipt->company_id) {
+            if (!$component->receipt->company_id) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['The original receipt has no canonical legal-entity identity.']]);
             }
             $attributionCompanyId = SalesBookingAttribution::query()->where('booking_id', $component->receipt->booking_id)->value('company_id');
-            if (! $attributionCompanyId || $attributionCompanyId !== $component->receipt->company_id) {
+            if (!$attributionCompanyId || $attributionCompanyId !== $component->receipt->company_id) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['Receipt and booking attribution legal entities do not match.']]);
             }
-            if ($component->receipt->fx_rate_to_lkr === null || $component->receipt->fx_rate_at === null
-                || blank($component->receipt->fx_source) || $component->lkr_amount === null) {
+            if (
+                $component->receipt->fx_rate_to_lkr === null || $component->receipt->fx_rate_at === null
+                || blank($component->receipt->fx_source) || $component->lkr_amount === null
+            ) {
                 throw ValidationException::withMessages(['receipt_component_id' => ['The original component does not have complete immutable FX evidence.']]);
             }
             if (strtoupper((string) $data['source_currency']) !== strtoupper((string) $component->receipt->source_currency)) {
@@ -205,8 +437,10 @@ class BookingPaymentAdjustmentService
             }
             $rateAt = CarbonImmutable::parse($data['fx_rate_at']);
             $effectiveAt = CarbonImmutable::parse($data['adjustment_effective_at']);
-            if (DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $component->receipt->company_id)
-                ->where('state', 'locked')->where('period_start', '<=', $effectiveAt)->where('period_end', '>', $effectiveAt)->exists()) {
+            if (
+                DB::table('domain_period_locks')->where('domain', 'sales')->where('company_id', $component->receipt->company_id)
+                    ->where('state', 'locked')->where('period_start', '<=', $effectiveAt)->where('period_end', '>', $effectiveAt)->exists()
+            ) {
                 throw ValidationException::withMessages(['adjustment_effective_at' => ['The Sales period is locked; use the governed period-reopen and new-snapshot workflow first.']]);
             }
             if ($rateAt->greaterThan($effectiveAt) || $rateAt->diffInHours($effectiveAt) > (int) $policy['max_rate_age_hours']) {
@@ -221,7 +455,7 @@ class BookingPaymentAdjustmentService
                 throw ValidationException::withMessages(['lkr_amount' => ['The corrected LKR amount does not reproduce from the approved quote/base and rounding policy.']]);
             }
 
-            if (! $component->is_commission_eligible) {
+            if (!$component->is_commission_eligible) {
                 return null;
             }
             $earnings = SalesCommissionDecision::query()->where('receipt_component_id', $component->id)
@@ -296,10 +530,12 @@ class BookingPaymentAdjustmentService
         ?SalesCommissionDecision $earning,
         array $data,
         bool $lock,
-    ): array {
+    ): array
+    {
         $query = BookingPaymentAdjustment::query()->where('receipt_component_id', $component->id)
             ->where('impact_dimension', 'reporting_fx')->orderBy('correction_sequence')->orderBy('created_at');
-        if ($lock) $query->lockForUpdate();
+        if ($lock)
+            $query->lockForUpdate();
         $corrections = $query->get();
         $requestedPriorId = $data['corrects_adjustment_id'] ?? null;
         if ($corrections->isEmpty()) {
@@ -310,7 +546,7 @@ class BookingPaymentAdjustmentService
         }
 
         $prior = $corrections->last();
-        if (! $requestedPriorId || $prior->id !== $requestedPriorId) {
+        if (!$requestedPriorId || $prior->id !== $requestedPriorId) {
             throw ValidationException::withMessages(['corrects_adjustment_id' => ['Reference the current FX correction leaf; stale or branching correction lineages are not allowed.']]);
         }
         if ((float) $data['source_amount'] !== (float) $prior->source_amount) {
@@ -323,10 +559,13 @@ class BookingPaymentAdjustmentService
         $recovery = null;
         if ($earning) {
             $recoveryQuery = SalesCommissionRecoveryCase::query()->where('payment_adjustment_id', $prior->id);
-            if ($lock) $recoveryQuery->lockForUpdate();
+            if ($lock)
+                $recoveryQuery->lockForUpdate();
             $recovery = $recoveryQuery->first();
-            if (! $recovery || $recovery->commission_decision_id !== $earning->id
-                || $recovery->status === 'pending_review' || $recovery->recalculated_commission_amount_lkr === null) {
+            if (
+                !$recovery || $recovery->commission_decision_id !== $earning->id
+                || $recovery->status === 'pending_review' || $recovery->recalculated_commission_amount_lkr === null
+            ) {
                 throw ValidationException::withMessages(['corrects_adjustment_id' => ['Resolve and freeze the prior linked commission correction before creating its successor.']]);
             }
         }
@@ -337,11 +576,15 @@ class BookingPaymentAdjustmentService
     private function fxPreview(?SalesCommissionDecision $earning, array $facts): array
     {
         $commission = $earning ? $this->commissionRecoveries->previewFxCalculation(
-            $earning, (float) $facts['source_amount'], (float) $facts['lkr_amount'], (float) $facts['original_lkr_amount'],
+            $earning,
+            (float) $facts['source_amount'],
+            (float) $facts['lkr_amount'],
+            (float) $facts['original_lkr_amount'],
             isset($facts['prior_recalculated_commission_amount_lkr'])
-                ? (float) $facts['prior_recalculated_commission_amount_lkr'] : null,
+            ? (float) $facts['prior_recalculated_commission_amount_lkr'] : null,
         ) : [
-            'commission_decision_id' => null, 'calculation_status' => 'not_commission_eligible',
+            'commission_decision_id' => null,
+            'calculation_status' => 'not_commission_eligible',
             'calculation_explanation' => 'The original receipt component is not commission eligible.',
             'proposed_commission_adjustment_lkr' => 0.0,
         ];
@@ -355,11 +598,13 @@ class BookingPaymentAdjustmentService
             'corrected_lkr_amount' => number_format((float) $facts['lkr_amount'], 4, '.', ''),
             'lkr_delta' => number_format((float) $facts['lkr_delta'], 4, '.', ''),
             'fx_rate_to_lkr' => number_format((float) $facts['fx_rate_to_lkr'], 10, '.', ''),
-            'fx_rate_at' => (string) $facts['fx_rate_at'], 'fx_source' => trim((string) $facts['fx_source']),
+            'fx_rate_at' => (string) $facts['fx_rate_at'],
+            'fx_source' => trim((string) $facts['fx_source']),
             'fx_quote_base' => trim((string) $facts['fx_quote_base']),
             'fx_calculation_mode' => $facts['fx_calculation_mode'],
             'adjustment_effective_at' => (string) $facts['adjustment_effective_at'],
-            'reference' => trim((string) $facts['reference']), 'commission' => $commission,
+            'reference' => trim((string) $facts['reference']),
+            'commission' => $commission,
             'corrects_adjustment_id' => $facts['corrects_adjustment_id'],
             'lineage_root_adjustment_id' => $facts['lineage_root_adjustment_id'],
             'correction_sequence' => $facts['correction_sequence'],

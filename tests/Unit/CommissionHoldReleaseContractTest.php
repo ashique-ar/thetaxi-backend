@@ -327,3 +327,91 @@ it('freezes a uniquely approved historical plan family before appending a linked
         ->and($migration)->toContain("adjustment_kind = 'late_plan_family_entitlement' AND original_hold_code = 'plan_family_missing'")
         ->toContain('Rollback refused: export and reconcile late plan-family commission entitlement evidence first.');
 });
+
+it('establishes a missing legal entity and acquisition owner together from one target Profile before a linked entitlement is previewable', function () {
+    $mutation = file_get_contents(app_path('Services/Sales/BookingAttributionMutationService.php'));
+    $adjustments = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
+    $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_01_172000_add_late_legal_entity_hold_adjustments.php'));
+
+    expect($mutation)->toContain('public function establishLegalEntity(')
+        ->toContain('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.')
+        ->toContain('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.')
+        ->toContain("'event_type' => 'legal_entity_established'")
+        ->toContain("'field_name' => 'company_id'")
+        ->toContain("'event_type' => 'acquisition_owner_corrected'")
+        ->toContain("'field_name' => 'acquisition_sales_profile_id'")
+        ->toContain('freezeFamilyForAttribution($locked)')
+        ->toContain("'legal_entity_missing', 'acquisition_owner_missing', 'acquisition_owner_ineligible'")
+        ->and($adjustments)->toContain("'legal_entity_missing', 'acquisition_profile_missing'")
+        ->toContain('previewLateLegalEntity')
+        ->toContain("where('event_type', 'legal_entity_established')->where('field_name', 'company_id')")
+        ->toContain("where('event_type', 'acquisition_owner_corrected')->where('field_name', 'acquisition_sales_profile_id')")
+        ->toContain('lacks a uniquely approved historical commission plan family')
+        ->toContain("'adjustment_kind' => 'late_legal_entity_entitlement'")
+        ->and($controller)->toContain('public function establishLegalEntity(Request $request, string $attribution)')
+        ->toContain('$this->mutations->establishLegalEntity(')
+        ->and($routes)->toContain('attributions/{attribution}/establish-legal-entity')
+        ->and($remediation)->toContain("if (\$code === 'legal_entity_missing')")
+        ->toContain('Establish missing legal entity')
+        ->and($migration)->toContain("adjustment_kind = 'late_legal_entity_entitlement' AND original_hold_code = 'legal_entity_missing'")
+        ->toContain('Rollback refused: export and reconcile late legal-entity commission entitlement evidence first.');
+});
+
+it('establishes a missing receipt-component FX/LKR snapshot as separate evidence before a linked entitlement is previewable', function () {
+    $adjustmentService = file_get_contents(app_path('Services/Sales/BookingPaymentAdjustmentService.php'));
+    $holdService = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/BookingPaymentAdjustmentController.php'));
+    $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_01_173000_add_late_fx_snapshot_hold_adjustments.php'));
+
+    expect($adjustmentService)->toContain('public function previewFxSnapshotEstablishment(')
+        ->toContain('public function establishFxSnapshot(')
+        ->toContain("where('hold_code', 'fx_snapshot_missing')->exists()")
+        ->toContain('has no open fx_snapshot_missing commission hold to establish evidence for')
+        ->toContain('already has an immutable established FX snapshot')
+        ->toContain('must equal the exact current unreversed component balance')
+        ->toContain("'impact_dimension' => 'fx_establishment'")
+        ->toContain("'direction' => 'establish'")
+        ->and($holdService)->toContain("'fx_snapshot_missing',")
+        ->toContain('fx_snapshot_missing is the hold that fires precisely because eligible_lkr_amount')
+        ->toContain("if (\$decision->hold_code === 'fx_snapshot_missing')")
+        ->toContain('previewLateFxSnapshot')
+        ->toContain("where('impact_dimension', 'fx_establishment')->get()")
+        ->toContain('Exactly one immutable established FX/LKR snapshot must exist for this receipt component.')
+        ->toContain("'adjustment_kind' => 'late_fx_snapshot_entitlement'")
+        ->and($controller)->toContain('public function previewFxEstablishment(')
+        ->toContain('public function establishFxSnapshot(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments)')
+        ->and($routes)->toContain('payment-adjustments/fx-establishment')
+        ->toContain('payment-adjustments/fx-establishment/preview')
+        ->and($remediation)->toContain('Establish missing FX/LKR snapshot')
+        ->and($migration)->toContain("adjustment_kind = 'late_fx_snapshot_entitlement' AND original_hold_code = 'fx_snapshot_missing'")
+        ->toContain('Rollback refused: export and reconcile late FX-snapshot commission entitlement evidence first.');
+});
+
+it('governed-transitions a receipt out of a genuinely unrecognized finality state before a linked entitlement is previewable', function () {
+    $ledger = file_get_contents(app_path('Services/BookingPaymentLedgerService.php'));
+    $holdService = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_01_174000_add_late_unknown_finality_hold_adjustments.php'));
+    $decisionService = file_get_contents(app_path('Services/Sales/CommissionDecisionService.php'));
+
+    expect($ledger)->toContain('$knownStatuses = [\'pending_clearance\', \'policy_missing\', \'confirmed\', \'failed\'];')
+        ->toContain('a payment_finality_unknown commission hold\'s exact trigger')
+        ->toContain("? (\$allowed[\$receipt->finality_status] ?? [])")
+        ->toContain("['pending_clearance', 'confirmed', 'failed']")
+        ->and($decisionService)->toContain("'payment_finality_unknown'")
+        ->toContain('The receipt finality state is not recognized by the commission policy.')
+        ->and($holdService)->toContain("'payment_finality_unknown',")
+        ->toContain('previewLateUnknownFinality')
+        ->toContain('fires when the receipt\'s finality_status is not one of the four')
+        ->toContain('\$originalFinalityStatus = \$decision->receipt_finality_status;')
+        ->toContain('does not carry a genuinely unrecognized frozen finality state')
+        ->toContain("'adjustment_kind' => 'late_unknown_finality_entitlement'")
+        ->and($remediation)->toContain('Transition to a recognized finality state')
+        ->and($migration)->toContain("adjustment_kind = 'late_unknown_finality_entitlement' AND original_hold_code = 'payment_finality_unknown'")
+        ->toContain('Rollback refused: export and reconcile late unknown-finality commission entitlement evidence first.');
+});

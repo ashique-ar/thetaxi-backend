@@ -3,6 +3,7 @@
 namespace App\Models\Sales;
 
 use App\Models\BaseModel;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class SalesCommissionStatementLine extends BaseModel
 {
@@ -18,5 +19,10 @@ class SalesCommissionStatementLine extends BaseModel
     {
         static::updating(fn () => throw new \LogicException('Statement lines are frozen; use a dispute or later adjustment.'));
         static::deleting(fn () => throw new \LogicException('Statement lines cannot be deleted.'));
+    }
+
+    public function statement(): BelongsTo
+    {
+        return $this->belongsTo(SalesCommissionStatement::class, 'statement_id');
     }
 }

@@ -19,9 +19,13 @@ class RollingPaymentScheduleService
 {
     private const HORIZON_MONTHS = 12;
 
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     public function createRule(Booking $booking, array $data, string $actorUserId): array
     {
-        $this->assertEnabled();
+        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id');
+        abort_unless($companyId, 422, 'Resolve Sales attribution and legal entity before creating a rolling rule.');
+        $this->assertEnabled((string) $companyId);
 
         return DB::transaction(function () use ($booking, $data, $actorUserId): array {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
@@ -111,7 +115,7 @@ class RollingPaymentScheduleService
 
     public function extendRule(BookingPaymentScheduleRule $rule, CarbonInterface $asOf, ?string $actorUserId = null, bool $dryRun = false): array
     {
-        $this->assertEnabled();
+        $this->assertEnabled((string) $rule->company_id);
 
         return DB::transaction(function () use ($rule, $asOf, $actorUserId, $dryRun): array {
             $rule = BookingPaymentScheduleRule::query()->lockForUpdate()->findOrFail($rule->id);
@@ -144,7 +148,9 @@ class RollingPaymentScheduleService
 
     public function transitionRule(Booking $booking, array $data, string $actorUserId): array
     {
-        $this->assertEnabled();
+        $companyId = SalesBookingAttribution::query()->where('booking_id', $booking->id)->value('company_id');
+        abort_unless($companyId, 422, 'Resolve Sales attribution and legal entity before changing a rolling rule.');
+        $this->assertEnabled((string) $companyId);
 
         return DB::transaction(function () use ($booking, $data, $actorUserId): array {
             Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
@@ -370,9 +376,10 @@ class RollingPaymentScheduleService
         ));
     }
 
-    private function assertEnabled(): void
+    private function assertEnabled(string $companyId): void
     {
-        abort_unless(config('sales.features.rolling_payment_schedules', false) === true, 503, 'Rolling payment schedules are not enabled.');
+        abort_unless($this->policySettings->featureEnabled($companyId, 'rolling_payment_schedules'), 503,
+            'Rolling payment schedules are not enabled for this legal entity.');
         abort_unless(
             Schema::hasTable('booking_payment_schedule_rules')
             && Schema::hasColumn('booking_payment_schedules', 'booking_payment_schedule_rule_id'),

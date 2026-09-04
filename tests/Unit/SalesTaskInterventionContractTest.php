@@ -3,6 +3,7 @@
 it('freezes explicit UTC task deadlines without guessing legacy timezone provenance', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesCrmController.php'));
     $service = file_get_contents(app_path('Services/Sales/SalesCrmService.php'));
+    $command = file_get_contents(app_path('Console/Commands/ProcessSalesTasks.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_14_103000_govern_sales_task_deadlines.php'));
 
     expect($controller)
@@ -10,6 +11,9 @@ it('freezes explicit UTC task deadlines without guessing legacy timezone provena
         ->and($service)
         ->toContain("'contract_version' => 'explicit_utc_v1'")
         ->toContain("'deadline_checksum' => hash('sha256', CanonicalJson::encode(\$deadline))")
+        ->toContain("featureEnabled(\$companyId, 'crm')")
+        ->and($command)
+        ->toContain("where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true)")
         ->and($migration)
         ->toContain("'deadline_contract_version'")
         ->toContain('Rollback refused: export and reconcile governed Sales task deadline evidence first.');

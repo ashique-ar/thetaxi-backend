@@ -9,6 +9,8 @@ use Illuminate\Support\Facades\DB;
 
 class SalesCommissionStatusService
 {
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     /**
      * Current pending/held/approved balances are stocks. Paid commission is a
      * signed period flow. Historical stocks require event reconstruction and
@@ -16,7 +18,7 @@ class SalesCommissionStatusService
      */
     public function source(string $companyId, array $profileIds, string $from, string $to): array
     {
-        $timezone = config('sales.business_timezone');
+        $timezone = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true),
             409, 'An approved Sales business timezone is required for commission status reporting.');
         $today = CarbonImmutable::now($timezone)->toDateString();

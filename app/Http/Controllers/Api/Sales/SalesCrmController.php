@@ -10,6 +10,7 @@ use App\Models\Sales\SalesTask;
 use App\Models\Booking\Booking;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCrmService;
+use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -19,7 +20,10 @@ use App\Models\PhoneCall;
 
 class SalesCrmController extends Controller
 {
-    public function __construct(private readonly SalesAccessScope $scope) {}
+    public function __construct(
+        private readonly SalesAccessScope $scope,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function opportunities(Request $request): JsonResponse
     {
@@ -87,6 +91,9 @@ class SalesCrmController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'profiles' => $profiles, 'linkable_bookings' => $bookings,
             'inquiries' => $inquiries, 'phone_calls' => $phoneCalls,
+            'crm_enabled_by_company' => $companyIds->mapWithKeys(fn ($companyId) => [
+                $companyId => $this->policySettings->featureEnabled((string) $companyId, 'crm'),
+            ]),
         ]]);
     }
 

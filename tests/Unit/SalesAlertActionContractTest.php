@@ -8,6 +8,7 @@ it('governs alert actions with optimistic versioning and checksum-bound replay',
     expect($service)
         ->toContain("abort_unless(\$locked->event_version === \$expectedVersion, 409")
         ->toContain("hash_equals(\$replay->request_payload_checksum, \$checksum)")
+        ->toContain("featureEnabled((string) \$locked->company_id, 'performance_alert_actions')")
         ->toContain("'sales.performance.alert_'.\$action")
         ->toContain("DB::table('sales_performance_alert_action_events')->insert")
         ->and($controller)

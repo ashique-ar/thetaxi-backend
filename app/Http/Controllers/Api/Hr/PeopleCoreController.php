@@ -16,6 +16,7 @@ use App\Services\Hr\OrganizationAdministrationService;
 use App\Services\Hr\JobPositionAdministrationService;
 use App\Services\Hr\StaffCustomFieldValueService;
 use App\Services\Hr\SubjectCustomFieldValueService;
+use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
@@ -31,6 +32,7 @@ class PeopleCoreController extends Controller
         private readonly JobPositionAdministrationService $jobPositionAdmin,
         private readonly StaffCustomFieldValueService $customFieldValues,
         private readonly SubjectCustomFieldValueService $subjectCustomFieldValues,
+        private readonly SalesPolicySettingsService $policySettings,
     )
     {
     }
@@ -875,7 +877,7 @@ class PeopleCoreController extends Controller
     {
         $currentAssignment = $staff->employmentAssignments->first(fn($assignment) => $assignment->effective_from->lte(now()) && (!$assignment->effective_until || $assignment->effective_until->gt(now())));
         $currentSpell = $staff->employmentSpells->first(fn($spell) => $spell->status === 'active');
-        $categories = collect(config('sales.staff_categories', []))->map(fn($category) => mb_strtolower(trim((string) $category)))->filter();
+        $categories = collect($this->policySettings->approvedStaffCategories((string) $staff->company_id))->map(fn($category) => mb_strtolower(trim((string) $category)))->filter();
         $issues = collect([
             'employee_number' => $staff->code ? null : 'Employee number is missing.',
             'user_identity' => $staff->user_id ? null : 'Staff-to-User identity is missing.',

@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -14,15 +15,28 @@ use Illuminate\Support\Facades\DB;
 
 class BookingPaymentAdjustmentController extends Controller
 {
-    public function __construct(private readonly SalesAccessScope $access) {}
+    public function __construct(
+        private readonly SalesAccessScope $access,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function context(Request $request): JsonResponse
     {
         $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $profileIds = $this->profileIds($request);
+        if (empty($data['company_id'])) {
+            $companyIds = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all');
+            $companies = DB::table('companies')->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
+                ->orderBy('name')->get(['id', 'name']);
+            return response()->json(['status' => 'success', 'data' => [
+                'data' => [], 'current_page' => 1, 'last_page' => 1,
+            ], 'meta' => ['companies' => $companies, 'policy_ready' => false]]);
+        }
+        $this->access->assertCompany($request->user(), $data['company_id'], 'sales.payment-adjustments.create-all');
+        $profileIds = $this->profileIds($request, $data['company_id']);
         $query = DB::table('booking_payment_receipt_components as component')
             ->join('booking_payment_receipts as receipt', 'receipt.id', '=', 'component.receipt_id')
             ->join('bookings as booking', 'booking.id', '=', 'receipt.booking_id')
@@ -33,6 +47,7 @@ class BookingPaymentAdjustmentController extends Controller
             })
             ->whereNull('component.deleted_at')->whereNull('receipt.deleted_at')->whereNull('attribution.deleted_at')
             ->whereNotNull('receipt.company_id')
+            ->where('receipt.company_id', $data['company_id'])
             ->whereColumn('receipt.company_id', 'attribution.company_id')
             ->where('receipt.finality_status', 'confirmed');
         if ($profileIds !== null) $query->whereIn('attribution.collection_sales_profile_id', $profileIds);
@@ -41,7 +56,7 @@ class BookingPaymentAdjustmentController extends Controller
                 ->orWhere('receipt.reference', 'like', "%{$search}%"));
         }
 
-        $policy = config('sales.fx_corrections', []);
+        $policy = $this->policySettings->fxCorrectionsPolicy($data['company_id']);
         $query->select([
             'booking.id as booking_id', 'booking.booking_number', 'component.id as receipt_component_id',
             'component.component_type', 'component.source_amount', 'component.adjusted_source_amount',
@@ -64,8 +79,11 @@ class BookingPaymentAdjustmentController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $query
             ->orderByDesc('receipt.received_at')->paginate($request->integer('per_page', 25)), 'meta' => [
-            'fx_corrections_enabled' => config('sales.features.fx_corrections', false),
-            'policy_ready' => config('sales.features.fx_corrections', false) && ! empty($policy['approved_quote_base'])
+                'companies' => DB::table('companies')
+                    ->when(($ids = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all')) !== null, fn ($query) => $query->whereIn('id', $ids))
+                    ->orderBy('name')->get(['id', 'name']),
+            'fx_corrections_enabled' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections'),
+            'policy_ready' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections') && ! empty($policy['approved_quote_base'])
                 && in_array($policy['calculation_mode'] ?? null, ['multiply_source_by_rate', 'divide_source_by_rate'], true)
                 && $policy['max_rate_age_hours'] !== null && $policy['rounding_scale'] !== null,
             'approved_quote_base' => $policy['approved_quote_base'] ?? null,
@@ -122,6 +140,42 @@ class BookingPaymentAdjustmentController extends Controller
         ]);
         $this->assertBookingScope($request, $booking);
         return response()->json(['status' => 'success', 'data' => $adjustments->previewReportingFx($booking, $data)]);
+    }
+
+    public function previewFxEstablishment(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments): JsonResponse
+    {
+        $data = $this->validateFxEstablishment($request);
+        $this->assertBookingScope($request, $booking);
+
+        return response()->json(['status' => 'success', 'data' => $adjustments->previewFxSnapshotEstablishment($booking, $data)]);
+    }
+
+    public function establishFxSnapshot(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments): JsonResponse
+    {
+        $data = $this->validateFxEstablishment($request, true);
+        $this->assertBookingScope($request, $booking);
+        $adjustment = $adjustments->establishFxSnapshot($booking, $data, $request->user()->id);
+
+        return response()->json(['status' => 'success', 'data' => $adjustment], 201);
+    }
+
+    private function validateFxEstablishment(Request $request, bool $forApply = false): array
+    {
+        return $request->validate([
+            'receipt_component_id' => ['required', 'uuid'],
+            'source_amount' => ['required', 'numeric', 'gt:0'],
+            'source_currency' => ['required', 'string', 'size:3'],
+            'lkr_amount' => ['required', 'numeric', 'gt:0'],
+            'fx_rate_to_lkr' => ['required', 'numeric', 'gt:0'],
+            'fx_rate_at' => ['required', 'date'],
+            'fx_source' => ['required', 'string', 'max:160'],
+            'fx_quote_base' => ['required', 'string', 'max:40'],
+            'fx_calculation_mode' => ['required', Rule::in(['multiply_source_by_rate', 'divide_source_by_rate'])],
+            'reason' => ['required', 'string', 'max:2000'],
+            'reference' => ['nullable', 'string', 'max:160'],
+            'preview_checksum' => [$forApply ? 'required' : 'nullable', 'string', 'size:64'],
+            'idempotency_key' => [$forApply ? 'required' : 'nullable', 'string', 'max:160'],
+        ]);
     }
 
     private function assertBookingScope(Request $request, Booking $booking): void

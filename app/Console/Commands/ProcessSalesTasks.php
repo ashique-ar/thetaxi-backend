@@ -6,6 +6,7 @@ use App\Models\Sales\SalesReportingAssignment;
 use App\Models\Sales\SalesTask;
 use Illuminate\Console\Command;
 use Illuminate\Notifications\DatabaseNotification;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -16,9 +17,12 @@ class ProcessSalesTasks extends Command
 
     public function handle(): int
     {
-        if (! Schema::hasTable('sales_tasks') || ! config('sales.features.crm', false)) return self::SUCCESS;
+        if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')
+            || ! config('sales.features.crm', false)) return self::SUCCESS;
         $dryRun = (bool) $this->option('dry-run'); $count = 0;
         SalesTask::query()->whereIn('status', ['open', 'in_progress'])
+            ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')
+                ->where('feature_key', 'crm')->where('status', 'approved')->where('enabled', true))
             ->where(fn ($q) => $q->where(fn ($r) => $r->whereNull('reminder_dispatched_at')->whereNotNull('remind_at')->where('remind_at', '<=', now()))
                 ->orWhere(fn ($r) => $r->whereNull('escalated_at')->whereNotNull('escalate_at')->where('escalate_at', '<=', now())))
             ->chunkById(200, function ($tasks) use ($dryRun, &$count): void {

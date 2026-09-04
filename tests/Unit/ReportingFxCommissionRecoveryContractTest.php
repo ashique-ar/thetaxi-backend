@@ -10,7 +10,7 @@ class ReportingFxCommissionRecoveryContractTest extends TestCase
     {
         $source = file_get_contents(base_path('app/Services/Sales/BookingPaymentAdjustmentService.php'));
 
-        self::assertStringContainsString("config('sales.features.fx_corrections', false)", $source);
+        self::assertStringContainsString("featureEnabled((string) \$component->receipt->company_id, 'fx_corrections')", $source);
         self::assertStringContainsString('Reporting-FX correction policy is incomplete.', $source);
         self::assertStringContainsString("['multiply_source_by_rate', 'divide_source_by_rate']", $source);
         self::assertStringContainsString("where('state', 'locked')", $source);

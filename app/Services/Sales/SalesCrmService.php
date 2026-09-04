@@ -25,11 +25,15 @@ class SalesCrmService
         'negotiation' => ['quotation', 'won', 'lost'], 'lost' => ['qualified'], 'won' => [],
     ];
 
-    public function __construct(private readonly DomainEventPublisher $events, private readonly SalesMetricFactService $facts) {}
+    public function __construct(
+        private readonly DomainEventPublisher $events,
+        private readonly SalesMetricFactService $facts,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function createOpportunity(array $data, string $actorUserId): SalesOpportunity
     {
-        $this->assertEnabled();
+        $this->assertEnabled((string) $data['company_id']);
         return DB::transaction(function () use ($data, $actorUserId) {
             $owner = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
             abort_unless($owner->company_id === $data['company_id'], 422, 'Opportunity owner and legal entity must match.');
@@ -61,10 +65,10 @@ class SalesCrmService
 
     public function transition(SalesOpportunity $opportunity, string $toStage, int $expectedVersion, ?string $reasonCode, ?string $reason, string $key, string $actorUserId): SalesOpportunity
     {
-        $this->assertEnabled();
         return DB::transaction(function () use ($opportunity, $toStage, $expectedVersion, $reasonCode, $reason, $key, $actorUserId) {
             $locked = SalesOpportunity::query()->lockForUpdate()->findOrFail($opportunity->id);
             if ($existing = SalesOpportunityStageEvent::query()->where('idempotency_key', $key)->first()) return $locked->refresh();
+            $this->assertEnabled((string) $locked->company_id);
             abort_unless($locked->state_version === $expectedVersion, 409, 'Opportunity version changed; refresh before retrying.');
             abort_unless(in_array($toStage, self::TRANSITIONS[$locked->stage] ?? [], true), 422, "Invalid opportunity transition from {$locked->stage} to {$toStage}.");
             abort_if($toStage === 'won', 422, 'An opportunity becomes won only from a confirmed linked booking.');
@@ -82,10 +86,10 @@ class SalesCrmService
 
     public function transfer(SalesOpportunity $opportunity, SalesProfile $newOwner, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesOpportunity
     {
-        $this->assertEnabled();
         return DB::transaction(function () use ($opportunity, $newOwner, $expectedVersion, $reason, $key, $actorUserId) {
             $locked = SalesOpportunity::query()->lockForUpdate()->findOrFail($opportunity->id);
             if (SalesOpportunityStageEvent::query()->where('idempotency_key', $key)->exists()) return $locked->refresh();
+            $this->assertEnabled((string) $locked->company_id);
             abort_unless($locked->state_version === $expectedVersion, 409, 'Opportunity version changed; refresh before retrying.');
             abort_unless($locked->company_id === $newOwner->company_id, 422, 'Opportunity transfers cannot cross legal entities.');
             $oldOwner = $locked->owner_sales_profile_id;
@@ -116,10 +120,10 @@ class SalesCrmService
 
     public function linkBooking(SalesOpportunity $opportunity, Booking $booking, string $key, string $actorUserId): SalesOpportunity
     {
-        $this->assertEnabled();
         return DB::transaction(function () use ($opportunity, $booking, $key, $actorUserId) {
             $lockedOpportunity = SalesOpportunity::query()->lockForUpdate()->findOrFail($opportunity->id);
             $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $this->assertEnabled((string) $lockedOpportunity->company_id);
             $bookingStaff = $lockedBooking->commission_owner_staff_id
                 ? DB::table('staff')->where('id', $lockedBooking->commission_owner_staff_id)->first()
                 : DB::table('staff')->where('user_id', $lockedBooking->created_user_id)->first();
@@ -144,7 +148,7 @@ class SalesCrmService
 
     public function recordActivity(array $data, string $actorUserId): SalesActivity
     {
-        $this->assertEnabled();
+        $this->assertEnabled((string) $data['company_id']);
         return DB::transaction(function () use ($data, $actorUserId) {
             $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
             abort_unless($profile->company_id === $data['company_id'], 422, 'Activity profile and legal entity must match.');
@@ -163,7 +167,7 @@ class SalesCrmService
 
     public function createTask(array $data, string $actorUserId): SalesTask
     {
-        $this->assertEnabled();
+        $this->assertEnabled((string) $data['company_id']);
         return DB::transaction(function () use ($data, $actorUserId) {
             $owner = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
             abort_unless($owner->company_id === $data['company_id'], 422, 'Task owner and legal entity must match.');
@@ -187,10 +191,10 @@ class SalesCrmService
 
     public function transitionTask(SalesTask $task, array $data, string $actorUserId): SalesTask
     {
-        $this->assertEnabled();
         return DB::transaction(function () use ($task, $data, $actorUserId) {
             $locked = SalesTask::query()->lockForUpdate()->findOrFail($task->id);
             if (SalesTaskEvent::query()->where('idempotency_key', $data['idempotency_key'])->exists()) return $locked->refresh();
+            $this->assertEnabled((string) $locked->company_id);
             abort_unless($locked->state_version === $data['expected_version'], 409, 'Task version changed; refresh before retrying.');
             $allowed = ['open' => ['in_progress', 'completed', 'cancelled'], 'in_progress' => ['open', 'completed', 'cancelled'], 'completed' => ['open'], 'cancelled' => ['open']];
             abort_unless(in_array($data['to_status'], $allowed[$locked->status] ?? [], true), 422, 'Invalid task transition.');
@@ -203,10 +207,10 @@ class SalesCrmService
 
     public function transferTask(SalesTask $task, SalesProfile $newOwner, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesTask
     {
-        $this->assertEnabled();
         return DB::transaction(function () use ($task, $newOwner, $expectedVersion, $reason, $key, $actorUserId) {
             $locked = SalesTask::query()->lockForUpdate()->findOrFail($task->id);
             if (SalesTaskEvent::query()->where('idempotency_key', $key)->exists()) return $locked->refresh();
+            $this->assertEnabled((string) $locked->company_id);
             abort_unless($locked->state_version === $expectedVersion, 409, 'Task version changed; refresh before retrying.');
             abort_unless($locked->company_id === $newOwner->company_id, 422, 'Task transfers cannot cross legal entities.');
             $oldOwner = $locked->owner_sales_profile_id;
@@ -245,8 +249,9 @@ class SalesCrmService
         abort_if($matches->isNotEmpty(), 409, 'Potential existing customer matches require explicit duplicate review: '.$matches->implode(','));
     }
 
-    private function assertEnabled(): void
+    private function assertEnabled(string $companyId): void
     {
-        abort_unless(config('sales.features.crm', false), 409, 'Sales CRM writes are not enabled.');
+        abort_unless($this->policySettings->featureEnabled($companyId, 'crm'), 409,
+            'Sales CRM writes are not activated for this legal entity.');
     }
 }

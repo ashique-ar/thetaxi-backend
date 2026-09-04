@@ -18,7 +18,136 @@ class BookingAttributionMutationService
         private readonly DomainEventPublisher $events,
         private readonly SalesMetricFactService $metricFacts,
         private readonly SalesProfileEligibilityService $profileEligibility,
+        private readonly CommissionPlanResolver $commissionPlans,
     ) {}
+
+    /**
+     * Establishes the missing legal entity and acquisition owner together from one target Profile
+     * whose own company_id is the only source of the entity — never a free-typed value. Only reachable
+     * when both facts were never resolved (the sole path that produces a null attribution company_id;
+     * see CommissionDecisionService::decide()'s legal_entity_missing check), so the two are corrected atomically.
+     */
+    public function establishLegalEntity(
+        SalesBookingAttribution $attribution,
+        SalesProfile $toProfile,
+        string $reason,
+        string $idempotencyKey,
+        string $actorUserId,
+    ): SalesBookingAttribution {
+        return DB::transaction(function () use ($attribution, $toProfile, $reason, $idempotencyKey, $actorUserId) {
+            $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
+            if ($locked->company_id !== null) {
+                throw new RuntimeException('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.');
+            }
+            if ($locked->acquisition_sales_profile_id !== null) {
+                throw new RuntimeException('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.');
+            }
+
+            $entityKey = "{$idempotencyKey}:entity";
+            $existingEntity = DB::table('sales_booking_attribution_events')
+                ->where('attribution_id', $locked->id)->where('idempotency_key', $entityKey)->first();
+            if ($existingEntity) {
+                if ($existingEntity->event_type !== 'legal_entity_established'
+                    || (string) ($existingEntity->to_value ?? '') !== (string) $toProfile->company_id
+                    || (string) ($existingEntity->reason ?? '') !== $reason
+                    || $existingEntity->actor_user_id !== $actorUserId) {
+                    throw new RuntimeException('The attribution idempotency key was already used for a different legal-entity establishment.');
+                }
+
+                return $locked;
+            }
+
+            $target = SalesProfile::query()->lockForUpdate()->find($toProfile->id);
+            if (! $target) {
+                throw new RuntimeException('The target Sales Profile no longer exists.');
+            }
+            if (! $this->profileEligibility->isEligibleAt($target, ['acquisition'], $locked->secured_at)) {
+                throw new RuntimeException(
+                    'The target Sales Profile must be explicitly acquisition-eligible with a governed reporting currency at the original secured time.'
+                );
+            }
+
+            $entityVersion = $locked->version + 1;
+            DB::table('sales_booking_attribution_events')->insert([
+                'id' => (string) Str::uuid(),
+                'attribution_id' => $locked->id,
+                'version' => $entityVersion,
+                'event_type' => 'legal_entity_established',
+                'field_name' => 'company_id',
+                'from_value' => null,
+                'to_value' => $target->company_id,
+                'from_sales_profile_id' => null,
+                'to_sales_profile_id' => null,
+                'effective_at' => $locked->secured_at,
+                'reason' => $reason,
+                'idempotency_key' => $entityKey,
+                'actor_user_id' => $actorUserId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+            $ownerVersion = $entityVersion + 1;
+            DB::table('sales_booking_attribution_events')->insert([
+                'id' => (string) Str::uuid(),
+                'attribution_id' => $locked->id,
+                'version' => $ownerVersion,
+                'event_type' => 'acquisition_owner_corrected',
+                'field_name' => 'acquisition_sales_profile_id',
+                'from_value' => null,
+                'to_value' => $target->id,
+                'from_sales_profile_id' => null,
+                'to_sales_profile_id' => $target->id,
+                'effective_at' => $locked->secured_at,
+                'reason' => $reason,
+                'idempotency_key' => "{$idempotencyKey}:owner",
+                'actor_user_id' => $actorUserId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $collectionProfile = $locked->collection_sales_profile_id
+                ? SalesProfile::query()->withTrashed()->find($locked->collection_sales_profile_id) : null;
+            $status = $collectionProfile && $collectionProfile->company_id === $target->company_id
+                && $this->profileEligibility->isEligibleAt($collectionProfile, ['collection'], now())
+                    ? 'active' : 'held';
+            $locked->update([
+                'company_id' => $target->company_id,
+                'acquisition_sales_profile_id' => $target->id,
+                'status' => $status,
+                'version' => $ownerVersion,
+                'updated_user_id' => $actorUserId,
+            ]);
+            $locked = $locked->fresh();
+            $this->commissionPlans->freezeFamilyForAttribution($locked);
+            $locked = $locked->fresh();
+
+            $this->events->record(
+                'sales',
+                $locked->company_id,
+                'booking_attribution',
+                $locked->id,
+                'sales.attribution.legal_entity_established',
+                $ownerVersion,
+                1,
+                [
+                    'booking_id' => $locked->booking_id,
+                    'company_id' => $target->company_id,
+                    'acquisition_sales_profile_id' => $target->id,
+                    'effective_at' => $locked->secured_at->toISOString(),
+                ],
+                $locked->secured_at,
+                $idempotencyKey,
+            );
+
+            $this->resolveExceptions(
+                $locked->booking_id,
+                ['legal_entity_missing', 'acquisition_owner_missing', 'acquisition_owner_ineligible'],
+                $reason,
+                $actorUserId,
+            );
+
+            return $locked;
+        }, 3);
+    }
 
     public function transferCollectionHandler(
         SalesBookingAttribution $attribution,

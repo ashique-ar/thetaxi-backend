@@ -26,7 +26,7 @@ it('keeps rolling generation feature gated, occurrence unique, and outside attri
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CollectionScheduleWorkflowController.php'));
 
     expect($service)
-        ->toContain("config('sales.features.rolling_payment_schedules', false)")
+        ->toContain("featureEnabled(\$companyId, 'rolling_payment_schedules')")
         ->toContain("->eligibleAt('collection', now())")
         ->toContain("'lifetime_contract_value_state' => 'not_applicable_open_ended'")
         ->not->toContain('SalesBookingAttribution::create')

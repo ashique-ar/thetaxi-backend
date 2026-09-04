@@ -13,7 +13,10 @@ use Illuminate\Support\Facades\DB;
 
 class SalesPortfolioStatusService
 {
-    public function __construct(private readonly DomainEventPublisher $events) {}
+    public function __construct(
+        private readonly DomainEventPublisher $events,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function createPolicy(array $data, string $actorUserId): SalesPortfolioStatusPolicyVersion
     {
@@ -107,7 +110,7 @@ class SalesPortfolioStatusService
         int $requestedPage,
         int $perPage,
     ): array {
-        $timezoneName = config('sales.business_timezone');
+        $timezoneName = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezoneName) && $timezoneName !== '', 409,
             'CONFIGURATION_MISSING: an approved Sales business timezone is required for active portfolio reporting.');
         try {

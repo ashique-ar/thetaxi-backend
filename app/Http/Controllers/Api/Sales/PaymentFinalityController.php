@@ -11,11 +11,15 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Validation\ValidationException;
 
 class PaymentFinalityController extends Controller
 {
-    public function __construct(private readonly BookingPaymentLedgerService $ledger) {}
+    public function __construct(
+        private readonly BookingPaymentLedgerService $ledger,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function index(Request $request): JsonResponse
     {
@@ -39,7 +43,13 @@ class PaymentFinalityController extends Controller
     public function context(Request $request): JsonResponse
     {
         $ids = $request->user()->can('sales.payment-finality.manage-all') ? DB::table('companies')->pluck('id') : collect($this->actorCompanyIds($request));
-        return response()->json(['status' => 'success', 'data' => ['companies' => DB::table('companies')->whereIn('id', $ids)->orderBy('name')->get(['id', 'name'])]]);
+        $companies = DB::table('companies')->whereIn('id', $ids)->orderBy('name')->get(['id', 'name']);
+        return response()->json(['status' => 'success', 'data' => [
+            'companies' => $companies,
+            'enforcement_enabled_by_company' => $companies->mapWithKeys(fn ($company) => [
+                $company->id => $this->policySettings->featureEnabled((string) $company->id, 'enforce_payment_finality'),
+            ]),
+        ]]);
     }
 
     public function receipts(Request $request): JsonResponse
@@ -153,7 +163,8 @@ class PaymentFinalityController extends Controller
             ->where('status', 'approved')->where('effective_from', '<=', $receipt->received_at)
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receipt->received_at))
             ->orderByDesc('version')->first();
-        if ($data['to_status'] === 'confirmed' && config('sales.features.enforce_payment_finality', false)) {
+        if ($data['to_status'] === 'confirmed'
+            && $this->policySettings->featureEnabled((string) $receipt->company_id, 'enforce_payment_finality')) {
             abort_unless($policy, 422, 'An approved payment-method finality policy is required before confirmation.');
         }
         if ($policy?->required_evidence_type) {

@@ -12,6 +12,7 @@ use App\Models\Sales\SalesProfile;
 use App\Services\Sales\CollectionScheduleWorkflowService;
 use App\Services\Sales\CollectionWorkAgingService;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\BookingPaymentLedgerService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ class CollectionScheduleWorkflowController extends Controller
         private readonly CollectionWorkAgingService $aging,
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesAccessScope $access,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function createRollingRule(Request $request, Booking $booking): JsonResponse
@@ -165,7 +167,8 @@ class CollectionScheduleWorkflowController extends Controller
             ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
             : null;
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
-        $rollingEnabled = config('sales.features.rolling_payment_schedules', false) === true
+        $rollingEnabled = $attribution?->company_id
+            && $this->policySettings->featureEnabled((string) $attribution->company_id, 'rolling_payment_schedules')
             && Schema::hasTable('booking_payment_schedule_rules');
         $rollingHandlerEligible = $attribution?->collection_sales_profile_id
             ? SalesProfile::query()

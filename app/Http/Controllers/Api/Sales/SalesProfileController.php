@@ -7,6 +7,7 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesProfileExport;
 use App\Models\Staff;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesProfileExportService;
 use App\Services\UserContextService;
 use App\Support\Foundation\CanonicalJson;
@@ -25,6 +26,7 @@ class SalesProfileController extends Controller
     public function __construct(
         private readonly UserContextService $contextService,
         private readonly SalesAccessScope $scope,
+        private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
     public function me(Request $request): JsonResponse
@@ -246,7 +248,7 @@ class SalesProfileController extends Controller
         if (! $data['acquisition_eligible'] && ! $data['collection_eligible'] && ! $data['commission_eligible']) {
             $this->fail('VALIDATION_FAILED', 'A Sales Profile must have at least one explicit eligibility.', 422);
         }
-        $salesStaffCategories = $this->salesStaffCategories();
+        $salesStaffCategories = $this->salesStaffCategories($data['company_id']);
         if ($salesStaffCategories === []) {
             $this->fail('CONFIGURATION_MISSING', 'Approved Sales Staff categories are not configured.', 503);
         }
@@ -403,7 +405,7 @@ class SalesProfileController extends Controller
             }
 
             $staff = Staff::query()->lockForUpdate()->findOrFail($profile->staff_id);
-            $salesStaffCategories = $this->salesStaffCategories();
+            $salesStaffCategories = $this->salesStaffCategories((string) $profile->company_id);
             abort_unless($salesStaffCategories !== [] && $this->isSalesStaffCategory($staff->staff_type, $salesStaffCategories), 422,
                 'The linked Staff record must be in an approved Sales category before Profile configuration is approved.');
             $before = $this->configurationSnapshot($profile);
@@ -460,15 +462,20 @@ class SalesProfileController extends Controller
 
     public function administrationContext(Request $request): JsonResponse
     {
-        $salesStaffCategories = $this->salesStaffCategories();
         $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
         $companies = DB::table('companies')
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->orderBy('name')
             ->get(['id', 'name']);
+        $categoriesByCompany = $companies->mapWithKeys(fn ($company) => [
+            $company->id => $this->salesStaffCategories((string) $company->id),
+        ]);
+        $exportReadyByCompany = $companies->mapWithKeys(fn ($company) => [
+            $company->id => ($this->policySettings->profileExportRetentionDays((string) $company->id) ?? 0) > 0,
+        ]);
 
         $staff = collect();
-        if ($salesStaffCategories !== [] && $this->scope->hasPermission($request->user(), 'sales.profiles.manage')) {
+        if ($categoriesByCompany->flatten()->isNotEmpty() && $this->scope->hasPermission($request->user(), 'sales.profiles.manage')) {
             $profileIds = null;
             if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
                 $profileIds = collect($companyIds ?? [])
@@ -485,14 +492,15 @@ class SalesProfileController extends Controller
             $staffQuery = Staff::query()
                 ->with('user:id,first_name,last_name')
                 ->whereNull('employment_ended_at')
-                ->whereNotNull('user_id')
-                ->whereIn(DB::raw('LOWER(staff_type)'), array_map('mb_strtolower', $salesStaffCategories));
+                ->whereNotNull('user_id');
             if ($profileIds === null) {
                 $staffQuery->when($companyIds !== null, fn (Builder $query) => $query->whereIn('company_id', $companyIds));
             } else {
                 $staffQuery->whereIn('id', SalesProfile::query()->whereIn('id', $profileIds)->select('staff_id'));
             }
-            $staff = $staffQuery->orderBy('code')->get()->map(fn (Staff $row) => [
+            $staff = $staffQuery->orderBy('code')->get()
+                ->filter(fn (Staff $row) => $this->isSalesStaffCategory($row->staff_type, $categoriesByCompany->get($row->company_id, [])))
+                ->map(fn (Staff $row) => [
                 'id' => $row->id,
                 'company_id' => $row->company_id,
                 'code' => $row->code,
@@ -504,10 +512,9 @@ class SalesProfileController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'companies' => $companies,
             'staff' => $staff,
-            'sales_staff_categories' => $salesStaffCategories,
-            'sales_staff_category_ready' => $salesStaffCategories !== [],
-            'profile_export_ready' => is_int(config('sales.profile_exports.retention_days'))
-                && config('sales.profile_exports.retention_days') > 0,
+            'sales_staff_categories_by_company' => $categoriesByCompany,
+            'sales_staff_category_ready_by_company' => $categoriesByCompany->map(fn (array $rows) => $rows !== []),
+            'profile_export_ready_by_company' => $exportReadyByCompany,
             'can_manage_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.manage'),
             'can_export_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.export'),
         ]]);
@@ -548,7 +555,7 @@ class SalesProfileController extends Controller
             }
             if ($data['to_status'] === 'active') {
                 $staff = Staff::query()->lockForUpdate()->findOrFail($profile->staff_id);
-                $salesStaffCategories = $this->salesStaffCategories();
+                $salesStaffCategories = $this->salesStaffCategories((string) $profile->company_id);
                 abort_if($profile->effective_until && $profile->effective_until->lte(now()), 422, 'An ended effective interval cannot be reactivated.');
                 abort_unless(
                     $profile->reporting_currency
@@ -669,14 +676,9 @@ class SalesProfileController extends Controller
         ]);
     }
 
-    private function salesStaffCategories(): array
+    private function salesStaffCategories(string $companyId): array
     {
-        return collect(config('sales.staff_categories', []))
-            ->filter(fn ($category) => is_string($category) && trim($category) !== '')
-            ->map(fn (string $category) => trim($category))
-            ->unique(fn (string $category) => mb_strtolower($category))
-            ->values()
-            ->all();
+        return $this->policySettings->approvedStaffCategories($companyId);
     }
 
     private function isSalesStaffCategory(?string $category, array $allowed): bool

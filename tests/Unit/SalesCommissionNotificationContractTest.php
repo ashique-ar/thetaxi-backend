@@ -20,6 +20,7 @@ it('requires approved effective policy checksum explicit preference and current 
     $service = file_get_contents(app_path('Services/Sales/SalesCommissionNotificationService.php'));
 
     expect($service)->toContain("where('status', 'approved')")
+        ->toContain("featureEnabled((string) \$decision->company_id, 'commission_notifications')")
         ->toContain("whereNotNull('approved_by')")
         ->toContain('validPolicyChecksum')
         ->toContain('approved_policy_ambiguous')
@@ -41,6 +42,9 @@ it('minimizes the delivered payload and retries idempotently through immutable a
         ->toContain('deterministicUuid')
         ->toContain("'status' => 'delivered'")
         ->toContain("'retry_scheduled'")
+        ->toContain("where('feature_key', 'commission_notifications')")
+        ->toContain("where('blocked_code', '!=', 'feature_disabled')")
+        ->toContain("featureEnabled((string) \$row->company_id, 'commission_notifications')")
         ->toContain('sales_commission_notification_delivery_events')
         ->and($command)->toContain('{--commit}')
         ->toContain('No writes performed.')

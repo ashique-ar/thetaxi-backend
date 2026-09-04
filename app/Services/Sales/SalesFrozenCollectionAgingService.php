@@ -12,6 +12,8 @@ final class SalesFrozenCollectionAgingService
 {
     public const BUCKETS = ['not_due', 'due_today', '1_30', '31_60', '61_90', '91_plus'];
 
+    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+
     public function source(
         string $companyId,
         array $authorizedProfileIds,
@@ -19,7 +21,7 @@ final class SalesFrozenCollectionAgingService
         string $cutoffAt,
         bool $requireCoveredOwner = false,
     ): array {
-        $timezone = config('sales.business_timezone');
+        $timezone = $this->policySettings->businessTimezone($companyId);
         abort_unless(is_string($timezone) && in_array($timezone, DateTimeZone::listIdentifiers(), true), 409,
             'An approved Sales business timezone is required for frozen collection aging.');
         $asOf = CarbonImmutable::parse($asOfDate, $timezone)->startOfDay();

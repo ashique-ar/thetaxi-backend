@@ -12,11 +12,18 @@ use Illuminate\Support\Facades\DB;
 
 class CommissionDisputeService
 {
-    public function __construct(private readonly DomainEventPublisher $events) {}
+    public function __construct(
+        private readonly DomainEventPublisher $events,
+        private readonly SalesPolicySettingsService $policySettings,
+    ) {}
 
     public function raise(SalesCommissionStatementLine $line, string $staffId, array $data): SalesCommissionDispute
     {
-        return DB::transaction(function () use ($line, $staffId, $data) {
+        $responseDays = $this->policySettings->disputeResponseDays((string) $line->statement->company_id);
+        abort_unless($responseDays !== null, 409,
+            'An approved commission-dispute response-window policy is required before a dispute can be raised.');
+
+        return DB::transaction(function () use ($line, $staffId, $data, $responseDays) {
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($line->statement_id);
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
             abort_if(in_array($statement->status, ['paid', 'void'], true), 422, 'Paid or void statements cannot accept a new dispute.');
@@ -36,7 +43,7 @@ class CommissionDisputeService
                 'statement_line_id' => $line->id, 'raised_by_staff_id' => $staffId,
                 'category' => $data['category'], 'reason' => $data['reason'],
                 'evidence_file_id' => $data['evidence_file_id'] ?? null, 'contested_amount_lkr' => $amount,
-                'status' => 'open', 'raised_at' => now(), 'response_due_at' => now()->addDays((int) config('sales.disputes.response_days', 7)),
+                'status' => 'open', 'raised_at' => now(), 'response_due_at' => now()->addDays($responseDays),
                 'idempotency_key' => $data['idempotency_key'],
             ]);
             $fromVersion = $statement->state_version;
