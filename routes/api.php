@@ -554,6 +554,10 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-collection-handler', [SalesBookingAttributionController::class, 'correctCollectionHandler'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
+        Route::get('attributions/{attribution}/plan-family-correction-preview', [SalesBookingAttributionController::class, 'previewPlanFamilyCorrection'])
+            ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
+        Route::post('attributions/{attribution}/correct-plan-family', [SalesBookingAttributionController::class, 'correctPlanFamily'])
+            ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::get('attributions/{attribution}/commercial-value-adjustments', [SalesBookingAttributionController::class, 'commercialValueAdjustmentHistory'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.view');
         Route::post('attributions/{attribution}/commercial-value-adjustments/preview', [SalesBookingAttributionController::class, 'previewCommercialValueAdjustment'])

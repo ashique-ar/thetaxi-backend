@@ -267,17 +267,19 @@ it('rejects a pending-clearance policy that could expose commission to payout', 
         ->toContain("'commission_release_kind'");
 });
 
-it('appends a typed beneficiary-correction entitlement only for a missing or wrong-entity collection handler now resolved by a governed correction', function () {
+it('appends a typed beneficiary-correction entitlement only for a missing ineligible or wrong-entity collection handler resolved by a governed correction', function () {
     $service = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
     $mutation = file_get_contents(app_path('Services/Sales/BookingAttributionMutationService.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
     $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_24_101000_add_late_beneficiary_correction_hold_adjustments.php'));
+    $eligibilityMigration = file_get_contents(database_path('migrations/2026_09_01_170000_extend_beneficiary_eligibility_hold_adjustments.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($service)->toContain("'beneficiary_missing', 'finality_policy_missing', 'finality_policy_invalid'")
+    expect($service)->toContain("'beneficiary_missing', 'collection_handler_ineligible',")
+        ->toContain("'commission_beneficiary_ineligible', 'finality_policy_missing', 'finality_policy_invalid'")
         ->toContain("previewLateBeneficiaryCorrection")
-        ->toContain("\$decision->hold_code === 'beneficiary_missing'")
+        ->toContain("'beneficiary_missing', 'collection_handler_ineligible', 'commission_beneficiary_ineligible',")
         ->toContain("&& (\$decision->beneficiary_sales_profile_id || \$decision->beneficiary_staff_id)")
         ->toContain("'collection_handler_corrected'")
         ->toContain("collectionProfileEvidenceAt(\$attribution, \$receipt->received_at)")
@@ -291,7 +293,37 @@ it('appends a typed beneficiary-correction entitlement only for a missing or wro
         ->and($routes)->toContain('attributions/{attribution}/correct-collection-handler')
         ->toContain("permission:sales.attributions.correct")
         ->and($remediation)->toContain("A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction")
-        ->toContain("if (\$code === 'beneficiary_missing')")
+        ->toContain('A missing or ineligible collection beneficiary becomes adjustment-previewable only after one governed, actor-owned collection-handler correction')
+        ->toContain("'beneficiary_missing', 'collection_handler_ineligible', 'commission_beneficiary_ineligible',")
         ->and($migration)->toContain("adjustment_kind = 'late_beneficiary_correction_entitlement' AND original_hold_code IN ('beneficiary_missing', 'legal_entity_mismatch') AND beneficiary_attribution_event_id IS NULL AND finality_policy_id IS NOT NULL AND receipt_finality_event_id IS NULL")
-        ->toContain('Rollback refused: export and reconcile late beneficiary-correction commission entitlement evidence first.');
+        ->toContain('Rollback refused: export and reconcile late beneficiary-correction commission entitlement evidence first.')
+        ->and($eligibilityMigration)->toContain("original_hold_code IN ('beneficiary_missing', 'collection_handler_ineligible', 'commission_beneficiary_ineligible', 'legal_entity_mismatch')")
+        ->toContain("whereIn('original_hold_code', ['collection_handler_ineligible', 'commission_beneficiary_ineligible'])")
+        ->toContain('Rollback refused: export and reconcile beneficiary-eligibility commission entitlement evidence first.');
+});
+
+it('freezes a uniquely approved historical plan family before appending a linked entitlement', function () {
+    $resolver = file_get_contents(app_path('Services/Sales/CommissionPlanResolver.php'));
+    $adjustments = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_01_171000_add_late_plan_family_hold_adjustments.php'));
+
+    expect($resolver)->toContain('public function previewMissingFamily(')
+        ->toContain('Plan assignment precedence is ambiguous at the original secured time.')
+        ->toContain('The winning plan assignment lacks maker-checker approval evidence.')
+        ->toContain('public function correctMissingFamily(')
+        ->toContain("'commission_plan_family_corrected'")
+        ->toContain("where('correlation_id', \$idempotencyKey)")
+        ->toContain("\$outboxPayload['correction_checksum']")
+        ->toContain('The plan assignment maker or approver cannot approve its historical attribution correction.')
+        ->and($adjustments)->toContain("\$decision->hold_code === 'plan_family_missing'")
+        ->toContain('previewLatePlanFamily')
+        ->toContain("'adjustment_kind' => 'late_plan_family_entitlement'")
+        ->and($controller)->toContain('public function previewPlanFamilyCorrection(')
+        ->toContain('public function correctPlanFamily(')
+        ->and($routes)->toContain('plan-family-correction-preview')
+        ->toContain('correct-plan-family')
+        ->and($migration)->toContain("adjustment_kind = 'late_plan_family_entitlement' AND original_hold_code = 'plan_family_missing'")
+        ->toContain('Rollback refused: export and reconcile late plan-family commission entitlement evidence first.');
 });

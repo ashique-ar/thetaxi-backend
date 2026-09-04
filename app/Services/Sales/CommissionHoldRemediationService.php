@@ -105,12 +105,27 @@ class CommissionHoldRemediationService
             );
         }
 
-        if ($code === 'beneficiary_missing') {
+        if (in_array($code, [
+            'beneficiary_missing', 'collection_handler_ineligible', 'commission_beneficiary_ineligible',
+        ], true)) {
             return $this->contract(
-                'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
+                in_array($code, self::CATEGORIES['profile_eligibility'], true)
+                    ? 'profile_eligibility' : 'attribution_identity',
+                'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
                 'Review collection-handler attribution evidence',
-                'A missing collection handler becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to an eligible Profile.',
+                'A missing or ineligible collection beneficiary becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
+                false,
+                true,
+            );
+        }
+
+        if ($code === 'plan_family_missing') {
+            return $this->contract(
+                'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
+                $actor, 'sales.attributions.correct', '/sales/attribution-operations',
+                'Resolve missing frozen plan family',
+                'Preview the approved assignment precedence at the original secured time, append one audited plan-family correction, then preview the linked commission adjustment. Missing or ambiguous approved assignment evidence remains blocked.',
                 false,
                 true,
             );

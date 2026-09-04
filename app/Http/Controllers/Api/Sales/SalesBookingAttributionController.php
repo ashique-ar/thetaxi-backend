@@ -10,6 +10,7 @@ use App\Models\Sales\SalesProfile;
 use App\Services\Sales\BookingAttributionMutationService;
 use App\Services\Sales\BookingAttributionService;
 use App\Services\Sales\BookingCommercialValueAdjustmentService;
+use App\Services\Sales\CommissionPlanResolver;
 use App\Services\Sales\SalesAccessScope;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -24,6 +25,7 @@ class SalesBookingAttributionController extends Controller
         private readonly BookingAttributionService $attributions,
         private readonly BookingAttributionMutationService $mutations,
         private readonly BookingCommercialValueAdjustmentService $commercialValueAdjustments,
+        private readonly CommissionPlanResolver $commissionPlans,
         private readonly SalesAccessScope $scope,
     ) {}
 
@@ -192,6 +194,30 @@ class SalesBookingAttributionController extends Controller
             $data['reason'],
             $data['idempotency_key'],
             $request->user()->id,
+        );
+
+        return response()->json(['status' => 'success', 'data' => $updated]);
+    }
+
+    public function previewPlanFamilyCorrection(Request $request, string $attribution): JsonResponse
+    {
+        $attribution = $this->scopedAttribution($request, $attribution);
+
+        return response()->json(['status' => 'success', 'data' => $this->commissionPlans->previewMissingFamily($attribution)]);
+    }
+
+    public function correctPlanFamily(Request $request, string $attribution): JsonResponse
+    {
+        $data = $request->validate([
+            'expected_version' => ['required', 'integer', 'min:1'],
+            'preview_checksum' => ['required', 'string', 'size:64'],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
+        ]);
+        $attribution = $this->scopedAttribution($request, $attribution);
+        $updated = $this->commissionPlans->correctMissingFamily(
+            $attribution->id, $data['expected_version'], $data['preview_checksum'],
+            $data['reason'], $data['idempotency_key'], $request->user()->id,
         );
 
         return response()->json(['status' => 'success', 'data' => $updated]);
