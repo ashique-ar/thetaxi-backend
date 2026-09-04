@@ -5952,9 +5952,15 @@ class BookingFlowService
 
     private function calculateDistance(array $from, array $to): ?array
     {
+        $fromHasCoordinates = $this->isValidLocationArray($from);
+        $toHasCoordinates = $this->isValidLocationArray($to);
+        $fromHasAddress = trim((string) ($from['address'] ?? $from['formatted_address'] ?? $from['name'] ?? '')) !== '';
+        $toHasAddress = trim((string) ($to['address'] ?? $to['formatted_address'] ?? $to['name'] ?? '')) !== '';
 
-        // Validate input and handle different location formats
-        if (!$this->isValidLocationArray($from) || !$this->isValidLocationArray($to)) {
+        // Google accepts either coordinates or a complete address. Supporting the
+        // address fallback keeps legacy managed defaults equivalent to a Places
+        // selection while new configuration records store coordinates as well.
+        if ((!$fromHasCoordinates && !$fromHasAddress) || (!$toHasCoordinates && !$toHasAddress)) {
             Log::info('Calculating distance between coordinates', [
                 'from' => [
                     'latitude' => $this->extractLatitude($from),
@@ -5969,9 +5975,15 @@ class BookingFlowService
                 'to_valid' => $this->isValidLocationArray($to)
             ]);
 
-            // For missing coordinates, return null to indicate calculation not possible
-            // This allows the system to show "Request Quotation" instead of "Not Available"
+            // No usable coordinates or address: calculation is genuinely impossible.
             return null;
+        }
+
+        if (!$fromHasCoordinates || !$toHasCoordinates) {
+            Log::info('Calculating distance from managed location address fallback', [
+                'from_has_coordinates' => $fromHasCoordinates,
+                'to_has_coordinates' => $toHasCoordinates,
+            ]);
         }
 
         try {

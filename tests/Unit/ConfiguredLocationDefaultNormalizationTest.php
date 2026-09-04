@@ -36,6 +36,20 @@ class ConfiguredLocationDefaultNormalizationTest extends TestCase
         $this->assertSame('80.633728', $request->input('pickup_lng'));
     }
 
+    public function test_old_custom_address_is_never_paired_with_configured_default_coordinates(): void
+    {
+        $request = $this->configuredRequest([
+            'service_type' => 'configured-service',
+            'pickup' => 'Customer entered location',
+        ]);
+
+        $request->normalizeForValidation();
+
+        $this->assertSame('Customer entered location', $request->input('pickup'));
+        $this->assertNull($request->input('pickup_lat'));
+        $this->assertNull($request->input('pickup_lng'));
+    }
+
     public function test_browser_defaults_use_coordinates_from_the_same_dynamic_field(): void
     {
         $script = file_get_contents(public_path('assets/js/booking-form.js'));

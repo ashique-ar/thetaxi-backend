@@ -171,8 +171,35 @@
 
     // Utility for safe old() fallback
     $safeOldOr = function ($field, $value) {
-        $oldValue = old($field);
-        return $oldValue !== null ? $oldValue : $value;
+        $aliasGroups = [
+            ['pickup_location', 'pickup', 'from', 'origin'],
+            ['dropoff_location', 'dropoff', 'to', 'destination'],
+            ['pickup_location_lat', 'pickup_lat', 'from_lat', 'origin_lat'],
+            ['pickup_location_lng', 'pickup_lng', 'from_lng', 'origin_lng'],
+            ['dropoff_location_lat', 'dropoff_lat', 'to_lat', 'destination_lat'],
+            ['dropoff_location_lng', 'dropoff_lng', 'to_lng', 'destination_lng'],
+            ['from_date', 'pickup_date', 'date'],
+            ['from_time', 'pickup_time', 'time'],
+            ['to_date', 'dropoff_date', 'return_date'],
+            ['to_time', 'dropoff_time', 'return_time'],
+        ];
+
+        $candidateFields = [$field];
+        foreach ($aliasGroups as $aliases) {
+            if (in_array($field, $aliases, true)) {
+                $candidateFields = array_values(array_unique(array_merge([$field], $aliases)));
+                break;
+            }
+        }
+
+        foreach ($candidateFields as $candidate) {
+            $oldValue = old($candidate);
+            if ($oldValue !== null) {
+                return $oldValue;
+            }
+        }
+
+        return $value;
     };
 
     // Load service type models/configs once

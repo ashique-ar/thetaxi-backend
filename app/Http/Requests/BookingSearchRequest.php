@@ -35,15 +35,22 @@ class BookingSearchRequest extends FormRequest
                     $submitAs = (string) ($config['submit_as'] ?? $fieldName);
                     $effectiveConfig = $this->resolveConditionalLocationDefaults($config, $data);
                     $default = $this->resolveConfiguredDefault($effectiveConfig['default'] ?? null, $effectiveConfig['type'] ?? null);
-                    if ($submitAs !== '' && $this->isBlankSearchValue($data[$submitAs] ?? null) && $default !== null) {
+                    $submittedValueWasBlank = $this->isBlankSearchValue($data[$submitAs] ?? null);
+                    if ($submitAs !== '' && $submittedValueWasBlank && $default !== null) {
                         $data[$submitAs] = $default;
                     }
 
                     if (($config['type'] ?? null) === 'location') {
+                        $addressUsesConfiguredDefault = $default !== null
+                            && trim((string) ($data[$submitAs] ?? '')) === trim((string) $default);
                         foreach (['lat', 'lng'] as $coordinate) {
                             $coordinateKey = "{$submitAs}_{$coordinate}";
                             $configuredCoordinate = $effectiveConfig['default_' . $coordinate] ?? null;
-                            if ($this->isBlankSearchValue($data[$coordinateKey] ?? null) && !$this->isBlankSearchValue($configuredCoordinate)) {
+                            if (
+                                $addressUsesConfiguredDefault
+                                && $this->isBlankSearchValue($data[$coordinateKey] ?? null)
+                                && !$this->isBlankSearchValue($configuredCoordinate)
+                            ) {
                                 $data[$coordinateKey] = (string) $configuredCoordinate;
                             }
                         }
