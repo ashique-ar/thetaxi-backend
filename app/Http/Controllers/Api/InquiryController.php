@@ -35,7 +35,7 @@ class InquiryController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $inq = Inquiry::create($data);
+        $inq = Inquiry::createWithUniqueNumber($data);
 
         return response()->json([
             'status' => 'success',

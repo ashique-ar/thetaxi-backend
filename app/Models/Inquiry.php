@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\BaseModel;
 use App\Traits\UUID;
+use Illuminate\Database\QueryException;
 
 /**
  * App\Models\Inquiry
@@ -139,6 +140,44 @@ class Inquiry extends BaseModel
         $next = $max + 1;
 
         return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * Create an inquiry while recovering from concurrent number generation.
+     *
+     * The unique database constraint remains the authority. Two requests can
+     * observe the same current maximum, so retry only that specific conflict
+     * and allow the creating hook to calculate the next available number.
+     */
+    public static function createWithUniqueNumber(array $attributes, int $attempts = 5): static
+    {
+        $lastException = null;
+
+        for ($attempt = 1; $attempt <= $attempts; $attempt++) {
+            try {
+                unset($attributes['inquiry_number']);
+
+                return static::create($attributes);
+            } catch (QueryException $exception) {
+                if (! static::isInquiryNumberCollision($exception)) {
+                    throw $exception;
+                }
+
+                $lastException = $exception;
+            }
+        }
+
+        throw $lastException ?? new \RuntimeException('Unable to allocate a unique inquiry number.');
+    }
+
+    private static function isInquiryNumberCollision(QueryException $exception): bool
+    {
+        $sqlState = (string) ($exception->errorInfo[0] ?? $exception->getCode());
+        $message = $exception->getMessage();
+
+        return $sqlState === '23505'
+            && (str_contains($message, 'inquiries_inquiry_number_unique')
+                || str_contains($message, 'inquiry_number'));
     }
 
     /**

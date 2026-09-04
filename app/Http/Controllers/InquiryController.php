@@ -66,7 +66,7 @@ class InquiryController extends Controller
                 ],
             ];
 
-            $inquiry = Inquiry::create([
+            $inquiry = Inquiry::createWithUniqueNumber([
                 'name' => $meta['name'],
                 'email' => $meta['email'],
                 'phone' => $meta['phone'],
@@ -345,7 +345,7 @@ class InquiryController extends Controller
                 ],
             ];
 
-            $inquiry = Inquiry::create([
+            $inquiry = Inquiry::createWithUniqueNumber([
                 'name' => $meta['name'],
                 'email' => $meta['email'],
                 'phone' => $meta['phone'],
