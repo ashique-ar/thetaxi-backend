@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 // container, which needs the booted Laravel app; tests/Unit is plain PHPUnit\
 // TestCase by default (see tests/Pest.php), so this file opts into the Laravel
 // TestCase itself rather than widening that default for every Unit test.
+uses(Tests\TestCase::class);
 
 it('maintains twelve monthly occurrences from the current rule boundary', function (): void {
     $rule = new BookingPaymentScheduleRule(['anchor_date' => '2026-08-13']);
