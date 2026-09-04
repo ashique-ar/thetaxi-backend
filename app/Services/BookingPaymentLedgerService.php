@@ -10,6 +10,7 @@ use App\Models\Booking\BookingPaymentSchedule;
 use App\Models\Booking\BookingPaymentScheduleAllocation;
 use App\Models\Staff;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Carbon;
 use App\Models\Corporate\Corporate;
@@ -19,9 +20,59 @@ use App\Models\Finance\FinancialPaymentAllocation;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Finance\FinancialAdjustment;
 use App\Models\Finance\FinancialSettlementDocument;
+use App\Models\Booking\BookingPaymentReceiptComponent;
+use App\Models\Sales\SalesBookingAttribution;
+use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\BookingPaymentReceiptFinalityEvent;
+use App\Models\Booking\BookingPaymentFinalityPolicy;
+use App\Services\Sales\CommissionDecisionService;
+use App\Services\Sales\CommissionHoldService;
+use App\Services\Sales\SalesMetricFactService;
+use App\Models\Booking\BookingPaymentScheduleRule;
+use App\Services\Sales\RollingPaymentScheduleService;
+use Carbon\CarbonInterface;
 
 class BookingPaymentLedgerService
 {
+    public function __construct(
+        private readonly CommissionDecisionService $commissionDecisions,
+        private readonly CommissionHoldService $commissionHolds,
+        private readonly SalesMetricFactService $metricFacts,
+        private readonly RollingPaymentScheduleService $rollingSchedules,
+    ) {}
+
+    public function createRollingScheduleRule(Booking $booking, array $data, string $actorUserId): array
+    {
+        $result = $this->rollingSchedules->createRule($booking, $data, $actorUserId);
+        $this->allocateConfirmedReceiptsToNewSchedules($booking, $actorUserId);
+
+        return $result;
+    }
+
+    public function extendRollingScheduleRule(
+        BookingPaymentScheduleRule $rule,
+        CarbonInterface $asOf,
+        ?string $actorUserId = null,
+        bool $dryRun = false,
+    ): array {
+        $result = $this->rollingSchedules->extendRule($rule, $asOf, $actorUserId, $dryRun);
+        if (! $dryRun && (int) $result['generated_count'] > 0) {
+            $this->allocateConfirmedReceiptsToNewSchedules($rule->booking, $actorUserId);
+        }
+
+        return $result;
+    }
+
+    public function transitionRollingScheduleRule(Booking $booking, array $data, string $actorUserId): array
+    {
+        return $this->rollingSchedules->transitionRule($booking, $data, $actorUserId);
+    }
+
+    public function allocateConfirmedReceiptsToSchedules(Booking $booking, ?string $actorUserId = null): void
+    {
+        $this->allocateConfirmedReceiptsToNewSchedules($booking, $actorUserId);
+    }
+
     public function accountSummaryFor(string $ownerType, string $ownerId): array
     {
         $booking = Booking::query()
@@ -68,7 +119,11 @@ class BookingPaymentLedgerService
             'owner_type' => $ownerType,
             'owner_id' => $ownerId,
             'owner_name' => $ownerName,
-            'total_charged' => round((float) $bookingSummaries->sum('total_amount'), 2),
+            'total_charged' => round((float) $bookingSummaries->sum(fn (array $summary) =>
+                $summary['contract_basis'] === 'open_ended'
+                    ? (float) $summary['generated_horizon_value']
+                    : (float) $summary['total_amount']
+            ), 2),
             'total_received' => round((float) $bookingSummaries->sum('paid_amount'), 2),
             'total_due' => round((float) $bookingSummaries->sum('due_amount'), 2),
             'bookings_with_due' => $bookingSummaries->where('due_amount', '>', 0)->count(),
@@ -86,14 +141,17 @@ class BookingPaymentLedgerService
             ->with('depositRefunds')
             ->get();
         $fareReceipts = $receipts->whereIn('payment_purpose', ['booking_payment', 'service_deposit']);
+        $confirmedFareReceipts = $fareReceipts->where('finality_status', 'confirmed');
+        $pendingFareReceipts = $fareReceipts->whereIn('finality_status', ['pending_clearance', 'policy_missing']);
         $securityReceipts = $receipts->where('payment_purpose', 'security_deposit');
-        $securityReceived = round((float) $securityReceipts->sum('amount'), 2);
-        $securityRefunded = round((float) $securityReceipts->sum('refunded_amount'), 2);
+        $confirmedSecurityReceipts = $securityReceipts->where('finality_status', 'confirmed');
+        $securityReceived = round((float) $confirmedSecurityReceipts->sum('amount'), 2);
+        $securityRefunded = round((float) $confirmedSecurityReceipts->sum('refunded_amount'), 2);
         $securityHeld = max(0, round($securityReceived - $securityRefunded, 2));
         $requiredSecurity = (float) $booking->bookingItems()->with('vehicleGroup')->get()
             ->sum(fn ($item) => (float) ($item->vehicleGroup?->refundable_deposit ?? 0) * max(1, (int) ($item->quantity ?? 1)));
         $total = round((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0), 2);
-        $ledgerPaid = round((float) $fareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2);
+        $ledgerPaid = round((float) $confirmedFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2);
         $legacyPaid = $this->legacyPaidAmount($booking, $total);
         $paid = $receipts->isEmpty() ? $legacyPaid : $ledgerPaid;
         $settlementItem = FinancialSettlementItem::with('settlement')->where('booking_id', $booking->id)->latest('created_at')->first();
@@ -117,7 +175,7 @@ class BookingPaymentLedgerService
         $due = $arrangement === 'complimentary' ? 0.0 : max(0, round($total + $adjustments - $refunds - $paid, 2));
         $status = $this->resolvePaymentStatus($booking, $paid, $due);
         $payer = $this->resolvePayer($booking);
-        $driverReceipts = $receipts->where('received_via', 'driver');
+        $driverReceipts = $receipts->where('received_via', 'driver')->where('finality_status', 'confirmed');
         $driverCashCollected = round((float) $driverReceipts->sum('amount'), 2);
         $driverCashHandedOver = round((float) $driverReceipts->sum('driver_company_settled_amount'), 2);
         $scheduleRows = BookingPaymentSchedule::query()
@@ -128,6 +186,15 @@ class BookingPaymentLedgerService
             ->get();
         $scheduledAmount = round((float) $scheduleRows->sum('amount'), 2);
         $scheduledPaid = round((float) $scheduleRows->sum('allocations_sum_amount'), 2);
+        $openEndedRule = Schema::hasTable('booking_payment_schedule_rules')
+            ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
+            : null;
+        if ($openEndedRule?->contract_basis === 'open_ended') {
+            $due = $arrangement === 'complimentary'
+                ? 0.0
+                : max(0, round($scheduledAmount + $adjustments - $refunds - $paid, 2));
+            $status = $this->resolvePaymentStatus($booking, $paid, $due);
+        }
         $today = now()->toDateString();
         $paymentSchedule = $scheduleRows->map(function (BookingPaymentSchedule $schedule) use ($today) {
             $allocated = round((float) ($schedule->allocations_sum_amount ?? 0), 2);
@@ -150,9 +217,17 @@ class BookingPaymentLedgerService
 
         return [
             'total_amount' => $total,
+            'total_amount_basis' => $openEndedRule ? 'legacy_first_month_compatibility' : 'fixed_contract',
+            'contract_basis' => $openEndedRule?->contract_basis ?? 'fixed_term',
+            'lifetime_contract_value' => $openEndedRule ? null : $total,
+            'monthly_run_rate' => $openEndedRule ? (float) $openEndedRule->source_amount : null,
+            'generated_horizon_value' => $openEndedRule ? $scheduledAmount : null,
+            'generated_horizon_start' => $openEndedRule ? $scheduleRows->min(fn ($row) => $row->due_date?->toDateString()) : null,
+            'generated_horizon_end' => $openEndedRule ? $scheduleRows->max(fn ($row) => $row->due_date?->toDateString()) : null,
             'paid_amount' => $paid,
-            'service_deposit_received' => round((float) $receipts->where('payment_purpose', 'service_deposit')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
-            'booking_payments_received' => round((float) $receipts->where('payment_purpose', 'booking_payment')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
+            'service_deposit_received' => round((float) $confirmedFareReceipts->where('payment_purpose', 'service_deposit')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
+            'booking_payments_received' => round((float) $confirmedFareReceipts->where('payment_purpose', 'booking_payment')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
+            'pending_collection_amount' => round((float) $pendingFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
             'due_amount' => $due,
             'security_deposit_received' => $securityReceived,
             'security_deposit_refunded' => $securityRefunded,
@@ -226,8 +301,8 @@ class BookingPaymentLedgerService
                 'taxes' => round((float)($booking->tax_amount ?? 0),2),
                 'refunds' => $refunds,
                 'adjustments' => $adjustments,
-                'company_collected' => round((float)$fareReceipts->where('received_via','company')->sum('amount'),2),
-                'driver_collected' => round((float)$fareReceipts->where('received_via','driver')->sum('amount'),2),
+                'company_collected' => round((float)$confirmedFareReceipts->where('received_via','company')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount),2),
+                'driver_collected' => round((float)$confirmedFareReceipts->where('received_via','driver')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount),2),
             ],
             'collection_method' => $booking->payment_collection_method ?: 'cash_to_driver',
             'payment_responsibility' => $payer['type'],
@@ -244,9 +319,9 @@ class BookingPaymentLedgerService
             'payment_schedule' => [
                 'items' => $paymentSchedule,
                 'scheduled_amount' => $scheduledAmount,
-                'booking_total' => $total,
-                'unscheduled_amount' => max(0, round($total - $scheduledAmount, 2)),
-                'overscheduled_amount' => max(0, round($scheduledAmount - $total, 2)),
+                'booking_total' => $openEndedRule ? null : $total,
+                'unscheduled_amount' => $openEndedRule ? 0.0 : max(0, round($total - $scheduledAmount, 2)),
+                'overscheduled_amount' => $openEndedRule ? 0.0 : max(0, round($scheduledAmount - $total, 2)),
                 'allocated_amount' => $scheduledPaid,
                 'unallocated_received' => max(0, round($paid - $scheduledPaid, 2)),
                 'overdue_amount' => round((float) $paymentSchedule->where('status', 'overdue')->sum('balance_amount'), 2),
@@ -259,6 +334,8 @@ class BookingPaymentLedgerService
                 'payment_stage' => $receipt->payment_stage,
                 'payment_purpose' => $receipt->payment_purpose,
                 'refunded_amount' => (float) $receipt->refunded_amount,
+                'finality_status' => $receipt->finality_status,
+                'finalized_at' => $receipt->finalized_at?->toIso8601String(),
                 'refundable_balance' => $receipt->payment_purpose === 'security_deposit' ? max(0, (float) $receipt->amount - (float) $receipt->refunded_amount) : 0,
                 'refunds' => $receipt->depositRefunds->map(fn (BookingDepositRefund $refund) => [
                     'id' => $refund->id,
@@ -331,6 +408,28 @@ class BookingPaymentLedgerService
                             'idempotency_key' => ['This payment submission key already belongs to another booking.'],
                         ]);
                     }
+                    $incomingChecksum = $this->receiptPayloadChecksum($booking, $data);
+                    if ($duplicate->request_payload_checksum
+                        && ! hash_equals((string) $duplicate->request_payload_checksum, $incomingChecksum)) {
+                        throw ValidationException::withMessages([
+                            'idempotency_key' => ['This payment submission key was already used with different receipt facts.'],
+                        ]);
+                    }
+                    return $this->summary($booking);
+                }
+            }
+            if (! empty($data['provider_event_id'])) {
+                $providerDuplicate = BookingPaymentReceipt::query()
+                    ->where('payment_method', $data['payment_method'])
+                    ->where('provider_event_id', $data['provider_event_id'])
+                    ->first();
+                if ($providerDuplicate) {
+                    $sameBooking = $providerDuplicate->booking_id === $booking->id;
+                    $samePayload = ! $providerDuplicate->provider_payload_checksum
+                        || ! isset($data['provider_payload_checksum'])
+                        || hash_equals((string) $providerDuplicate->provider_payload_checksum, (string) $data['provider_payload_checksum']);
+                    abort_unless($sameBooking && $samePayload, 422,
+                        'This provider event was already recorded with different booking or payload facts.');
                     return $this->summary($booking);
                 }
             }
@@ -339,6 +438,11 @@ class BookingPaymentLedgerService
             if (!$existing) {
                 $legacy = $this->legacyPaidAmount($booking, $this->total($booking));
                 if ($legacy > 0) {
+                    if (config('sales.features.canonical_receipts_v2', false)) {
+                        throw ValidationException::withMessages([
+                            'booking' => ['Legacy paid-state evidence must be reconciled through the controlled repair workflow before recording another receipt.'],
+                        ]);
+                    }
                     $openingReceipt = BookingPaymentReceipt::create([
                         'booking_id' => $booking->id,
                         'amount' => $legacy,
@@ -352,7 +456,13 @@ class BookingPaymentLedgerService
                         'received_via' => $booking->payment_collected_by_driver_id ? 'driver' : 'company',
                         'driver_id' => $booking->payment_collected_by_driver_id,
                         'driver_company_settlement_status' => $booking->payment_collected_by_driver_id ? 'unsettled' : 'not_applicable',
+                        ...$this->canonicalReceiptFields($booking, [
+                            'amount' => $legacy,
+                            'payment_method' => $booking->payment_method ?: 'legacy',
+                            'received_at' => $booking->payment_collected_at ?: $booking->updated_at,
+                        ]),
                     ]);
+                    $this->createReceiptComponent($openingReceipt, 'booking_payment', $legacy);
                     $this->allocateReceiptToSchedule($booking, $openingReceipt, $legacy, $userId);
                 }
             }
@@ -360,9 +470,10 @@ class BookingPaymentLedgerService
             $current = $this->summary($booking);
             $amount = round((float) $data['amount'], 2);
             $purpose = $data['payment_purpose'] ?? 'booking_payment';
-            if ($purpose !== 'security_deposit' && $amount > $current['due_amount']) {
+            $availableToSubmit = max(0, round($current['due_amount'] - (float) ($current['pending_collection_amount'] ?? 0), 2));
+            if ($purpose !== 'security_deposit' && $amount > $availableToSubmit) {
                 throw ValidationException::withMessages([
-                    'amount' => ['The received amount cannot exceed the outstanding balance.'],
+                    'amount' => ['The received amount cannot exceed the outstanding balance after pending-clearance receipts.'],
                 ]);
             }
             if ($purpose === 'security_deposit') {
@@ -389,7 +500,9 @@ class BookingPaymentLedgerService
                 'payer_id' => (bool) $booking->is_corporate_booking ? $booking->corporate_account_id : $booking->customer_id,
                 'driver_id' => $data['driver_id'] ?? null,
                 'driver_company_settlement_status' => ($data['received_via'] ?? 'company') === 'driver' ? 'unsettled' : 'not_applicable',
+                ...$this->canonicalReceiptFields($booking, $data + ['amount' => $amount]),
             ]);
+            $component = $this->createReceiptComponent($receipt, $purpose, $amount);
 
             // Refundable security deposits are liabilities and never enter the commission ledger.
             if ($purpose !== 'security_deposit') {
@@ -401,7 +514,9 @@ class BookingPaymentLedgerService
             } else {
                 $staff = null;
             }
-            if ($staff && $staff->collection_commission_enabled) {
+            if (! config('sales.features.commission_accrual', false)
+                && $staff && $staff->collection_commission_enabled
+                && $component->is_commission_eligible && $receipt->finality_status === 'confirmed') {
                 $rate = (float) $staff->collection_commission_rate;
                 BookingCollectionCommission::create([
                     'booking_id' => $booking->id,
@@ -416,12 +531,18 @@ class BookingPaymentLedgerService
                     'earned_at' => $data['received_at'],
                 ]);
             }
+            if ($component->is_commission_eligible) {
+                $this->commissionDecisions->decide($receipt, $component);
+            }
+            if ($receipt->finality_status === 'confirmed') {
+                $this->metricFacts->projectConfirmedCollection($receipt, $component);
+            }
             FinancialAuditEvent::create(['subject_type'=>'booking_payment','subject_id'=>$receipt->id,'booking_id'=>$booking->id,'event_type'=>'payment_received','from_status'=>$booking->payment_status,'amount'=>$amount,'metadata'=>['method'=>$data['payment_method'],'stage'=>$data['payment_stage'],'purpose'=>$purpose,'received_via'=>$data['received_via']??'company','reference'=>$data['reference']??null],'performed_by'=>$userId,'occurred_at'=>now()]);
 
-            if ($purpose !== 'security_deposit') {
+            if ($purpose !== 'security_deposit' && $receipt->finality_status === 'confirmed') {
                 $this->allocateReceiptToSchedule($booking, $receipt, $amount, $userId);
             }
-            if ($purpose !== 'security_deposit' && !($data['skip_settlement_allocation'] ?? false)) {
+            if ($purpose !== 'security_deposit' && $receipt->finality_status === 'confirmed' && !($data['skip_settlement_allocation'] ?? false)) {
                 $item = FinancialSettlementItem::with('settlement')->where('booking_id', $booking->id)
                     ->whereHas('settlement', fn($query) => $query->whereNotIn('status', ['paid','void']))
                     ->latest('created_at')->first();
@@ -473,6 +594,71 @@ class BookingPaymentLedgerService
         });
     }
 
+    public function repairLegacyPaidBooking(Booking $booking, array $data, string $actorUserId): array
+    {
+        return DB::transaction(function () use ($booking, $data, $actorUserId) {
+            $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $duplicate = BookingPaymentReceipt::query()->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($duplicate) {
+                abort_unless($duplicate->booking_id === $booking->id, 422, 'This repair key belongs to another booking.');
+                return $this->summary($booking);
+            }
+            abort_if(BookingPaymentReceipt::query()->where('booking_id', $booking->id)->exists(), 422,
+                'The booking already has receipt evidence. Use receipt-component reconciliation instead of creating an opening receipt.');
+            $legacyAmount = $this->legacyPaidAmount($booking, $this->total($booking));
+            abort_if($legacyAmount <= 0, 422, 'The booking has no legacy paid balance to reconcile.');
+            if (abs($legacyAmount - round((float) $data['source_amount'], 2)) > 0.01) {
+                throw ValidationException::withMessages([
+                    'source_amount' => ["The repair amount must equal the legacy paid balance of {$legacyAmount}."],
+                ]);
+            }
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
+            abort_unless($attribution?->company_id, 422, 'Resolve Sales attribution and legal entity before repairing payment evidence.');
+            if (strtoupper((string) $data['source_currency']) !== 'LKR' && empty($data['fx_rate_to_lkr'])) {
+                throw ValidationException::withMessages(['fx_rate_to_lkr' => ['A verified LKR rate is required for a non-LKR repair.']]);
+            }
+
+            $receiptData = [
+                ...$data,
+                'amount' => $legacyAmount,
+                'payment_stage' => 'opening_balance',
+                'payment_purpose' => 'booking_payment',
+                'received_via' => $data['received_via'] ?? ($booking->payment_collected_by_driver_id ? 'driver' : 'company'),
+            ];
+            $receipt = BookingPaymentReceipt::create([
+                'booking_id' => $booking->id,
+                'amount' => $legacyAmount,
+                'payment_method' => $data['payment_method'],
+                'payment_stage' => 'opening_balance',
+                'payment_purpose' => 'booking_payment',
+                'reference' => $data['reference'],
+                'idempotency_key' => $data['idempotency_key'],
+                'received_at' => $data['received_at'],
+                'received_by' => $actorUserId,
+                'notes' => $data['notes'],
+                'metadata' => ['opening_balance' => true, 'reconciliation_repair' => true, 'commission_backfill_allowed' => false],
+                'received_via' => $receiptData['received_via'],
+                'payer_type' => (bool) $booking->is_corporate_booking ? 'corporate' : 'customer',
+                'payer_id' => (bool) $booking->is_corporate_booking ? $booking->corporate_account_id : $booking->customer_id,
+                'driver_id' => $booking->payment_collected_by_driver_id,
+                'driver_company_settlement_status' => $booking->payment_collected_by_driver_id ? 'unsettled' : 'not_applicable',
+                ...$this->canonicalReceiptFields($booking, $receiptData),
+            ]);
+            $this->createReceiptComponent($receipt, 'booking_payment', $legacyAmount);
+            if ($receipt->finality_status === 'confirmed') {
+                $this->allocateReceiptToSchedule($booking, $receipt, $legacyAmount, $actorUserId);
+            }
+            FinancialAuditEvent::create([
+                'subject_type' => 'booking_payment', 'subject_id' => $receipt->id, 'booking_id' => $booking->id,
+                'event_type' => 'legacy_payment_receipt_repaired', 'amount' => $legacyAmount,
+                'metadata' => ['reference' => $data['reference'], 'commission_backfill_allowed' => false],
+                'performed_by' => $actorUserId, 'occurred_at' => now(),
+            ]);
+
+            return $this->summary($booking);
+        });
+    }
+
     public function addScheduleItem(Booking $booking, array $data, ?string $userId): array
     {
         DB::transaction(function () use ($booking, $data, $userId) {
@@ -496,14 +682,17 @@ class BookingPaymentLedgerService
                 'amount' => $newAmount,
                 'notes' => $data['notes'] ?? null,
                 'created_user_id' => $userId,
+                ...$this->canonicalScheduleFields($booking, $newAmount, 'custom'),
             ]);
             BookingPaymentReceipt::query()
                 ->where('booking_id', $booking->id)
                 ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->where('finality_status', 'confirmed')
                 ->orderBy('received_at')
                 ->each(fn (BookingPaymentReceipt $receipt) =>
-                    $this->allocateReceiptToSchedule($booking, $receipt, (float) $receipt->amount, $userId)
+                    $this->allocateReceiptToSchedule($booking, $receipt, max(0, (float) $receipt->amount - (float) $receipt->refunded_amount), $userId)
                 );
+            $this->ensureCollectionWorkItems($booking);
         });
         return $this->summary($booking->fresh());
     }
@@ -544,6 +733,11 @@ class BookingPaymentLedgerService
                     'due_date' => $dueDate->toDateString(),
                     'amount' => $amount,
                     'created_user_id' => $userId,
+                    ...$this->canonicalScheduleFields(
+                        $booking,
+                        $amount,
+                        $frequency === 'full_payment' ? 'initial' : ($frequency === 'monthly' ? 'monthly' : 'custom')
+                    ),
                 ]);
                 $remaining = round($remaining - $amount, 2);
                 $sequence++;
@@ -559,10 +753,12 @@ class BookingPaymentLedgerService
             BookingPaymentReceipt::query()
                 ->where('booking_id', $booking->id)
                 ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->where('finality_status', 'confirmed')
                 ->orderBy('received_at')
                 ->each(fn (BookingPaymentReceipt $receipt) =>
-                    $this->allocateReceiptToSchedule($booking, $receipt, (float) $receipt->amount, $userId)
+                    $this->allocateReceiptToSchedule($booking, $receipt, max(0, (float) $receipt->amount - (float) $receipt->refunded_amount), $userId)
                 );
+            $this->ensureCollectionWorkItems($booking, (int) ($data['reminder_days'] ?? 3));
         });
         return $this->summary($booking->fresh());
     }
@@ -602,6 +798,72 @@ class BookingPaymentLedgerService
             ]);
             $remaining = round($remaining - $allocated, 2);
         }
+
+        $allocatedTotal = round($amount - $remaining, 4);
+        $receipt->components()->where('is_allocatable', true)->orderBy('id')->each(function (BookingPaymentReceiptComponent $component) use (&$allocatedTotal) {
+            if ($allocatedTotal <= 0) {
+                return;
+            }
+            $available = max(0, round((float) $component->source_amount - (float) $component->adjusted_source_amount, 4));
+            $componentAllocated = min($available, $allocatedTotal);
+            $component->update(['allocated_source_amount' => $componentAllocated]);
+            $allocatedTotal = round($allocatedTotal - $componentAllocated, 4);
+        });
+    }
+
+    private function allocateConfirmedReceiptsToNewSchedules(Booking $booking, ?string $actorUserId): void
+    {
+        DB::transaction(function () use ($booking, $actorUserId): void {
+            $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            BookingPaymentReceipt::query()
+                ->where('booking_id', $booking->id)
+                ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->where('finality_status', 'confirmed')
+                ->orderBy('received_at')
+                ->orderBy('id')
+                ->each(fn (BookingPaymentReceipt $receipt) => $this->allocateReceiptToSchedule(
+                    $booking,
+                    $receipt,
+                    max(0, (float) $receipt->amount - (float) $receipt->refunded_amount),
+                    $actorUserId,
+                ));
+        });
+    }
+
+    private function canonicalScheduleFields(Booking $booking, float $amount, string $kind): array
+    {
+        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
+        $currency = strtoupper((string) ($booking->currency ?? 'LKR'));
+
+        return [
+            'company_id' => $attribution?->company_id,
+            'schedule_kind' => $kind,
+            'source_amount' => round($amount, 4),
+            'source_currency' => $currency,
+            'lkr_amount' => $currency === 'LKR' ? round($amount, 4) : null,
+            'is_collection_target_eligible' => true,
+            'collection_sales_profile_id' => $attribution?->collection_sales_profile_id,
+            'revision_number' => 1,
+        ];
+    }
+
+    private function ensureCollectionWorkItems(Booking $booking, int $reminderDays = 3): void
+    {
+        BookingPaymentSchedule::query()->where('booking_id', $booking->id)->whereNull('superseded_at')
+            ->each(function (BookingPaymentSchedule $schedule) use ($reminderDays): void {
+                BookingCollectionWorkItem::firstOrCreate([
+                    'idempotency_key' => 'schedule-collection:'.$schedule->id,
+                ], [
+                    'company_id' => $schedule->company_id,
+                    'booking_id' => $schedule->booking_id,
+                    'booking_payment_schedule_id' => $schedule->id,
+                    'assigned_sales_profile_id' => $schedule->collection_sales_profile_id,
+                    'work_type' => 'collect_installment',
+                    'status' => 'open',
+                    'due_at' => $schedule->due_date->endOfDay(),
+                    'reminder_offset_days' => $reminderDays,
+                ]);
+            });
     }
 
 
@@ -641,6 +903,205 @@ class BookingPaymentLedgerService
     private function total(Booking $booking): float
     {
         return round((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0), 2);
+    }
+
+    private function canonicalReceiptFields(Booking $booking, array $data): array
+    {
+        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
+        $sourceAmount = round((float) ($data['source_amount'] ?? $data['amount']), 4);
+        $sourceCurrency = strtoupper((string) ($data['source_currency'] ?? $booking->currency ?? 'LKR'));
+        $fxRate = $sourceCurrency === 'LKR' ? 1.0 : (isset($data['fx_rate_to_lkr']) ? (float) $data['fx_rate_to_lkr'] : null);
+        $finality = $this->resolveFinality($attribution?->company_id, strtolower((string) $data['payment_method']), $data['received_at']);
+        if (config('sales.features.canonical_receipts_v2', false) && ! $attribution?->company_id) {
+            throw ValidationException::withMessages(['booking' => ['Sales attribution and legal entity are required before a canonical receipt can be activated.']]);
+        }
+        if (config('sales.features.canonical_receipts_v2', false) && empty($data['idempotency_key'])) {
+            throw ValidationException::withMessages([
+                'idempotency_key' => ['A persistent payment source identity is required for canonical receipts.'],
+            ]);
+        }
+        if ($sourceCurrency !== 'LKR' && $fxRate === null && config('sales.features.canonical_receipts_v2', false)) {
+            throw ValidationException::withMessages(['fx_rate_to_lkr' => ['An approved LKR conversion rate is required for non-LKR collections.']]);
+        }
+
+        return [
+            'company_id' => $attribution?->company_id,
+            'source_amount' => $sourceAmount,
+            'source_currency' => $sourceCurrency,
+            'lkr_amount' => $fxRate !== null ? round($sourceAmount * $fxRate, 4) : null,
+            'fx_rate_to_lkr' => $fxRate,
+            'fx_rate_at' => $fxRate !== null ? ($data['fx_rate_at'] ?? $data['received_at']) : null,
+            'fx_source' => $sourceCurrency === 'LKR' ? 'identity' : ($data['fx_source'] ?? null),
+            'finality_status' => $finality['status'],
+            'initial_finality_status' => $finality['status'],
+            'finalized_at' => $finality['status'] === 'confirmed' ? ($data['finalized_at'] ?? $data['received_at']) : null,
+            'provider_event_id' => $data['provider_event_id'] ?? null,
+            'provider_payload_checksum' => $data['provider_payload_checksum'] ?? null,
+            'request_payload_checksum' => $this->receiptPayloadChecksum($booking, $data),
+            'event_version' => 1,
+        ];
+    }
+
+    private function receiptPayloadChecksum(Booking $booking, array $data): string
+    {
+        $facts = [
+            'booking_id' => $booking->id,
+            'amount' => number_format((float) ($data['source_amount'] ?? $data['amount']), 4, '.', ''),
+            'currency' => strtoupper((string) ($data['source_currency'] ?? $booking->currency ?? 'LKR')),
+            'payment_method' => (string) $data['payment_method'],
+            'payment_stage' => (string) ($data['payment_stage'] ?? 'part_payment'),
+            'payment_purpose' => (string) ($data['payment_purpose'] ?? 'booking_payment'),
+            'reference' => $data['reference'] ?? null,
+            'received_via' => (string) ($data['received_via'] ?? 'company'),
+            'provider_event_id' => $data['provider_event_id'] ?? null,
+            'received_at' => (string) $data['received_at'],
+            'fx_rate_to_lkr' => isset($data['fx_rate_to_lkr'])
+                ? number_format((float) $data['fx_rate_to_lkr'], 10, '.', '') : null,
+            'fx_rate_at' => isset($data['fx_rate_at']) ? (string) $data['fx_rate_at'] : null,
+            'fx_source' => $data['fx_source'] ?? null,
+        ];
+
+        return hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    private function createReceiptComponent(BookingPaymentReceipt $receipt, string $purpose, float $amount): BookingPaymentReceiptComponent
+    {
+        $eligible = in_array($purpose, ['booking_payment', 'service_deposit'], true);
+
+        return BookingPaymentReceiptComponent::create([
+            'receipt_id' => $receipt->id,
+            'component_type' => $purpose,
+            'source_amount' => $receipt->source_amount ?? $amount,
+            'lkr_amount' => $receipt->lkr_amount,
+            'is_allocatable' => true,
+            'is_collection_target_eligible' => $eligible,
+            'is_commission_eligible' => $eligible,
+        ]);
+    }
+
+    private function resolveFinality(?string $companyId, string $paymentMethod, $receivedAt): array
+    {
+        $policy = $companyId ? DB::table('booking_payment_finality_policies')
+            ->where('company_id', $companyId)
+            ->where('payment_method', $paymentMethod)
+            ->where('status', 'approved')
+            ->where('effective_from', '<=', $receivedAt)
+            ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $receivedAt))
+            ->orderByDesc('version')
+            ->first() : null;
+
+        if ($policy) {
+            return ['status' => $policy->official_collection_state];
+        }
+
+        return ['status' => config('sales.features.enforce_payment_finality', false) ? 'policy_missing' : 'confirmed'];
+    }
+
+    public function transitionReceiptFinality(
+        BookingPaymentReceipt $receipt,
+        string $toStatus,
+        string $reason,
+        ?string $evidenceReference,
+        string $idempotencyKey,
+        string $actorUserId
+    ): BookingPaymentReceipt {
+        return DB::transaction(function () use ($receipt, $toStatus, $reason, $evidenceReference, $idempotencyKey, $actorUserId) {
+            $receipt = BookingPaymentReceipt::query()->lockForUpdate()->findOrFail($receipt->id);
+            $duplicate = BookingPaymentReceiptFinalityEvent::query()
+                ->where('booking_payment_receipt_id', $receipt->id)
+                ->where('idempotency_key', $idempotencyKey)
+                ->first();
+            if ($duplicate) {
+                abort_unless($duplicate->to_status === $toStatus, 422, 'This finality key was already used for another transition.');
+                return $receipt;
+            }
+            abort_if($receipt->finality_status === $toStatus, 422, 'The receipt already has the requested finality status.');
+            $allowed = [
+                'pending_clearance' => ['confirmed', 'failed'],
+                'policy_missing' => ['pending_clearance', 'confirmed', 'failed'],
+                // Confirmed cash is corrected only through a typed cash adjustment,
+                // preserving original-credit and commission-reversal lineage.
+                'confirmed' => [],
+                'failed' => [],
+            ];
+            abort_unless(in_array($toStatus, $allowed[$receipt->finality_status] ?? [], true), 422, 'The requested receipt-finality transition is not allowed.');
+
+            $finalityPolicy = null;
+            if (in_array($receipt->finality_status, ['policy_missing', 'pending_clearance'], true)
+                && $toStatus === 'confirmed') {
+                $policies = BookingPaymentFinalityPolicy::query()
+                    ->where('company_id', $receipt->company_id)
+                    ->where('payment_method', strtolower((string) $receipt->payment_method))
+                    ->where('status', 'approved')
+                    ->whereNotNull('approved_by')->whereNotNull('approved_at')
+                    ->where('effective_from', '<=', $receipt->received_at)
+                    ->where(fn ($query) => $query->whereNull('effective_until')
+                        ->orWhere('effective_until', '>', $receipt->received_at))
+                    ->lockForUpdate()->get();
+                abort_unless($policies->count() === 1, 422,
+                    'Exactly one approved payment-finality policy must cover the original receipt timestamp.');
+                $finalityPolicy = $policies->first();
+                abort_if($finalityPolicy->created_by === $finalityPolicy->approved_by, 422,
+                    'The payment-finality policy must have separate maker and checker evidence.');
+            }
+
+            $event = BookingPaymentReceiptFinalityEvent::create([
+                'company_id' => $receipt->company_id,
+                'booking_id' => $receipt->booking_id,
+                'booking_payment_receipt_id' => $receipt->id,
+                'finality_policy_id' => $finalityPolicy?->id,
+                'from_status' => $receipt->finality_status,
+                'to_status' => $toStatus,
+                'reason' => $reason,
+                'evidence_reference' => $evidenceReference,
+                'idempotency_key' => $idempotencyKey,
+                'performed_by' => $actorUserId,
+                'occurred_at' => now(),
+            ]);
+            $receipt->update([
+                'finality_status' => $toStatus,
+                'finalized_at' => $toStatus === 'confirmed' ? now() : null,
+                'event_version' => (int) $receipt->event_version + 1,
+            ]);
+
+            $booking = Booking::query()->lockForUpdate()->findOrFail($receipt->booking_id);
+            if ($toStatus === 'confirmed' && $receipt->payment_purpose !== 'security_deposit') {
+                $netAmount = max(0, round((float) $receipt->amount - (float) $receipt->refunded_amount, 2));
+                $this->allocateReceiptToSchedule($booking, $receipt, $netAmount, $actorUserId);
+                $receipt->components()->where('is_commission_eligible', true)->each(
+                    function (BookingPaymentReceiptComponent $component) use ($receipt, $event): void {
+                        $this->metricFacts->projectConfirmedCollection($receipt, $component);
+                        $decision = $this->commissionDecisions->decide($receipt, $component);
+                        if ($decision) $this->commissionHolds->releaseForFinality($decision, $event);
+                    }
+                );
+            } elseif ($toStatus === 'failed' && $receipt->payment_purpose !== 'security_deposit') {
+                $receipt->components()->where('is_commission_eligible', true)->each(
+                    function (BookingPaymentReceiptComponent $component) use ($receipt, $event): void {
+                        $decision = $this->commissionDecisions->decide($receipt, $component);
+                        if ($decision) $this->commissionHolds->resolveForFailedFinality($decision, $event);
+                    }
+                );
+            }
+            $summary = $this->summary($booking);
+            $booking->update([
+                'payment_status' => $summary['payment_status'],
+                'payment_collection_status' => $summary['due_amount'] <= 0 ? 'paid' : ($summary['paid_amount'] > 0 ? 'partially_paid' : 'pending'),
+                'payment_collected_amount' => $summary['paid_amount'],
+                'amount_to_pay' => $summary['due_amount'],
+                'settled_at' => $summary['due_amount'] <= 0 ? ($booking->settled_at ?? now()) : null,
+            ]);
+            FinancialAuditEvent::create([
+                'subject_type' => 'booking_payment_finality', 'subject_id' => $event->id,
+                'booking_id' => $booking->id, 'event_type' => 'payment_finality_changed',
+                'from_status' => $event->from_status, 'to_status' => $event->to_status,
+                'metadata' => ['receipt_id' => $receipt->id, 'finality_policy_id' => $event->finality_policy_id,
+                    'reason' => $reason, 'evidence_reference' => $evidenceReference],
+                'performed_by' => $actorUserId, 'occurred_at' => now(),
+            ]);
+
+            return $receipt->fresh();
+        });
     }
 
     private function legacyPaidAmount(Booking $booking, float $total): float

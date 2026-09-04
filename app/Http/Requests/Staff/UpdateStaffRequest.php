@@ -1,23 +1,26 @@
 <?php
+
 // app/Http/Requests/Staff/UpdateStaffRequest.php
+
 namespace App\Http\Requests\Staff;
 
+use App\Models\Staff;
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class UpdateStaffRequest extends FormRequest
 {
-
-
     public function rules()
     {
-        $id = $this->route('staff')->id;
+        $staff = $this->route('staff');
+        $id = $staff instanceof Staff ? $staff->getKey() : $staff;
 
         return [
-            'user_id' => ['sometimes', 'required', 'exists:users,id'],
             'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
+            'company_id' => ['sometimes', 'nullable', 'uuid', 'exists:companies,id'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
-            'code' => ["sometimes", "nullable", "string", "max:100", "unique:staff,code,{$id}"],
+            'code' => ['sometimes', 'nullable', 'string', 'max:100', Rule::unique('staff', 'code')->ignore($id)],
             'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'dob' => ['sometimes', 'nullable', 'date'],
             'license_no' => ['sometimes', 'nullable', 'string', 'max:100'],
@@ -25,18 +28,7 @@ class UpdateStaffRequest extends FormRequest
             'address' => ['sometimes', 'nullable', 'string'],
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
-            'city' => ['sometimes', 'nullable', 'string'],
-            'payment_methods' => ['sometimes', 'nullable', 'array'],
-            'payment_methods.*.id' => ['nullable', 'uuid'],
-            'payment_methods.*.method_type' => ['required_with:payment_methods', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],
-            'payment_methods.*.label' => ['nullable', 'string', 'max:120'],
-            'payment_methods.*.account_holder_name' => ['nullable', 'string', 'max:255'],
-            'payment_methods.*.bank_name' => ['nullable', 'string', 'max:255'],
-            'payment_methods.*.bank_branch' => ['nullable', 'string', 'max:255'],
-            'payment_methods.*.account_number' => ['nullable', 'string', 'max:100'],
-            'payment_methods.*.routing_number' => ['nullable', 'string', 'max:100'],
-            'payment_methods.*.is_default' => ['nullable', 'boolean'],
-            'payment_methods.*.is_active' => ['nullable', 'boolean'],
+            'city' => ['sometimes', 'nullable', 'string', 'max:255'],
         ];
     }
 }

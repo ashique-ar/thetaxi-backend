@@ -42,6 +42,7 @@ return Application::configure(basePath: dirname(__DIR__))
             // Corporate portal middleware
             'ensure.corporate' => \App\Http\Middleware\EnsureCorporateContext::class,
             'ensure.internal' => \App\Http\Middleware\EnsureInternalContext::class,
+            'sales.feature' => \App\Http\Middleware\EnsureSalesFeature::class,
             'update.api.session' => \App\Http\Middleware\UpdateApiSessionOnRequest::class,
             'agent.api' => \App\Http\Middleware\AuthenticateAgentApiKey::class,
             'agent.api.access' => \App\Http\Middleware\EnsureAgentApiAccess::class,

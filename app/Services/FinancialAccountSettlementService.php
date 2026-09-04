@@ -19,6 +19,8 @@ use App\Models\Customer;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
+use App\Support\Foundation\CanonicalJson;
+use Illuminate\Support\Str;
 
 class FinancialAccountSettlementService
 {
@@ -154,24 +156,93 @@ class FinancialAccountSettlementService
 
     public function receivePayment(FinancialAccountSettlement $settlement, array $data, ?string $userId): FinancialAccountSettlement
     {
-        abort_unless(in_array($settlement->status,['open','partial','overdue'],true),422,'Only issued, partial, or overdue settlements can receive payments.');
         return DB::transaction(function () use ($settlement, $data, $userId) {
             $settlement = FinancialAccountSettlement::query()->lockForUpdate()->findOrFail($settlement->id);
-            $remaining = round((float) $data['amount'], 2);
+            $sourceAmount = round((float) $data['source_amount'], 4);
+            $sourceCurrency = strtoupper((string) $data['source_currency']);
+            if ($sourceCurrency !== 'LKR' && (empty($data['fx_rate_to_lkr']) || empty($data['fx_rate_at']) || empty(trim((string) ($data['fx_source'] ?? ''))))) {
+                throw ValidationException::withMessages([
+                    'fx_rate_to_lkr' => ['A complete approved LKR conversion snapshot is required for a non-LKR settlement payment.'],
+                ]);
+            }
+            $fxRate = $sourceCurrency === 'LKR' ? 1.0 : round((float) $data['fx_rate_to_lkr'], 10);
+            $fxRateAt = $sourceCurrency === 'LKR' ? $data['received_at'] : $data['fx_rate_at'];
+            $fxSource = $sourceCurrency === 'LKR' ? 'identity' : trim((string) $data['fx_source']);
+            $lkrAmount = round($sourceAmount * $fxRate, 2);
+            $checksum = hash('sha256', CanonicalJson::encode([
+                'settlement_id' => $settlement->id,
+                'source_amount' => number_format($sourceAmount, 4, '.', ''),
+                'source_currency' => $sourceCurrency,
+                'lkr_amount' => number_format($lkrAmount, 2, '.', ''),
+                'fx_rate_to_lkr' => number_format($fxRate, 10, '.', ''),
+                'fx_rate_at' => (string) $fxRateAt,
+                'fx_source' => $fxSource,
+                'payment_method' => $data['payment_method'],
+                'reference' => $data['reference'] ?? null,
+                'received_at' => (string) $data['received_at'],
+                'notes' => $data['notes'] ?? null,
+            ]));
+            $existingEvent = DB::table('financial_settlement_payment_events')
+                ->where('settlement_id', $settlement->id)
+                ->where('idempotency_key', $data['idempotency_key'])
+                ->first();
+            if ($existingEvent) {
+                abort_unless(
+                    hash_equals((string) $existingEvent->request_payload_checksum, $checksum),
+                    422,
+                    'This settlement payment key was already used with different payment facts.'
+                );
+                abort_unless($existingEvent->completed_at, 409, 'The matching settlement payment is still being processed.');
+
+                return $settlement->fresh(['items.booking']);
+            }
+
+            abort_unless(in_array($settlement->status,['open','partial','overdue'],true),422,'Only issued, partial, or overdue settlements can receive payments.');
+            abort_if($lkrAmount <= 0, 422, 'The governed LKR payment amount must be greater than zero.');
+            $paymentEventId = (string) Str::uuid();
+            DB::table('financial_settlement_payment_events')->insert([
+                'id' => $paymentEventId,
+                'settlement_id' => $settlement->id,
+                'idempotency_key' => $data['idempotency_key'],
+                'request_payload_checksum' => $checksum,
+                'source_amount' => $sourceAmount,
+                'source_currency' => $sourceCurrency,
+                'lkr_amount' => $lkrAmount,
+                'fx_rate_to_lkr' => $fxRate,
+                'fx_rate_at' => $fxRateAt,
+                'fx_source' => $fxSource,
+                'payment_method' => $data['payment_method'],
+                'reference' => $data['reference'] ?? null,
+                'received_at' => $data['received_at'],
+                'notes' => $data['notes'] ?? null,
+                'recorded_by' => $userId,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $remaining = $lkrAmount;
+            $sourceRemaining = $sourceAmount;
             if ($remaining > (float) $settlement->outstanding_total) {
-                throw ValidationException::withMessages(['amount' => ['Payment exceeds this settlement outstanding total.']]);
+                throw ValidationException::withMessages(['source_amount' => ['The governed LKR payment value exceeds this settlement outstanding total.']]);
             }
             foreach ($settlement->items()->with('booking')->orderBy('created_at')->get() as $item) {
                 if ($remaining <= 0 || (float) $item->outstanding_amount <= 0) continue;
                 $amount = min($remaining, (float) $item->outstanding_amount);
+                $sourceAllocation = $amount >= $remaining
+                    ? $sourceRemaining
+                    : min($sourceRemaining, round($amount / $fxRate, 4));
+                $receiptIdempotencyKey = "financial-settlement:{$paymentEventId}:{$item->id}";
                 $this->ledger->receive($item->booking, [
                     'amount' => $amount, 'payment_method' => $data['payment_method'],
+                    'source_amount' => $sourceAllocation, 'source_currency' => $sourceCurrency,
+                    'fx_rate_to_lkr' => $fxRate, 'fx_rate_at' => $fxRateAt, 'fx_source' => $fxSource,
                     'payment_stage' => 'account_payment', 'reference' => $data['reference'] ?? null,
                     'received_at' => $data['received_at'], 'notes' => $data['notes'] ?? null,
                     'received_via' => 'company',
+                    'idempotency_key' => $receiptIdempotencyKey,
                     'skip_settlement_allocation' => true,
                 ], $userId);
-                $receipt = BookingPaymentReceipt::where('booking_id', $item->booking_id)->latest('created_at')->firstOrFail();
+                $receipt = BookingPaymentReceipt::query()->where('idempotency_key', $receiptIdempotencyKey)->firstOrFail();
                 $receipt->update(['allocated_amount' => $amount, 'allocation_status' => 'allocated']);
                 $allocation = FinancialPaymentAllocation::create([
                     'settlement_id' => $settlement->id, 'settlement_item_id' => $item->id,
@@ -187,10 +258,21 @@ class FinancialAccountSettlementService
                     'status' => $amount >= (float) $item->outstanding_amount ? 'paid' : 'partial',
                 ]);
                 $remaining = round($remaining - $amount, 2);
+                $sourceRemaining = round($sourceRemaining - $sourceAllocation, 4);
             }
             $settlement->update(['payment_reference' => $data['reference'] ?? $settlement->payment_reference]);
             $settlement=$this->recalculate($settlement);
-            $this->audit('account_settlement',$settlement->id,'payment_received',null,$settlement->status,(float)$data['amount'],['reference'=>$data['reference']??null],$userId);
+            DB::table('financial_settlement_payment_events')->where('id', $paymentEventId)->update([
+                'completed_at' => now(), 'updated_at' => now(),
+            ]);
+            $this->audit('account_settlement',$settlement->id,'payment_received',null,$settlement->status,$lkrAmount,[
+                'payment_event_id' => $paymentEventId,
+                'reference' => $data['reference'] ?? null,
+                'source_amount' => $sourceAmount,
+                'source_currency' => $sourceCurrency,
+                'fx_rate_to_lkr' => $fxRate,
+                'fx_source' => $fxSource,
+            ],$userId);
             return $settlement;
         });
     }

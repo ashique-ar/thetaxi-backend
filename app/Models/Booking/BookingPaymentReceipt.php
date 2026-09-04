@@ -12,12 +12,18 @@ class BookingPaymentReceipt extends BaseModel
     private const IMMUTABLE_EVIDENCE_FIELDS = [
         'booking_id', 'amount', 'payment_method', 'payment_stage', 'payment_purpose',
         'reference', 'received_at', 'received_by', 'received_via', 'payer_type',
-        'payer_id', 'driver_id', 'idempotency_key',
+        'payer_id', 'driver_id', 'idempotency_key', 'company_id', 'source_amount',
+        'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source',
+        'initial_finality_status', 'provider_event_id', 'provider_payload_checksum',
+        'request_payload_checksum',
     ];
     protected $fillable = [
         'booking_id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference', 'idempotency_key',
         'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'payer_type', 'payer_id',
         'driver_id', 'allocated_amount', 'driver_company_settled_amount', 'allocation_status', 'driver_company_settlement_status', 'driver_company_settled_at',
+        'company_id', 'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at',
+        'fx_source', 'initial_finality_status', 'finality_status', 'finalized_at', 'provider_event_id', 'provider_payload_checksum',
+        'request_payload_checksum', 'event_version',
     ];
 
     protected $casts = [
@@ -28,6 +34,12 @@ class BookingPaymentReceipt extends BaseModel
         'allocated_amount' => 'decimal:2',
         'driver_company_settled_amount' => 'decimal:2',
         'driver_company_settled_at' => 'datetime',
+        'source_amount' => 'decimal:4',
+        'lkr_amount' => 'decimal:4',
+        'fx_rate_to_lkr' => 'decimal:10',
+        'fx_rate_at' => 'datetime',
+        'finalized_at' => 'datetime',
+        'event_version' => 'integer',
     ];
 
     protected static function booted(): void
@@ -50,4 +62,6 @@ class BookingPaymentReceipt extends BaseModel
     public function driver(): BelongsTo { return $this->belongsTo(Driver::class); }
     public function collectionCommission() { return $this->hasOne(BookingCollectionCommission::class); }
     public function depositRefunds(): HasMany { return $this->hasMany(BookingDepositRefund::class); }
+    public function components(): HasMany { return $this->hasMany(BookingPaymentReceiptComponent::class, 'receipt_id'); }
+    public function adjustments(): HasMany { return $this->hasMany(BookingPaymentAdjustment::class, 'receipt_id'); }
 }

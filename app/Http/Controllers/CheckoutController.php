@@ -22,6 +22,7 @@ use App\Services\PromoCodeService;
 use App\Services\WebsiteSettingsService;
 use App\Services\Sms\SmsAutomationService;
 use App\Services\PaymentEventService;
+use App\Services\BookingPaymentLedgerService;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -53,6 +54,7 @@ class CheckoutController extends Controller
         PromoCodeService $promoCodeService,
         WebsiteSettingsService $websiteSettingsService,
         PaymentEventService $paymentEventService,
+        protected BookingPaymentLedgerService $paymentLedger,
         protected SmsAutomationService $smsAutomationService
     ) {
         $this->bookingFlowService = $bookingFlowService;
@@ -1319,10 +1321,17 @@ class CheckoutController extends Controller
                     $wasPaid = $booking->payment_status === 'paid';
                     $booking->update([
                         'status' => config('booking.status.confirmed'),
-                        'payment_status' => 'paid',
                         'payment_gateway_transaction_id' => $request->input('transaction_id'),
                         'paid_at' => now(),
                         'confirmed_at' => now(),
+                    ]);
+                    $this->recordGatewayReceipt($booking, [
+                        'transaction_id' => $request->input('transaction_id'),
+                        'amount' => $request->input('amount'),
+                        'currency' => $request->input('currency'),
+                        'paid_at' => now(),
+                        'source' => 'webxpay_mock',
+                        'payload' => $request->except(['signature']),
                     ]);
 
                     Log::info('WebXPay mock: booking updated', ['booking_id' => $booking->id, 'status' => $booking->status, 'payment_status' => $booking->payment_status]);
@@ -1410,10 +1419,14 @@ class CheckoutController extends Controller
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
                     $lockedBooking->update([
                         'status' => config('booking.status.confirmed'),
-                        'payment_status' => 'paid',
                         'payment_gateway_transaction_id' => $verificationResult['transaction_id'] ?? null,
                         'paid_at' => $verificationResult['paid_at'] ?? now(),
                         'confirmed_at' => now(),
+                    ]);
+                    $this->recordGatewayReceipt($lockedBooking, [
+                        ...$verificationResult,
+                        'source' => 'webxpay_callback',
+                        'payload' => $verificationResult,
                     ]);
                     $booking = $lockedBooking;
 
@@ -1513,10 +1526,14 @@ class CheckoutController extends Controller
 
                         $booking->update([
                             'status'                           => config('booking.status.confirmed'),
-                            'payment_status'                   => 'paid',
                             'payment_gateway_transaction_id'   => $verificationResult['transaction_id'],
                             'paid_at'                          => $verificationResult['paid_at'] ?? now(),
                             'confirmed_at'                     => now(),
+                        ]);
+                        $this->recordGatewayReceipt($booking, [
+                            ...$verificationResult,
+                            'source' => 'webxpay_notify',
+                            'payload' => $verificationResult,
                         ]);
 
                         $emailBooking = $booking;
@@ -2277,6 +2294,31 @@ class CheckoutController extends Controller
 
             return redirect()->route('checkout')->with('error', 'An error occurred. Please try again.');
         }
+    }
+
+    private function recordGatewayReceipt(Booking $booking, array $gateway): void
+    {
+        $payload = $gateway['payload'] ?? $gateway;
+        $payloadJson = json_encode($payload, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+        $transactionId = (string) ($gateway['transaction_id'] ?? $gateway['payment_id'] ?? $booking->payment_gateway_transaction_id ?? hash('sha256', $payloadJson));
+        $amount = (float) ($gateway['amount'] ?? $gateway['paid_amount'] ?? $booking->amount_to_pay ?? $booking->total_actual ?? $booking->total_estimated ?? 0);
+
+        $this->paymentLedger->receive($booking, [
+            'amount' => $amount,
+            'source_amount' => $amount,
+            'source_currency' => strtoupper((string) ($gateway['currency'] ?? $booking->currency ?? 'LKR')),
+            'payment_method' => 'webxpay',
+            'payment_stage' => 'gateway_settlement',
+            'payment_purpose' => 'booking_payment',
+            'reference' => $transactionId,
+            'idempotency_key' => "webxpay:{$transactionId}",
+            'provider_event_id' => $transactionId,
+            'provider_payload_checksum' => hash('sha256', $payloadJson),
+            'received_at' => $gateway['paid_at'] ?? now(),
+            'finalized_at' => $gateway['paid_at'] ?? now(),
+            'received_via' => 'company',
+            'notes' => 'Canonically recorded from verified WebXPay settlement.',
+        ], Auth::id());
     }
 
     /**

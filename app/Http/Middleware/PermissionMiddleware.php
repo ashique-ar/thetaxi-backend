@@ -33,8 +33,8 @@ class PermissionMiddleware
         $hasPermission = app(PermissionEvaluator::class)->userHasAnyForRequest(
             $user,
             $permissions,
-            $request->header('X-Active-Context-Type'),
-            $request->header('X-Active-Context-Id')
+            $request->attributes->get('resolved_active_context_type', $request->header('X-Active-Context-Type')),
+            $request->attributes->get('resolved_active_context_id', $request->header('X-Active-Context-Id'))
         );
 
         if (! $hasPermission) {

@@ -4,6 +4,7 @@ namespace App\Models\Booking;
 
 use App\Models\BaseModel;
 use App\Models\Staff;
+use App\Models\Sales\SalesCommissionDecision;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCollectionCommission extends BaseModel
@@ -12,7 +13,8 @@ class BookingCollectionCommission extends BaseModel
         'booking_id', 'booking_payment_receipt_id', 'staff_id', 'receipt_amount',
         'eligible_amount', 'commission_rate', 'commission_amount', 'status',
         'ineligibility_reason', 'earned_at', 'paid_at', 'paid_by',
-        'payment_reference', 'payout_id', 'notes',
+        'payment_reference', 'payout_id', 'notes', 'canonical_decision_id',
+        'projection_status', 'projected_at', 'projected_by', 'projection_note',
     ];
 
     protected $casts = [
@@ -22,10 +24,12 @@ class BookingCollectionCommission extends BaseModel
         'commission_amount' => 'decimal:2',
         'earned_at' => 'datetime',
         'paid_at' => 'datetime',
+        'projected_at' => 'datetime',
     ];
 
     public function booking(): BelongsTo { return $this->belongsTo(Booking::class); }
     public function receipt(): BelongsTo { return $this->belongsTo(BookingPaymentReceipt::class, 'booking_payment_receipt_id'); }
     public function staff(): BelongsTo { return $this->belongsTo(Staff::class); }
     public function payout(): BelongsTo { return $this->belongsTo(CollectionCommissionPayout::class, 'payout_id'); }
+    public function canonicalDecision(): BelongsTo { return $this->belongsTo(SalesCommissionDecision::class, 'canonical_decision_id'); }
 }

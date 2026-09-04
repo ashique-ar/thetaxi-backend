@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\User;
 use App\Models\UserContext;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Str;
 
 class PermissionEvaluator
@@ -25,6 +26,10 @@ class PermissionEvaluator
 
     public function userHasAnyForRequest(User $user, array $permissions, ?string $contextType, ?string $contextId): bool
     {
+        if ($contextType === 'internal') {
+            return $this->userHasAnyForInternalContext($user, $permissions);
+        }
+
         if ($this->userHasAny($user, $permissions)) {
             return true;
         }
@@ -71,6 +76,92 @@ class PermissionEvaluator
         }
 
         return false;
+    }
+
+    public function userHasAnyForInternalContext(User $user, array $permissions): bool
+    {
+        if (! $this->hasActiveStaffIdentity($user)) {
+            return false;
+        }
+
+        $internalPermissions = $this->permissionsForInternalContext($user)
+            ->pluck('name')
+            ->map(fn ($permission) => $this->registry->resolveKey((string) $permission))
+            ->unique();
+
+        foreach ($permissions as $permission) {
+            if ($internalPermissions->contains($this->registry->resolveKey((string) $permission))) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    public function rolesForInternalContext(User $user): Collection
+    {
+        if (! $this->hasActiveStaffIdentity($user)) {
+            return collect();
+        }
+
+        $staffContexts = $user->contexts()
+            ->where('context_type', 'staff')
+            ->where('is_active', true)
+            ->with('roles.permissions')
+            ->whereIn('context_id', function ($staff) use ($user) {
+                $staff->select('id')
+                    ->from('staff')
+                    ->where('user_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment
+                        ->whereNull('employment_ended_at')
+                        ->orWhere('employment_ended_at', '>', now()));
+            })
+            ->get();
+        $externalContexts = $user->contexts()
+            ->where('context_type', '!=', 'staff')
+            ->with('roles.permissions')
+            ->get();
+        $staffRoleIds = $staffContexts
+            ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
+            ->unique();
+        $externalRoleIds = $externalContexts
+            ->flatMap(fn (UserContext $context) => $context->roles->pluck('id'))
+            ->unique();
+
+        return $user->roles()
+            ->with('permissions')
+            ->get()
+            ->filter(fn ($role) => $staffRoleIds->contains($role->id) || ! $externalRoleIds->contains($role->id))
+            ->merge($staffContexts->flatMap(fn (UserContext $context) => $context->roles))
+            ->unique('id')
+            ->values();
+    }
+
+    public function permissionsForInternalContext(User $user): Collection
+    {
+        return $this->rolesForInternalContext($user)
+            ->flatMap(fn ($role) => $role->permissions)
+            ->merge($user->getDirectPermissions())
+            ->unique('name')
+            ->values();
+    }
+
+    private function hasActiveStaffIdentity(User $user): bool
+    {
+        return $user->contexts()
+            ->where('context_type', 'staff')
+            ->where('is_active', true)
+            ->whereIn('context_id', function ($staff) use ($user) {
+                $staff->select('id')
+                    ->from('staff')
+                    ->where('user_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment
+                        ->whereNull('employment_ended_at')
+                        ->orWhere('employment_ended_at', '>', now()));
+            })
+            ->exists();
     }
 
     public function userHas(User $user, string $permission): bool

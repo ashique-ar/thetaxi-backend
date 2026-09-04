@@ -2,19 +2,27 @@
 
 namespace App\Models;
 
+use App\Models\Agent\Agent;
+use App\Models\Booking\Booking;
 use App\Traits\UUID;
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Database\Eloquent\SoftDeletes;
+use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Laravel\Passport\HasApiTokens;
 use QCod\Gamify\Gamify;
 use Ramsey\Uuid\DeprecatedUuidMethodsTrait;
 use Spatie\Activitylog\Models\Concerns\LogsActivity;
 use Spatie\Activitylog\Support\LogOptions;
-use Illuminate\Foundation\Auth\User as Authenticatable;
+use Spatie\Permission\Models\Permission;
+use Spatie\Permission\Models\Role;
 use Spatie\Permission\Traits\HasRoles;
-use Illuminate\Support\Str;
-use Illuminate\Support\Facades\DB;
 
 /**
  * App\Models\User
@@ -30,29 +38,28 @@ use Illuminate\Support\Facades\DB;
  * @property string|null $agent_id Foreign key to agents table (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- *
- * @property-read \Spatie\Permission\Models\Role|null $role User's role
- * @property-read \App\Models\Agent\Agent|null $agent Associated agent (if applicable)
- * @property-read \App\Models\User|null $createdBy User who created this record
- * @property-read \App\Models\User|null $updatedBy User who last updated this record
- * @property-read \Illuminate\Database\Eloquent\Collection|\App\Models\Booking\Booking[] $bookings User's bookings
- * @property-read \Illuminate\Database\Eloquent\Collection|\Spatie\Permission\Models\Permission[] $permissions
- * @property-read \Illuminate\Database\Eloquent\Collection|\Spatie\Permission\Models\Role[] $roles
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Role|null $role User's role
+ * @property-read Agent|null $agent Associated agent (if applicable)
+ * @property-read User|null $createdBy User who created this record
+ * @property-read User|null $updatedBy User who last updated this record
+ * @property-read Collection|Booking[] $bookings User's bookings
+ * @property-read Collection|Permission[] $permissions
+ * @property-read Collection|Role[] $roles
  */
 class User extends Authenticatable
 {
-    use HasApiTokens,
-        SoftDeletes,
+    use DeprecatedUuidMethodsTrait,
+        Gamify,
+        HasApiTokens,
         HasFactory,
         HasRoles,
+        LogsActivity,
         Notifiable,
-        Gamify,
-        DeprecatedUuidMethodsTrait,
-        UUID,
-        LogsActivity;
+        SoftDeletes,
+        UUID;
 
     /**
      * The guard name to use for permissions and roles
@@ -94,7 +101,7 @@ class User extends Authenticatable
         'language',
         'status',
         'login_attempts',
-        'locked_until'
+        'locked_until',
     ];
 
     /**
@@ -107,7 +114,7 @@ class User extends Authenticatable
         'remember_token',
         'two_factor_secret',
         'two_factor_recovery_codes',
-        'device_token'
+        'device_token',
     ];
 
     /**
@@ -130,27 +137,27 @@ class User extends Authenticatable
     /**
      * Get the user's role.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function role()
     {
-        return $this->belongsTo(\Spatie\Permission\Models\Role::class);
+        return $this->belongsTo(Role::class);
     }
 
     /**
      * Get the agent associated with this user.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function agent()
     {
-        return $this->belongsTo(\App\Models\Agent\Agent::class);
+        return $this->belongsTo(Agent::class);
     }
 
     /**
      * Get the user who created this record.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function createdBy()
     {
@@ -160,7 +167,7 @@ class User extends Authenticatable
     /**
      * Get the user who last updated this record.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function updatedBy()
     {
@@ -170,11 +177,11 @@ class User extends Authenticatable
     /**
      * Get all bookings made by this user.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\HasMany
+     * @return HasMany
      */
     public function bookings()
     {
-        return $this->hasMany(\App\Models\Booking\Booking::class);
+        return $this->hasMany(Booking::class);
     }
 
     // Authentication Methods
@@ -206,7 +213,7 @@ class User extends Authenticatable
      */
     public function hasVerifiedEmail()
     {
-        return !is_null($this->email_verified_at);
+        return ! is_null($this->email_verified_at);
     }
 
     /**
@@ -216,7 +223,7 @@ class User extends Authenticatable
      */
     public function hasVerifiedPhone()
     {
-        return !is_null($this->phone_verified_at);
+        return ! is_null($this->phone_verified_at);
     }
 
     /**
@@ -255,7 +262,7 @@ class User extends Authenticatable
     /**
      * Lock user account
      *
-     * @param int $minutes
+     * @param  int  $minutes
      * @return void
      */
     public function lockAccount($minutes = 30)
@@ -291,7 +298,7 @@ class User extends Authenticatable
      */
     public function getFullNameAttribute()
     {
-        return $this->first_name . ' ' . $this->last_name;
+        return $this->first_name.' '.$this->last_name;
     }
 
     /**
@@ -302,15 +309,16 @@ class User extends Authenticatable
     public function getAvatarUrlAttribute()
     {
         if ($this->profile_image) {
-            return url('storage/' . $this->profile_image);
+            return url('storage/'.$this->profile_image);
         }
-        return 'https://ui-avatars.com/api/?name=' . urlencode($this->full_name) . '&background=random';
+
+        return 'https://ui-avatars.com/api/?name='.urlencode($this->full_name).'&background=random';
     }
 
     /**
      * Check if user has specific permission
      *
-     * @param string $permission
+     * @param  string  $permission
      * @return bool
      */
     public function hasPermission($permission)
@@ -321,7 +329,6 @@ class User extends Authenticatable
     /**
      * Check if user has any of the given permissions
      *
-     * @param array $permissions
      * @return bool
      */
     public function hasAnyPermission(array $permissions)
@@ -332,7 +339,6 @@ class User extends Authenticatable
     /**
      * Check if user has any role permission
      *
-     * @param array $permissions
      * @return bool
      */
     protected function hasAnyRolePermission(array $permissions)
@@ -403,13 +409,14 @@ class User extends Authenticatable
         for ($i = 0; $i < 8; $i++) {
             $codes[] = strtoupper(Str::random(8));
         }
+
         return $codes;
     }
 
     /**
      * Enable two-factor authentication
      *
-     * @param string $secret
+     * @param  string  $secret
      * @return void
      */
     public function enableTwoFactor($secret)
@@ -417,7 +424,7 @@ class User extends Authenticatable
         $this->update([
             'two_factor_enabled' => true,
             'two_factor_secret' => encrypt($secret),
-            'two_factor_recovery_codes' => $this->generateTwoFactorRecoveryCodes()
+            'two_factor_recovery_codes' => $this->generateTwoFactorRecoveryCodes(),
         ]);
     }
 
@@ -431,7 +438,7 @@ class User extends Authenticatable
         $this->update([
             'two_factor_enabled' => false,
             'two_factor_secret' => null,
-            'two_factor_recovery_codes' => null
+            'two_factor_recovery_codes' => null,
         ]);
     }
 
@@ -459,7 +466,15 @@ class User extends Authenticatable
      */
     public function contexts()
     {
-        return $this->hasMany(\App\Models\UserContext::class);
+        return $this->hasMany(UserContext::class);
+    }
+
+    /**
+     * The internal Staff profile linked to this login identity.
+     */
+    public function staff()
+    {
+        return $this->hasOne(Staff::class, 'user_id');
     }
 
     /**
@@ -467,7 +482,7 @@ class User extends Authenticatable
      */
     public function customer()
     {
-        return $this->hasOne(\App\Models\Customer::class);
+        return $this->hasOne(Customer::class);
     }
 
     /**
@@ -523,26 +538,25 @@ class User extends Authenticatable
         return $this->driverContext() !== null || $this->hasRole(['admin']);
     }
 
-
     /**
      * Switch to customer context (create if doesn't exist)
      */
     public function switchToCustomerContext()
     {
-        if (!$this->customerContext()) {
+        if (! $this->customerContext()) {
             // Create customer record if user doesn't have one
-            $customer = \App\Models\Customer::create([
+            $customer = Customer::create([
                 'user_id' => $this->id,
-                'created_user_id' => $this->id
+                'created_user_id' => $this->id,
             ]);
 
             // Create context
-            \App\Models\UserContext::create([
+            UserContext::create([
                 'user_id' => $this->id,
                 'context_type' => 'customer',
                 'context_id' => $customer->id,
                 'is_active' => true,
-                'created_user_id' => $this->id
+                'created_user_id' => $this->id,
             ]);
         }
 

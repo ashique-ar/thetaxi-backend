@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Api;
 use App\Contracts\PaymentGatewayInterface;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingPaymentReceipt;
+use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -14,12 +16,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
+use App\Services\BookingPaymentLedgerService;
 
 class PaymentController extends Controller
 {
     public function __construct(
         private readonly PaymentGatewayManager $gatewayManager,
         private readonly SmsAutomationService $smsAutomation,
+        private readonly BookingPaymentLedgerService $paymentLedger,
+        private readonly BookingPaymentAdjustmentService $paymentAdjustments,
     ) {
         $this->middleware('auth:api');
         $this->middleware('permission:payments.initiate')->only(['initiatePayment']);
@@ -179,43 +184,59 @@ class PaymentController extends Controller
                 ]);
             }
 
-            // Update transaction status
-            DB::table('payment_transactions')
-                ->where('transaction_id', $request->input('transaction_id'))
-                ->update([
-                    'status' => $request->input('status'),
-                    'payment_id' => $request->input('payment_id'),
-                    'updated_at' => now()
-                ]);
+            $smsConfirmation = DB::transaction(function () use ($request, $transaction): ?array {
+                DB::table('payment_transactions')
+                    ->where('transaction_id', $request->input('transaction_id'))
+                    ->update([
+                        'status' => $request->input('status'),
+                        'payment_id' => $request->input('payment_id'),
+                        'updated_at' => now(),
+                    ]);
 
-            // Update booking status and send SMS if payment successful
-            if ($request->input('status') === 'success') {
-                $booking = Booking::find($transaction->booking_id);
-                if ($booking) {
-                    $booking->payment_status = 'paid';
-                    $booking->payment_collection_method = 'online';
-                    $booking->payment_collection_status = 'online_paid';
-                    $booking->payment_reference = $request->input('payment_id') ?? $request->input('transaction_id');
-                    $booking->save();
+                $booking = Booking::query()->lockForUpdate()->find($transaction->booking_id);
+                if (! $booking) {
+                    return null;
+                }
+                if ($request->input('status') === 'success') {
+                    $amount = (float) ($transaction->amount ?? 0);
+                    $currency = (string) ($transaction->currency ?? 'LKR');
+                    $reference = (string) ($request->input('payment_id') ?? $request->input('transaction_id'));
+                    $this->paymentLedger->receive($booking, [
+                        'amount' => $amount,
+                        'source_amount' => $amount,
+                        'source_currency' => strtoupper($currency),
+                        'payment_method' => (string) ($transaction->payment_method ?? 'online'),
+                        'payment_stage' => 'gateway_settlement',
+                        'payment_purpose' => 'booking_payment',
+                        'reference' => $reference,
+                        'idempotency_key' => 'gateway:'.(string) $request->input('transaction_id'),
+                        'provider_event_id' => $reference,
+                        'provider_payload_checksum' => hash('sha256', json_encode($request->except(['signature']), JSON_THROW_ON_ERROR)),
+                        'received_at' => now(),
+                        'received_via' => 'company',
+                        'finalized_at' => now(),
+                        'notes' => 'Canonically recorded from verified payment callback.',
+                    ], $request->user()?->id);
 
-                    $amount   = $transaction->amount ?? 0;
-                    $currency = $transaction->currency ?? 'LKR';
-                    $this->smsAutomation->queuePaymentConfirmation(
-                        $booking,
-                        (float) $amount,
-                        $currency,
-                        (string) ($request->input('payment_id') ?? $request->input('transaction_id'))
-                    );
+                    return compact('booking', 'amount', 'currency', 'reference');
                 }
-            } elseif (in_array($request->input('status'), ['failed', 'cancelled'], true)) {
-                $booking = Booking::find($transaction->booking_id);
-                if ($booking) {
-                    $booking->payment_collection_method = 'online';
-                    $booking->payment_collection_status = 'failed';
-                    $booking->payment_status = 'failed';
-                    $booking->payment_reference = $request->input('payment_id') ?? $request->input('transaction_id');
-                    $booking->save();
+
+                if (in_array($request->input('status'), ['failed', 'cancelled'], true)) {
+                    $booking->update([
+                        'payment_collection_method' => 'online',
+                        'payment_collection_status' => 'failed',
+                        'payment_status' => 'failed',
+                        'payment_reference' => $request->input('payment_id') ?? $request->input('transaction_id'),
+                    ]);
                 }
+
+                return null;
+            });
+            if ($smsConfirmation) {
+                $this->smsAutomation->queuePaymentConfirmation(
+                    $smsConfirmation['booking'], $smsConfirmation['amount'],
+                    $smsConfirmation['currency'], $smsConfirmation['reference']
+                );
             }
 
             // Mark as processed for 24 hours to prevent duplicate handling
@@ -310,11 +331,40 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            $refundAmount = $request->amount ?? $transaction->amount;
-            if ($refundAmount > $transaction->amount) {
+            $booking = Booking::find($transaction->booking_id);
+            $receipt = BookingPaymentReceipt::query()
+                ->with('components')
+                ->where('booking_id', $transaction->booking_id)
+                ->where(function ($query) use ($transaction): void {
+                    $query->where('provider_event_id', $transaction->gateway_transaction_id ?? $transaction->transaction_id)
+                        ->orWhere('provider_event_id', $transaction->transaction_id)
+                        ->orWhere('idempotency_key', 'gateway:'.$transaction->transaction_id);
+                })
+                ->first();
+            $component = $receipt?->components->firstWhere('component_type', 'booking_payment');
+            if (! $booking || ! $component) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Refund amount cannot exceed transaction amount',
+                    'message' => 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.',
+                ], 409);
+            }
+
+            $alreadyRefunded = (float) DB::table('payment_refunds')
+                ->where('transaction_id', $transaction->id)
+                ->where('status', 'completed')
+                ->sum('amount');
+            $remainingRefundable = max(0, round((float) $transaction->amount - $alreadyRefunded, 2));
+            $refundAmount = round((float) ($request->amount ?? $remainingRefundable), 2);
+            if ($refundAmount <= 0) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This transaction has no remaining refundable amount.',
+                ], 422);
+            }
+            if ($refundAmount > $remainingRefundable) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => "Refund amount cannot exceed the remaining refundable amount of {$remainingRefundable}.",
                 ], 422);
             }
 
@@ -348,32 +398,52 @@ class PaymentController extends Controller
             }
 
             $refundId = (string) Str::uuid();
-            DB::table('payment_refunds')->insert([
-                'id'                      => $refundId,
-                'transaction_id'          => $transaction->id,
-                'amount'                  => $refundAmount,
-                'reason'                  => $request->reason,
-                'status'                  => $refundStatus,
-                'gateway_refund_id'       => $gatewayRefundId,
-                'notes'                   => $refundNotes,
-                'created_at'              => now(),
-                'updated_at'              => now(),
-            ]);
+            DB::transaction(function () use (
+                $refundId, $transaction, $refundAmount, $refundStatus, $gatewayRefundId,
+                $refundNotes, $request, $booking, $receipt, $component
+            ): void {
+                DB::table('payment_refunds')->insert([
+                    'id'                      => $refundId,
+                    'transaction_id'          => $transaction->id,
+                    'amount'                  => $refundAmount,
+                    'reason'                  => $request->reason,
+                    'status'                  => $refundStatus,
+                    'gateway_refund_id'       => $gatewayRefundId,
+                    'notes'                   => $refundNotes,
+                    'created_at'              => now(),
+                    'updated_at'              => now(),
+                ]);
 
-            // Update booking payment status
-            $booking = Booking::find($transaction->booking_id);
-            if ($booking && $refundAmount >= $transaction->amount) {
-                $booking->payment_status = 'refunded';
-                $booking->save();
-            }
+                // Only confirmed provider cash movement changes the canonical collection ledger.
+                if ($refundStatus === 'completed') {
+                    $sourceCurrency = strtoupper((string) ($receipt->source_currency ?: $transaction->currency ?: 'LKR'));
+                    $fxRate = $receipt->fx_rate_to_lkr !== null ? (float) $receipt->fx_rate_to_lkr : null;
+                    $this->paymentAdjustments->record($booking, [
+                        'receipt_component_id' => $component->id,
+                        'impact_dimension' => 'cash_receipt',
+                        'adjustment_type' => 'refund',
+                        'direction' => 'decrease',
+                        'source_amount' => $refundAmount,
+                        'source_currency' => $sourceCurrency,
+                        'lkr_amount' => $fxRate !== null ? round($refundAmount * $fxRate, 4) : null,
+                        'fx_rate_to_lkr' => $fxRate,
+                        'adjustment_effective_at' => now(),
+                        'reason' => $request->reason,
+                        'reference' => $gatewayRefundId ?: $refundId,
+                        'idempotency_key' => 'gateway-refund:'.$refundId,
+                    ], (string) $request->user()->id);
+                }
+            });
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment refunded successfully',
+                'message' => $refundStatus === 'completed'
+                    ? 'Payment refund completed and the collection ledger was adjusted.'
+                    : 'Refund request recorded; the collection ledger will remain unchanged until cash movement is confirmed.',
                 'data' => [
                     'refund_id' => $refundId,
                     'amount' => $refundAmount,
-                    'status' => 'completed'
+                    'status' => $refundStatus,
                 ]
             ]);
         } catch (\Exception $e) {

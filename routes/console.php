@@ -33,6 +33,41 @@ Schedule::command('bookings:process-payment-schedules')
     ->withoutOverlapping();
 
 Schedule::command('corporate:deliver-management-reports')->dailyAt('06:00')->withoutOverlapping();
+Schedule::command('sales:process-tasks')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('sales:project-effective-changes')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+Schedule::command('sales:expire-profile-exports')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();
+
+if (config('sales.features.performance_alert_evaluations')) {
+    Schedule::command('sales:process-performance-alerts --commit')
+        ->everyFifteenMinutes()
+        ->withoutOverlapping();
+}
+
+Schedule::command('foundation:publish-outbox-events --commit')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+if (config('hr.features.leave_overtime') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-leave-accruals --commit')
+        ->dailyAt('00:30')
+        ->withoutOverlapping();
+}
+if (config('hr.features.employee_self_service') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-scheduled-exits --commit')->dailyAt('00:45')->withoutOverlapping();
+}
+if (config('hr.features.engagement_analytics') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-report-schedules --commit')->everyFifteenMinutes()->withoutOverlapping();
+    Schedule::command('hr:expire-report-artifacts --commit')->dailyAt('02:15')->withoutOverlapping();
+    Schedule::command('hr:process-notifications --commit')->everyMinute()->withoutOverlapping();
+}
 
 Schedule::command('vehicles:process-lease-schedules')
     ->dailyAt('07:15')

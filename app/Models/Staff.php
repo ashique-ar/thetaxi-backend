@@ -4,6 +4,8 @@
 namespace App\Models;
 
 use App\Models\BaseModel;
+use App\Models\Hr\HrEmploymentAssignment;
+use App\Models\Hr\HrEmploymentSpell;
 use App\Traits\UUID;
 
 /**
@@ -43,6 +45,7 @@ class Staff extends BaseModel
      */
     protected $fillable = [
         'user_id',
+        'company_id',
         'staff_type',
         'collection_commission_enabled',
         'collection_commission_rate',
@@ -55,6 +58,9 @@ class Staff extends BaseModel
         'country_id',
         'state_id',
         'city',
+        'employment_ended_at',
+        'termination_reason',
+        'terminated_by',
         'created_user_id',
         'updated_user_id'
     ];
@@ -69,6 +75,7 @@ class Staff extends BaseModel
         'license_expiry' => 'date',
         'collection_commission_enabled' => 'boolean',
         'collection_commission_rate' => 'decimal:2',
+        'employment_ended_at' => 'datetime',
     ];
 
     // Relations
@@ -91,6 +98,11 @@ class Staff extends BaseModel
     public function country()
     {
         return $this->belongsTo(Country::class);
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
     }
 
     /**
@@ -132,5 +144,20 @@ class Staff extends BaseModel
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function paymentMethodChanges()
+    {
+        return $this->hasMany(StaffPaymentMethodChange::class);
+    }
+
+    public function employmentSpells()
+    {
+        return $this->hasMany(HrEmploymentSpell::class);
+    }
+
+    public function employmentAssignments()
+    {
+        return $this->hasMany(HrEmploymentAssignment::class);
     }
 }

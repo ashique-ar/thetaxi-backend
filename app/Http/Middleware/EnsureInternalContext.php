@@ -31,6 +31,9 @@ class EnsureInternalContext
             ], 403);
         }
 
+        $request->attributes->set('resolved_active_context_type', 'internal');
+        $request->attributes->set('resolved_active_context_id', $activeContext['id'] ?? 'internal');
+
         return $next($request);
     }
 }

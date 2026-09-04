@@ -15,6 +15,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\Response;
 
 class PaymentMethodController extends Controller
 {
@@ -40,7 +41,10 @@ class PaymentMethodController extends Controller
             'is_active' => ['nullable', 'boolean'],
         ]);
 
+        abort_if(($validated['payable_type'] ?? null) === 'staff', Response::HTTP_FORBIDDEN, 'Staff payment methods use the protected Staff banking endpoint.');
+
         $query = PaymentMethod::query()
+            ->whereNotIn('payable_type', ['staff', Staff::class])
             ->when(isset($validated['payable_type']), function ($q) use ($validated) {
                 $payable = self::PAYABLES[$validated['payable_type']];
                 $q->whereIn('payable_type', [$payable['alias'], $payable['class']]);
@@ -56,6 +60,7 @@ class PaymentMethodController extends Controller
     public function store(CreatePaymentMethodRequest $request): JsonResponse
     {
         $data = $this->normalizePayable($request->validated());
+        $this->assertNotStaffPayable($data['payable_type']);
 
         $method = DB::transaction(function () use ($data, $request) {
             $this->assertDriverSingleMethod($data['payable_type'], $data['payable_id']);
@@ -86,6 +91,8 @@ class PaymentMethodController extends Controller
 
     public function show(PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->assertNotStaffPayable($paymentMethod->payable_type);
+
         return response()->json([
             'status' => 'success',
             'data' => ['payment_method' => new PaymentMethodResource($paymentMethod)],
@@ -94,6 +101,8 @@ class PaymentMethodController extends Controller
 
     public function update(UpdatePaymentMethodRequest $request, PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->assertNotStaffPayable($paymentMethod->payable_type);
+
         $method = DB::transaction(function () use ($request, $paymentMethod) {
             $data = $request->validated();
 
@@ -115,6 +124,7 @@ class PaymentMethodController extends Controller
 
     public function destroy(PaymentMethod $paymentMethod): JsonResponse
     {
+        $this->assertNotStaffPayable($paymentMethod->payable_type);
         $paymentMethod->delete();
 
         return response()->json(['status' => 'success', 'message' => 'Payment method deleted']);
@@ -199,5 +209,14 @@ class PaymentMethodController extends Controller
         }
 
         return [$payableType];
+    }
+
+    private function assertNotStaffPayable(string $payableType): void
+    {
+        abort_if(
+            in_array($payableType, ['staff', Staff::class], true),
+            Response::HTTP_FORBIDDEN,
+            'Staff payment methods use the protected Staff banking endpoint.'
+        );
     }
 }

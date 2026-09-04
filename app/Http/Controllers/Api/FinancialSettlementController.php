@@ -16,6 +16,7 @@ use App\Models\Driver\DriverHireSettlement;
 use App\Models\Vehicle\Vehicle;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\VehicleLeaseAccountingService;
+use App\Models\Sales\SalesBookingAttribution;
 
 class FinancialSettlementController extends Controller
 {
@@ -92,8 +93,41 @@ class FinancialSettlementController extends Controller
 
     public function receivePayment(Request $request, FinancialAccountSettlement $financialSettlement)
     {
-        $data=$request->validate(['amount'=>'required|numeric|gt:0','payment_method'=>'required|in:cash,card,bank_transfer,online,cheque,other','reference'=>'nullable|string|max:120','received_at'=>'required|date|before_or_equal:now','notes'=>'nullable|string|max:1000']);
+        $this->assertSettlementCollectionScope($request, $financialSettlement);
+        $request->merge(['source_currency' => strtoupper((string) $request->input('source_currency'))]);
+        $data=$request->validate([
+            'source_amount'=>'required|numeric|gt:0',
+            'source_currency'=>'required|string|size:3',
+            'fx_rate_to_lkr'=>'nullable|required_unless:source_currency,LKR|numeric|gt:0',
+            'fx_rate_at'=>'nullable|required_unless:source_currency,LKR|date|before_or_equal:now',
+            'fx_source'=>'nullable|required_unless:source_currency,LKR|string|max:120',
+            'payment_method'=>'required|in:cash,card,bank_transfer,online,cheque,other',
+            'reference'=>'nullable|string|max:120',
+            'received_at'=>'required|date|before_or_equal:now',
+            'notes'=>'nullable|string|max:1000',
+            'idempotency_key'=>'required|uuid',
+        ]);
         return response()->json(['status'=>'success','message'=>'Account payment allocated to the oldest outstanding bookings.','data'=>$this->service->receivePayment($financialSettlement,$data,Auth::id())]);
+    }
+
+    private function assertSettlementCollectionScope(Request $request, FinancialAccountSettlement $settlement): void
+    {
+        if ($request->user()->can('sales.collections.view-all')) {
+            return;
+        }
+        $companyIds = DB::table('staff')
+            ->where('user_id', $request->user()->id)
+            ->whereNull('deleted_at')
+            ->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+            ->pluck('company_id')->filter()->unique()->values()->all();
+        $bookingIds = $settlement->items()->pluck('booking_id');
+        $scopedCount = SalesBookingAttribution::query()
+            ->whereIn('booking_id', $bookingIds)
+            ->whereIn('company_id', $companyIds)
+            ->count();
+
+        abort_unless($bookingIds->isNotEmpty() && $scopedCount === $bookingIds->count(), 404,
+            'Settlement was not found in the current legal-entity scope.');
     }
 
     public function driverCash(Request $request)

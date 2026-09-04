@@ -17,6 +17,7 @@ it('registers every retained operational schedule through the Laravel 13 console
         'sitemap:generate-and-ping' => '0 0 * * *',
         'short-urls:cleanup' => '0 0 * * *',
         'bookings:generate-recurring' => '0 1 * * *',
+        'bookings:process-payment-schedules' => '0 7 * * *',
         'maintenance:check-scheduled' => '0 6 * * *',
         'corporate-transport:generate-bookings' => '*/15 * * * *',
         'bookings:retry-final-pricing' => '*/15 * * * *',
@@ -28,6 +29,7 @@ it('registers every retained operational schedule through the Laravel 13 console
     }
 
     expect($events['bookings:generate-recurring']->withoutOverlapping)->toBeTrue()
+        ->and($events['bookings:process-payment-schedules']->withoutOverlapping)->toBeTrue()
         ->and($events['maintenance:check-scheduled']->withoutOverlapping)->toBeTrue()
         ->and($events['corporate-transport:generate-bookings']->withoutOverlapping)->toBeTrue()
         ->and($events['bookings:retry-final-pricing']->withoutOverlapping)->toBeTrue()

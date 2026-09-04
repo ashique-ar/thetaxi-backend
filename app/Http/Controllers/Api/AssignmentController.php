@@ -366,6 +366,10 @@ class AssignmentController extends Controller
             'received_at' => ['required', 'date', 'before_or_equal:now'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'idempotency_key' => ['required', 'uuid'],
+            'source_currency' => ['nullable', 'string', 'size:3'],
+            'fx_rate_to_lkr' => ['nullable', 'numeric', 'gt:0'],
+            'fx_rate_at' => ['nullable', 'date', 'before_or_equal:now'],
+            'fx_source' => ['nullable', 'string', 'max:120'],
         ]);
 
         $booking = Booking::findOrFail($bookingId);

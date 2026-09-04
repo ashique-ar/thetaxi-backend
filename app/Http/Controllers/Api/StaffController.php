@@ -1,31 +1,39 @@
 <?php
+
 // app/Http/Controllers/Api/StaffController.php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Staff;
-use App\Models\User;
 use App\Http\Requests\Staff\CreateStaffRequest;
 use App\Http\Requests\Staff\UpdateStaffRequest;
 use App\Http\Resources\StaffResource;
-use Illuminate\Http\Request;
+use App\Models\Staff;
+use App\Models\Sales\SalesProfile;
+use App\Models\User;
+use App\Services\UserContextService;
+use App\Services\StaffIdentityService;
+use App\Services\StaffAccessService;
+use App\Services\Hr\PeopleCoreService;
+use App\Services\Hr\Recruitment\RecruitmentConversionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
-use App\Services\PaymentMethodSyncService;
+use Illuminate\Support\Facades\DB;
 
 class StaffController extends Controller
 {
-    public function __construct()
-    {
-        $this->middleware('permission:staff.view')->only(['index','show']);
-        $this->middleware('permission:staff.create')->only(['store']);
-        $this->middleware('permission:staff.edit')->only(['update']);
-        $this->middleware('permission:staff.delete')->only(['destroy']);
-    }
+    public function __construct(
+        private readonly UserContextService $contextService,
+        private readonly StaffIdentityService $identityService,
+        private readonly StaffAccessService $accessService,
+        private readonly PeopleCoreService $peopleCore,
+        private readonly RecruitmentConversionService $recruitmentConversion,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Staff::with(['user', 'country', 'state', 'paymentMethods']);
+        $q = $this->accessService->scope(Staff::with(['user', 'company', 'country', 'state']), $request->user());
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
@@ -47,8 +55,8 @@ class StaffController extends Controller
             });
         }
 
-        if ($request->filled('role_id')) {
-            $q->where('staff_type', $request->get('role_id'));
+        if ($request->filled('staff_type') || $request->filled('role_id')) {
+            $q->where('staff_type', $request->get('staff_type', $request->get('role_id')));
         }
 
         if ($request->filled('status')) {
@@ -91,7 +99,7 @@ class StaffController extends Controller
         );
     }
 
-    public function roles(): JsonResponse
+    public function types(): JsonResponse
     {
         $roles = Staff::query()
             ->select('staff_type')
@@ -112,64 +120,149 @@ class StaffController extends Controller
         ]);
     }
 
+    public function availableUsers(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->can('staff.create-all'), 403, 'Creating Staff for another User requires Staff create-all permission.');
+        $search = trim((string) $request->get('search', ''));
+
+        $users = User::query()
+            ->select(['id', 'first_name', 'last_name', 'email', 'phone'])
+            ->where('is_active', true)
+            ->whereNotExists(fn ($query) => $query
+                ->selectRaw('1')
+                ->from('staff')
+                ->whereColumn('staff.user_id', 'users.id'))
+            ->whereDoesntHave('contexts', fn ($query) => $query
+                ->where('context_type', 'staff')
+                ->where('is_active', true))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($userQuery) use ($search) {
+                    $userQuery->whereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search)
+                        ->orWhereLikeInsensitive('phone', $search);
+                });
+            })
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->limit(50)
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => trim($user->first_name.' '.$user->last_name),
+                'email' => $user->email,
+                'phone' => $user->phone,
+            ])
+            ->values();
+
+        return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
     public function store(CreateStaffRequest $request): JsonResponse
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $paymentMethods = $data['payment_methods'] ?? null;
-        unset($data['payment_methods']);
-        $staff = Staff::create($data);
+        abort_unless(
+            $data['user_id'] === $request->user()->id || $request->user()->can('staff.create-all'),
+            403,
+            'Creating Staff for another User requires Staff create-all permission.'
+        );
+        $user = User::query()->findOrFail($data['user_id']);
 
-        if ($paymentMethods !== null) {
-            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
-        }
+        $staff = DB::transaction(function () use ($user, $data) {
+            $contextData = array_intersect_key($data, array_flip((new Staff())->getFillable()));
+            $context = $this->contextService->switchContext(
+                $user,
+                'staff',
+                $contextData,
+                $data['created_user_id'],
+            );
 
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+            $staff = Staff::query()->findOrFail($context->context_id);
+            $staff = $this->peopleCore->initializeStaff($staff, $data, $data['created_user_id']);
+            $this->recruitmentConversion->complete($data['recruitment_application_id'] ?? null, $staff, $data['created_user_id']);
+            return $staff;
+        });
+
+        $staff->load(['user', 'company', 'country', 'state']);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Staff created',
-            'data'=>['staff'=>new StaffResource($staff)]
-        ],201);
+            'status' => 'success',
+            'message' => 'Staff created',
+            'data' => ['staff' => new StaffResource($staff)],
+        ], 201);
     }
 
-    public function show(Staff $staff): JsonResponse
+    public function show(Request $request, Staff $staff): JsonResponse
     {
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $this->accessService->authorize($request->user(), $staff, 'view');
+        $staff->load(['user', 'company', 'country', 'state']);
 
         return response()->json([
-            'status'=>'success',
-            'data'=>['staff'=>new StaffResource($staff)]
+            'status' => 'success',
+            'data' => ['staff' => new StaffResource($staff)],
         ]);
     }
 
     public function update(UpdateStaffRequest $request, Staff $staff): JsonResponse
     {
+        $this->accessService->authorize($request->user(), $staff, 'edit');
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        $paymentMethods = $data['payment_methods'] ?? null;
-        unset($data['payment_methods']);
-        $staff->update($data);
+        $staff = DB::transaction(function () use ($staff, $data): Staff {
+            $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
+            if (array_key_exists('company_id', $data)
+                && (string) ($data['company_id'] ?? '') !== (string) ($staff->company_id ?? '')) {
+                $hasOpenSalesProfile = SalesProfile::query()
+                    ->withTrashed()
+                    ->where('staff_id', $staff->id)
+                    ->where(fn ($profile) => $profile
+                        ->whereNull('effective_until')
+                        ->orWhere('effective_until', '>', now()))
+                    ->lockForUpdate()
+                    ->exists();
+                abort_if(
+                    $hasOpenSalesProfile,
+                    422,
+                    'End or transfer every current/future Sales Profile before changing the Staff legal entity.',
+                );
+            }
+            if (array_key_exists('staff_type', $data)
+                && mb_strtolower(trim((string) $data['staff_type'])) !== mb_strtolower(trim((string) $staff->staff_type))) {
+                $hasOpenSalesProfile = SalesProfile::query()
+                    ->withTrashed()
+                    ->where('staff_id', $staff->id)
+                    ->where(fn ($profile) => $profile
+                        ->whereNull('effective_until')
+                        ->orWhere('effective_until', '>', now()))
+                    ->lockForUpdate()
+                    ->exists();
+                abort_if($hasOpenSalesProfile, 422,
+                    'End the current/future Sales Profile before changing this Staff category.');
+            }
+            $staff->update($data);
 
-        if ($paymentMethods !== null) {
-            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
-        }
-
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+            return $staff;
+        });
+        $staff->load(['user', 'company', 'country', 'state']);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Staff updated',
-            'data'=>['staff'=>new StaffResource($staff)]
+            'status' => 'success',
+            'message' => 'Staff updated',
+            'data' => ['staff' => new StaffResource($staff)],
         ]);
     }
 
-    public function destroy(Staff $staff): JsonResponse
+    public function destroy(Request $request, Staff $staff): JsonResponse
     {
-        $staff->delete();
+        $this->accessService->authorize($request->user(), $staff, 'terminate');
+        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
+        $result = $this->identityService->terminate($staff, $request->user(), $data['reason']);
+
         return response()->json([
-            'status'=>'success',
-            'message'=>'Staff deleted'
+            'status' => 'success',
+            'message' => 'Staff context terminated; the User remains available for other authorized contexts.',
+            'data' => $result,
         ]);
     }
 }

@@ -50,8 +50,14 @@ class UserContextService
      * @return UserContext
      * @throws Exception
      */
-    public function switchContext(User $user, string $contextType, array $contextData = []): UserContext
+    public function switchContext(
+        User $user,
+        string $contextType,
+        array $contextData = [],
+        ?string $actorUserId = null
+    ): UserContext
     {
+        $actorUserId ??= $user->id;
         DB::beginTransaction();
 
         try {
@@ -120,7 +126,7 @@ class UserContextService
                 'context_type' => $contextType,
                 'context_id' => $contextModel->id,
                 'is_active' => true,
-                'created_user_id' => $user->id,
+                'created_user_id' => $actorUserId,
             ]);
 
             $rolesToAssign = !empty($contextData['roles'])
@@ -726,8 +732,22 @@ class UserContextService
     private function buildVirtualContextSummary(User $user, string $contextType): array
     {
         $portalProfile = $this->portalProfileForContextType($contextType);
-        $roles = $this->formatRoleCollection($user->roles instanceof Collection ? $user->roles : collect($user->roles));
-        $permissions = $this->formatPermissionCollection($user->getAllPermissions());
+        $permissionEvaluator = app(PermissionEvaluator::class);
+        $roleModels = $contextType === 'internal'
+            ? $permissionEvaluator->rolesForInternalContext($user)
+            : ($user->roles instanceof Collection ? $user->roles : collect($user->roles));
+        $permissionModels = $contextType === 'internal'
+            ? $permissionEvaluator->permissionsForInternalContext($user)
+            : $user->getAllPermissions();
+        $roles = $this->formatRoleCollection($roleModels);
+        $permissions = $this->formatPermissionCollection($permissionModels);
+        $roleNames = collect($roles)->pluck('name');
+        $route = $this->routeForPortalProfile($portalProfile);
+        if ($portalProfile === 'internal'
+            && $roleNames->contains('salesperson')
+            && ! $roleNames->intersect(['admin', 'sub-admin', 'management', 'sales-manager'])->isNotEmpty()) {
+            $route = '/sales/me';
+        }
 
         return [
             'id' => $contextType,
@@ -742,7 +762,7 @@ class UserContextService
                 default => 'Operations and administration',
             },
             'portal_profile' => $portalProfile,
-            'route' => $this->routeForPortalProfile($portalProfile),
+            'route' => $route,
             'icon' => $this->iconForPortalProfile($portalProfile),
             'is_active' => true,
             'is_virtual' => true,
