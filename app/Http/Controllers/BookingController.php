@@ -1060,6 +1060,7 @@ class BookingController extends Controller
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
             $totalJourneyDuration = $availabilityData['total_journey_duration_seconds'] ?? null;
+            $distanceCalculationFailed = (bool) ($availabilityData['distance_calculation_failed'] ?? false);
 
             // Ensure vehicleGroups is always an array
             $vehicleGroups = $vehicleGroups ?? [];
@@ -1180,6 +1181,7 @@ class BookingController extends Controller
                 'popular_destinations' => $this->getPopularDestinations(),
                 'active_promotions' => $this->getActivePromotionalOffers($search),
                 'pagination' => $pagination,
+                'distanceCalculationFailed' => $distanceCalculationFailed,
             ];
 
             return view('search', array_merge(compact('search', 'results'), $additionalData));
