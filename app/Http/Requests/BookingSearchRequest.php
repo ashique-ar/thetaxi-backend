@@ -48,9 +48,12 @@ class BookingSearchRequest extends FormRequest
                             $configuredCoordinate = $effectiveConfig['default_' . $coordinate] ?? null;
                             if (
                                 $addressUsesConfiguredDefault
-                                && $this->isBlankSearchValue($data[$coordinateKey] ?? null)
                                 && !$this->isBlankSearchValue($configuredCoordinate)
                             ) {
+                                // The configured location is one identity: label and coordinates.
+                                // Hidden inputs can retain stale coordinates after validation or
+                                // browser restoration, so an exact default label must always use
+                                // its authoritative configured coordinates.
                                 $data[$coordinateKey] = (string) $configuredCoordinate;
                             }
                         }
