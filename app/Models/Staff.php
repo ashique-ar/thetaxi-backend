@@ -9,7 +9,7 @@ use App\Models\BaseModel;
 use App\Models\Hr\HrEmploymentAssignment;
 use App\Models\Hr\HrEmploymentSpell;
 use App\Traits\UUID;
-use Spatie\Activitylog\LogOptions;
+use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * App\Models\Staff

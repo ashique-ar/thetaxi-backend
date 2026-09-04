@@ -8,6 +8,9 @@ use App\Models\Hr\HrEmployeeTimelineEvent;
 use App\Models\Hr\HrRehireCase;
 use App\Models\Hr\HrStaffProfileVersion;
 use App\Models\Hr\HrEmployeeRecord;
+use App\Models\Hr\HrPeopleImportJob;
+use App\Models\Hr\HrPeopleExport;
+use App\Models\Hr\HrPeopleDuplicateReview;
 use App\Models\Document;
 use App\Models\Staff;
 use App\Services\Hr\PeopleCoreService;
@@ -16,12 +19,14 @@ use App\Services\Hr\OrganizationAdministrationService;
 use App\Services\Hr\JobPositionAdministrationService;
 use App\Services\Hr\StaffCustomFieldValueService;
 use App\Services\Hr\SubjectCustomFieldValueService;
+use App\Services\Hr\PeopleCoreMigrationService;
 use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PeopleCoreController extends Controller
 {
@@ -33,8 +38,62 @@ class PeopleCoreController extends Controller
         private readonly StaffCustomFieldValueService $customFieldValues,
         private readonly SubjectCustomFieldValueService $subjectCustomFieldValues,
         private readonly SalesPolicySettingsService $policySettings,
+        private readonly PeopleCoreMigrationService $migration,
     )
     {
+    }
+
+    public function reconciliation(Request $request): JsonResponse
+    {
+        $this->ensureEnabled();
+        return response()->json(['status'=>'success','data'=>$this->migration->reconciliation($this->access->actorCompanyId($request->user()))]);
+    }
+
+    public function previewImport(Request $request): JsonResponse
+    {
+        $this->ensureEnabled();
+        $data=$request->validate(['file'=>['required','file','mimes:csv,txt','max:5120'],'idempotency_key'=>['required','string','max:160']]);
+        $job=$this->migration->preview($data['file'],$this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key']);
+        return response()->json(['status'=>'success','data'=>$this->importPayload($job)],201);
+    }
+
+    public function importJob(Request $request, HrPeopleImportJob $job): JsonResponse
+    {
+        $this->ensureEnabled();
+        abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
+        return response()->json(['status'=>'success','data'=>$this->importPayload($job)]);
+    }
+
+    public function commitImport(Request $request, HrPeopleImportJob $job): JsonResponse
+    {
+        $this->ensureEnabled();
+        $data=$request->validate(['expected_file_checksum'=>['required','string','size:64']]);
+        abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
+        abort_unless(hash_equals($job->file_checksum,$data['expected_file_checksum']),409,'The retained import file differs from the reviewed preview.');
+        return response()->json(['status'=>'success','data'=>$this->importPayload($this->migration->commit($job,$job->company_id,(string)$request->user()->id))]);
+    }
+
+    public function export(Request $request): JsonResponse
+    {
+        $this->ensureEnabled();$data=$request->validate(['idempotency_key'=>['required','string','max:160']]);
+        return response()->json(['status'=>'success','data'=>$this->migration->export($this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key'])],201);
+    }
+
+    public function downloadExport(Request $request, HrPeopleExport $export): StreamedResponse
+    {
+        $this->ensureEnabled();return $this->migration->download($export,$this->access->actorCompanyId($request->user()),(string)$request->user()->id);
+    }
+
+    public function detectDuplicates(Request $request):JsonResponse{$this->ensureEnabled();return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates($this->access->actorCompanyId($request->user()),(string)$request->user()->id)]);}
+    public function duplicateReviews(Request $request):JsonResponse{$this->ensureEnabled();$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews($this->access->actorCompanyId($request->user()),(int)($data['per_page']??25))]);}
+    public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$this->access->actorCompanyId($request->user()),$data,(string)$request->user()->id)]);}
+    public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,$this->access->actorCompanyId($request->user()),(int)$data['expected_version'],(string)$request->user()->id)]);}
+
+    private function importPayload(HrPeopleImportJob $job): array
+    {
+        $rows=DB::table('hr_people_import_rows')->where('import_job_id',$job->id)->orderBy('row_number')->get(['row_number','source_row_key','normalized_payload','outcome','errors','matched_staff_id','created_spell_id'])
+            ->map(function($row){$row->normalized_payload=is_string($row->normalized_payload)?json_decode($row->normalized_payload,true,512,JSON_THROW_ON_ERROR):$row->normalized_payload;$row->errors=is_string($row->errors)?json_decode($row->errors,true,512,JSON_THROW_ON_ERROR):$row->errors;return$row;});
+        return ['job'=>$job,'rows'=>$rows];
     }
 
     public function index(Request $request): JsonResponse

@@ -6,7 +6,7 @@ it('provides a bounded tenant-scoped interview panel selector', function () {
 
     expect($routes)->toContain("Route::get('interview-panel-options', [RecruitmentController::class, 'interviewPanelOptions'])")
         ->and($controller)->toContain('public function interviewPanelOptions(')
-        ->toContain("'selected_ids'=>['nullable','array','max:50]")
+        ->toContain("'selected_ids'=>['nullable','array','max:50']")
         ->toContain("where('staff.company_id',\$company)")
         ->toContain("'value'=>(string)\$row->id")
         ->toContain("'status'=>'active'");

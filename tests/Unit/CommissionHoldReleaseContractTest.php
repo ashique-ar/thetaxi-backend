@@ -48,7 +48,7 @@ it('returns permission-aware canonical remediation without exposing unsafe histo
         ->and($remediation)->toContain("'historical_decision_immutable' => true")
         ->toContain("'action_path' => \$authorized ? \$actionPath : null")
         ->toContain('userHasAnyForInternalContext')
-        ->toContain('Existing reporting-FX correction commands cannot invent the missing original snapshot')
+        ->toContain('existing reporting-FX correction command cannot invent it')
         ->toContain('Sales cannot reactivate Staff or rewrite the historical decision');
 });
 
@@ -86,7 +86,7 @@ it('appends a maker-checker late-attribution adjustment without changing the ori
     $migration = file_get_contents(database_path('migrations/2026_08_13_142000_create_sales_commission_hold_adjustments.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($service)->toContain("'attribution_missing', 'acquisition_profile_missing', 'acquisition_profile_ineligible'")
+    expect($service)->toContain("'attribution_missing', 'legal_entity_missing', 'acquisition_profile_missing', 'acquisition_profile_ineligible'")
         ->toContain("\$attribution->version !== 1")
         ->toContain("where('event_type', 'confirmed')")
         ->toContain("['collection', 'commission']")
@@ -408,7 +408,7 @@ it('governed-transitions a receipt out of a genuinely unrecognized finality stat
         ->and($holdService)->toContain("'payment_finality_unknown',")
         ->toContain('previewLateUnknownFinality')
         ->toContain('fires when the receipt\'s finality_status is not one of the four')
-        ->toContain('\$originalFinalityStatus = \$decision->receipt_finality_status;')
+        ->toContain('$originalFinalityStatus = $decision->receipt_finality_status;')
         ->toContain('does not carry a genuinely unrecognized frozen finality state')
         ->toContain("'adjustment_kind' => 'late_unknown_finality_entitlement'")
         ->and($remediation)->toContain('Transition to a recognized finality state')

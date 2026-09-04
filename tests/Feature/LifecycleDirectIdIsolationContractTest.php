@@ -8,7 +8,7 @@ it('requires one company-scoped subject when opening a lifecycle case', function
         ->toContain("'required_without:application_id','prohibited_with:application_id'")
         ->toContain("'required_without:staff_id','prohibited_with:staff_id'")
         ->and($service)
-        ->toContain('abort_unless($hasStaff xor $hasApplication')
+        ->toContain('abort_unless(($hasStaff xor $hasApplication)')
         ->toContain("whereKey(\$data['staff_id'])->where('company_id', \$data['company_id'])")
         ->toContain("where('id', \$data['application_id'])->where('company_id', \$data['company_id'])");
 });

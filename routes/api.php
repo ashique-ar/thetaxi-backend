@@ -851,6 +851,16 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     Route::prefix('hr/people')->middleware('ensure.internal')->group(function () {
+        Route::get('reconciliation', [PeopleCoreController::class, 'reconciliation'])->middleware('permission:hr.people.view-all');
+        Route::post('imports/preview', [PeopleCoreController::class, 'previewImport'])->middleware('permission:hr.people.manage');
+        Route::get('imports/{job}', [PeopleCoreController::class, 'importJob'])->whereUuid('job')->middleware('permission:hr.people.manage');
+        Route::post('imports/{job}/commit', [PeopleCoreController::class, 'commitImport'])->whereUuid('job')->middleware('permission:hr.people.manage');
+        Route::post('exports', [PeopleCoreController::class, 'export'])->middleware('permission:hr.people.view-all');
+        Route::get('exports/{export}/download', [PeopleCoreController::class, 'downloadExport'])->whereUuid('export')->middleware('permission:hr.people.view-all');
+        Route::post('duplicate-reviews/detect', [PeopleCoreController::class, 'detectDuplicates'])->middleware('permission:hr.people.manage');
+        Route::get('duplicate-reviews', [PeopleCoreController::class, 'duplicateReviews'])->middleware('permission:hr.people.view-all');
+        Route::post('duplicate-reviews/{review}/decide', [PeopleCoreController::class, 'decideDuplicate'])->whereUuid('review')->middleware('permission:hr.people.rehire.approve');
+        Route::post('duplicate-reviews/{review}/consolidate', [PeopleCoreController::class, 'consolidateDuplicate'])->whereUuid('review')->middleware('permission:hr.people.rehire.approve');
         Route::get('directory', [PeopleCoreController::class, 'index'])->middleware('permission:hr.people.view');
         Route::get('organization', [PeopleCoreController::class, 'organization'])->middleware('permission:hr.people.view');
         Route::post('organization-units', [PeopleCoreController::class, 'storeOrganizationUnit'])->middleware('permission:hr.people.manage');
@@ -1060,6 +1070,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('hr/lifecycle')->group(function () {
         Route::get('cases', [LifecycleController::class, 'cases'])->middleware('permission:hr.lifecycle.view');
         Route::get('templates', [LifecycleController::class, 'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');
+        Route::get('case-subject-options', [LifecycleController::class, 'caseSubjectOptions'])->middleware('permission:hr.lifecycle.manage');
         Route::post('templates', [LifecycleController::class, 'storeTemplate'])->middleware('permission:hr.lifecycle.manage');
         Route::post('templates/{id}/approve', [LifecycleController::class, 'approveTemplate'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
         Route::post('cases', [LifecycleController::class, 'openCase'])->middleware('permission:hr.lifecycle.manage');
@@ -1234,6 +1245,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('external-notifications/{id}/fail', [SafetyController::class, 'failExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
     });
     Route::prefix('hr/engagement')->group(function () {
+        Route::get('audience-options', [EngagementController::class, 'audienceOptions'])->middleware('permission:hr.engagement.manage|hr.surveys.manage');
         Route::get('announcements', [EngagementController::class, 'announcements'])->middleware('permission:hr.engagement.view');
         Route::post('announcements', [EngagementController::class, 'storeAnnouncement'])->middleware('permission:hr.engagement.manage');
         Route::post('announcements/{id}/approve', [EngagementController::class, 'approveAnnouncement'])->whereUuid('id')->middleware('permission:hr.engagement.approve');

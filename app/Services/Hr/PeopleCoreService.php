@@ -148,6 +148,16 @@ class PeopleCoreService
         return DB::transaction(function()use($staff,$data,$actorUserId,$changeRequestId){abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');$staff=Staff::query()->lockForUpdate()->findOrFail($staff->id);$spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->firstOrFail();abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->where('effective_from','>',$data['effective_from'])->exists(),409,'A later assignment already exists; review the effective-date sequence.');$assignment=$this->createAssignment($staff,$spell,$data,$actorUserId,'approved_'.$data['change_type']);$this->timeline($staff,$spell,'lifecycle','assignment_changed',ucwords(str_replace('_',' ',$data['change_type'])),['assignment_id'=>$assignment->id,'effective_from'=>$assignment->effective_from->toDateString(),'change_request_id'=>$changeRequestId],"assignment-change:{$changeRequestId}",$assignment->effective_from);return$assignment;});
     }
 
+    public function addImportedInitialAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actorUserId):HrEmploymentAssignment
+    {
+        return DB::transaction(function()use($staff,$spell,$data,$actorUserId){
+            $staff=Staff::query()->whereKey($staff->id)->where('company_id',$staff->company_id)->lockForUpdate()->firstOrFail();
+            $spell=HrEmploymentSpell::query()->whereKey($spell->id)->where('staff_id',$staff->id)->where('company_id',$staff->company_id)->lockForUpdate()->firstOrFail();
+            abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->lockForUpdate()->exists(),409,'An employment assignment already exists; create a new reviewed import preview.');
+            return $this->createAssignment($staff,$spell,$data,$actorUserId,'legacy_import');
+        });
+    }
+
     private function createAssignment(Staff $staff,HrEmploymentSpell $spell,array $data,string $actor,string $reason): HrEmploymentAssignment
     {
         $start=$data['effective_from']??$spell->joined_at->toDateString();

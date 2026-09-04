@@ -94,17 +94,18 @@ it('keeps all employees in Staff while Sales remains an explicitly configured St
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
     $eligibility = file_get_contents(app_path('Services/Sales/SalesProfileEligibilityService.php'));
     $staffController = file_get_contents(app_path('Http/Controllers/Api/StaffController.php'));
-    $config = file_get_contents(config_path('sales.php'));
+    $policySettings = file_get_contents(app_path('Services/Sales/SalesPolicySettingsService.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_13_144000_freeze_sales_staff_category.php'));
 
     expect($controller)->toContain('Approved Sales Staff categories are not configured.')
         ->toContain('Only Staff in an approved Sales category may be explicitly enrolled as a Sales Profile.')
         ->toContain('Reconcile the linked Staff category through Profile configuration before reactivation.')
         ->toContain("'staff_category_snapshot' => trim((string) \$staff->staff_type)")
-        ->toContain("'sales_staff_category_ready' => \$salesStaffCategories !== []")
+        ->toContain("'sales_staff_category_ready_by_company' => \$categoriesByCompany->map(fn (array \$rows) => \$rows !== [])")
         ->and($eligibility)->toContain("\$configuration['staff_category_snapshot']")
         ->and($staffController)->toContain('End the current/future Sales Profile before changing this Staff category.')
-        ->and($config)->toContain("'staff_categories' => \$staffCategories")
+        ->and($policySettings)->toContain('approvedStaffCategories')
+        ->toContain('SalesStaffCategoryDefinition::query()')
         ->and($migration)->toContain("string('staff_category_snapshot', 100)")
         ->toContain('Rollback refused: export and reconcile Sales Profile Staff-category snapshots first.');
 });

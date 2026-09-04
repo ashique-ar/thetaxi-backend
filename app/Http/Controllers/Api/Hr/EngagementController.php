@@ -13,6 +13,26 @@ use Illuminate\Validation\Rule;
 
 class EngagementController extends Controller
 {
+    public function audienceOptions(Request $request): JsonResponse
+    {
+        $actor=$this->actor($request);
+        $data=$request->validate(['record_type'=>['required',Rule::in(['staff','organization_unit'])],'search'=>['nullable','string','max:120'],'selected_ids'=>['nullable','array','max:200'],'selected_ids.*'=>['uuid','distinct'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
+        $term=trim((string)($data['search']??''));$selected=$data['selected_ids']??[];
+        if($data['record_type']==='staff'){
+            $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where('staff.company_id',$actor->company_id)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                ->when($selected,fn($q)=>$q->whereIn('staff.id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))
+                ->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id');
+            $map=fn($row)=>['value'=>(string)$row->id,'label'=>trim(trim(($row->first_name??'').' '.($row->last_name??'')).' · '.($row->code?:'No Staff code')),'metadata'=>['staff_type'=>$row->staff_type],'status'=>'active'];
+        }else{
+            $query=DB::table('hr_organization_units')->where('company_id',$actor->company_id)->where('status','active')
+                ->when($selected,fn($q)=>$q->whereIn('id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(name) LIKE ?',['%'.mb_strtolower($term).'%'])))
+                ->select(['id','code','name','unit_type','status'])->orderBy('name')->orderBy('id');
+            $map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->name.' · '.$row->code,'metadata'=>['unit_type'=>$row->unit_type],'status'=>$row->status];
+        }
+        if($selected)return response()->json(['status'=>'success','data'=>$query->get()->map($map)->values()]);
+        $rows=$query->paginate((int)($data['per_page']??25));$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);
+    }
+
     public function announcements(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
@@ -36,7 +56,7 @@ class EngagementController extends Controller
             'acknowledgement_required' => ['required', 'boolean'], 'publish_at' => ['required', 'date'],
             'expires_at' => ['nullable', 'date', 'after:publish_at'], 'source_timezone' => ['required', 'timezone'],
         ]);
-        $this->assertAudience($data['audience']);
+        $this->assertAudience($data['audience'],(string)$actor->company_id);
         $publishAt = \Carbon\CarbonImmutable::parse($data['publish_at'], $data['source_timezone'])->utc(); $expiresAt = isset($data['expires_at']) ? \Carbon\CarbonImmutable::parse($data['expires_at'], $data['source_timezone'])->utc() : null; abort_if($expiresAt && $expiresAt->lessThanOrEqualTo($publishAt), 422, 'Expiry must be after publication.'); $snapshot = $data; $snapshot['publish_at'] = $publishAt->toIso8601String(); $snapshot['expires_at'] = $expiresAt?->toIso8601String();
         $id = (string) Str::uuid();
         DB::table('hr_announcements')->insert([
@@ -102,7 +122,7 @@ class EngagementController extends Controller
             'allowed_reporting_dimensions.*' => ['required', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])],
             'opens_at' => ['required', 'date'], 'closes_at' => ['required', 'date', 'after:opens_at'], 'source_timezone' => ['required', 'timezone'],
         ]);
-        $this->assertAudience($data['audience']); $this->assertQuestions($data['questions']); abort_if(count($data['allowed_reporting_dimensions']) !== count(array_unique($data['allowed_reporting_dimensions'])), 422, 'Reporting dimensions must be unique.');
+        $this->assertAudience($data['audience'],(string)$actor->company_id); $this->assertQuestions($data['questions']); abort_if(count($data['allowed_reporting_dimensions']) !== count(array_unique($data['allowed_reporting_dimensions'])), 422, 'Reporting dimensions must be unique.');
         abort_if(collect($data['questions'])->pluck('id')->duplicates()->isNotEmpty(), 422, 'Question identifiers must be unique.');
         $opensAt = \Carbon\CarbonImmutable::parse($data['opens_at'], $data['source_timezone'])->utc(); $closesAt = \Carbon\CarbonImmutable::parse($data['closes_at'], $data['source_timezone'])->utc(); abort_unless($closesAt->greaterThan($opensAt), 422, 'Survey close must be after opening.'); $data['opens_at'] = $opensAt->toIso8601String(); $data['closes_at'] = $closesAt->toIso8601String();
         $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
@@ -360,13 +380,17 @@ class EngagementController extends Controller
         });
     }
 
-    private function assertAudience(array $audience): void
+    private function assertAudience(array $audience,string $companyId): void
     {
         $allowed = ['all', 'staff_ids', 'staff_types', 'organization_unit_ids', 'location_codes']; abort_if(array_diff(array_keys($audience), $allowed), 422, 'Audience contains an unsupported selector.'); abort_unless(array_key_exists('all', $audience) && is_bool($audience['all']), 422, 'Audience all must be boolean.');
         foreach (array_slice($allowed, 1) as $key) abort_unless(array_key_exists($key, $audience) && is_array($audience[$key]), 422, "Audience {$key} must be an array.");
         foreach (['staff_ids', 'organization_unit_ids'] as $key) foreach ($audience[$key] as $value) abort_unless(is_string($value) && Str::isUuid($value), 422, "Audience {$key} contains an invalid UUID.");
         foreach (['staff_types', 'location_codes'] as $key) foreach ($audience[$key] as $value) abort_unless(is_string($value) && trim($value) !== '' && mb_strlen($value) <= 100, 422, "Audience {$key} contains an invalid value.");
         abort_unless($audience['all'] || collect(array_slice($audience, 1))->flatten()->isNotEmpty(), 422, 'Audience must select all staff or at least one explicit group.');
+        $staffIds=array_values(array_unique($audience['staff_ids']));
+        if($staffIds)abort_unless(DB::table('staff')->whereIn('id',$staffIds)->where('company_id',$companyId)->whereNull('deleted_at')->whereNull('employment_ended_at')->count()===count($staffIds),422,'Every audience Staff member must be active in your legal entity.');
+        $unitIds=array_values(array_unique($audience['organization_unit_ids']));
+        if($unitIds)abort_unless(DB::table('hr_organization_units')->whereIn('id',$unitIds)->where('company_id',$companyId)->where('status','active')->count()===count($unitIds),422,'Every audience organization unit must be active in your legal entity.');
     }
 
     private function assertQuestions(array $questions): void
