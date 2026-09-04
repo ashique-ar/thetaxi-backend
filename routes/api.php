@@ -1046,6 +1046,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('applications', [RecruitmentController::class, 'apply'])->middleware('permission:hr.recruitment.manage');
         Route::post('applications/{id}/transition', [RecruitmentController::class, 'transition'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::get('applications/{id}/interviews', [RecruitmentController::class, 'interviews'])->whereUuid('id')->middleware('permission:hr.recruitment.view');
+        Route::get('interview-panel-options', [RecruitmentController::class, 'interviewPanelOptions'])->middleware('permission:hr.recruitment.manage');
         Route::post('applications/{id}/interviews', [RecruitmentController::class, 'storeInterview'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::post('applications/{id}/offers', [RecruitmentController::class, 'storeOffer'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::post('offers/{offerId}/decide', [RecruitmentController::class, 'decideOffer'])->whereUuid('offerId')->middleware('permission:hr.recruitment.approve');
