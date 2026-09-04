@@ -14,7 +14,7 @@ class OrganizationAdministrationService
             $payload = $this->unitPayload($data, $companyId);
             $checksum = $this->checksum(['command'=>'create_unit','payload'=>$payload,'reason'=>$data['reason']]);
             if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, 'organization_unit')) return $replay;
-            $this->assertParent($payload['parent_id'] ?? null, $companyId);
+            $this->assertUnitReferences($payload, $companyId);
 
             $id = (string) Str::uuid();
             $row = $payload + [
@@ -39,8 +39,9 @@ class OrganizationAdministrationService
             $checksum = $this->checksum(['unit_id'=>$unitId,'expected_version'=>$data['expected_version'],'payload'=>$payload,'reason'=>$data['reason']]);
             if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, 'organization_unit')) return $replay;
             abort_unless((int)$row->version===(int)$data['expected_version'],409,'Organization unit version is stale.');
-            $this->assertParent($payload['parent_id'] ?? $row->parent_id, $companyId, $unitId);
-            $this->assertUnitCoversDependents($unitId, $payload);
+            $effectivePayload=array_merge((array)$row,$payload);
+            $this->assertUnitReferences($effectivePayload, $companyId, $unitId);
+            $this->assertUnitCoversDependents($unitId, $effectivePayload);
             $before=$this->decodeRow($row);
             $version=(int)$row->version+1;
             $changes=$this->json($payload+['version'=>$version,'updated_user_id'=>$actorUserId,'updated_at'=>now()],['custom_fields']);
@@ -232,7 +233,28 @@ class OrganizationAdministrationService
         return$payload;
     }
 
-    private function assertParent(?string $parentId,string $companyId,?string $unitId=null):void
+    private function assertUnitReferences(array $payload,string $companyId,?string $unitId=null):void
+    {
+        $this->assertParent(
+            $payload['parent_id']??null,
+            $companyId,
+            $payload['effective_from'],
+            $payload['effective_until']??null,
+            $unitId
+        );
+
+        $staffIds=array_values(array_unique(array_filter([
+            $payload['manager_staff_id']??null,
+            $payload['hr_partner_staff_id']??null,
+        ])));
+        if(!$staffIds)return;
+
+        $activeStaff=DB::table('staff')->whereIn('id',$staffIds)->where('company_id',$companyId)
+            ->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get(['id']);
+        abort_unless($activeStaff->count()===count($staffIds),422,'Organization manager and HR partner must be active Staff in the same legal entity.');
+    }
+
+    private function assertParent(?string $parentId,string $companyId,string $from,?string $until,?string $unitId=null):void
     {
         if(!$parentId)return;
         $seen=[];$cursor=$parentId;
@@ -240,8 +262,11 @@ class OrganizationAdministrationService
             abort_if($cursor===$unitId,422,'Organization hierarchy cannot contain a cycle.');
             abort_if(isset($seen[$cursor]),409,'Existing organization hierarchy contains a cycle.');
             $seen[$cursor]=true;
-            $parent=DB::table('hr_organization_units')->where('id',$cursor)->where('company_id',$companyId)->first(['parent_id']);
+            $parent=DB::table('hr_organization_units')->where('id',$cursor)->where('company_id',$companyId)->lockForUpdate()->first(['parent_id','status','effective_from','effective_until']);
             abort_unless($parent,422,'Parent organization unit must belong to your legal entity.');
+            if($cursor===$parentId){
+                abort_unless($parent->status==='active'&&$parent->effective_from<=$from&&($parent->effective_until===null||($until!==null&&$parent->effective_until>=$until)),422,'Parent organization unit must be active and cover the child unit interval.');
+            }
             $cursor=$parent->parent_id;
         }
     }

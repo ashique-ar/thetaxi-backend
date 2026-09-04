@@ -19,6 +19,7 @@ use App\Models\Corporate\Corporate;
 use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Staff;
 use App\Observers\DriverObserver;
 use App\Observers\BookingPaymentObserver;
 use App\Observers\BookingSalesObserver;
@@ -27,6 +28,7 @@ use App\Policies\CorporatePolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\DriverPolicy;
 use App\Policies\VehiclePolicy;
+use App\Policies\StaffPolicy;
 use App\Contracts\Foundation\DomainEventPublisher;
 use App\Services\Foundation\DomainOutboxService;
 
@@ -93,6 +95,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Driver::class, DriverPolicy::class);
         Gate::policy(Vehicle::class, VehiclePolicy::class);
+        Gate::policy(Staff::class, StaffPolicy::class);
 
         // Load broadcast channel authorization routes
         require base_path('routes/channels.php');

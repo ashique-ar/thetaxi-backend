@@ -487,6 +487,8 @@ class PeopleCoreController extends Controller
         $data = $request->validate(['domain' => ['nullable', 'string', 'max:50'], 'employment_spell_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
+        if (!empty($data['employment_spell_id']))
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->exists(), 422, 'The timeline employment spell does not belong to this employee.');
         $query = HrEmployeeTimelineEvent::query()->where('staff_id', $staff->id);
         if (!$request->user()->can('hr.people.timeline-confidential'))
             $query->whereIn('confidentiality', ['employee', 'manager', 'internal']);
@@ -508,13 +510,16 @@ class PeopleCoreController extends Controller
         $this->ensureEnabled();
         $staff = Staff::withTrashed()->findOrFail($case->staff_id);
         $this->access->authorize($request->user(), $staff);
+        abort_unless($staff->company_id === $case->company_id, 409, 'The rehire case and employee legal entity do not match.');
         $assignment = $request->validate(['employment_type_id' => ['nullable', 'uuid', 'exists:hr_employment_types,id'], 'position_id' => ['nullable', 'uuid', 'exists:hr_positions,id'], 'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'], 'manager_staff_id' => ['nullable', 'uuid', 'exists:staff,id'], 'cost_centre_code' => ['nullable', 'string', 'max:80'], 'location_code' => ['nullable', 'string', 'max:80'], 'payroll_group_code' => ['nullable', 'string', 'max:80'], 'default_shift_code' => ['nullable', 'string', 'max:80'], 'work_pattern_code' => ['nullable', 'string', 'max:80']]);
         foreach (['employment_type_id' => 'hr_employment_types', 'position_id' => 'hr_positions', 'organization_unit_id' => 'hr_organization_units'] as $field => $table) {
             if (!empty($assignment[$field]))
                 abort_unless(DB::table($table)->where('id', $assignment[$field])->where('company_id', $case->company_id)->exists(), 422, "{$field} must belong to the employee legal entity.");
         }
-        if (!empty($assignment['manager_staff_id']))
-            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->where('company_id', $case->company_id)->exists(), 422, 'The manager must belong to the employee legal entity.');
+        if (!empty($assignment['manager_staff_id'])) {
+            abort_if($assignment['manager_staff_id'] === $staff->id, 422, 'A rehired employee cannot manage their own assignment.');
+            abort_unless(Staff::query()->whereKey($assignment['manager_staff_id'])->where('company_id', $case->company_id)->whereNull('employment_ended_at')->exists(), 422, 'An active manager must belong to the employee legal entity.');
+        }
         return response()->json(['status' => 'success', 'data' => $this->people->approveRehire($case, $assignment, (string) $request->user()->id)]);
     }
 
@@ -561,7 +566,9 @@ class PeopleCoreController extends Controller
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'], 'record_type' => ['required', Rule::in(['emergency_contact', 'dependent', 'beneficiary', 'qualification', 'skill', 'language', 'membership', 'licence', 'certification', 'career', 'achievement', 'award', 'note'])], 'title' => ['required', 'string', 'max:255'], 'data' => ['required', 'array'], 'effective_date' => ['nullable', 'date'], 'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'], 'confidentiality' => ['required', Rule::in(['employee', 'manager', 'internal', 'hr_private', 'legal'])], 'source' => ['required', 'string', 'max:60'], 'employee_submitted' => ['nullable', 'boolean'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id']]);
         if (!empty($data['employment_spell_id']))
-            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->exists(), 422, 'The employment spell does not belong to this employee.');
+            abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->exists(), 422, 'The employment spell does not belong to this employee.');
+        if (!empty($data['evidence_file_id']))
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->where('company_id', $staff->company_id)->where('domain', 'hr')->whereNull('deleted_at')->exists(), 422, 'Employee-record evidence must be an active HR file from the same legal entity.');
         $payload = $data;
         $payload['encrypted_data'] = $payload['data'];
         unset($payload['data']);

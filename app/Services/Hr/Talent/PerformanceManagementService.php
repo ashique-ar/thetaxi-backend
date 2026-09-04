@@ -35,14 +35,17 @@ class PerformanceManagementService
     public function assignReview(array $data, string $actor): object
     {
         return DB::transaction(function () use ($data, $actor) {
-            $cycle = DB::table('hr_review_cycles')->where('id', $data['cycle_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->first();
-            $template = DB::table('hr_review_templates')->where('id', $data['template_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->first();
-            $staff = Staff::query()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->first();
+            $cycle = DB::table('hr_review_cycles')->where('id', $data['cycle_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->lockForUpdate()->first();
+            $template = DB::table('hr_review_templates')->where('id', $data['template_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->lockForUpdate()->first();
+            $staff = Staff::query()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->whereNull('employment_ended_at')->lockForUpdate()->first();
             abort_unless($cycle && $template && $staff, 422, 'Approved cycle, template, and in-entity staff are required.');
             $assignment = DB::table('hr_employment_assignments')->where('staff_id', $staff->id)->whereDate('effective_from', '<=', $cycle->period_end)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $cycle->period_start))->latest('effective_from')->first();
             abort_unless($assignment, 422, 'No effective employment assignment covers this review cycle.');
             $managerId = $data['manager_staff_id'] ?? $assignment->manager_staff_id;
-            if ($managerId) abort_unless(Staff::query()->whereKey($managerId)->where('company_id', $data['company_id'])->exists(), 422, 'Manager is outside the legal entity.');
+            if ($managerId) {
+                abort_if($managerId === $staff->id, 422, 'The reviewed employee cannot be their own manager.');
+                abort_unless(Staff::query()->whereKey($managerId)->where('company_id', $data['company_id'])->whereNull('employment_ended_at')->exists(), 422, 'An active manager in the same legal entity is required.');
+            }
             $id = (string) Str::uuid();
             DB::table('hr_performance_reviews')->insert(['id' => $id, 'company_id' => $data['company_id'], 'cycle_id' => $cycle->id, 'template_id' => $template->id, 'staff_id' => $staff->id, 'manager_staff_id' => $managerId, 'status' => 'self_review', 'assignment_snapshot' => json_encode($assignment, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             $this->event($id, 'assigned', null, 'self_review', ['cycle_id' => $cycle->id, 'template_id' => $template->id], $actor);

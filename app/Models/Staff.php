@@ -3,10 +3,13 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedStaffIdentityValue;
+use App\Casts\EncryptedStaffDateValue;
 use App\Models\BaseModel;
 use App\Models\Hr\HrEmploymentAssignment;
 use App\Models\Hr\HrEmploymentSpell;
 use App\Traits\UUID;
+use Spatie\Activitylog\LogOptions;
 
 /**
  * App\Models\Staff
@@ -71,12 +74,55 @@ class Staff extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
-        'dob' => 'date',
-        'license_expiry' => 'date',
+        'dob' => EncryptedStaffDateValue::class,
+        'license_expiry' => EncryptedStaffDateValue::class,
         'collection_commission_enabled' => 'boolean',
         'collection_commission_rate' => 'decimal:2',
         'employment_ended_at' => 'datetime',
+        'nic' => EncryptedStaffIdentityValue::class,
+        'license_no' => EncryptedStaffIdentityValue::class,
+        'address' => EncryptedStaffIdentityValue::class,
     ];
+
+    /**
+     * @var array<int, string>
+     */
+    protected $hidden = [
+        'nic',
+        'nic_fingerprint',
+        'dob',
+        'license_no',
+        'license_no_fingerprint',
+        'license_expiry',
+        'address',
+    ];
+
+    protected static function booted(): void
+    {
+        static::saving(function (Staff $staff): void {
+            $staff->nic_fingerprint = $staff->nic !== null && $staff->nic !== ''
+                ? hash('sha256', mb_strtolower(trim($staff->nic)))
+                : null;
+            $staff->license_no_fingerprint = $staff->license_no !== null && $staff->license_no !== ''
+                ? hash('sha256', mb_strtolower(trim($staff->license_no)))
+                : null;
+        });
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(array_values(array_diff($this->getFillable(), [
+                'nic',
+                'dob',
+                'license_no',
+                'license_expiry',
+                'address',
+            ])))
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('Staff');
+    }
 
     // Relations
 

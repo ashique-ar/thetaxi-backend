@@ -24,6 +24,8 @@ use Illuminate\Support\Facades\DB;
 
 class StaffController extends Controller
 {
+    private const SENSITIVE_PERSONAL_FIELDS = ['nic', 'dob', 'license_no', 'license_expiry', 'address'];
+
     public function __construct(
         private readonly UserContextService $contextService,
         private readonly StaffIdentityService $identityService,
@@ -36,16 +38,14 @@ class StaffController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $q = $this->accessService->scope(Staff::with(['user', 'company', 'country', 'state']), $request->user());
+        $canSearchSensitivePersonal = $request->user()->can('staff-sensitive-personal.view');
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
-            $q->where(function ($query) use ($search) {
+            $q->where(function ($query) use ($search, $canSearchSensitivePersonal) {
                 $query->whereLikeInsensitive('id', $search)
                     ->orWhereLikeInsensitive('user_id', $search)
                     ->orWhereLikeInsensitive('staff_type', $search)
                     ->orWhereLikeInsensitive('code', $search)
-                    ->orWhereLikeInsensitive('nic', $search)
-                    ->orWhereLikeInsensitive('license_no', $search)
-                    ->orWhereLikeInsensitive('address', $search)
                     ->orWhereLikeInsensitive('city', $search)
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->whereLikeInsensitive('id', $search)
@@ -54,6 +54,10 @@ class StaffController extends Controller
                             ->orWhereLikeInsensitive('email', $search)
                             ->orWhereLikeInsensitive('phone', $search);
                     });
+                if ($canSearchSensitivePersonal) {
+                    $query->orWhere('license_no_fingerprint', hash('sha256', mb_strtolower(trim($search))))
+                        ->orWhere('nic_fingerprint', hash('sha256', mb_strtolower(trim($search))));
+                }
             });
         }
 
@@ -65,7 +69,7 @@ class StaffController extends Controller
             $q->whereHas('user', fn ($query) => $query->where('is_active', $request->get('status') === 'active'));
         }
 
-        $sortable = ['employee_id', 'name', 'nic', 'role', 'email', 'status', 'created_at'];
+        $sortable = ['employee_id', 'name', 'role', 'email', 'status', 'created_at'];
         $sortBy = in_array($request->get('sort_by'), $sortable, true) ? $request->get('sort_by') : null;
         $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
 
@@ -76,9 +80,6 @@ class StaffController extends Controller
             case 'name':
                 $q->orderBy(User::select('first_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection)
                     ->orderBy(User::select('last_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection);
-                break;
-            case 'nic':
-                $q->orderBy('nic', $sortDirection);
                 break;
             case 'role':
                 $q->orderBy('staff_type', $sortDirection);
@@ -169,6 +170,7 @@ class StaffController extends Controller
             403,
             'Creating Staff for another User requires Staff create-all permission.'
         );
+        $data = $this->restrictSensitivePersonalFields($data, $data['user_id'], $request->user());
         $user = User::query()->findOrFail($data['user_id']);
 
         $staff = DB::transaction(function () use ($user, $data) {
@@ -199,6 +201,14 @@ class StaffController extends Controller
     {
         $this->accessService->authorize($request->user(), $staff, 'view');
         $staff->load(['user', 'company', 'country', 'state']);
+        $viewer = $request->user();
+        if ($viewer->id !== $staff->user_id && $viewer->can('staff-sensitive-personal.view')) {
+            activity('staff-sensitive-data')
+                ->causedBy($viewer)
+                ->performedOn($staff)
+                ->withProperties(['ip' => $request->ip()])
+                ->log('staff_personal_details_viewed');
+        }
 
         return response()->json([
             'status' => 'success',
@@ -210,6 +220,7 @@ class StaffController extends Controller
     {
         $this->accessService->authorize($request->user(), $staff, 'edit');
         $data = $this->defaultCompany->apply($request->validated());
+        $data = $this->restrictSensitivePersonalFields($data, $staff->user_id, $request->user());
         $data['updated_user_id'] = $request->user()->id;
         $staff = DB::transaction(function () use ($staff, $data): Staff {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
@@ -274,5 +285,19 @@ class StaffController extends Controller
             'message' => 'Staff context terminated; the User remains available for other authorized contexts.',
             'data' => $result,
         ]);
+    }
+
+    /**
+     * Drop nic/dob/license/address from a create or update payload unless the
+     * actor is the Staff owner or holds staff-sensitive-personal.view, so a
+     * generic-scope editor can never blindly overwrite fields they cannot see.
+     */
+    private function restrictSensitivePersonalFields(array $data, ?string $ownerUserId, User $actor): array
+    {
+        if ($ownerUserId === $actor->id || $actor->can('staff-sensitive-personal.view')) {
+            return $data;
+        }
+
+        return array_diff_key($data, array_flip(self::SENSITIVE_PERSONAL_FIELDS));
     }
 }

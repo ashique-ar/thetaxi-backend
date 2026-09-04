@@ -71,8 +71,28 @@ class PerformanceController extends Controller
 
     public function storeGoal(Request $request):JsonResponse
     {
-        $this->enabled(); $actor=$this->actor($request); $data=$request->validate(['staff_id'=>['required','uuid'],'review_id'=>['nullable','uuid'],'parent_goal_id'=>['nullable','uuid'],'title'=>['required','string','max:255'],'description'=>['required','string','max:4000'],'weight'=>['required','numeric','between:0.0001,100'],'measurement_kind'=>['required',Rule::in(['numeric','percentage','milestone','rating'])],'target_value'=>['nullable','numeric'],'starts_at'=>['required','date'],'due_at'=>['required','date','after_or_equal:starts_at']]); $staff=Staff::query()->whereKey($data['staff_id'])->where('company_id',$actor->company_id)->firstOrFail();
-        $weight=(float)DB::table('hr_goals')->where('staff_id',$staff->id)->where('review_id',$data['review_id']??null)->whereNotIn('status',['cancelled'])->sum('weight'); abort_if($weight+(float)$data['weight']>100.0001,422,'Active goal weights cannot exceed 100%.'); $id=(string)Str::uuid(); DB::table('hr_goals')->insert($data+['id'=>$id,'company_id'=>$staff->company_id,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]); return response()->json(['status'=>'success','data'=>DB::table('hr_goals')->find($id)],201);
+        $this->enabled();
+        $actor=$this->actor($request);
+        $data=$request->validate(['staff_id'=>['required','uuid'],'review_id'=>['nullable','uuid'],'parent_goal_id'=>['nullable','uuid'],'title'=>['required','string','max:255'],'description'=>['required','string','max:4000'],'weight'=>['required','numeric','between:0.0001,100'],'measurement_kind'=>['required',Rule::in(['numeric','percentage','milestone','rating'])],'target_value'=>['nullable','numeric'],'starts_at'=>['required','date'],'due_at'=>['required','date','after_or_equal:starts_at']]);
+
+        $goal=DB::transaction(function()use($data,$actor){
+            $staff=Staff::query()->whereKey($data['staff_id'])->where('company_id',$actor->company_id)->lockForUpdate()->firstOrFail();
+            if(!empty($data['review_id'])){
+                abort_unless(DB::table('hr_performance_reviews')->where('id',$data['review_id'])->where('company_id',$actor->company_id)->where('staff_id',$staff->id)->exists(),422,'The selected review does not belong to this employee and legal entity.');
+            }
+            if(!empty($data['parent_goal_id'])){
+                $parent=DB::table('hr_goals')->where('id',$data['parent_goal_id'])->where('company_id',$actor->company_id)->where('staff_id',$staff->id)->first();
+                abort_unless($parent,422,'The parent goal does not belong to this employee and legal entity.');
+                abort_unless(($parent->review_id??null)===($data['review_id']??null),422,'A parent goal must belong to the same review context.');
+            }
+            $activeGoals=DB::table('hr_goals')->where('staff_id',$staff->id)->where('review_id',$data['review_id']??null)->whereNotIn('status',['cancelled'])->select('weight')->lockForUpdate()->get();
+            $weight=(float)$activeGoals->sum('weight');
+            abort_if($weight+(float)$data['weight']>100.0001,422,'Active goal weights cannot exceed 100%.');
+            $id=(string)Str::uuid();
+            DB::table('hr_goals')->insert($data+['id'=>$id,'company_id'=>$staff->company_id,'status'=>'draft','created_at'=>now(),'updated_at'=>now()]);
+            return DB::table('hr_goals')->find($id);
+        });
+        return response()->json(['status'=>'success','data'=>$goal],201);
     }
 
     public function storeAchievement(Request $request):JsonResponse

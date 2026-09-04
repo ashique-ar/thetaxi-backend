@@ -6,7 +6,7 @@ use App\Models\Staff;
 use App\Models\StaffScopeAssignment;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Builder;
-use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Support\Facades\Gate;
 
 class StaffAccessService
 {
@@ -38,8 +38,21 @@ class StaffAccessService
 
     public function authorize(User $actor, Staff $staff, string $action): void
     {
+        $ability = match ($action) {
+            'view' => 'view',
+            'edit', 'update' => 'update',
+            'terminate', 'delete' => 'terminate',
+            default => null,
+        };
+
+        abort_unless($ability !== null, 403, 'The requested Staff action is not authorized.');
+        Gate::forUser($actor)->authorize($ability, $staff);
+    }
+
+    public function allows(User $actor, Staff $staff, string $action): bool
+    {
         if ($actor->can("staff.{$action}-all") || ($action === 'view' && $actor->can('staff.view-all'))) {
-            return;
+            return true;
         }
 
         $actorStaff = Staff::query()->where('user_id', $actor->id)->first();
@@ -56,6 +69,6 @@ class StaffAccessService
                 ->where(fn ($assignment) => $assignment->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                 ->exists();
 
-        abort_unless($staff->user_id === $actor->id || $sameLegalEntity || $teamMember, Response::HTTP_FORBIDDEN, 'The requested Staff record is outside your authorized scope.');
+        return $staff->user_id === $actor->id || $sameLegalEntity || $teamMember;
     }
 }

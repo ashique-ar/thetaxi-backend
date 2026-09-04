@@ -11,7 +11,9 @@ class StaffResource extends JsonResource
     public function toArray($request)
     {
         $fullName = trim(($this->user?->first_name ?? '').' '.($this->user?->last_name ?? ''));
-        $staffType = $this->staff_type;
+        $viewer = $request->user();
+        $canViewSensitivePersonal = $viewer
+            && ($viewer->id === $this->user_id || $viewer->can('staff-sensitive-personal.view'));
 
         return [
             'id' => $this->id,
@@ -30,11 +32,12 @@ class StaffResource extends JsonResource
             'collection_commission_enabled' => (bool) $this->collection_commission_enabled,
             'collection_commission_rate' => (float) $this->collection_commission_rate,
             'code' => $this->code,
-            'nic' => $this->nic,
-            'dob' => $this->dob,
-            'license_no' => $this->license_no,
-            'license_expiry' => $this->license_expiry,
-            'address' => $this->address,
+            'nic' => $canViewSensitivePersonal ? $this->nic : null,
+            'dob' => $canViewSensitivePersonal ? $this->dob : null,
+            'license_no' => $canViewSensitivePersonal ? $this->license_no : null,
+            'license_expiry' => $canViewSensitivePersonal ? $this->license_expiry : null,
+            'address' => $canViewSensitivePersonal ? $this->address : null,
+            'sensitive_personal_restricted' => ! $canViewSensitivePersonal,
             'country_id' => $this->country_id,
             'country' => $this->country?->name,
             'state_id' => $this->state_id,
