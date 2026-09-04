@@ -17,7 +17,7 @@ it('governs job catalogues and positions with tenant references versions and rep
     expect($service)->toContain("'job_family' =>")
         ->toContain("'job_grade' =>")
         ->toContain("'designation' =>")
-        ->toContain("where('company_id', $companyId)->lockForUpdate()")
+        ->toContain("where('company_id', \$companyId)->lockForUpdate()")
         ->toContain('Job catalogue codes are immutable; create a new record instead.')
         ->toContain('Position numbers are immutable; create a new position instead.')
         ->toContain('The job catalogue interval or status must continue to cover its active dependent records.')
@@ -37,7 +37,7 @@ it('derives position vacancies from current Staff assignments and blocks unsafe 
         ->toContain('Headcount cannot be reduced below current effective occupancy.')
         ->toContain('A position with current occupants cannot be made inactive.')
         ->and($controller)->toContain("'availability' => ['nullable', Rule::in(['vacant', 'partially_filled', 'filled', 'inactive'])]")
-        ->toContain("leftJoinSub($occupancy, 'occupancy'")
+        ->toContain("leftJoinSub(\$occupancy, 'occupancy'")
         ->toContain("'custom_fields' => ['prohibited']");
 });
 

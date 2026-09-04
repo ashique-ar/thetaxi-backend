@@ -124,10 +124,18 @@ return new class extends Migration
             $table->foreignUuid('paid_by')->constrained('users')->restrictOnDelete();
             $table->string('idempotency_key', 160)->unique();
             $table->char('request_payload_checksum', 64);
-            $table->foreignUuid('reverses_payout_id')->nullable()->unique()->constrained('sales_commission_payouts')->restrictOnDelete();
+            $table->foreignUuid('reverses_payout_id')->nullable()->unique();
             $table->text('reason')->nullable();
             $table->timestamps();
             $table->unique(['company_id', 'payment_reference'], 'commission_payout_reference_unique');
+        });
+
+        // Postgres cannot resolve a self-referencing foreign key added inside the
+        // same Schema::create() — the primary key it needs to reference is not yet
+        // visible to that ALTER-TABLE-compiled constraint. A separate Schema::table()
+        // call after creation avoids the ordering issue.
+        Schema::table('sales_commission_payouts', function (Blueprint $table) {
+            $table->foreign('reverses_payout_id')->references('id')->on('sales_commission_payouts')->restrictOnDelete();
         });
 
         Schema::create('sales_commission_statement_adjustments', function (Blueprint $table) {

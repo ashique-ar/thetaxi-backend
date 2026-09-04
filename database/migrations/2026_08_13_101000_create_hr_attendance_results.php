@@ -55,7 +55,7 @@ return new class extends Migration
         });
         Schema::create('hr_attendance_daily_results', function (Blueprint $table) {
             $table->uuid('id')->primary(); $table->foreignUuid('company_id')->constrained('companies')->restrictOnDelete(); $table->foreignUuid('staff_id')->constrained('staff')->restrictOnDelete();
-            $table->date('work_date'); $table->unsignedInteger('result_version'); $table->foreignUuid('supersedes_id')->nullable()->constrained('hr_attendance_daily_results')->restrictOnDelete();
+            $table->date('work_date'); $table->unsignedInteger('result_version'); $table->foreignUuid('supersedes_id')->nullable();
             $table->foreignUuid('roster_assignment_id')->nullable()->constrained('hr_roster_assignments')->restrictOnDelete(); $table->foreignUuid('period_id')->nullable()->constrained('hr_attendance_periods')->restrictOnDelete();
             $table->string('day_status', 40); $table->timestampTz('scheduled_start_at')->nullable(); $table->timestampTz('scheduled_end_at')->nullable();
             $table->timestampTz('first_in_at')->nullable(); $table->timestampTz('last_out_at')->nullable(); $table->unsignedInteger('worked_minutes')->default(0);
@@ -63,6 +63,12 @@ return new class extends Migration
             $table->string('source_kind', 30); $table->timestamp('calculated_at'); $table->foreignUuid('calculated_by')->nullable()->constrained('users')->restrictOnDelete();
             $table->char('input_checksum', 64); $table->char('result_checksum', 64); $table->json('rule_snapshot'); $table->timestamps();
             $table->unique(['staff_id', 'work_date', 'result_version']); $table->index(['company_id', 'work_date', 'day_status']);
+        });
+        // Postgres cannot resolve a self-referencing foreign key added inside the
+        // same Schema::create(); a separate Schema::table() call after creation
+        // avoids the ordering issue.
+        Schema::table('hr_attendance_daily_results', function (Blueprint $table) {
+            $table->foreign('supersedes_id')->references('id')->on('hr_attendance_daily_results')->restrictOnDelete();
         });
         Schema::create('hr_attendance_daily_result_sources', function (Blueprint $table) {
             $table->uuid('id')->primary(); $table->foreignUuid('daily_result_id')->constrained('hr_attendance_daily_results')->restrictOnDelete();

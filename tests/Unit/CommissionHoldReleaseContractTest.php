@@ -13,14 +13,20 @@ it('keeps held decisions immutable and appends one rollback-protected release', 
 });
 
 it('replays only formula holds from original frozen receipt-time evidence and fails closed', function () {
+    // The tier/effective-date replay lookup lives in CommissionFormulaReplayService,
+    // called by CommissionHoldService with the decision's frozen plan_family_id.
     $service = file_get_contents(app_path('Services/Sales/CommissionHoldService.php'));
+    $formulaReplay = file_get_contents(app_path('Services/Sales/CommissionFormulaReplayService.php'));
     $remediation = file_get_contents(app_path('Services/Sales/CommissionHoldRemediationService.php'));
 
     expect($service)->toContain('CommissionHoldRemediationService::isFormulaReplayable')
         ->toContain('requires governed attribution, identity, eligibility, finality, or FX correction')
+        ->toContain('$decision->plan_family_id')
+        ->and($formulaReplay)
         ->toContain("where('effective_from', '<=', \$effectiveAt)")
-        ->toContain("where('plan_family_id', \$decision->plan_family_id)")
+        ->toContain("where('plan_family_id', \$planFamilyId)")
         ->toContain("\$tiers->count() !== 1")
+        ->and($service)
         ->toContain('frozen_calculation_snapshot')
         ->toContain('calculation_checksum')
         ->toContain('lockForUpdate()')

@@ -7,8 +7,8 @@ use Illuminate\Support\Facades\Route;
 it('uses the shared document lifecycle for vehicle owners', function (): void {
     $routes = collect(Route::getRoutes()->getRoutes());
     $contracts = [
-        ['GET', 'api/documents', 'permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff.view|vehicles.view|vehicle-owners.view|vehicle-leases.view'],
-        ['POST', 'api/documents', 'permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff.edit|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit'],
+        ['GET', 'api/documents', 'permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff-sensitive-documents.view|vehicles.view|vehicle-owners.view|vehicle-leases.view'],
+        ['POST', 'api/documents', 'permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit'],
     ];
 
     foreach ($contracts as [$method, $uri, $permission]) {

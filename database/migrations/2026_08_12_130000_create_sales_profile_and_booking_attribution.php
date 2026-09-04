@@ -66,6 +66,13 @@ return new class extends Migration
             $table->index(['company_id', 'secured_at']);
             $table->index(['acquisition_sales_profile_id', 'secured_at'], 'sales_attribution_acquisition_idx');
             $table->index(['collection_sales_profile_id', 'secured_at'], 'sales_attribution_collection_idx');
+        });
+
+        // Postgres cannot resolve a self-referencing foreign key added inside the
+        // same Schema::create() as a table-level ALTER ADD CONSTRAINT — the primary
+        // key it needs to reference is not yet visible to that statement. Adding it
+        // in a separate Schema::table() call after creation avoids the ordering issue.
+        Schema::table('sales_booking_attributions', function (Blueprint $table) {
             $table->foreign('root_attribution_id')->references('id')->on('sales_booking_attributions')->restrictOnDelete();
         });
 

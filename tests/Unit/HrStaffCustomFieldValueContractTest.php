@@ -16,7 +16,11 @@ it('owns Staff custom-field values behind internal People scope and separate per
 });
 
 it('encrypts values and validates every bounded type without persisting plaintext', function () {
-    $service = file_get_contents(app_path('Services/Hr/StaffCustomFieldValueService.php'));
+    // The bounded type/option/range validation contract lives in the shared
+    // CustomFieldValueValidation trait (reused by the non-Staff subject value
+    // service); the Staff-specific encryption/event flow stays in the service.
+    $service = file_get_contents(app_path('Services/Hr/StaffCustomFieldValueService.php'))
+        . file_get_contents(app_path('Services/Hr/Support/CustomFieldValueValidation.php'));
 
     expect($service)->toContain('Crypt::encryptString($this->canonicalValue($value))')
         ->toContain("'decimal' => \$this->decimalValue(\$value)")
@@ -40,7 +44,8 @@ it('fails closed on stale definition value integrity backdating and legacy ciphe
 });
 
 it('filters classifications server-side and audits every revealed value', function () {
-    $service = file_get_contents(app_path('Services/Hr/StaffCustomFieldValueService.php'));
+    $service = file_get_contents(app_path('Services/Hr/StaffCustomFieldValueService.php'))
+        . file_get_contents(app_path('Services/Hr/Support/CustomFieldValueValidation.php'));
 
     expect($service)->toContain("'hr_private' => \$actor->can('hr.custom-fields.sensitive.view')")
         ->toContain("'legal' => \$actor->can('hr.custom-fields.legal.view')")

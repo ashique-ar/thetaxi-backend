@@ -69,6 +69,31 @@ class AttendanceResultService
         });
     }
 
+    /**
+     * §5.7: "Employee correction request with evidence; manager/HR approval,
+     * reason, and full audit." `requestCorrection()` (the maker) and
+     * `approveCorrection()` (one checker outcome) already existed; this adds
+     * the missing reject outcome so a pending request cannot only ever be
+     * approved. Unlike approval, rejection never changes a payable fact, so
+     * it — like Leave's reject path — is not blocked by a locked attendance
+     * period.
+     */
+    public function rejectCorrection(string $requestId, string $actorUserId, string $decisionNote): object
+    {
+        abort_unless(config('hr.features.attendance_results', false), 409, 'Attendance result writes are not enabled.');
+        return DB::transaction(function () use ($requestId, $actorUserId, $decisionNote) {
+            $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)->lockForUpdate()->first();
+            abort_unless($correction, 404);
+            abort_if($correction->requested_by === $actorUserId, 409, 'The correction requester cannot decide the same correction.');
+            abort_unless($correction->status === 'pending_approval', 409, 'Only pending corrections may be rejected.');
+            DB::table('hr_attendance_correction_requests')->where('id', $correction->id)->update([
+                'status' => 'rejected', 'decided_by' => $actorUserId, 'decided_at' => now(),
+                'decision_note' => $decisionNote, 'updated_at' => now(),
+            ]);
+            return DB::table('hr_attendance_correction_requests')->find($correction->id);
+        });
+    }
+
     private function exceptions(string $status, int $late, int $early, array $evidence): array
     {
         $items=[]; if(in_array($status,['absent','incomplete','insufficient_hours'],true))$items[]=['exception_type'=>$status,'severity'=>$status==='absent'?'high':'medium']; if($late>0)$items[]=['exception_type'=>'late_arrival','severity'=>'low']; if($early>0)$items[]=['exception_type'=>'early_departure','severity'=>'low']; return $items;

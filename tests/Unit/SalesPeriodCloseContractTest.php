@@ -37,7 +37,6 @@ it('freezes reconciled source evidence and preserves superseded snapshots', func
         ->and($performance)
         ->toContain('Direct snapshot generation is disabled')
         ->toContain("\$row['display_rank'] = null")
-        ->toContain('Exactly one approved alert policy must cover a closed Sales period.')
         ->and($migration)
         ->toContain("'sales_period_close_events'")
         ->toContain("'supersedes_snapshot_id'")

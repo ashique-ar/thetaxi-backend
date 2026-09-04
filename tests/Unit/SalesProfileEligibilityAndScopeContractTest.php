@@ -41,7 +41,7 @@ it('serves searchable paged Profile options from the same manage scope used by m
         ->toContain("'search' => ['nullable', 'string', 'max:100']")
         ->toContain("'manageable' => ['nullable', 'boolean']")
         ->toContain("\$manageableOnly ? 'sales.profiles.manage-all' : 'sales.profiles.view-all'")
-        ->toContain("'can_manage' => \$canManage");
+        ->toContain("\$payload['can_manage'] = \$canManage;");
 });
 
 it('resolves eligibility and reporting currency from the versioned profile state effective at the business event time', function () {

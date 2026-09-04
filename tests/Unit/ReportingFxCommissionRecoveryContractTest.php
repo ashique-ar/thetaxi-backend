@@ -63,7 +63,7 @@ class ReportingFxCommissionRecoveryContractTest extends TestCase
     public function test_reporting_fx_is_not_projected_as_collection_cash(): void
     {
         $source = file_get_contents(base_path('app/Services/Sales/SalesMetricFactService.php'));
-        self::assertStringContainsString("if (\$adjustment->impact_dimension !== 'cash_receipt') return;", $source);
+        self::assertStringContainsString("if (\$adjustment->impact_dimension !== 'cash_receipt' || \$adjustment->lkr_amount === null) return;", $source);
         self::assertStringContainsString("\$adjustment->adjustment_effective_at->toDateString()", $source);
     }
 

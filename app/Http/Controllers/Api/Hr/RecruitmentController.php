@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Crypt;
@@ -22,6 +23,40 @@ class RecruitmentController extends Controller
     public function transition(Request$r,string$id):JsonResponse{$d=$r->validate(['stage'=>['required',Rule::in(['screening','shortlisted','interview','assessment','reference_check','offer','hired','rejected','withdrawn'])],'reason'=>['required','string','max:2000'],'disposition_code'=>['nullable','required_if:stage,rejected','string','max:80']]);return DB::transaction(function()use($r,$id,$d){$row=DB::table('hr_candidate_applications')->where('id',$id)->lockForUpdate()->first();abort_unless($row,404);$this->company($r,$row->company_id);abort_if(in_array($row->status,['converted','rejected','withdrawn'],true),409);$status=in_array($d['stage'],['rejected','withdrawn'],true)?$d['stage']:'active';$this->event($id,'stage_changed',$row->stage,$d['stage'],$d['reason'],$r->user()->id,$d);DB::table('hr_candidate_applications')->where('id',$id)->update(['stage'=>$d['stage'],'status'=>$status,'disposition_code'=>$d['disposition_code']??null,'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_candidate_applications')->find($id)]);});}
     public function storeOffer(Request$r,string$id):JsonResponse{$this->enabled();$d=$r->validate(['version'=>['required','integer','min:1'],'package'=>['required','array'],'proposed_join_date'=>['required','date'],'expires_at'=>['required','date','after_or_equal:today']]);$app=DB::table('hr_candidate_applications')->find($id);abort_unless($app,404);$this->company($r,$app->company_id);abort_unless($app->stage==='offer',409,'Application must be in offer stage.');$offer=(string)Str::uuid();DB::table('hr_candidate_offers')->insert(['id'=>$offer,'application_id'=>$id,'version'=>$d['version'],'encrypted_package'=>Crypt::encryptString(json_encode($d['package'],JSON_THROW_ON_ERROR)),'proposed_join_date'=>$d['proposed_join_date'],'expires_at'=>$d['expires_at'],'status'=>'pending_approval','prepared_by'=>$r->user()->id,'created_at'=>now(),'updated_at'=>now()]);return response()->json(['status'=>'success','data'=>DB::table('hr_candidate_offers')->select(['id','application_id','version','status','proposed_join_date','expires_at'])->find($offer)],201);}
     public function decideOffer(Request$r,string$offerId):JsonResponse{$d=$r->validate(['action'=>['required',Rule::in(['approve','accept','decline'])],'reason'=>['nullable','required_if:action,decline','string','max:2000']]);return DB::transaction(function()use($r,$offerId,$d){$offer=DB::table('hr_candidate_offers')->where('id',$offerId)->lockForUpdate()->first();abort_unless($offer,404);$app=DB::table('hr_candidate_applications')->find($offer->application_id);$this->company($r,$app->company_id);if($d['action']==='approve'){abort_if($offer->prepared_by===$r->user()->id,409,'Offer preparer cannot approve it.');abort_unless($offer->status==='pending_approval',409);$update=['status'=>'approved','approved_by'=>$r->user()->id,'approved_at'=>now()];}else{abort_unless($offer->status==='approved',409,'Only an approved offer can receive a candidate response.');$update=['status'=>$d['action']==='accept'?'accepted':'declined','responded_at'=>now(),'response_reason'=>$d['reason']??null];DB::table('hr_candidate_applications')->where('id',$app->id)->update(['status'=>$d['action']==='accept'?'offer_accepted':'active','updated_at'=>now()]);}$update['updated_at']=now();DB::table('hr_candidate_offers')->where('id',$offerId)->update($update);return response()->json(['status'=>'success','data'=>DB::table('hr_candidate_offers')->select(['id','application_id','version','status','proposed_join_date','expires_at','approved_at','responded_at'])->find($offerId)]);});}
+    /**
+     * §5.14: "Recruitment analytics: time to hire, source effectiveness,
+     * funnel conversion, offer acceptance." Read-only aggregation over the
+     * existing requisition/candidate/application/event/offer tables; no
+     * write path, no new schema.
+     */
+    public function analytics(Request$r):JsonResponse{
+        $company=$this->company($r,$r->input('company_id'));
+        $d=$r->validate(['from'=>['nullable','date'],'to'=>['nullable','date','after_or_equal:from']]);
+        $applications=DB::table('hr_candidate_applications as app')->join('hr_candidates as candidate','candidate.id','=','app.candidate_id')
+            ->where('app.company_id',$company)->when($d['from']??null,fn($q,$v)=>$q->whereDate('app.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('app.created_at','<=',$v))
+            ->select(['app.id','app.stage','app.status','app.created_at','candidate.source_type'])->get();
+        $hiredEvents=DB::table('hr_candidate_application_events')->whereIn('application_id',$applications->pluck('id'))->where('to_stage','hired')
+            ->orderBy('occurred_at')->get()->keyBy('application_id');
+        $timeToHireDays=$applications->filter(fn($a)=>$hiredEvents->has($a->id))
+            ->map(fn($a)=>CarbonImmutable::parse($a->created_at)->diffInDays(CarbonImmutable::parse($hiredEvents[$a->id]->occurred_at)));
+        $bySource=$applications->groupBy('source_type')->map(function($group)use($hiredEvents){
+            $hired=$group->filter(fn($a)=>$hiredEvents->has($a->id))->count();
+            return['applications'=>$group->count(),'hired'=>$hired,'hire_rate_percent'=>$group->count()>0?round($hired/$group->count()*100,2):null];
+        });
+        $offers=DB::table('hr_candidate_offers as offer')->join('hr_candidate_applications as app','app.id','=','offer.application_id')
+            ->where('app.company_id',$company)->when($d['from']??null,fn($q,$v)=>$q->whereDate('offer.created_at','>=',$v))->when($d['to']??null,fn($q,$v)=>$q->whereDate('offer.created_at','<=',$v))
+            ->pluck('offer.status');
+        $offersByStatus=$offers->countBy();$decided=(int)$offersByStatus->get('accepted',0)+(int)$offersByStatus->get('declined',0);
+        return response()->json(['status'=>'success','data'=>[
+            'total_applications'=>$applications->count(),'total_hired'=>$timeToHireDays->count(),
+            'time_to_hire_days'=>['average'=>$timeToHireDays->isNotEmpty()?round($timeToHireDays->avg(),1):null,'median'=>$timeToHireDays->isNotEmpty()?round($timeToHireDays->median(),1):null,'hired_count'=>$timeToHireDays->count()],
+            'funnel_by_stage'=>$applications->groupBy('stage')->map->count(),
+            'source_effectiveness'=>$bySource,
+            'offer_status_counts'=>$offersByStatus,
+            'offer_acceptance_rate_percent'=>$decided>0?round((int)$offersByStatus->get('accepted',0)/$decided*100,2):null,
+        ]]);
+    }
+
     public function conversion(Request$r,string$id):JsonResponse{$app=DB::table('hr_candidate_applications')->find($id);abort_unless($app,404);$this->company($r,$app->company_id);abort_unless($app->status==='offer_accepted'&&!$app->converted_staff_id,409,'Application is not ready for conversion.');$candidate=DB::table('hr_candidates')->find($app->candidate_id);$req=DB::table('hr_job_requisitions')->find($app->requisition_id);return response()->json(['status'=>'success','data'=>['recruitment_application_id'=>$id,'candidate'=>json_decode(Crypt::decryptString($candidate->encrypted_profile),true,512,JSON_THROW_ON_ERROR),'requisition'=>['position_id'=>$req->position_id,'organization_unit_id'=>$req->organization_unit_id,'employment_type_code'=>$req->employment_type_code],'requires_existing_or_provisioned_user'=>true]]);}
     private function event(string$id,string$type,?string$from,string$to,string$reason,string$actor,array$snapshot):void{DB::table('hr_candidate_application_events')->insert(['id'=>(string)Str::uuid(),'application_id'=>$id,'event_type'=>$type,'from_stage'=>$from,'to_stage'=>$to,'reason'=>$reason,'snapshot'=>json_encode($snapshot,JSON_THROW_ON_ERROR),'actor_user_id'=>$actor,'occurred_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);}
     private function company(Request$r,?string$id):string{$actor=Staff::query()->where('user_id',$r->user()->id)->value('company_id');abort_unless($actor&&(!$id||$actor===$id),403,'Recruitment data is outside your legal entity.');return$actor;}

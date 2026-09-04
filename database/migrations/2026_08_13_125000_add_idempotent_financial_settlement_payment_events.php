@@ -9,10 +9,12 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::table('booking_payment_receipts', function (Blueprint $table): void {
-            $table->string('idempotency_key', 160)->nullable();
-            $table->unique('idempotency_key', 'booking_receipt_idempotency_unique');
-        });
+        if (! Schema::hasColumn('booking_payment_receipts', 'idempotency_key')) {
+            Schema::table('booking_payment_receipts', function (Blueprint $table): void {
+                $table->string('idempotency_key', 160)->nullable();
+                $table->unique('idempotency_key', 'booking_receipt_idempotency_unique');
+            });
+        }
 
         Schema::create('financial_settlement_payment_events', function (Blueprint $table): void {
             $table->uuid('id')->primary();

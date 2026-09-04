@@ -4,6 +4,12 @@ use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\Sales\RollingPaymentScheduleService;
 use Carbon\CarbonImmutable;
 
+// This test instantiates a real Eloquent model and resolves a service from the
+// container, which needs the booted Laravel app; tests/Unit is plain PHPUnit\
+// TestCase by default (see tests/Pest.php), so this file opts into the Laravel
+// TestCase itself rather than widening that default for every Unit test.
+uses(Tests\TestCase::class);
+
 it('maintains twelve monthly occurrences from the current rule boundary', function (): void {
     $rule = new BookingPaymentScheduleRule(['anchor_date' => '2026-08-13']);
     $service = app(RollingPaymentScheduleService::class);

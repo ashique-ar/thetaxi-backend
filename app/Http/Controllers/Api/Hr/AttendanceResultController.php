@@ -85,6 +85,11 @@ class AttendanceResultController extends Controller
         $data=$request->validate(['decision_note'=>['required','string','max:2000']]);$row=DB::table('hr_attendance_correction_requests')->find($correctionId);abort_unless($row,404);$this->sameCompany($request,$row->company_id);$result=$service->approveCorrection($correctionId,$request->user()->id,$data['decision_note']);$projection->attendanceCorrection(DB::table('hr_attendance_correction_requests')->find($correctionId),$request->user()->id);return response()->json(['status'=>'success','data'=>$result]);
     }
 
+    public function rejectCorrection(Request $request,string $correctionId,AttendanceResultService $service,HrDomainRequestProjectionService $projection): JsonResponse
+    {
+        $data=$request->validate(['decision_note'=>['required','string','max:2000']]);$row=DB::table('hr_attendance_correction_requests')->find($correctionId);abort_unless($row,404);$this->sameCompany($request,$row->company_id);$result=$service->rejectCorrection($correctionId,$request->user()->id,$data['decision_note']);$projection->attendanceCorrection($result,$request->user()->id);return response()->json(['status'=>'success','data'=>$result]);
+    }
+
     public function exceptions(Request $request, StaffAccessService $access): JsonResponse
     {
         $data=$request->validate(['staff_id'=>['nullable','uuid'],'status'=>['nullable',Rule::in(['open','resolved','superseded'])],'severity'=>['nullable',Rule::in(['low','medium','high'])]]);$staffIds=$access->scope(Staff::query(),$request->user())->when($data['staff_id']??null,fn($q,$id)=>$q->whereKey($id))->select('id');$query=DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result','result.id','=','exception.daily_result_id')->whereIn('exception.staff_id',$staffIds)->select(['exception.id','exception.staff_id','result.work_date','exception.exception_type','exception.severity','exception.status','exception.evidence','exception.resolved_at','exception.resolution_note'])->when($data['status']??null,fn($q,$v)=>$q->where('exception.status',$v))->when($data['severity']??null,fn($q,$v)=>$q->where('exception.severity',$v))->latest('result.work_date');return response()->json(['status'=>'success','data'=>$query->paginate($request->integer('per_page',50))]);

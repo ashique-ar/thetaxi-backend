@@ -858,6 +858,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('rosters/{rosterId}/approve', [AttendanceResultController::class,'approveRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.approve');
         Route::post('corrections', [AttendanceResultController::class,'requestCorrection'])->middleware('permission:hr.attendance.corrections.request');
         Route::post('corrections/{correctionId}/approve', [AttendanceResultController::class,'approveCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
+        Route::post('corrections/{correctionId}/reject', [AttendanceResultController::class,'rejectCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
         Route::get('exceptions', [AttendanceResultController::class,'exceptions'])->middleware('permission:hr.attendance.results.view');
         Route::post('exceptions/{exceptionId}/resolve', [AttendanceResultController::class,'resolveException'])->whereUuid('exceptionId')->middleware('permission:hr.attendance.exceptions.resolve');
         Route::post('periods', [AttendanceResultController::class,'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
@@ -905,6 +906,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('applications/{id}/offers',[RecruitmentController::class,'storeOffer'])->whereUuid('id')->middleware('permission:hr.recruitment.manage');
         Route::post('offers/{offerId}/decide',[RecruitmentController::class,'decideOffer'])->whereUuid('offerId')->middleware('permission:hr.recruitment.approve');
         Route::get('applications/{id}/conversion',[RecruitmentController::class,'conversion'])->whereUuid('id')->middleware('permission:hr.recruitment.convert');
+        Route::get('analytics',[RecruitmentController::class,'analytics'])->middleware('permission:hr.recruitment.view');
     });
     Route::prefix('hr/lifecycle')->group(function(){
         Route::get('cases',[LifecycleController::class,'cases'])->middleware('permission:hr.lifecycle.view');
@@ -941,6 +943,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('courses',[LearningController::class,'courses'])->middleware('permission:hr.learning.view');
         Route::post('courses',[LearningController::class,'storeCourse'])->middleware('permission:hr.learning.manage');
         Route::post('sessions',[LearningController::class,'storeSession'])->middleware('permission:hr.learning.manage');
+        Route::get('requirements',[LearningController::class,'requirements'])->middleware('permission:hr.learning.view');
+        Route::post('requirements',[LearningController::class,'storeRequirement'])->middleware('permission:hr.learning.manage');
         Route::post('enrollments',[LearningController::class,'enroll'])->middleware('permission:hr.learning.nominate');
         Route::post('enrollments/{id}/approve',[LearningController::class,'approve'])->whereUuid('id')->middleware('permission:hr.learning.approve');
         Route::post('enrollments/{id}/complete',[LearningController::class,'complete'])->whereUuid('id')->middleware('permission:hr.learning.complete');
