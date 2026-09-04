@@ -918,6 +918,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('connectors', [AttendanceDeviceController::class, 'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices', [AttendanceDeviceController::class, 'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
         Route::put('devices/{deviceId}', [AttendanceDeviceController::class, 'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::delete('devices/{deviceId}', [AttendanceDeviceController::class, 'destroyDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices/{deviceId}/probe', [AttendanceDeviceController::class, 'probe'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices/{deviceId}/sync', [AttendanceDeviceController::class, 'sync'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
         Route::get('devices/{deviceId}/people', [AttendanceDeviceController::class, 'devicePeople'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.view');

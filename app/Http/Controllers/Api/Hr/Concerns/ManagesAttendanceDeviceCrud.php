@@ -168,7 +168,7 @@ trait ManagesAttendanceDeviceCrud
         ]], 201);
     }
 
-    public function storeDevice(Request $request): JsonResponse
+    public function storeDevice(Request $request, AttendanceProviderManager $providers): JsonResponse
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
@@ -178,7 +178,7 @@ trait ManagesAttendanceDeviceCrud
             'provider' => ['required', 'string', 'max:60'],
             'integration_mode' => ['required', Rule::in(['direct_isapi', 'hikcentral', 'provider_push', 'approved_csv', 'local_connector'])],
             'model' => ['nullable', 'string', 'max:120'],
-            'serial_number' => ['required', 'string', 'max:160'],
+            'serial_number' => ['nullable', 'string', 'max:160'],
             'firmware' => ['nullable', 'string', 'max:100'],
             'site_code' => ['required', 'string', 'max:80'],
             'timezone' => ['required', 'timezone'],
@@ -192,6 +192,43 @@ trait ManagesAttendanceDeviceCrud
         if (! empty($data['organization_unit_id'])) {
             abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Organization unit and device legal entities must match.');
         }
+
+        if ($data['integration_mode'] === 'direct_isapi') {
+            $candidate = new AttendanceDevice();
+            $candidate->forceFill($data + ['status' => 'active']);
+            try {
+                $adapter = $providers->adapterFor($candidate);
+                $facts = $adapter->discover($candidate);
+                $credentialCapabilities = $adapter->credentialCapabilities($candidate);
+            } catch (ConnectionException $exception) {
+                report($exception);
+                abort(503, 'The Hikvision terminal could not be reached. Check its IP, port, network route, and power.');
+            } catch (RequestException $exception) {
+                report($exception);
+                abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401
+                    ? 'Hikvision authentication failed.'
+                    : 'Hikvision rejected the ISAPI device-information request.');
+            }
+
+            abort_if(
+                ! empty($data['serial_number']) && ! hash_equals((string) $data['serial_number'], (string) $facts['serial_number']),
+                409,
+                'The entered serial does not match the terminal at this address.'
+            );
+            $data['serial_number'] = $facts['serial_number'];
+            $data['model'] = $facts['model'] ?: ($data['model'] ?? null);
+            $data['firmware'] = $facts['firmware'] ?: ($data['firmware'] ?? null);
+            $data['capabilities'] = array_merge((array) ($data['capabilities'] ?? []), $facts['capabilities'], [
+                'manufacturer' => $facts['manufacturer'],
+                'device_type' => $facts['device_type'],
+                'card_management' => $credentialCapabilities['cards'],
+                'pin_management' => $credentialCapabilities['pin'],
+                'last_identity_probe_at' => now()->toIso8601String(),
+            ]);
+            $data['last_sync_at'] = now();
+        }
+
+        abort_unless(! empty($data['serial_number']), 422, 'This attendance provider requires a serial number.');
 
         $device = AttendanceDevice::create($data + ['status' => 'active', 'created_user_id' => $request->user()->id]);
 
@@ -240,5 +277,23 @@ trait ManagesAttendanceDeviceCrud
         $device->update($data);
 
         return response()->json(['status' => 'success', 'data' => $device->fresh()]);
+    }
+
+    public function destroyDevice(Request $request, string $deviceId): JsonResponse
+    {
+        $this->requireAttendanceWrites();
+        $device = AttendanceDevice::query()->find($deviceId);
+        abort_unless($device, 404);
+        $this->authorizedCompanyId($request, $device->company_id);
+
+        // Soft deletion removes the terminal from operational selection and all
+        // schedulers while retaining its UUID for raw events, mappings, access
+        // commands, configuration evidence, and audit reconstruction.
+        $device->delete();
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Attendance terminal removed. Historical evidence was retained.',
+        ]);
     }
 }

@@ -37,8 +37,24 @@ it('keeps high-risk and daily Hikvision workflows in their focused workspaces', 
     expect($people)->toContain('Terminal display name')->toContain('Assign card')->toContain('Set PIN')->toContain('Save reviewed mapping')
         ->toContain('Change mapping')->toContain('Reason for correction')
         ->and($devices)->toContain('Test identity')->toContain('sync(device.id)')->toContain('Register terminal')
+        ->toContain('remove(device)')->toContain('Remove terminal')
         ->and($access)->toContain('Submit for approval')->toContain('Rotate and verify')->toContain('Request reboot approval')
         ->and($exceptions)->toContain('Resolve and reconcile');
+});
+
+it('uses a readable legal-entity selector instead of raw company UUID entry', function () {
+    $root = base_path('../portal-thetaxi/src/app');
+    $devices = file_get_contents($root.'/modules/hr-attendance/components/attendance-devices/attendance-devices.component.html');
+    $selector = file_get_contents($root.'/shared/components/ui/legal-entity-select/legal-entity-select.component.ts');
+    $lookup = file_get_contents($root.'/shared/services/legal-entity-lookup.service.ts');
+
+    expect($devices)->toContain('<app-ui-legal-entity-select')
+        ->not->toContain('<mat-label>Company ID</mat-label>')
+        ->and($selector)->toContain('matAutocomplete')
+        ->toContain('debounceTime(250)')
+        ->toContain('No matching companies')
+        ->and($lookup)->toContain(".set('per_page', perPage)")
+        ->toContain('selected(id: string)');
 });
 
 it('never labels an existing Staff mapping as needing mapping when the Staff code is blank', function () {
