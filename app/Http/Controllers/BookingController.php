@@ -115,6 +115,14 @@ class BookingController extends Controller
             session()->put('backend_service_type_id', $serviceType->id);
             session()->put('frontend_service', $frontendService);
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'results_url' => route('search'),
+                    'message' => 'Search details validated successfully.',
+                ]);
+            }
+
             // Redirect to search results page
             return redirect()->route('search')
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');

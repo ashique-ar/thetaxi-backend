@@ -236,6 +236,92 @@
         form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
     }
 
+    function setSearchLoading(form, loading) {
+        const button = form.querySelector('button[type="submit"]');
+        if (!button) return;
+
+        if (loading) {
+            button.dataset.originalHtml = button.innerHTML;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            button.innerHTML = '<span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>Searching...';
+        } else {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            if (button.dataset.originalHtml) button.innerHTML = button.dataset.originalHtml;
+        }
+    }
+
+    function showAjaxValidationErrors(form, errors) {
+        const messages = Object.values(errors || {}).flat().filter(Boolean);
+        showValidationMessage(messages[0] || 'Please check the search details and try again.');
+
+        Object.entries(errors || {}).forEach(([name, fieldMessages]) => {
+            const control = form.querySelector(`[name="${CSS.escape(name)}"]`);
+            if (!control) return;
+            control.classList.add('error');
+            control.style.borderColor = '#dc3545';
+            showInlineError(control, Array.isArray(fieldMessages) ? fieldMessages[0] : fieldMessages);
+        });
+    }
+
+    async function submitResultsSearchAjax(form) {
+        if (form.dataset.ajaxSubmitting === 'true') return;
+        form.dataset.ajaxSubmitting = 'true';
+        setSearchLoading(form, true);
+
+        try {
+            const url = new URL(form.action, window.location.href);
+            new FormData(form).forEach((value, key) => url.searchParams.append(key, value));
+
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin'
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                if (response.status === 422) {
+                    showAjaxValidationErrors(form, payload.errors || {});
+                    return;
+                }
+                throw new Error(payload.message || 'Search request failed.');
+            }
+
+            const resultsResponse = await fetch(payload.results_url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin'
+            });
+            if (!resultsResponse.ok) throw new Error('Unable to load search results.');
+
+            const documentHtml = await resultsResponse.text();
+            const nextDocument = new DOMParser().parseFromString(documentHtml, 'text/html');
+            const nextResults = nextDocument.querySelector('#vehicleResultsSection');
+            const currentResults = document.querySelector('#vehicleResultsSection');
+            if (!nextResults || !currentResults) {
+                window.location.assign(payload.results_url);
+                return;
+            }
+
+            document.querySelector('#distanceCalculationAlert')?.remove();
+            const nextDistanceAlert = nextDocument.querySelector('#distanceCalculationAlert');
+            if (nextDistanceAlert) currentResults.before(nextDistanceAlert);
+            currentResults.replaceWith(nextResults);
+            window.history.pushState({ bookingSearch: true }, '', payload.results_url);
+            showValidationMessage(payload.message || 'Search completed successfully.', 'success');
+            nextResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (error) {
+            console.error('AJAX booking search failed', error);
+            showValidationMessage(error.message || 'Search failed. Please try again.');
+        } finally {
+            form.dataset.ajaxSubmitting = 'false';
+            setSearchLoading(form, false);
+        }
+    }
+
     /**
      * Rotate configured examples without putting a value into the location input.
      * Airport dropdowns are selects and are intentionally excluded.
@@ -3264,6 +3350,15 @@
                     ensureCanonicalSearchFields(form);
                 } catch (err) {
                     console.warn('ensureCanonicalSearchFields failed', err);
+                }
+
+                // Enhance resubmission on the results page without changing the
+                // canonical server endpoint or its non-JavaScript GET fallback.
+                if (form.method.toUpperCase() === 'GET' && document.querySelector('#vehicleResultsSection')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    submitResultsSearchAjax(form);
+                    return false;
                 }
             });
 

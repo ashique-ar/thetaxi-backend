@@ -83,7 +83,7 @@
     <!-- End Booking Form Section -->
 
     @if($distanceCalculationFailed ?? false)
-        <div class="container mb-4">
+        <div class="container mb-4" id="distanceCalculationAlert">
             <div class="alert alert-danger" role="alert">
                 <strong>We could not verify the journey distance.</strong>
                 No price has been displayed because an unverified distance could produce an incorrect fare.
