@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\Hr\Attendance\AttendanceConnector;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
+use App\Services\Hr\Attendance\AttendanceProviderManager;
+use App\Services\Hr\Attendance\DirectAttendanceSyncService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +18,104 @@ use Illuminate\Validation\Rule;
 
 class AttendanceDeviceController extends Controller
 {
+    public function probe(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
+    {
+        $this->requireAttendanceWrites();
+        $device = AttendanceDevice::query()->find($deviceId);
+        abort_unless($device, 404);
+        $this->authorizedCompanyId($request, $device->company_id);
+        abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
+
+        try {
+            $facts = $providers->adapterFor($device)->discover($device);
+            abort_unless(hash_equals($device->serial_number, $facts['serial_number']), 409, 'The configured endpoint belongs to a different Hikvision device.');
+            $device->update([
+                'model' => $facts['model'] ?: $device->model,
+                'firmware' => $facts['firmware'] ?: $device->firmware,
+                'capabilities' => array_merge((array) $device->capabilities, $facts['capabilities'], [
+                    'manufacturer' => $facts['manufacturer'],
+                    'device_type' => $facts['device_type'],
+                ]),
+                'last_sync_at' => now(),
+            ]);
+        } catch (\Illuminate\Http\Client\ConnectionException $exception) {
+            report($exception);
+            abort(503, 'The Hikvision terminal could not be reached. Check its IP, port, network route, and power.');
+        } catch (\Illuminate\Http\Client\RequestException $exception) {
+            report($exception);
+            abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the ISAPI device-information request.');
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            'device' => $device->fresh()->makeHidden('encrypted_configuration'),
+            'connection' => 'verified',
+        ]]);
+    }
+
+    public function sync(Request $request, string $deviceId, DirectAttendanceSyncService $sync): JsonResponse
+    {
+        $this->requireAttendanceWrites();
+        $device=AttendanceDevice::query()->find($deviceId);abort_unless($device,404);$this->authorizedCompanyId($request,$device->company_id);
+        $data=$request->validate(['days'=>['nullable','integer','min:1','max:31']]);$to=CarbonImmutable::now();$days=(int)($data['days']??2);
+        return response()->json(['status'=>'success','data'=>$sync->sync($device,$to->subDays($days),$to,'manual_reconciliation')]);
+    }
+
+    public function syncRuns(Request $request): JsonResponse
+    {
+        $companyId=$this->authorizedCompanyId($request,$request->input('company_id'));
+        $runs=DB::table('hr_attendance_sync_runs')->where('company_id',$companyId)->latest('started_at')->paginate($request->integer('per_page',50));
+        return response()->json(['status'=>'success','data'=>$runs]);
+    }
+
+    public function devicePeople(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
+    {
+        $device=AttendanceDevice::query()->find($deviceId);abort_unless($device,404);$this->authorizedCompanyId($request,$device->company_id);$adapter=$providers->adapterFor($device);$position=0;$people=[];
+        do{$page=$adapter->people($device,$position,30);$people=array_merge($people,$page['people']);$position=$page['next_position'];}while($page['has_more']);
+        $mappings=DB::table('hr_attendance_person_mappings')->where('company_id',$device->company_id)->where(fn($q)=>$q->where('device_id',$device->id)->orWhereNull('device_id'))->get()->keyBy('provider_person_id');
+        $data=collect($people)->map(fn($person)=>$person+['mapping'=>$mappings->get($person['employee_no'])])->values();
+        return response()->json(['status'=>'success','data'=>['people'=>$data,'total'=>count($people)]]);
+    }
+
+    public function provisionDevicePerson(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
+    {
+        $this->requireAttendanceWrites();
+        $data = $request->validate(['staff_id' => ['required', 'uuid']]);
+        $device = AttendanceDevice::query()->find($deviceId);
+        abort_unless($device, 404);
+        $this->authorizedCompanyId($request, $device->company_id);
+        abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can receive Staff users.');
+        $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->firstOrFail();
+        abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
+        abort_unless(preg_match('/^[A-Za-z0-9._-]{1,32}$/', $staff->code) === 1, 422, 'The Staff employee code is not supported by this Hikvision terminal.');
+        $name = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
+
+        try {
+            $person = $providers->adapterFor($device)->provisionPerson($device, $staff->code, $name);
+        } catch (\Illuminate\Http\Client\ConnectionException $exception) {
+            report($exception);
+            abort(503, 'The Hikvision terminal could not be reached while creating the Staff user.');
+        } catch (\Illuminate\Http\Client\RequestException $exception) {
+            report($exception);
+            abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the Staff user provisioning request.');
+        }
+
+        return response()->json(['status' => 'success', 'data' => $person], $person['created'] ? 201 : 200);
+    }
+
+    public function mappingCandidates(Request $request): JsonResponse
+    {
+        $companyId=$this->authorizedCompanyId($request,$request->input('company_id'));
+        $staff=DB::table('staff')->join('users','users.id','=','staff.user_id')->where('staff.company_id',$companyId)->whereNull('staff.employment_ended_at')->select('staff.id','staff.code','users.first_name','users.last_name','users.email')->orderBy('users.first_name')->get();
+        return response()->json(['status'=>'success','data'=>$staff]);
+    }
+
+    public function legacyStaffGaps(Request $request): JsonResponse
+    {
+        $actor=Staff::query()->where('user_id',$request->user()->id)->firstOrFail();
+        $rows=DB::table('staff')->join('users','users.id','=','staff.user_id')->whereNull('staff.deleted_at')->where(fn($q)=>$q->whereNull('staff.company_id')->orWhereNull('staff.code'))->select('staff.id','staff.company_id','staff.code','users.first_name','users.last_name','users.email')->orderBy('users.first_name')->paginate($request->integer('per_page',100));
+        return response()->json(['status'=>'success','data'=>$rows,'meta'=>['actor_staff_id'=>$actor->id]]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
@@ -40,7 +140,7 @@ class AttendanceDeviceController extends Controller
         // never round-trips back over the wire once set, matching the connector signing_secret's
         // existing "shown once at creation, never again" convention.
         $devices = AttendanceDevice::query()->where('company_id', $companyId)
-            ->get(['id', 'connector_id', 'provider', 'integration_mode', 'model', 'serial_number', 'site_code', 'timezone', 'status', 'last_sync_at', 'last_event_at', 'encrypted_configuration'])
+            ->get(['id', 'company_id', 'connector_id', 'provider', 'integration_mode', 'model', 'serial_number', 'site_code', 'timezone', 'status', 'last_sync_at', 'last_event_at', 'encrypted_configuration'])
             ->map(function (AttendanceDevice $device) {
                 $connection = collect($device->encrypted_configuration ?? [])->only(['ip_address', 'port', 'username'])->all();
                 return $device->makeHidden('encrypted_configuration')->toArray() + ['connection' => $connection];
@@ -168,6 +268,7 @@ class AttendanceDeviceController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'enrolled_methods' => ['nullable', 'array'],
+            'enrolled_methods.*' => ['string', Rule::in(['fingerprint', 'card', 'face', 'pin'])],
         ]);
         $this->authorizedCompanyId($request, $data['company_id']);
         return DB::transaction(function () use ($request, $data) {
@@ -175,10 +276,17 @@ class AttendanceDeviceController extends Controller
             $staff = Staff::query()->findOrFail($data['staff_id']);
             abort_unless($staff->company_id === $data['company_id'], 422, 'Staff and mapping legal entities must match.');
             if (! empty($data['device_id'])) abort_unless(AttendanceDevice::query()->whereKey($data['device_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Device and mapping legal entities must match.');
-            abort_if($this->mappingOverlapQuery($data)->exists(), 409, 'An overlapping provider-person mapping already exists.');
+            $overlapping = $this->mappingOverlapQuery($data)->lockForUpdate()->get();
+            foreach ($overlapping as $existing) {
+                DB::table('hr_attendance_person_mappings')->where('id', $existing->id)->update(['effective_until' => $data['effective_from'], 'updated_at' => now()]);
+            }
+            $data['enrolled_methods'] = isset($data['enrolled_methods']) ? json_encode(array_values(array_unique($data['enrolled_methods'])), JSON_THROW_ON_ERROR) : null;
             $id = (string) Str::uuid();
-            DB::table('hr_attendance_person_mappings')->insert($data + ['id'=>$id,'employee_number_snapshot'=>$staff->code,'enrollment_status'=>'pending','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
-            return response()->json(['status'=>'success','data'=>DB::table('hr_attendance_person_mappings')->find($id)], 201);
+            $employeeNumberSnapshot = $data['provider_person_id'];
+            DB::table('hr_attendance_person_mappings')->insert($data + ['id'=>$id,'employee_number_snapshot'=>$employeeNumberSnapshot,'enrollment_status'=>'verified','created_by'=>$request->user()->id,'last_verified_at'=>now(),'verified_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
+            $mapping = DB::table('hr_attendance_person_mappings')->find($id);
+            $resolved = $this->reconcileMapping($mapping, $request->user()->id, 'Resolved automatically when the device-person mapping was saved.');
+            return response()->json(['status'=>'success','data'=>['mapping'=>$mapping,'replaced_mapping_count'=>$overlapping->count(),'resolved_quarantine_count'=>$resolved]], 201);
         });
     }
 
@@ -204,15 +312,19 @@ class AttendanceDeviceController extends Controller
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->lockForUpdate()->first();
             abort_unless($mapping, 404);
             $this->authorizedCompanyId($request, $mapping->company_id);
-            abort_if($mapping->created_by === $request->user()->id, 409, 'The mapping creator cannot approve the same mapping.');
-            abort_unless($mapping->enrollment_status === 'pending', 409, 'Only pending mappings may be approved.');
+            if ($mapping->enrollment_status === 'verified') {
+                return response()->json(['status' => 'success', 'data' => ['mapping'=>$mapping,'resolved_quarantine_count'=>0]]);
+            }
+            abort_unless($mapping->enrollment_status === 'pending', 409, 'Only pending mappings may be activated.');
             DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->update([
                 'enrollment_status' => 'verified',
                 'last_verified_at' => now(),
                 'verified_by' => $request->user()->id,
                 'updated_at' => now(),
             ]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_person_mappings')->find($mappingId)]);
+            $mapping = DB::table('hr_attendance_person_mappings')->find($mappingId);
+            $resolved=$this->reconcileMapping($mapping,$request->user()->id,'Resolved automatically when the device-person mapping was activated.');
+            return response()->json(['status' => 'success', 'data' => ['mapping'=>DB::table('hr_attendance_person_mappings')->find($mappingId),'resolved_quarantine_count'=>$resolved]]);
         });
     }
 
@@ -330,6 +442,19 @@ class AttendanceDeviceController extends Controller
             ->where('provider_person_id', $data['provider_person_id'])
             ->whereDate('effective_from', '<', $data['effective_until'] ?? '9999-12-31')
             ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['effective_from']));
+    }
+
+    private function reconcileMapping(object $mapping, string $actorUserId, string $reason): int
+    {
+        $events = DB::table('hr_attendance_raw_events')->where('company_id',$mapping->company_id)->where('provider_person_id',$mapping->provider_person_id)
+            ->when($mapping->device_id,fn($query,$id)=>$query->where('device_id',$id))->whereDate('occurred_at','>=',$mapping->effective_from)
+            ->when($mapping->effective_until,fn($query,$until)=>$query->whereDate('occurred_at','<',$until));
+        $eventIds = (clone $events)->pluck('id');
+        $events->update(['staff_id'=>$mapping->staff_id,'person_mapping_id'=>$mapping->id,'mapping_status'=>'mapped','updated_at'=>now()]);
+        return DB::table('hr_attendance_quarantine_items')->whereIn('raw_event_id',$eventIds)->where('status','open')->update([
+            'status'=>'resolved','resolved_staff_id'=>$mapping->staff_id,'resolved_mapping_id'=>$mapping->id,'resolved_by'=>$actorUserId,
+            'resolved_at'=>now(),'resolution_reason'=>$reason,'updated_at'=>now(),
+        ]);
     }
 
     private function authorizedCompanyId(Request $request, ?string $requestedCompanyId): string

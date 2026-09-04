@@ -28,7 +28,7 @@ class AttendanceResultService
             $windowStart = $scheduledStart->subHours(6)->utc(); $windowEnd = $scheduledEnd->addHours(6)->utc();
             $events = DB::table('hr_attendance_raw_events as raw')->leftJoin('hr_attendance_quarantine_items as quarantine', 'quarantine.raw_event_id', '=', 'raw.id')
                 ->where('raw.company_id', $companyId)->where(fn ($query) => $query->where('raw.staff_id', $staffId)->orWhere('quarantine.resolved_staff_id', $staffId))
-                ->whereBetween('raw.occurred_at', [$windowStart, $windowEnd])->where('raw.event_kind', 'punch')->where(fn ($query) => $query->whereNull('raw.verification_result')->orWhereIn('raw.verification_result', ['success','verified','accepted']))
+                ->whereBetween('raw.occurred_at', [$windowStart, $windowEnd])->whereIn('raw.event_kind', ['punch','access_control'])->where(fn ($query) => $query->whereNull('raw.verification_result')->orWhereIn('raw.verification_result', ['success','verified','accepted']))
                 ->select(['raw.id','raw.occurred_at','raw.direction','raw.payload_checksum'])->orderBy('raw.occurred_at')->get();
             $in = $events->first(fn ($event) => in_array($event->direction, ['in','unknown',null], true)); $out = $events->reverse()->first(fn ($event) => in_array($event->direction, ['out','unknown',null], true));
             $firstIn = $in ? CarbonImmutable::parse($in->occurred_at) : null; $lastOut = $out ? CarbonImmutable::parse($out->occurred_at) : null;

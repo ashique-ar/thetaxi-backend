@@ -68,6 +68,10 @@ if (config('hr.features.engagement_analytics') && config('hr.system_user_id')) {
     Schedule::command('hr:expire-report-artifacts --commit')->dailyAt('02:15')->withoutOverlapping();
     Schedule::command('hr:process-notifications --commit')->everyMinute()->withoutOverlapping();
 }
+if (config('hr.features.attendance_ingestion')) {
+    Schedule::command('hr:hikvision-sync --lookback-minutes=15')->everyFiveMinutes()->withoutOverlapping(10);
+    Schedule::command('hr:hikvision-sync --days=2')->dailyAt('01:30')->withoutOverlapping(30);
+}
 
 Schedule::command('vehicles:process-lease-schedules')
     ->dailyAt('07:15')

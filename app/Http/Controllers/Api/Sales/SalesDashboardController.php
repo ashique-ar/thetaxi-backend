@@ -8,8 +8,11 @@ use App\Models\Sales\SalesProfile;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCommissionStatusService;
 use App\Services\Sales\SalesCollectionAgingStatusService;
+use App\Services\Sales\SalesFrozenCollectionAgingService;
 use App\Services\Sales\SalesMetricBreakdownService;
 use App\Services\Sales\SalesPerformanceService;
+use App\Services\Sales\SalesPortfolioStatusService;
+use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
@@ -25,6 +28,7 @@ class SalesDashboardController extends Controller
         private readonly SalesMetricBreakdownService $metricBreakdowns,
         private readonly SalesCommissionStatusService $commissionStatuses,
         private readonly SalesCollectionAgingStatusService $collectionAging,
+        private readonly SalesFrozenCollectionAgingService $frozenAging,
     ) {}
 
     public function context(Request $request): JsonResponse
@@ -233,6 +237,34 @@ class SalesDashboardController extends Controller
                         : null;
                 }
             }
+            $agingAvailable = $snapshots->isNotEmpty() && $snapshots->every(
+                fn (array $metrics) => data_get($metrics, 'aging_snapshot_state') === 'complete'
+                    && array_key_exists('aging_buckets', $metrics)
+            );
+            $trend->aging_snapshot_state = $agingAvailable ? 'complete' : 'incomplete';
+            $trend->aging_schedule_count = $agingAvailable
+                ? (int) $snapshots->sum(fn (array $metrics) => (int) data_get($metrics, 'aging_schedule_count', 0)) : null;
+            $trend->aging_missing_lkr_count = $agingAvailable
+                ? (int) $snapshots->sum(fn (array $metrics) => (int) data_get($metrics, 'aging_missing_lkr_count', 0)) : null;
+            $trend->aging_lkr_state = ! $agingAvailable ? 'unavailable'
+                : ($trend->aging_missing_lkr_count === 0 ? 'complete' : 'incomplete');
+            $trend->aging_outstanding_lkr = $trend->aging_lkr_state === 'complete'
+                ? round((float) $snapshots->sum(fn (array $metrics) => (float) data_get($metrics, 'aging_outstanding_lkr', 0)), 4) : null;
+            $trend->aging_buckets = collect(SalesFrozenCollectionAgingService::BUCKETS)->mapWithKeys(
+                function (string $bucket) use ($snapshots, $agingAvailable) {
+                    if (! $agingAvailable) return [$bucket => null];
+                    $missing = (int) $snapshots->sum(
+                        fn (array $metrics) => (int) data_get($metrics, "aging_buckets.{$bucket}.missing_lkr_count", 0));
+                    return [$bucket => [
+                        'schedule_count' => (int) $snapshots->sum(
+                            fn (array $metrics) => (int) data_get($metrics, "aging_buckets.{$bucket}.schedule_count", 0)),
+                        'missing_lkr_count' => $missing,
+                        'lkr_state' => $missing === 0 ? 'complete' : 'incomplete',
+                        'outstanding_lkr' => $missing === 0 ? round((float) $snapshots->sum(
+                            fn (array $metrics) => (float) data_get($metrics, "aging_buckets.{$bucket}.outstanding_lkr", 0)), 4) : null,
+                    ]];
+                }
+            )->all();
             foreach ([
                 'new_sales_target' => ['state' => 'new_sales_target_state', 'amount' => 'new_sales_target_lkr',
                     'actual' => 'net_new_sales_lkr'],
@@ -641,13 +673,65 @@ class SalesDashboardController extends Controller
         ]]);
     }
 
+    public function trendAging(Request $request, string $snapshot): JsonResponse
+    {
+        $data = $request->validate([
+            'sales_profile_id' => ['nullable', 'uuid'],
+            'bucket' => ['nullable', Rule::in(SalesFrozenCollectionAgingService::BUCKETS)],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $frozen = DB::table('sales_kpi_snapshots')->where('id', $snapshot)
+            ->where('status', 'frozen')->where('period_type', 'month')->first();
+        abort_unless($frozen, 404, 'Frozen Sales aging snapshot not found.');
+        $authorizedIds = $this->dashboardProfileIds(
+            $request, $frozen->company_id, $data['sales_profile_id'] ?? null,
+            'Frozen Sales aging snapshot not found.',
+        );
+        $source = $this->frozenAging->source(
+            $frozen->company_id, $authorizedIds, $frozen->period_end, $frozen->cutoff_at,
+        );
+        $sourceTotals = $this->frozenAging->aggregate($source['rows']);
+        $frozenRows = DB::table('sales_kpi_snapshot_rows')->where('snapshot_id', $frozen->id)
+            ->whereIn('sales_profile_id', $authorizedIds)->get(['sales_profile_id', 'metric_snapshot']);
+        $frozenTotals = $this->frozenAgingTotals($frozenRows);
+        $sourceComparable = collect($sourceTotals)->except('aging_source_checksum')->all();
+        $frozenComparable = $frozenTotals === null
+            ? null : collect($frozenTotals)->except('aging_source_checksum')->all();
+        $reconciliation = $source['missing_lineage_count'] > 0 || $frozenTotals === null
+            ? 'incomplete'
+            : (hash_equals(
+                hash('sha256', CanonicalJson::encode($sourceComparable)),
+                hash('sha256', CanonicalJson::encode($frozenComparable)),
+            ) ? 'matched' : 'mismatch');
+        $rows = isset($data['bucket'])
+            ? $source['rows']->where('aging_bucket', $data['bucket'])->values() : $source['rows'];
+
+        return response()->json(['status' => 'success', 'data' => [
+            'snapshot' => ['id' => $frozen->id, 'version' => (int) $frozen->version,
+                'period_start' => $frozen->period_start, 'period_end' => $frozen->period_end,
+                'cutoff_at' => $frozen->cutoff_at, 'snapshot_checksum' => $frozen->snapshot_checksum],
+            'scope' => ['company_id' => $frozen->company_id,
+                'sales_profile_id' => $data['sales_profile_id'] ?? null, 'currency' => 'LKR'],
+            'selected_bucket' => $data['bucket'] ?? null,
+            'reconciliation_status' => $reconciliation,
+            'missing_lineage_count' => $source['missing_lineage_count'],
+            'source' => $sourceTotals, 'frozen' => $frozenTotals,
+            'schedules' => $this->paginateCollection(
+                $rows, (int) ($data['page'] ?? 1), (int) ($data['per_page'] ?? 25)),
+            'definition' => 'Frozen month-end schedule aging reconstructed from retained schedule revisions, attribution events, and net allocations known by the snapshot cutoff.',
+            'canonical_record_access' => 'Booking and receipt records require their own permissions; this source exposes no customer contact or payment evidence.',
+        ]]);
+    }
+
     public function kpiFacts(Request $request): JsonResponse
     {
         $data = $request->validate([
             'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
-            'metric' => ['required', Rule::in(['new_sales', 'eligible_collections', 'commission'])],
+            'metric' => ['required', Rule::in([
+                'new_sales', 'new_bookings', 'new_customers', 'eligible_collections', 'commission',
+            ])],
             'collection_cohort' => ['nullable', Rule::in(['current_period_booking', 'prior_period_booking'])],
             'commission_category' => ['nullable', Rule::in(['one_time', 'long_term'])],
             'sales_profile_id' => ['nullable', 'uuid'],
@@ -664,6 +748,8 @@ class SalesDashboardController extends Controller
         );
         $metricTypes = match ($data['metric']) {
             'new_sales' => ['new_sales', 'new_sales_adjustment'],
+            'new_bookings' => ['new_sales'],
+            'new_customers' => ['new_customer'],
             'eligible_collections' => ['eligible_collection'],
             'commission' => ['commission_earned'],
         };
@@ -674,7 +760,7 @@ class SalesDashboardController extends Controller
             ->where('fact.company_id', $data['company_id'])
             ->whereIn('fact.sales_profile_id', $authorizedIds)
             ->whereIn('fact.metric_type', $metricTypes)
-            ->when($data['metric'] === 'new_sales',
+            ->when(in_array($data['metric'], ['new_sales', 'new_bookings', 'new_customers'], true),
                 fn ($query) => $query->where('fact.business_classification', 'new_business'))
             ->when(in_array($data['metric'], ['eligible_collections', 'commission'], true),
                 fn ($query) => $query->whereIn('fact.business_classification', ['new_business', 'recurring_business']))
@@ -747,14 +833,17 @@ class SalesDashboardController extends Controller
                 'date_contract' => 'inclusive business dates; signed event occurred_at must be at or before as_of'],
             'as_of' => $asOf->toIso8601String(),
             'metric' => ['key' => $data['metric'],
-                'business_classification' => $data['metric'] === 'new_sales' ? 'new_business' : null,
+                'business_classification' => in_array($data['metric'], ['new_sales', 'new_bookings', 'new_customers'], true)
+                    ? 'new_business' : null,
+                'primary_measure' => in_array($data['metric'], ['new_bookings', 'new_customers'], true)
+                    ? 'quantity' : 'amount_lkr',
                 'source_amount_lkr' => $sourceAmount,
                 'source_quantity' => $sourceQuantity,
                 'unfiltered_source_amount_lkr' => $unfilteredAmount,
                 'unfiltered_source_quantity' => $unfilteredQuantity,
                 'collection_cohort' => $data['collection_cohort'] ?? null,
                 'commission_category' => $data['commission_category'] ?? null,
-                'flow_definition' => 'Signed factual events inside the selected period; never a point-in-time balance.'],
+                'flow_definition' => 'Signed factual events inside the selected period; booking/customer counts include traceable debit and credit corrections and are never point-in-time balances.'],
             'breakdown' => $breakdown,
             'facts' => $page,
             'canonical_record_access' => 'Requires the record-specific permission in addition to this scoped factual evidence.',
@@ -891,6 +980,24 @@ class SalesDashboardController extends Controller
             'allocations' => $this->pageEnvelope($allocationRows, $page, $perPage, $total, $lastPage),
             'canonical_record_access' => 'Booking and receipt records require their own permissions in addition to this scoped schedule evidence.',
         ]]);
+    }
+
+    public function activePortfolio(Request $request, SalesPortfolioStatusService $portfolio): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'to' => ['required', 'date_format:Y-m-d'], 'sales_profile_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $authorizedIds = $this->dashboardProfileIds(
+            $request, $data['company_id'], $data['sales_profile_id'] ?? null,
+            'Active portfolio is outside your current Sales scope.',
+        );
+
+        return response()->json(['status' => 'success', 'data' => $portfolio->source(
+            $data['company_id'], $authorizedIds, $data['to'],
+            (int) ($data['page'] ?? 1), (int) ($data['per_page'] ?? 25),
+        )]);
     }
 
     public function staff(Request $request, string $staffId, SalesPerformanceService $performance): JsonResponse
@@ -1034,6 +1141,41 @@ class SalesDashboardController extends Controller
         return ['amount_lkr' => (float) $amount,
             'quantity' => $metric === 'new_sales' ? (float) $rows->sum('new_bookings_count') : null,
             'state' => 'complete'];
+    }
+
+    private function frozenAgingTotals(Collection $rows): ?array
+    {
+        $snapshots = $rows->map(fn ($row) => is_string($row->metric_snapshot)
+            ? (json_decode($row->metric_snapshot, true) ?: []) : ((array) $row->metric_snapshot));
+        if ($snapshots->isEmpty() || ! $snapshots->every(
+            fn (array $metrics) => data_get($metrics, 'aging_snapshot_state') === 'complete'
+                && array_key_exists('aging_buckets', $metrics)
+        )) return null;
+        $missing = (int) $snapshots->sum(fn (array $metrics) => (int) data_get($metrics, 'aging_missing_lkr_count', 0));
+        return [
+            'aging_snapshot_state' => 'complete',
+            'aging_schedule_count' => (int) $snapshots->sum(fn (array $metrics) => (int) data_get($metrics, 'aging_schedule_count', 0)),
+            'aging_lkr_state' => $missing === 0 ? 'complete' : 'incomplete',
+            'aging_missing_lkr_count' => $missing,
+            'aging_outstanding_lkr' => $missing === 0 ? round((float) $snapshots->sum(
+                fn (array $metrics) => (float) data_get($metrics, 'aging_outstanding_lkr', 0)), 4) : null,
+            'aging_buckets' => collect(SalesFrozenCollectionAgingService::BUCKETS)->mapWithKeys(
+                function (string $bucket) use ($snapshots) {
+                    $missing = (int) $snapshots->sum(
+                        fn (array $metrics) => (int) data_get($metrics, "aging_buckets.{$bucket}.missing_lkr_count", 0));
+                    return [$bucket => [
+                        'schedule_count' => (int) $snapshots->sum(
+                            fn (array $metrics) => (int) data_get($metrics, "aging_buckets.{$bucket}.schedule_count", 0)),
+                        'missing_lkr_count' => $missing,
+                        'lkr_state' => $missing === 0 ? 'complete' : 'incomplete',
+                        'outstanding_lkr' => $missing === 0 ? round((float) $snapshots->sum(
+                            fn (array $metrics) => (float) data_get($metrics, "aging_buckets.{$bucket}.outstanding_lkr", 0)), 4) : null,
+                    ]];
+                }
+            )->all(),
+            'aging_source_checksum' => hash('sha256', implode('|', $snapshots
+                ->pluck('aging_source_checksum')->filter()->sort()->values()->all())),
+        ];
     }
 
     private function dashboardProfileIds(

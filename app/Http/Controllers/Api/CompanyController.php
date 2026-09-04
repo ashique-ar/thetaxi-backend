@@ -10,6 +10,7 @@ use App\Http\Resources\Company\CompanyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class CompanyController extends Controller
 {
@@ -71,7 +72,20 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $company = Company::create($data);
+        $company = DB::transaction(function () use ($data) {
+            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+
+            $makeDefault = ($data['is_default'] ?? false)
+                || ! Company::query()->where('is_default', true)->exists();
+
+            abort_if($makeDefault && ! ($data['is_active'] ?? true), 422, 'The default Staff company must remain active.');
+
+            if ($makeDefault) {
+                DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
+            }
+
+            return Company::create(array_merge($data, ['is_default' => $makeDefault]));
+        });
 
         return response()->json([
             'status' => 'success',
@@ -92,7 +106,33 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        $company->update($data);
+        $company = DB::transaction(function () use ($company, $data) {
+            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+
+            $makeDefault = (bool) ($data['is_default'] ?? $company->is_default);
+
+            abort_if(
+                $company->is_default && ! $makeDefault,
+                422,
+                'Select another active company as default before removing this default.'
+            );
+            abort_if(
+                $makeDefault && array_key_exists('is_active', $data) && ! $data['is_active'],
+                422,
+                'The default Staff company must remain active.'
+            );
+
+            if ($makeDefault) {
+                DB::table('companies')
+                    ->whereNull('deleted_at')
+                    ->where('id', '!=', $company->id)
+                    ->update(['is_default' => false]);
+            }
+
+            $company->update(array_merge($data, ['is_default' => $makeDefault]));
+
+            return $company->fresh();
+        });
 
         return response()->json([
             'status' => 'success',
@@ -103,6 +143,7 @@ class CompanyController extends Controller
 
     public function destroy(Company $company): JsonResponse
     {
+        abort_if($company->is_default, 422, 'Select another active company as default before deleting this company.');
         $company->delete();
 
         return response()->json([

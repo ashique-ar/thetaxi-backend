@@ -8,6 +8,7 @@ use App\Models\Staff;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Vehicle\VehicleOwner;
+use App\Services\Hr\StaffDefaultCompanyService;
 use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -16,6 +17,8 @@ use Spatie\Permission\Models\Role;
 
 class UserContextService
 {
+    public function __construct(private readonly StaffDefaultCompanyService $defaultStaffCompany) {}
+
     private const INTERNAL_PERMISSION_HINTS = [
         'dashboard.view',
         'users.view',
@@ -546,6 +549,8 @@ class UserContextService
                 );
 
             case 'staff':
+                $contextData = $this->defaultStaffCompany->apply($contextData);
+
                 return Staff::firstOrCreate(
                     ['user_id' => $user->id],
                     array_merge([

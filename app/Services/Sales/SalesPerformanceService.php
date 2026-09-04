@@ -27,6 +27,7 @@ class SalesPerformanceService
         private readonly SalesAlertPolicyContract $alertPolicyContract,
         private readonly SalesTaskInterventionFactService $taskInterventionFacts,
         private readonly SalesMetricBreakdownService $metricBreakdowns,
+        private readonly SalesFrozenCollectionAgingService $frozenAging,
     ) {}
 
     public const RANKING_POLICY = [
@@ -654,7 +655,12 @@ class SalesPerformanceService
 
     public function preview(string $companyId, string $from, string $to, $cutoff, ?array $alertRules = null): array
     {
-        return ['ranking_policy' => self::RANKING_POLICY, 'rows' => $this->calculateRows($companyId, $from, $to, $cutoff, $alertRules)->values()->all()];
+        $rows = $this->calculateRows($companyId, $from, $to, $cutoff, $alertRules)->values();
+        return [
+            'ranking_policy' => self::RANKING_POLICY,
+            'aging_missing_lineage_count' => (int) ($rows->max('aging_profile_lineage_missing_count') ?? 0),
+            'rows' => $rows->all(),
+        ];
     }
 
     public function freeze(string $companyId, string $from, string $to, string $periodType, $cutoff, string $key, string $actorUserId): SalesKpiSnapshot
@@ -778,6 +784,10 @@ class SalesPerformanceService
         $overdueAsOf = CarbonImmutable::parse($to)->min(CarbonImmutable::parse($cutoff))->toDateString();
         $profiles = SalesProfile::query()->with('staff')->where('company_id', $companyId)
             ->where('effective_from', '<=', $to)->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>=', $from))->get();
+        $agingSource = $this->frozenAging->source(
+            $companyId, $profiles->pluck('id')->all(), $to, (string) $cutoff, true,
+        );
+        $agingByProfile = $agingSource['rows']->groupBy('sales_profile_id');
         $taskFacts = $alertRules === null ? [] : $this->taskInterventionFacts->forClosedPeriod(
             $companyId, $profiles->pluck('id')->all(), $from, $to, (string) $cutoff, $alertRules,
         );
@@ -823,7 +833,7 @@ class SalesPerformanceService
             ->whereRaw('schedule.amount > COALESCE(allocation.allocated, 0)')
             ->groupBy('attribution.collection_sales_profile_id')->get()->keyBy('sales_profile_id');
 
-        $rows = $profiles->map(function (SalesProfile $profile) use ($facts, $collectionFacts, $commissionFacts, $breakdowns, $targets, $adjustmentEvidenceIssues, $overdue, $taskFacts, $from, $to, $overdueAsOf) {
+        $rows = $profiles->map(function (SalesProfile $profile) use ($facts, $collectionFacts, $commissionFacts, $breakdowns, $targets, $adjustmentEvidenceIssues, $overdue, $taskFacts, $from, $to, $overdueAsOf, $agingByProfile, $agingSource) {
             $metric = fn (string $type, ?string $classification = null, string $field = 'amount') => (float) ($facts->get($profile->id, collect())->first(fn ($fact) => $fact->metric_type === $type && ($classification === null || $fact->business_classification === $classification))?->{$field} ?? 0);
             $target = $this->proratedTargets($targets->get($profile->id, collect()), $from, $to);
             $newTarget = $target['new_sales']['amount_lkr'];
@@ -851,6 +861,7 @@ class SalesPerformanceService
             $commissionCategoryMissing = $missingBreakdownCount($profileCommissionFacts, 'commission_category');
             $commissionTotal = (float) $profileCommissionFacts->sum(fn (SalesMetricFact $fact) => (float) $fact->amount_lkr);
             $collectionTotal = (float) $profileCollectionFacts->sum(fn (SalesMetricFact $fact) => (float) $fact->amount_lkr);
+            $aging = $this->frozenAging->aggregate($agingByProfile->get($profile->id, collect()));
             return [
                 'sales_profile_id' => $profile->id, 'staff_id' => $profile->staff_id,
                 'staff_code' => $profile->staff?->code ?: $profile->sales_code,
@@ -893,6 +904,8 @@ class SalesPerformanceService
                 'oldest_overdue_age_days' => $overdue->get($profile->id)?->oldest_due_date
                     ? CarbonImmutable::parse($overdue->get($profile->id)->oldest_due_date)->diffInDays(CarbonImmutable::parse($overdueAsOf))
                     : null,
+                ...$aging,
+                'aging_profile_lineage_missing_count' => $agingSource['missing_lineage_count'],
                 ...($taskFacts[$profile->id] ?? [
                     'overdue_task_count' => null, 'oldest_overdue_task_age_days' => null,
                     'missed_next_action_count' => null, 'missed_next_action_lookback_completed_months' => null,

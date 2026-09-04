@@ -88,7 +88,7 @@ class CommissionHoldRemediationService
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
                 'Review collection-handler attribution evidence',
-                'A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
+                'A beneficiary mismatch remains blocked for its own correction workflow. A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
                 false,
                 true,
             );

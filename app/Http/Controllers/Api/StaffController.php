@@ -15,6 +15,7 @@ use App\Services\UserContextService;
 use App\Services\StaffIdentityService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\PeopleCoreService;
+use App\Services\Hr\StaffDefaultCompanyService;
 use App\Services\Hr\Recruitment\RecruitmentConversionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -28,6 +29,7 @@ class StaffController extends Controller
         private readonly StaffIdentityService $identityService,
         private readonly StaffAccessService $accessService,
         private readonly PeopleCoreService $peopleCore,
+        private readonly StaffDefaultCompanyService $defaultCompany,
         private readonly RecruitmentConversionService $recruitmentConversion,
     ) {}
 
@@ -160,7 +162,7 @@ class StaffController extends Controller
 
     public function store(CreateStaffRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->defaultCompany->apply($request->validated());
         $data['created_user_id'] = $request->user()->id;
         abort_unless(
             $data['user_id'] === $request->user()->id || $request->user()->can('staff.create-all'),
@@ -207,7 +209,7 @@ class StaffController extends Controller
     public function update(UpdateStaffRequest $request, Staff $staff): JsonResponse
     {
         $this->accessService->authorize($request->user(), $staff, 'edit');
-        $data = $request->validated();
+        $data = $this->defaultCompany->apply($request->validated());
         $data['updated_user_id'] = $request->user()->id;
         $staff = DB::transaction(function () use ($staff, $data): Staff {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);

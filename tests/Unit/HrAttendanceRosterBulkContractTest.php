@@ -23,7 +23,10 @@ it('wires the bulk roster form into the existing Angular attendance configuratio
 
     expect($service)->toContain("storeRosterBulk(payload: any) { return this.makePostCall('/hr/attendance/rosters/bulk', payload); }");
     expect($component)
-        ->toContain('rosterBulkForm = this.fb.group({ company_id: [\'\', Validators.required], staff_ids_text: [\'\', Validators.required]')
+        ->toContain('staff_ids: [[] as string[], Validators.required]')
         ->toContain('submitRosterBulk()')
-        ->toContain("this.api.storeRosterBulk(this.clean({ ...rest, staff_ids }))");
+        ->toContain('this.api.storeRosterBulk(this.clean(v))');
+
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.html'));
+    expect($template)->toContain('formControlName="staff_ids"')->toContain('[multiple]="true"')->toContain('[alwaysShowSearch]="true"');
 });

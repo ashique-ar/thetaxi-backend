@@ -15,6 +15,7 @@ it('redacts the device password from the health endpoint, only ever exposing ip_
     $health = substr($health, 0, strpos($health, 'public function storeConnector('));
 
     expect($health)
+        ->toContain("'id', 'company_id', 'connector_id'")
         ->toContain("->only(['ip_address', 'port', 'username'])")
         ->toContain("->makeHidden('encrypted_configuration')")
         ->not->toContain("'password'");
@@ -42,10 +43,13 @@ it('wires device create/edit and connector create into the previously entirely r
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-operations/attendance-operations.component.ts'));
 
     expect($service)
-        ->toContain("storeDevice(payload: any) { return this.makePostCall('/hr/attendance/devices', payload); }")
-        ->toContain("updateDevice(deviceId: string, payload: any) { return this.makePutCall(`/hr/attendance/devices/\${deviceId}`, payload); }");
+        ->toContain('storeDevice(payload: any)')
+        ->toContain("this.makePostCall('/hr/attendance/devices', payload)")
+        ->toContain('updateDevice(deviceId: string, payload: any)')
+        ->toContain('this.makePutCall(`/hr/attendance/devices/${deviceId}`, payload)');
     expect($component)
-        ->toContain("startEditDevice(row:any){this.editingDevice.set(row);const config=row.connection||{};")
-        ->toContain("if(password)configuration['password']=password;")
+        ->toContain('startEditDevice(row: any)')
+        ->toContain('this.editingDevice.set(row)')
+        ->toContain("if (password) configuration['password'] = password;")
         ->toContain("direct_isapi");
 });

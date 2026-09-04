@@ -6,12 +6,14 @@ use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesAlertPolicyVersion;
 use App\Models\Sales\SalesKpiSnapshot;
 use App\Models\Sales\SalesPerformanceAlert;
+use App\Models\Sales\SalesPortfolioStatusPolicyVersion;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTargetVersion;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesAlertReconciliationService;
 use App\Services\Sales\SalesPeriodCloseService;
 use App\Services\Sales\SalesPerformanceService;
+use App\Services\Sales\SalesPortfolioStatusService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -69,12 +71,19 @@ class SalesPerformanceController extends Controller
         $companyIds = $profiles->pluck('company_id')->unique()->values();
         $companies = DB::table('companies')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name']);
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
+        $portfolioStatusPolicies = collect();
+        if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
+            || $request->user()->can('sales.performance.portfolio-status-policies.approve'))) {
+            $portfolioStatusPolicies = SalesPortfolioStatusPolicyVersion::query()->whereIn('company_id', $companyIds)
+                ->orderByDesc('effective_from')->orderByDesc('version')->get();
+        }
         $alertOwners = $profiles->filter(fn ($profile) => $profile->staff?->user_id)->map(fn ($profile) => [
             'user_id' => $profile->staff->user_id, 'company_id' => $profile->company_id,
             'label' => $profile->sales_code.' · '.$profile->staff->code,
         ])->unique('user_id')->values();
         return response()->json(['status' => 'success', 'data' => compact('companies', 'profiles', 'policies') + [
             'alert_owners' => $alertOwners,
+            'portfolio_status_policies' => $portfolioStatusPolicies,
         ]]);
     }
 
@@ -375,6 +384,48 @@ class SalesPerformanceController extends Controller
     {
         $this->assertCompanyWideScope($request, $policy->company_id);
         return response()->json(['status' => 'success', 'data' => $performance->approveAlertPolicy($policy, (string) $request->user()->id)]);
+    }
+
+    public function portfolioStatusPolicies(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $this->assertCompanyWideScope($request, $data['company_id']);
+        $rows = SalesPortfolioStatusPolicyVersion::query()->where('company_id', $data['company_id'])
+            ->orderByDesc('version')->paginate((int) ($data['per_page'] ?? 25));
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function createPortfolioStatusPolicy(Request $request, SalesPortfolioStatusService $policies): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'active_booking_statuses' => ['required', 'array', 'min:1', 'max:50'],
+            'active_booking_statuses.*' => ['required', 'string', 'max:80', 'distinct'],
+            'effective_from' => ['required', 'date_format:Y-m-d'],
+            'effective_until' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:effective_from'],
+            'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
+        ]);
+        $this->assertCompanyWideScope($request, $data['company_id']);
+
+        return response()->json(['status' => 'success',
+            'data' => $policies->createPolicy($data, (string) $request->user()->id)], 201);
+    }
+
+    public function approvePortfolioStatusPolicy(
+        Request $request,
+        SalesPortfolioStatusPolicyVersion $policy,
+        SalesPortfolioStatusService $policies,
+    ): JsonResponse {
+        $data = $request->validate(['idempotency_key' => ['required', 'string', 'max:160']]);
+        $this->assertCompanyWideScope($request, $policy->company_id);
+
+        return response()->json(['status' => 'success',
+            'data' => $policies->approvePolicy($policy, (string) $request->user()->id, $data['idempotency_key'])]);
     }
 
     private function assertCompanyScope(Request $request, string $companyId): void

@@ -745,6 +745,12 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.performance.alert-policies.manage');
         Route::post('performance/alert-policies/{policy}/approve', [SalesPerformanceController::class, 'approveAlertPolicy'])
             ->whereUuid('policy')->middleware('permission:sales.performance.alert-policies.approve');
+        Route::get('performance/portfolio-status-policies', [SalesPerformanceController::class, 'portfolioStatusPolicies'])
+            ->middleware('permission:sales.performance.portfolio-status-policies.manage|sales.performance.portfolio-status-policies.approve');
+        Route::post('performance/portfolio-status-policies', [SalesPerformanceController::class, 'createPortfolioStatusPolicy'])
+            ->middleware('permission:sales.performance.portfolio-status-policies.manage');
+        Route::post('performance/portfolio-status-policies/{policy}/approve', [SalesPerformanceController::class, 'approvePortfolioStatusPolicy'])
+            ->whereUuid('policy')->middleware('permission:sales.performance.portfolio-status-policies.approve');
         Route::get('dashboard', [SalesDashboardController::class, 'show'])->middleware('permission:sales.performance.view');
         Route::get('dashboard/staff/{staffId}', [SalesDashboardController::class, 'staff'])
             ->whereUuid('staffId')->middleware('permission:sales.performance.view-team|sales.performance.view-all');
@@ -759,9 +765,13 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.performance.view');
         Route::get('collection-aging', [SalesDashboardController::class, 'collectionAging'])
             ->middleware('permission:sales.performance.view');
+        Route::get('active-portfolio', [SalesDashboardController::class, 'activePortfolio'])
+            ->middleware('permission:sales.performance.view');
         Route::get('snapshots/{snapshot}/facts', [SalesDashboardController::class, 'trendFacts'])
             ->whereUuid('snapshot')->middleware('permission:sales.performance.view');
         Route::get('snapshots/{snapshot}/targets', [SalesDashboardController::class, 'trendTargets'])
+            ->whereUuid('snapshot')->middleware('permission:sales.performance.view');
+        Route::get('snapshots/{snapshot}/aging', [SalesDashboardController::class, 'trendAging'])
             ->whereUuid('snapshot')->middleware('permission:sales.performance.view');
         Route::get('pipeline/facts', [SalesDashboardController::class, 'pipelineFacts'])
             ->middleware('permission:sales.performance.view');
@@ -843,6 +853,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('connectors', [AttendanceDeviceController::class,'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices', [AttendanceDeviceController::class,'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
         Route::put('devices/{deviceId}', [AttendanceDeviceController::class,'updateDevice'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices/{deviceId}/probe', [AttendanceDeviceController::class,'probe'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::post('devices/{deviceId}/sync', [AttendanceDeviceController::class,'sync'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.manage');
+        Route::get('devices/{deviceId}/people', [AttendanceDeviceController::class,'devicePeople'])->whereUuid('deviceId')->middleware('permission:hr.attendance.devices.view');
+        Route::post('devices/{deviceId}/people', [AttendanceDeviceController::class,'provisionDevicePerson'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('sync-runs', [AttendanceDeviceController::class,'syncRuns'])->middleware('permission:hr.attendance.devices.view');
+        Route::get('mapping-candidates', [AttendanceDeviceController::class,'mappingCandidates'])->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('legacy-staff-gaps', [AttendanceDeviceController::class,'legacyStaffGaps'])->middleware('permission:staff.edit-all');
         Route::get('person-mappings', [AttendanceDeviceController::class,'mappings'])->middleware('permission:hr.attendance.devices.view');
         Route::post('person-mappings', [AttendanceDeviceController::class,'storeMapping'])->middleware('permission:hr.attendance.mappings.manage');
         Route::post('person-mappings/{mappingId}/approve', [AttendanceDeviceController::class,'approveMapping'])->whereUuid('mappingId')->middleware('permission:hr.attendance.mappings.approve');
@@ -879,6 +896,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('periods/{periodId}/transition', [AttendanceResultController::class,'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage');
     });
     Route::prefix('hr/workforce')->group(function () {
+        Route::get('references', [WorkforceController::class,'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('leave/requests', [WorkforceController::class,'leaveRequests'])->middleware('permission:hr.leave.view');
         Route::get('leave/balances', [WorkforceController::class,'leaveBalances'])->middleware('permission:hr.leave.view');
         Route::get('leave/team-calendar', [WorkforceController::class,'teamCalendar'])->middleware('permission:hr.leave.view');

@@ -16,6 +16,26 @@ use Illuminate\Validation\Rule;
 
 class WorkforceController extends Controller
 {
+    public function references(Request $r, StaffAccessService $access): JsonResponse
+    {
+        $companyId = $this->company($r, $r->input('company_id'));
+        $staff = $access->scope(Staff::query(), $r->user())
+            ->where('staff.company_id', $companyId)
+            ->whereNull('staff.employment_ended_at')
+            ->leftJoin('users', 'users.id', '=', 'staff.user_id')
+            ->orderBy('users.first_name')
+            ->orderBy('users.last_name')
+            ->get(['staff.id', 'staff.company_id', 'staff.code', 'staff.staff_type', 'users.first_name', 'users.last_name', 'users.email']);
+
+        return response()->json(['status' => 'success', 'data' => [
+            'company_id' => $companyId,
+            'staff' => $staff,
+            'leave_types' => DB::table('hr_leave_types')->where('company_id', $companyId)->where('status', 'active')->orderBy('name')->get(['id', 'code', 'name', 'unit']),
+            'leave_policies' => DB::table('hr_leave_policies')->where('company_id', $companyId)->where('status', 'approved')->orderBy('code')->get(['id', 'leave_type_id', 'code', 'version']),
+            'work_request_policies' => DB::table('hr_work_request_policies')->where('company_id', $companyId)->where('status', 'approved')->orderBy('request_kind')->orderBy('code')->get(['id', 'request_kind', 'code', 'version']),
+        ]]);
+    }
+
     public function leaveRequests(Request $r, StaffAccessService $access): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');

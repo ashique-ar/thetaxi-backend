@@ -85,9 +85,14 @@ class SalesPeriodCloseService
             'code' => 'legacy_frozen_snapshot_unlinked', 'count' => $unlinkedFrozenCount,
         ];
 
-        $rows = $this->performance->preview(
+        $performancePreview = $this->performance->preview(
             $companyId, $start->toDateString(), $end->toDateString(), $cutoff->toIso8601String(), $rules,
-        )['rows'];
+        );
+        $rows = $performancePreview['rows'];
+        if ($performancePreview['aging_missing_lineage_count'] > 0) $blockers[] = [
+            'code' => 'aging_profile_or_revision_lineage_missing',
+            'count' => $performancePreview['aging_missing_lineage_count'],
+        ];
         foreach (['collection_cohort_missing_count', 'commission_cohort_missing_count',
             'commission_category_missing_count'] as $missingField) {
             $missingCount = (int) collect($rows)->sum($missingField);
@@ -149,6 +154,10 @@ class SalesPeriodCloseService
                 ->pluck('task_intervention_evidence_checksum')->filter()->sort()->values()->all())),
             'task_deadline_or_history_missing_count' => collect($rows)
                 ->max('task_deadline_or_history_missing_count'),
+            'aging_source_count' => (int) collect($rows)->sum('aging_schedule_count'),
+            'aging_source_checksum' => hash('sha256', implode('|', collect($rows)
+                ->pluck('aging_source_checksum')->filter()->sort()->values()->all())),
+            'aging_missing_lineage_count' => $performancePreview['aging_missing_lineage_count'],
             'alert_policy_version_id' => $policies->count() === 1 ? $policies->first()->id : null,
             'blockers' => $blockers,
         ];

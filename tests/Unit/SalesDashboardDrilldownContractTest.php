@@ -168,10 +168,17 @@ it('drills current KPI flows to authorized signed facts before pagination', func
     $periodClose = file_get_contents(app_path('Services/Sales/SalesPeriodCloseService.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_14_106000_align_sales_booking_attribution_soft_delete_contract.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
+    $portal = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-performance/sales-performance.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-performance/sales-performance.component.html'));
 
     expect($controller)
         ->toContain('public function kpiFacts(Request $request): JsonResponse')
         ->toContain("Rule::in(['new_sales', 'eligible_collections', 'commission'])")
+        ->toContain("'new_sales', 'new_bookings', 'new_customers', 'eligible_collections', 'commission'")
+        ->toContain("'new_bookings' => ['new_sales']")
+        ->toContain("'new_customers' => ['new_customer']")
+        ->toContain("['new_sales', 'new_bookings', 'new_customers']")
+        ->toContain("['new_bookings', 'new_customers']")
         ->toContain("'eligible_collections' => ['eligible_collection']")
         ->toContain("->whereIn('fact.sales_profile_id', \$authorizedIds)")
         ->toContain("->where('fact.business_classification', 'new_business')")
@@ -206,7 +213,15 @@ it('drills current KPI flows to authorized signed facts before pagination', func
         ->toContain('$table->dropSoftDeletes()')
         ->and($routes)
         ->toContain("Route::get('kpis/facts', [SalesDashboardController::class, 'kpiFacts'])")
-        ->toContain("->middleware('permission:sales.performance.view')");
+        ->toContain("->middleware('permission:sales.performance.view')")
+        ->and($portal)
+        ->toContain('openKpiFacts(metric: SalesKpiMetric')
+        ->toContain("metric === 'new_customers' ? Number(this.summary().new_customers_count || 0)")
+        ->toContain('const amountMatches = selected.amount === null')
+        ->and($template)
+        ->toContain("openKpiFacts('new_bookings')")
+        ->toContain("openKpiFacts('new_customers')")
+        ->toContain("drill.metric.primary_measure==='quantity'");
 });
 
 it('keeps commission stocks separate from paid period flow and fails closed for historical stock', function () {
