@@ -58,6 +58,12 @@ class ConfiguredLocationDefaultNormalizationTest extends TestCase
         $this->assertStringContainsString("const defaultLat = control.dataset.defaultLat", $script);
         $this->assertStringNotContainsString('pickupInput.value = "Colombo, Sri Lanka"', $script);
         $this->assertStringNotContainsString('dropoffInput.value = "Galle, Sri Lanka"', $script);
+        $this->assertStringNotContainsString('function ensureCoordinateValues()', $script);
+
+        $field = file_get_contents(resource_path('views/components/dynamic-form-field.blade.php'));
+        $this->assertStringContainsString("\$currentLat !== ''", $field);
+        $this->assertStringContainsString('value="{{ $effectiveLat }}"', $field);
+        $this->assertStringContainsString('value="{{ $effectiveLng }}"', $field);
     }
 
     private function configuredRequest(array $input): BookingSearchRequest

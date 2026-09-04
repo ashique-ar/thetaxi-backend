@@ -3943,57 +3943,6 @@
     }
 
     /**
-     * Ensure all coordinate fields have valid values
-     */
-    function ensureCoordinateValues() {
-        // Check Airport Transfers form
-        const airportForm = document.getElementById('airport_transfers-form');
-        if (airportForm) {
-            const fromLat = airportForm.querySelector('input[name="pickup_lat"]');
-            const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
-            const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
-            const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
-
-            // Set default airport coordinates if missing
-            if (fromLat && (!fromLat.value || fromLat.value === '')) {
-                fromLat.value = '7.1808'; // BIA Airport
-            }
-            if (fromLng && (!fromLng.value || fromLng.value === '')) {
-                fromLng.value = '79.8841'; // BIA Airport
-            }
-            if (toLat && (!toLat.value || toLat.value === '')) {
-                toLat.value = '6.9271'; // Colombo
-            }
-            if (toLng && (!toLng.value || toLng.value === '')) {
-                toLng.value = '79.8612'; // Colombo  
-            }
-        }
-
-        // Check Ride Now form
-        const rideForm = document.getElementById('ride_now-form');
-        if (rideForm) {
-            const pickupLat = rideForm.querySelector('input[name="pickup_lat"]');
-            const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
-
-            // Set default coordinates if missing
-            if (pickupLat && (!pickupLat.value || pickupLat.value === '')) {
-                pickupLat.value = '6.9271'; // Colombo
-            }
-            if (pickupLng && (!pickupLng.value || pickupLng.value === '')) {
-                pickupLng.value = '79.8612'; // Colomb
-            }
-            if (dropoffLat && (!dropoffLat.value || dropoffLat.value === '')) {
-                dropoffLat.value = '6.0535'; // Galle
-            }
-            if (dropoffLng && (!dropoffLng.value || dropoffLng.value === '')) {
-                dropoffLng.value = '80.221'; // Galle
-            }
-        }
-    }
-
-    /**
      * Initialize Return Trip functionality for Ride Now form
      */
     function initReturnTrip() {
@@ -4354,7 +4303,6 @@
     setTimeout(() => {
         logCoordinateValues();
 
-        ensureCoordinateValues();
         forceAirportCoordinateUpdate();
 
         setTimeout(() => {

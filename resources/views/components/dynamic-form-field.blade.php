@@ -93,6 +93,8 @@
                     $condField = $conditionField ?: 'transfer_type';
                     $fieldDefaultLat = $field['default_lat'] ?? '';
                     $fieldDefaultLng = $field['default_lng'] ?? '';
+                    $effectiveLat = ($currentLat !== null && $currentLat !== '') ? $currentLat : $fieldDefaultLat;
+                    $effectiveLng = ($currentLng !== null && $currentLng !== '') ? $currentLng : $fieldDefaultLng;
 
                     // Determine the active condition value for server-side rendering
                     $condKeys = array_keys($conditions);
@@ -128,8 +130,8 @@
                      data-field-name="{{ $submitAs }}"
                      data-conditions="{{ json_encode($conditions) }}">
                     {{-- Shared lat/lng hidden inputs for all variants (airport select + autocomplete both write here) --}}
-                    <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat conditional-lat" id="{{ $elementId }}_lat" value="{{ $currentLat ?? $fieldDefaultLat }}">
-                    <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng conditional-lng" id="{{ $elementId }}_lng" value="{{ $currentLng ?? $fieldDefaultLng }}">
+                    <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat conditional-lat" id="{{ $elementId }}_lat" value="{{ $effectiveLat }}">
+                    <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng conditional-lng" id="{{ $elementId }}_lng" value="{{ $effectiveLng }}">
 
                     @foreach($conditions as $condValue => $condConfig)
                         @php
@@ -209,8 +211,8 @@
                                value="{{ $fieldValue }}"
                                {{ $required ? 'required' : '' }}
                                autocomplete="off">
-                            <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat" value="{{ $currentLat ?? ($field['default_lat'] ?? '') }}">
-                            <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng" value="{{ $currentLng ?? ($field['default_lng'] ?? '') }}">
+                            <input type="hidden" name="{{ $submitAs }}_lat" class="location-lat" value="{{ ($currentLat !== null && $currentLat !== '') ? $currentLat : ($field['default_lat'] ?? '') }}">
+                            <input type="hidden" name="{{ $submitAs }}_lng" class="location-lng" value="{{ ($currentLng !== null && $currentLng !== '') ? $currentLng : ($field['default_lng'] ?? '') }}">
                         </div>
                     </div>
                     @error($submitAs)
