@@ -82,6 +82,16 @@
     </div>
     <!-- End Booking Form Section -->
 
+    @if($distanceCalculationFailed ?? false)
+        <div class="container mb-4" id="distanceCalculationAlert">
+            <div class="alert alert-danger" role="alert">
+                <strong>We could not verify the journey distance.</strong>
+                No price has been displayed because an unverified distance could produce an incorrect fare.
+                Please confirm both locations and search again.
+            </div>
+        </div>
+    @endif
+
     <!-- Vehicle Results Section -->
     <div class="package-standard-wrapper {{ theme_class('discovery-results') }}" id="vehicleResultsSection">
         <div class="container">

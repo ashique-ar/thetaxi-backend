@@ -619,22 +619,26 @@ class DynamicServiceConfigurationService
      */
     public function getServiceFormConfiguration(string $serviceCode): array
     {
-        $cacheKey = "service_form_config_public_v5_{$serviceCode}";
+        // Resolve the authoritative public record before caching. Including its
+        // identity and revision prevents the renderer from showing freshly saved
+        // defaults while validation/pricing still consumes an older cached form.
+        $serviceType = ServiceType::publicContext()
+            ->where('code', $serviceCode)
+            ->orderByDesc('updated_at')
+            ->first();
 
-        return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode) {
-            $serviceType = ServiceType::publicContext()
-                ->where('code', $serviceCode)
-                ->orderByDesc('updated_at')
-                ->first();
+        if (!$serviceType) {
+            return [
+                'error' => 'Service type not found',
+                'fields' => [],
+                'validation_rules' => [],
+            ];
+        }
 
-            if (!$serviceType) {
-                return [
-                    'error' => 'Service type not found',
-                    'fields' => [],
-                    'validation_rules' => [],
-                ];
-            }
+        $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
+        $cacheKey = "service_form_config_public_v6_{$serviceCode}_{$serviceType->id}_{$revision}";
 
+        return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType) {
             // Public form ownership order: Service Type form, config-service record, defaults.
             $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
             $dbConfig = ServiceFormConfig::forCode($serviceCode);

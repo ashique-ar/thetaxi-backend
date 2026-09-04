@@ -88,6 +88,7 @@
         initializeDatePickers();
         setDefaultDatesAndLocations();
         hideFreshDynamicFormDefaults();
+        setupAdvanceBookingConstraints();
     }
 
     /**
@@ -105,14 +106,244 @@
         });
     }
 
-    function restoreBackgroundDefaultPlaceholders(form) {
-        if (form.dataset.hasSearchContext !== 'false') return;
+    /**
+     * Keep dynamic pickup controls aligned with the database-managed minimum
+     * advance interval. Site wall time comes from Laravel, avoiding browser
+     * timezone differences for international visitors.
+     */
+    function setupAdvanceBookingConstraints() {
+        const parseSiteWallTime = (value) => {
+            const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2}) (\d{2}):(\d{2}):(\d{2})$/);
+            if (!match) return null;
+            return new Date(Date.UTC(+match[1], +match[2] - 1, +match[3], +match[4], +match[5], +match[6]));
+        };
+        const formatDateValue = (date) =>
+            `${String(date.getUTCDate()).padStart(2, '0')}/${String(date.getUTCMonth() + 1).padStart(2, '0')}/${date.getUTCFullYear()}`;
+        const formatTimeValue = (date) =>
+            `${String(date.getUTCHours()).padStart(2, '0')}:${String(date.getUTCMinutes()).padStart(2, '0')}`;
+        const parseDateValue = (value) => {
+            const match = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            return match ? `${match[3]}-${match[2]}-${match[1]}` : String(value || '').slice(0, 10);
+        };
 
-        form.querySelectorAll('input.location-search[data-is-default="true"]').forEach((input) => {
-            input.value = '';
-            input.setAttribute('data-place-selected', 'false');
-            input.setAttribute('data-is-default', 'false');
+        document.querySelectorAll('.filter-input[data-start-date-field]').forEach((form) => {
+            const dateName = form.dataset.startDateField || '';
+            const timeName = form.dataset.startTimeField || '';
+            if (!dateName) return;
+
+            const dateInput = form.querySelector(`[name="${CSS.escape(dateName)}"]`);
+            const timeInput = timeName ? form.querySelector(`[name="${CSS.escape(timeName)}"]`) : null;
+            if (!dateInput) return;
+
+            const siteWallAtRender = parseSiteWallTime(form.dataset.siteNow);
+            const epochAtRender = Number(form.dataset.siteNowEpoch || 0);
+            const advanceHours = Math.max(0, Number(form.dataset.advanceHours || 0));
+            if (!siteWallAtRender || !epochAtRender) return;
+
+            const minimum = () => {
+                const elapsed = Math.max(0, Date.now() - epochAtRender);
+                const value = new Date(siteWallAtRender.getTime() + elapsed + advanceHours * 3600000);
+                const minuteRemainder = value.getUTCMinutes() % 30;
+                if (minuteRemainder || value.getUTCSeconds() || value.getUTCMilliseconds()) {
+                    value.setUTCMinutes(value.getUTCMinutes() + (30 - minuteRemainder), 0, 0);
+                }
+                return value;
+            };
+
+            const applyConstraints = (setInitial, correctInvalid = true) => {
+                const min = minimum();
+                const minDate = formatDateValue(min);
+                const minIsoDate = `${min.getUTCFullYear()}-${String(min.getUTCMonth() + 1).padStart(2, '0')}-${String(min.getUTCDate()).padStart(2, '0')}`;
+                const minDateTime = `${minIsoDate}T${formatTimeValue(min)}`;
+                form.dataset.minimumBookingDateTime = minDateTime;
+                form.dataset.minimumBookingDisplay = `${minDate} ${formatTimeValue(min)}`;
+
+                if (dateInput.type === 'datetime-local') {
+                    dateInput.min = minDateTime;
+                    if (setInitial && form.dataset.hasSearchContext === 'false') dateInput.value = minDateTime;
+                    return;
+                }
+
+                dateInput.dataset.minDate = minDate;
+                if (dateInput.type === 'date') dateInput.min = minIsoDate;
+
+                if (dateInput._flatpickr) dateInput._flatpickr.set('minDate', minDate);
+                if (dateInput._litepicker && typeof dateInput._litepicker.setOptions === 'function') {
+                    dateInput._litepicker.setOptions({ minDate });
+                }
+
+                const isFresh = form.dataset.hasSearchContext === 'false';
+                if (setInitial && isFresh) {
+                    dateInput.value = minDate;
+                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(minDate, false, 'd/m/Y');
+                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(minDate);
+                }
+
+                if (!timeInput) return;
+                const selectedDate = parseDateValue(dateInput.value);
+                const minimumDate = minIsoDate;
+                const minimumTime = formatTimeValue(min);
+                timeInput.min = selectedDate === minimumDate ? minimumTime : '00:00';
+                if (correctInvalid && ((setInitial && isFresh) || (selectedDate === minimumDate && timeInput.value < minimumTime))) {
+                    timeInput.value = minimumTime;
+                }
+            };
+
+            form.__applyAdvanceBookingConstraints = applyConstraints;
+            dateInput.addEventListener('change', () => applyConstraints(false));
+            applyConstraints(true);
         });
+    }
+
+    function validateAdvanceBookingSelection(form) {
+        if (typeof form.__applyAdvanceBookingConstraints === 'function') {
+            form.__applyAdvanceBookingConstraints(false, false);
+        }
+
+        const minimum = form.dataset.minimumBookingDateTime || '';
+        const dateName = form.dataset.startDateField || '';
+        const timeName = form.dataset.startTimeField || '';
+        if (!minimum || !dateName) return null;
+
+        const dateInput = form.querySelector(`[name="${CSS.escape(dateName)}"]`);
+        const timeInput = timeName ? form.querySelector(`[name="${CSS.escape(timeName)}"]`) : null;
+        if (!dateInput || !dateInput.value) return null;
+
+        let selectedDateTime = '';
+        if (dateInput.type === 'datetime-local') {
+            selectedDateTime = String(dateInput.value).slice(0, 16);
+        } else if (timeInput && timeInput.value) {
+            const dateMatch = String(dateInput.value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            const isoDate = dateMatch
+                ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
+                : String(dateInput.value).slice(0, 10);
+            selectedDateTime = `${isoDate}T${String(timeInput.value).slice(0, 5)}`;
+        }
+
+        if (!selectedDateTime || selectedDateTime >= minimum) return null;
+
+        const advanceHours = Math.max(0, Number(form.dataset.advanceHours || 0));
+        const earliest = form.dataset.minimumBookingDisplay || minimum.replace('T', ' ');
+        return advanceHours > 0
+            ? `Bookings must be made at least ${advanceHours} hours in advance. Earliest available time is ${earliest}.`
+            : `The pickup date and time must be in the future. Earliest available time is ${earliest}.`;
+    }
+
+    function cleanupFailedSubmissionAliases(form) {
+        // Preserve the user's complete form state after a validation failure,
+        // including the location label and its coordinates. Only submission-only
+        // aliases are discarded; the next attempt rebuilds them from live controls.
+        form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
+    }
+
+    function setSearchLoading(form, loading) {
+        const button = form.querySelector('button[type="submit"]');
+        if (!button) return;
+        const label = button.querySelector(':scope > span');
+
+        if (loading) {
+            button.dataset.originalLabel = label ? label.textContent : button.textContent;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            button.classList.add('ajax-search-loading');
+            if (label) label.textContent = 'Searching...';
+            else button.textContent = 'Searching...';
+        } else {
+            button.disabled = false;
+            button.removeAttribute('aria-busy');
+            button.classList.remove('ajax-search-loading');
+            if (button.dataset.originalLabel) {
+                if (label) label.textContent = button.dataset.originalLabel;
+                else button.textContent = button.dataset.originalLabel;
+            }
+        }
+    }
+
+    window.addEventListener('pageshow', () => {
+        document.querySelectorAll('.filter-input')
+            .forEach((form) => {
+                if (form.dataset.ajaxSubmitting !== 'true' && !form.querySelector('.ajax-search-loading')) return;
+                form.dataset.ajaxSubmitting = 'false';
+                setSearchLoading(form, false);
+            });
+    });
+
+    function showAjaxValidationErrors(form, errors) {
+        const messages = Object.values(errors || {}).flat().filter(Boolean);
+        showValidationMessage(messages[0] || 'Please check the search details and try again.');
+
+        Object.entries(errors || {}).forEach(([name, fieldMessages]) => {
+            const control = form.querySelector(`[name="${CSS.escape(name)}"]`);
+            if (!control) return;
+            control.classList.add('error');
+            control.style.borderColor = '#dc3545';
+            showInlineError(control, Array.isArray(fieldMessages) ? fieldMessages[0] : fieldMessages);
+        });
+    }
+
+    async function submitResultsSearchAjax(form) {
+        if (form.dataset.ajaxSubmitting === 'true') return;
+        form.dataset.ajaxSubmitting = 'true';
+        setSearchLoading(form, true);
+        const controller = new AbortController();
+        const timeout = window.setTimeout(() => controller.abort(), 60000);
+
+        try {
+            const url = new URL(form.action, window.location.href);
+            new FormData(form).forEach((value, key) => url.searchParams.append(key, value));
+
+            const response = await fetch(url.toString(), {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+            const payload = await response.json();
+            if (!response.ok) {
+                if (response.status === 422) {
+                    showAjaxValidationErrors(form, payload.errors || {});
+                    return;
+                }
+                throw new Error(payload.message || 'Search request failed.');
+            }
+
+            const resultsResponse = await fetch(payload.results_url, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                signal: controller.signal
+            });
+            if (!resultsResponse.ok) throw new Error('Unable to load search results.');
+
+            const documentHtml = await resultsResponse.text();
+            const nextDocument = new DOMParser().parseFromString(documentHtml, 'text/html');
+            const nextResults = nextDocument.querySelector('#vehicleResultsSection');
+            const currentResults = document.querySelector('#vehicleResultsSection');
+            if (!nextResults || !currentResults) {
+                window.location.assign(payload.results_url);
+                return;
+            }
+
+            document.querySelector('#distanceCalculationAlert')?.remove();
+            const nextDistanceAlert = nextDocument.querySelector('#distanceCalculationAlert');
+            if (nextDistanceAlert) currentResults.before(nextDistanceAlert);
+            currentResults.replaceWith(nextResults);
+            window.history.pushState({ bookingSearch: true }, '', payload.results_url);
+            showValidationMessage(payload.message || 'Search completed successfully.', 'success');
+            nextResults.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } catch (error) {
+            console.error('AJAX booking search failed', error);
+            const message = error.name === 'AbortError'
+                ? 'The verified-price search took too long. Please try again.'
+                : (error.message || 'Search failed. Please try again.');
+            showValidationMessage(message, 'error');
+        } finally {
+            window.clearTimeout(timeout);
+            form.dataset.ajaxSubmitting = 'false';
+            setSearchLoading(form, false);
+        }
     }
 
     /**
@@ -231,44 +462,6 @@
                 timeSelect.value = "12:00";
             }
 
-            // Set default locations: Colombo to Galle (point-to-point)
-            const pickupInput = dropPickupForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = dropPickupForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = dropPickupForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = dropPickupForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = dropPickupForm.querySelector(
-                'input[name="dropoff_lat"]'
-            );
-            const dropoffLng = dropPickupForm.querySelector(
-                'input[name="dropoff_lng"]'
-            );
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         // Rental Packages - set today and 3 days later
@@ -300,40 +493,6 @@
             //     dropoffTimeInput.value = "12:00";
             // }
 
-            // Set default locations: Colombo to Galle (for rentals)
-            const pickupInput = rideNowForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = rideNowForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = rideNowForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = rideNowForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         const dayRentalForm = document.getElementById("day_rental-form");
@@ -364,40 +523,6 @@
                 dropoffTimeInput.value = "12:00";
             }
 
-            // Set default locations: Colombo to Galle (for rentals)
-            const pickupInput = dayRentalForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = dayRentalForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = dayRentalForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = dayRentalForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = dayRentalForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = dayRentalForm.querySelector('input[name="dropoff_lng"]');
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         // Custom Tour - set today and 3 days later
@@ -546,17 +671,11 @@
                 if (input.__hasFocusReset) return;
                 input.__hasFocusReset = true;
 
-                // On focus: clear the visible value so user can type fresh,
-                // but preserve default data attributes for reset-on-blur.
+                // Focus must never destroy a restored/default location. Actual
+                // edits are handled by the input listener, which clears stale
+                // coordinates until a new autocomplete result is selected.
                 input.addEventListener('focus', function () {
                     try {
-                        // Only clear visible value when focus is user-initiated
-                        if (this.value && this.value.trim() !== '') {
-                            this.value = '';
-                            // Only mark as not-selected when we actually clear the value
-                            this.setAttribute('data-place-selected', 'false');
-                        }
-
                         // Remove inline error while user is actively editing
                         removeInlineError(this);
 
@@ -733,6 +852,9 @@
 
                 this.setAttribute("data-place-selected", "false");
                 this.setAttribute("data-is-default", "false");
+                this.dataset.currentValue = "";
+                this.dataset.currentLat = "";
+                this.dataset.currentLng = "";
 
                 // Don't show error while typing — wait for blur
             }
@@ -1187,76 +1309,23 @@
      * Update location data in hidden fields
      */
     function updateLocationData(input, place) {
+        const { latInput, lngInput } = getCoordInputs(input);
+        if (!place.geometry || !latInput || !lngInput) return;
 
-
-        // For airport transfer form FROM
-        if (input.name === "from") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="pickup_lat"]');
-            const lngInput = form.querySelector('input[name="pickup_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
-        } else if (input.name === "to") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="dropoff_lat"]');
-            const lngInput = form.querySelector('input[name="dropoff_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
-        } else if (input.name === "pickup") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="pickup_lat"]');
-            const lngInput = form.querySelector('input[name="pickup_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            } else {
-                console.error('Could not find pickup coordinate fields or place geometry');
-            }
-        } else if (input.name === "dropoff") {
-            const form = input.closest("form");
-            const latInput = form.querySelector('input[name="dropoff_lat"]');
-            const lngInput = form.querySelector('input[name="dropoff_lng"]');
-
-            if (place.geometry && latInput && lngInput) {
-                const lat = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : parseFloat(place.geometry.location.lat);
-                const lng = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : parseFloat(place.geometry.location.lng);
-                latInput.value = lat;
-                lngInput.value = lng;
-
-                // Always prefer formatted_address over coordinates for user-visible input
-                if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-                    input.value = place.formatted_address;
-                }
-            }
+        const lat = typeof place.geometry.location.lat === 'function'
+            ? place.geometry.location.lat()
+            : parseFloat(place.geometry.location.lat);
+        const lng = typeof place.geometry.location.lng === 'function'
+            ? place.geometry.location.lng()
+            : parseFloat(place.geometry.location.lng);
+        if ((!input.value || input.value.trim() === '') && place.formatted_address) {
+            input.value = place.formatted_address;
         }
+        latInput.value = lat;
+        lngInput.value = lng;
+        input.dataset.currentValue = input.value.trim();
+        input.dataset.currentLat = String(lat);
+        input.dataset.currentLng = String(lng);
     }
 
     /**
@@ -3159,39 +3228,80 @@
      * Copies visible/alternate inputs into canonical names the backend expects.
      */
     function ensureCanonicalSearchFields(form) {
-        function getFirstValue(names) {
-            for (let i = 0; i < names.length; i++) {
-                const el = form.querySelector('[name="' + names[i] + '"]');
-                if (el && typeof el.value !== 'undefined' && el.value !== null && String(el.value).trim() !== '') {
-                    return String(el.value).trim();
-                }
+        // Restore each untouched rendered field from its own server-rendered
+        // identity before creating compatibility aliases. This keeps coordinates
+        // paired with the visible address instead of borrowing from another field.
+        form.querySelectorAll('input.location-search:not([disabled])').forEach((control) => {
+            const currentValue = String(control.dataset.currentValue || '').trim();
+            const currentLat = String(control.dataset.currentLat || '').trim();
+            const currentLng = String(control.dataset.currentLng || '').trim();
+            if (currentValue && control.value.trim() === currentValue && currentLat && currentLng) {
+                const { latInput, lngInput } = getCoordInputs(control);
+                if (latInput) latInput.value = currentLat;
+                if (lngInput) lngInput.value = currentLng;
             }
-            return '';
+        });
+
+        function getFirstValue(names, preferVisible = false) {
+            const candidates = [];
+            names.forEach((name) => {
+                form.querySelectorAll('[name="' + name + '"]').forEach((element) => {
+                    if (element.disabled || typeof element.value === 'undefined' || String(element.value || '').trim() === '') return;
+                    candidates.push(element);
+                });
+            });
+
+            if (preferVisible) {
+                const visible = candidates.find((element) => element.type !== 'hidden' && element.offsetParent !== null);
+                if (visible) return String(visible.value).trim();
+            }
+
+            const authoritative = candidates.find((element) => element.dataset.canonicalGenerated !== 'true');
+            if (authoritative) return String(authoritative.value).trim();
+            return candidates.length ? String(candidates[0].value).trim() : '';
         }
 
         function ensureHidden(name, value) {
-            let input = form.querySelector('[name="' + name + '"]');
+            const controls = Array.from(form.querySelectorAll('[name="' + name + '"]'));
+            let input = controls.find((element) => element.dataset.canonicalGenerated === 'true');
+            const ownedControl = controls.find((element) => element.dataset.canonicalGenerated !== 'true');
+
+            // A real configured control already owns this canonical name.
+            if (ownedControl) {
+                if (ownedControl.type === 'hidden') ownedControl.value = value || '';
+                return;
+            }
+
             if (!input) {
                 input = document.createElement('input');
                 input.type = 'hidden';
                 input.name = name;
+                input.dataset.canonicalGenerated = 'true';
                 form.appendChild(input);
             }
             input.value = value || '';
         }
 
-        // Pickup address and coords
-        const pickupAddress = getFirstValue(['pickup_location', 'pickup', 'from', 'from_location', 'pickup_address']);
-        const pickupLat = getFirstValue(['pickup_lat', 'pickup_location_lat', 'pickup_latitude', 'from_lat', 'from_location_lat', 'from_latitude']);
-        const pickupLng = getFirstValue(['pickup_lng', 'pickup_location_lng', 'pickup_longitude', 'from_lng', 'from_location_lng', 'from_longitude']);
+        function removeGeneratedAliases() {
+            form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
+        }
+
+        // Always rebuild aliases from current controls. This is essential after
+        // a client-side validation failure followed by a corrected location.
+        removeGeneratedAliases();
+
+        // Pickup address and coords. Visible configured controls win over aliases.
+        const pickupAddress = getFirstValue(['pickup', 'from', 'pickup_location', 'from_location', 'pickup_address'], true);
+        const pickupLat = getFirstValue(['pickup_lat', 'from_lat', 'pickup_location_lat', 'pickup_latitude', 'from_location_lat', 'from_latitude']);
+        const pickupLng = getFirstValue(['pickup_lng', 'from_lng', 'pickup_location_lng', 'pickup_longitude', 'from_location_lng', 'from_longitude']);
         ensureHidden('pickup_location', pickupAddress);
         ensureHidden('pickup_lat', pickupLat);
         ensureHidden('pickup_lng', pickupLng);
 
-        // Dropoff address and coords
-        const dropoffAddress = getFirstValue(['dropoff_location', 'dropoff', 'to', 'to_location', 'dropoff_address']);
-        const dropoffLat = getFirstValue(['dropoff_lat', 'dropoff_location_lat', 'dropoff_latitude', 'to_lat', 'to_location_lat', 'to_latitude']);
-        const dropoffLng = getFirstValue(['dropoff_lng', 'dropoff_location_lng', 'dropoff_longitude', 'to_lng', 'to_location_lng', 'to_longitude']);
+        // Dropoff address and coords. Visible configured controls win over aliases.
+        const dropoffAddress = getFirstValue(['dropoff', 'to', 'dropoff_location', 'to_location', 'dropoff_address'], true);
+        const dropoffLat = getFirstValue(['dropoff_lat', 'to_lat', 'dropoff_location_lat', 'dropoff_latitude', 'to_location_lat', 'to_latitude']);
+        const dropoffLng = getFirstValue(['dropoff_lng', 'to_lng', 'dropoff_location_lng', 'dropoff_longitude', 'to_location_lng', 'to_longitude']);
         ensureHidden('dropoff_location', dropoffAddress);
         ensureHidden('dropoff_lat', dropoffLat);
         ensureHidden('dropoff_lng', dropoffLng);
@@ -3212,11 +3322,9 @@
         ensureHidden('to_time', toTime);
         ensureHidden('return_time', toTime);
 
-        // Service type
         const svc = getFirstValue(['service_type']) || form.getAttribute('data-service') || '';
         ensureHidden('service_type', svc);
 
-        // Package selection
         const packageId = getFirstValue(['package_id', 'service_package_id']);
         ensureHidden('package_id', packageId);
         ensureHidden('service_package_id', packageId);
@@ -3244,7 +3352,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
-                    restoreBackgroundDefaultPlaceholders(form);
+                    cleanupFailedSubmissionAliases(form);
 
                     console.error('Form submission BLOCKED - validation failed');
                     return false;
@@ -3266,6 +3374,29 @@
                     ensureCanonicalSearchFields(form);
                 } catch (err) {
                     console.warn('ensureCanonicalSearchFields failed', err);
+                }
+
+                // Enhance resubmission on the results page without changing the
+                // canonical server endpoint or its non-JavaScript GET fallback.
+                if (form.method.toUpperCase() === 'GET' && document.querySelector('#vehicleResultsSection')) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    submitResultsSearchAjax(form);
+                    return false;
+                }
+
+                // On the home page retain normal navigation, but allow the browser
+                // to paint a clear loading state before the document request starts.
+                if (form.method.toUpperCase() === 'GET') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchLoading(form, true);
+                    window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(() => {
+                            HTMLFormElement.prototype.submit.call(form);
+                        });
+                    });
+                    return false;
                 }
             });
 
@@ -3348,6 +3479,11 @@
             if (String(control.value || '').trim() === '') {
                 control.value = resolveValue(configuredValue, control);
                 if (control.classList.contains('location-search') || ['pickup', 'dropoff', 'from', 'to'].includes(control.name)) {
+                    const { latInput, lngInput } = getCoordInputs(control);
+                    const defaultLat = control.dataset.defaultLat || latInput?.dataset.defaultLat || '';
+                    const defaultLng = control.dataset.defaultLng || lngInput?.dataset.defaultLng || '';
+                    if (latInput && String(latInput.value || '').trim() === '') latInput.value = defaultLat;
+                    if (lngInput && String(lngInput.value || '').trim() === '') lngInput.value = defaultLng;
                     control.setAttribute('data-is-default', 'true');
                     control.setAttribute('data-place-selected', 'true');
                 }
@@ -3382,6 +3518,12 @@
                 input.style.borderColor = "";
             }
         });
+
+        const advanceBookingError = validateAdvanceBookingSelection(form);
+        if (advanceBookingError) {
+            isValid = false;
+            errorMessages.push(advanceBookingError);
+        }
         
         console.log('After required inputs check, isValid =', isValid);
 
@@ -3699,7 +3841,7 @@
         return isValid;
     }
 
-    function showValidationMessage(message) {
+    function showValidationMessage(message, type = 'error') {
         // Remove existing message
         const existingMessage = document.querySelector(".validation-message");
         if (existingMessage) {
@@ -3713,7 +3855,7 @@
             position: fixed;
             top: 20px;
             right: 20px;
-            background: #dc3545;
+            background: ${type === 'success' ? '#198754' : '#dc3545'};
             color: white;
             padding: 12px 20px;
             border-radius: 8px;
@@ -3921,57 +4063,6 @@
                     toLat.value = selectedOption.dataset.lat;
                     toLng.value = selectedOption.dataset.lng
                 }
-            }
-        }
-    }
-
-    /**
-     * Ensure all coordinate fields have valid values
-     */
-    function ensureCoordinateValues() {
-        // Check Airport Transfers form
-        const airportForm = document.getElementById('airport_transfers-form');
-        if (airportForm) {
-            const fromLat = airportForm.querySelector('input[name="pickup_lat"]');
-            const fromLng = airportForm.querySelector('input[name="pickup_lng"]');
-            const toLat = airportForm.querySelector('input[name="dropoff_lat"]');
-            const toLng = airportForm.querySelector('input[name="dropoff_lng"]');
-
-            // Set default airport coordinates if missing
-            if (fromLat && (!fromLat.value || fromLat.value === '')) {
-                fromLat.value = '7.1808'; // BIA Airport
-            }
-            if (fromLng && (!fromLng.value || fromLng.value === '')) {
-                fromLng.value = '79.8841'; // BIA Airport
-            }
-            if (toLat && (!toLat.value || toLat.value === '')) {
-                toLat.value = '6.9271'; // Colombo
-            }
-            if (toLng && (!toLng.value || toLng.value === '')) {
-                toLng.value = '79.8612'; // Colombo  
-            }
-        }
-
-        // Check Ride Now form
-        const rideForm = document.getElementById('ride_now-form');
-        if (rideForm) {
-            const pickupLat = rideForm.querySelector('input[name="pickup_lat"]');
-            const pickupLng = rideForm.querySelector('input[name="pickup_lng"]');
-            const dropoffLat = rideForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rideForm.querySelector('input[name="dropoff_lng"]');
-
-            // Set default coordinates if missing
-            if (pickupLat && (!pickupLat.value || pickupLat.value === '')) {
-                pickupLat.value = '6.9271'; // Colombo
-            }
-            if (pickupLng && (!pickupLng.value || pickupLng.value === '')) {
-                pickupLng.value = '79.8612'; // Colomb
-            }
-            if (dropoffLat && (!dropoffLat.value || dropoffLat.value === '')) {
-                dropoffLat.value = '6.0535'; // Galle
-            }
-            if (dropoffLng && (!dropoffLng.value || dropoffLng.value === '')) {
-                dropoffLng.value = '80.221'; // Galle
             }
         }
     }
@@ -4337,7 +4428,6 @@
     setTimeout(() => {
         logCoordinateValues();
 
-        ensureCoordinateValues();
         forceAirportCoordinateUpdate();
 
         setTimeout(() => {

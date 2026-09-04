@@ -115,6 +115,14 @@ class BookingController extends Controller
             session()->put('backend_service_type_id', $serviceType->id);
             session()->put('frontend_service', $frontendService);
 
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success' => true,
+                    'results_url' => route('search'),
+                    'message' => 'Search details validated successfully.',
+                ]);
+            }
+
             // Redirect to search results page
             return redirect()->route('search')
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');
@@ -559,6 +567,7 @@ class BookingController extends Controller
         return $params;
     }
 
+
     /**
      * Transform search params dynamically for service types not handled by hardcoded cases.
      * Reads form_config fields and maps date/time/location to the internal format.
@@ -968,8 +977,8 @@ class BookingController extends Controller
         }
 
         // Support multiple latitude/longitude field name conventions
-        $latKeys = ["{$prefix}_lat", "{$prefix}_latitude"];
-        $lngKeys = ["{$prefix}_lng", "{$prefix}_longitude"];
+        $latKeys = ["{$prefix}_lat", "{$prefix}_latitude", "{$prefix}_location_lat", "{$prefix}_location_latitude"];
+        $lngKeys = ["{$prefix}_lng", "{$prefix}_longitude", "{$prefix}_location_lng", "{$prefix}_location_longitude"];
         if ($alt) {
             $latKeys[] = "{$alt}_lat";
             $latKeys[] = "{$alt}_latitude";
@@ -1059,6 +1068,7 @@ class BookingController extends Controller
             $pagination = $availabilityData['pagination'] ?? null;
             $totalJourneyDistance = $availabilityData['total_journey_distance_km'] ?? null;
             $totalJourneyDuration = $availabilityData['total_journey_duration_seconds'] ?? null;
+            $distanceCalculationFailed = (bool) ($availabilityData['distance_calculation_failed'] ?? false);
 
             // Ensure vehicleGroups is always an array
             $vehicleGroups = $vehicleGroups ?? [];
@@ -1179,6 +1189,7 @@ class BookingController extends Controller
                 'popular_destinations' => $this->getPopularDestinations(),
                 'active_promotions' => $this->getActivePromotionalOffers($search),
                 'pagination' => $pagination,
+                'distanceCalculationFailed' => $distanceCalculationFailed,
             ];
 
             return view('search', array_merge(compact('search', 'results'), $additionalData));
