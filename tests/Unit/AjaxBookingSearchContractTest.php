@@ -36,4 +36,17 @@ class AjaxBookingSearchContractTest extends TestCase
 
         $this->assertStringContainsString('id="distanceCalculationAlert"', $view);
     }
+
+    public function test_home_search_paints_loading_state_before_native_navigation(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+        $styles = file_get_contents(public_path('assets/css/booking-form.css'));
+
+        $this->assertStringContainsString('setSearchLoading(form, true);', $script);
+        $this->assertStringContainsString('window.requestAnimationFrame(() =>', $script);
+        $this->assertStringContainsString('HTMLFormElement.prototype.submit.call(form);', $script);
+        $this->assertStringContainsString("window.addEventListener('pageshow'", $script);
+        $this->assertStringContainsString('@keyframes booking-search-spin', $styles);
+        $this->assertStringContainsString('.booking-search-submit.ajax-search-loading > span::before', $styles);
+    }
 }

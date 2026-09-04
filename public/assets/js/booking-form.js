@@ -259,6 +259,15 @@
         }
     }
 
+    window.addEventListener('pageshow', () => {
+        document.querySelectorAll('.filter-input')
+            .forEach((form) => {
+                if (form.dataset.ajaxSubmitting !== 'true' && !form.querySelector('.ajax-search-loading')) return;
+                form.dataset.ajaxSubmitting = 'false';
+                setSearchLoading(form, false);
+            });
+    });
+
     function showAjaxValidationErrors(form, errors) {
         const messages = Object.values(errors || {}).flat().filter(Boolean);
         showValidationMessage(messages[0] || 'Please check the search details and try again.');
@@ -3373,6 +3382,20 @@
                     e.preventDefault();
                     e.stopPropagation();
                     submitResultsSearchAjax(form);
+                    return false;
+                }
+
+                // On the home page retain normal navigation, but allow the browser
+                // to paint a clear loading state before the document request starts.
+                if (form.method.toUpperCase() === 'GET') {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setSearchLoading(form, true);
+                    window.requestAnimationFrame(() => {
+                        window.requestAnimationFrame(() => {
+                            HTMLFormElement.prototype.submit.call(form);
+                        });
+                    });
                     return false;
                 }
             });

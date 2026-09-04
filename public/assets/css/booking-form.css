@@ -1620,6 +1620,23 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     display: none !important;
 }
 
+.booking-search-submit.ajax-search-loading > span::before {
+    content: "";
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-right: 9px;
+    vertical-align: -2px;
+    border: 2px solid rgba(255, 255, 255, 0.45);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: booking-search-spin 0.7s linear infinite;
+}
+
+@keyframes booking-search-spin {
+    to { transform: rotate(360deg); }
+}
+
 /* Keep validation copy below, rather than inside, the bordered control. */
 .filter-wrapper .booking-field > .inline-error-message,
 .t2-filter-wrapper .booking-field > .inline-error-message,
