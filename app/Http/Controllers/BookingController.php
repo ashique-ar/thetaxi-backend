@@ -69,6 +69,16 @@ class BookingController extends Controller
             // Transform frontend request data to BookingFlowService format
             $searchParams = $this->transformSearchParams($request->all(), $serviceType, $frontendService);
 
+            // Results-page forms are a round trip of the currently priced search.
+            // If an address was not changed, retain its complete previously priced
+            // identity instead of trusting browser-restored hidden coordinates.
+            if (session()->get('frontend_service') === $frontendService) {
+                $searchParams = $this->preserveUnchangedSearchLocations(
+                    $searchParams,
+                    session()->get('current_search_params', [])
+                );
+            }
+
             // if (in_array($frontendService, ['self_drive', 'with_driver'], true) && empty($searchParams['rental_mode'])) {
             //     $searchParams['rental_mode'] = $frontendService;
             // }
@@ -557,6 +567,42 @@ class BookingController extends Controller
         }
 
         return $params;
+    }
+
+    /**
+     * Preserve coordinates for unchanged locations when a results form is
+     * submitted again. Visible address changes still use the new request data.
+     */
+    protected function preserveUnchangedSearchLocations(array $current, array $previous): array
+    {
+        foreach (['pickup_location', 'dropoff_location'] as $key) {
+            $currentLocation = is_array($current[$key] ?? null) ? $current[$key] : [];
+            $previousLocation = is_array($previous[$key] ?? null) ? $previous[$key] : [];
+
+            $currentAddress = $this->normalizeLocationIdentity($currentLocation['address'] ?? null);
+            $previousAddress = $this->normalizeLocationIdentity($previousLocation['address'] ?? null);
+            $previousLat = $previousLocation['latitude'] ?? $previousLocation['lat'] ?? null;
+            $previousLng = $previousLocation['longitude'] ?? $previousLocation['lng'] ?? null;
+
+            if (
+                $currentAddress !== ''
+                && $currentAddress === $previousAddress
+                && is_numeric($previousLat)
+                && is_numeric($previousLng)
+            ) {
+                $current[$key] = $previousLocation;
+            }
+        }
+
+        return $current;
+    }
+
+    private function normalizeLocationIdentity(mixed $address): string
+    {
+        $address = preg_replace('/\s*\(airport\)\s*$/i', '', trim((string) $address));
+        $address = preg_replace('/\s+/', ' ', $address ?? '');
+
+        return mb_strtolower(trim($address));
     }
 
     /**
