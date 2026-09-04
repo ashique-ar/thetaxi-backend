@@ -174,6 +174,29 @@ class SalesBookingAttributionController extends Controller
         return response()->json(['status' => 'success', 'data' => $updated]);
     }
 
+    public function correctCollectionHandler(Request $request, string $attribution): JsonResponse
+    {
+        $data = $request->validate([
+            'to_sales_profile_id' => ['required', 'uuid'],
+            'effective_at' => ['required', 'date'],
+            'reason' => ['required', 'string', 'max:2000'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
+        ]);
+        $attribution = $this->scopedAttribution($request, $attribution);
+        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+
+        $updated = $this->mutations->correctCollectionHandler(
+            $attribution,
+            $target,
+            Carbon::parse($data['effective_at']),
+            $data['reason'],
+            $data['idempotency_key'],
+            $request->user()->id,
+        );
+
+        return response()->json(['status' => 'success', 'data' => $updated]);
+    }
+
     public function previewCommercialValueAdjustment(Request $request, string $attribution): JsonResponse
     {
         $data = $this->validateCommercialValueAdjustment($request);

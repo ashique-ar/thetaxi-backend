@@ -70,6 +70,7 @@ use App\Http\Controllers\Api\Hr\AttendanceIngestionController;
 use App\Http\Controllers\Api\Hr\AttendanceDeviceController;
 use App\Http\Controllers\Api\Hr\AttendanceResultController;
 use App\Http\Controllers\Api\Hr\WorkforceController;
+use App\Http\Controllers\Api\Hr\PayrollStatutoryController;
 use App\Http\Controllers\Api\Hr\EssController;
 use App\Http\Controllers\Api\Hr\RecruitmentController;
 use App\Http\Controllers\Api\Hr\LifecycleController;
@@ -515,6 +516,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-owner', [SalesBookingAttributionController::class, 'correctOwner'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
+        Route::post('attributions/{attribution}/correct-collection-handler', [SalesBookingAttributionController::class, 'correctCollectionHandler'])
+            ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::get('attributions/{attribution}/commercial-value-adjustments', [SalesBookingAttributionController::class, 'commercialValueAdjustmentHistory'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.view');
         Route::post('attributions/{attribution}/commercial-value-adjustments/preview', [SalesBookingAttributionController::class, 'previewCommercialValueAdjustment'])
@@ -905,6 +908,17 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('timesheets/{id}/transition', [WorkforceController::class,'transitionTimesheet'])->whereUuid('id')->middleware('permission:hr.timesheets.view');
         Route::get('payroll-inputs', [WorkforceController::class,'payrollInputs'])->middleware('permission:hr.payroll-inputs.view');
     });
+    Route::prefix('hr/payroll')->middleware('ensure.internal')->group(function () {
+        Route::get('context', [PayrollStatutoryController::class,'context'])->middleware('permission:hr.payroll.statutory.view');
+        Route::get('epf-etf-policies', [PayrollStatutoryController::class,'epfEtfPolicies'])->middleware('permission:hr.payroll.statutory.view');
+        Route::post('epf-etf-policies', [PayrollStatutoryController::class,'storeEpfEtfPolicy'])->middleware('permission:hr.payroll.statutory.manage');
+        Route::post('epf-etf-policies/{policy}/approve', [PayrollStatutoryController::class,'approveEpfEtfPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
+        Route::post('epf-etf-policies/preview', [PayrollStatutoryController::class,'previewEpfEtfContribution'])->middleware('permission:hr.payroll.statutory.view');
+        Route::get('gratuity-policies', [PayrollStatutoryController::class,'gratuityPolicies'])->middleware('permission:hr.payroll.statutory.view');
+        Route::post('gratuity-policies', [PayrollStatutoryController::class,'storeGratuityPolicy'])->middleware('permission:hr.payroll.statutory.manage');
+        Route::post('gratuity-policies/{policy}/approve', [PayrollStatutoryController::class,'approveGratuityPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
+        Route::post('gratuity-policies/preview', [PayrollStatutoryController::class,'previewGratuityEntitlement'])->middleware('permission:hr.payroll.statutory.view');
+    });
     Route::prefix('hr/ess')->group(function(){
         Route::get('my-requests',[EssController::class,'myRequests'])->middleware('permission:hr.ess.use');
         Route::get('my-requests/{id}',[EssController::class,'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
@@ -987,8 +1001,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('requests/{id}/transition',[ServiceOperationsController::class,'transitionTicket'])->whereUuid('id')->middleware('permission:hr.service-desk.manage');
     });
     Route::prefix('hr/assets')->group(function(){
+        Route::get('types',[AssetOperationsController::class,'types'])->middleware('permission:hr.assets.view');
         Route::get('items',[AssetOperationsController::class,'items'])->middleware('permission:hr.assets.view');
         Route::get('custody',[AssetOperationsController::class,'custody'])->middleware('permission:hr.assets.view');
+        Route::get('requests',[AssetOperationsController::class,'requests'])->middleware('permission:hr.assets.view');
+        Route::get('phone-subscriptions',[AssetOperationsController::class,'phoneSubscriptions'])->middleware('permission:hr.assets.view');
+        Route::get('phone-usage',[AssetOperationsController::class,'phoneUsage'])->middleware('permission:hr.assets.view');
         Route::post('types',[AssetOperationsController::class,'storeType'])->middleware('permission:hr.assets.manage');
         Route::post('items',[AssetOperationsController::class,'storeItem'])->middleware('permission:hr.assets.manage');
         Route::post('requests',[AssetOperationsController::class,'requestAsset'])->middleware('permission:hr.assets.request');

@@ -83,12 +83,34 @@ class CommissionHoldRemediationService
             );
         }
 
+        if ($code === 'legal_entity_mismatch' && ($decision->beneficiary_sales_profile_id || $decision->beneficiary_staff_id)) {
+            return $this->contract(
+                'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
+                $actor, 'sales.attributions.view', '/sales/attribution-operations',
+                'Review collection-handler attribution evidence',
+                'A beneficiary-side legal-entity mismatch becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to a same-entity, collection- and commission-eligible Profile.',
+                false,
+                true,
+            );
+        }
+
         if ($code === 'legal_entity_mismatch') {
             return $this->contract(
                 'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
                 $actor, 'sales.attributions.view', '/sales/attribution-operations',
                 'Review legal-entity attribution evidence',
-                'Only an acquisition-owner mismatch with no frozen beneficiary may use the linked-adjustment preview after one governed same-entity owner correction. A beneficiary mismatch remains blocked for its own correction workflow.',
+                'An acquisition-owner mismatch becomes adjustment-previewable only after one governed same-entity owner correction.',
+                false,
+                true,
+            );
+        }
+
+        if ($code === 'beneficiary_missing') {
+            return $this->contract(
+                'attribution_identity', 'sales_attribution', 'linked_adjustment_required',
+                $actor, 'sales.attributions.view', '/sales/attribution-operations',
+                'Review collection-handler attribution evidence',
+                'A missing collection handler becomes adjustment-previewable only after one governed, actor-owned collection-handler correction now resolves this receipt timestamp to an eligible Profile.',
                 false,
                 true,
             );

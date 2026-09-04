@@ -64,6 +64,28 @@ class BookingAttributionMutationService
         );
     }
 
+    public function correctCollectionHandler(
+        SalesBookingAttribution $attribution,
+        SalesProfile $toProfile,
+        CarbonInterface $effectiveAt,
+        string $reason,
+        string $idempotencyKey,
+        string $actorUserId,
+    ): SalesBookingAttribution {
+        return $this->mutateProfile(
+            $attribution,
+            'collection_sales_profile_id',
+            $toProfile,
+            'collection_handler_corrected',
+            $effectiveAt,
+            $reason,
+            $idempotencyKey,
+            $actorUserId,
+            false,
+            null,
+        );
+    }
+
     public function closeLeaverPortfolio(
         SalesProfile $leaver,
         ?SalesProfile $replacement,
