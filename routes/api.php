@@ -1264,6 +1264,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('wellness/programs', [EngagementController::class, 'storeWellnessProgram'])->middleware('permission:hr.wellness.manage');
         Route::get('wellness/programs', [EngagementController::class, 'wellnessPrograms'])->middleware('permission:hr.wellness.view');
         Route::get('wellness/referrals', [EngagementController::class, 'wellnessReferrals'])->middleware('permission:hr.wellness.view');
+        Route::get('wellness/handler-options', [EngagementController::class, 'wellnessHandlerOptions'])->middleware('permission:hr.wellness.case.manage');
         Route::get('wellness/referrals/{id}', [EngagementController::class, 'wellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.view');
         Route::post('wellness/referrals', [EngagementController::class, 'requestWellnessReferral'])->middleware('permission:hr.wellness.request');
         Route::post('wellness/referrals/{id}/consent', [EngagementController::class, 'consentWellnessReferral'])->whereUuid('id')->middleware('permission:hr.wellness.request');

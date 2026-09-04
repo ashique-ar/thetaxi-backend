@@ -17,7 +17,7 @@ class PerformanceController extends Controller
     public function index(Request $request): JsonResponse
     {
         $staff = $this->actor($request);
-        $query = DB::table('hr_performance_reviews as r')->join('hr_review_cycles as c', 'c.id', '=', 'r.cycle_id')->where('r.company_id', $staff->company_id)->select(['r.id','r.staff_id','r.manager_staff_id','r.status','r.final_rating','r.acknowledged_at','c.name as cycle_name','c.period_start','c.period_end']);
+        $query = DB::table('hr_performance_reviews as r')->join('hr_review_cycles as c', 'c.id', '=', 'r.cycle_id')->leftJoin('staff as s','s.id','=','r.staff_id')->leftJoin('users as u','u.id','=','s.user_id')->where('r.company_id', $staff->company_id)->select(['r.id','r.staff_id','r.manager_staff_id','r.status','r.final_rating','r.acknowledged_at','c.name as cycle_name','c.period_start','c.period_end','s.code as staff_code','u.first_name as staff_first_name','u.last_name as staff_last_name']);
         if ($request->boolean('mine') || ! $request->user()->can('hr.performance.view-all')) $query->where(fn($q)=>$q->where('r.staff_id',$staff->id)->orWhere('r.manager_staff_id',$staff->id));
         return response()->json(['status' => 'success', 'data' => $query->latest('c.period_end')->paginate($request->integer('per_page', 50))]);
     }

@@ -303,6 +303,16 @@ class EngagementController extends Controller
         return response()->json(['status' => 'success', 'data' => $query->select(['id', 'staff_id', 'program_id', 'referral_type', 'status', 'consent_status', 'case_owner_staff_id', 'closed_at', 'created_at'])->latest()->paginate($request->integer('per_page', 50))]);
     }
 
+    public function wellnessHandlerOptions(Request $request): JsonResponse
+    {
+        $actor=$this->actor($request);$data=$request->validate(['company_id'=>['required','uuid'],'search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'per_page'=>['nullable','integer','min:1','max:50']]);
+        abort_unless($data['company_id']===$actor->company_id,403,'Wellness handlers are outside your legal entity.');
+        $query=Staff::query()->with('user:id,first_name,last_name,is_active')->where('company_id',$actor->company_id)->whereNull('employment_ended_at')->whereHas('user',fn($q)=>$q->where('is_active',true));
+        if(isset($data['selected_id']))$query->whereKey($data['selected_id']);else{$search=trim((string)($data['search']??''));if($search!=='')$query->where(fn($q)=>$q->whereLikeInsensitive('code',$search)->orWhereHas('user',fn($u)=>$u->whereLikeInsensitive('first_name',$search)->orWhereLikeInsensitive('last_name',$search)));}
+        $rows=$query->orderBy('code')->get()->filter(fn($staff)=>$staff->user?->can('hr.wellness.case.manage'))->take((int)($data['per_page']??25))->values()->map(fn($staff)=>['value'=>(string)$staff->id,'label'=>trim(($staff->user?->first_name??'').' '.($staff->user?->last_name??''))?:($staff->code?:'Unavailable Staff record'),'metadata'=>['staff_code'=>$staff->code],'status'=>'active']);
+        return response()->json(['status'=>'success','data'=>$rows]);
+    }
+
     public function wellnessReferral(Request $request, string $id): JsonResponse
     {
         $actor = $this->actor($request);
@@ -315,10 +325,12 @@ class EngagementController extends Controller
             'case_note' => $caseAccess || $event->employee_visible ? decrypt($event->encrypted_case_note) : null, 'employee_visible' => (bool) $event->employee_visible, 'event_checksum' => $event->event_checksum, 'occurred_at' => $event->occurred_at,
         ]);
         $consents = DB::table('hr_wellness_referral_consents')->where('referral_id', $id)->orderBy('version')->select(['id', 'version', 'decision', 'consent_scope', 'notice_version', 'consent_checksum', 'recorded_at'])->get()->map(fn ($c) => ['id' => $c->id, 'version' => $c->version, 'decision' => $c->decision, 'consent_scope' => json_decode($c->consent_scope, true) ?: [], 'notice_version' => $c->notice_version, 'consent_checksum' => $c->consent_checksum, 'recorded_at' => $c->recorded_at]);
-        $followups = DB::table('hr_wellness_followups')->where('referral_id', $id)->when(!$caseAccess, fn ($q) => $q->where('employee_visible', true))->orderBy('due_at')->get()->map(fn ($f) => ['id' => $f->id, 'due_at' => $f->due_at, 'timezone' => $f->timezone, 'owner_staff_id' => $caseAccess ? $f->owner_staff_id : null, 'purpose' => decrypt($f->encrypted_purpose), 'employee_visible' => (bool) $f->employee_visible, 'status' => $f->status, 'completion_note' => $caseAccess && $f->encrypted_completion_note ? decrypt($f->encrypted_completion_note) : null, 'completed_at' => $f->completed_at]);
+        $ownerIds=DB::table('hr_wellness_followups')->where('referral_id',$id)->pluck('owner_staff_id')->push($row->case_owner_staff_id)->filter()->unique();
+        $ownerLabels=Staff::withTrashed()->with('user:id,first_name,last_name')->where('company_id',$actor->company_id)->whereIn('id',$ownerIds)->get()->mapWithKeys(fn($staff)=>[(string)$staff->id=>trim(($staff->user?->first_name??'').' '.($staff->user?->last_name??''))?:($staff->code?:'Unavailable Staff record')]);
+        $followups = DB::table('hr_wellness_followups')->where('referral_id', $id)->when(!$caseAccess, fn ($q) => $q->where('employee_visible', true))->orderBy('due_at')->get()->map(fn ($f) => ['id' => $f->id, 'due_at' => $f->due_at, 'timezone' => $f->timezone, 'owner_staff_id' => $caseAccess ? $f->owner_staff_id : null, 'owner_label'=>$caseAccess?($ownerLabels[(string)$f->owner_staff_id]??'Unavailable Staff record'):null, 'purpose' => decrypt($f->encrypted_purpose), 'employee_visible' => (bool) $f->employee_visible, 'status' => $f->status, 'completion_note' => $caseAccess && $f->encrypted_completion_note ? decrypt($f->encrypted_completion_note) : null, 'completed_at' => $f->completed_at]);
         return response()->json(['status' => 'success', 'data' => [
-            'referral' => collect((array) $row)->except(['encrypted_details'])->all(),
-            'details' => decrypt($row->encrypted_details), 'events' => $events, 'consents' => $consents, 'followups' => $followups, 'abilities' => ['manage' => $caseAccess], 'current_actor_staff_id' => $caseAccess ? $actor->id : null, 'consent_notice_version' => config('hr.wellness_consent_notice_version'),
+            'referral' => collect((array) $row)->except(['encrypted_details'])->merge(['case_owner_label'=>$row->case_owner_staff_id?($ownerLabels[(string)$row->case_owner_staff_id]??'Unavailable Staff record'):null])->all(),
+            'details' => decrypt($row->encrypted_details), 'events' => $events, 'consents' => $consents, 'followups' => $followups, 'abilities' => ['manage' => $caseAccess], 'current_actor_staff_id' => $caseAccess ? $actor->id : null, 'company_id'=>$row->company_id, 'consent_notice_version' => config('hr.wellness_consent_notice_version'),
         ]]);
     }
 

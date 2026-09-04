@@ -2,7 +2,7 @@
 namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;use App\Models\Staff;use App\Services\Hr\Lifecycle\LifecycleService;use App\Services\StaffAccessService;use Illuminate\Http\JsonResponse;use Illuminate\Http\Request;use Illuminate\Support\Facades\DB;use Illuminate\Support\Str;use Illuminate\Validation\Rule;
 class LifecycleController extends Controller{
- public function cases(Request$r,StaffAccessService$access):JsonResponse{$staff=$access->scope(Staff::query(),$r->user())->select('id');return response()->json(['status'=>'success','data'=>DB::table('hr_lifecycle_cases')->whereIn('staff_id',$staff)->latest()->paginate($r->integer('per_page',50))]);}
+ public function cases(Request$r,StaffAccessService$access):JsonResponse{$staff=$access->scope(Staff::query(),$r->user())->select('id');return response()->json(['status'=>'success','data'=>DB::table('hr_lifecycle_cases as c')->leftJoin('staff as s','s.id','=','c.staff_id')->leftJoin('users as u','u.id','=','s.user_id')->whereIn('c.staff_id',$staff)->select(['c.*','s.code as staff_code','u.first_name as staff_first_name','u.last_name as staff_last_name'])->latest('c.created_at')->paginate($r->integer('per_page',50))]);}
  /**
   * §5.15/QH5-01: storeTemplate()/approveTemplate() were POST-only with no route to list a
   * template — so openCase()'s required template_id (which must reference an *approved*
