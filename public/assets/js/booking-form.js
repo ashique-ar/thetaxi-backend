@@ -191,20 +191,10 @@
         });
     }
 
-    function restoreBackgroundDefaultPlaceholders(form) {
-        if (form.dataset.hasSearchContext !== 'false') return;
-
-        form.querySelectorAll('input.location-search[data-is-default="true"]').forEach((input) => {
-            const { latInput, lngInput } = getCoordInputs(input);
-            input.value = '';
-            input.setAttribute('data-place-selected', 'false');
-            input.setAttribute('data-is-default', 'false');
-            if (latInput) latInput.value = '';
-            if (lngInput) lngInput.value = '';
-        });
-
-        // Canonical aliases are transient submission data. Removing generated
-        // fields prevents a failed attempt from outranking the next real choice.
+    function cleanupFailedSubmissionAliases(form) {
+        // Preserve the user's complete form state after a validation failure,
+        // including the location label and its coordinates. Only submission-only
+        // aliases are discarded; the next attempt rebuilds them from live controls.
         form.querySelectorAll('input[data-canonical-generated="true"]').forEach((input) => input.remove());
     }
 
@@ -533,17 +523,11 @@
                 if (input.__hasFocusReset) return;
                 input.__hasFocusReset = true;
 
-                // On focus: clear the visible value so user can type fresh,
-                // but preserve default data attributes for reset-on-blur.
+                // Focus must never destroy a restored/default location. Actual
+                // edits are handled by the input listener, which clears stale
+                // coordinates until a new autocomplete result is selected.
                 input.addEventListener('focus', function () {
                     try {
-                        // Only clear visible value when focus is user-initiated
-                        if (this.value && this.value.trim() !== '') {
-                            this.value = '';
-                            // Only mark as not-selected when we actually clear the value
-                            this.setAttribute('data-place-selected', 'false');
-                        }
-
                         // Remove inline error while user is actively editing
                         removeInlineError(this);
 
@@ -3256,7 +3240,7 @@
                     e.preventDefault();
                     e.stopPropagation();
                     e.stopImmediatePropagation();
-                    restoreBackgroundDefaultPlaceholders(form);
+                    cleanupFailedSubmissionAliases(form);
 
                     console.error('Form submission BLOCKED - validation failed');
                     return false;
