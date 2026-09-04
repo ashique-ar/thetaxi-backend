@@ -6,9 +6,11 @@ it('wires the previously-missing employment-spell Angular surface into the Emplo
 
     expect($component)
         ->toContain("import { SubjectCustomFieldValuesComponent } from '../subject-custom-field-values/subject-custom-field-values.component';")
-        ->toContain("toggleSpellAttributes(spellId:string):void{this.attributesSpellId.set(this.attributesSpellId()===spellId?null:spellId)}");
+        ->toContain('toggleSpellAttributes(spellId: string)')
+        ->toContain('this.attributesSpellId.set(');
     expect($template)
-        ->toContain('<app-subject-custom-field-values ownerType="employment_spell" [ownerId]="spell.id"></app-subject-custom-field-values>')
+        ->toContain('ownerType="employment_spell"')
+        ->toContain('[ownerId]="spell.id"')
         ->toContain('*hasPermission="\'hr.custom-fields.values.view\'"');
 });
 

@@ -1,7 +1,7 @@
 <?php
 
 it('adds a device update endpoint that never overwrites the stored ISAPI password with a redacted value', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
 
     expect($controller)
         ->toContain('public function updateDevice(Request $request, string $deviceId): JsonResponse')
@@ -10,9 +10,7 @@ it('adds a device update endpoint that never overwrites the stored ISAPI passwor
 });
 
 it('redacts the device password from the health endpoint, only ever exposing ip_address/port/username', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
-    $health = substr($controller, strpos($controller, 'function health('));
-    $health = substr($health, 0, strpos($health, 'public function storeConnector('));
+    $health = hr_attendance_device_method_slice('function health(', 'public function storeConnector(');
 
     expect($health)
         ->toContain("'id', 'company_id', 'connector_id'")
@@ -22,9 +20,7 @@ it('redacts the device password from the health endpoint, only ever exposing ip_
 });
 
 it('keeps device identity fields (provider, integration_mode, serial_number) immutable on update', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
-    $update = substr($controller, strpos($controller, 'function updateDevice('));
-    $update = substr($update, 0, strpos($update, 'public function storeMapping('));
+    $update = hr_attendance_device_method_slice('function updateDevice(', 'public function storeMapping(');
 
     expect($update)
         ->not->toContain("'provider'")

@@ -42,5 +42,7 @@ it('wires the full calendar/shift/policy/roster read+write set into a new Angula
     expect($component)
         ->toContain("canDecidePolicy(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }")
         ->toContain("canDecideRoster(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && !row.approved_at; }");
-    expect($routes)->toContain("{ path: 'configuration', loadComponent: () => import('./components/attendance-configuration/attendance-configuration.component').then(m => m.AttendanceConfigurationComponent), canActivate: [createPermissionGuard(['hr.attendance.config.manage', 'hr.attendance.config.approve'])] },");
+    expect($routes)->toContain("redirectTo: 'configuration/calendars'")
+        ->toContain("['calendars', 'shifts', 'policies', 'rosters']")
+        ->toContain('attendanceConfigurationSection');
 });

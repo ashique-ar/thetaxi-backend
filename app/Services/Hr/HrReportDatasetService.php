@@ -1,5 +1,13 @@
 <?php
 namespace App\Services\Hr;use Illuminate\Support\Facades\DB;
+/**
+ * HR reporting: dataset *build*. Given a queued run (with its frozen
+ * filter/as-of snapshot) and its saved view, produces the row data for the
+ * report kind (analytics snapshots, workforce plans, or data-quality
+ * issues) as plain arrays. Pure read/shape logic only — it does not queue
+ * runs (see {@see HrReportRunService}) or render/store output files (see
+ * {@see HrReportArtifactService}).
+ */
 class HrReportDatasetService{
 public function __construct(private readonly HrDataQualityService$quality){}
 public function rows(object$run,object$view):array{$filters=json_decode($run->filter_snapshot,true)?:[];return match($view->report_kind){'analytics_snapshots'=>$this->analytics($run->company_id,$filters,$run->as_of_date),'workforce_plans'=>$this->plans($run->company_id,$filters,$run->as_of_date),'data_quality'=>$this->quality($run->company_id,$filters),default=>[]};}

@@ -17,7 +17,7 @@ PHP)
 
 it('exposes permission-gated manual sync and run diagnostics in the admin UI', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-devices/attendance-devices.component.html'));
     expect($routes)->toContain("Route::post('devices/{deviceId}/sync'")->toContain("Route::get('sync-runs'")
@@ -33,7 +33,7 @@ it('aligns attendance eloquent models with inherited soft-delete and user-tracki
 });
 
 it('provides reviewed device-person mapping and bulk quarantine reconciliation', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $routes = file_get_contents(base_path('routes/api.php'));
     expect($routes)->toContain('devices/{deviceId}/people')->toContain('mapping-candidates')
         ->and($controller)->toContain('public function devicePeople')->toContain('public function mappingCandidates')
@@ -49,7 +49,7 @@ PHP);
 });
 
 it('provisions Staff users on a selected terminal entirely through the system portal', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $routes = file_get_contents(base_path('routes/api.php'));
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
@@ -63,7 +63,7 @@ it('provisions Staff users on a selected terminal entirely through the system po
 });
 
 it('surfaces scheduler health and synchronizes mapped Staff lifecycle without Hikvision applications', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $command = file_get_contents(app_path('Console/Commands/SyncHikvisionPeople.php'));
     $console = file_get_contents(base_path('routes/console.php'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-overview/attendance-overview.component.html')).file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
@@ -75,7 +75,7 @@ it('surfaces scheduler health and synchronizes mapped Staff lifecycle without Hi
 
 it('governs reviewed identity reconciliation and masked card and PIN lifecycle in the portal', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $adapter = file_get_contents(app_path('Services/Hr/Attendance/HikvisionIsapiAdapter.php'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
     $migration = file_get_contents(database_path('migrations/2026_09_01_090000_add_hikvision_identity_and_credential_governance.php'));
@@ -89,7 +89,7 @@ it('governs reviewed identity reconciliation and masked card and PIN lifecycle i
 it('restricts reboot maintenance and supports audited terminal display-name editing', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/HikvisionManagementController.php'));
-    $deviceController = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $deviceController = hr_attendance_device_controller_source();
     $worker = file_get_contents(app_path('Console/Commands/ProcessHikvisionMaintenance.php'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html')).file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-access/attendance-access.component.html'));
     expect($routes)->toContain('hr.attendance.maintenance.execute')->toContain('hr.attendance.maintenance.approve')
@@ -123,7 +123,7 @@ it('normalizes identified access events as punches consumed by attendance calcul
 
 it('makes the complete portal workflow discoverable and exposes Staff prerequisite repair links', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
     $navigation = file_get_contents(base_path('../portal-thetaxi/src/app/core/navigation/sections/navigation.people.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
     expect($routes)->toContain('legacy-staff-gaps')->toContain('permission:staff.edit-all')

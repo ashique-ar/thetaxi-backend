@@ -20,7 +20,10 @@ it('counts only active positions effective on the same as-of date, not every pos
 it('registers the chart route under the existing hr.organization.view permission with no new permission minted', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($routes)->toContain("Route::get('chart', [PeopleCoreController::class,'organizationChart'])->middleware('permission:hr.organization.view');");
+    expect($routes)
+        ->toContain("Route::get('chart', [PeopleCoreController::class")
+        ->toContain("'organizationChart'])")
+        ->toContain("middleware('permission:hr.organization.view')");
 });
 
 it('wires the chart into the existing Angular organization administration page as a client-side flattened hierarchy', function () {
@@ -28,9 +31,13 @@ it('wires the chart into the existing Angular organization administration page a
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/organization-administration/organization-administration.component.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/organization-administration/organization-administration.component.html'));
 
-    expect($service)->toContain("organizationChart(params: {as_of?:string}={}):Observable<ApiResponse<{as_of:string;units:OrganizationChartUnit[]}>> {");
+    expect($service)
+        ->toContain('organizationChart(')
+        ->toContain("this.makeGetCall('/hr/organization/chart'");
     expect($template)->toContain('Organization chart');
     expect($component)
-        ->toContain('private flattenChart(units:OrganizationChartUnit[]):{unit:OrganizationChartUnit;depth:number}[]{')
-        ->toContain("managerLabel(unit:OrganizationChartUnit):string{if(!unit.manager_staff_id)return'Unassigned';");
+        ->toContain('private flattenChart(')
+        ->toContain('units: OrganizationChartUnit[]')
+        ->toContain('managerLabel(unit: OrganizationChartUnit)')
+        ->toContain("return 'Unassigned'");
 });

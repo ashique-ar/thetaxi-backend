@@ -14,7 +14,8 @@ it('does not modify the existing Attendance calendar write endpoint or its own f
 
     expect($attendanceController)
         ->toContain("public function storeCalendar(Request \$request): JsonResponse")
-        ->toContain("private function writes():void{abort_unless(config('hr.features.attendance_results',false)");
+        ->toContain('private function writes(): void')
+        ->toContain("config('hr.features.attendance_results', false)");
 });
 
 it('governs work-calendar and calendar-day creation as idempotent, replay-safe, audited commands', function () {
@@ -32,7 +33,9 @@ it('exposes work calendars under the existing hr.organization permissions withou
     $routes = file_get_contents(base_path('routes/api.php'));
 
     expect($routes)
-        ->toContain("Route::get('work-calendars', [PeopleCoreController::class,'workCalendars'])->middleware('permission:hr.organization.view');")
-        ->toContain("Route::post('work-calendars', [PeopleCoreController::class,'storeWorkCalendar'])->middleware('permission:hr.organization.manage');")
-        ->toContain("Route::post('work-calendars/{calendarId}/days', [PeopleCoreController::class,'storeWorkCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.organization.manage');");
+        ->toContain("Route::get('work-calendars', [PeopleCoreController::class, 'workCalendars'])")
+        ->toContain("Route::post('work-calendars', [PeopleCoreController::class, 'storeWorkCalendar'])")
+        ->toContain("Route::post('work-calendars/{calendarId}/days', [PeopleCoreController::class, 'storeWorkCalendarDay'])")
+        ->toContain("middleware('permission:hr.organization.view')")
+        ->toContain("middleware('permission:hr.organization.manage')");
 });

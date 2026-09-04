@@ -9,6 +9,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Throwable;
 
+/**
+ * PULL attendance path: actively polls a `direct_isapi` device's event log
+ * (via {@see AttendanceProviderManager::adapterFor()}) over a given time
+ * window and persists each event the same way the push path does — raw
+ * event storage, dedup, and quarantine for unmapped identities — recording
+ * progress in `hr_attendance_sync_runs`.
+ *
+ * Invoked both for manual reconciliation
+ * ({@see \App\Http\Controllers\Api\Hr\AttendanceDeviceController::sync()})
+ * and for the scheduled `hr:hikvision-sync` console command (see
+ * routes/console.php). Contrast with the PUSH path
+ * ({@see AttendanceIngestionService}), used when the device/middleware signs
+ * and sends events to us instead of us polling it.
+ */
 class DirectAttendanceSyncService
 {
     public function __construct(private AttendanceProviderManager $providers) {}

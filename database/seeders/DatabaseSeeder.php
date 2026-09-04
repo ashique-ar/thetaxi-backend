@@ -17,6 +17,27 @@ class DatabaseSeeder extends Seeder
             // Safe on new and existing client databases. Creates only missing
             // permissions/roles and adds baseline grants without removing any.
             AllPermissionsSeeder::class,
+
+            // Core data the HR module (and much of the rest of the app) depends
+            // on: a default Company, then Staff-linked User accounts. Order
+            // matters — StaffSeeder attaches each User's Staff row to the
+            // default Company created by CompanySeeder.
+            CompanySeeder::class,
+            StaffSeeder::class,
+
+            // HR module defaults. Each is idempotent and safe to re-run; order
+            // matters because later seeders look up rows created by earlier
+            // ones (positions before employment assignments; Staff/Company
+            // before everything).
+            HrOrganizationDefaultsSeeder::class,
+            HrPeopleCoreDefaultsSeeder::class,
+            HrLeaveTypesSeeder::class,
+            HrPayrollDefaultsSeeder::class,
+            HrAttendanceDeviceDefaultsSeeder::class,
+
+            // Must run after CompanySeeder/StaffSeeder: it only seeds work
+            // calendars/shifts/policies/rosters once a default company with an
+            // active Staff user exists.
             SriLankaAttendanceDefaultsSeeder::class,
 
                 // Basic/core seeders (uncomment as needed)

@@ -10,6 +10,19 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\IpUtils;
 
+/**
+ * PUSH attendance path: accepts signed event batches POSTed by external
+ * devices/middleware to `POST hr/attendance/ingest` (see
+ * {@see \App\Http\Controllers\Api\Hr\AttendanceIngestionController}), verifies
+ * the connector's HMAC signature, and idempotently persists each event as a
+ * raw attendance record (deduplicated by request id / nonce / provider event
+ * id), quarantining anything that cannot be mapped to a Staff member.
+ *
+ * Used when the terminal or an on-site middleware can itself sign and send
+ * events to us — no server-side polling is involved. Contrast with the PULL
+ * path ({@see DirectAttendanceSyncService} + {@see AttendanceProviderManager}),
+ * used when we must actively reach out to the device instead.
+ */
 class AttendanceIngestionService
 {
     public function ingest(array $headers,string $rawBody,array $events,?string $sourceIp):array

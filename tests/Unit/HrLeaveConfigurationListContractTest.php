@@ -38,5 +38,7 @@ it('wires the full leave-type/policy/assignment read+write set into a new Angula
     expect($component)
         ->toContain("canDecidePolicy(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }")
         ->toContain("canDecideAssignment(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && !row.approved_at; }");
-    expect($routes)->toContain("{ path: 'leave-configuration', loadComponent: () => import('./components/leave-configuration/leave-configuration.component').then(m => m.LeaveConfigurationComponent), canActivate: [createPermissionGuard(['hr.leave.config.manage', 'hr.leave.config.approve'])] },");
+    expect($routes)->toContain("redirectTo: 'leave-configuration/types'")
+        ->toContain("['types', 'policies', 'assignments']")
+        ->toContain('leaveConfigurationSection');
 });

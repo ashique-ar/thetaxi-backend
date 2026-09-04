@@ -1,7 +1,7 @@
 <?php
 
 it('adds the missing person-mapping list endpoint so quarantine resolution can select a verified mapping', function () {
-    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceDeviceController.php'));
+    $controller = hr_attendance_device_controller_source();
 
     expect($controller)
         ->toContain('public function mappings(Request $request): JsonResponse')

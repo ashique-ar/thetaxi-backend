@@ -1,5 +1,14 @@
 <?php
 namespace App\Services\Hr;use Barryvdh\DomPDF\Facade\Pdf;use RuntimeException;use ZipArchive;
+/**
+ * HR reporting: artifact *rendering*. Given the dataset built by
+ * {@see HrReportDatasetService}, serializes it to the requested output
+ * format (csv/pdf/xlsx) and returns the raw file content plus its
+ * extension/mime type, ready for the caller (the generation job) to store
+ * as the run's downloadable artifact. Stateless — no DB access, no
+ * retention/storage concerns; those belong to the job that calls this
+ * service, not this class itself.
+ */
 class HrReportArtifactService{
 public function render(string$format,array$columns,array$rows,string$title):array{return match($format){'csv'=>$this->csv($columns,$rows),'pdf'=>$this->pdf($columns,$rows,$title),'xlsx'=>$this->xlsx($columns,$rows),default=>throw new RuntimeException('Unsupported HR report format.')};}
 private function csv(array$c,array$r):array{$h=fopen('php://temp','w+b');fputcsv($h,$c);foreach($r as$row)fputcsv($h,array_map(fn($key)=>$this->scalar($row[$key]??null),$c));rewind($h);$body=stream_get_contents($h);fclose($h);return['content'=>$body,'extension'=>'csv','mime'=>'text/csv'];}

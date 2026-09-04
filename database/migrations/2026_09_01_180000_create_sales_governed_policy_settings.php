@@ -30,6 +30,7 @@ return new class extends Migration {
             $table->foreignUuid('approved_by')->nullable()->constrained('users')->restrictOnDelete();
             $table->timestamp('approved_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
             $table->unique(['company_id', 'policy_kind', 'version'], 'sales_policy_setting_company_kind_version_unique');
             $table->index(['company_id', 'policy_kind', 'status']);
         });
@@ -55,6 +56,7 @@ return new class extends Migration {
             $table->foreignUuid('retired_by')->nullable()->constrained('users')->restrictOnDelete();
             $table->timestamp('retired_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
             $table->unique(['company_id', 'category_name'], 'sales_staff_category_company_name_unique');
             $table->index(['company_id', 'status']);
         });
@@ -71,6 +73,7 @@ return new class extends Migration {
             $table->foreignUuid('approved_by')->nullable()->constrained('users')->restrictOnDelete();
             $table->timestamp('approved_at')->nullable();
             $table->timestamps();
+            $table->softDeletes();
             $table->unique(['company_id', 'feature_key', 'version'], 'sales_company_feature_company_key_version_unique');
             $table->index(['company_id', 'feature_key', 'status']);
         });

@@ -13,6 +13,20 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
+/**
+ * Hikvision-family device *lifecycle and operations* management: access
+ * groups/doors, live diagnostics, clock/time configuration, "safe settings"
+ * verification, credential rotation, device alerts, and reboot/maintenance
+ * approval workflows.
+ *
+ * See {@see \App\Http\Controllers\Api\Hr\AttendanceDeviceController} for the
+ * complementary device half — device/connector CRUD, person-mapping (single
+ * and bulk), card/PIN credential issuance, raw-event/quarantine review, and
+ * manual/automatic attendance sync. That controller owns a device's identity
+ * and its Staff mapping; this controller owns what happens to an already
+ * -registered device over time (its physical access configuration, health,
+ * and maintenance).
+ */
 class HikvisionManagementController extends Controller
 {
     public function groups(Request $r): JsonResponse

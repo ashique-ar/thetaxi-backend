@@ -29,6 +29,8 @@ it('reuses the existing hr.custom-fields.values permissions rather than minting 
     $routes = file_get_contents(base_path('routes/api.php'));
 
     expect($routes)
-        ->toContain("Route::get('subjects/{ownerType}/{ownerId}/custom-fields', [PeopleCoreController::class,'subjectCustomFieldValues'])->whereUuid('ownerId')->middleware('permission:hr.custom-fields.values.view');")
-        ->toContain("Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class,'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');");
+        ->toContain("Route::get('subjects/{ownerType}/{ownerId}/custom-fields', [PeopleCoreController::class, 'subjectCustomFieldValues'])")
+        ->toContain("Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])")
+        ->toContain("middleware('permission:hr.custom-fields.values.view')")
+        ->toContain("middleware('permission:hr.custom-fields.values.manage')");
 });

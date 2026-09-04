@@ -1,5 +1,14 @@
 <?php
 namespace App\Services\Hr;use App\Jobs\GenerateHrReportArtifact;use Illuminate\Support\Facades\DB;use Illuminate\Support\Str;
+/**
+ * HR reporting: run *orchestration*. Owns queueing a report run for a saved
+ * view (idempotency-key dedup, request/privacy snapshotting, persisting the
+ * `hr_report_runs` row and its `domain_transfer_jobs` record) and dispatching
+ * the {@see \App\Jobs\GenerateHrReportArtifact} job. Does not build the
+ * report's rows (see {@see HrReportDatasetService}) or render/store the
+ * output file (see {@see HrReportArtifactService}); those happen inside the
+ * dispatched job.
+ */
 class HrReportRunService{
 public function queue(object$view,?object$schedule,string$asOf,string$format,string$userId,string$idempotencyKey):object{
 $existing=DB::table('hr_report_runs')->where('idempotency_key',$idempotencyKey)->first();if($existing){if($existing->status==='queued')GenerateHrReportArtifact::dispatch($existing->id);return$existing;}
