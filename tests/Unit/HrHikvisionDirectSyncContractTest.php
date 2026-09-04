@@ -35,8 +35,33 @@ it('aligns attendance eloquent models with inherited soft-delete and user-tracki
 it('provides reviewed device-person mapping and bulk quarantine reconciliation', function () {
     $controller = hr_attendance_device_controller_source();
     $routes = file_get_contents(base_path('routes/api.php'));
+    $selector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-select/managed-record-select.component.ts'));
+    $peopleTemplate = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-people/attendance-people.component.html'));
+    $resultsTemplate = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-results/attendance-results.component.html'));
+    $accessTemplate = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-access/attendance-access.component.html'));
+    $exceptionsTemplate = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-exceptions/attendance-exceptions.component.html'));
+    $configuration = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.ts'));
+    $multiSelector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-multi-select/managed-record-multi-select.component.ts'));
     expect($routes)->toContain('devices/{deviceId}/people')->toContain('mapping-candidates')
         ->and($controller)->toContain('public function devicePeople')->toContain('public function mappingCandidates')
+        ->toContain("'selected_id' => ['nullable', 'uuid']")
+        ->toContain("'selected_ids' => ['nullable', 'array', 'max:200']")
+        ->toContain("Rule::in(['staff', 'calendar', 'shift', 'policy'])")
+        ->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
+        ->toContain("'value' => (string) \$row->id")
+        ->toContain("'status' => 'active'")
+        ->and($selector)->toContain("export interface ManagedRecordOption")
+        ->toContain("params.set('selected_id', selectedId)")
+        ->toContain("params.set('record_type', this.recordType)")
+        ->toContain('The previously selected record is no longer authorized or active.')
+        ->and($peopleTemplate)->toContain('app-ui-managed-record-select')
+        ->and($resultsTemplate)->toContain('app-ui-managed-record-select')
+        ->and($accessTemplate)->toContain('app-ui-managed-record-select')
+        ->and($exceptionsTemplate)->toContain('row.staff_first_name')->not->toContain('row.staff_id }}</small>')
+        ->and($configuration)->toContain('Unavailable or out-of-scope record')->not->toContain(": id;\n")
+        ->and($multiSelector)->toContain("params.append('selected_ids[]', value)")
+        ->toContain('One or more previously selected records are no longer authorized or active.')
+        ->and($controller)
         ->toContain("json_encode(array_values(array_unique(\$data['enrolled_methods'])), JSON_THROW_ON_ERROR)")
         ->toContain('Resolved automatically when the device-person mapping was saved.')
         ->toContain("'enrollment_status' => 'verified'")

@@ -74,10 +74,23 @@ it('keeps staff documents private and checks owner type on every direct action',
 
 it('terminates only the staff context and retains other user contexts', function () {
     $service = file_get_contents(app_path('Services/StaffIdentityService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/StaffController.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_03_120000_create_staff_context_termination_events.php'));
+    $portalService = file_get_contents(base_path('../portal-thetaxi/src/app/modules/staff/services/staff.service.ts'));
 
     expect($service)
         ->toContain("deactivateContext(\$user, 'staff')")
         ->toContain("'user_disabled' => false")
         ->toContain('revokeAllTokens()')
+        ->toContain("Staff::withTrashed()->lockForUpdate()")
+        ->toContain("Crypt::encryptString(trim(\$reason))")
+        ->toContain("where('idempotency_key', \$idempotencyKey)")
+        ->and($controller)->toContain("'idempotency_key' => ['required', 'uuid']")
+        ->and($routes)->toContain("Route::post('staff/{staff}/terminate'")
+        ->toContain('->withTrashed()')
+        ->and($migration)->toContain("Schema::create('staff_context_termination_events'")
+        ->toContain('Cannot remove staff_context_termination_events while retained termination evidence exists.')
+        ->and($portalService)->toContain('{ reason, idempotency_key: idempotencyKey }')
         ->not->toContain("\$user->update(['is_active' => false])");
 });

@@ -258,8 +258,16 @@ class StaffController extends Controller
     public function destroy(Request $request, Staff $staff): JsonResponse
     {
         $this->accessService->authorize($request->user(), $staff, 'terminate');
-        $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
-        $result = $this->identityService->terminate($staff, $request->user(), $data['reason']);
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000', 'not_regex:/^\s*$/'],
+            'idempotency_key' => ['required', 'uuid'],
+        ]);
+        $result = $this->identityService->terminate(
+            $staff,
+            $request->user(),
+            $data['reason'],
+            $data['idempotency_key'],
+        );
 
         return response()->json([
             'status' => 'success',

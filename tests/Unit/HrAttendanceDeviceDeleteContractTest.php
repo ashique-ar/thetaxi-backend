@@ -36,3 +36,19 @@ it('loads the validation rule dependency used by device people mapping', functio
     expect($controller)->toContain('use Illuminate\\Validation\\Rule;')
         ->toContain("Rule::in(['fingerprint', 'card', 'face', 'pin'])");
 });
+
+it('provides scope-aware database-grouped attendance management reports', function () {
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
+    $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-reports/attendance-reports.component.ts'));
+
+    expect($routes)->toContain("Route::get('reports/summary'")
+        ->toContain("permission:hr.attendance.results.view")
+        ->and($controller)->toContain('public function report(Request $request, StaffAccessService $access)')
+        ->toContain('$access->scope(Staff::query(), $request->user())')
+        ->toContain("count(distinct result.staff_id) as staff_count")
+        ->toContain("Rule::in(['work_date', 'status', 'staff', 'company'])")
+        ->and($service)->toContain("/hr/attendance/reports/summary")
+        ->and($component)->toContain("{ value: 'company', label: 'Company' }");
+});

@@ -932,7 +932,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('devices/{deviceId}/people/{employeeNumber}/disposition', [AttendanceDeviceController::class, 'disposition'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
         Route::post('devices/{deviceId}/people/bulk-mapping', [AttendanceDeviceController::class, 'bulkMapping'])->whereUuid('deviceId')->middleware('permission:hr.attendance.mappings.manage');
         Route::get('sync-runs', [AttendanceDeviceController::class, 'syncRuns'])->middleware('permission:hr.attendance.devices.view');
-        Route::get('mapping-candidates', [AttendanceDeviceController::class, 'mappingCandidates'])->middleware('permission:hr.attendance.mappings.manage');
+        Route::get('mapping-candidates', [AttendanceDeviceController::class, 'mappingCandidates'])->middleware('permission:hr.attendance.mappings.manage|hr.attendance.results.calculate|hr.attendance.access.request|hr.attendance.config.manage');
         Route::get('legacy-staff-gaps', [AttendanceDeviceController::class, 'legacyStaffGaps'])->middleware('permission:staff.edit-all');
         Route::get('person-mappings', [AttendanceDeviceController::class, 'mappings'])->middleware('permission:hr.attendance.devices.view');
         Route::post('person-mappings', [AttendanceDeviceController::class, 'storeMapping'])->middleware('permission:hr.attendance.mappings.manage');
@@ -957,6 +957,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('devices/{id}/reboot-requests', [HikvisionManagementController::class, 'requestReboot'])->whereUuid('id')->middleware('permission:hr.attendance.maintenance.execute');
         Route::post('maintenance-commands/{id}/approve', [HikvisionManagementController::class, 'approveReboot'])->whereUuid('id')->middleware('permission:hr.attendance.maintenance.approve');
         Route::get('results', [AttendanceResultController::class, 'index'])->middleware('permission:hr.attendance.results.view');
+        Route::get('reports/summary', [AttendanceResultController::class, 'report'])->middleware('permission:hr.attendance.results.view');
         Route::post('results/calculate', [AttendanceResultController::class, 'calculate'])->middleware('permission:hr.attendance.results.calculate');
         Route::get('calendars', [AttendanceResultController::class, 'calendars'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::get('calendars/{calendarId}/days', [AttendanceResultController::class, 'calendarDays'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
@@ -1106,6 +1107,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('expense-claims', [ServiceOperationsController::class, 'submitClaim'])->middleware('permission:hr.expenses.submit');
         Route::post('expense-claims/{id}/decide', [ServiceOperationsController::class, 'decideClaim'])->whereUuid('id')->middleware('permission:hr.expenses.approve');
         Route::get('requests', [ServiceOperationsController::class, 'tickets'])->middleware('permission:hr.service-desk.view');
+        Route::get('requests/assignee-options', [ServiceOperationsController::class, 'ticketAssigneeOptions'])->middleware('permission:hr.service-desk.manage');
         Route::post('requests', [ServiceOperationsController::class, 'openTicket'])->middleware('permission:hr.service-desk.submit');
         Route::post('requests/{id}/transition', [ServiceOperationsController::class, 'transitionTicket'])->whereUuid('id')->middleware('permission:hr.service-desk.manage');
     });
@@ -1116,6 +1118,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('requests', [AssetOperationsController::class, 'requests'])->middleware('permission:hr.assets.view');
         Route::get('phone-subscriptions', [AssetOperationsController::class, 'phoneSubscriptions'])->middleware('permission:hr.assets.view');
         Route::get('phone-usage', [AssetOperationsController::class, 'phoneUsage'])->middleware('permission:hr.assets.view');
+        Route::get('phone-reference-options', [AssetOperationsController::class, 'phoneReferenceOptions'])->middleware('permission:hr.assets.phone.manage|hr.assets.approve');
         Route::post('types', [AssetOperationsController::class, 'storeType'])->middleware('permission:hr.assets.manage');
         Route::post('items', [AssetOperationsController::class, 'storeItem'])->middleware('permission:hr.assets.manage');
         Route::post('requests', [AssetOperationsController::class, 'requestAsset'])->middleware('permission:hr.assets.request');
@@ -1182,6 +1185,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('hr/relations')->group(function () {
         Route::get('cases', [RelationsCaseController::class, 'index'])->middleware('permission:hr.relations.case.view');
         Route::get('cases/{id}', [RelationsCaseController::class, 'show'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
+        Route::get('cases/{id}/staff-labels', [RelationsCaseController::class, 'staffLabels'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
+        Route::get('hearing-chair-candidates', [RelationsCaseController::class, 'hearingChairCandidates'])->middleware('permission:hr.relations.case.transition');
         Route::post('cases', [RelationsCaseController::class, 'store'])->middleware('permission:hr.relations.case.open');
         Route::post('cases/{id}/team', [RelationsCaseController::class, 'nominateTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.manage');
         Route::post('case-team/{id}/decide', [RelationsCaseController::class, 'decideTeam'])->whereUuid('id')->middleware('permission:hr.relations.team.approve');
@@ -1201,8 +1206,10 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('hr/safety')->group(function () {
         Route::get('incidents', [SafetyController::class, 'incidents'])->middleware('permission:hr.safety.view');
         Route::get('handler-options', [SafetyController::class, 'handlerOptions'])->middleware('permission:hr.safety.manage');
+        Route::get('handler-candidates', [SafetyController::class, 'handlerCandidates'])->middleware('permission:hr.safety.manage');
         Route::get('registers', [SafetyController::class, 'registers'])->middleware('permission:hr.safety.manage');
         Route::get('incidents/{id}', [SafetyController::class, 'show'])->whereUuid('id')->middleware('permission:hr.safety.view');
+        Route::get('incidents/{id}/staff-labels', [SafetyController::class, 'incidentStaffLabels'])->whereUuid('id')->middleware('permission:hr.safety.view');
         Route::post('incidents', [SafetyController::class, 'report'])->middleware('permission:hr.safety.report');
         Route::post('incidents/{id}/assign-investigator', [SafetyController::class, 'assignInvestigator'])->whereUuid('id')->middleware('permission:hr.safety.manage');
         Route::post('incidents/{id}/investigations', [SafetyController::class, 'storeInvestigation'])->whereUuid('id')->middleware('permission:hr.safety.investigate');
@@ -1356,9 +1363,11 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:staff.edit');
     Route::delete('staff/{staff}', [StaffController::class, 'destroy'])
         ->whereUuid('staff')
+        ->withTrashed()
         ->middleware('permission:staff.terminate');
     Route::post('staff/{staff}/terminate', [StaffController::class, 'destroy'])
         ->whereUuid('staff')
+        ->withTrashed()
         ->middleware('permission:staff.terminate');
 
     /*

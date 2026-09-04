@@ -218,8 +218,74 @@ trait ManagesDevicePeopleMapping
 
     public function mappingCandidates(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
-        $staff = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->where('staff.company_id', $companyId)->whereNull('staff.employment_ended_at')->select('staff.id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->get();
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'record_type' => ['nullable', Rule::in(['staff', 'calendar', 'shift', 'policy'])],
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'selected_ids' => ['nullable', 'array', 'max:200'],
+            'selected_ids.*' => ['required', 'uuid', 'distinct'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
+        $search = trim((string) ($data['search'] ?? ''));
+        $recordType = $data['record_type'] ?? 'staff';
+        if ($recordType !== 'staff') {
+            $definition = match ($recordType) {
+                'calendar' => ['table' => 'hr_work_calendars', 'status' => 'active'],
+                'shift' => ['table' => 'hr_shift_definitions', 'status' => 'active'],
+                'policy' => ['table' => 'hr_attendance_policies', 'status' => 'approved'],
+            };
+            $records = DB::table($definition['table'])
+                ->where('company_id', $companyId)
+                ->where('status', $definition['status'])
+                ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id))
+                ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {
+                    $match->whereLikeInsensitive('code', $search)->orWhereLikeInsensitive('name', $search);
+                }))
+                ->select('id', 'code', 'name', 'status')
+                ->orderBy('name')
+                ->paginate((int) ($data['per_page'] ?? 25));
+            $records->setCollection($records->getCollection()->map(fn ($row) => [
+                'value' => (string) $row->id,
+                'label' => trim(($row->code ? $row->code.' · ' : '').$row->name),
+                'metadata' => ['code' => $row->code, 'record_type' => $recordType],
+                'status' => $row->status,
+            ]));
+
+            return response()->json(['status' => 'success', 'data' => $records]);
+        }
+        $staff = DB::table('staff')
+            ->join('users', 'users.id', '=', 'staff.user_id')
+            ->where('staff.company_id', $companyId)
+            ->whereNull('staff.deleted_at')
+            ->whereNull('staff.employment_ended_at')
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('staff.id', $id))
+            ->when($data['selected_ids'] ?? null, fn ($query, $ids) => $query->whereIn('staff.id', $ids))
+            ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {
+                $match->whereLikeInsensitive('staff.code', $search)
+                    ->orWhereLikeInsensitive('users.first_name', $search)
+                    ->orWhereLikeInsensitive('users.last_name', $search)
+                    ->orWhereLikeInsensitive('users.email', $search);
+            }))
+            ->select('staff.id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')
+            ->orderBy('users.first_name')
+            ->orderBy('users.last_name');
+        $mapStaff = function ($row) {
+            $name = trim(($row->first_name ?? '').' '.($row->last_name ?? ''));
+            return [
+                'value' => (string) $row->id,
+                'label' => trim(($row->code ? $row->code.' · ' : '').($name ?: 'Staff member')),
+                'metadata' => ['code' => $row->code, 'email' => $row->email],
+                'status' => 'active',
+            ];
+        };
+        if (! empty($data['selected_ids'])) {
+            return response()->json(['status' => 'success', 'data' => $staff->get()->map($mapStaff)->values()]);
+        }
+        $staff = $staff->paginate((int) ($data['per_page'] ?? 25));
+        $staff->setCollection($staff->getCollection()->map($mapStaff));
 
         return response()->json(['status' => 'success', 'data' => $staff]);
     }

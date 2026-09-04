@@ -37,6 +37,59 @@ class AttendanceResultController extends Controller
         return response()->json(['status' => 'success', 'data' => $page, 'meta' => ['readiness' => $readiness, 'filters' => ['from' => $data['from'] ?? null, 'to' => $data['to'] ?? null, 'status' => $data['status'] ?? null]]]);
     }
 
+    public function report(Request $request, StaffAccessService $access): JsonResponse
+    {
+        $data = $request->validate([
+            'from' => ['required', 'date'],
+            'to' => ['required', 'date', 'after_or_equal:from'],
+            'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])],
+            'group_by' => ['required', Rule::in(['work_date', 'status', 'staff', 'company'])],
+        ]);
+        abort_if(CarbonImmutable::parse($data['from'])->diffInDays(CarbonImmutable::parse($data['to'])) > 366, 422, 'Attendance reports are limited to a 367-day range.');
+
+        $staffIds = $access->scope(Staff::query(), $request->user())->select('id');
+        $latest = DB::table('hr_attendance_daily_results')
+            ->selectRaw('staff_id, work_date, max(result_version) as result_version')
+            ->whereIn('staff_id', clone $staffIds)
+            ->whereDate('work_date', '>=', $data['from'])
+            ->whereDate('work_date', '<=', $data['to'])
+            ->groupBy('staff_id', 'work_date');
+        $rows = DB::table('hr_attendance_daily_results as result')
+            ->joinSub($latest, 'latest', fn ($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->join('staff', 'staff.id', '=', 'result.staff_id')
+            ->join('users', 'users.id', '=', 'staff.user_id')
+            ->join('companies', 'companies.id', '=', 'staff.company_id')
+            ->when($data['status'] ?? null, fn ($query, $status) => $query->where('result.day_status', $status));
+
+        $aggregates = "count(*) as days, count(distinct result.staff_id) as staff_count, sum(case when result.day_status = 'present' then 1 else 0 end) as present_days, sum(case when result.day_status = 'absent' then 1 else 0 end) as absent_days, sum(case when result.day_status in ('incomplete', 'insufficient_hours') then 1 else 0 end) as exception_days, coalesce(sum(result.worked_minutes), 0) as worked_minutes, coalesce(sum(result.late_minutes), 0) as late_minutes, coalesce(sum(result.early_leave_minutes), 0) as early_leave_minutes, coalesce(sum(result.payable_minutes), 0) as payable_minutes";
+        $summary = (clone $rows)->selectRaw($aggregates)->first();
+        $groupedQuery = clone $rows;
+        match ($data['group_by']) {
+            'work_date' => $groupedQuery->selectRaw("result.work_date as key, cast(result.work_date as varchar) as label, {$aggregates}")->groupBy('result.work_date')->orderByDesc('result.work_date'),
+            'status' => $groupedQuery->selectRaw("result.day_status as key, result.day_status as label, {$aggregates}")->groupBy('result.day_status')->orderBy('result.day_status'),
+            'staff' => $groupedQuery->selectRaw("result.staff_id as key, concat(coalesce(staff.code || ' · ', ''), users.first_name, ' ', users.last_name) as label, {$aggregates}")->groupBy('result.staff_id', 'staff.code', 'users.first_name', 'users.last_name')->orderBy('users.first_name')->orderBy('users.last_name'),
+            'company' => $groupedQuery->selectRaw("staff.company_id as key, companies.name as label, {$aggregates}")->groupBy('staff.company_id', 'companies.name')->orderBy('companies.name'),
+        };
+        $grouped = $groupedQuery->get();
+
+        return response()->json(['status' => 'success', 'data' => [
+            'summary' => [
+                'days' => (int) ($summary->days ?? 0),
+                'staff_count' => (int) ($summary->staff_count ?? 0),
+                'present_days' => (int) ($summary->present_days ?? 0),
+                'absent_days' => (int) ($summary->absent_days ?? 0),
+                'exception_days' => (int) ($summary->exception_days ?? 0),
+                'worked_minutes' => (int) ($summary->worked_minutes ?? 0),
+                'late_minutes' => (int) ($summary->late_minutes ?? 0),
+                'early_leave_minutes' => (int) ($summary->early_leave_minutes ?? 0),
+                'payable_minutes' => (int) ($summary->payable_minutes ?? 0),
+            ],
+            'groups' => $grouped,
+            'filters' => $data,
+            'generated_at' => now()->toIso8601String(),
+        ]]);
+    }
+
     public function calculate(Request $request, AttendanceResultService $service): JsonResponse
     {
         $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'], 'work_date' => ['required', 'date']]);
@@ -334,7 +387,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'resolved', 'superseded'])], 'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])]]);
         $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
-        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', 'result.id', '=', 'exception.daily_result_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
+        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', 'result.id', '=', 'exception.daily_result_id')->join('staff', 'staff.id', '=', 'exception.staff_id')->join('users', 'users.id', '=', 'staff.user_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
 
