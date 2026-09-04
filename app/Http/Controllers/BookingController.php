@@ -968,8 +968,8 @@ class BookingController extends Controller
         }
 
         // Support multiple latitude/longitude field name conventions
-        $latKeys = ["{$prefix}_lat", "{$prefix}_latitude"];
-        $lngKeys = ["{$prefix}_lng", "{$prefix}_longitude"];
+        $latKeys = ["{$prefix}_lat", "{$prefix}_latitude", "{$prefix}_location_lat", "{$prefix}_location_latitude"];
+        $lngKeys = ["{$prefix}_lng", "{$prefix}_longitude", "{$prefix}_location_lng", "{$prefix}_location_longitude"];
         if ($alt) {
             $latKeys[] = "{$alt}_lat";
             $latKeys[] = "{$alt}_latitude";

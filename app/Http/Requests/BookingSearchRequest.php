@@ -57,6 +57,26 @@ class BookingSearchRequest extends FormRequest
                                 $data[$coordinateKey] = (string) $configuredCoordinate;
                             }
                         }
+
+                        // Dynamic forms may submit as pickup_location/dropoff_location
+                        // while legacy pricing consumes pickup/dropoff. Canonicalize the
+                        // complete identity on the server so pricing never depends on JS
+                        // creating compatibility aliases in a particular DOM order.
+                        $semanticName = strtolower($fieldName . ' ' . $submitAs);
+                        $canonicalPrefix = str_contains($semanticName, 'pickup')
+                            ? 'pickup'
+                            : (str_contains($semanticName, 'dropoff') ? 'dropoff' : null);
+                        if ($canonicalPrefix && $submitAs !== '') {
+                            if (!$this->isBlankSearchValue($data[$submitAs] ?? null)) {
+                                $data[$canonicalPrefix] = $data[$submitAs];
+                            }
+                            foreach (['lat', 'lng'] as $coordinate) {
+                                $sourceKey = "{$submitAs}_{$coordinate}";
+                                if (!$this->isBlankSearchValue($data[$sourceKey] ?? null)) {
+                                    $data["{$canonicalPrefix}_{$coordinate}"] = $data[$sourceKey];
+                                }
+                            }
+                        }
                     }
                 }
             } catch (\Throwable $exception) {
@@ -245,7 +265,17 @@ class BookingSearchRequest extends FormRequest
             static fn ($condition, $value) => strtolower(str_replace('-', '_', (string) $value)) === $activeValue
         );
 
-        if (!is_array($activeCondition) || strtolower((string) ($activeCondition['type'] ?? 'location')) !== 'airport') {
+        if (!is_array($activeCondition)) {
+            return $config;
+        }
+
+        foreach (['default', 'default_lat', 'default_lng'] as $defaultKey) {
+            if (array_key_exists($defaultKey, $activeCondition)) {
+                $config[$defaultKey] = $activeCondition[$defaultKey];
+            }
+        }
+
+        if (strtolower((string) ($activeCondition['type'] ?? 'location')) !== 'airport') {
             return $config;
         }
 
