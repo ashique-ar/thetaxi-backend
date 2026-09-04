@@ -22,9 +22,21 @@ class DynamicAdvanceBookingClientContractTest extends TestCase
 
         $this->assertStringContainsString('function setupAdvanceBookingConstraints()', $script);
         $this->assertStringContainsString('advanceHours * 3600000', $script);
+        $this->assertStringContainsString('value.getUTCMinutes() % 30', $script);
+        $this->assertStringContainsString("30 - minuteRemainder", $script);
         $this->assertStringContainsString("timeInput.min = selectedDate === minimumDate ? minimumTime : '00:00'", $script);
         $this->assertStringContainsString("dateInput.addEventListener('change', () => applyConstraints(false))", $script);
         $this->assertStringContainsString("form.dataset.hasSearchContext === 'false'", $script);
+    }
+
+    public function test_client_blocks_a_booking_before_the_dynamic_minimum(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('function validateAdvanceBookingSelection(form)', $script);
+        $this->assertStringContainsString("selectedDateTime >= minimum", $script);
+        $this->assertStringContainsString('const advanceBookingError = validateAdvanceBookingSelection(form);', $script);
+        $this->assertStringContainsString('Earliest available time is', $script);
     }
 
     public function test_server_still_enforces_the_same_database_setting_and_site_timezone(): void

@@ -143,17 +143,20 @@
             const minimum = () => {
                 const elapsed = Math.max(0, Date.now() - epochAtRender);
                 const value = new Date(siteWallAtRender.getTime() + elapsed + advanceHours * 3600000);
-                if (value.getUTCSeconds() || value.getUTCMilliseconds()) {
-                    value.setUTCMinutes(value.getUTCMinutes() + 1, 0, 0);
+                const minuteRemainder = value.getUTCMinutes() % 30;
+                if (minuteRemainder || value.getUTCSeconds() || value.getUTCMilliseconds()) {
+                    value.setUTCMinutes(value.getUTCMinutes() + (30 - minuteRemainder), 0, 0);
                 }
                 return value;
             };
 
-            const applyConstraints = (setInitial) => {
+            const applyConstraints = (setInitial, correctInvalid = true) => {
                 const min = minimum();
                 const minDate = formatDateValue(min);
                 const minIsoDate = `${min.getUTCFullYear()}-${String(min.getUTCMonth() + 1).padStart(2, '0')}-${String(min.getUTCDate()).padStart(2, '0')}`;
                 const minDateTime = `${minIsoDate}T${formatTimeValue(min)}`;
+                form.dataset.minimumBookingDateTime = minDateTime;
+                form.dataset.minimumBookingDisplay = `${minDate} ${formatTimeValue(min)}`;
 
                 if (dateInput.type === 'datetime-local') {
                     dateInput.min = minDateTime;
@@ -181,14 +184,49 @@
                 const minimumDate = minIsoDate;
                 const minimumTime = formatTimeValue(min);
                 timeInput.min = selectedDate === minimumDate ? minimumTime : '00:00';
-                if ((setInitial && isFresh) || (selectedDate === minimumDate && timeInput.value < minimumTime)) {
+                if (correctInvalid && ((setInitial && isFresh) || (selectedDate === minimumDate && timeInput.value < minimumTime))) {
                     timeInput.value = minimumTime;
                 }
             };
 
+            form.__applyAdvanceBookingConstraints = applyConstraints;
             dateInput.addEventListener('change', () => applyConstraints(false));
             applyConstraints(true);
         });
+    }
+
+    function validateAdvanceBookingSelection(form) {
+        if (typeof form.__applyAdvanceBookingConstraints === 'function') {
+            form.__applyAdvanceBookingConstraints(false, false);
+        }
+
+        const minimum = form.dataset.minimumBookingDateTime || '';
+        const dateName = form.dataset.startDateField || '';
+        const timeName = form.dataset.startTimeField || '';
+        if (!minimum || !dateName) return null;
+
+        const dateInput = form.querySelector(`[name="${CSS.escape(dateName)}"]`);
+        const timeInput = timeName ? form.querySelector(`[name="${CSS.escape(timeName)}"]`) : null;
+        if (!dateInput || !dateInput.value) return null;
+
+        let selectedDateTime = '';
+        if (dateInput.type === 'datetime-local') {
+            selectedDateTime = String(dateInput.value).slice(0, 16);
+        } else if (timeInput && timeInput.value) {
+            const dateMatch = String(dateInput.value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            const isoDate = dateMatch
+                ? `${dateMatch[3]}-${dateMatch[2]}-${dateMatch[1]}`
+                : String(dateInput.value).slice(0, 10);
+            selectedDateTime = `${isoDate}T${String(timeInput.value).slice(0, 5)}`;
+        }
+
+        if (!selectedDateTime || selectedDateTime >= minimum) return null;
+
+        const advanceHours = Math.max(0, Number(form.dataset.advanceHours || 0));
+        const earliest = form.dataset.minimumBookingDisplay || minimum.replace('T', ' ');
+        return advanceHours > 0
+            ? `Bookings must be made at least ${advanceHours} hours in advance. Earliest available time is ${earliest}.`
+            : `The pickup date and time must be in the future. Earliest available time is ${earliest}.`;
     }
 
     function cleanupFailedSubmissionAliases(form) {
@@ -3383,6 +3421,12 @@
                 input.style.borderColor = "";
             }
         });
+
+        const advanceBookingError = validateAdvanceBookingSelection(form);
+        if (advanceBookingError) {
+            isValid = false;
+            errorMessages.push(advanceBookingError);
+        }
         
         console.log('After required inputs check, isValid =', isValid);
 
