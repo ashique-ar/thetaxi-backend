@@ -231,44 +231,6 @@
                 timeSelect.value = "12:00";
             }
 
-            // Set default locations: Colombo to Galle (point-to-point)
-            const pickupInput = dropPickupForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = dropPickupForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = dropPickupForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = dropPickupForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = dropPickupForm.querySelector(
-                'input[name="dropoff_lat"]'
-            );
-            const dropoffLng = dropPickupForm.querySelector(
-                'input[name="dropoff_lng"]'
-            );
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         // Rental Packages - set today and 3 days later
@@ -300,40 +262,6 @@
             //     dropoffTimeInput.value = "12:00";
             // }
 
-            // Set default locations: Colombo to Galle (for rentals)
-            const pickupInput = rideNowForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = rideNowForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = rideNowForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = rideNowForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = rideNowForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = rideNowForm.querySelector('input[name="dropoff_lng"]');
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         const dayRentalForm = document.getElementById("day_rental-form");
@@ -364,40 +292,6 @@
                 dropoffTimeInput.value = "12:00";
             }
 
-            // Set default locations: Colombo to Galle (for rentals)
-            const pickupInput = dayRentalForm.querySelector(
-                'input[name="pickup"]'
-            );
-            const dropoffInput = dayRentalForm.querySelector(
-                'input[name="dropoff"]'
-            );
-            const pickupLat = dayRentalForm.querySelector(
-                'input[name="pickup_lat"]'
-            );
-            const pickupLng = dayRentalForm.querySelector(
-                'input[name="pickup_lng"]'
-            );
-            const dropoffLat = dayRentalForm.querySelector('input[name="dropoff_lat"]');
-            const dropoffLng = dayRentalForm.querySelector('input[name="dropoff_lng"]');
-
-            if (pickupInput && !pickupInput.value) {
-                pickupInput.value = "Colombo, Sri Lanka";
-                if (pickupLat)
-                    pickupLat.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lat;
-                if (pickupLng)
-                    pickupLng.value =
-                        CONFIG.cityCoordinates["Colombo, Sri Lanka"].lng;
-            }
-            if (dropoffInput && !dropoffInput.value) {
-                dropoffInput.value = "Galle, Sri Lanka";
-                if (dropoffLat)
-                    dropoffLat.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lat;
-                if (dropoffLng)
-                    dropoffLng.value =
-                        CONFIG.cityCoordinates["Galle, Sri Lanka"].lng;
-            }
         }
 
         // Custom Tour - set today and 3 days later
@@ -3348,6 +3242,11 @@
             if (String(control.value || '').trim() === '') {
                 control.value = resolveValue(configuredValue, control);
                 if (control.classList.contains('location-search') || ['pickup', 'dropoff', 'from', 'to'].includes(control.name)) {
+                    const { latInput, lngInput } = getCoordInputs(control);
+                    const defaultLat = control.dataset.defaultLat || latInput?.dataset.defaultLat || '';
+                    const defaultLng = control.dataset.defaultLng || lngInput?.dataset.defaultLng || '';
+                    if (latInput && String(latInput.value || '').trim() === '') latInput.value = defaultLat;
+                    if (lngInput && String(lngInput.value || '').trim() === '') lngInput.value = defaultLng;
                     control.setAttribute('data-is-default', 'true');
                     control.setAttribute('data-place-selected', 'true');
                 }

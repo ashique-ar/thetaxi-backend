@@ -174,8 +174,8 @@
                                                data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
                                                value="{{ $isActiveVariant ? $fieldValue : '' }}"
                                                data-default-value="{{ $defaultValue }}"
-                                               data-default-lat="{{ $currentLat ?? $fieldDefaultLat }}"
-                                               data-default-lng="{{ $currentLng ?? $fieldDefaultLng }}"
+                                               data-default-lat="{{ $fieldDefaultLat }}"
+                                               data-default-lng="{{ $fieldDefaultLng }}"
                                                {{ $required ? 'required' : '' }}
                                                {{ !$isActiveVariant ? 'disabled' : '' }}
                                                    autocomplete="off">

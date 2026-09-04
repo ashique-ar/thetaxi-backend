@@ -1,0 +1,75 @@
+<?php
+
+namespace Tests\Unit;
+
+use App\Http\Requests\BookingSearchRequest;
+use Tests\TestCase;
+
+class ConfiguredLocationDefaultNormalizationTest extends TestCase
+{
+    public function test_untouched_homepage_location_defaults_include_their_configured_coordinates(): void
+    {
+        $request = $this->configuredRequest([
+            'service_type' => 'configured-service',
+        ]);
+
+        $request->normalizeForValidation();
+
+        $this->assertSame('Configured pickup', $request->input('pickup'));
+        $this->assertSame('6.927079', $request->input('pickup_lat'));
+        $this->assertSame('79.861244', $request->input('pickup_lng'));
+    }
+
+    public function test_submitted_location_and_coordinates_are_not_replaced_by_defaults(): void
+    {
+        $request = $this->configuredRequest([
+            'service_type' => 'configured-service',
+            'pickup' => 'Selected destination',
+            'pickup_lat' => '7.290572',
+            'pickup_lng' => '80.633728',
+        ]);
+
+        $request->normalizeForValidation();
+
+        $this->assertSame('Selected destination', $request->input('pickup'));
+        $this->assertSame('7.290572', $request->input('pickup_lat'));
+        $this->assertSame('80.633728', $request->input('pickup_lng'));
+    }
+
+    public function test_browser_defaults_use_coordinates_from_the_same_dynamic_field(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('const { latInput, lngInput } = getCoordInputs(control);', $script);
+        $this->assertStringContainsString("const defaultLat = control.dataset.defaultLat", $script);
+        $this->assertStringNotContainsString('pickupInput.value = "Colombo, Sri Lanka"', $script);
+        $this->assertStringNotContainsString('dropoffInput.value = "Galle, Sri Lanka"', $script);
+    }
+
+    private function configuredRequest(array $input): BookingSearchRequest
+    {
+        $request = new class extends BookingSearchRequest {
+            public function normalizeForValidation(): void
+            {
+                $this->prepareForValidation();
+            }
+
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'pickup_location' => [
+                        'type' => 'location',
+                        'required' => true,
+                        'submit_as' => 'pickup',
+                        'default' => 'Configured pickup',
+                        'default_lat' => '6.927079',
+                        'default_lng' => '79.861244',
+                    ],
+                ], true, false];
+            }
+        };
+        $request->initialize($input);
+
+        return $request;
+    }
+}
