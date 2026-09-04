@@ -18,6 +18,7 @@ use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
+use App\Support\Foundation\CanonicalJson;
 
 class SalesBookingAttributionController extends Controller
 {
@@ -103,6 +104,7 @@ class SalesBookingAttributionController extends Controller
             ->where(fn ($q) => $q->where('confirmed', true)->orWhere('status', 'confirmed')->orWhereNotNull('confirmed_at'))
             ->whereDoesntHave('salesAttribution')
             ->when($data['booking_ids'] ?? null, fn ($q, $ids) => $q->whereIn('id', $ids))
+            ->orderBy('id')
             ->limit(500)
             ->get();
         $rows = $bookings
@@ -121,13 +123,37 @@ class SalesBookingAttributionController extends Controller
             ->take($data['limit'] ?? 100)
             ->values();
 
+        $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id']??null,'rows'=>$rows->all()]));
         return response()->json([
             'status' => 'success',
             'data' => [
                 'write_performed' => false,
                 'rows' => $rows,
+                'preview_checksum'=>$checksum,
             ],
         ]);
+    }
+
+    public function applyHistoricalBatch(Request $request): JsonResponse
+    {
+        $data=$request->validate(['company_id'=>['required','uuid','exists:companies,id'],'booking_ids'=>['required','array','min:1','max:500'],'booking_ids.*'=>['uuid','distinct','exists:bookings,id'],'preview_checksum'=>['required','string','size:64'],'idempotency_key'=>['required','string','max:160']]);
+        abort_unless($this->scope->hasPermission($request->user(),'sales.attributions.correct'),403);
+        return DB::transaction(function()use($request,$data){
+            DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->firstOrFail();
+            $scopeChecksum=hash('sha256',CanonicalJson::encode(collect($data['booking_ids'])->sort()->values()->all()));
+            $prior=DB::table('sales_attribution_migration_batches')->where('company_id',$data['company_id'])->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first();
+            if($prior){abort_unless(hash_equals($prior->preview_checksum,$data['preview_checksum'])&&hash_equals($prior->booking_scope_checksum,$scopeChecksum),409,'Historical attribution batch key was reused with different evidence.');return response()->json(['status'=>'success','data'=>json_decode($prior->result_snapshot,true,512,JSON_THROW_ON_ERROR),'idempotent_replay'=>true]);}
+            $profileIds=$this->actorProfileIds($request,$data['company_id']);
+            $bookings=Booking::query()->whereIn('id',$data['booking_ids'])->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->orderBy('id')->lockForUpdate()->get();
+            abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
+            $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>$row['company_id']===$data['company_id']&&($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
+            abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized legal-entity scope.');
+            $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id'],'rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
+            $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking);$created++;}}
+            $result=['requested'=>count($data['booking_ids']),'created'=>$created,'preview_checksum'=>$checksum,'reconciliation'=>['remaining_confirmed_without_attribution'=>Booking::query()->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->count()]];
+            DB::table('sales_attribution_migration_batches')->insert(['id'=>(string)\Illuminate\Support\Str::uuid(),'company_id'=>$data['company_id'],'idempotency_key'=>$data['idempotency_key'],'preview_checksum'=>$checksum,'booking_scope_checksum'=>$scopeChecksum,'requested_count'=>count($data['booking_ids']),'created_count'=>$created,'result_snapshot'=>json_encode($result,JSON_THROW_ON_ERROR),'applied_by'=>$request->user()->id,'applied_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
+            return response()->json(['status'=>'success','data'=>$result]);
+        },3);
     }
 
     public function transferHandler(Request $request, string $attribution): JsonResponse

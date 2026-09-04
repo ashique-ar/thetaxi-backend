@@ -549,6 +549,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('attribution-exceptions', [SalesBookingAttributionController::class, 'exceptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-administration-context', [SalesBookingAttributionController::class, 'administrationContext'])->middleware('permission:sales.attributions.view');
         Route::post('attributions/dry-run', [SalesBookingAttributionController::class, 'dryRun'])->middleware('permission:sales.attributions.correct');
+        Route::post('attributions/historical-batch', [SalesBookingAttributionController::class, 'applyHistoricalBatch'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/transfer-handler', [SalesBookingAttributionController::class, 'transferHandler'])
             ->whereUuid('attribution')->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/correct-owner', [SalesBookingAttributionController::class, 'correctOwner'])

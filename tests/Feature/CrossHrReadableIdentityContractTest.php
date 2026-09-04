@@ -12,6 +12,13 @@ it('keeps staff identifiers internal across lifecycle recruitment performance an
         ->and($development)->toContain('manager_first_name')->not->toContain('<td>{{row.manager_staff_id');
 });
 
+it('renders self service request owners without exposing Staff UUIDs',function(){
+    $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/EssController.php'));
+    $template=file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-self-service/components/requests/requests.component.html'));
+    expect($controller)->toContain('current_owner_first_name')->toContain('current_owner_staff_code')
+        ->and($template)->toContain('current_owner_first_name')->not->toContain("{{row.current_owner_staff_id||");
+});
+
 it('uses a tenant scoped authorized selector and readable labels for confidential wellness owners', function () {
     $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/EngagementController.php'));
     $routes=file_get_contents(base_path('routes/api.php'));
