@@ -1217,6 +1217,10 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('cases/{id}/legal-hold', [RelationsCaseController::class, 'legalHold'])->whereUuid('id')->middleware('permission:hr.relations.legal-hold');
     });
     Route::prefix('hr/safety')->group(function () {
+        Route::get('fitness-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.fitness-restricted');
+        Route::get('register-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.manage');
+        Route::get('ppe-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.manage');
+        Route::get('ppe-custody-options', [SafetyController::class, 'ppeCustodyOptions'])->middleware('permission:hr.safety.manage');
         Route::get('incidents', [SafetyController::class, 'incidents'])->middleware('permission:hr.safety.view');
         Route::get('handler-options', [SafetyController::class, 'handlerOptions'])->middleware('permission:hr.safety.manage');
         Route::get('handler-candidates', [SafetyController::class, 'handlerCandidates'])->middleware('permission:hr.safety.manage');
