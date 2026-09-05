@@ -2502,6 +2502,23 @@ class BookingFlowService
             // Handle multi-group booking items creation
             if ($draft) {
                 // saveBookingDraft already synchronized the canonical booking items for this ID.
+                $booking->bookingItems()->update(['status' => $booking->status]);
+                if (!empty($params['selected_addons'])) {
+                    $this->syncBookingAddons($booking, $params['selected_addons']);
+                }
+                if (!empty($params['variable_customizations'])) {
+                    $this->storeVariableCustomizations($params['variable_customizations'], $booking->id, $params['session_id'] ?? null);
+                }
+                $this->createBookingAssignments($booking, $params, 'active');
+            } elseif (!empty($params['booking_items']) && is_array($params['booking_items'])) {
+                // Angular submits every trip through the canonical booking_items
+                // contract. Persist those exact selections even when confirmation
+                // is performed without a previously saved draft.
+                foreach ($params['booking_items'] as $itemData) {
+                    $itemPricing = $pricing['items'][$itemData['id'] ?? ''] ?? $pricing;
+                    $this->createSingleGroupBookingItem($booking, $itemData, $itemPricing);
+                }
+
                 if (!empty($params['selected_addons'])) {
                     $this->syncBookingAddons($booking, $params['selected_addons']);
                 }
@@ -11398,7 +11415,12 @@ class BookingFlowService
     /**
      * Create vehicle and driver assignments for booking
      */
-    protected function createBookingAssignments(Booking $booking, array $params, string $status = 'pending_approval'): void
+    protected function createBookingAssignments(
+        Booking $booking,
+        array $params,
+        string $status = 'pending_approval',
+        ?BookingItem $onlyBookingItem = null
+    ): void
     {
         // Load relationships if not already loaded
         if (!$booking->relationLoaded('customer')) {
@@ -11408,8 +11430,20 @@ class BookingFlowService
             $booking->load('bookingItems');
         }
 
-        // Get first booking item - all assignments are based on the first item
-        $bookingItem = $booking->bookingItems()->first();
+        // Each trip owns its assignments. Create records for every canonical
+        // booking item so management/tracking cannot borrow the first trip's
+        // vehicle or driver.
+        if (!$onlyBookingItem) {
+            $bookingItems = $booking->bookingItems()->with('serviceType')->get();
+            if ($bookingItems->count() > 1) {
+                foreach ($bookingItems as $bookingItem) {
+                    $this->createBookingAssignments($booking, $params, $status, $bookingItem);
+                }
+                return;
+            }
+        }
+
+        $bookingItem = $onlyBookingItem ?? $booking->bookingItems()->with('serviceType')->first();
         if (!$bookingItem) {
             Log::warning("No booking items found for booking {$booking->id}. Skipping assignments.");
             return;

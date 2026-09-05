@@ -147,13 +147,9 @@ class AssignmentController extends Controller
 
             $driverAssignments = $booking->driverAssignments;
             if ($selectedBookingItem?->id) {
-                $filteredDriverAssignments = $driverAssignments->filter(function ($assignment) use ($selectedBookingItem) {
+                $driverAssignments = $driverAssignments->filter(function ($assignment) use ($selectedBookingItem) {
                     return (string) $assignment->booking_item_id === (string) $selectedBookingItem->id;
                 });
-
-                if ($filteredDriverAssignments->isNotEmpty()) {
-                    $driverAssignments = $filteredDriverAssignments;
-                }
             }
 
             $approvalTriggers = $this->bookingFlowService->getApprovalTriggersForBooking($booking, $selectedBookingItem);
@@ -297,12 +293,13 @@ class AssignmentController extends Controller
                 ] : null,
                 'assignments' => [
                     'vehicle' => $booking->vehicleAssignments
-                        ->filter(function ($assignment) use ($selectedVehicle) {
-                            if (!$selectedVehicle) {
-                                return true;
+                        ->filter(function ($assignment) use ($selectedBookingItem, $selectedVehicle) {
+                            if ($selectedBookingItem?->id) {
+                                return (string) $assignment->booking_item_id === (string) $selectedBookingItem->id;
                             }
 
-                            return (string) $assignment->vehicle_id === (string) $selectedVehicle->id;
+                            return !$selectedVehicle
+                                || (string) $assignment->vehicle_id === (string) $selectedVehicle->id;
                         })
                         ->values()
                         ->map(function($assignment) {
@@ -315,6 +312,7 @@ class AssignmentController extends Controller
                             'manually_confirmed' => $assignment->manually_confirmed,
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
+                            'booking_item_id' => $assignment->booking_item_id,
                             'vehicle' => $assignment->vehicle ? [
                                 'id' => $assignment->vehicle->id,
                                 'name' => $assignment->vehicle->title,
