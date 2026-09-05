@@ -8434,6 +8434,7 @@ class BookingFlowService
                 if ($bookingSource === 'public') {
                     $bookingQuery->where(function ($sourceQuery) use ($publicSources) {
                         $sourceQuery->whereIn('booking_source', $publicSources)
+                            ->orWhereNotNull('workflow_data->cart_items')
                             ->orWhere(function ($fallbackQuery) use ($publicSources) {
                                 $fallbackQuery->where(function ($missingSourceQuery) {
                                     $missingSourceQuery->whereNull('booking_source')
@@ -8446,21 +8447,23 @@ class BookingFlowService
                 }
 
                 $excludedSources = array_values(array_unique(array_merge($publicSources, $corporateSources)));
-                $bookingQuery->where(function ($sourceQuery) use ($excludedSources) {
-                    $sourceQuery->where(function ($explicitSourceQuery) use ($excludedSources) {
-                        $explicitSourceQuery->whereNotNull('booking_source')
-                            ->where('booking_source', '<>', '')
-                            ->whereNotIn('booking_source', $excludedSources);
-                    })->orWhere(function ($fallbackQuery) use ($excludedSources) {
-                        $fallbackQuery->where(function ($missingSourceQuery) {
-                            $missingSourceQuery->whereNull('booking_source')
-                                ->orWhere('booking_source', '');
-                        })->where(function ($createdFromQuery) use ($excludedSources) {
-                            $createdFromQuery->whereNull('created_from')
-                                ->orWhereNotIn('created_from', $excludedSources);
+                $bookingQuery
+                    ->whereNull('workflow_data->cart_items')
+                    ->where(function ($sourceQuery) use ($excludedSources) {
+                        $sourceQuery->where(function ($explicitSourceQuery) use ($excludedSources) {
+                            $explicitSourceQuery->whereNotNull('booking_source')
+                                ->where('booking_source', '<>', '')
+                                ->whereNotIn('booking_source', $excludedSources);
+                        })->orWhere(function ($fallbackQuery) use ($excludedSources) {
+                            $fallbackQuery->where(function ($missingSourceQuery) {
+                                $missingSourceQuery->whereNull('booking_source')
+                                    ->orWhere('booking_source', '');
+                            })->where(function ($createdFromQuery) use ($excludedSources) {
+                                $createdFromQuery->whereNull('created_from')
+                                    ->orWhereNotIn('created_from', $excludedSources);
+                            });
                         });
                     });
-                });
             });
         }
 
@@ -9158,6 +9161,10 @@ class BookingFlowService
 
         if ((bool) ($booking->is_corporate_booking ?? false) || filled($booking->corporate_account_id)) {
             return 'corporate';
+        }
+
+        if (is_array($booking->workflow_data) && array_key_exists('cart_items', $booking->workflow_data)) {
+            return 'public';
         }
 
         $source = strtolower(trim((string) ($booking->booking_source ?: $booking->created_from ?: '')));
