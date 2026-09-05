@@ -62,7 +62,7 @@ class FcmMessageService
         $response = Http::withHeaders([
             'Authorization' => 'Bearer ' . $session['access_token'],
             'Content-Type' => 'application/json',
-        ])->timeout(10)->post($session['send_url'], [
+        ])->connectTimeout(2)->timeout(5)->post($session['send_url'], [
             'message' => [
                 'token' => $token,
                 'notification' => [
