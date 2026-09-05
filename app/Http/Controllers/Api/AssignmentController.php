@@ -84,8 +84,15 @@ class AssignmentController extends Controller
                     ->first();
             }
 
-            $selectedVehicle = $selectedBookingItem?->vehicle ?? $booking->vehicle;
-            $selectedDriver = $selectedBookingItem?->driver ?? $booking->driver;
+            // A booking item is the assignment owner for a trip. A null value on
+            // that item means "assign later" and must not inherit another trip's
+            // legacy booking-level vehicle or driver.
+            $selectedVehicle = $selectedBookingItem
+                ? $selectedBookingItem->vehicle
+                : $booking->vehicle;
+            $selectedDriver = $selectedBookingItem
+                ? $selectedBookingItem->driver
+                : $booking->driver;
             $selectedVehicleGroup = $selectedBookingItem?->vehicleGroup
                 ?? $selectedVehicle?->vehicleGroup;
             $selectedServiceType = $selectedBookingItem?->serviceType
