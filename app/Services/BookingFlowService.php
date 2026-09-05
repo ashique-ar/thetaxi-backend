@@ -80,7 +80,8 @@ class BookingFlowService
         AvailabilityEnforcementService $availabilityEnforcement,
         MailDispatchService $mailDispatchService,
         SmsAutomationService $smsAutomationService
-    ) {
+    )
+    {
         $this->currencyService = $currencyService;
         $this->pricingVariableService = $pricingVariableService;
         $this->assignmentService = $assignmentService;
@@ -384,7 +385,8 @@ class BookingFlowService
         array $storedMappings,
         array $derivedMappings,
         array $defaultMappings
-    ): array {
+    ): array
+    {
         $hasConfiguredFields = !empty($fields);
         $mappingShape = [
             'dates' => ['from_date', 'from_time', 'to_date', 'to_time'],
@@ -418,7 +420,8 @@ class BookingFlowService
         $preferred,
         $derived,
         $fallback
-    ): ?string {
+    ): ?string
+    {
         foreach ([$preferred, $derived, $fallback] as $candidate) {
             $normalized = $this->normalizeCanonicalMappingValue($candidate);
             if ($normalized === null) {
@@ -596,7 +599,8 @@ class BookingFlowService
         ?string $mappedKey,
         array $fallbackKeys = [],
         $default = null
-    ) {
+    )
+    {
         $keys = array_values(array_filter(array_unique(array_merge(
             [$canonicalKey],
             $mappedKey ? [$mappedKey] : [],
@@ -617,7 +621,8 @@ class BookingFlowService
         string $canonicalKey,
         ?string $mappedKey,
         array $fallbackPrefixes = []
-    ): ?array {
+    ): ?array
+    {
         $keys = array_values(array_filter(array_unique(array_merge(
             [$canonicalKey],
             $mappedKey ? [$mappedKey] : [],
@@ -682,7 +687,8 @@ class BookingFlowService
         array $fieldMappings,
         string $canonicalKey,
         bool $defaultWhenMissing
-    ): bool {
+    ): bool
+    {
         if (empty($fields)) {
             return $defaultWhenMissing;
         }
@@ -752,49 +758,8 @@ class BookingFlowService
         Carbon $toDate,
         ?string $excludeBookingId = null,
         bool $isPublic = false
-    ) {
-
-        $vehicleAvailabilityConstraint = function ($query) use ($fromDate, $toDate, $excludeBookingId) {
-            // Filter for active vehicles only
-            $query->where('is_active', true);
-
-            $query->when($excludeBookingId, function ($q) use ($fromDate, $toDate, $excludeBookingId) {
-                // Edit mode: ignore current booking
-                $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate, $excludeBookingId) {
-                    $subQuery->selectRaw('1')
-                        ->from('booking_items')
-                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                        ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
-                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-                        ->where('bookings.id', '!=', $excludeBookingId)
-                        ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                                ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('booking_items.from_date', '<=', $fromDate)
-                                        ->where('booking_items.to_date', '>=', $toDate);
-                                });
-                        });
-                });
-            }, function ($q) use ($fromDate, $toDate) {
-                // Normal mode
-                $q->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
-                    $subQuery->selectRaw('1')
-                        ->from('booking_items')
-                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                        ->whereColumn('booking_items.vehicle_id', 'vehicles.id')
-                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-                        ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                                ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('booking_items.from_date', '<=', $fromDate)
-                                        ->where('booking_items.to_date', '>=', $toDate);
-                                });
-                        });
-                });
-            });
-        };
+    )
+    {
 
         $query = $isPublic
             ? VehicleGroup::query()
@@ -805,7 +770,7 @@ class BookingFlowService
             // Retain active fleet groups even when every vehicle conflicts for the
             // requested dates. The shared result contract will make the group
             // bookable or quotation-only according to the Website setting.
-            $activeVehicleConstraint = fn ($query) => $query->where('is_active', true);
+            $activeVehicleConstraint = fn($query) => $query->where('is_active', true);
             $query->with([
                 'grade',
                 'make',
@@ -825,7 +790,8 @@ class BookingFlowService
                 'fuelType',
                 'category',
                 'class',
-                'vehicles' => $vehicleAvailabilityConstraint,
+                // Keep conflicts visible; availability analysis reports their status.
+                'vehicles' => fn($query) => $query->where('is_active', true),
             ]);
         }
 
@@ -941,8 +907,8 @@ class BookingFlowService
             ->get();
 
         $selectedServiceTypeModel = (($isPublic || $this->shouldUsePublicServiceContext($params))
-            ? ServiceType::publicContext()
-            : ServiceType::query())
+        ? ServiceType::publicContext()
+        : ServiceType::query())
             ->where(function ($query) use ($serviceType) {
                 $query->where('id', $serviceType)
                     ->orWhere('code', $serviceType)
@@ -962,7 +928,7 @@ class BookingFlowService
 
         foreach ($vehicleGroups as $group) {
             $servicePricingSetting = $servicePricingSettings->get($group->id);
-            if ($servicePricingSetting?->is_hidden) {
+            if ($isPublic && $servicePricingSetting?->is_hidden) {
                 continue;
             }
 
@@ -1133,7 +1099,7 @@ class BookingFlowService
 
             // Check if service type requires inquiry (is_inquiry flag)
             $serviceTypeRequiresInquiry = false;
-            if ($serviceTypeModel) {
+            if ($isPublic && $serviceTypeModel) {
                 $serviceTypeRequiresInquiry = $serviceTypeModel->is_inquiry ?? false;
             }
 
@@ -1149,7 +1115,8 @@ class BookingFlowService
             $hasAvailableVehicles = $availableCount > 0;
 
             // Check if vehicle group is inquiry-only (force quotation)
-            $isInquiryOnly = ($group->is_inquiry_only ?? false) || ($servicePricingSetting?->is_inquiry_only ?? false);
+            // Website flags do not restrict portal bookings, even with website pricing.
+            $isInquiryOnly = $isPublic && (($group->is_inquiry_only ?? false) || ($servicePricingSetting?->is_inquiry_only ?? false));
 
             // Debug logging to trace inquiry flag issue (after all variables are defined)
             if ($serviceTypeModel) {
@@ -1201,7 +1168,7 @@ class BookingFlowService
             if ($pricingError) {
                 $quotationOnlyReasons[] = 'pricing_error';
             }
-            if ($group->force_quotation_request ?? false) {
+            if ($isPublic && ($group->force_quotation_request ?? false)) {
                 $quotationOnlyReasons[] = 'force_quotation';
             }
 
@@ -3346,18 +3313,19 @@ class BookingFlowService
         string $customerId,
         ?string $vehicleId = null,
         ?Carbon $from = null
-    ): array {
+    ): array
+    {
         $customer = Customer::with('user')->findOrFail($customerId);
-        $from     = $from ?? Carbon::now();
+        $from = $from ?? Carbon::now();
 
         if ($vehicleId) {
             $vehicle = Vehicle::findOrFail($vehicleId);
-            $result  = $this->availabilityEnforcement->checkSelfDrivenEligibility($customer, $vehicle, $from);
+            $result = $this->availabilityEnforcement->checkSelfDrivenEligibility($customer, $vehicle, $from);
 
             return [
-                'is_eligible'        => $result['available'],
-                'blocking_reasons'   => $result['blocking_reasons'],
-                'warnings'           => $result['warnings'],
+                'is_eligible' => $result['available'],
+                'blocking_reasons' => $result['blocking_reasons'],
+                'warnings' => $result['warnings'],
                 'vehicle_compatible' => $vehicle->self_driven_compatible ?? false,
             ];
         }
@@ -3389,9 +3357,9 @@ class BookingFlowService
         }
 
         return [
-            'is_eligible'        => empty($blocking),
-            'blocking_reasons'   => $blocking,
-            'warnings'           => $warnings,
+            'is_eligible' => empty($blocking),
+            'blocking_reasons' => $blocking,
+            'warnings' => $warnings,
             'vehicle_compatible' => null,
         ];
     }
@@ -3697,13 +3665,13 @@ class BookingFlowService
             ->with(['vehicleGroup', 'defaultDriver.user'])
             ->when($searchTerm !== '', function ($q) use ($searchTerm) {
                 $q->where(function ($q) use ($searchTerm) {
-                $q->where('title', 'LIKE', "%{$searchTerm}%")
-                    ->orWhere('license_plate', 'LIKE', "%{$searchTerm}%")
-                    ->orWhere('registration_no', 'LIKE', "%{$searchTerm}%");
-                if (Uuid::isValid($searchTerm)) {
-                    $q->orWhere('id', $searchTerm);
-                }
-            });
+                    $q->where('title', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('license_plate', 'LIKE', "%{$searchTerm}%")
+                        ->orWhere('registration_no', 'LIKE', "%{$searchTerm}%");
+                    if (Uuid::isValid($searchTerm)) {
+                        $q->orWhere('id', $searchTerm);
+                    }
+                });
             });
 
         $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
@@ -4167,7 +4135,7 @@ class BookingFlowService
                     [
                         'reason_code' => 'no_matching_calculation_definition',
                         'candidate_failures' => collect($candidateFailures)
-                            ->map(fn (array $failure) => [
+                            ->map(fn(array $failure) => [
                                 'definition_id' => $failure['definition_id'] ?? null,
                                 'reason' => $failure['reason'] ?? 'unknown',
                                 'missing_variables' => array_values($failure['missing_variables'] ?? []),
@@ -4199,7 +4167,7 @@ class BookingFlowService
             }
             $transformed = $this->transformCalculationResult($calculationResult, $params, $mode, $servicePackageInfo);
             $transformed['calculation_metadata']['candidate_failures'] = collect($candidateFailures)
-                ->map(fn (array $failure) => [
+                ->map(fn(array $failure) => [
                     'definition_id' => $failure['definition_id'] ?? null,
                     'reason' => $failure['reason'] ?? 'unknown',
                     'missing_variables' => array_values($failure['missing_variables'] ?? []),
@@ -4208,16 +4176,33 @@ class BookingFlowService
                 ->all();
             $transformed['calculation_metadata']['runtime_context'] = collect($calculationInputs)
                 ->only([
-                    'from_date', 'to_date', 'from_time', 'to_time',
-                    'is_weekend', 'is_holiday', 'month', 'day_of_week',
+                    'from_date',
+                    'to_date',
+                    'from_time',
+                    'to_time',
+                    'is_weekend',
+                    'is_holiday',
+                    'month',
+                    'day_of_week',
                     'holiday_context',
-                    'customer_type', 'customer_tier', 'owner_type', 'owner_id',
-                    'pricing_context', 'requested_pricing_context',
-                    'requested_service_type_id', 'pricing_service_type_id',
-                    'requested_service_package_id', 'pricing_service_package_id',
-                    'is_self_driven', 'booking_type',
-                    'package_id', 'package_included_km', 'additional_stops', 'stops',
-                    'manual_additional_charge', 'late_return_fee',
+                    'customer_type',
+                    'customer_tier',
+                    'owner_type',
+                    'owner_id',
+                    'pricing_context',
+                    'requested_pricing_context',
+                    'requested_service_type_id',
+                    'pricing_service_type_id',
+                    'requested_service_package_id',
+                    'pricing_service_package_id',
+                    'is_self_driven',
+                    'booking_type',
+                    'package_id',
+                    'package_included_km',
+                    'additional_stops',
+                    'stops',
+                    'manual_additional_charge',
+                    'late_return_fee',
                 ])
                 ->all();
             $transformed['pricing_scope'] = [
@@ -4299,11 +4284,24 @@ class BookingFlowService
         // Runtime/final-pricing flows provide measured values directly instead
         // of asking Google Maps to estimate the original route again.
         foreach ([
-            'journey_distance', 'total_distance', 'actual_distance',
-            'delivery_distance', 'pickup_distance', 'extra_km',
-            'extra_hours', 'extra_minutes', 'waiting_hours', 'waiting_minutes',
-            'recovery_hours', 'recovery_minutes', 'overtime_hours', 'overtime_minutes',
-            'additional_stops', 'stops', 'manual_additional_charge', 'late_return_fee',
+            'journey_distance',
+            'total_distance',
+            'actual_distance',
+            'delivery_distance',
+            'pickup_distance',
+            'extra_km',
+            'extra_hours',
+            'extra_minutes',
+            'waiting_hours',
+            'waiting_minutes',
+            'recovery_hours',
+            'recovery_minutes',
+            'overtime_hours',
+            'overtime_minutes',
+            'additional_stops',
+            'stops',
+            'manual_additional_charge',
+            'late_return_fee',
         ] as $runtimeInput) {
             if (array_key_exists($runtimeInput, $params) && is_numeric($params[$runtimeInput])) {
                 $inputs[$runtimeInput] = (float) $params[$runtimeInput];
@@ -4438,8 +4436,8 @@ class BookingFlowService
             $inputs['total_distance'] = max(
                 $minimumKm,
                 is_numeric($inputs['total_distance'] ?? null)
-                    ? (float) $inputs['total_distance']
-                    : 0
+                ? (float) $inputs['total_distance']
+                : 0
             );
             $inputs['minimum_km_applied'] = true;
             $inputs['distance_source'] = 'measured_below_'
@@ -4811,7 +4809,8 @@ class BookingFlowService
         ?int $durationSeconds = null,
         ?string $ownerType = null,
         ?string $ownerId = null
-    ): array {
+    ): array
+    {
         $distanceDetails = [
             'journey_distance' => $kmCalculations['journey_distance'] ?? 0,
             'actual_journey_distance' => $kmCalculations['actual_journey_distance'] ?? ($kmCalculations['journey_distance'] ?? 0),
@@ -4908,32 +4907,32 @@ class BookingFlowService
             // Look up the extra_km_rate common rate definition for this service type
             $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
                 ->whereHas('commonRateDefinition', function ($query) use ($serviceTypeId) {
-                $query->where('code', 'extra_km_rate')
-                    ->where(function ($serviceQuery) use ($serviceTypeId) {
-                        $serviceQuery->where('service_type_id', $serviceTypeId)
-                            ->orWhereNull('service_type_id');
-                    })
-                    ->where('is_active', true);
-            })
+                    $query->where('code', 'extra_km_rate')
+                        ->where(function ($serviceQuery) use ($serviceTypeId) {
+                            $serviceQuery->where('service_type_id', $serviceTypeId)
+                                ->orWhereNull('service_type_id');
+                        })
+                        ->where('is_active', true);
+                })
                 ->where('vehicle_group_id', $vehicleGroupId)
                 ->where('is_active', true)
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
+                }, fn($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->tap(fn($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->get()
-                ->sort(fn ($left, $right) => $this->commonRatePricingRank(
+                ->sort(fn($left, $right) => $this->commonRatePricingRank(
                     $left,
                     $serviceTypeId,
                     $ownerType,
                     $ownerId
                 ) <=> $this->commonRatePricingRank(
-                    $right,
-                    $serviceTypeId,
-                    $ownerType,
-                    $ownerId
-                ))
+                            $right,
+                            $serviceTypeId,
+                            $ownerType,
+                            $ownerId
+                        ))
                 ->first();
 
             if ($commonRatePricing && $commonRatePricing->value !== null) {
@@ -5000,21 +4999,21 @@ class BookingFlowService
                 ->where('is_active', true)
                 ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
                     $this->applyOwnerScopeToQuery($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
+                }, fn($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->tap(fn($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
                 ->orderBy('priority', 'desc')
                 ->get()
-                ->sort(fn ($left, $right) => $this->commonRatePricingRank(
+                ->sort(fn($left, $right) => $this->commonRatePricingRank(
                     $left,
                     $serviceTypeId,
                     $ownerType,
                     $ownerId
                 ) <=> $this->commonRatePricingRank(
-                    $right,
-                    $serviceTypeId,
-                    $ownerType,
-                    $ownerId
-                ))
+                            $right,
+                            $serviceTypeId,
+                            $ownerType,
+                            $ownerId
+                        ))
                 ->first();
 
             if (!$commonRatePricing || $commonRatePricing->value === null) {
@@ -5058,7 +5057,8 @@ class BookingFlowService
         string $serviceTypeId,
         ?string $ownerType,
         ?string $ownerId
-    ): array {
+    ): array
+    {
         $ownerExact = $ownerType && $ownerId
             && $pricing->owner_type === $ownerType
             && (string) $pricing->owner_id === (string) $ownerId;
@@ -5723,7 +5723,8 @@ class BookingFlowService
         ?array $addonsPricing = null,
         ?Booking $booking = null,
         ?BookingItem $bookingItem = null
-    ): array {
+    ): array
+    {
         $triggers = [];
         $discounts = $this->collectApprovalDiscounts($params, $booking);
 
@@ -5801,7 +5802,8 @@ class BookingFlowService
         ?array $addonsPricing = null,
         ?Booking $booking = null,
         ?BookingItem $bookingItem = null
-    ): bool {
+    ): bool
+    {
         $hasAddonPayload =
             array_key_exists('selected_addons', $params)
             || array_key_exists('booking_items', $params);
@@ -6038,7 +6040,8 @@ class BookingFlowService
         array $orderedAdditionalStops = [],
         ?string $corporateId = null,
         ?string $corporateServiceTypeId = null,
-    ): array {
+    ): array
+    {
         $pickupLocation = $this->normalizeLocationInput($pickupLocation);
         $dropoffLocation = $this->normalizeLocationInput($dropoffLocation);
         $additionalPickupLocations = $this->normalizeLocationList($additionalPickupLocations);
@@ -6445,7 +6448,8 @@ class BookingFlowService
         array $additionalPickupLocations = [],
         array $additionalDropoffLocations = [],
         array $orderedAdditionalStops = []
-    ): array {
+    ): array
+    {
         $points = [$pickupLocation];
 
         if (!empty($orderedAdditionalStops)) {
@@ -6838,8 +6842,8 @@ class BookingFlowService
             $booking,
             $action === 'approve' ? 'Booking approved' : 'Booking rejected',
             $action === 'approve'
-                ? 'Your booking request has been approved.'
-                : 'Your booking request was not approved.',
+            ? 'Your booking request has been approved.'
+            : 'Your booking request was not approved.',
             $action === 'approve' ? 'booking_approved' : 'booking_rejected'
         );
 
@@ -6855,7 +6859,8 @@ class BookingFlowService
         string $title,
         string $message,
         string $eventType
-    ): void {
+    ): void
+    {
         try {
             $booking->loadMissing('customer.user');
             $recipient = $booking->customer?->user;
@@ -8630,102 +8635,102 @@ class BookingFlowService
 
         match ($queue) {
             'needs_approval' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->where('status', 'pending_approval')
+                    $bookingQuery->where('status', 'pending_approval')
                     ->orWhere(function ($approvalQuery) {
                         $approvalQuery->where('requires_approval', true)
-                            ->whereIn('approval_status', ['pending', 'required']);
+                        ->whereIn('approval_status', ['pending', 'required']);
                     });
-            }),
+                }),
             'needs_assignment' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
+                    $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
                     ->whereDoesntHave('dispatches', function ($dispatchQuery) {
                         $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                            ->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
+                        ->whereIn('dispatch_status', ['dispatched', 'in_progress', 'returned']);
                     });
-            })->where(function ($assignmentQuery) {
-                $assignmentQuery->whereNull('booking_items.vehicle_id')
-                    ->orWhere(function ($driverQuery) {
-                        $driverQuery->where(function ($selfDrivenQuery) {
-                            $selfDrivenQuery->whereNull('booking_items.is_self_driven')
+                })->where(function ($assignmentQuery) {
+                        $assignmentQuery->whereNull('booking_items.vehicle_id')
+                        ->orWhere(function ($driverQuery) {
+                            $driverQuery->where(function ($selfDrivenQuery) {
+                                $selfDrivenQuery->whereNull('booking_items.is_self_driven')
                                 ->orWhere('booking_items.is_self_driven', false);
-                        })->whereNull('booking_items.driver_id');
-                    });
-            }),
+                            })->whereNull('booking_items.driver_id');
+                        });
+                    }),
             'ready_to_dispatch' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
+                    $bookingQuery->whereIn('status', ['approved', 'confirmed', 'allocated'])
                     ->where(function ($dispatchQuery) {
                         $dispatchQuery->whereDoesntHave('dispatches', function ($itemDispatchQuery) {
                             $itemDispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id');
                         })->orWhereHas('dispatches', function ($dispatchStatusQuery) {
-                                $dispatchStatusQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                                    ->whereIn('dispatch_status', ['not_dispatched', 'ready_for_dispatch']);
-                            });
+                            $dispatchStatusQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                            ->whereIn('dispatch_status', ['not_dispatched', 'ready_for_dispatch']);
+                        });
                     });
-            })->whereNotNull('booking_items.vehicle_id')
+                })->whereNotNull('booking_items.vehicle_id')
                 ->where(function ($driverQuery) {
-                    $driverQuery->where('booking_items.is_self_driven', true)
+                        $driverQuery->where('booking_items.is_self_driven', true)
                         ->orWhereNotNull('booking_items.driver_id');
-                }),
+                    }),
             'active' => $query
                 ->whereNull('booking_items.completed_at')
                 ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
                 ->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
-                    $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
-                        ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
-                })->orWhereHas('dispatches', function ($dispatchQuery) {
-                    $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                        ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
-                        ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
+                        $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
                             $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
+                            ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
+                        })->orWhereHas('dispatches', function ($dispatchQuery) {
+                            $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                            ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                            ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
+                                $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
                                 ->where('trip_phase', 'completed');
+                            });
                         });
-                });
-            }),
+                    }),
             'return_due' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereHas('dispatches', function ($dispatchQuery) {
-                    $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
+                    $bookingQuery->whereHas('dispatches', function ($dispatchQuery) {
+                        $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
                         ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
                         ->whereNull('actual_return_at')
                         ->whereNotNull('expected_return_at')
                         ->where('expected_return_at', '<=', now());
-                });
-            }),
+                    });
+                }),
             'qc_pending' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereHas('qcs', function ($qcQuery) {
-                    $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
+                    $bookingQuery->whereHas('qcs', function ($qcQuery) {
+                        $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
                         ->whereIn('qc_status', ['pending', 'in_progress']);
-                });
-            }),
+                    });
+                }),
             'repair_pending' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereHas('qcs', function ($qcQuery) {
-                    $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
+                    $bookingQuery->whereHas('qcs', function ($qcQuery) {
+                        $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
                         ->where(function ($repairQuery) {
                             $repairQuery->whereIn('qc_status', ['issues_found', 'repair_required'])
-                                ->orWhere('repair_required', true);
+                            ->orWhere('repair_required', true);
                         });
-                });
-            }),
+                    });
+                }),
             'ready_to_complete' => $query->whereNull('booking_items.completed_at')
                 ->whereNotIn('booking_items.status', ['completed', 'cancelled'])
                 ->whereHas('booking', function ($bookingQuery) {
-                    $bookingQuery->whereNotIn('status', ['completed', 'cancelled'])
+                        $bookingQuery->whereNotIn('status', ['completed', 'cancelled'])
                         ->whereHas('qcs', function ($qcQuery) {
                             $qcQuery->whereColumn('booking_qcs.booking_item_id', 'booking_items.id')
-                                ->where('qc_status', 'completed');
+                            ->where('qc_status', 'completed');
                         });
-                }),
+                    }),
             'payment_pending', 'payment_attention' => $query->whereHas('booking', function ($bookingQuery) {
-                $bookingQuery->whereNotIn('status', ['cancelled', 'completed'])
+                    $bookingQuery->whereNotIn('status', ['cancelled', 'completed'])
                     ->where(function ($paymentQuery) {
                         $paymentQuery->whereIn('payment_collection_status', ['pending', 'payment_pending', 'billable'])
-                            ->orWhere(function ($fallbackPaymentQuery) {
-                                $fallbackPaymentQuery->whereNull('payment_collection_status')
-                                    ->whereNotIn('payment_status', ['paid', 'refunded']);
-                            })
-                            ->orWhere('payment_status', 'pending');
+                        ->orWhere(function ($fallbackPaymentQuery) {
+                            $fallbackPaymentQuery->whereNull('payment_collection_status')
+                            ->whereNotIn('payment_status', ['paid', 'refunded']);
+                        })
+                        ->orWhere('payment_status', 'pending');
                     });
-            }),
+                }),
             default => null,
         };
     }
@@ -9891,19 +9896,26 @@ class BookingFlowService
             }
         }
 
-        return array_values(array_filter($dates, fn (Carbon $date) => $date->greaterThan($baseDate) && $date->lessThanOrEqualTo($endDate)));
+        return array_values(array_filter($dates, fn(Carbon $date) => $date->greaterThan($baseDate) && $date->lessThanOrEqualTo($endDate)));
     }
 
     private function normalizeRecurrenceWeekdays(array $days): array
     {
         $nameMap = [
-            'monday' => 1, 'mon' => 1,
-            'tuesday' => 2, 'tue' => 2,
-            'wednesday' => 3, 'wed' => 3,
-            'thursday' => 4, 'thu' => 4,
-            'friday' => 5, 'fri' => 5,
-            'saturday' => 6, 'sat' => 6,
-            'sunday' => 7, 'sun' => 7,
+            'monday' => 1,
+            'mon' => 1,
+            'tuesday' => 2,
+            'tue' => 2,
+            'wednesday' => 3,
+            'wed' => 3,
+            'thursday' => 4,
+            'thu' => 4,
+            'friday' => 5,
+            'fri' => 5,
+            'saturday' => 6,
+            'sat' => 6,
+            'sunday' => 7,
+            'sun' => 7,
         ];
 
         return collect($days)
@@ -9915,7 +9927,7 @@ class BookingFlowService
 
                 return $nameMap[strtolower((string) $day)] ?? null;
             })
-            ->filter(fn ($day) => $day >= 1 && $day <= 7)
+            ->filter(fn($day) => $day >= 1 && $day <= 7)
             ->unique()
             ->values()
             ->all();
@@ -10564,132 +10576,165 @@ class BookingFlowService
     {
         return [];
     }
+
     private function getTopCustomers($startDate, $endDate): array
     {
         return [];
     }
+
     private function getVehicleUtilization($startDate, $endDate): array
     {
         return [];
     }
+
     private function getServiceTypeBreakdown($startDate, $endDate): array
     {
         return [];
     }
+
     private function getRecentActivities($startDate, $endDate): array
     {
         return [];
     }
+
     private function getDashboardAlerts(): array
     {
         return [];
     }
+
     private function getTrendBreakdown($query, $groupBy, $metric): array
     {
         return [];
     }
+
     private function getTrendsSummary($trends, $metric): array
     {
         return [];
     }
+
     private function getRevenueByPeriod($query, $period, $dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function getRevenueBreakdown($query, $breakdown): array
     {
         return [];
     }
+
     private function getRevenueProjections($dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function getVehicleUtilizationReport($dateFrom, $dateTo, $period, $params): array
     {
         return [];
     }
+
     private function getDriverUtilizationReport($dateFrom, $dateTo, $period, $params): array
     {
         return [];
     }
+
     private function getServiceTypeUtilizationReport($dateFrom, $dateTo, $period, $params): array
     {
         return [];
     }
+
     private function getTimeBasedUtilizationReport($dateFrom, $dateTo, $period, $params): array
     {
         return [];
     }
+
     private function getCustomerAcquisitionAnalytics($query, $period, $dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function getCustomerRetentionAnalytics($query, $period, $dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function getCustomerLifetimeValueAnalytics($query, $period, $dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function getCustomerBookingFrequencyAnalytics($query, $period, $dateFrom, $dateTo): array
     {
         return [];
     }
+
     private function generateFinancialReport($dateFrom, $dateTo, $filters): array
     {
         return [];
     }
+
     private function generateOperationalReport($dateFrom, $dateTo, $filters): array
     {
         return [];
     }
+
     private function generateCustomerReport($dateFrom, $dateTo, $filters): array
     {
         return [];
     }
+
     private function generateVehiclePerformanceReport($dateFrom, $dateTo, $filters): array
     {
         return [];
     }
+
     private function generateDriverPerformanceReport($dateFrom, $dateTo, $filters): array
     {
         return [];
     }
+
     private function generateReportFile($data, $format, $type, $dateFrom, $dateTo): string
     {
         return 'report.pdf';
     }
+
     private function generateExportFile($data, $format): string
     {
         return 'export.csv';
     }
+
     private function getBookingTimeline($booking): array
     {
         return [];
     }
+
     private function getPricingBreakdown($booking): array
     {
         return [];
     }
+
     private function getBookingDocuments($booking): array
     {
         return [];
     }
+
     private function getBookingActivities($booking): array
     {
         return [];
     }
+
     private function getRelatedBookings($booking): array
     {
         return [];
     }
+
     private function assignVehicle($bookingId, $vehicleId, $userId): void
     {
     }
+
     private function assignDriver($bookingId, $driverId, $userId): void
     {
     }
+
     private function changeBookingStatus($bookingId, $status, $userId, $reason): void
     {
     }
@@ -12015,7 +12060,7 @@ class BookingFlowService
             $serviceTypeId = $params['service_type_id'] ?? data_get($params, 'booking_items.0.service_type_id');
             if ($serviceTypeId) {
                 $service = \App\Models\Service\ServiceType::find($serviceTypeId);
-                $rawMethod = ($service?->deposit_mode && $service->deposit_mode !== 'none' && (float)$service->deposit_value > 0)
+                $rawMethod = ($service?->deposit_mode && $service->deposit_mode !== 'none' && (float) $service->deposit_value > 0)
                     ? 'deposit_then_balance'
                     : $service?->default_payment_arrangement;
             }
@@ -12061,13 +12106,13 @@ class BookingFlowService
             'failed' => 'failed',
             'refunded' => 'refunded',
             default => match ($method) {
-                'monthly_invoice' => 'corporate_account',
-                'account_credit' => 'credit_terms',
-                'pay_at_end' => 'due_at_hire_end',
-                'advance_then_balance', 'deposit_then_balance' => 'advance_due',
-                'complimentary' => 'waived',
-                default => 'collection_due',
-            },
+                    'monthly_invoice' => 'corporate_account',
+                    'account_credit' => 'credit_terms',
+                    'pay_at_end' => 'due_at_hire_end',
+                    'advance_then_balance', 'deposit_then_balance' => 'advance_due',
+                    'complimentary' => 'waived',
+                    default => 'collection_due',
+                },
         };
 
         return [
@@ -12142,7 +12187,7 @@ class BookingFlowService
             'name' => trim((string) ($contact['name'] ?? '')) ?: null,
             'email' => trim((string) ($contact['email'] ?? '')) ?: null,
             'phone' => trim((string) ($contact['phone'] ?? '')) ?: null,
-        ], fn ($value) => $value !== null && $value !== '');
+        ], fn($value) => $value !== null && $value !== '');
 
         return !empty($normalized) ? $normalized : null;
     }
