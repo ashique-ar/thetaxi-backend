@@ -2002,6 +2002,7 @@ class BookingFlowService
             // (No normalization: we use $params directly)
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyPortalBookingSource($booking);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -2445,6 +2446,7 @@ class BookingFlowService
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyPortalBookingSource($booking);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -7347,7 +7349,7 @@ class BookingFlowService
 
         // Add source tracking
         $data['created_from'] = 'internal';
-        $data['booking_source'] = 'dashboard';
+        $data['booking_source'] = 'internal';
         $data['created_by_user_id'] = Auth::id();
         $data['created_user_id'] = Auth::id();
 
@@ -8360,9 +8362,8 @@ class BookingFlowService
                             ->orWhereExists(function ($employeeUserQuery) use ($search) {
                                 $employeeUserQuery->selectRaw('1')
                                     ->from('users')
-                                    // Legacy databases created bookings.employee_id as varchar.
-                                    // Cast the UUID column to text so PostgreSQL can compare both safely.
-                                    ->whereRaw('users.id::text = bookings.employee_id')
+                                    // Support both the legacy varchar and current UUID employee columns.
+                                    ->whereRaw('users.id::text = bookings.employee_id::text')
                                     ->whereNull('users.deleted_at')
                                     ->where(function ($identityQuery) use ($search) {
                                         $identityQuery->where('users.first_name', 'like', "%{$search}%")
@@ -8433,22 +8434,33 @@ class BookingFlowService
                 if ($bookingSource === 'public') {
                     $bookingQuery->where(function ($sourceQuery) use ($publicSources) {
                         $sourceQuery->whereIn('booking_source', $publicSources)
-                            ->orWhereIn('created_from', $publicSources);
+                            ->orWhere(function ($fallbackQuery) use ($publicSources) {
+                                $fallbackQuery->where(function ($missingSourceQuery) {
+                                    $missingSourceQuery->whereNull('booking_source')
+                                        ->orWhere('booking_source', '');
+                                })->whereIn('created_from', $publicSources);
+                            });
                     });
 
                     return;
                 }
 
                 $excludedSources = array_values(array_unique(array_merge($publicSources, $corporateSources)));
-                $bookingQuery
-                    ->where(function ($sourceQuery) use ($excludedSources) {
-                        $sourceQuery->whereNull('booking_source')
-                            ->orWhereNotIn('booking_source', $excludedSources);
-                    })
-                    ->where(function ($sourceQuery) use ($excludedSources) {
-                        $sourceQuery->whereNull('created_from')
-                            ->orWhereNotIn('created_from', $excludedSources);
+                $bookingQuery->where(function ($sourceQuery) use ($excludedSources) {
+                    $sourceQuery->where(function ($explicitSourceQuery) use ($excludedSources) {
+                        $explicitSourceQuery->whereNotNull('booking_source')
+                            ->where('booking_source', '<>', '')
+                            ->whereNotIn('booking_source', $excludedSources);
+                    })->orWhere(function ($fallbackQuery) use ($excludedSources) {
+                        $fallbackQuery->where(function ($missingSourceQuery) {
+                            $missingSourceQuery->whereNull('booking_source')
+                                ->orWhere('booking_source', '');
+                        })->where(function ($createdFromQuery) use ($excludedSources) {
+                            $createdFromQuery->whereNull('created_from')
+                                ->orWhereNotIn('created_from', $excludedSources);
+                        });
                     });
+                });
             });
         }
 
@@ -11887,6 +11899,7 @@ class BookingFlowService
             $booking->booking_date = $booking->booking_date ?? now();
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
+            $this->applyPortalBookingSource($booking);
 
             // An incomplete draft may be saved before any trip or vehicle
             // group is selected. That is valid and is not a pricing failure.
@@ -12054,6 +12067,26 @@ class BookingFlowService
             : $booking->employee_id;
         $booking->cost_center = $params['cost_center'] ?? $booking->cost_center;
         $booking->project_code = $params['project_code'] ?? $booking->project_code;
+    }
+
+    /**
+     * Source fields describe where a booking was created, independently of the
+     * pricing context used by its service type.
+     */
+    private function applyPortalBookingSource(Booking $booking): void
+    {
+        $existingSource = strtolower(trim((string) $booking->booking_source));
+        $publicSources = ['public', 'website', 'web', 'online', 'customer', 'customer_portal', 'guest'];
+
+        // Editing a booking that originated on the website must retain its channel.
+        if (!$booking->is_corporate_booking && in_array($existingSource, $publicSources, true)) {
+            return;
+        }
+
+        $booking->booking_source = $booking->is_corporate_booking ? 'corporate' : 'internal';
+        $booking->created_from = 'internal';
+        $booking->created_by_user_id ??= Auth::id();
+        $booking->created_user_id ??= Auth::id();
     }
 
     private function applyBookingPaymentFields(Booking $booking, array $params): void
