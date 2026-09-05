@@ -94,6 +94,8 @@ class TripTrackingDistanceTelemetryTest extends TestCase
 
         self::assertSame(2, $result['accepted_point_count']);
         self::assertSame(2, $result['rejected_point_count']);
+        self::assertSame(2, $result['outside_trip_window_point_count']);
+        self::assertSame(0, $result['quality_rejected_point_count']);
         self::assertLessThan(0.1, $result['recorded_distance_km']);
     }
 

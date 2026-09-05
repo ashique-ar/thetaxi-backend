@@ -23,6 +23,8 @@ class RouteEvidenceService
         $recordedCount = $ordered->count();
         $accepted = collect();
         $rejectedCount = 0;
+        $outsideTripWindowCount = 0;
+        $qualityRejectedCount = 0;
 
         foreach ($ordered as $point) {
             $recordedAt = $point->recorded_at ? Carbon::parse($point->recorded_at)->utc() : null;
@@ -31,13 +33,21 @@ class RouteEvidenceService
             $inWindow = $recordedAt && $tripStartedAt
                 && $recordedAt->gte($tripStartedAt)
                 && (!$tripCompletedAt || $recordedAt->lte($tripCompletedAt));
-            $valid = $inWindow
-                && $latitude >= -90 && $latitude <= 90
+            if (!$inWindow) {
+                $outsideTripWindowCount++;
+                $rejectedCount++;
+                continue;
+            }
+
+            $valid = $latitude >= -90 && $latitude <= 90
                 && $longitude >= -180 && $longitude <= 180
                 && ($point->accuracy === null || (float) $point->accuracy <= self::MAX_ACCURACY_METERS);
 
             if ($valid) $accepted->push($point);
-            else $rejectedCount++;
+            else {
+                $rejectedCount++;
+                $qualityRejectedCount++;
+            }
         }
 
         $distance = 0.0;
@@ -56,6 +66,7 @@ class RouteEvidenceService
             if ($seconds === 0) {
                 $movementRejectedCount++;
                 $rejectedCount++;
+                $qualityRejectedCount++;
                 continue;
             }
             $longestGap = max($longestGap, $seconds);
@@ -69,6 +80,7 @@ class RouteEvidenceService
             if ($speed > self::MAX_PLAUSIBLE_SPEED_KPH) {
                 $movementRejectedCount++;
                 $rejectedCount++;
+                $qualityRejectedCount++;
                 continue;
             }
             $distance += $segmentDistance;
@@ -84,7 +96,9 @@ class RouteEvidenceService
             }
         }
 
-        $trustworthy = $segmentCount > 0 && $gapCount === 0 && $rejectedCount === 0;
+        // Assignment tracking normally starts before the passenger trip. Those
+        // points remain route evidence but do not make in-trip GPS invalid.
+        $trustworthy = $segmentCount > 0 && $gapCount === 0 && $qualityRejectedCount === 0;
         $coverage = $recordedCount === 0 ? 'not_recorded'
             : ($segmentCount === 0 ? 'insufficient' : ($trustworthy ? 'healthy' : 'partial'));
 
@@ -98,13 +112,16 @@ class RouteEvidenceService
             'recorded_point_count' => $recordedCount,
             'accepted_point_count' => $accepted->count() - $movementRejectedCount,
             'rejected_point_count' => $rejectedCount,
+            'outside_trip_window_point_count' => $outsideTripWindowCount,
+            'quality_rejected_point_count' => $qualityRejectedCount,
             'gap_count' => $gapCount,
             'longest_gap_seconds' => $longestGap,
             'first_valid_point_at' => $accepted->first()?->recorded_at?->utc()->toIso8601String(),
             'last_valid_point_at' => $accepted->last()?->recorded_at?->utc()->toIso8601String(),
             'calculation_version' => DriverRouteEvidenceContract::CALCULATION_VERSION,
             'warnings' => array_values(array_filter([
-                $rejectedCount > 0 ? 'Some route points were excluded by evidence validation.' : null,
+                $outsideTripWindowCount > 0 ? 'Assignment route points outside the passenger trip window are retained but excluded from trip mileage.' : null,
+                $qualityRejectedCount > 0 ? 'Some in-trip route points failed GPS quality validation.' : null,
                 $gapCount > 0 ? 'Recorded GPS contains one or more coverage gaps.' : null,
             ])),
             'pricing_effect' => DriverRouteEvidenceContract::PRICING_EFFECT,

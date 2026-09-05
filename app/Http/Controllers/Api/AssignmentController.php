@@ -63,15 +63,37 @@ class AssignmentController extends Controller
 
             $requestedBookingItemId = $request->query('booking_item_id');
             $selectedBookingItem = null;
+            $selectionWarning = null;
 
             if (!empty($requestedBookingItemId)) {
                 $selectedBookingItem = $booking->bookingItems->firstWhere('id', $requestedBookingItemId);
 
                 if (!$selectedBookingItem) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Selected booking item does not belong to this booking',
-                    ], 422);
+                    $staleBookingItem = \App\Models\Booking\BookingItem::withTrashed()
+                        ->whereKey($requestedBookingItemId)
+                        ->where('booking_id', $booking->id)
+                        ->first();
+
+                    if (!$staleBookingItem || !$staleBookingItem->trashed()) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Selected booking item does not belong to this booking',
+                        ], 422);
+                    }
+
+                    $selectedBookingItem = $booking->bookingItems
+                        ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
+                        ->first();
+                    $selectionWarning = $selectedBookingItem
+                        ? 'The selected trip was replaced by a booking update. The current trip has been opened.'
+                        : null;
+
+                    if (!$selectedBookingItem) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'This booking has no active booking items',
+                        ], 422);
+                    }
                 }
             } else {
                 $selectedBookingItem = $booking->bookingItems
@@ -233,6 +255,7 @@ class AssignmentController extends Controller
                     'updated_at' => $booking->updated_at?->toIso8601String(),
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
+                'selection_warning' => $selectionWarning,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,
                 'booking_items' => $booking->bookingItems
                     ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))

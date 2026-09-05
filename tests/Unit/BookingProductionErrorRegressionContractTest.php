@@ -45,3 +45,37 @@ it('returns validation and missing-booking responses without converting them to 
         ->toContain('catch (ModelNotFoundException $e)')
         ->toContain("'message' => 'Booking not found'");
 });
+
+it('preserves booking item identities during booking updates', function () {
+    $service = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $update = Str::between(
+        $service,
+        'public function updateBooking(',
+        'private function generateConflictRecommendations('
+    );
+    $draft = Str::between(
+        $service,
+        'public function saveBookingDraft(',
+        'private function hasDraftPricingInputs('
+    );
+
+    expect($update)
+        ->toContain('BookingItem::withTrashed()')
+        ->toContain('$bookingItem->restore()')
+        ->toContain('$bookingItem->update($itemAttributes)')
+        ->toContain("->whereNotIn('id', \$retainedBookingItemIds)")
+        ->not->toContain('$booking->bookingItems()->delete();')
+        ->and($draft)
+        ->toContain('BookingItem::withTrashed()')
+        ->toContain('$existingBookingItems->get($submittedItemId)')
+        ->not->toContain('$booking->bookingItems()->delete();');
+});
+
+it('recovers booking management links that reference a replaced item', function () {
+    $controller = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
+
+    expect($controller)
+        ->toContain('BookingItem::withTrashed()')
+        ->toContain("'selection_warning' => \$selectionWarning")
+        ->toContain('The current trip has been opened.');
+});

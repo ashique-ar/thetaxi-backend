@@ -2747,7 +2747,12 @@ class BookingFlowService
     /**
      * Create a single booking item for single-group bookings
      */
-    private function createSingleGroupBookingItem(Booking $booking, array $params, array $pricing): void
+    private function createSingleGroupBookingItem(
+        Booking $booking,
+        array $params,
+        array $pricing,
+        ?BookingItem $bookingItem = null
+    ): BookingItem
     {
         $dynamicRequirements = $this->getDynamicCalculationRequirements($params);
         $itemMetadata = array_merge($params['metadata'] ?? [], [
@@ -2781,7 +2786,7 @@ class BookingFlowService
             $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
         }
 
-        $bookingItem = BookingItem::create([
+        $itemAttributes = [
             'booking_id' => $booking->id,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
             'service_type_id' => $params['service_type'] ?? $params['service_type_id'] ?? null,
@@ -2813,11 +2818,7 @@ class BookingFlowService
             'requires_approval' => $booking->requires_approval ?? false,
             'approved_at' => $booking->confirmed_at,
             'approved_by' => Auth::id(),
-            'item_type' => 'vehicle_group'
-        ]);
-
-        // Update additional JSON fields
-        $bookingItem->update([
+            'item_type' => 'vehicle_group',
             'pricing_breakdown' => $pricing['breakdown'] ?? [],
             'addons' => $pricing['addons'] ?? [],
             'customizations' => $params['variable_customizations'] ?? [],
@@ -2826,8 +2827,19 @@ class BookingFlowService
                 'distance_details' => $pricing['distance_details'] ?? null,
                 'calculation_type' => $pricing['calculation_type'] ?? null,
                 'package_info' => $pricing['package_info'] ?? null,
-            ])
-        ]);
+            ]),
+        ];
+
+        if ($bookingItem) {
+            if ($bookingItem->trashed()) {
+                $bookingItem->restore();
+            }
+            $bookingItem->update($itemAttributes);
+        } else {
+            $bookingItem = BookingItem::create($itemAttributes);
+        }
+
+        return $bookingItem;
     }
 
     /**
@@ -2891,8 +2903,11 @@ class BookingFlowService
 
             // 3) Handle booking items (NEW: support for multiple items with addons per item)
             if (array_key_exists('booking_items', $params) && is_array($params['booking_items'])) {
-                // Delete existing booking items
-                $booking->bookingItems()->delete();
+                $existingBookingItems = BookingItem::withTrashed()
+                    ->where('booking_id', $booking->id)
+                    ->get()
+                    ->keyBy(fn (BookingItem $item) => (string) $item->id);
+                $retainedBookingItemIds = [];
 
                 $totalBaseAmount = 0;
                 $totalAddonsCost = 0;
@@ -2993,8 +3008,7 @@ class BookingFlowService
                         'to_time' => $itemData['to_time'] ?? null,
                     ]);
 
-                    // Create booking item with addons stored in JSON
-                    $bookingItem = BookingItem::create([
+                    $itemAttributes = [
                         'booking_id' => $booking->id,
                         'service_type_id' => $itemData['service_type_id'] ?? $itemData['service_type'],
                         'vehicle_group_id' => $vehicleGroupId, // Use resolved vehicle_group_id
@@ -3025,7 +3039,25 @@ class BookingFlowService
                         'customizations' => $itemData['customizations'] ?? [],
                         'discounts' => $itemData['discounts'] ?? [],
                         'metadata' => $itemData['metadata'] ?? [],
-                    ]);
+                    ];
+
+                    $submittedItemId = !empty($itemData['id'])
+                        ? (string) $itemData['id']
+                        : null;
+                    $bookingItem = $submittedItemId
+                        ? $existingBookingItems->get($submittedItemId)
+                        : null;
+
+                    if ($bookingItem) {
+                        if ($bookingItem->trashed()) {
+                            $bookingItem->restore();
+                        }
+                        $bookingItem->update($itemAttributes);
+                    } else {
+                        $bookingItem = BookingItem::create($itemAttributes);
+                    }
+
+                    $retainedBookingItemIds[] = (string) $bookingItem->id;
 
                     // Accumulate totals
                     $totalBaseAmount += $itemTotals['base_amount'];
@@ -3033,6 +3065,14 @@ class BookingFlowService
                     $totalDiscountAmount += $itemTotals['discount_amount'];
                     $totalEstimated += $itemTotals['total_estimated'];
                 }
+
+                $booking->bookingItems()
+                    ->when(
+                        $retainedBookingItemIds !== [],
+                        fn ($query) => $query->whereNotIn('id', $retainedBookingItemIds)
+                    )
+                    ->delete();
+                $booking->unsetRelation('bookingItems');
 
                 // Update booking totals
                 $booking->base_amount = $totalBaseAmount;
@@ -11964,13 +12004,31 @@ class BookingFlowService
 
             // Handle booking items (trips)
             if (isset($params['booking_items']) && is_array($params['booking_items'])) {
-                // Delete existing items for draft to keep it clean
-                $booking->bookingItems()->delete();
+                $existingBookingItems = BookingItem::withTrashed()
+                    ->where('booking_id', $booking->id)
+                    ->get()
+                    ->keyBy(fn (BookingItem $item) => (string) $item->id);
+                $retainedBookingItemIds = [];
 
                 foreach ($params['booking_items'] as $itemData) {
                     $itemPricing = $pricing['items'][$itemData['id'] ?? ''] ?? $pricing;
-                    $this->createSingleGroupBookingItem($booking, $itemData, $itemPricing);
+                    $submittedItemId = !empty($itemData['id']) ? (string) $itemData['id'] : null;
+                    $bookingItem = $this->createSingleGroupBookingItem(
+                        $booking,
+                        $itemData,
+                        $itemPricing,
+                        $submittedItemId ? $existingBookingItems->get($submittedItemId) : null
+                    );
+                    $retainedBookingItemIds[] = (string) $bookingItem->id;
                 }
+
+                $booking->bookingItems()
+                    ->when(
+                        $retainedBookingItemIds !== [],
+                        fn ($query) => $query->whereNotIn('id', $retainedBookingItemIds)
+                    )
+                    ->delete();
+                $booking->unsetRelation('bookingItems');
             }
 
             return $booking->load(['customer', 'bookingItems']);
