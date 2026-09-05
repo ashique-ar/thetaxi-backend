@@ -1,5 +1,7 @@
 <?php
 
+use Illuminate\Http\Request;
+
 it('allows the portal to preflight broadcasting authentication', function () {
     $origin = 'https://portal.thetaxi.lk';
 
@@ -38,4 +40,14 @@ it('returns json instead of redirecting unauthenticated broadcasting requests', 
         ->assertUnauthorized()
         ->assertHeader('Content-Type', 'application/json')
         ->assertJsonPath('message', 'Unauthenticated.');
+});
+
+it('authenticates broadcasting with the portal passport guard', function () {
+    $route = app('router')->getRoutes()->match(
+        Request::create('/broadcasting/auth', 'POST')
+    );
+
+    expect($route->gatherMiddleware())
+        ->toContain('auth:api')
+        ->not->toContain('auth:sanctum');
 });

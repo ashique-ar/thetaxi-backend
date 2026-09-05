@@ -27,7 +27,9 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->group(base_path('routes/api_public.php'));
 
             // Register broadcast channel authorization routes
-            Broadcast::routes(['middleware' => ['auth:sanctum']]);
+            // Portal and driver clients use Passport bearer tokens, matching
+            // the guard used by the protected API routes.
+            Broadcast::routes(['middleware' => ['auth:api']]);
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
