@@ -386,6 +386,8 @@ trait BookingSubmissionTrait
                 'status' => 'error',
                 'message' => 'Booking not found',
             ], 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Error updating booking: ' . $e->getMessage());
             return response()->json([

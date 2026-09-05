@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class AssignmentController extends Controller
 {
@@ -350,6 +351,11 @@ class AssignmentController extends Controller
                 'data' => $result,
                 'message' => 'Assignment details retrieved successfully'
             ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Booking not found',
+            ], 404);
         } catch (\Exception $e) {
             Log::error('Error getting assignment details: ' . $e->getMessage());
             return response()->json([

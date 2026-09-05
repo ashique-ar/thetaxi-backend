@@ -95,6 +95,15 @@ class BookingFlowService
      */
     public function normalizeDynamicCalculationParams(array $params): array
     {
+        foreach (['service_type', 'service_type_id'] as $serviceTypeKey) {
+            if (is_array($params[$serviceTypeKey] ?? null)) {
+                $params[$serviceTypeKey] = $params[$serviceTypeKey]['id']
+                    ?? $params[$serviceTypeKey]['code']
+                    ?? $params[$serviceTypeKey]['name']
+                    ?? null;
+            }
+        }
+
         $context = $this->resolveDynamicFieldContext($params);
         $fieldMappings = $context['field_mappings'];
         $usesDropoffTime = $context['uses_dropoff_time'];
@@ -799,6 +808,8 @@ class BookingFlowService
     }
     public function getAvailableVehicleGroups(array $params, bool $isPublic = false): array
     {
+        $params = $this->sanitizeCanonicalLocationParam($params, 'pickup_location');
+        $params = $this->sanitizeCanonicalLocationParam($params, 'dropoff_location');
         $serviceType = $params['service_type'];
         $fromDate = Carbon::parse($params['from_date']);
         $toDate = isset($params['to_date']) ? Carbon::parse($params['to_date']) : $fromDate;
@@ -924,6 +935,16 @@ class BookingFlowService
                 ->keyBy('vehicle_group_id')
             : collect();
 
+        $calculationRequirements = $this->getDynamicCalculationRequirements([
+            ...$params,
+            'service_type_id' => $selectedServiceTypeModel?->id,
+        ]);
+        $hasUsablePickup = is_array($pickupLocation) && $this->isLocationPayloadUsable($pickupLocation);
+        $hasUsableDropoff = is_array($dropoffLocation) && $this->isLocationPayloadUsable($dropoffLocation);
+        $hasRequiredPricingLocations =
+            (!(bool) ($calculationRequirements['pickup_location_required'] ?? true) || $hasUsablePickup)
+            && (!(bool) ($calculationRequirements['dropoff_location_required'] ?? true) || $hasUsableDropoff);
+
         $availability = [];
 
         foreach ($vehicleGroups as $group) {
@@ -961,7 +982,7 @@ class BookingFlowService
                 // Calculate duration
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
-                if ($serviceTypeModel) {
+                if ($serviceTypeModel && $hasRequiredPricingLocations) {
                     // Check if service type uses dropoff time
                     $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
 
@@ -1264,7 +1285,7 @@ class BookingFlowService
         $returnDurationSeconds = null;
         $isReturnTrip = $params['is_return_trip'] ?? false;
 
-        if ($pickupLocation && $dropoffLocation) {
+        if ($hasUsablePickup && $hasUsableDropoff) {
             $distanceData = $this->calculateCompanyDistances(
                 $pickupLocation,
                 $dropoffLocation,
