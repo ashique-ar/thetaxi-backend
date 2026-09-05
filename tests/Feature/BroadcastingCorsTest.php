@@ -21,3 +21,21 @@ it('allows the portal to preflight broadcasting authentication', function () {
         ->assertHeader('Access-Control-Allow-Origin', $origin)
         ->assertHeader('Access-Control-Allow-Credentials', 'true');
 });
+
+it('returns json instead of redirecting unauthenticated broadcasting requests', function () {
+    $response = $this->post(
+        '/broadcasting/auth',
+        [
+            'socket_id' => '1234.5678',
+            'channel_name' => 'private-App.Models.User.unknown',
+        ],
+        [
+            'Origin' => 'https://portal.thetaxi.lk',
+        ]
+    );
+
+    $response
+        ->assertUnauthorized()
+        ->assertHeader('Content-Type', 'application/json')
+        ->assertJsonPath('message', 'Unauthenticated.');
+});
