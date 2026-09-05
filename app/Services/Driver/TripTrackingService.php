@@ -202,6 +202,7 @@ class TripTrackingService
         // Idempotent: already completed — return the stored summary rather than re-processing
         if ($assignment->trip_phase === TripPhase::COMPLETED) {
             $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
+            $distanceEvidence = $this->calculateTripEvidence($assignment);
             return [
                 'assignment_id'              => $assignment->id,
                 'booking_id'                 => $assignment->booking_id,
@@ -209,6 +210,7 @@ class TripTrackingService
                 'total_distance_km'          => $assignment->total_distance_km !== null
                     ? round((float) $assignment->total_distance_km, 2)
                     : null,
+                'distance_evidence'          => $distanceEvidence,
                 'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
                     ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
                     : 0,
@@ -258,7 +260,10 @@ class TripTrackingService
 
             // Final distance comes only from recorded mobile route points;
             // never use booked/minimum KM or a client-supplied total.
-            $totalDistance = $this->calculateTripDistance($assignment);
+            $distanceEvidence = $this->calculateTripEvidence($assignment);
+            $totalDistance = $distanceEvidence['distance_trustworthy']
+                ? round((float) $distanceEvidence['recorded_distance_km'], 2)
+                : null;
             $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
 
             $durationMinutes = $assignment->trip_started_at
@@ -315,6 +320,7 @@ class TripTrackingService
                 'booking_id' => $assignment->booking_id,
                 'booking_item_id' => $assignment->booking_item_id,
                 'total_distance_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
+                'distance_evidence' => $distanceEvidence,
                 'total_duration_minutes' => $durationMinutes,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
                 'waiting_period_count' => $waitingTime['waiting_period_count'],
