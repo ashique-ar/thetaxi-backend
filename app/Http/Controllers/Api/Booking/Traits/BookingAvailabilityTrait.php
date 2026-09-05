@@ -97,7 +97,12 @@ trait BookingAvailabilityTrait
 
             $rules = [
                 'search_term' => 'nullable|string|min:1',
-                'service_type' => 'required|string',
+                // A service type refines form requirements when the booking flow has
+                // one, but assignment availability itself is a date/group conflict
+                // lookup and must also work from Booking Management without pricing
+                // context.
+                'service_type' => 'nullable|string',
+                'service_type_id' => 'nullable|string',
                 'from_date' => 'required|date',
                 'from_time' => 'required|string',
                 'include_unavailable' => 'boolean',

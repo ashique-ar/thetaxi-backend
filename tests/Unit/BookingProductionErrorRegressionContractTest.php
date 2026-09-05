@@ -18,12 +18,21 @@ it('does not calculate route pricing until required locations are usable', funct
         ->toContain('if ($serviceTypeModel && $hasRequiredPricingLocations)');
 });
 
-it('accepts either canonical service type key for vehicle availability', function () {
+it('does not require pricing context for vehicle conflict availability', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingAvailabilityTrait.php');
+    $service = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $search = Str::between(
+        $service,
+        'public function searchSpecificVehicles(',
+        'public function searchSpecificDrivers('
+    );
 
     expect($source)
-        ->toContain("'service_type' => 'required_without:service_type_id|string'")
-        ->toContain("'service_type_id' => 'required_without:service_type|string'");
+        ->toContain("'service_type' => 'nullable|string'")
+        ->toContain("'service_type_id' => 'nullable|string'")
+        ->and($search)
+        ->not->toContain("\$params['service_type']")
+        ->not->toContain("\$params['service_type_id']");
 });
 
 it('returns validation and missing-booking responses without converting them to server errors', function () {
