@@ -17,6 +17,7 @@ class DatabaseSeeder extends Seeder
             // Safe on new and existing client databases. Creates only missing
             // permissions/roles and adds baseline grants without removing any.
             AllPermissionsSeeder::class,
+            TenantDecisionDefinitionSeeder::class,
 
             // Core data the HR module (and much of the rest of the app) depends
             // on: a default Company, then Staff-linked User accounts. Order

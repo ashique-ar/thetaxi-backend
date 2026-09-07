@@ -1319,7 +1319,15 @@ Route::middleware(['auth:api'])->group(function () {
     });
     Route::get('hr/governance/queues', [HrGovernanceController::class, 'queues'])->middleware('permission:hr.governance.view');
 
+    Route::prefix('tenant-decisions')->group(function () {
+        Route::get('context', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'context'])->middleware('permission:tenant-decisions.view');
+        Route::get('/', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'index'])->middleware('permission:tenant-decisions.view');
+        Route::post('/', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'store'])->middleware('permission:tenant-decisions.manage');
+        Route::post('{decision}/approve', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'approve'])->whereUuid('decision')->middleware('permission:tenant-decisions.approve');
+    });
+
     Route::get('documents/stats', [DocumentController::class, 'stats']);
+    Route::get('documents/owner-options', [DocumentController::class, 'ownerOptions']);
     Route::get('documents', [DocumentController::class, 'index']);
     Route::get('documents/{document}', [DocumentController::class, 'show'])->whereUuid('document');
     Route::get('documents/{document}/download', [DocumentController::class, 'download'])->whereUuid('document');
@@ -2230,6 +2238,8 @@ Route::middleware(['auth:api'])->group(function () {
 
             // Advanced booking list with filtering
             Route::get('bookings', [BookingFlowController::class, 'getBookingsList'])
+                ->middleware('permission:bookings.view');
+            Route::get('return-inspection/options', [BookingFlowController::class, 'getReturnInspectionOptions'])
                 ->middleware('permission:bookings.view');
             Route::get('bookings/{bookingId}', [BookingFlowController::class, 'getBookingDetails'])
                 ->middleware('permission:bookings.view');

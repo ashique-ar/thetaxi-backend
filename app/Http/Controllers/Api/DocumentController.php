@@ -12,6 +12,8 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleLease;
 use App\Models\Vehicle\VehicleOwner;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -36,8 +38,81 @@ class DocumentController extends Controller
     {
         $this->middleware('permission:documents.view|system.view|agreements.view|customers.view|drivers.view|staff-sensitive-documents.view|vehicles.view|vehicle-owners.view|vehicle-leases.view')->only(['index', 'show', 'download', 'stats']);
         $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['store']);
+        $this->middleware('permission:documents.create|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.create|vehicles.edit|vehicle-owners.edit|vehicle-leases.edit')->only(['ownerOptions']);
         $this->middleware('permission:documents.edit|uploads.manage|customers.edit|drivers.edit|staff-sensitive-documents.verify|vehicles.edit|vehicle-owners.edit|vehicle-leases.manage')->only(['verify', 'reject', 'setLegalHold']);
         $this->middleware('permission:documents.delete|uploads.manage|staff-sensitive-documents.delete')->only(['destroy']);
+    }
+
+    public function ownerOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'record_type' => ['required', 'string', 'max:50'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'selected_id' => ['nullable', 'uuid'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $ownerType = $this->normaliseOwnerType($data['record_type']);
+        $this->assertOwnerAccess($request, $ownerType, 'create', $data['selected_id'] ?? null);
+        $query = $this->ownerOptionQuery($request, $ownerType);
+
+        if (! empty($data['selected_id'])) {
+            $query->whereKey($data['selected_id']);
+        } elseif ($search = trim((string) ($data['search'] ?? ''))) {
+            $this->applyOwnerOptionSearch($query, $ownerType, $search);
+        }
+
+        $owners = $query->limit(min(50, (int) ($data['per_page'] ?? 25)))->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $owners->map(fn (Model $owner) => [
+                'value' => (string) $owner->getKey(),
+                'label' => $this->ownerLabel($owner),
+                'metadata' => ['type' => str_replace('_', ' ', $ownerType)],
+                'status' => $owner->deleted_at ? 'inactive' : 'active',
+            ])->filter(fn (array $option) => filled($option['label']))->values(),
+        ]);
+    }
+
+    private function ownerOptionQuery(Request $request, string $ownerType): Builder
+    {
+        $class = $this->ownerClass($ownerType);
+        $query = $class::query();
+
+        if (in_array($ownerType, ['customer', 'driver', 'staff', 'vehicle_owner'], true)) {
+            $query->with('user');
+        }
+        if ($ownerType === 'vehicle_lease') {
+            $query->with('vehicle');
+        }
+        if ($ownerType === 'staff') {
+            return $this->staffAccess->scope($query, $request->user())
+                ->whereNull('employment_ended_at');
+        }
+
+        return $query;
+    }
+
+    private function applyOwnerOptionSearch(Builder $query, string $ownerType, string $search): void
+    {
+        $query->where(function (Builder $nested) use ($ownerType, $search): void {
+            if ($ownerType === 'agreement') {
+                $nested->whereLikeInsensitive('title', $search);
+            } elseif ($ownerType === 'vehicle') {
+                $nested->whereLikeInsensitive('registration_no', $search)->orWhereLikeInsensitive('title', $search);
+            } elseif ($ownerType === 'vehicle_lease') {
+                $nested->whereLikeInsensitive('lease_number', $search)->orWhereLikeInsensitive('agreement_number', $search);
+            } else {
+                if (in_array($ownerType, ['customer', 'driver', 'staff'], true)) {
+                    $nested->whereLikeInsensitive('code', $search);
+                }
+                $nested->orWhereHas('user', fn (Builder $user) => $user
+                    ->whereLikeInsensitive('first_name', $search)
+                    ->orWhereLikeInsensitive('last_name', $search)
+                    ->orWhereLikeInsensitive('email', $search));
+            }
+        });
     }
 
     public function index(Request $request): JsonResponse
@@ -174,6 +249,7 @@ class DocumentController extends Controller
             'employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'],
             'document_type' => ['required', 'string', 'max:50'],
             'document_number' => ['nullable', 'string', 'max:255'],
+            'idempotency_key' => ['required', 'uuid'],
             'expiry_date' => ['nullable', 'date'],
             'supersedes_id' => ['nullable', 'uuid'],
             'retention_until' => ['nullable', 'date'],
@@ -181,8 +257,31 @@ class DocumentController extends Controller
         ]);
 
         $this->assertOwnerAccess($request, $data['owner_type'], 'create', $data['owner_id']);
-        $owner = $this->owner($data['owner_type'], $data['owner_id']);
         $file = $request->file('file');
+        $checksum = hash('sha256', json_encode([
+            'actor_id' => $request->user()?->id,
+            'owner_type' => $this->normaliseOwnerType($data['owner_type']),
+            'owner_id' => $data['owner_id'],
+            'employment_spell_id' => $data['employment_spell_id'] ?? null,
+            'document_type' => $data['document_type'],
+            'document_number' => $data['document_number'] ?? null,
+            'expiry_date' => $data['expiry_date'] ?? null,
+            'supersedes_id' => $data['supersedes_id'] ?? null,
+            'retention_until' => $data['retention_until'] ?? null,
+            'file_sha256' => hash_file('sha256', $file->getRealPath()),
+        ], JSON_THROW_ON_ERROR));
+        $replay = Document::query()->where('upload_idempotency_key', $data['idempotency_key'])->first();
+        if ($replay) {
+            abort_unless(
+                hash_equals((string) $replay->upload_request_checksum, $checksum)
+                    && (string) $replay->created_user_id === (string) ($request->user()?->id),
+                Response::HTTP_CONFLICT,
+                'The upload retry key was already used for a different request.'
+            );
+
+            return response()->json(['status' => 'success', 'data' => $this->payload($replay->load('documentable'))]);
+        }
+        $owner = $this->owner($data['owner_type'], $data['owner_id']);
         $ownerType = $this->normaliseOwnerType($data['owner_type']);
         $disk = $this->storageDisk($ownerType);
         $superseded = ! empty($data['supersedes_id'])
@@ -205,25 +304,51 @@ class DocumentController extends Controller
         }
         $path = $file->store("documents/{$ownerType}/{$owner->getKey()}", $disk);
 
-        $document = $owner->documents()->create([
-            'employment_spell_id' => $data['employment_spell_id'] ?? $superseded?->employment_spell_id,
-            'document_type' => $data['document_type'],
-            'document_number' => $data['document_number'] ?? (string) Str::uuid(),
-            'expiry_date' => $data['expiry_date'] ?? null,
-            'disk' => $disk,
-            'path' => $path,
-            'file_name' => $file->getClientOriginalName(),
-            'file_size' => $file->getSize(),
-            'file_type' => $file->getMimeType(),
-            'status' => 'pending',
-            'classification' => $ownerType === 'staff' ? 'hr_confidential' : 'operational',
-            'version' => $superseded ? $superseded->version + 1 : 1,
-            'supersedes_id' => $superseded?->id,
-            'retention_until' => $data['retention_until'] ?? null,
-            'created_user_id' => $request->user()?->id,
-        ]);
+        try {
+            $document = DB::transaction(function () use ($request, $owner, $ownerType, $data, $checksum, $file, $disk, $path, $superseded): Document {
+                $lockedOwner = $owner::query()->lockForUpdate()->findOrFail($owner->getKey());
+                $document = $lockedOwner->documents()->create([
+                    'employment_spell_id' => $data['employment_spell_id'] ?? $superseded?->employment_spell_id,
+                    'document_type' => $data['document_type'],
+                    'document_number' => $data['document_number'] ?? (string) Str::uuid(),
+                    'upload_idempotency_key' => $data['idempotency_key'],
+                    'upload_request_checksum' => $checksum,
+                    'expiry_date' => $data['expiry_date'] ?? null,
+                    'disk' => $disk,
+                    'path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_size' => $file->getSize(),
+                    'file_type' => $file->getMimeType(),
+                    'status' => 'pending',
+                    'classification' => $ownerType === 'staff' ? 'hr_confidential' : 'operational',
+                    'version' => $superseded ? $superseded->version + 1 : 1,
+                    'supersedes_id' => $superseded?->id,
+                    'retention_until' => $data['retention_until'] ?? null,
+                    'created_user_id' => $request->user()?->id,
+                ]);
+                $this->audit($request, $document, 'document_uploaded');
 
-        $this->audit($request, $document, 'document_uploaded');
+                return $document;
+            });
+        } catch (QueryException $exception) {
+            $replay = Document::query()->where('upload_idempotency_key', $data['idempotency_key'])->first();
+            if (! $replay) {
+                Storage::disk($disk)->delete($path);
+                throw $exception;
+            }
+            Storage::disk($disk)->delete($path);
+            abort_unless(
+                hash_equals((string) $replay->upload_request_checksum, $checksum)
+                    && (string) $replay->created_user_id === (string) ($request->user()?->id),
+                Response::HTTP_CONFLICT,
+                'The upload retry key was already used for a different request.'
+            );
+
+            return response()->json(['status' => 'success', 'data' => $this->payload($replay->load('documentable'))]);
+        } catch (\Throwable $exception) {
+            Storage::disk($disk)->delete($path);
+            throw $exception;
+        }
 
         return response()->json([
             'status' => 'success',
@@ -426,7 +551,31 @@ class DocumentController extends Controller
 
     private function assertOwnerAccess(Request $request, string $ownerType, string $action, ?string $ownerId = null): void
     {
-        if ($this->normaliseOwnerType($ownerType) !== 'staff') {
+        $ownerType = $this->normaliseOwnerType($ownerType);
+        $this->ownerClass($ownerType);
+
+        if ($ownerType !== 'staff') {
+            $globalPermission = match ($action) {
+                'create' => ['documents.create', 'uploads.manage'],
+                'verify' => ['documents.edit', 'uploads.manage'],
+                'delete' => ['documents.delete', 'uploads.manage'],
+                default => ['documents.view', 'system.view'],
+            };
+            $domainPermission = match ($ownerType) {
+                'agreement' => $action === 'view' ? 'agreements.view' : 'documents.create',
+                'customer' => $action === 'view' ? 'customers.view' : 'customers.edit',
+                'driver' => $action === 'view' ? 'drivers.view' : 'drivers.edit',
+                'vehicle' => $action === 'view' ? 'vehicles.view' : 'vehicles.edit',
+                'vehicle_owner' => $action === 'view' ? 'vehicle-owners.view' : 'vehicle-owners.edit',
+                'vehicle_lease' => $action === 'view' ? 'vehicle-leases.view' : ($action === 'create' ? 'vehicle-leases.edit' : 'vehicle-leases.manage'),
+            };
+
+            abort_unless(
+                collect([...$globalPermission, $domainPermission])->contains(fn (string $permission) => $request->user()?->can($permission)),
+                Response::HTTP_FORBIDDEN,
+                'You are not authorized to access documents for this owner type.'
+            );
+
             return;
         }
 

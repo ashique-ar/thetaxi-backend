@@ -14,6 +14,8 @@ class Document extends BaseModel
         'employment_spell_id',
         'document_type',
         'document_number',
+        'upload_idempotency_key',
+        'upload_request_checksum',
         'expiry_date',
         'disk',
         'path',

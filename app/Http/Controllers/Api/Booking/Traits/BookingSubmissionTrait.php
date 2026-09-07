@@ -623,6 +623,57 @@ trait BookingSubmissionTrait
         }
     }
 
+    public function getReturnInspectionOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'record_type' => 'required|string|in:customer,vehicle,driver',
+            'search' => 'nullable|string|max:100',
+            'selected_id' => 'nullable|uuid',
+            'per_page' => 'nullable|integer|min:1|max:50',
+        ]);
+
+        $recordType = $data['record_type'];
+        $filters = [
+            'per_page' => min(50, (int) ($data['per_page'] ?? 25)),
+            'search' => trim((string) ($data['search'] ?? '')),
+            'sort_by' => 'to_date',
+            'sort_direction' => 'desc',
+        ];
+        if (! empty($data['selected_id'])) {
+            $filters[$recordType . '_id'] = $data['selected_id'];
+            unset($filters['search']);
+        }
+
+        $rows = collect($this->bookingFlowService->getFilteredBookings($filters)['bookings'] ?? []);
+        $options = $rows->map(function (array $row) use ($recordType): ?array {
+            $record = $row[$recordType] ?? null;
+            if (! is_array($record) || empty($record['id'])) {
+                return null;
+            }
+
+            $label = match ($recordType) {
+                'customer' => $record['name'] ?? null,
+                'vehicle' => $record['name'] ?? $record['title'] ?? $record['registration_number'] ?? $record['license_plate'] ?? null,
+                'driver' => $record['name'] ?? null,
+            };
+            if (! filled($label)) {
+                return null;
+            }
+
+            return [
+                'value' => (string) $record['id'],
+                'label' => (string) $label,
+                'metadata' => [
+                    'booking' => $row['booking_number'] ?? null,
+                    'reference' => $record['registration_number'] ?? $record['license_plate'] ?? $record['code'] ?? null,
+                ],
+                'status' => 'active_booking_reference',
+            ];
+        })->filter()->unique('value')->values()->all();
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
     public function getBookingDetails(string $bookingId): JsonResponse
     {
         try {
