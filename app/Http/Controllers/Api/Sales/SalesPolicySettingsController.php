@@ -30,6 +30,26 @@ class SalesPolicySettingsController extends Controller
         return response()->json(['status' => 'success', 'data' => ['companies' => $companies]]);
     }
 
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyIds = $this->actorCompanyIds($request);
+        $query = DB::table('companies')->whereNull('deleted_at')
+            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
+        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
+            'metadata' => ['city' => $company->city], 'status' => 'active']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
@@ -129,6 +149,7 @@ class SalesPolicySettingsController extends Controller
 
     private function assertCompany(Request $request, string $companyId): void
     {
+        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         abort_unless(
             $request->user()->can('sales.policy-settings.manage-all') || in_array($companyId, $this->actorCompanyIds($request) ?? [], true),
             403,
@@ -144,6 +165,7 @@ class SalesPolicySettingsController extends Controller
         }
 
         return DB::table('staff')->where('user_id', $request->user()->id)->whereNull('deleted_at')
+            ->where(fn ($staff) => $staff->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
             ->whereNotNull('company_id')->pluck('company_id')->unique()->values()->all();
     }
 }

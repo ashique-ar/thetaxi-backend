@@ -28,16 +28,47 @@ class PaymentFinalityController extends Controller
             'payment_method' => ['nullable', 'string', 'max:50'],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
         ]);
-        $query = BookingPaymentFinalityPolicy::query();
+        $query = BookingPaymentFinalityPolicy::query()
+            ->leftJoin('companies', 'companies.id', '=', 'booking_payment_finality_policies.company_id')
+            ->select(['booking_payment_finality_policies.*', 'companies.name as company_name']);
         if (! $request->user()->can('sales.payment-finality.manage-all')) {
-            $query->whereIn('company_id', $this->actorCompanyIds($request));
+            $query->whereIn('booking_payment_finality_policies.company_id', $this->actorCompanyIds($request));
         }
 
         return response()->json(['status' => 'success', 'data' => $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
-            ->when($data['payment_method'] ?? null, fn ($q, $method) => $q->where('payment_method', strtolower($method)))
-            ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->orderBy('payment_method')->orderByDesc('version')->get()]);
+            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('booking_payment_finality_policies.company_id', $id))
+            ->when($data['payment_method'] ?? null, fn ($q, $method) => $q->where('booking_payment_finality_policies.payment_method', strtolower($method)))
+            ->when($data['status'] ?? null, fn ($q, $status) => $q->where('booking_payment_finality_policies.status', $status))
+            ->orderBy('booking_payment_finality_policies.payment_method')->orderByDesc('booking_payment_finality_policies.version')->get()]);
+    }
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = DB::table('companies')->whereNull('deleted_at');
+        if (! $request->user()->can('sales.payment-finality.manage-all')) {
+            $query->whereIn('id', $this->actorCompanyIds($request));
+        }
+        if (! empty($data['selected_id'])) {
+            $query->where('id', $data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($q) => $q->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')
+            ->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => [
+            'value' => (string) $company->id,
+            'label' => $company->name,
+            'metadata' => ['city' => $company->city],
+            'status' => 'active',
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function context(Request $request): JsonResponse
@@ -115,7 +146,8 @@ class PaymentFinalityController extends Controller
         $this->validatePendingClearancePolicy($data);
 
         $policy = DB::transaction(function () use ($request, $data) {
-            DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
+            $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Select an available legal entity.');
             $version = (int) BookingPaymentFinalityPolicy::query()
                 ->where('company_id', $data['company_id'])->where('payment_method', $data['payment_method'])
                 ->lockForUpdate()->max('version') + 1;

@@ -534,6 +534,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('profile-exports/{export}/download', [SalesProfileController::class, 'downloadExport'])
             ->whereUuid('export')->middleware('permission:sales.profiles.export');
         Route::get('profile-administration-context', [SalesProfileController::class, 'administrationContext'])->middleware('permission:sales.profiles.view');
+        Route::get('profile-company-options', [SalesProfileController::class, 'companyOptions'])->middleware('permission:sales.profiles.view');
+        Route::get('profile-staff-options', [SalesProfileController::class, 'staffOptions'])->middleware('permission:sales.profiles.manage');
         Route::post('profiles', [SalesProfileController::class, 'store'])->middleware('permission:sales.profiles.manage');
         Route::put('profiles/{profile}/configuration', [SalesProfileController::class, 'updateConfiguration'])
             ->whereUuid('profile')->middleware('permission:sales.profiles.manage');
@@ -548,6 +550,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('attributions', [SalesBookingAttributionController::class, 'index'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-exceptions', [SalesBookingAttributionController::class, 'exceptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-administration-context', [SalesBookingAttributionController::class, 'administrationContext'])->middleware('permission:sales.attributions.view');
+        Route::get('attribution-company-options', [SalesBookingAttributionController::class, 'companyOptions'])->middleware('permission:sales.attributions.view');
         Route::post('attributions/dry-run', [SalesBookingAttributionController::class, 'dryRun'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/historical-batch', [SalesBookingAttributionController::class, 'applyHistoricalBatch'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/transfer-handler', [SalesBookingAttributionController::class, 'transferHandler'])
@@ -580,6 +583,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware('permission:sales.payment-adjustments.create');
         Route::get('payment-adjustment-context', [BookingPaymentAdjustmentController::class, 'context'])
             ->middleware('permission:sales.payment-adjustments.create');
+        Route::get('payment-adjustment-company-options', [BookingPaymentAdjustmentController::class, 'companyOptions'])
+            ->middleware('permission:sales.payment-adjustments.create');
         Route::post('bookings/{booking}/collection-schedule/revise', [CollectionScheduleWorkflowController::class, 'revise'])
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::post('bookings/{booking}/collection-schedule/revision-preview', [CollectionScheduleWorkflowController::class, 'previewRevision'])
@@ -610,6 +615,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve');
         Route::get('payment-finality-context', [PaymentFinalityController::class, 'context'])
             ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve');
+        Route::get('payment-finality-company-options', [PaymentFinalityController::class, 'companyOptions'])
+            ->middleware('permission:sales.payment-finality.manage');
         Route::get('payment-finality-receipts', [PaymentFinalityController::class, 'receipts'])
             ->middleware('permission:sales.payment-finality.transition');
         Route::post('payment-finality-policies', [PaymentFinalityController::class, 'store'])
@@ -625,6 +632,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('payment-receipts/{receipt}/repair-components', [PaymentLedgerReconciliationController::class, 'repairComponents'])
             ->whereUuid('receipt')->middleware('permission:sales.payment-ledger.reconcile');
         Route::get('policy-settings/context', [SalesPolicySettingsController::class, 'context'])
+            ->middleware('permission:sales.policy-settings.view');
+        Route::get('policy-settings/company-options', [SalesPolicySettingsController::class, 'companyOptions'])
             ->middleware('permission:sales.policy-settings.view');
         Route::get('policy-settings', [SalesPolicySettingsController::class, 'index'])
             ->middleware('permission:sales.policy-settings.view');
@@ -642,7 +651,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('category')->middleware('permission:sales.policy-settings.approve');
         Route::post('policy-settings/staff-categories/{category}/retire', [SalesPolicySettingsController::class, 'retireStaffCategory'])
             ->whereUuid('category')->middleware('permission:sales.policy-settings.manage');
-        Route::get('commission-configuration-context', [CommissionConfigurationController::class, 'context'])
+        Route::get('commission-configuration/company-options', [CommissionConfigurationController::class, 'companyOptions'])
             ->middleware('permission:sales.commission-config.view');
         Route::get('commission-configuration', [CommissionConfigurationController::class, 'index'])
             ->middleware('permission:sales.commission-config.view');
@@ -776,6 +785,7 @@ Route::middleware(['auth:api'])->group(function () {
         // Compatibility aliases retained while callers move to the canonical /sales/targets ownership.
         Route::get('performance/targets', [SalesPerformanceController::class, 'targets'])->middleware('permission:sales.performance.view');
         Route::get('performance/administration-context', [SalesPerformanceController::class, 'administrationContext'])->middleware('permission:sales.performance.view');
+        Route::get('performance/company-options', [SalesPerformanceController::class, 'companyOptions'])->middleware('permission:sales.performance.view');
         Route::post('performance/targets', [SalesPerformanceController::class, 'createTarget'])->middleware('permission:sales.performance.targets.manage');
         Route::post('performance/targets/copy-preview', [SalesPerformanceController::class, 'previewTargetCopy'])
             ->middleware('permission:sales.performance.targets.manage');
@@ -820,7 +830,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('dashboard', [SalesDashboardController::class, 'show'])->middleware('permission:sales.performance.view');
         Route::get('dashboard/staff/{staffId}', [SalesDashboardController::class, 'staff'])
             ->whereUuid('staffId')->middleware('permission:sales.performance.view-team|sales.performance.view-all');
-        Route::get('dashboard-context', [SalesDashboardController::class, 'context'])->middleware('permission:sales.performance.view');
         Route::get('portfolio', [SalesDashboardController::class, 'portfolio'])->middleware('permission:sales.performance.view');
     });
 
@@ -1222,7 +1231,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('ppe-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.manage');
         Route::get('ppe-custody-options', [SafetyController::class, 'ppeCustodyOptions'])->middleware('permission:hr.safety.manage');
         Route::get('incidents', [SafetyController::class, 'incidents'])->middleware('permission:hr.safety.view');
-        Route::get('handler-options', [SafetyController::class, 'handlerOptions'])->middleware('permission:hr.safety.manage');
         Route::get('handler-candidates', [SafetyController::class, 'handlerCandidates'])->middleware('permission:hr.safety.manage');
         Route::get('registers', [SafetyController::class, 'registers'])->middleware('permission:hr.safety.manage');
         Route::get('incidents/{id}', [SafetyController::class, 'show'])->whereUuid('id')->middleware('permission:hr.safety.view');

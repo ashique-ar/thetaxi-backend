@@ -366,16 +366,23 @@ class SalesBookingAttributionController extends Controller
 
     public function administrationContext(Request $request): JsonResponse
     {
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        if (! empty($data['company_id'])) {
+            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+            $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
+        }
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
         $profiles = SalesProfile::query()
             ->with('staff.user:id,first_name,last_name')
             ->configured()
+            ->when($data['company_id'] ?? null, fn ($query, $companyId) => $query->where('company_id', $companyId))
             ->when($companyIds !== null, fn ($query) => $query->whereIn('company_id', $companyIds));
         $profiles = $this->scope->scopeProfiles(
             $profiles,
             $request->user(),
             'sales.attributions.view-all',
             'sales.attributions.view-team',
+            $data['company_id'] ?? null,
         )->orderBy('sales_code')->get()->map(fn (SalesProfile $profile) => [
             'id' => $profile->id,
             'company_id' => $profile->company_id,
@@ -387,12 +394,29 @@ class SalesBookingAttributionController extends Controller
         ])->values();
 
         return response()->json(['status' => 'success', 'data' => [
-            'companies' => DB::table('companies')
-                ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
-                ->orderBy('name')->get(['id', 'name']),
             'profiles' => $profiles,
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
         ]]);
+    }
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+        $query = DB::table('companies')->whereNull('deleted_at')
+            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
+        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
+            'metadata' => ['city' => $company->city], 'status' => 'active']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     private function applyActorScope(

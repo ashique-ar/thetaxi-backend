@@ -20,21 +20,34 @@ class BookingPaymentAdjustmentController extends Controller
         private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyIds = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all');
+        $query = DB::table('companies')->whereNull('deleted_at')
+            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
+        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
+            'metadata' => ['city' => $company->city], 'status' => 'active']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
     public function context(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        if (empty($data['company_id'])) {
-            $companyIds = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all');
-            $companies = DB::table('companies')->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
-                ->orderBy('name')->get(['id', 'name']);
-            return response()->json(['status' => 'success', 'data' => [
-                'data' => [], 'current_page' => 1, 'last_page' => 1,
-            ], 'meta' => ['companies' => $companies, 'policy_ready' => false]]);
-        }
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $this->access->assertCompany($request->user(), $data['company_id'], 'sales.payment-adjustments.create-all');
         $profileIds = $this->profileIds($request, $data['company_id']);
         $query = DB::table('booking_payment_receipt_components as component')
@@ -79,9 +92,6 @@ class BookingPaymentAdjustmentController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $query
             ->orderByDesc('receipt.received_at')->paginate($request->integer('per_page', 25)), 'meta' => [
-                'companies' => DB::table('companies')
-                    ->when(($ids = $this->access->companyIds($request->user(), 'sales.payment-adjustments.create-all')) !== null, fn ($query) => $query->whereIn('id', $ids))
-                    ->orderBy('name')->get(['id', 'name']),
             'fx_corrections_enabled' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections'),
             'policy_ready' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections') && ! empty($policy['approved_quote_base'])
                 && in_array($policy['calculation_mode'] ?? null, ['multiply_source_by_rate', 'divide_source_by_rate'], true)

@@ -123,22 +123,26 @@ class SafetyController extends Controller
         $base = ['id' => $incident->id, 'incident_number' => $incident->incident_number, 'reporter_staff_id' => $incident->reporter_staff_id, 'incident_type' => $incident->incident_type, 'severity' => $incident->severity, 'location_code' => $incident->location_code, 'occurred_at' => $incident->occurred_at, 'source_timezone' => $incident->source_timezone, 'narrative' => $narrative, 'immediate_action' => $immediate, 'report_checksum' => $incident->report_checksum, 'status' => $incident->status, 'regulator_status' => $incident->regulator_status, 'insurance_status' => $incident->insurance_status, 'investigator_staff_id' => $incident->investigator_staff_id, 'closed_at' => $incident->closed_at];
         return response()->json(['status' => 'success', 'data' => ['incident' => $base, 'investigations' => $investigations, 'actions' => $actions, 'events' => $events, 'abilities' => ['manage' => $r->user()->can('hr.safety.manage'), 'investigate' => $r->user()->can('hr.safety.investigate') && ($incident->investigator_staff_id === $a->id || $r->user()->can('hr.safety.manage')), 'approve' => $r->user()->can('hr.safety.approve')]]]);
     }
-    public function handlerOptions(Request $r): JsonResponse
-    {
-        $a = $this->actor($r);
-        $rows = Staff::query()->with('user')->where('company_id', $a->company_id)->whereNull('employment_ended_at')->whereNull('deleted_at')->orderBy('code')->get();
-        $shape = fn($s) => ['id' => $s->id, 'code' => $s->code, 'first_name' => $s->user?->first_name, 'last_name' => $s->user?->last_name];
-        $activeUser = fn($s) => $s->user && $s->user->is_active;
-        return response()->json(['status' => 'success', 'data' => ['staff_members' => $rows->map($shape)->values(), 'investigators' => $rows->filter(fn($s) => $activeUser($s) && ($s->user->can('hr.safety.investigate') || $s->user->can('hr.safety.manage')))->map($shape)->values(), 'action_owners' => $rows->filter(fn($s) => $activeUser($s) && $s->user->can('hr.safety.action'))->map($shape)->values()]]);
-    }
     public function registers(Request $r): JsonResponse
     {
         $a = $this->actor($r);
         $inspections = DB::table('hr_safety_inspections')->where('company_id', $a->company_id)->select(['id', 'inspection_number', 'location_code', 'inspection_type', 'scheduled_for', 'status', 'checklist_checksum', 'result_checksum', 'lead_staff_id', 'verified_at'])->latest('scheduled_for')->limit(200)->get();
         $hazards = DB::table('hr_hazards')->where('company_id', $a->company_id)->select(['id', 'hazard_number', 'location_code', 'category', 'title', 'likelihood', 'impact', 'risk_rating', 'status', 'owner_staff_id', 'hazard_checksum', 'created_at'])->latest()->limit(200)->get();
         $ppe = DB::table('hr_ppe_issuances')->where('company_id', $a->company_id)->select(['id', 'staff_id', 'custody_assignment_id', 'ppe_type', 'issued_at', 'expires_at', 'training_due_at', 'status', 'issuance_checksum'])->latest('issued_at')->limit(200)->get();
-        $fitness = $r->user()->can('hr.safety.fitness-restricted') ? DB::table('hr_fitness_restrictions')->where('company_id', $a->company_id)->select(['id', 'staff_id', 'fitness_status', 'work_restrictions', 'effective_from', 'effective_until', 'verification_reference', 'restriction_checksum'])->latest('effective_from')->limit(200)->get() : [];
-        return response()->json(['status' => 'success', 'data' => ['inspections' => $inspections, 'hazards' => $hazards, 'ppe_issuances' => $ppe, 'fitness_restrictions' => $fitness, 'abilities' => ['fitness_restricted' => $r->user()->can('hr.safety.fitness-restricted')]]]);
+        $canViewFitness = $r->user()->can('hr.safety.fitness-restricted');
+        $fitness = $canViewFitness ? DB::table('hr_fitness_restrictions')->where('company_id', $a->company_id)->select(['id', 'staff_id', 'fitness_status', 'work_restrictions', 'effective_from', 'effective_until', 'verification_reference', 'restriction_checksum'])->latest('effective_from')->limit(200)->get() : collect();
+        $staffIds = $inspections->pluck('lead_staff_id')->merge($hazards->pluck('owner_staff_id'))->merge($ppe->pluck('staff_id'));
+        if ($canViewFitness) {
+            $staffIds = $staffIds->merge($fitness->pluck('staff_id'));
+        }
+        $staffLabels = Staff::withTrashed()->leftJoin('users', 'users.id', '=', 'staff.user_id')
+            ->where('staff.company_id', $a->company_id)->whereIn('staff.id', $staffIds->filter()->unique()->values())
+            ->select(['staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.name'])->get()
+            ->mapWithKeys(fn($row) => [(string) $row->id => [
+                'label' => trim(($row->name ?: 'Staff record') . ' · ' . ($row->code ?: 'No Staff code')),
+                'status' => $row->deleted_at ? 'deleted' : ($row->employment_ended_at ? 'ended' : 'active'),
+            ]]);
+        return response()->json(['status' => 'success', 'data' => ['inspections' => $inspections, 'hazards' => $hazards, 'ppe_issuances' => $ppe, 'fitness_restrictions' => $fitness, 'staff_labels' => $staffLabels, 'abilities' => ['fitness_restricted' => $canViewFitness]]]);
     }
     public function storeHazard(Request $r): JsonResponse
     {

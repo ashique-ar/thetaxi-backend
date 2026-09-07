@@ -252,10 +252,11 @@ class SalesProfileController extends Controller
         if ($salesStaffCategories === []) {
             $this->fail('CONFIGURATION_MISSING', 'Approved Sales Staff categories are not configured.', 503);
         }
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $profile = DB::transaction(function () use ($data, $request, $salesStaffCategories) {
-            DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->firstOrFail();
+            DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $staff = Staff::query()->lockForUpdate()->findOrFail($data['staff_id']);
             abort_unless($staff->company_id === $data['company_id'], 422, 'Staff and Sales Profile must belong to the same legal entity.');
             abort_unless($staff->user_id, 422, 'Sales self-service enrollment requires a linked User identity.');
@@ -462,8 +463,23 @@ class SalesProfileController extends Controller
 
     public function administrationContext(Request $request): JsonResponse
     {
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        if (! empty($data['company_id'])) {
+            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+            $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.view-all');
+        }
         $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
+        if (empty($data['company_id'])) {
+            return response()->json(['status' => 'success', 'data' => [
+                'sales_staff_categories_by_company' => [],
+                'sales_staff_category_ready_by_company' => [], 'profile_export_ready_by_company' => [],
+                'can_manage_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.manage'),
+                'can_export_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.export'),
+            ]]);
+        }
         $companies = DB::table('companies')
+            ->whereNull('deleted_at')
+            ->when($data['company_id'] ?? null, fn ($query, $companyId) => $query->where('id', $companyId))
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->orderBy('name')
             ->get(['id', 'name']);
@@ -474,50 +490,65 @@ class SalesProfileController extends Controller
             $company->id => ($this->policySettings->profileExportRetentionDays((string) $company->id) ?? 0) > 0,
         ]);
 
-        $staff = collect();
-        if ($categoriesByCompany->flatten()->isNotEmpty() && $this->scope->hasPermission($request->user(), 'sales.profiles.manage')) {
-            $profileIds = null;
-            if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
-                $profileIds = collect($companyIds ?? [])
-                    ->flatMap(fn (string $companyId) => $this->scope->profileIds(
-                        $request->user(),
-                        'sales.profiles.manage-all',
-                        'sales.profiles.manage-team',
-                        $companyId,
-                    ) ?? [])
-                    ->unique()
-                    ->values()
-                    ->all();
-            }
-            $staffQuery = Staff::query()
-                ->with('user:id,first_name,last_name')
-                ->whereNull('employment_ended_at')
-                ->whereNotNull('user_id');
-            if ($profileIds === null) {
-                $staffQuery->when($companyIds !== null, fn (Builder $query) => $query->whereIn('company_id', $companyIds));
-            } else {
-                $staffQuery->whereIn('id', SalesProfile::query()->whereIn('id', $profileIds)->select('staff_id'));
-            }
-            $staff = $staffQuery->orderBy('code')->get()
-                ->filter(fn (Staff $row) => $this->isSalesStaffCategory($row->staff_type, $categoriesByCompany->get($row->company_id, [])))
-                ->map(fn (Staff $row) => [
-                'id' => $row->id,
-                'company_id' => $row->company_id,
-                'code' => $row->code,
-                'name' => trim((string) ($row->user?->first_name.' '.$row->user?->last_name)),
-                'staff_category' => $row->staff_type,
-            ])->values();
-        }
-
         return response()->json(['status' => 'success', 'data' => [
-            'companies' => $companies,
-            'staff' => $staff,
             'sales_staff_categories_by_company' => $categoriesByCompany,
             'sales_staff_category_ready_by_company' => $categoriesByCompany->map(fn (array $rows) => $rows !== []),
             'profile_export_ready_by_company' => $exportReadyByCompany,
             'can_manage_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.manage'),
             'can_export_profiles' => $this->scope->hasPermission($request->user(), 'sales.profiles.export'),
         ]]);
+    }
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyIds = $this->scope->companyIds($request->user(), 'sales.profiles.view-all');
+        $query = DB::table('companies')->whereNull('deleted_at')
+            ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
+        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
+            'metadata' => ['city' => $company->city], 'status' => 'active']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function staffOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
+        $categories = $this->salesStaffCategories($data['company_id']);
+        $query = Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
+            ->whereNull('deleted_at')->whereNotNull('user_id')->whereIn('staff_type', $categories)
+            ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
+        if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
+            $profileIds = $this->scope->profileIds($request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']) ?? [];
+            $query->whereIn('id', SalesProfile::query()->whereIn('id', $profileIds)->select('staff_id'));
+        }
+        if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn (Builder $staff) => $staff->where('code', 'like', $term)
+                ->orWhereHas('user', fn (Builder $user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)));
+        }
+        $rows = $query->orderBy('code')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(function (Staff $staff): array {
+            $name = trim((string) ($staff->user?->first_name.' '.$staff->user?->last_name));
+            return ['value' => (string) $staff->id, 'label' => $name !== '' ? $name : 'Named Staff',
+                'metadata' => ['staff_code' => $staff->code, 'staff_category' => $staff->staff_type], 'status' => 'active'];
+        });
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function transition(Request $request, SalesProfile $profile): JsonResponse

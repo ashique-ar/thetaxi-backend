@@ -69,7 +69,7 @@ class SalesPerformanceController extends Controller
             ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
             ->orderBy('sales_code')->get(['id', 'company_id', 'staff_id', 'sales_code']);
         $companyIds = $profiles->pluck('company_id')->unique()->values();
-        $companies = DB::table('companies')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name']);
+        $companyLabels = DB::table('companies')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name']);
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
         if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
@@ -81,10 +81,44 @@ class SalesPerformanceController extends Controller
             'user_id' => $profile->staff->user_id, 'company_id' => $profile->company_id,
             'label' => $profile->sales_code.' · '.$profile->staff->code,
         ])->unique('user_id')->values();
-        return response()->json(['status' => 'success', 'data' => compact('companies', 'profiles', 'policies') + [
+        return response()->json(['status' => 'success', 'data' => compact('companyLabels', 'profiles', 'policies') + [
             'alert_owners' => $alertOwners,
             'portfolio_status_policies' => $portfolioStatusPolicies,
         ]]);
+    }
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $profileIds = $this->scope->profileIds(
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team',
+        );
+        $companyIds = SalesProfile::query()->where('status', 'active')->activeAt(now())
+            ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active
+                ->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
+            ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
+            ->pluck('company_id')->filter()->unique()->values();
+        $query = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds);
+        if (! empty($data['selected_id'])) {
+            $query->where('id', $data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
+        }
+        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')
+            ->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($company) => [
+            'value' => (string) $company->id,
+            'label' => $company->name,
+            'metadata' => ['city' => $company->city],
+            'status' => 'active',
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function createTarget(Request $request, SalesPerformanceService $performance): JsonResponse

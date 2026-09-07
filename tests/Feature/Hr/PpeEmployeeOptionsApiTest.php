@@ -92,3 +92,25 @@ it('issues PPE to an eligible employee without login access and retains one audi
     expect(DB::table('hr_ppe_issuances')->where('id', $payload['idempotency_key'])->count())->toBe(1)
         ->and(DB::table('hr_safety_register_events')->where('register_id', $payload['idempotency_key'])->count())->toBe(1);
 });
+
+it('returns readable historical labels only for Staff referenced by visible register rows', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.relations_safety' => true]);
+    $employee = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PPE-HISTORY']);
+    $employee->user->update(['name' => 'Historical PPE Employee']);
+    $unrelated = Staff::factory()->create(['company_id' => $company->id, 'code' => 'NOT-IN-REGISTER']);
+    $foreign = Staff::factory()->create(['company_id' => Company::create(['name' => 'Foreign register tenant'])->id, 'code' => 'FOREIGN-REGISTER']);
+    $key = (string) Str::uuid();
+
+    actingAs($admin, 'api')->postJson('/api/hr/safety/ppe-issuances', [
+        'idempotency_key' => $key, 'staff_id' => $employee->id,
+        'ppe_type' => 'Safety vest', 'issued_at' => '2026-09-05',
+    ])->assertCreated();
+    $employee->update(['employment_ended_at' => now()]);
+
+    actingAs($admin, 'api')->getJson('/api/hr/safety/registers')->assertOk()
+        ->assertJsonPath('data.staff_labels.'.$employee->id.'.label', 'Historical PPE Employee · PPE-HISTORY')
+        ->assertJsonPath('data.staff_labels.'.$employee->id.'.status', 'ended')
+        ->assertJsonMissingPath('data.staff_labels.'.$unrelated->id)
+        ->assertJsonMissingPath('data.staff_labels.'.$foreign->id);
+});

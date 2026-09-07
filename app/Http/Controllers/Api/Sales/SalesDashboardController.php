@@ -33,24 +33,6 @@ class SalesDashboardController extends Controller
         private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
-    public function context(Request $request): JsonResponse
-    {
-        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
-        $profiles = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
-            ->join('companies as company', 'company.id', '=', 'profile.company_id')
-            ->when($ids !== null, fn ($q) => $q->whereIn('profile.id', $ids))
-            ->where('profile.status', 'active')
-            ->where('profile.effective_from', '<=', now())
-            ->where(fn ($q) => $q->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-            ->whereNull('staff.deleted_at')
-            ->get(['profile.id', 'profile.company_id', 'profile.sales_code', 'staff.code as staff_code', 'staff.user_id', 'company.name as company_name']);
-        return response()->json(['status' => 'success', 'data' => [
-            'companies' => $profiles->unique('company_id')->map(fn ($row) => ['id' => $row->company_id, 'name' => $row->company_name])->values(),
-            'profiles' => $profiles->map(fn ($row) => ['id' => $row->id, 'company_id' => $row->company_id, 'sales_code' => $row->sales_code, 'staff_code' => $row->staff_code])->values(),
-            'self_profile_id' => $profiles->firstWhere('user_id', $request->user()->id)?->id,
-        ]]);
-    }
-
     public function show(Request $request, SalesPerformanceService $performance): JsonResponse
     {
         $data = $request->validate([
@@ -75,6 +57,7 @@ class SalesDashboardController extends Controller
             ?? $data['company_id']
             ?? SalesProfile::query()->whereIn('id', $ids ?? [])->value('company_id');
         abort_unless($companyId, 422, 'A legal entity is required for the Sales dashboard.');
+        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         abort_if($selectedProfile && isset($data['company_id']) && $data['company_id'] !== $selectedProfile->company_id,
             422, 'The requested legal entity does not match the selected Staff Sales Profile.');
         if ($selectedProfile) $ids = [$selectedProfile->id];
