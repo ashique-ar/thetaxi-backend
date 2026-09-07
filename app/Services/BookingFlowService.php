@@ -232,6 +232,22 @@ class BookingFlowService
         $employeeId = $params['employee_id'] ?? null;
         $corporateEmployeeId = $params['corporate_employee_id'] ?? null;
 
+        // General corporate bookings may select the passenger on the trip card
+        // without setting a booking-level employee. The bookings table still
+        // requires a customer, so promote the primary pickup employee before
+        // resolving the corresponding user/customer record.
+        if ((!is_string($employeeId) || trim($employeeId) === '')
+            && (!is_string($corporateEmployeeId) || trim($corporateEmployeeId) === '')) {
+            foreach (($params['booking_items'] ?? []) as $item) {
+                $primaryEmployeeId = data_get($item, 'metadata.primary_pickup_contact.employee_id');
+                if (is_string($primaryEmployeeId) && trim($primaryEmployeeId) !== '') {
+                    $corporateEmployeeId = trim($primaryEmployeeId);
+                    $employeeId = $corporateEmployeeId;
+                    break;
+                }
+            }
+        }
+
         if ((!is_string($employeeId) || trim($employeeId) === '') && is_string($corporateEmployeeId) && trim($corporateEmployeeId) !== '') {
             $employeeId = $corporateEmployeeId;
         }
@@ -246,6 +262,13 @@ class BookingFlowService
 
         $employee = CorporateEmployee::query()
             ->whereKey($employeeId)
+            ->when(
+                !empty($params['corporate_account_id'] ?? $params['corporate_id'] ?? null),
+                fn ($query) => $query->where(
+                    'corporate_id',
+                    $params['corporate_account_id'] ?? $params['corporate_id']
+                )
+            )
             ->whereHas('user')
             ->first();
 
@@ -12096,6 +12119,13 @@ class BookingFlowService
 
         if ($isCorporateBooking && is_string($employeeUserId) && trim($employeeUserId) !== '') {
             return $this->ensureCustomerForUser($employeeUserId);
+        }
+
+        // Corporate drafts can legitimately be saved before a passenger is
+        // selected. Retain a valid customer owner using the authenticated
+        // corporate booker; a selected primary employee replaces this fallback.
+        if ($isCorporateBooking && Auth::id()) {
+            return $this->ensureCustomerForUser((string) Auth::id());
         }
 
         return $booking?->customer_id;

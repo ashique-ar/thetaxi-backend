@@ -521,6 +521,9 @@ class MobileAssignmentService
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
         $payload['waiting_minutes'] = $pricingMetrics['waiting_minutes'];
+        $payload['pickup_waiting_minutes'] = $pricingMetrics['pickup_waiting_minutes'];
+        $payload['hire_waiting_minutes'] = $pricingMetrics['hire_waiting_minutes'];
+        $payload['total_waiting_minutes'] = $pricingMetrics['total_waiting_minutes'];
         if ($pricingVisible) {
             $payload['fare_amount'] = $fareAmount;
             $payload['total_amount'] = $fareAmount;
@@ -538,6 +541,8 @@ class MobileAssignmentService
             'waiting_seconds' => $assignment->total_waiting_time_seconds !== null
                 ? (int) $assignment->total_waiting_time_seconds
                 : null,
+            'pickup_waiting_seconds' => (int) ($assignment->pickup_waiting_time_seconds ?? 0),
+            'hire_waiting_seconds' => (int) ($assignment->hire_waiting_time_seconds ?? 0),
         ];
         $payload['booking_number'] = $booking?->booking_number;
         $serviceType = $bookingItem?->serviceType;
@@ -561,10 +566,12 @@ class MobileAssignmentService
             'name' => $serviceType?->name ?? $assignment->service_type,
             'type' => $serviceType?->type ?? 'with_driver',
         ];
+        $usesHireMeter = $serviceType?->pricing_mode === 'day'
+            || in_array((string) $serviceType?->code, ['on_meter'], true);
         $payload['execution_capabilities'] = [
             'requires_driver' => $requiresDriver,
-            'execution_mode' => $serviceType?->pricing_mode === 'day' ? 'day_hire' : 'trip',
-            'uses_hire_meter' => $serviceType?->pricing_mode === 'day',
+            'execution_mode' => $usesHireMeter ? 'metered_hire' : 'trip',
+            'uses_hire_meter' => $usesHireMeter,
             'route_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',
             'requires_destination' => ! $isOpenPackage,
             'supports_multiple_stops' => (bool) (
@@ -969,6 +976,18 @@ class MobileAssignmentService
             ]),
             'waiting_hours' => $waitingHours,
             'waiting_minutes' => $waitingMinutes,
+            'pickup_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['pickup_waiting_minutes'] ?? null,
+                $assignment?->pickup_waiting_time_seconds !== null ? (int) $assignment->pickup_waiting_time_seconds / 60 : null,
+            ]),
+            'hire_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['hire_waiting_minutes'] ?? null,
+                $assignment?->hire_waiting_time_seconds !== null ? (int) $assignment->hire_waiting_time_seconds / 60 : null,
+            ]),
+            'total_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['total_waiting_minutes'] ?? null,
+                $waitingMinutes,
+            ]),
             'waiting_rate_per_hour' => $waitingRate,
             'waiting_charge' => $waitingCharge,
             'pricing_breakdown' => $pricingBreakdown,
@@ -996,6 +1015,9 @@ class MobileAssignmentService
             'extra_km',
             'waiting_hours',
             'waiting_minutes',
+            'pickup_waiting_minutes',
+            'hire_waiting_minutes',
+            'total_waiting_minutes',
             'waiting_charge',
         ])->all();
     }

@@ -623,6 +623,18 @@ class AssignmentController extends Controller
             ]),
             'waiting_hours' => $waitingHours,
             'waiting_minutes' => $waitingMinutes,
+            'pickup_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['pickup_waiting_minutes'] ?? null,
+                $assignment?->pickup_waiting_time_seconds !== null ? (int) $assignment->pickup_waiting_time_seconds / 60 : null,
+            ]),
+            'hire_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['hire_waiting_minutes'] ?? null,
+                $assignment?->hire_waiting_time_seconds !== null ? (int) $assignment->hire_waiting_time_seconds / 60 : null,
+            ]),
+            'total_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['total_waiting_minutes'] ?? null,
+                $waitingMinutes,
+            ]),
             'waiting_rate_per_hour' => $waitingRate,
             'waiting_charge' => $waitingCharge,
             'pricing_breakdown' => $pricingBreakdown,
