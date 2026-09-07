@@ -182,21 +182,17 @@ it('uses UUID-aware writes for corporate vehicle-group assignments', function ()
         ->not->toContain("\$corporate->vehicleGroups()->sync(");
 });
 
-it('rejects assignments that do not contain three unique groups', function (array $ids) {
+it('rejects an assignment with no vehicle groups', function () {
     $corporate = \Mockery::mock(Corporate::class);
 
-    (new CorporateService())->assignVehicleGroups($corporate, $ids);
-})->with([
-    'fewer than three' => [['11111111-1111-1111-1111-111111111111']],
-    'duplicate values' => [[
-        '11111111-1111-1111-1111-111111111111',
-        '11111111-1111-1111-1111-111111111111',
-        '22222222-2222-2222-2222-222222222222',
-    ]],
-    'more than three' => [[
-        '11111111-1111-1111-1111-111111111111',
-        '22222222-2222-2222-2222-222222222222',
-        '33333333-3333-3333-3333-333333333333',
-        '44444444-4444-4444-4444-444444444444',
-    ]],
-])->throws(ValidationException::class);
+    (new CorporateService())->assignVehicleGroups($corporate, []);
+})->throws(ValidationException::class, 'At least one unique active vehicle group must be assigned.');
+
+it('does not impose a fixed vehicle-group assignment count', function () {
+    $source = file_get_contents(base_path('app/Services/CorporateService.php'));
+
+    expect($source)
+        ->toContain('if (empty($vehicleGroupIds))')
+        ->not->toContain('count($vehicleGroupIds) !== 3')
+        ->not->toContain('Exactly three unique active vehicle groups must be assigned.');
+});

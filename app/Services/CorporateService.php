@@ -117,9 +117,9 @@ class CorporateService
             ->values()
             ->all();
 
-        if (count($vehicleGroupIds) !== 3) {
+        if (empty($vehicleGroupIds)) {
             throw ValidationException::withMessages([
-                'vehicle_group_ids' => 'Exactly three unique active vehicle groups must be assigned.',
+                'vehicle_group_ids' => 'At least one unique active vehicle group must be assigned.',
             ]);
         }
 
