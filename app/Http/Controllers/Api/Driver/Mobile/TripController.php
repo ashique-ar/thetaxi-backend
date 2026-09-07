@@ -144,8 +144,10 @@ class TripController extends Controller
     public function stopArrivedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([
-            'latitude' => ['required', 'numeric', 'between:-90,90'],
-            'longitude' => ['required', 'numeric', 'between:-180,180'],
+            // Nullable keeps older installed apps compatible; current clients
+            // always submit the fresh fix they already require before starting.
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
             'notes' => ['nullable', 'string', 'max:1000'],
         ]);
 
@@ -356,9 +358,11 @@ class TripController extends Controller
 
     private function startTripByAssignment(Request $request, string $assignmentId): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'idempotency_key' => ['nullable', 'uuid'],
             'client_recorded_at' => ['nullable', 'date'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180'],
         ]);
         try {
             $driver = $this->authService->getDriver($request->user());
@@ -381,7 +385,7 @@ class TripController extends Controller
                 ], 404);
             }
 
-            $this->tripTrackingService->startTrip($assignment);
+            $this->tripTrackingService->startTrip($assignment, $validated);
 
             return response()->json([
                 'status' => 'success',

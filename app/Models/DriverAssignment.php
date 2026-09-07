@@ -50,6 +50,8 @@ class DriverAssignment extends BaseModel
         'booking_item_id',
         'trip_phase',
         'trip_started_at',
+        'trip_start_latitude',
+        'trip_start_longitude',
         'trip_completed_at',
         'pickup_arrived_at',
         'pickup_arrival_latitude',
@@ -68,6 +70,8 @@ class DriverAssignment extends BaseModel
     protected $casts = [
         'trip_phase' => TripPhase::class,
         'trip_started_at' => 'datetime',
+        'trip_start_latitude' => 'decimal:8',
+        'trip_start_longitude' => 'decimal:8',
         'trip_completed_at' => 'datetime',
         'pickup_arrived_at' => 'datetime',
         'pickup_arrival_latitude' => 'decimal:8',

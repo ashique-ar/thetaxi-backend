@@ -105,6 +105,10 @@ class TripTrackingService
             'pickup_location' => $pickupLocation,
             'pickup_arrival' => $pickupArrival,
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+            'trip_start_location' => $assignment->trip_start_latitude !== null && $assignment->trip_start_longitude !== null ? [
+                'latitude' => (float) $assignment->trip_start_latitude,
+                'longitude' => (float) $assignment->trip_start_longitude,
+            ] : null,
             'trip_completed_at' => $assignment->trip_completed_at?->toIso8601String(),
             'stops' => $this->mapStopsForMobile($stops),
             'current_stop' => $this->mapStopForMobile($this->resolveCurrentStop($stops)),
@@ -151,7 +155,7 @@ class TripTrackingService
      *
      * @throws \InvalidArgumentException
      */
-    public function startTrip(DriverAssignment $assignment): void
+    public function startTrip(DriverAssignment $assignment, array $coordinates = []): void
     {
         // Idempotent: already in progress means this transition succeeded on a prior attempt
         if ($assignment->trip_phase === TripPhase::IN_PROGRESS) {
@@ -175,6 +179,8 @@ class TripTrackingService
         $assignment->update([
             'trip_phase' => TripPhase::IN_PROGRESS,
             'trip_started_at' => $now,
+            'trip_start_latitude' => $coordinates['latitude'] ?? null,
+            'trip_start_longitude' => $coordinates['longitude'] ?? null,
             'actual_start' => $now,
             'pickup_waiting_time_seconds' => $pickupWaitingSeconds,
             'total_waiting_time_seconds' => $pickupWaitingSeconds,

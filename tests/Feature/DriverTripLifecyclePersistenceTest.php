@@ -202,6 +202,8 @@ beforeEach(function () {
         $table->timestamp('pickup_arrived_at')->nullable();
         $table->decimal('pickup_arrival_latitude', 10, 8)->nullable();
         $table->decimal('pickup_arrival_longitude', 11, 8)->nullable();
+        $table->decimal('trip_start_latitude', 10, 8)->nullable();
+        $table->decimal('trip_start_longitude', 11, 8)->nullable();
         $table->timestamp('trip_started_at')->nullable();
         $table->timestamp('trip_completed_at')->nullable();
         $table->timestamp('actual_start')->nullable();
@@ -758,13 +760,15 @@ it('persists pickup arrival coordinates once and tolerates a mobile retry', func
 it('persists trip start once and returns the canonical next action', function () {
     $assignment = DriverAssignment::create(['trip_phase' => TripPhase::PICKUP_ARRIVED, 'status' => 'active']);
 
-    $this->tripService->startTrip($assignment);
+    $this->tripService->startTrip($assignment, ['latitude' => 6.9123, 'longitude' => 79.8123]);
     $started = $assignment->fresh();
-    $this->tripService->startTrip($started);
+    $this->tripService->startTrip($started, ['latitude' => 7.5, 'longitude' => 80.5]);
     $retried = $assignment->fresh();
 
     expect($retried->trip_phase)->toBe(TripPhase::IN_PROGRESS)
         ->and($retried->trip_started_at?->equalTo($started->trip_started_at))->toBeTrue()
+        ->and((float) $retried->trip_start_latitude)->toBe(6.9123)
+        ->and((float) $retried->trip_start_longitude)->toBe(79.8123)
         ->and($this->tripService->getAssignmentAllowedActions($retried, collect()))->toBe(['complete']);
 });
 
