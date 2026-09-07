@@ -195,3 +195,42 @@ it('does not impose a fixed vehicle-group assignment count', function () {
         ->not->toContain('count($vehicleGroupIds) !== 3')
         ->not->toContain('Exactly three unique active vehicle groups must be assigned.');
 });
+
+it('keeps the corporate assignment catalogue aligned with active-group validation', function () {
+    $portalService = file_get_contents(
+        base_path('../portal-thetaxi/src/app/modules/corporate/services/corporate.service.ts')
+    );
+    $controller = file_get_contents(
+        base_path('app/Http/Controllers/Api/Corporate/CorporateController.php')
+    );
+
+    expect($portalService)
+        ->toContain("{ per_page: 200, is_active: true }");
+    expect($controller)
+        ->toContain("'vehicle_group_ids.*.exists' => 'A selected vehicle group is inactive, deleted, or no longer available.'");
+});
+
+it('excludes inactive assignments from the corporate booking relationship', function () {
+    $source = file_get_contents(base_path('app/Models/Corporate/Corporate.php'));
+    $relationship = Str::between($source, 'public function vehicleGroups()', 'public function serviceTypes()');
+
+    expect($relationship)
+        ->toContain("belongsToMany(VehicleGroup::class, 'corporate_vehicle_groups'")
+        ->not->toContain('withInactive()');
+});
+
+it('protects active vehicle-group removal inside the service transaction', function () {
+    $service = file_get_contents(base_path('app/Services/CorporateService.php'));
+    $removal = Str::between($service, 'public function removeVehicleGroup(', 'public function assignServiceTypes(');
+    $controller = file_get_contents(base_path('app/Http/Controllers/Api/Corporate/CorporateController.php'));
+    $controllerRemoval = Str::between($controller, 'public function removeVehicleGroup(', 'public function serviceTypes(');
+
+    expect($removal)
+        ->toContain('DB::transaction(')
+        ->toContain('->lockForUpdate()')
+        ->toContain("->where('is_active', true)")
+        ->toContain("->whereNull('deleted_at')")
+        ->toContain('A corporate must retain at least one active vehicle group.')
+        ->toContain('The vehicle group is not assigned to this corporate.');
+    expect($controllerRemoval)->not->toContain('->count() <= 1');
+});

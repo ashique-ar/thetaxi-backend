@@ -142,6 +142,7 @@ class CorporateController extends Controller
         ], [
             'vehicle_group_ids.min' => 'At least one active vehicle group must be assigned.',
             'vehicle_group_ids.*.distinct' => 'Each vehicle group may only be selected once.',
+            'vehicle_group_ids.*.exists' => 'A selected vehicle group is inactive, deleted, or no longer available.',
         ]);
 
         $this->corporateService->assignVehicleGroups($corporate, $request->vehicle_group_ids);
@@ -155,13 +156,6 @@ class CorporateController extends Controller
 
     public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): JsonResponse
     {
-        if ($corporate->vehicleGroups()->count() <= 1) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'A corporate must have at least one assigned vehicle group.',
-            ], 422);
-        }
-
         $this->corporateService->removeVehicleGroup($corporate, $vehicleGroupId);
 
         return response()->json([

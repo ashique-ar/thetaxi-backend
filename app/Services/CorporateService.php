@@ -138,6 +138,11 @@ class CorporateService
         DB::transaction(function () use ($corporate, $vehicleGroupIds) {
             DB::table('corporate_vehicle_groups')
                 ->where('corporate_id', $corporate->id)
+                ->lockForUpdate()
+                ->get();
+
+            DB::table('corporate_vehicle_groups')
+                ->where('corporate_id', $corporate->id)
                 ->whereNotIn('vehicle_group_id', $vehicleGroupIds ?: ['__none__'])
                 ->delete();
 
@@ -169,7 +174,39 @@ class CorporateService
 
     public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): void
     {
-        $corporate->vehicleGroups()->detach($vehicleGroupId);
+        DB::transaction(function () use ($corporate, $vehicleGroupId) {
+            $assignedVehicleGroupIds = DB::table('corporate_vehicle_groups')
+                ->where('corporate_id', $corporate->id)
+                ->lockForUpdate()
+                ->pluck('vehicle_group_id');
+
+            if (!$assignedVehicleGroupIds->contains($vehicleGroupId)) {
+                throw ValidationException::withMessages([
+                    'vehicle_group_id' => 'The vehicle group is not assigned to this corporate.',
+                ]);
+            }
+
+            $remainingVehicleGroupIds = $assignedVehicleGroupIds
+                ->reject(fn ($id) => $id === $vehicleGroupId)
+                ->values();
+
+            $activeRemainingCount = DB::table('vehicle_groups')
+                ->whereIn('id', $remainingVehicleGroupIds)
+                ->where('is_active', true)
+                ->whereNull('deleted_at')
+                ->count();
+
+            if ($activeRemainingCount < 1) {
+                throw ValidationException::withMessages([
+                    'vehicle_group_id' => 'A corporate must retain at least one active vehicle group.',
+                ]);
+            }
+
+            DB::table('corporate_vehicle_groups')
+                ->where('corporate_id', $corporate->id)
+                ->where('vehicle_group_id', $vehicleGroupId)
+                ->delete();
+        });
 
         $this->logAudit('remove_vehicle_group', 'Corporate', $corporate->id, [
             'vehicle_group_id' => $vehicleGroupId,
