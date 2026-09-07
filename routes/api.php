@@ -1323,7 +1323,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('context', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'context'])->middleware('permission:tenant-decisions.view');
         Route::get('/', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'index'])->middleware('permission:tenant-decisions.view');
         Route::post('/', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'store'])->middleware('permission:tenant-decisions.manage');
-        Route::post('{decision}/approve', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'approve'])->whereUuid('decision')->middleware('permission:tenant-decisions.approve');
+        Route::post('{decision}/approve', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'approve'])->where('decision', '[A-Za-z0-9._-]+')->middleware('permission:tenant-decisions.approve');
     });
 
     Route::get('documents/stats', [DocumentController::class, 'stats']);
