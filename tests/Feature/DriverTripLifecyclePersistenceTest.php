@@ -210,6 +210,8 @@ beforeEach(function () {
         $table->decimal('final_longitude', 11, 8)->nullable();
         $table->decimal('total_distance_km', 10, 2)->nullable();
         $table->unsignedInteger('total_waiting_time_seconds')->nullable();
+        $table->unsignedInteger('pickup_waiting_time_seconds')->nullable();
+        $table->unsignedInteger('hire_waiting_time_seconds')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -272,6 +274,15 @@ beforeEach(function () {
     $waiting->shouldReceive('getTotalWaitingTime')->byDefault()->andReturn([
         'total_waiting_time_seconds' => 0,
         'waiting_period_count' => 0,
+    ]);
+    $waiting->shouldReceive('getHireWaitingTime')->byDefault()->andReturn([
+        'total_waiting_time_seconds' => 0,
+        'waiting_period_count' => 0,
+    ]);
+    $waiting->shouldReceive('calculateValidatedTripWaitingTime')->byDefault()->andReturn([
+        'total_waiting_time_seconds' => 0,
+        'waiting_period_count' => 0,
+        'source' => 'validated_route_points',
     ]);
     $waiting->shouldReceive('closeOpenWaitingRecords')->byDefault();
     $this->bookingLifecycle = Mockery::mock(BookingLifecycleService::class);
