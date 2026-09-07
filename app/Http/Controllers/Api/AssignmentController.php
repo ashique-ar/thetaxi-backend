@@ -18,6 +18,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 
 class AssignmentController extends Controller
 {
@@ -62,15 +63,37 @@ class AssignmentController extends Controller
 
             $requestedBookingItemId = $request->query('booking_item_id');
             $selectedBookingItem = null;
+            $selectionWarning = null;
 
             if (!empty($requestedBookingItemId)) {
                 $selectedBookingItem = $booking->bookingItems->firstWhere('id', $requestedBookingItemId);
 
                 if (!$selectedBookingItem) {
-                    return response()->json([
-                        'status' => 'error',
-                        'message' => 'Selected booking item does not belong to this booking',
-                    ], 422);
+                    $staleBookingItem = \App\Models\Booking\BookingItem::withTrashed()
+                        ->whereKey($requestedBookingItemId)
+                        ->where('booking_id', $booking->id)
+                        ->first();
+
+                    if (!$staleBookingItem || !$staleBookingItem->trashed()) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'Selected booking item does not belong to this booking',
+                        ], 422);
+                    }
+
+                    $selectedBookingItem = $booking->bookingItems
+                        ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
+                        ->first();
+                    $selectionWarning = $selectedBookingItem
+                        ? 'The selected trip was replaced by a booking update. The current trip has been opened.'
+                        : null;
+
+                    if (!$selectedBookingItem) {
+                        return response()->json([
+                            'status' => 'error',
+                            'message' => 'This booking has no active booking items',
+                        ], 422);
+                    }
                 }
             } else {
                 $selectedBookingItem = $booking->bookingItems
@@ -84,8 +107,15 @@ class AssignmentController extends Controller
                     ->first();
             }
 
-            $selectedVehicle = $selectedBookingItem?->vehicle ?? $booking->vehicle;
-            $selectedDriver = $selectedBookingItem?->driver ?? $booking->driver;
+            // A booking item is the assignment owner for a trip. A null value on
+            // that item means "assign later" and must not inherit another trip's
+            // legacy booking-level vehicle or driver.
+            $selectedVehicle = $selectedBookingItem
+                ? $selectedBookingItem->vehicle
+                : $booking->vehicle;
+            $selectedDriver = $selectedBookingItem
+                ? $selectedBookingItem->driver
+                : $booking->driver;
             $selectedVehicleGroup = $selectedBookingItem?->vehicleGroup
                 ?? $selectedVehicle?->vehicleGroup;
             $selectedServiceType = $selectedBookingItem?->serviceType
@@ -140,13 +170,9 @@ class AssignmentController extends Controller
 
             $driverAssignments = $booking->driverAssignments;
             if ($selectedBookingItem?->id) {
-                $filteredDriverAssignments = $driverAssignments->filter(function ($assignment) use ($selectedBookingItem) {
+                $driverAssignments = $driverAssignments->filter(function ($assignment) use ($selectedBookingItem) {
                     return (string) $assignment->booking_item_id === (string) $selectedBookingItem->id;
                 });
-
-                if ($filteredDriverAssignments->isNotEmpty()) {
-                    $driverAssignments = $filteredDriverAssignments;
-                }
             }
 
             $approvalTriggers = $this->bookingFlowService->getApprovalTriggersForBooking($booking, $selectedBookingItem);
@@ -229,6 +255,7 @@ class AssignmentController extends Controller
                     'updated_at' => $booking->updated_at?->toIso8601String(),
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
+                'selection_warning' => $selectionWarning,
                 'selected_trip_number' => $selectedBookingItem?->trip_number,
                 'booking_items' => $booking->bookingItems
                     ->sortBy(fn ($item) => sprintf('%08d-%s', (int) ($item->trip_number ?? 0), (string) $item->id))
@@ -290,12 +317,13 @@ class AssignmentController extends Controller
                 ] : null,
                 'assignments' => [
                     'vehicle' => $booking->vehicleAssignments
-                        ->filter(function ($assignment) use ($selectedVehicle) {
-                            if (!$selectedVehicle) {
-                                return true;
+                        ->filter(function ($assignment) use ($selectedBookingItem, $selectedVehicle) {
+                            if ($selectedBookingItem?->id) {
+                                return (string) $assignment->booking_item_id === (string) $selectedBookingItem->id;
                             }
 
-                            return (string) $assignment->vehicle_id === (string) $selectedVehicle->id;
+                            return !$selectedVehicle
+                                || (string) $assignment->vehicle_id === (string) $selectedVehicle->id;
                         })
                         ->values()
                         ->map(function($assignment) {
@@ -308,6 +336,7 @@ class AssignmentController extends Controller
                             'manually_confirmed' => $assignment->manually_confirmed,
                             'assigned_from' => $assignment->assigned_from,
                             'assigned_to' => $assignment->assigned_to,
+                            'booking_item_id' => $assignment->booking_item_id,
                             'vehicle' => $assignment->vehicle ? [
                                 'id' => $assignment->vehicle->id,
                                 'name' => $assignment->vehicle->title,
@@ -345,6 +374,11 @@ class AssignmentController extends Controller
                 'data' => $result,
                 'message' => 'Assignment details retrieved successfully'
             ]);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Booking not found',
+            ], 404);
         } catch (\Exception $e) {
             Log::error('Error getting assignment details: ' . $e->getMessage());
             return response()->json([

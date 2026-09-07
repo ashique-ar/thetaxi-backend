@@ -1,6 +1,18 @@
 <?php
 
 $isDevEnvironment = in_array(env('APP_ENV', 'production'), ['local', 'development', 'testing'], true);
+$firstPartyOrigins = [
+    'https://thetaxi.lk',
+    'https://www.thetaxi.lk',
+    'https://portal.thetaxi.lk',
+    'https://dev.casons.lk',
+    'http://localhost:4200',
+    'http://localhost:4300',
+];
+$configuredOrigins = array_filter(array_map(
+    'trim',
+    explode(',', (string) env('CORS_ALLOWED_ORIGINS', ''))
+));
 
 return [
     /*
@@ -13,17 +25,14 @@ return [
     |
     */
 
-    'paths' => ['api/*', 'sanctum/csrf-cookie'],
+    'paths' => ['api/*', 'sanctum/csrf-cookie', 'broadcasting/auth'],
 
     'allowed_methods' => ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
 
-    'allowed_origins' => array_filter(array_map('trim', explode(',', env('CORS_ALLOWED_ORIGINS', implode(',', [
-        'https://thetaxi.lk',
-        'https://www.thetaxi.lk',
-        'https://dev.casons.lk',
-        'http://localhost:4200',
-        'http://localhost:4300',
-    ]))))),
+    'allowed_origins' => array_values(array_unique([
+        ...$firstPartyOrigins,
+        ...$configuredOrigins,
+    ])),
 
     'allowed_origins_patterns' => $isDevEnvironment ? [
         '#^https?://localhost(:[0-9]+)?$#',

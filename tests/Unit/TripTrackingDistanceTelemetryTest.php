@@ -28,8 +28,10 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         $result = $service->calculate($points, Carbon::parse($fixture['session']['started_at']), Carbon::parse('2026-09-01T16:13:21Z'));
 
         self::assertSame(12, $result['recorded_point_count']);
+        self::assertSame(12, $result['valid_tracking_point_count']);
         self::assertSame(9, $result['accepted_point_count']);
-        self::assertSame(3, $result['rejected_point_count']);
+        self::assertSame(0, $result['rejected_point_count']);
+        self::assertSame(3, $result['outside_trip_window_point_count']);
         self::assertSame('partial', $result['coverage_status']);
         self::assertFalse($result['distance_trustworthy']);
         self::assertEqualsWithDelta(0.113, $result['recorded_distance_km'], 0.002);
@@ -45,6 +47,8 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         ]), Carbon::parse('2026-09-01T11:00:00Z'), Carbon::parse('2026-09-01T11:01:10Z'));
 
         self::assertNull($result['recorded_distance_km']);
+        self::assertSame(1, $result['rejected_point_count']);
+        self::assertSame(0, $result['outside_trip_window_point_count']);
         self::assertSame('insufficient', $result['coverage_status']);
         self::assertFalse($result['distance_trustworthy']);
     }
@@ -93,8 +97,24 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         ]), $start, $end);
 
         self::assertSame(2, $result['accepted_point_count']);
-        self::assertSame(2, $result['rejected_point_count']);
+        self::assertSame(4, $result['valid_tracking_point_count']);
+        self::assertSame(0, $result['rejected_point_count']);
+        self::assertSame(2, $result['outside_trip_window_point_count']);
+        self::assertSame(0, $result['quality_rejected_point_count']);
         self::assertLessThan(0.1, $result['recorded_distance_km']);
+    }
+
+    public function test_invalid_point_is_rejected_even_when_it_is_outside_passenger_trip_phase(): void
+    {
+        $result = (new RouteEvidenceService())->calculate(collect([
+            $this->point('invalid-before', '2026-09-01T10:59:00Z', 999, 79.0),
+            $this->point('start', '2026-09-01T11:00:00Z', 7.2, 80.2),
+            $this->point('next', '2026-09-01T11:00:10Z', 7.2001, 80.2001),
+        ]), Carbon::parse('2026-09-01T11:00:00Z'), Carbon::parse('2026-09-01T11:00:10Z'));
+
+        self::assertSame(2, $result['valid_tracking_point_count']);
+        self::assertSame(1, $result['rejected_point_count']);
+        self::assertSame(0, $result['outside_trip_window_point_count']);
     }
 
     private function point(string $id, string $recordedAt, float $latitude = 7.2, float $longitude = 80.2, ?float $accuracy = 8): object

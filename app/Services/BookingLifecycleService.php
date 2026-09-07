@@ -217,6 +217,13 @@ class BookingLifecycleService
     public function createInquiry(array $data): Booking
     {
         return DB::transaction(function () use ($data) {
+            $createdFrom = strtolower(trim((string) ($data['created_from'] ?? 'system')));
+            $bookingSource = $data['booking_source'] ?? match (true) {
+                in_array($createdFrom, ['public', 'website', 'web', 'online', 'customer', 'customer_portal', 'guest'], true) => 'public',
+                in_array($createdFrom, ['corporate', 'corporate_portal', 'employee_portal'], true) => 'corporate',
+                default => 'internal',
+            };
+
             $booking = Booking::create([
                 'customer_id' => $data['customer_id'],
                 'service_type_id' => $data['service_type_id'],
@@ -228,7 +235,8 @@ class BookingLifecycleService
                 'dropoff_location' => $data['dropoff_location'] ?? null,
                 'special_requirements' => $data['special_requirements'] ?? null,
                 'status' => 'inquiry',
-                'created_from' => $data['created_from'] ?? 'system',
+                'booking_source' => $bookingSource,
+                'created_from' => $createdFrom,
                 'created_user_id' => Auth::id(),
             ]);
 

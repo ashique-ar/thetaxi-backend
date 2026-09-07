@@ -27,10 +27,23 @@ return Application::configure(basePath: dirname(__DIR__))
                 ->group(base_path('routes/api_public.php'));
 
             // Register broadcast channel authorization routes
-            Broadcast::routes(['middleware' => ['auth:sanctum']]);
+            // Portal and driver clients use Passport bearer tokens, matching
+            // the guard used by the protected API routes.
+            Broadcast::routes(['middleware' => ['auth:api']]);
         }
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        // API clients and Echo channel authorization must receive a 401 response.
+        // They must never be redirected to the website's (non-existent) named
+        // login route when a bearer token is missing or expired.
+        $middleware->redirectGuestsTo(function (Request $request): ?string {
+            if ($request->is('api/*') || $request->is('broadcasting/auth')) {
+                return null;
+            }
+
+            return route('login');
+        });
+
         // Register Spatie Permission middleware
         $middleware->alias([
             'permission' => \App\Http\Middleware\PermissionMiddleware::class,
@@ -64,6 +77,13 @@ return Application::configure(basePath: dirname(__DIR__))
         ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
+        $exceptions->shouldRenderJsonWhen(
+            fn (Request $request, \Throwable $exception): bool =>
+                $request->is('api/*')
+                || $request->is('broadcasting/auth')
+                || $request->expectsJson()
+        );
+
         // Passport reports rejected bearer tokens before Laravel's auth
         // middleware turns them into the expected 401 response. Expired,
         // revoked, or otherwise invalid client tokens are routine auth

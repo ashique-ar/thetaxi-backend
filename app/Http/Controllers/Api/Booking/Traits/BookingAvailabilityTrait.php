@@ -23,7 +23,8 @@ trait BookingAvailabilityTrait
             $dropoffRequired = (bool) ($requirements['dropoff_location_required'] ?? true);
 
             $rules = [
-                'service_type' => 'required|string',
+                'service_type' => 'required_without:service_type_id|string',
+                'service_type_id' => 'required_without:service_type|string',
                 'from_date' => 'required|date',
                 'from_time' => 'required|string',
                 'pickup_location' => $pickupRequired ? 'required|array' : 'nullable|array',
@@ -96,7 +97,12 @@ trait BookingAvailabilityTrait
 
             $rules = [
                 'search_term' => 'nullable|string|min:1',
-                'service_type' => 'required|string',
+                // A service type refines form requirements when the booking flow has
+                // one, but assignment availability itself is a date/group conflict
+                // lookup and must also work from Booking Management without pricing
+                // context.
+                'service_type' => 'nullable|string',
+                'service_type_id' => 'nullable|string',
                 'from_date' => 'required|date',
                 'from_time' => 'required|string',
                 'include_unavailable' => 'boolean',
@@ -133,6 +139,8 @@ trait BookingAvailabilityTrait
                 'pagination' => $vehicles['pagination'] ?? null,
                 'message' => 'Specific vehicles search completed successfully'
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error searching specific vehicles: ' . $e->getMessage());
             return response()->json([

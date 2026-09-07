@@ -558,6 +558,7 @@ class CheckoutController extends Controller
                 'special_requirements' => $validated['special_notes'] ?? null,
                 'contact_time' => $validated['contact_time'] ?? null,
                 'status' => config('booking.status.draft'),
+                'booking_source' => 'public',
                 'created_from' => 'web',
                 'created_user_id' => Auth::id(),
             ]);
@@ -2218,6 +2219,7 @@ class CheckoutController extends Controller
                     'special_requirements' => $quotationBooking->special_requirements,
                     'contact_time' => $quotationBooking->contact_time,
                     'status' => config('booking.status.payment_processing'),
+                    'booking_source' => 'public',
                     'created_from' => 'quotation_acceptance',
                     'created_user_id' => Auth::id(),
                     'workflow_data' => $workflowData,
