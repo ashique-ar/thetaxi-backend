@@ -142,6 +142,7 @@ class CorporateController extends Controller
         ], [
             'vehicle_group_ids.min' => 'At least one active vehicle group must be assigned.',
             'vehicle_group_ids.*.distinct' => 'Each vehicle group may only be selected once.',
+            'vehicle_group_ids.*.exists' => 'A selected vehicle group is inactive, deleted, or no longer available.',
         ]);
 
         $this->corporateService->assignVehicleGroups($corporate, $request->vehicle_group_ids);

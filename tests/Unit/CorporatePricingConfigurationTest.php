@@ -196,3 +196,17 @@ it('does not impose a fixed vehicle-group assignment count', function () {
         ->not->toContain('count($vehicleGroupIds) !== 3')
         ->not->toContain('Exactly three unique active vehicle groups must be assigned.');
 });
+
+it('keeps the corporate assignment catalogue aligned with active-group validation', function () {
+    $portalService = file_get_contents(
+        base_path('../portal-thetaxi/src/app/modules/corporate/services/corporate.service.ts')
+    );
+    $controller = file_get_contents(
+        base_path('app/Http/Controllers/Api/Corporate/CorporateController.php')
+    );
+
+    expect($portalService)
+        ->toContain("{ per_page: 200, is_active: true }");
+    expect($controller)
+        ->toContain("'vehicle_group_ids.*.exists' => 'A selected vehicle group is inactive, deleted, or no longer available.'");
+});
