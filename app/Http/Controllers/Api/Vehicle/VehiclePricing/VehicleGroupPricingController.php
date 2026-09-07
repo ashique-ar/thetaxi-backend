@@ -270,6 +270,7 @@ class VehicleGroupPricingController extends Controller
                     'name',
                     'description',
                     'common_rate_type',
+                    'display_unit',
                     'is_mandatory',
                     'is_active',
                     'sort_order',

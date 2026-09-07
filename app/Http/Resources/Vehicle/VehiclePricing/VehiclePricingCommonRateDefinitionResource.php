@@ -17,6 +17,7 @@ class VehiclePricingCommonRateDefinitionResource extends JsonResource
             'name' => $this->name,
             'description' => $this->description,
             'common_rate_type' => $this->common_rate_type,
+            'display_unit' => $this->display_unit,
             'value' => $this->value,
             'is_mandatory' => $this->is_mandatory,
             'is_active' => $this->is_active,

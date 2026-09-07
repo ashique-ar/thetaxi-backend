@@ -17,6 +17,7 @@ class CreateVehiclePricingCommonRateDefinitionRequest extends FormRequest
             'name' => ['required', 'string', 'max:255'],
             'description' => ['nullable', 'string'],
             'common_rate_type' => ['required', 'string', 'in:percentage,fixed_amount,flat_rate,per_hour,per_minute,per_day,per_km'],
+            'display_unit' => ['nullable', 'string', 'in:LKR,LKR/km,LKR/min,LKR/hr,LKR/day,km,km/day,min,hr,day,%'],
             'is_mandatory' => ['boolean'],
             'is_active' => ['boolean'],
             'sort_order' => ['nullable', 'integer', 'min:0'],
