@@ -56,6 +56,7 @@ class VehiclePricingCommonRateDefinition extends BaseModel
         'name',
         'description',
         'common_rate_type',
+        'display_unit',
         'owner_type',
         'owner_id',
         'priority',
