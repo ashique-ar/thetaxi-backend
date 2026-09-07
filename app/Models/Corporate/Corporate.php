@@ -43,8 +43,7 @@ class Corporate extends BaseModel
 
     public function vehicleGroups()
     {
-        return $this->belongsToMany(VehicleGroup::class, 'corporate_vehicle_groups', 'corporate_id', 'vehicle_group_id')
-            ->withInactive();
+        return $this->belongsToMany(VehicleGroup::class, 'corporate_vehicle_groups', 'corporate_id', 'vehicle_group_id');
     }
 
     public function serviceTypes()

@@ -156,13 +156,6 @@ class CorporateController extends Controller
 
     public function removeVehicleGroup(Corporate $corporate, string $vehicleGroupId): JsonResponse
     {
-        if ($corporate->vehicleGroups()->count() <= 1) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'A corporate must have at least one assigned vehicle group.',
-            ], 422);
-        }
-
         $this->corporateService->removeVehicleGroup($corporate, $vehicleGroupId);
 
         return response()->json([
