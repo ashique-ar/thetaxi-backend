@@ -42,17 +42,19 @@ return new class extends Migration
 
         $quantityTerms = ['included', 'include', 'minimum', 'maximum', 'max', 'free', 'allowed', 'allowance', 'limit', 'duration', 'distance', 'quantity'];
         $isQuantity = collect($quantityTerms)->contains(fn (string $term) => str_contains($identifier, $term));
+        $isMonetary = collect(['rate', 'charge', 'fare', 'price', 'cost'])
+            ->contains(fn (string $term) => str_contains($identifier, $term));
 
-        if ($isQuantity && preg_match('/(^|_)(km|kilometre|kilometer)(_|$)/', $identifier)) {
+        if (!$isMonetary && $isQuantity && preg_match('/(^|_)(km|kilometre|kilometer)(_|$)/', $identifier)) {
             return str_contains($identifier, 'per_day') ? 'km/day' : 'km';
         }
-        if ($isQuantity && preg_match('/(^|_)(minute|minutes|min)(_|$)/', $identifier)) {
+        if (!$isMonetary && $isQuantity && preg_match('/(^|_)(minute|minutes|min)(_|$)/', $identifier)) {
             return 'min';
         }
-        if ($isQuantity && preg_match('/(^|_)(hour|hours)(_|$)/', $identifier)) {
+        if (!$isMonetary && $isQuantity && preg_match('/(^|_)(hour|hours)(_|$)/', $identifier)) {
             return 'hr';
         }
-        if ($isQuantity && preg_match('/(^|_)(day|days)(_|$)/', $identifier)) {
+        if (!$isMonetary && $isQuantity && preg_match('/(^|_)(day|days)(_|$)/', $identifier)) {
             return 'day';
         }
 
