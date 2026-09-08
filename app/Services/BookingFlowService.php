@@ -3764,6 +3764,7 @@ class BookingFlowService
         $excludeBookingId = $params['exclude_booking_id'] ?? null;
 
         $query = Vehicle::query()
+            ->where('status', 'active')
             ->when($vehicleGroupId, fn($q) => $q->where('vehicle_group_id', $vehicleGroupId))
             ->with(['vehicleGroup', 'defaultDriver.user'])
             ->when($searchTerm !== '', function ($q) use ($searchTerm) {
@@ -3797,9 +3798,11 @@ class BookingFlowService
                     'name' => $vehicle->vehicleGroup->name,
                 ] : null,
                 'availability_status' => $availability['availability_status'],
-                'is_available' => $availability['availability_status'] === 'available',
+                'is_available' => in_array($availability['availability_status'], ['available', 'available_concurrent'], true),
                 'availability_percentage' => $this->calculateAvailabilityPercentage($availability['conflicts'], $fromDate, $toDate),
                 'conflicts' => $availability['conflicts'],
+                'blocking_reasons' => $availability['enforcement']['blocking_reasons'] ?? [],
+                'availability_warnings' => $availability['enforcement']['warnings'] ?? [],
                 'requires_approval' => !empty($availability['conflicts']),
                 'allows_concurrent' => $availability['allows_concurrent'],
                 'concurrent_bookings_allowed' => $availability['allows_concurrent'],
@@ -3812,7 +3815,9 @@ class BookingFlowService
                 'is_self_driven_compatible' => $vehicle->self_driven_compatible ?? false,
             ];
         })->when(!$includeUnavailable, function ($vehicles) {
-            return $vehicles->where('availability_status', 'available')->values();
+            return $vehicles->filter(
+                fn (array $vehicle) => in_array($vehicle['availability_status'], ['available', 'available_concurrent'], true)
+            )->values();
         });
 
         return $vehicles->toArray();
@@ -10905,13 +10910,24 @@ class BookingFlowService
 
         foreach ($allVehicles as $vehicle) {
             $conflicts = $this->getVehicleConflictsDetailed($vehicle, $fromDate, $toDate, $excludeBookingId);
-            $availabilityStatus = $this->determineVehicleAvailabilityStatus($vehicle, $conflicts, $fromDate, $toDate);
+            // Use the same authoritative checks as the specific-vehicle endpoint.
+            // This keeps group counts aligned with maintenance, insurance and
+            // assignment enforcement shown in the Add Trip vehicle cards.
+            $enhancedAvailability = $this->assignmentService->getEnhancedVehicleAvailability(
+                $vehicle->id,
+                $fromDate,
+                $toDate,
+                $excludeBookingId
+            );
+            $availabilityStatus = $enhancedAvailability['availability_status'];
 
-            if ($availabilityStatus === 'available') {
+            if (in_array($availabilityStatus, ['available', 'available_concurrent'], true)) {
                 $availableCount++;
-            } elseif ($availabilityStatus === 'booked') {
+            } elseif (in_array($availabilityStatus, ['assigned', 'pending_assignment', 'conflicted', 'booked'], true)) {
                 $bookedCount++;
-            } elseif ($availabilityStatus === 'conflict') {
+            }
+
+            if (!empty($enhancedAvailability['conflicts'])) {
                 $conflictCount++;
             }
 
@@ -10928,7 +10944,9 @@ class BookingFlowService
                 'name' => $vehicle->title,
                 'license_plate' => $vehicle->license_plate,
                 'status' => $availabilityStatus,
-                'conflicts' => $conflicts,
+                'conflicts' => $enhancedAvailability['conflicts'],
+                'blocking_reasons' => $enhancedAvailability['enforcement']['blocking_reasons'] ?? [],
+                'availability_warnings' => $enhancedAvailability['enforcement']['warnings'] ?? [],
                 'can_override' => $this->isVehicleOverrideAllowed($vehicle, $conflicts),
                 'concurrent_possible' => $this->isConcurrentAssignmentPossible($vehicle, $conflicts),
             ];

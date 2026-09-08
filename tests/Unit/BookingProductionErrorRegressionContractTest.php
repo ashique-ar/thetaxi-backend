@@ -35,6 +35,28 @@ it('does not require pricing context for vehicle conflict availability', functio
         ->not->toContain("\$params['service_type_id']");
 });
 
+it('uses authoritative vehicle enforcement consistently in group and specific availability', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $groupAnalysis = Str::between(
+        $source,
+        'private function analyzeVehicleAvailability(',
+        'private function getVehicleConflictsDetailed('
+    );
+    $specificSearch = Str::between(
+        $source,
+        'public function searchSpecificVehicles(',
+        'public function searchSpecificDrivers('
+    );
+
+    expect($groupAnalysis)
+        ->toContain('getEnhancedVehicleAvailability(')
+        ->toContain("['enforcement']['blocking_reasons']")
+        ->and($specificSearch)
+        ->toContain("->where('status', 'active')")
+        ->toContain("'blocking_reasons' => \$availability['enforcement']['blocking_reasons'] ?? []")
+        ->toContain("['available', 'available_concurrent']");
+});
+
 it('returns validation and missing-booking responses without converting them to server errors', function () {
     $submission = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php');
     $assignment = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
