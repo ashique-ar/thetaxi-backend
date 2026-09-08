@@ -12279,7 +12279,7 @@ class BookingFlowService
         if (!$method) {
             $method = ($isCorporateBooking || $responsibility === 'corporate' || $responsibility === 'company')
                 ? 'monthly_invoice'
-                : 'cash_to_driver';
+                : 'account_credit';
         }
 
         if ($method === 'monthly_invoice' && !$isCorporateBooking && $responsibility !== 'company') {
