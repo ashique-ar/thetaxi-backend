@@ -652,6 +652,34 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $inputs['duration_days'] = $minutes >= 1440 ? (int) ceil($minutes / 1440) : 0;
         }
 
+        // Keep tester/preview inputs aligned with BookingFlowService. Pricing
+        // formulas use these canonical names even when a UI captures the
+        // individual journey/logistics distances or a labelled stop count.
+        if (!array_key_exists('number_of_days', $inputs) && isset($inputs['duration_minutes'])) {
+            $inputs['number_of_days'] = max(1, (int) ceil((float) $inputs['duration_minutes'] / 1440));
+        }
+
+        if (!array_key_exists('total_distance', $inputs)) {
+            $distanceParts = ['journey_distance', 'pickup_distance', 'delivery_distance'];
+            $hasDistancePart = collect($distanceParts)
+                ->contains(fn (string $key) => array_key_exists($key, $inputs) && is_numeric($inputs[$key]));
+
+            if ($hasDistancePart) {
+                $inputs['total_distance'] = collect($distanceParts)
+                    ->sum(fn (string $key) => is_numeric($inputs[$key] ?? null) ? (float) $inputs[$key] : 0.0);
+            }
+        }
+
+        $stopCount = $inputs['additional_stops_count']
+            ?? $inputs['additional_stops']
+            ?? $inputs['stops']
+            ?? null;
+        if (is_numeric($stopCount)) {
+            $inputs['additional_stops_count'] = (float) $stopCount;
+            $inputs['additional_stops'] ??= (float) $stopCount;
+            $inputs['stops'] ??= (float) $stopCount;
+        }
+
         return $inputs;
     }
 
@@ -692,6 +720,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
             if (str_starts_with((string) $name, 'common_rate_')) {
                 unset($inputs[substr((string) $name, 12)]);
             }
+        }
+
+        $calculatedVariableNames = collect($definitions)
+            ->flatMap(fn ($definition) => collect($definition->variables ?? [])
+                ->filter(fn ($variable) => ($variable['type'] ?? null) === 'calculated')
+                ->pluck('name'))
+            ->filter();
+        foreach ($calculatedVariableNames as $name) {
+            unset($inputs[$name]);
         }
 
         if ($serviceTypeId && $vehicleGroupId && $commonRateNames->isNotEmpty()) {

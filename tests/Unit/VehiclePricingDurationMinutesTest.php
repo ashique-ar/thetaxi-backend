@@ -97,6 +97,42 @@ class VehiclePricingDurationMinutesTest extends TestCase
         $this->assertSame(0, $shortTrip['duration_days']);
         $this->assertSame(25.0, $longTrip['duration_hours']);
         $this->assertSame(2, $longTrip['duration_days']);
+        $this->assertSame(1, $shortTrip['number_of_days']);
+        $this->assertSame(2, $longTrip['number_of_days']);
+    }
+
+    public function test_calculation_tester_normalizes_distance_and_stop_formula_inputs(): void
+    {
+        $controller = (new ReflectionClass(VehiclePricingCalculationDefinitionController::class))
+            ->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($controller, 'normalizeDurationInputs');
+
+        $inputs = $method->invoke($controller, [
+            'journey_distance' => 80,
+            'pickup_distance' => 10.5,
+            'delivery_distance' => 9.5,
+            'additional_stops_count' => 2,
+        ]);
+
+        $this->assertSame(100.0, $inputs['total_distance']);
+        $this->assertSame(2.0, $inputs['additional_stops']);
+        $this->assertSame(2.0, $inputs['stops']);
+    }
+
+    public function test_calculation_tester_preserves_an_explicit_total_distance(): void
+    {
+        $controller = (new ReflectionClass(VehiclePricingCalculationDefinitionController::class))
+            ->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($controller, 'normalizeDurationInputs');
+
+        $inputs = $method->invoke($controller, [
+            'journey_distance' => 80,
+            'pickup_distance' => 10,
+            'delivery_distance' => 10,
+            'total_distance' => 85,
+        ]);
+
+        $this->assertSame(85, $inputs['total_distance']);
     }
 
     public function test_minimum_charge_is_visible_in_the_calculation_breakdown(): void
