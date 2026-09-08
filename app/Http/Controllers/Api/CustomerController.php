@@ -210,7 +210,7 @@ class CustomerController extends Controller
                     'state_id' => $data['state_id'] ?? null,
                     'city' => $data['city'] ?? null,
                     'wedding_date' => $data['wedding_date'] ?? null,
-                    'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'cash_to_driver',
+                    'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'account_credit',
                 ];
 
                 $context = $this->contextService->switchContext($existingUser, 'customer', $contextData);
@@ -258,7 +258,7 @@ class CustomerController extends Controller
                     'state_id' => $data['state_id'] ?? null,
                     'city' => $data['city'] ?? null,
                     'wedding_date' => $data['wedding_date'] ?? null,
-                    'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'cash_to_driver',
+                    'default_payment_arrangement' => $data['default_payment_arrangement'] ?? 'account_credit',
                 ];
 
                 $context = $this->contextService->switchContext($user, 'customer', $contextData);
