@@ -218,6 +218,8 @@ class TripTrackingService
                 'assignment_id'              => $assignment->id,
                 'booking_id'                 => $assignment->booking_id,
                 'booking_item_id'            => $assignment->booking_item_id,
+                'trip_started_at'            => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
+                'trip_completed_at'          => $assignment->trip_completed_at?->copy()->utc()->toIso8601String(),
                 'total_distance_km'          => $assignment->total_distance_km !== null
                     ? round((float) $assignment->total_distance_km, 2)
                     : null,
@@ -361,6 +363,8 @@ class TripTrackingService
                 'assignment_id' => $assignment->id,
                 'booking_id' => $assignment->booking_id,
                 'booking_item_id' => $assignment->booking_item_id,
+                'trip_started_at' => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
+                'trip_completed_at' => $now->copy()->utc()->toIso8601String(),
                 'total_distance_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
                 'distance_evidence' => $distanceEvidence,
                 'total_duration_minutes' => $durationMinutes,

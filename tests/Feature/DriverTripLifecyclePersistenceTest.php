@@ -815,7 +815,11 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and((float) $completed->final_latitude)->toBe(6.95)
         ->and((float) $completed->final_longitude)->toBe(79.85)
         ->and((float) $completed->total_distance_km)->toBeGreaterThan(0)
-        ->and($retry['total_distance_km'])->toBe($summary['total_distance_km']);
+        ->and($summary['trip_started_at'])->toBe($completed->trip_started_at->copy()->utc()->toIso8601String())
+        ->and($summary['trip_completed_at'])->toBe($completed->trip_completed_at->copy()->utc()->toIso8601String())
+        ->and($retry['total_distance_km'])->toBe($summary['total_distance_km'])
+        ->and($retry['trip_started_at'])->toBe($summary['trip_started_at'])
+        ->and($retry['trip_completed_at'])->toBe($summary['trip_completed_at']);
 });
 
 it('reconciles a stale mobile assignment when the parent booking is already completed', function () {
