@@ -105,6 +105,10 @@ class TripTrackingService
             'pickup_location' => $pickupLocation,
             'pickup_arrival' => $pickupArrival,
             'trip_started_at' => $assignment->trip_started_at?->toIso8601String(),
+            'trip_start_location' => $assignment->trip_start_latitude !== null && $assignment->trip_start_longitude !== null ? [
+                'latitude' => (float) $assignment->trip_start_latitude,
+                'longitude' => (float) $assignment->trip_start_longitude,
+            ] : null,
             'trip_completed_at' => $assignment->trip_completed_at?->toIso8601String(),
             'stops' => $this->mapStopsForMobile($stops),
             'current_stop' => $this->mapStopForMobile($this->resolveCurrentStop($stops)),
@@ -151,7 +155,7 @@ class TripTrackingService
      *
      * @throws \InvalidArgumentException
      */
-    public function startTrip(DriverAssignment $assignment): void
+    public function startTrip(DriverAssignment $assignment, array $coordinates = []): void
     {
         // Idempotent: already in progress means this transition succeeded on a prior attempt
         if ($assignment->trip_phase === TripPhase::IN_PROGRESS) {
@@ -168,11 +172,18 @@ class TripTrackingService
         }
 
         $now = Carbon::now('UTC');
+        $pickupWaitingSeconds = $assignment->pickup_arrived_at
+            ? max(0, (int) $assignment->pickup_arrived_at->diffInSeconds($now))
+            : 0;
 
         $assignment->update([
             'trip_phase' => TripPhase::IN_PROGRESS,
             'trip_started_at' => $now,
+            'trip_start_latitude' => $coordinates['latitude'] ?? null,
+            'trip_start_longitude' => $coordinates['longitude'] ?? null,
             'actual_start' => $now,
+            'pickup_waiting_time_seconds' => $pickupWaitingSeconds,
+            'total_waiting_time_seconds' => $pickupWaitingSeconds,
         ]);
 
         if ($this->isMultiStopAssignment($assignment, $stops)) {
@@ -201,12 +212,14 @@ class TripTrackingService
     {
         // Idempotent: already completed — return the stored summary rather than re-processing
         if ($assignment->trip_phase === TripPhase::COMPLETED) {
-            $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
+            $waitingTime = $this->waitingTimeBreakdown($assignment);
             $distanceEvidence = $this->calculateTripEvidence($assignment);
             return [
                 'assignment_id'              => $assignment->id,
                 'booking_id'                 => $assignment->booking_id,
                 'booking_item_id'            => $assignment->booking_item_id,
+                'trip_started_at'            => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
+                'trip_completed_at'          => $assignment->trip_completed_at?->copy()->utc()->toIso8601String(),
                 'total_distance_km'          => $assignment->total_distance_km !== null
                     ? round((float) $assignment->total_distance_km, 2)
                     : null,
@@ -215,6 +228,8 @@ class TripTrackingService
                     ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
                     : 0,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
+                'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
+                'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
                 'waiting_period_count'       => $waitingTime['waiting_period_count'],
                 'pickup_coordinates'         => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates'        => [
@@ -261,10 +276,37 @@ class TripTrackingService
             // Final distance comes only from recorded mobile route points;
             // never use booked/minimum KM or a client-supplied total.
             $distanceEvidence = $this->calculateTripEvidence($assignment);
-            $totalDistance = $distanceEvidence['distance_trustworthy']
-                ? round((float) $distanceEvidence['recorded_distance_km'], 2)
+            $totalDistance = ($distanceEvidence['pricing_distance_eligible'] ?? false)
+                ? round((float) $distanceEvidence['pricing_distance_km'], 2)
                 : null;
-            $waitingTime = $this->waitingTimeService->getTotalWaitingTime($assignment);
+            $persistedWaiting = $this->waitingTimeService->getHireWaitingTime($assignment);
+            $reconstructedWaiting = $this->waitingTimeService->calculateValidatedTripWaitingTime($assignment);
+            $tripElapsedSeconds = $assignment->trip_started_at
+                ? max(0, (int) $assignment->trip_started_at->diffInSeconds($now))
+                : 0;
+            $clientWaitingSeconds = is_numeric($finalLocation['tracked_waiting_seconds'] ?? null)
+                ? min($tripElapsedSeconds, max(0, (int) $finalLocation['tracked_waiting_seconds']))
+                : 0;
+            $pickupWaitingSeconds = max(0, (int) ($assignment->pickup_waiting_time_seconds ?? 0));
+            $hireWaitingSeconds = max(
+                    (int) $persistedWaiting['total_waiting_time_seconds'],
+                    (int) $reconstructedWaiting['total_waiting_time_seconds'],
+                    $clientWaitingSeconds
+                );
+            $waitingTime = [
+                'pickup_waiting_time_seconds' => $pickupWaitingSeconds,
+                'hire_waiting_time_seconds' => $hireWaitingSeconds,
+                'total_waiting_time_seconds' => $pickupWaitingSeconds + $hireWaitingSeconds,
+                'waiting_period_count' => max(
+                    (int) $persistedWaiting['waiting_period_count'],
+                    (int) $reconstructedWaiting['waiting_period_count']
+                ),
+                'sources' => [
+                    'persisted_records' => (int) $persistedWaiting['total_waiting_time_seconds'],
+                    'validated_route_points' => (int) $reconstructedWaiting['total_waiting_time_seconds'],
+                    'authenticated_mobile_meter' => $clientWaitingSeconds,
+                ],
+            ];
 
             $durationMinutes = $assignment->trip_started_at
                 ? (int) $assignment->trip_started_at->diffInMinutes($now)
@@ -279,6 +321,8 @@ class TripTrackingService
                 'final_longitude' => $finalLongitude,
                 'total_distance_km' => $totalDistance,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
+                'pickup_waiting_time_seconds' => $pickupWaitingSeconds,
+                'hire_waiting_time_seconds' => $hireWaitingSeconds,
             ]);
 
             // Disassociate session from assignment
@@ -319,10 +363,14 @@ class TripTrackingService
                 'assignment_id' => $assignment->id,
                 'booking_id' => $assignment->booking_id,
                 'booking_item_id' => $assignment->booking_item_id,
+                'trip_started_at' => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
+                'trip_completed_at' => $now->copy()->utc()->toIso8601String(),
                 'total_distance_km' => $totalDistance !== null ? round($totalDistance, 2) : null,
                 'distance_evidence' => $distanceEvidence,
                 'total_duration_minutes' => $durationMinutes,
                 'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
+                'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
+                'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
                 'waiting_period_count' => $waitingTime['waiting_period_count'],
                 'pickup_coordinates' => $this->resolvePickupCoordinates($assignment),
                 'dropoff_coordinates' => [
@@ -1478,7 +1526,9 @@ class TripTrackingService
             ]);
         }
 
-        $waitingMinutes = (int) ceil(($waitingTime['total_waiting_time_seconds'] ?? 0) / 60);
+        $pickupWaitingMinutes = (int) ceil(($waitingTime['pickup_waiting_time_seconds'] ?? 0) / 60);
+        $hireWaitingMinutes = (int) ceil(($waitingTime['hire_waiting_time_seconds'] ?? 0) / 60);
+        $waitingMinutes = $pickupWaitingMinutes + $hireWaitingMinutes;
         $finalAddress = $finalLocation['final_address'] ?? $finalLocation['address'] ?? null;
         $hasFinalCoordinates = isset($finalLocation['latitude'], $finalLocation['longitude']);
         $finalDropoff = [
@@ -1509,6 +1559,9 @@ class TripTrackingService
             'source' => 'driver_mobile_activity',
             'actual_minutes' => $durationMinutes,
             'waiting_minutes' => $waitingMinutes,
+            'pickup_waiting_minutes' => $pickupWaitingMinutes,
+            'hire_waiting_minutes' => $hireWaitingMinutes,
+            'total_waiting_minutes' => $waitingMinutes,
             'recorded_at' => $completedAt->toIso8601String(),
         ];
 
@@ -1539,6 +1592,15 @@ class TripTrackingService
                 ),
                 'waiting_minutes' => (int) collect($durationItems)->sum(
                     fn ($metrics) => (int) ($metrics['waiting_minutes'] ?? 0)
+                ),
+                'pickup_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['pickup_waiting_minutes'] ?? 0)
+                ),
+                'hire_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['hire_waiting_minutes'] ?? 0)
+                ),
+                'total_waiting_minutes' => (int) collect($durationItems)->sum(
+                    fn ($metrics) => (int) ($metrics['total_waiting_minutes'] ?? $metrics['waiting_minutes'] ?? 0)
                 ),
                 'items' => $durationItems,
                 'recorded_at' => $completedAt->toIso8601String(),
@@ -1623,6 +1685,25 @@ class TripTrackingService
             $assignment->trip_started_at?->copy()->utc(),
             ($assignment->trip_completed_at ?? $assignment->actual_end ?? Carbon::now('UTC'))->copy()->utc()
         );
+    }
+
+    private function waitingTimeBreakdown(DriverAssignment $assignment): array
+    {
+        $pickup = max(0, (int) ($assignment->pickup_waiting_time_seconds ?? 0));
+        $hire = max(0, (int) ($assignment->hire_waiting_time_seconds ?? 0));
+
+        // Backward compatibility for assignments completed before the split was
+        // introduced: retain their historical total as in-hire waiting.
+        if ($pickup === 0 && $hire === 0 && (int) $assignment->total_waiting_time_seconds > 0) {
+            $hire = (int) $assignment->total_waiting_time_seconds;
+        }
+
+        return [
+            'pickup_waiting_time_seconds' => $pickup,
+            'hire_waiting_time_seconds' => $hire,
+            'total_waiting_time_seconds' => $pickup + $hire,
+            'waiting_period_count' => $this->waitingTimeService->getHireWaitingTime($assignment)['waiting_period_count'],
+        ];
     }
 
     /**

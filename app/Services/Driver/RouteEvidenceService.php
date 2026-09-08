@@ -108,6 +108,10 @@ class RouteEvidenceService
             'source' => 'driver_route_points',
             'confidence' => $trustworthy ? 'high' : ($segmentCount > 0 ? 'medium' : 'none'),
             'recorded_distance_km' => $segmentCount > 0 ? round($distance, 3) : null,
+            // Bill only the sum of individually validated, contiguous
+            // segments. Coverage gaps remain visible but are never bridged.
+            'pricing_distance_km' => $segmentCount > 0 ? round($distance, 3) : null,
+            'pricing_distance_eligible' => $segmentCount > 0,
             'coverage_status' => $coverage,
             'distance_trustworthy' => $trustworthy,
             'recorded_point_count' => $recordedCount,

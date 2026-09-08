@@ -35,6 +35,8 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         self::assertSame('partial', $result['coverage_status']);
         self::assertFalse($result['distance_trustworthy']);
         self::assertEqualsWithDelta(0.113, $result['recorded_distance_km'], 0.002);
+        self::assertTrue($result['pricing_distance_eligible']);
+        self::assertEqualsWithDelta(0.113, $result['pricing_distance_km'], 0.002);
         self::assertGreaterThan(300, $result['longest_gap_seconds']);
         self::assertSame('none', $result['pricing_effect']);
     }
@@ -51,6 +53,7 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         self::assertSame(0, $result['outside_trip_window_point_count']);
         self::assertSame('insufficient', $result['coverage_status']);
         self::assertFalse($result['distance_trustworthy']);
+        self::assertFalse($result['pricing_distance_eligible']);
     }
 
     public function test_exact_incident_gap_contributes_zero_distance(): void
@@ -67,6 +70,8 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         self::assertGreaterThanOrEqual(1, $result['gap_count']);
         self::assertLessThan(0.1, $result['recorded_distance_km']);
         self::assertFalse($result['distance_trustworthy']);
+        self::assertFalse($result['pricing_distance_eligible']);
+        self::assertNull($result['pricing_distance_km']);
     }
 
     public function test_brief_gps_blackout_is_a_gap_and_does_not_bridge_movement(): void
@@ -82,6 +87,8 @@ class TripTrackingDistanceTelemetryTest extends TestCase
         self::assertSame(45, (int) $result['longest_gap_seconds']);
         self::assertLessThan(0.01, $result['recorded_distance_km']);
         self::assertFalse($result['distance_trustworthy']);
+        self::assertTrue($result['pricing_distance_eligible']);
+        self::assertLessThan(0.01, $result['pricing_distance_km']);
         self::assertSame('none', $result['pricing_effect']);
     }
 

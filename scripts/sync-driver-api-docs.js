@@ -113,6 +113,9 @@ const bookingPartyExample = {
 
 function enhanceExamples(value) {
     if (!value || typeof value !== 'object') return;
+    // trip_mode=open_package is the only metered-hire discriminator.
+    delete value.execution_mode;
+    delete value.uses_hire_meter;
     if (!Array.isArray(value) && value.id && value.booking_id && value.booking_item_id && value.service_type_name) {
         const openPackage = value.trip_mode === 'open_package';
         value.pricing_visible = value.pricing_visible ?? true;
@@ -123,8 +126,6 @@ function enhanceExamples(value) {
         };
         value.execution_capabilities = value.execution_capabilities ?? {
             requires_driver: true,
-            execution_mode: openPackage ? 'day_hire' : 'trip',
-            uses_hire_meter: openPackage,
             route_mode: openPackage ? 'open_package' : 'fixed_route',
             requires_destination: !openPackage,
             supports_multiple_stops: Boolean(value.is_multi_stop),
@@ -176,6 +177,14 @@ openapi.components.schemas.DriverBookingParty = {
         traveler_email: { type: 'string', format: 'email', nullable: true },
     },
 };
+
+const executionCapabilitiesSchema = openapi.components.schemas.DriverExecutionCapabilities;
+if (executionCapabilitiesSchema) {
+    executionCapabilitiesSchema.required = (executionCapabilitiesSchema.required ?? [])
+        .filter((field) => !['execution_mode', 'uses_hire_meter'].includes(field));
+    delete executionCapabilitiesSchema.properties?.execution_mode;
+    delete executionCapabilitiesSchema.properties?.uses_hire_meter;
+}
 
 function enhanceSchemas(value) {
     if (!value || typeof value !== 'object') return;

@@ -476,6 +476,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'test_inputs.duration_minutes' => 'nullable|numeric|min:0',
             'test_inputs.extra_minutes' => 'nullable|numeric|min:0',
             'test_inputs.waiting_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.pickup_waiting_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.hire_waiting_minutes' => 'nullable|numeric|min:0',
+            'test_inputs.total_waiting_minutes' => 'nullable|numeric|min:0',
             'test_inputs.recovery_minutes' => 'nullable|numeric|min:0',
             'test_inputs.overtime_minutes' => 'nullable|numeric|min:0',
             'test_inputs.slab_rate' => 'nullable|numeric|min:0',
@@ -649,6 +652,34 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $inputs['duration_days'] = $minutes >= 1440 ? (int) ceil($minutes / 1440) : 0;
         }
 
+        // Keep tester/preview inputs aligned with BookingFlowService. Pricing
+        // formulas use these canonical names even when a UI captures the
+        // individual journey/logistics distances or a labelled stop count.
+        if (!array_key_exists('number_of_days', $inputs) && isset($inputs['duration_minutes'])) {
+            $inputs['number_of_days'] = max(1, (int) ceil((float) $inputs['duration_minutes'] / 1440));
+        }
+
+        if (!array_key_exists('total_distance', $inputs)) {
+            $distanceParts = ['journey_distance', 'pickup_distance', 'delivery_distance'];
+            $hasDistancePart = collect($distanceParts)
+                ->contains(fn (string $key) => array_key_exists($key, $inputs) && is_numeric($inputs[$key]));
+
+            if ($hasDistancePart) {
+                $inputs['total_distance'] = collect($distanceParts)
+                    ->sum(fn (string $key) => is_numeric($inputs[$key] ?? null) ? (float) $inputs[$key] : 0.0);
+            }
+        }
+
+        $stopCount = $inputs['additional_stops_count']
+            ?? $inputs['additional_stops']
+            ?? $inputs['stops']
+            ?? null;
+        if (is_numeric($stopCount)) {
+            $inputs['additional_stops_count'] = (float) $stopCount;
+            $inputs['additional_stops'] ??= (float) $stopCount;
+            $inputs['stops'] ??= (float) $stopCount;
+        }
+
         return $inputs;
     }
 
@@ -689,6 +720,15 @@ class VehiclePricingCalculationDefinitionController extends Controller
             if (str_starts_with((string) $name, 'common_rate_')) {
                 unset($inputs[substr((string) $name, 12)]);
             }
+        }
+
+        $calculatedVariableNames = collect($definitions)
+            ->flatMap(fn ($definition) => collect($definition->variables ?? [])
+                ->filter(fn ($variable) => ($variable['type'] ?? null) === 'calculated')
+                ->pluck('name'))
+            ->filter();
+        foreach ($calculatedVariableNames as $name) {
+            unset($inputs[$name]);
         }
 
         if ($serviceTypeId && $vehicleGroupId && $commonRateNames->isNotEmpty()) {
@@ -1345,6 +1385,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'additional_stops', 'type' => 'fixed_value', 'description' => 'Number of additional stops', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
                 ['name' => 'waiting_hours', 'type' => 'duration', 'description' => 'Additional waiting time in hours', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'waiting_minutes', 'type' => 'duration', 'description' => 'Additional waiting time in minutes', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'pickup_waiting_minutes', 'type' => 'duration', 'description' => 'Waiting after driver arrival and before passenger pickup', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'hire_waiting_minutes', 'type' => 'duration', 'description' => 'Stationary waiting after passenger pickup', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'total_waiting_minutes', 'type' => 'duration', 'description' => 'Pickup waiting plus in-hire waiting', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'recovery_hours', 'type' => 'duration', 'description' => 'Hours spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'recovery_minutes', 'type' => 'duration', 'description' => 'Minutes spent on recovery operation', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'stops', 'type' => 'fixed_value', 'description' => 'Number of stops in transfer', 'is_required' => false, 'default_value' => 0, 'category' => 'service'],
@@ -1421,6 +1464,9 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'stop_charge' => 'service',
             'waiting_charge_per_hour' => 'service',
             'waiting_charge_per_minute' => 'service',
+            'pickup_waiting_charge_per_minute' => 'service',
+            'hire_waiting_charge_per_minute' => 'service',
+            'pickup_free_waiting_minutes' => 'service',
             'decoration_charge' => 'special',
             'emergency_base_rate' => 'special',
             'hourly_rate' => 'service',

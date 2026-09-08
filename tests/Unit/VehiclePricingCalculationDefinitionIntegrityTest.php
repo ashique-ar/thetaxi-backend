@@ -91,6 +91,28 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         ]));
     }
 
+    public function test_on_meter_waiting_applies_free_minutes_only_to_pickup_waiting(): void
+    {
+        $method = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
+        $formula = 'base_fare + (max(actual_distance - included_km, 0) * distance_rate_per_km)'
+            . ' + (max(pickup_waiting_minutes - pickup_free_waiting_minutes, 0) * pickup_waiting_charge_per_minute)'
+            . ' + (hire_waiting_minutes * hire_waiting_charge_per_minute)';
+
+        $total = $method->invoke(new VehiclePricingCalculationDefinition(), $formula, [
+            'base_fare' => 0,
+            'actual_distance' => 8,
+            'included_km' => 0,
+            'distance_rate_per_km' => 147.75,
+            'pickup_waiting_minutes' => 12,
+            'pickup_free_waiting_minutes' => 10,
+            'pickup_waiting_charge_per_minute' => 13,
+            'hire_waiting_minutes' => 7,
+            'hire_waiting_charge_per_minute' => 15,
+        ]);
+
+        $this->assertSame(1313.0, $total);
+    }
+
     public function test_unused_required_declarations_do_not_block_the_active_formula(): void
     {
         $definition = new VehiclePricingCalculationDefinition();

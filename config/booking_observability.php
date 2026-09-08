@@ -12,6 +12,7 @@ return [
     'route_export_max_points' => (int) env('BOOKING_ROUTE_EXPORT_MAX_POINTS', 10000),
     'access_log_throttle_seconds' => (int) env('BOOKING_ROUTE_ACCESS_LOG_THROTTLE_SECONDS', 300),
     'health_alert_throttle_seconds' => (int) env('BOOKING_HEALTH_ALERT_THROTTLE_SECONDS', 900),
+    'lifecycle_location_tolerance_meters' => (int) env('BOOKING_LIFECYCLE_LOCATION_TOLERANCE_METERS', 250),
     'performance' => [
         'read_target_ms' => (int) env('BOOKING_OPERATIONS_READ_TARGET_MS', 2000),
         'action_target_ms' => (int) env('BOOKING_OPERATIONS_ACTION_TARGET_MS', 3000),

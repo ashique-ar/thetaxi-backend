@@ -29,7 +29,9 @@ class MobileAssignmentService
     public function __construct(
         private NotificationTriggerService $notificationService,
         private TripTrackingService $tripTrackingService
-    ) {}
+    )
+    {
+    }
 
     private function baseAssignmentQuery(Driver $driver): Builder
     {
@@ -178,7 +180,7 @@ class MobileAssignmentService
                     $query->whereNull('trip_phase')
                         ->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
                 })
-                ->whereHas('booking', fn (Builder $query) => $query->where('status', 'completed'))
+                ->whereHas('booking', fn(Builder $query) => $query->where('status', 'completed'))
                 ->with('booking:id,completed_at')
                 ->lockForUpdate()
                 ->get();
@@ -220,21 +222,21 @@ class MobileAssignmentService
     {
         $query->where(function (Builder $assignmentQuery) {
             $assignmentQuery->whereDoesntHave('booking')
-                ->orWhereHas('booking', fn (Builder $bookingQuery) => $bookingQuery
+                ->orWhereHas('booking', fn(Builder $bookingQuery) => $bookingQuery
                     ->whereNotIn('status', $this->terminalBookingStatuses()));
         })
-        ->where(function (Builder $assignmentQuery) {
-            // Require associated dispatch row or active trip phase already in progress
-            $assignmentQuery->whereHas('booking.dispatches', function (Builder $dispatchQuery) {
-                $dispatchQuery->whereNotNull('dispatched_at')
-                    ->where('dispatch_status', '!=', 'cancelled');
-            })
-            ->orWhereIn('trip_phase', [
-                TripPhase::ACCEPTED,
-                TripPhase::PICKUP_ARRIVED,
-                TripPhase::IN_PROGRESS,
-            ]);
-        });
+            ->where(function (Builder $assignmentQuery) {
+                // Require associated dispatch row or active trip phase already in progress
+                $assignmentQuery->whereHas('booking.dispatches', function (Builder $dispatchQuery) {
+                    $dispatchQuery->whereNotNull('dispatched_at')
+                        ->where('dispatch_status', '!=', 'cancelled');
+                })
+                    ->orWhereIn('trip_phase', [
+                        TripPhase::ACCEPTED,
+                        TripPhase::PICKUP_ARRIVED,
+                        TripPhase::IN_PROGRESS,
+                    ]);
+            });
     }
 
     private function terminalBookingStatuses(): array
@@ -510,7 +512,7 @@ class MobileAssignmentService
         $payload['payment_instruction'] = $paymentDetails['payment_instruction'];
         $payload['pricing_visible'] = $pricingVisible;
         $payload['amount_to_collect'] = $paymentDetails['payment_collection_required']
-            ? max(0, round($fareAmount - (float)($booking?->payment_collected_amount ?? 0), 2))
+            ? max(0, round($fareAmount - (float) ($booking?->payment_collected_amount ?? 0), 2))
             : null;
         $payload['duration_days'] = $pricingMetrics['duration_days'];
         $payload['duration_hours'] = $pricingMetrics['duration_hours'];
@@ -521,6 +523,9 @@ class MobileAssignmentService
         $payload['hire_km'] = $pricingMetrics['hire_km'];
         $payload['waiting_hours'] = $pricingMetrics['waiting_hours'];
         $payload['waiting_minutes'] = $pricingMetrics['waiting_minutes'];
+        $payload['pickup_waiting_minutes'] = $pricingMetrics['pickup_waiting_minutes'];
+        $payload['hire_waiting_minutes'] = $pricingMetrics['hire_waiting_minutes'];
+        $payload['total_waiting_minutes'] = $pricingMetrics['total_waiting_minutes'];
         if ($pricingVisible) {
             $payload['fare_amount'] = $fareAmount;
             $payload['total_amount'] = $fareAmount;
@@ -538,6 +543,8 @@ class MobileAssignmentService
             'waiting_seconds' => $assignment->total_waiting_time_seconds !== null
                 ? (int) $assignment->total_waiting_time_seconds
                 : null,
+            'pickup_waiting_seconds' => (int) ($assignment->pickup_waiting_time_seconds ?? 0),
+            'hire_waiting_seconds' => (int) ($assignment->hire_waiting_time_seconds ?? 0),
         ];
         $payload['booking_number'] = $booking?->booking_number;
         $serviceType = $bookingItem?->serviceType;
@@ -563,10 +570,8 @@ class MobileAssignmentService
         ];
         $payload['execution_capabilities'] = [
             'requires_driver' => $requiresDriver,
-            'execution_mode' => $serviceType?->pricing_mode === 'day' ? 'day_hire' : 'trip',
-            'uses_hire_meter' => $serviceType?->pricing_mode === 'day',
             'route_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',
-            'requires_destination' => ! $isOpenPackage,
+            'requires_destination' => !$isOpenPackage,
             'supports_multiple_stops' => (bool) (
                 $serviceType?->allow_multiple_pickup_locations
                 || $serviceType?->allow_multiple_dropoff_locations
@@ -794,9 +799,9 @@ class MobileAssignmentService
             'payment_collection_method' => $cashMethod ?: 'cash_to_driver',
             'payment_collection_status' => $status ?: 'pending',
             'payment_collection_required' => $collectionRequired,
-            'payment_instruction' => ! $collectionRequired
+            'payment_instruction' => !$collectionRequired
                 ? 'Payment already settled - do not collect cash'
-                : (in_array($method,['advance_then_balance','deposit_then_balance'],true)
+                : (in_array($method, ['advance_then_balance', 'deposit_then_balance'], true)
                     ? 'Collect only the outstanding balance from the customer'
                     : 'Collect payment from customer'),
         ];
@@ -878,8 +883,8 @@ class MobileAssignmentService
         $waitingSeconds = $assignment?->total_waiting_time_seconds;
         $waitingHours = $this->firstNumeric([
             isset($finalAuditInputs['waiting_minutes'])
-                ? ((float) $finalAuditInputs['waiting_minutes'] / 60)
-                : null,
+            ? ((float) $finalAuditInputs['waiting_minutes'] / 60)
+            : null,
             $variables['waiting_hours'] ?? null,
             $pricingBreakdown['waiting_hours'] ?? null,
             $basePricing['waiting_hours'] ?? null,
@@ -932,18 +937,18 @@ class MobileAssignmentService
             'duration_minutes' => $this->firstNumeric([
                 $finalAuditInputs['duration_minutes'] ?? null,
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
-                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
-                    : null,
+                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60
+                : null,
                 $bookingItem?->duration_minutes,
                 $bookingItem?->duration_hours !== null ? (int) $bookingItem->duration_hours * 60 : null,
             ]),
             'journey_duration_seconds' => $this->firstNumeric([
                 isset($finalAuditInputs['duration_minutes'])
-                    ? ((float) $finalAuditInputs['duration_minutes'] * 60)
-                    : null,
+                ? ((float) $finalAuditInputs['duration_minutes'] * 60)
+                : null,
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
-                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
-                    : null,
+                ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at)
+                : null,
                 $metadata['journey_duration_seconds'] ?? null,
                 $distanceDetails['journey_duration_seconds'] ?? null,
                 $distanceDetails['duration_seconds'] ?? null,
@@ -969,6 +974,18 @@ class MobileAssignmentService
             ]),
             'waiting_hours' => $waitingHours,
             'waiting_minutes' => $waitingMinutes,
+            'pickup_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['pickup_waiting_minutes'] ?? null,
+                $assignment?->pickup_waiting_time_seconds !== null ? (int) $assignment->pickup_waiting_time_seconds / 60 : null,
+            ]),
+            'hire_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['hire_waiting_minutes'] ?? null,
+                $assignment?->hire_waiting_time_seconds !== null ? (int) $assignment->hire_waiting_time_seconds / 60 : null,
+            ]),
+            'total_waiting_minutes' => $this->firstNumeric([
+                $finalAuditInputs['total_waiting_minutes'] ?? null,
+                $waitingMinutes,
+            ]),
             'waiting_rate_per_hour' => $waitingRate,
             'waiting_charge' => $waitingCharge,
             'pricing_breakdown' => $pricingBreakdown,
@@ -996,6 +1013,9 @@ class MobileAssignmentService
             'extra_km',
             'waiting_hours',
             'waiting_minutes',
+            'pickup_waiting_minutes',
+            'hire_waiting_minutes',
+            'total_waiting_minutes',
             'waiting_charge',
         ])->all();
     }

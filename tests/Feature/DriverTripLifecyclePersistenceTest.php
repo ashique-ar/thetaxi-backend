@@ -202,6 +202,8 @@ beforeEach(function () {
         $table->timestamp('pickup_arrived_at')->nullable();
         $table->decimal('pickup_arrival_latitude', 10, 8)->nullable();
         $table->decimal('pickup_arrival_longitude', 11, 8)->nullable();
+        $table->decimal('trip_start_latitude', 10, 8)->nullable();
+        $table->decimal('trip_start_longitude', 11, 8)->nullable();
         $table->timestamp('trip_started_at')->nullable();
         $table->timestamp('trip_completed_at')->nullable();
         $table->timestamp('actual_start')->nullable();
@@ -210,6 +212,8 @@ beforeEach(function () {
         $table->decimal('final_longitude', 11, 8)->nullable();
         $table->decimal('total_distance_km', 10, 2)->nullable();
         $table->unsignedInteger('total_waiting_time_seconds')->nullable();
+        $table->unsignedInteger('pickup_waiting_time_seconds')->nullable();
+        $table->unsignedInteger('hire_waiting_time_seconds')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -272,6 +276,15 @@ beforeEach(function () {
     $waiting->shouldReceive('getTotalWaitingTime')->byDefault()->andReturn([
         'total_waiting_time_seconds' => 0,
         'waiting_period_count' => 0,
+    ]);
+    $waiting->shouldReceive('getHireWaitingTime')->byDefault()->andReturn([
+        'total_waiting_time_seconds' => 0,
+        'waiting_period_count' => 0,
+    ]);
+    $waiting->shouldReceive('calculateValidatedTripWaitingTime')->byDefault()->andReturn([
+        'total_waiting_time_seconds' => 0,
+        'waiting_period_count' => 0,
+        'source' => 'validated_route_points',
     ]);
     $waiting->shouldReceive('closeOpenWaitingRecords')->byDefault();
     $this->bookingLifecycle = Mockery::mock(BookingLifecycleService::class);
@@ -747,13 +760,15 @@ it('persists pickup arrival coordinates once and tolerates a mobile retry', func
 it('persists trip start once and returns the canonical next action', function () {
     $assignment = DriverAssignment::create(['trip_phase' => TripPhase::PICKUP_ARRIVED, 'status' => 'active']);
 
-    $this->tripService->startTrip($assignment);
+    $this->tripService->startTrip($assignment, ['latitude' => 6.9123, 'longitude' => 79.8123]);
     $started = $assignment->fresh();
-    $this->tripService->startTrip($started);
+    $this->tripService->startTrip($started, ['latitude' => 7.5, 'longitude' => 80.5]);
     $retried = $assignment->fresh();
 
     expect($retried->trip_phase)->toBe(TripPhase::IN_PROGRESS)
         ->and($retried->trip_started_at?->equalTo($started->trip_started_at))->toBeTrue()
+        ->and((float) $retried->trip_start_latitude)->toBe(6.9123)
+        ->and((float) $retried->trip_start_longitude)->toBe(79.8123)
         ->and($this->tripService->getAssignmentAllowedActions($retried, collect()))->toBe(['complete']);
 });
 
@@ -800,7 +815,11 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and((float) $completed->final_latitude)->toBe(6.95)
         ->and((float) $completed->final_longitude)->toBe(79.85)
         ->and((float) $completed->total_distance_km)->toBeGreaterThan(0)
-        ->and($retry['total_distance_km'])->toBe($summary['total_distance_km']);
+        ->and($summary['trip_started_at'])->toBe($completed->trip_started_at->copy()->utc()->toIso8601String())
+        ->and($summary['trip_completed_at'])->toBe($completed->trip_completed_at->copy()->utc()->toIso8601String())
+        ->and($retry['total_distance_km'])->toBe($summary['total_distance_km'])
+        ->and($retry['trip_started_at'])->toBe($summary['trip_started_at'])
+        ->and($retry['trip_completed_at'])->toBe($summary['trip_completed_at']);
 });
 
 it('reconciles a stale mobile assignment when the parent booking is already completed', function () {

@@ -115,8 +115,6 @@
                 "description": "Server-owned execution behavior. allowed_actions remains authoritative for lifecycle mutations.",
                 "required": [
                     "requires_driver",
-                    "execution_mode",
-                    "uses_hire_meter",
                     "route_mode",
                     "requires_destination",
                     "supports_multiple_stops",
@@ -126,16 +124,6 @@
                 ],
                 "properties": {
                     "requires_driver": {
-                        "type": "boolean"
-                    },
-                    "execution_mode": {
-                        "type": "string",
-                        "enum": [
-                            "trip",
-                            "day_hire"
-                        ]
-                    },
-                    "uses_hire_meter": {
                         "type": "boolean"
                     },
                     "route_mode": {
@@ -4340,8 +4328,6 @@
                                             },
                                             "execution_capabilities": {
                                                 "requires_driver": true,
-                                                "execution_mode": "day_hire",
-                                                "uses_hire_meter": true,
                                                 "route_mode": "open_package",
                                                 "requires_destination": false,
                                                 "supports_multiple_stops": false,
@@ -4597,8 +4583,6 @@
                                         },
                                         "execution_capabilities": {
                                             "requires_driver": true,
-                                            "execution_mode": "day_hire",
-                                            "uses_hire_meter": true,
                                             "route_mode": "open_package",
                                             "requires_destination": false,
                                             "supports_multiple_stops": false,
@@ -5072,8 +5056,6 @@
                                         },
                                         "execution_capabilities": {
                                             "requires_driver": true,
-                                            "execution_mode": "trip",
-                                            "uses_hire_meter": false,
                                             "route_mode": "fixed_route",
                                             "requires_destination": true,
                                             "supports_multiple_stops": true,
@@ -5588,8 +5570,6 @@
                                         },
                                         "execution_capabilities": {
                                             "requires_driver": true,
-                                            "execution_mode": "trip",
-                                            "uses_hire_meter": false,
                                             "route_mode": "fixed_route",
                                             "requires_destination": true,
                                             "supports_multiple_stops": true,
@@ -6142,8 +6122,6 @@
                                             },
                                             "execution_capabilities": {
                                                 "requires_driver": true,
-                                                "execution_mode": "trip",
-                                                "uses_hire_meter": false,
                                                 "route_mode": "fixed_route",
                                                 "requires_destination": true,
                                                 "supports_multiple_stops": true,
@@ -11673,8 +11651,6 @@
                                                 },
                                                 "execution_capabilities": {
                                                     "requires_driver": true,
-                                                    "execution_mode": "trip",
-                                                    "uses_hire_meter": false,
                                                     "route_mode": "fixed_route",
                                                     "requires_destination": true,
                                                     "supports_multiple_stops": true,
@@ -12172,8 +12148,6 @@
                                                 },
                                                 "execution_capabilities": {
                                                     "requires_driver": true,
-                                                    "execution_mode": "trip",
-                                                    "uses_hire_meter": false,
                                                     "route_mode": "fixed_route",
                                                     "requires_destination": true,
                                                     "supports_multiple_stops": true,

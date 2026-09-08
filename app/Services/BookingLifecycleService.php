@@ -2102,6 +2102,12 @@ class BookingLifecycleService
             || $assignment->total_distance_km !== null
             || $assignment->total_waiting_time_seconds > 0
         );
+        $pickupWaitingSeconds = $assignment ? max(0, (int) ($assignment->pickup_waiting_time_seconds ?? 0)) : 0;
+        $hireWaitingSeconds = $assignment ? max(0, (int) ($assignment->hire_waiting_time_seconds ?? 0)) : 0;
+        if ($assignment && $pickupWaitingSeconds === 0 && $hireWaitingSeconds === 0
+            && (int) $assignment->total_waiting_time_seconds > 0) {
+            $hireWaitingSeconds = (int) $assignment->total_waiting_time_seconds;
+        }
 
         $driverTelemetry = $hasDriverTelemetry ? [
             '_source' => 'driver_mobile_activity',
@@ -2111,6 +2117,8 @@ class BookingLifecycleService
                 ? (float) $assignment->total_distance_km
                 : null,
             'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
+            'pickup_waiting_minutes' => (int) ceil($pickupWaitingSeconds / 60),
+            'hire_waiting_minutes' => (int) ceil($hireWaitingSeconds / 60),
         ] : null;
 
         // Values submitted through staff lifecycle endpoints are a trusted
@@ -2131,6 +2139,12 @@ class BookingLifecycleService
                     : $this->measuredMileageDistance($dispatch)),
             'waiting_minutes' => array_key_exists('waiting_minutes', $activityData)
                 ? (int) $activityData['waiting_minutes']
+                : null,
+            'pickup_waiting_minutes' => array_key_exists('pickup_waiting_minutes', $activityData)
+                ? (int) $activityData['pickup_waiting_minutes']
+                : null,
+            'hire_waiting_minutes' => array_key_exists('hire_waiting_minutes', $activityData)
+                ? (int) $activityData['hire_waiting_minutes']
                 : null,
         ] : null;
 
@@ -2192,12 +2206,20 @@ class BookingLifecycleService
             'waiting_minutes' => is_numeric($itemDurationMetrics['waiting_minutes'] ?? null)
                 ? (int) $itemDurationMetrics['waiting_minutes']
                 : null,
+            'pickup_waiting_minutes' => is_numeric($itemDurationMetrics['pickup_waiting_minutes'] ?? null)
+                ? (int) $itemDurationMetrics['pickup_waiting_minutes']
+                : null,
+            'hire_waiting_minutes' => is_numeric($itemDurationMetrics['hire_waiting_minutes'] ?? null)
+                ? (int) $itemDurationMetrics['hire_waiting_minutes']
+                : null,
         ] : [
             '_source' => 'booking_persisted_fallback',
             'actual_start_time' => $booking->trip_started_at,
             'actual_return_time' => $booking->completed_at,
             'distance_km' => $booking->actual_distance !== null ? (float) $booking->actual_distance : null,
             'waiting_minutes' => data_get($booking->duration_metrics, 'waiting_minutes'),
+            'pickup_waiting_minutes' => data_get($booking->duration_metrics, 'pickup_waiting_minutes'),
+            'hire_waiting_minutes' => data_get($booking->duration_metrics, 'hire_waiting_minutes'),
         ];
 
         $resolvedTelemetry = $this->finalPricingTelemetryResolver->resolve([
@@ -2249,11 +2271,20 @@ class BookingLifecycleService
             );
         }
 
-        $hasWaitingSource = array_key_exists('waiting_minutes', $resolvedTelemetry)
-            && is_numeric($resolvedTelemetry['waiting_minutes']);
+        $hasWaitingSource = (array_key_exists('waiting_minutes', $resolvedTelemetry)
+                && is_numeric($resolvedTelemetry['waiting_minutes']))
+            || (array_key_exists('pickup_waiting_minutes', $resolvedTelemetry)
+                && is_numeric($resolvedTelemetry['pickup_waiting_minutes']))
+            || (array_key_exists('hire_waiting_minutes', $resolvedTelemetry)
+                && is_numeric($resolvedTelemetry['hire_waiting_minutes']));
         $waitingMinutes = $hasWaitingSource
             ? max(0, (int) $resolvedTelemetry['waiting_minutes'])
             : null;
+        $pickupWaitingMinutes = max(0, (int) ($resolvedTelemetry['pickup_waiting_minutes'] ?? 0));
+        $hireWaitingMinutes = max(0, (int) ($resolvedTelemetry['hire_waiting_minutes']
+            ?? ($waitingMinutes !== null ? max(0, $waitingMinutes - $pickupWaitingMinutes) : 0)));
+        $totalWaitingMinutes = $pickupWaitingMinutes + $hireWaitingMinutes;
+        $waitingMinutes = $hasWaitingSource ? $totalWaitingMinutes : null;
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
         $hasIncludedDuration = array_key_exists('included_minutes', $metadata)
             || array_key_exists('included_hours', $metadata)
@@ -2343,8 +2374,13 @@ class BookingLifecycleService
             'mode' => 'final_calculation',
         ];
         if ($hasWaitingSource) {
-            $params['waiting_minutes'] = $waitingMinutes;
-            $params['waiting_hours'] = $waitingMinutes / 60;
+            $params['pickup_waiting_minutes'] = $pickupWaitingMinutes;
+            $params['hire_waiting_minutes'] = $hireWaitingMinutes;
+            $params['total_waiting_minutes'] = $totalWaitingMinutes;
+            // Legacy definitions continue to receive the total until they are
+            // migrated to the explicit pickup/hire variables.
+            $params['waiting_minutes'] = $totalWaitingMinutes;
+            $params['waiting_hours'] = $totalWaitingMinutes / 60;
         }
         if ($packageIncludedKm !== null) {
             $params['package_included_km'] = $packageIncludedKm;
@@ -2420,6 +2456,9 @@ class BookingLifecycleService
                 'duration_minutes' => $durationMinutes,
                 'distance_km' => $distanceKm !== null ? round((float) $distanceKm, 2) : null,
                 'waiting_minutes' => $waitingMinutes,
+                'pickup_waiting_minutes' => $pickupWaitingMinutes,
+                'hire_waiting_minutes' => $hireWaitingMinutes,
+                'total_waiting_minutes' => $totalWaitingMinutes,
                 'extra_minutes' => $extraMinutes,
                 'manual_additional_charge' => $manualCharges,
                 'late_return_fee' => $lateFee,

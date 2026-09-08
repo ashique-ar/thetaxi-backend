@@ -29,6 +29,7 @@ class EndTripRequest extends FormRequest
             'address' => ['nullable', 'string', 'max:500'],
             'final_address' => ['nullable', 'string', 'max:500'],
             'ending_mileage' => ['nullable', 'integer', 'min:0'],
+            'tracked_waiting_seconds' => ['nullable', 'integer', 'min:0', 'max:604800'],
             'notes' => ['nullable', 'string', 'max:1000'],
             'collected_amount' => ['nullable', 'numeric', 'min:0'],
             'payment_notes' => ['nullable', 'string', 'max:1000'],

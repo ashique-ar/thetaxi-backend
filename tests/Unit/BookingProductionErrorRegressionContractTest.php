@@ -35,6 +35,28 @@ it('does not require pricing context for vehicle conflict availability', functio
         ->not->toContain("\$params['service_type_id']");
 });
 
+it('uses authoritative vehicle enforcement consistently in group and specific availability', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $groupAnalysis = Str::between(
+        $source,
+        'private function analyzeVehicleAvailability(',
+        'private function getVehicleConflictsDetailed('
+    );
+    $specificSearch = Str::between(
+        $source,
+        'public function searchSpecificVehicles(',
+        'public function searchSpecificDrivers('
+    );
+
+    expect($groupAnalysis)
+        ->toContain('getEnhancedVehicleAvailability(')
+        ->toContain("['enforcement']['blocking_reasons']")
+        ->and($specificSearch)
+        ->toContain("->where('status', 'active')")
+        ->toContain("'blocking_reasons' => \$availability['enforcement']['blocking_reasons'] ?? []")
+        ->toContain("['available', 'available_concurrent']");
+});
+
 it('returns validation and missing-booking responses without converting them to server errors', function () {
     $submission = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php');
     $assignment = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
@@ -78,4 +100,22 @@ it('recovers booking management links that reference a replaced item', function 
         ->toContain('BookingItem::withTrashed()')
         ->toContain("'selection_warning' => \$selectionWarning")
         ->toContain('The current trip has been opened.');
+});
+
+it('promotes the primary corporate passenger so bookings always resolve a customer', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $normalization = Str::between(
+        $source,
+        'public function normalizeCorporateEmployeeReferences(',
+        'public function isValidBookingEmployeeId('
+    );
+
+    expect($normalization)
+        ->toContain("data_get(\$item, 'metadata.primary_pickup_contact.employee_id')")
+        ->toContain("'corporate_id'")
+        ->toContain("\$params['employee_id'] = (string) \$employee->user_id");
+
+    expect($source)
+        ->toContain("if (\$isCorporateBooking && Auth::id())")
+        ->toContain("return \$this->ensureCustomerForUser((string) Auth::id())");
 });

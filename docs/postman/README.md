@@ -922,8 +922,6 @@ Assignment response shape:
     },
     "execution_capabilities": {
       "requires_driver": true,
-      "execution_mode": "trip",
-      "uses_hire_meter": false,
       "route_mode": "fixed_route",
       "requires_destination": true,
       "supports_multiple_stops": true,

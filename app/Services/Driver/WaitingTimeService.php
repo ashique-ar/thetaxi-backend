@@ -21,6 +21,8 @@ class WaitingTimeService
 {
     private const SPEED_THRESHOLD_KMH = 3.0;
     private const MIN_STATIONARY_SECONDS = 120; // 2 minutes
+    private const MIN_VERIFIED_STATIONARY_SECONDS = 90;
+    private const MAX_CONTIGUOUS_GAP_SECONDS = 30;
 
     /**
      * Analyze recent route points for an assignment to detect/close waiting periods.
@@ -159,5 +161,135 @@ class WaitingTimeService
             'total_waiting_time_seconds' => $totalSeconds,
             'waiting_period_count' => $records->count(),
         ];
+    }
+
+    /** Return only stationary records occurring after passenger pickup. */
+    public function getHireWaitingTime(DriverAssignment $assignment): array
+    {
+        if (!$assignment->trip_started_at) {
+            return ['total_waiting_time_seconds' => 0, 'waiting_period_count' => 0];
+        }
+
+        $records = WaitingTimeRecord::where('assignment_id', $assignment->id)
+            ->where(function ($query) use ($assignment): void {
+                $query->where('end_time', '>', $assignment->trip_started_at)
+                    ->orWhereNull('end_time');
+            })
+            ->get();
+        $totalSeconds = 0;
+        foreach ($records as $record) {
+            $start = Carbon::parse($record->start_time)->max($assignment->trip_started_at);
+            $end = $record->end_time ? Carbon::parse($record->end_time) : Carbon::now('UTC');
+            if ($assignment->trip_completed_at) {
+                $end = $end->min($assignment->trip_completed_at);
+            }
+            if ($end->gt($start)) {
+                $totalSeconds += (int) $start->diffInSeconds($end);
+            }
+        }
+
+        return [
+            'total_waiting_time_seconds' => $totalSeconds,
+            'waiting_period_count' => $records->count(),
+        ];
+    }
+
+    /**
+     * Reconstruct meter waiting from immutable in-trip route evidence.
+     * Missing device speed is derived from consecutive coordinates. Gaps are
+     * boundaries and are never counted as waiting time.
+     */
+    public function calculateValidatedTripWaitingTime(DriverAssignment $assignment): array
+    {
+        if (!$assignment->trip_started_at) {
+            return ['total_waiting_time_seconds' => 0, 'waiting_period_count' => 0];
+        }
+
+        $points = $assignment->routePoints()
+            ->where('recorded_at', '>=', $assignment->trip_started_at)
+            ->when($assignment->trip_completed_at, fn ($query) => $query->where('recorded_at', '<=', $assignment->trip_completed_at))
+            ->orderBy('recorded_at')
+            ->orderBy('id')
+            ->get();
+
+        $waitingSeconds = 0;
+        $waitingPeriods = 0;
+        $stationarySeconds = 0;
+        $previous = null;
+
+        foreach ($points as $point) {
+            if (!$previous) {
+                $previous = $point;
+                continue;
+            }
+
+            $seconds = (int) Carbon::parse($previous->recorded_at)
+                ->diffInSeconds(Carbon::parse($point->recorded_at), false);
+            if ($seconds <= 0 || $seconds > self::MAX_CONTIGUOUS_GAP_SECONDS) {
+                [$waitingSeconds, $waitingPeriods] = $this->finishStationaryPeriod(
+                    $stationarySeconds,
+                    $waitingSeconds,
+                    $waitingPeriods
+                );
+                $stationarySeconds = 0;
+                $previous = $point;
+                continue;
+            }
+
+            $speedKmh = $point->speed !== null
+                ? max(0.0, (float) $point->speed * 3.6)
+                : ($this->distanceKm($previous, $point) / $seconds) * 3600;
+
+            if ($speedKmh < self::SPEED_THRESHOLD_KMH) {
+                $stationarySeconds += $seconds;
+            } else {
+                [$waitingSeconds, $waitingPeriods] = $this->finishStationaryPeriod(
+                    $stationarySeconds,
+                    $waitingSeconds,
+                    $waitingPeriods
+                );
+                $stationarySeconds = 0;
+            }
+            $previous = $point;
+        }
+
+        [$waitingSeconds, $waitingPeriods] = $this->finishStationaryPeriod(
+            $stationarySeconds,
+            $waitingSeconds,
+            $waitingPeriods
+        );
+
+        return [
+            'total_waiting_time_seconds' => $waitingSeconds,
+            'waiting_period_count' => $waitingPeriods,
+            'source' => 'validated_route_points',
+        ];
+    }
+
+    private function finishStationaryPeriod(int $stationarySeconds, int $total, int $periods): array
+    {
+        if ($stationarySeconds <= self::MIN_VERIFIED_STATIONARY_SECONDS) {
+            return [$total, $periods];
+        }
+
+        return [
+            // The grace period only validates that this was a real stop. Keep the
+            // complete stationary interval because the pricing definition applies
+            // its own free-waiting allowance (for example, the first 10 minutes).
+            $total + $stationarySeconds,
+            $periods + 1,
+        ];
+    }
+
+    private function distanceKm(object $from, object $to): float
+    {
+        $earth = 6371.0088;
+        $lat1 = deg2rad((float) $from->latitude);
+        $lat2 = deg2rad((float) $to->latitude);
+        $latDelta = $lat2 - $lat1;
+        $lonDelta = deg2rad((float) $to->longitude - (float) $from->longitude);
+        $a = sin($latDelta / 2) ** 2 + cos($lat1) * cos($lat2) * sin($lonDelta / 2) ** 2;
+
+        return $earth * 2 * atan2(sqrt($a), sqrt(max(0, 1 - $a)));
     }
 }
