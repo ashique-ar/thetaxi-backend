@@ -2208,6 +2208,8 @@ class BookingFlowService
             'rate_type' => $servicePackage->rate_type,
             'default_duration_hours' => $servicePackage->default_duration_hours,
             'default_duration_minutes' => $servicePackage->default_duration_minutes,
+            'charges_extra_hours' => (bool) $servicePackage->charges_extra_hours,
+            'charges_extra_km' => (bool) $servicePackage->charges_extra_km,
         ];
     }
 
@@ -2780,6 +2782,7 @@ class BookingFlowService
         $dynamicRequirements = $this->getDynamicCalculationRequirements($params);
         $itemMetadata = array_merge($params['metadata'] ?? [], [
             'trip_mode' => $params['trip_mode'] ?? $dynamicRequirements['trip_mode'] ?? 'fixed_route',
+            'service_package_id' => $params['service_package_id'] ?? $params['package_id'] ?? null,
             'dropoff_location_required' => $dynamicRequirements['dropoff_location_required'] ?? null,
             'disable_route_preview' => $dynamicRequirements['disable_route_preview'] ?? false,
             'disable_distance_estimate' => $dynamicRequirements['disable_distance_estimate'] ?? false,
@@ -2982,6 +2985,9 @@ class BookingFlowService
                         'dropoff_location' => $itemData['dropoff_location'] ?? null,
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
                         'selected_addons' => $itemData['addons'] ?? [],
+                        'service_package_id' => $itemData['service_package_id']
+                            ?? $itemData['package_id']
+                            ?? data_get($itemData, 'metadata.service_package_id'),
                         'booking_id' => $bookingId,
                         'preserve_custom_pricing' => $params['preserve_custom_pricing'] ?? false,
                         'variable_customizations' => $params['variable_customizations'] ?? [],
@@ -3061,7 +3067,13 @@ class BookingFlowService
                         'addons' => $itemData['addons'] ?? [], // Store addons per item
                         'customizations' => $itemData['customizations'] ?? [],
                         'discounts' => $itemData['discounts'] ?? [],
-                        'metadata' => $itemData['metadata'] ?? [],
+                        'metadata' => array_merge(
+                            is_array($itemData['metadata'] ?? null) ? $itemData['metadata'] : [],
+                            [
+                                'service_package_id' => $itemPricingParams['service_package_id'] ?? null,
+                                'package_info' => $itemPricing['package_info'] ?? null,
+                            ]
+                        ),
                     ];
 
                     $submittedItemId = !empty($itemData['id'])
@@ -3070,6 +3082,15 @@ class BookingFlowService
                     $bookingItem = $submittedItemId
                         ? $existingBookingItems->get($submittedItemId)
                         : null;
+
+                    if ($bookingItem && ($bookingItem->approved_at || $bookingItem->dispatch()->exists())) {
+                        $lockedPackageId = data_get($bookingItem->metadata, 'service_package_id')
+                            ?? data_get($bookingItem->metadata, 'package_info.id');
+                        $requestedPackageId = $itemPricingParams['service_package_id'] ?? null;
+                        if ($lockedPackageId && (string) $requestedPackageId !== (string) $lockedPackageId) {
+                            throw new \DomainException('The selected package is locked after approval or dispatch.');
+                        }
+                    }
 
                     if ($bookingItem) {
                         if ($bookingItem->trashed()) {
@@ -4214,6 +4235,17 @@ class BookingFlowService
 
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
+            if ($servicePackageInfo) {
+                $calculationInputs['package_id'] = (string) $servicePackageInfo['id'];
+                $calculationInputs['service_package_id'] = (string) $servicePackageInfo['id'];
+                $calculationInputs['package_included_km'] = isset($calculationInputs['package_included_km'])
+                    ? (float) $calculationInputs['package_included_km']
+                    : (float) ($servicePackageInfo['max_km_per_package'] ?? $servicePackageInfo['max_km_per_day'] ?? 0);
+                $calculationInputs['package_included_hours'] = isset($calculationInputs['package_included_hours'])
+                    ? (float) $calculationInputs['package_included_hours']
+                    : (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
+                        + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
+            }
 
             // Resolve district pricing adjustment
             $districtInfo = null;
@@ -4844,6 +4876,20 @@ class BookingFlowService
             'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
             'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
+            'package_info' => $servicePackageInfo ? [
+                'id' => (string) $servicePackageInfo['id'],
+                'name' => $servicePackageInfo['name'] ?? null,
+                'code' => $servicePackageInfo['code'] ?? null,
+                'description' => data_get($servicePackageInfo, 'service_package.description'),
+                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
+                'default_duration_hours' => $servicePackageInfo['default_duration_hours'] ?? 0,
+                'default_duration_minutes' => $servicePackageInfo['default_duration_minutes'] ?? 0,
+                'charges_extra_hours' => (bool) ($servicePackageInfo['charges_extra_hours'] ?? false),
+                'charges_extra_km' => (bool) ($servicePackageInfo['charges_extra_km'] ?? true),
+                'rate_type' => $servicePackageInfo['rate_type'] ?? null,
+                'snapshotted_at' => now()->toIso8601String(),
+            ] : null,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
