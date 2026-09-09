@@ -66,18 +66,6 @@ beforeEach(function (): void {
         $table->timestamps();
         $table->softDeletes();
     });
-    Schema::create('vehicle_group_common_rate_pricing', function (Blueprint $table): void {
-        $table->uuid('id')->primary();
-        $table->uuid('vehicle_group_id');
-        $table->uuid('common_rate_definition_id');
-        $table->decimal('value', 12, 2)->nullable();
-        $table->string('owner_type')->nullable();
-        $table->uuid('owner_id')->nullable();
-        $table->integer('priority')->default(0);
-        $table->boolean('is_active')->default(true);
-        $table->timestamps();
-        $table->softDeletes();
-    });
 
     DB::table('service_types')->insert([
         'id' => '10000000-0000-4000-8000-000000000001',
@@ -101,17 +89,13 @@ beforeEach(function (): void {
 it('configures package-selected hourly hires as open packages', function (): void {
     $migration = require base_path('database/migrations/2026_09_09_000001_configure_hourly_open_packages.php');
     $migration->up();
-    $correctiveMigration = require base_path('database/migrations/2026_09_09_000002_consolidate_hourly_package_calculation.php');
-    $correctiveMigration->up();
 
     $config = json_decode(DB::table('service_types')->value('form_config'), true);
     expect($config['trip_mode'])->toBe('open_package')
         ->and($config['dropoff_location']['required'])->toBeFalse()
         ->and($config['service_package_id']['required'])->toBeTrue()
         ->and(DB::table('service_packages')->count())->toBe(4)
-        ->and(DB::table('vehicle_pricing_calculation_definitions')->whereNull('deleted_at')->count())->toBe(1)
-        ->and(DB::table('vehicle_pricing_calculation_definitions')->where('name', 'Hourly Package')->value('status'))->toBe('active')
-        ->and(DB::table('vehicle_pricing_calculation_definitions')->where('name', 'like', 'Hourly Package - %')->count())->toBe(0);
+        ->and(DB::table('vehicle_pricing_calculation_definitions')->where('status', 'draft')->count())->toBe(4);
 
     $eightHour = DB::table('service_packages')->where('code', 'hourly_8h_80km')->first();
     $distanceOnly = DB::table('service_packages')->where('code', 'hourly_100_200km')->first();
@@ -122,76 +106,27 @@ it('configures package-selected hourly hires as open packages', function (): voi
         ->and((bool) $distanceOnly->charges_extra_hours)->toBeFalse();
 });
 
-it('uses one shared formula with server-resolved selected package values', function (): void {
+it('prices only the package selected at booking', function (): void {
     $definition = new VehiclePricingCalculationDefinition([
         'service_type_id' => '10000000-0000-4000-8000-000000000001',
-        'formula' => 'package_base_rate + (max(0, total_distance - package_included_km) * package_extra_km_rate * package_charges_extra_km) + (max(0, duration_hours - package_included_hours) * package_extra_hour_rate * package_charges_extra_hours)',
+        'formula' => 'Package_Rate + (max(0, total_distance - package_included_km) * Extra_KM_Rate) + (max(0, duration_hours - package_included_hours) * Extra_Hour_Rate)',
         'variables' => [
-            ['name' => 'package_base_rate', 'type' => 'number', 'is_required' => true],
+            ['name' => 'Package_Rate', 'type' => 'common_rate', 'is_required' => true],
             ['name' => 'total_distance', 'type' => 'distance', 'is_required' => true],
             ['name' => 'package_included_km', 'type' => 'distance', 'is_required' => true],
-            ['name' => 'package_extra_km_rate', 'type' => 'number', 'is_required' => true],
-            ['name' => 'package_charges_extra_km', 'type' => 'number', 'is_required' => true],
+            ['name' => 'Extra_KM_Rate', 'type' => 'common_rate', 'is_required' => true],
             ['name' => 'duration_hours', 'type' => 'duration', 'is_required' => true],
             ['name' => 'package_included_hours', 'type' => 'duration', 'is_required' => true],
-            ['name' => 'package_extra_hour_rate', 'type' => 'number', 'is_required' => true],
-            ['name' => 'package_charges_extra_hours', 'type' => 'number', 'is_required' => true],
+            ['name' => 'Extra_Hour_Rate', 'type' => 'common_rate', 'is_required' => true],
         ],
-        'conditions' => [],
+        'conditions' => [['field' => 'package_id', 'operator' => '=', 'value' => 'package-8h']],
     ]);
 
     $method = new \ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
     $result = $method->invoke($definition, $definition->formula, [
-        'package_base_rate' => 10000,
-        'total_distance' => 92, 'package_included_km' => 80,
-        'package_extra_km_rate' => 100, 'package_charges_extra_km' => 1,
-        'duration_hours' => 9, 'package_included_hours' => 8,
-        'package_extra_hour_rate' => 500, 'package_charges_extra_hours' => 1,
+        'Package_Rate' => 10000,
+        'total_distance' => 92, 'package_included_km' => 80, 'Extra_KM_Rate' => 100,
+        'duration_hours' => 9, 'package_included_hours' => 8, 'Extra_Hour_Rate' => 500,
     ]);
     expect($result)->toBe(11700.0);
-});
-
-it('resolves only the selected package rates for the corporate vehicle group', function (): void {
-    $migration = require base_path('database/migrations/2026_09_09_000001_configure_hourly_open_packages.php');
-    $migration->up();
-
-    $corporateId = '40000000-0000-4000-8000-000000000001';
-    $vehicleGroupId = '50000000-0000-4000-8000-000000000001';
-    $rateValues = [
-        'PACKAGE_RATE_HOURLY_8H_80KM' => 10000,
-        'EXTRA_KM_RATE_HOURLY_8H_80KM' => 100,
-        'EXTRA_HOUR_RATE_HOURLY_8H_80KM' => 500,
-    ];
-    foreach ($rateValues as $code => $value) {
-        DB::table('vehicle_group_common_rate_pricing')->insert([
-            'id' => fake()->uuid(),
-            'vehicle_group_id' => $vehicleGroupId,
-            'common_rate_definition_id' => DB::table('vehicle_pricing_common_rate_definitions')->where('code', $code)->value('id'),
-            'value' => $value,
-            'owner_type' => 'corporate',
-            'owner_id' => $corporateId,
-            'priority' => 100,
-            'is_active' => true,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
-    $package = DB::table('service_packages')->where('code', 'hourly_8h_80km')->first();
-    $service = (new ReflectionClass(\App\Services\BookingFlowService::class))->newInstanceWithoutConstructor();
-    $method = new ReflectionMethod($service, 'resolveSelectedPackagePricingInputs');
-    $resolved = $method->invoke($service, [
-        'vehicle_group_id' => $vehicleGroupId,
-        'owner_type' => 'corporate',
-        'owner_id' => $corporateId,
-    ], [
-        'code' => $package->code,
-        'charges_extra_hours' => true,
-        'charges_extra_km' => true,
-    ], '10000000-0000-4000-8000-000000000001');
-
-    expect($resolved['package_base_rate'])->toBe(10000.0)
-        ->and($resolved['package_extra_km_rate'])->toBe(100.0)
-        ->and($resolved['package_extra_hour_rate'])->toBe(500.0)
-        ->and($resolved['package_charges_extra_hours'])->toBe(1.0);
 });
