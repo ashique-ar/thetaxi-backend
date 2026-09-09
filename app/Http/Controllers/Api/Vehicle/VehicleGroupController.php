@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\Vehicle\Vehicle;
 use App\Http\Requests\Vehicle\VehicleGroup\CreateVehicleGroupRequest;
 use App\Http\Requests\Vehicle\VehicleGroup\UpdateVehicleGroupRequest;
 use App\Http\Resources\Vehicle\VehicleGroupResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 
 class VehicleGroupController extends Controller
 {
@@ -19,6 +22,7 @@ class VehicleGroupController extends Controller
         $this->middleware('permission:vehicle-groups.create')->only(['store']);
         $this->middleware('permission:vehicle-groups.edit')->only(['update']);
         $this->middleware('permission:vehicle-groups.delete')->only(['destroy']);
+        $this->middleware('permission:vehicles.edit')->only(['moveVehicles']);
     }
 
     public function index(Request $request)
@@ -144,6 +148,30 @@ class VehicleGroupController extends Controller
                     'class'
                 ))
             ]
+        ]);
+    }
+
+    public function moveVehicles(Request $request, VehicleGroup $vehicleGroup): JsonResponse
+    {
+        $data = $request->validate([
+            'vehicle_ids' => ['required', 'array', 'min:1'],
+            'vehicle_ids.*' => ['required', 'uuid', 'distinct', Rule::exists('vehicles', 'id')->where('vehicle_group_id', $vehicleGroup->id)],
+            'target_vehicle_group_id' => ['required', 'uuid', Rule::notIn([$vehicleGroup->id]), Rule::exists('vehicle_groups', 'id')->where(fn ($query) => $query->whereNull('deleted_at')->where('is_active', true))],
+        ]);
+
+        $moved = DB::transaction(fn () => Vehicle::query()
+            ->where('vehicle_group_id', $vehicleGroup->id)
+            ->whereIn('id', $data['vehicle_ids'])
+            ->update([
+                'vehicle_group_id' => $data['target_vehicle_group_id'],
+                'updated_user_id' => $request->user()->id,
+                'updated_at' => now(),
+            ]));
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $moved . ' vehicle' . ($moved === 1 ? '' : 's') . ' moved',
+            'data' => ['moved_count' => $moved],
         ]);
     }
 

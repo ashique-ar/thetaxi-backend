@@ -59,7 +59,7 @@ class VehicleController extends Controller
             'make_id',
             'owner_id',
             'grade_id',
-            'group_id',
+            'vehicle_group_id',
             'is_active',
             'ownership_type',
             'usage_type',
@@ -83,6 +83,11 @@ class VehicleController extends Controller
                     $q->where($field, $value);
                 }
             }
+        }
+
+        // Backward compatibility for older portal clients; the database column is vehicle_group_id.
+        if ($request->filled('group_id') && ! $request->filled('vehicle_group_id')) {
+            $q->where('vehicle_group_id', $request->group_id);
         }
 
 

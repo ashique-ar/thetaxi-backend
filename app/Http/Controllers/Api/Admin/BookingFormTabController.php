@@ -8,6 +8,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 
 class BookingFormTabController extends Controller
 {
@@ -109,6 +110,36 @@ class BookingFormTabController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tab status toggled successfully',
+            'data' => $tab,
+        ]);
+    }
+
+    /**
+     * Atomically select the tab initially shown on the public booking form.
+     */
+    public function setDefault(string $id): JsonResponse
+    {
+        $tab = DB::transaction(function () use ($id): BookingFormTab {
+            $tab = BookingFormTab::query()->lockForUpdate()->findOrFail($id);
+
+            abort_unless($tab->enabled, 422, 'Enable the booking tab before making it the default.');
+
+            BookingFormTab::query()->lockForUpdate()->get()->each(
+                function (BookingFormTab $candidate) use ($tab): void {
+                    $metadata = $candidate->metadata ?? [];
+                    $metadata['is_default'] = $candidate->is($tab);
+                    $candidate->update(['metadata' => $metadata]);
+                }
+            );
+
+            return $tab->fresh();
+        });
+
+        Cache::forget('booking_form_tabs');
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Default booking form tab updated successfully',
             'data' => $tab,
         ]);
     }

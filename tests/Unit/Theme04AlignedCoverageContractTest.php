@@ -35,10 +35,10 @@ it('keeps every completed homepage family on separate Theme 03 and Theme 04 pres
 
 it('keeps the Theme 04 hero on existing managed banner owners', function () {
     expect($this->hero)
-        ->toContain("\$settings['banner_heading']")
-        ->toContain("\$settings['banner_subheading']")
         ->toContain('get_hero_slides($settings)')
-        ->toContain("\$settings['site_tagline']")
+        ->toContain("\$slide['heading']")
+        ->toContain("\$slide['subheading']")
+        ->toContain("\$slide['caption']")
         ->toContain('shared-hero-swiper')
         ->toContain("@include('partials.hero-media'")
         ->not->toContain('<form')
@@ -55,6 +55,13 @@ it('wraps rather than duplicates the shared booking behavior', function () {
         ->toContain('.filter-input-wrap > form.filter-input')
         ->toContain('tab.setAttribute(\'role\', \'tab\')')
         ->toContain('tabs[target].click()');
+});
+
+it('keeps the desktop booking desk overlapping the responsive hero', function () {
+    expect($this->styles)
+        ->toContain("body.theme-theme-04 {\n    --t4-hero-height:")
+        ->toContain('min-height: var(--t4-hero-height)')
+        ->toContain('margin-top: calc((var(--t4-hero-height) * -1) + 26px)');
 });
 
 it('preserves header routes, currency, contact and cart integration hooks', function () {

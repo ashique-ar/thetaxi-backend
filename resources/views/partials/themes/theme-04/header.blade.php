@@ -18,7 +18,7 @@
             aria-expanded="false"
             aria-controls="t4-primary-navigation"
             data-t4-menu-open>
-            <span class="visually-hidden">Open navigation</span>
+            <span class="visually-hidden">{{ $settings['header_menu_label'] ?? 'Open navigation' }}</span>
             <i aria-hidden="true"></i><i aria-hidden="true"></i><i aria-hidden="true"></i>
         </button>
 
@@ -29,27 +29,7 @@
             </div>
 
             <ul class="t4-navigation__links">
-                <li class="{{ Request::routeIs('home') ? 'is-active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
-
-                @if (isset($headerServices) && $headerServices->count() > 0)
-                    <li class="t4-navigation__services {{ Request::routeIs('cms.show') && Request::route('contentType') === 'services' ? 'is-active' : '' }}">
-                        <details data-t4-services>
-                            <summary>Services <i class="bi bi-chevron-down" aria-hidden="true"></i></summary>
-                            <ul>
-                                @foreach ($headerServices as $service)
-                                    @if (!empty($service->slug))
-                                        <li><a href="{{ route('cms.show', ['contentType' => 'services', 'content' => $service->slug]) }}">{{ $service->title }}</a></li>
-                                    @endif
-                                @endforeach
-                            </ul>
-                        </details>
-                    </li>
-                @endif
-
-                <li class="{{ Request::routeIs('corporate-transfers') ? 'is-active' : '' }}"><a href="{{ route('corporate-transfers') }}">Corporate Transport</a></li>
-                <li class="{{ Request::routeIs('rate-chart') ? 'is-active' : '' }}"><a href="{{ route('rate-chart') }}">Rate Chart</a></li>
-                <li class="{{ Request::routeIs('about') ? 'is-active' : '' }}"><a href="{{ route('about') }}">About</a></li>
-                <li class="{{ Request::routeIs('inquiry', 'contact') ? 'is-active' : '' }}"><a href="{{ route('inquiry') }}">Inquiry</a></li>
+                @include('partials.header-navigation', ['themeHeader' => 't4'])
             </ul>
 
             <div class="t4-navigation__utilities">
@@ -75,7 +55,7 @@
                     </a>
                 @endif
 
-                <a href="{{ route('inquiry') }}" class="t4-header__contact">Contact Us</a>
+                <a href="{{ route('inquiry') }}" class="t4-header__contact">{{ $settings['header_contact_label'] ?? 'Contact Us' }}</a>
 
                 <a href="{{ route('checkout') }}" class="t4-header__cart" aria-label="Open booking cart">
                     <i class="bi bi-bag" aria-hidden="true"></i>
@@ -83,7 +63,7 @@
                 </a>
 
                 <a href="{{ route('checkout') }}" class="t4-navigation__mobile-cart">
-                    View booking
+                    {{ $settings['header_mobile_cart_label'] ?? 'View booking' }}
                     <b class="cart-badge" id="mobileCartBadge">0</b>
                 </a>
             </div>

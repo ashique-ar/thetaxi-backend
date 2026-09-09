@@ -1601,6 +1601,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-distance-multipliers', VehicleDistanceMultiplierController::class);
             Route::apiResource('vehicle-fuel-types', VehicleFuelTypeController::class);
             Route::apiResource('vehicle-grades', VehicleGradeController::class);
+            Route::post('vehicle-groups/{vehicleGroup}/move-vehicles', [VehicleGroupController::class, 'moveVehicles']);
             Route::apiResource('vehicle-groups', VehicleGroupController::class);
             Route::apiResource('vehicle-images', VehicleImageController::class);
             Route::post('vehicle-insurances/{vehicleInsurance}/renew', [VehicleInsuranceController::class, 'renew']);
@@ -2944,7 +2945,9 @@ Route::middleware(['auth:api'])->group(function () {
         });
         Route::put('booking-form-tabs/{id}', [BookingFormTabController::class, 'update'])
             ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
+        Route::post('booking-form-tabs/{id}/default', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'setDefault'])
+            ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/{id}/toggle', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/reorder', [BookingFormTabController::class, 'reorder'])
             ->middleware('permission:settings.edit');

@@ -1115,6 +1115,9 @@ class WebsiteSettingsService
             // Canonical header labels used in blades
             'header_help_label',
             'header_cart_label',
+            'header_contact_label',
+            'header_menu_label',
+            'header_mobile_cart_label',
             'header_quick_search_label',
             // Legacy keys (backward compatibility)
             'header_need_help_text',

@@ -20,22 +20,7 @@
                     </div>
                 </div>
                 <ul class="menu-list">
-                    <li class="{{ Request::routeIs('home') ? 'active' : '' }}"><a href="{{ route('home') }}">Home</a></li>
-                    @if(isset($headerServices) && $headerServices->count() > 0)
-                    <li class="menu-item-has-children">
-                        <a href="#" class="drop-down">Services <i class="bi bi-caret-down-fill"></i></a>
-                        <i class="bi bi-plus dropdown-icon"></i>
-                        <ul class="sub-menu scrollable-submenu">
-                            @foreach($headerServices as $service)
-                                @if(!empty($service->slug))
-                                <li><a href="{{ route('cms.show', ['contentType' => 'services', 'content' => $service->slug]) }}">{{ $service->title }}</a></li>
-                                @endif
-                            @endforeach
-                        </ul>
-                    </li>
-                    @endif
-                    <li><a href="{{ route('about') }}">About</a></li>
-                    <li><a href="{{ route('inquiry') }}">Inquiry</a></li>
+                    @include('partials.header-navigation', ['themeHeader' => 't2'])
                 </ul>
                 <div class="contact-area d-xl-none d-flex">
                     <div class="icon">
