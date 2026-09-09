@@ -655,15 +655,14 @@ class SettingsCategoryService
                 'banner_heading' => [
                     'label' => 'Banner Heading',
                     'type' => 'text',
-                    'required' => true,
                     'placeholder' => 'All-in-one Travel Booking',
-                    'description' => 'Main heading on homepage banner'
+                    'description' => 'Fallback heading used when a hero slide has no heading'
                 ],
                 'banner_subheading' => [
                     'label' => 'Banner Subheading',
                     'type' => 'text',
                     'placeholder' => 'Best travel agency in world-wide & achieve',
-                    'description' => 'Subheading under main banner'
+                    'description' => 'Fallback description used when a hero slide has no description'
                 ],
                 'about_section_title' => [
                     'label' => 'About Section Title',

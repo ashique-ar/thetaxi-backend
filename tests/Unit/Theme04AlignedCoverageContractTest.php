@@ -35,10 +35,10 @@ it('keeps every completed homepage family on separate Theme 03 and Theme 04 pres
 
 it('keeps the Theme 04 hero on existing managed banner owners', function () {
     expect($this->hero)
-        ->toContain("\$settings['banner_heading']")
-        ->toContain("\$settings['banner_subheading']")
         ->toContain('get_hero_slides($settings)')
-        ->toContain("\$settings['site_tagline']")
+        ->toContain("\$slide['heading']")
+        ->toContain("\$slide['subheading']")
+        ->toContain("\$slide['caption']")
         ->toContain('shared-hero-swiper')
         ->toContain("@include('partials.hero-media'")
         ->not->toContain('<form')

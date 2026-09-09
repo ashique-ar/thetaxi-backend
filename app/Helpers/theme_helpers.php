@@ -155,7 +155,7 @@ if (!function_exists('get_hero_slides')) {
      * Generic slides take precedence; the Theme 02 array and single banner
      * fields remain backward-compatible fallbacks.
      *
-     * @return array<int, array{type:string,desktop:?string,mobile:?string,video:?string,poster:?string,alt:string}>
+     * @return array<int, array{type:string,desktop:?string,mobile:?string,video:?string,poster:?string,heading:string,subheading:string,caption:string,alt:string}>
      */
     function get_hero_slides(array $settings): array
     {
@@ -174,14 +174,16 @@ if (!function_exists('get_hero_slides')) {
                 $mobile = $slide['mobile'] ?? $slide['mobile_image'] ?? null;
                 $video = $slide['video'] ?? null;
                 $poster = $slide['poster'] ?? $desktop;
+                $heading = trim((string) ($slide['heading'] ?? '')) ?: trim((string) ($settings['banner_heading'] ?? ''));
+                $subheading = trim((string) ($slide['subheading'] ?? '')) ?: trim((string) ($settings['banner_subheading'] ?? ''));
+                $caption = trim((string) ($slide['caption'] ?? '')) ?: trim((string) ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? ''));
+                $alt = trim((string) ($slide['alt'] ?? ($heading ?: 'Homepage banner slide ' . ($index + 1))));
 
                 if (($type === 'video' && empty($video)) || ($type === 'image' && empty($desktop))) {
                     continue;
                 }
 
-                $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster') + [
-                    'alt' => trim(($settings['banner_heading'] ?? 'Banner') . ' slide ' . ($index + 1)),
-                ];
+                $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster', 'heading', 'subheading', 'caption', 'alt');
             }
         }
 
@@ -199,6 +201,9 @@ if (!function_exists('get_hero_slides')) {
                         'mobile' => $slide['mobile'] ?? $slide['mobile_image'] ?? null,
                         'video' => null,
                         'poster' => null,
+                        'heading' => trim((string) ($settings['banner_heading'] ?? '')),
+                        'subheading' => trim((string) ($settings['banner_subheading'] ?? '')),
+                        'caption' => trim((string) ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? '')),
                         'alt' => trim(($settings['banner_heading'] ?? 'Banner') . ' slide ' . ($index + 1)),
                     ];
                 }
@@ -209,6 +214,9 @@ if (!function_exists('get_hero_slides')) {
             $slides[] = [
                 'type' => 'video', 'desktop' => null, 'mobile' => null,
                 'video' => $settings['banner_video'], 'poster' => $settings['banner_image'] ?? null,
+                'heading' => trim((string) ($settings['banner_heading'] ?? '')),
+                'subheading' => trim((string) ($settings['banner_subheading'] ?? '')),
+                'caption' => trim((string) ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? '')),
                 'alt' => $settings['banner_heading'] ?? 'Banner video',
             ];
         }
@@ -218,6 +226,9 @@ if (!function_exists('get_hero_slides')) {
                 'type' => 'image',
                 'desktop' => $settings['banner_image'] ?? 'assets/img/home4/home4-banner-img.jpg',
                 'mobile' => null, 'video' => null, 'poster' => null,
+                'heading' => trim((string) ($settings['banner_heading'] ?? '')),
+                'subheading' => trim((string) ($settings['banner_subheading'] ?? '')),
+                'caption' => trim((string) ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? '')),
                 'alt' => $settings['banner_heading'] ?? 'Banner',
             ];
         }

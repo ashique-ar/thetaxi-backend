@@ -1,10 +1,12 @@
 <?php
 
+require_once dirname(__DIR__, 2) . '/app/Helpers/theme_helpers.php';
+
 it('normalizes mixed image and video slides with backward-compatible fallbacks', function () {
     $slides = get_hero_slides([
         'banner_heading' => 'Journeys',
         'hero_slides' => json_encode([
-            ['type' => 'image', 'desktop' => 'desktop.jpg', 'mobile' => 'mobile.jpg'],
+            ['type' => 'image', 'desktop' => 'desktop.jpg', 'mobile' => 'mobile.jpg', 'heading' => 'Airport arrivals', 'subheading' => 'Meet and greet'],
             ['type' => 'video', 'video' => 'hero.mp4', 'poster' => 'poster.jpg'],
         ]),
     ]);
@@ -12,6 +14,8 @@ it('normalizes mixed image and video slides with backward-compatible fallbacks',
     expect($slides)->toHaveCount(2)
         ->and($slides[0]['type'])->toBe('image')
         ->and($slides[0]['mobile'])->toBe('mobile.jpg')
+        ->and($slides[0]['heading'])->toBe('Airport arrivals')
+        ->and($slides[0]['subheading'])->toBe('Meet and greet')
         ->and($slides[1]['type'])->toBe('video')
         ->and($slides[1]['poster'])->toBe('poster.jpg');
 
@@ -19,6 +23,15 @@ it('normalizes mixed image and video slides with backward-compatible fallbacks',
         ->toMatchArray(['type' => 'video', 'video' => 'legacy.mp4', 'poster' => 'legacy.jpg']);
     expect(get_hero_slides(['banner_image' => 'single.jpg'])[0])
         ->toMatchArray(['type' => 'image', 'desktop' => 'single.jpg']);
+});
+
+it('keeps theme 04 text attached to each managed slide', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/resources/views/partials/themes/theme-04/hero.blade.php');
+
+    expect($source)->toContain("\$slide['heading']")
+        ->toContain("\$slide['subheading']")
+        ->toContain("\$slide['caption']")
+        ->not->toContain('t4-hero-title');
 });
 
 it('renders the same shared slider and media partial in all four theme heroes', function () {
@@ -38,11 +51,10 @@ it('renders the same shared slider and media partial in all four theme heroes', 
 });
 
 it('uses one idempotent reduced-motion-aware slider behavior', function () {
-    $script = file_get_contents(public_path('assets/js/custom.js'));
+    $script = file_get_contents(dirname(__DIR__, 2) . '/public/assets/js/custom.js');
     expect($script)->toContain('document.querySelectorAll(".shared-hero-swiper")')
         ->toContain('slider.dataset.heroReady')
         ->toContain('prefers-reduced-motion: reduce')
         ->toContain('syncHeroVideo')
         ->toContain('video.play()')->toContain('video.pause()');
 });
-
