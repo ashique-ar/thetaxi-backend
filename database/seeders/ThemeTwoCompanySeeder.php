@@ -21,6 +21,7 @@ class ThemeTwoCompanySeeder extends Seeder
         }
 
         $this->seedHeader($company->id);
+        $this->seedHeader(null);
     }
 
     private function seedHeader(string $companyId): void
