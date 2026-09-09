@@ -27,9 +27,36 @@ class SettingsCategoryService
             'security' => $this->getSecuritySettingsConfig(),
             'email' => $this->getEmailSettingsConfig(),
             'homepage' => $this->getHomepageSettingsConfig(),
+            'header' => $this->getHeaderSettingsConfig(),
             'booking' => $this->getBookingSettingsConfig(),
             'branding' => $this->getBrandingSettingsConfig(),
             'appearance' => $this->getAppearanceSettingsConfig(),
+        ];
+    }
+
+    public function getHeaderSettingsConfig(): array
+    {
+        return [
+            'title' => 'Header',
+            'description' => 'Labels and media shared by every website theme',
+            'icon' => 'web_asset',
+            'settings' => [
+                'header_help_label' => ['label' => 'Help Label', 'type' => 'text'],
+                'header_cart_label' => ['label' => 'Cart Label', 'type' => 'text'],
+                'header_contact_label' => ['label' => 'Contact Label', 'type' => 'text'],
+                'header_menu_label' => ['label' => 'Menu Label', 'type' => 'text'],
+                'header_mobile_cart_label' => ['label' => 'Mobile Cart Label', 'type' => 'text'],
+                'header_search_placeholder' => ['label' => 'Search Placeholder', 'type' => 'text'],
+                'header_quick_search_label' => ['label' => 'Quick Search Label', 'type' => 'text'],
+                'header_quick_search_1' => ['label' => 'Quick Search 1', 'type' => 'text'],
+                'header_quick_search_2' => ['label' => 'Quick Search 2', 'type' => 'text'],
+                'header_quick_search_3' => ['label' => 'Quick Search 3', 'type' => 'text'],
+                'header_quick_search_4' => ['label' => 'Quick Search 4', 'type' => 'text'],
+                'logo_header' => ['label' => 'Header Logo', 'type' => 'file', 'accept' => 'image/*'],
+                'logo_header_alt' => ['label' => 'Header Logo Alt Text', 'type' => 'text'],
+                'logo_mobile' => ['label' => 'Mobile Logo', 'type' => 'file', 'accept' => 'image/*'],
+                'logo_mobile_alt' => ['label' => 'Mobile Logo Alt Text', 'type' => 'text'],
+            ],
         ];
     }
 

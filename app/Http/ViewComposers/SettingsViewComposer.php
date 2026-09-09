@@ -91,6 +91,9 @@ class SettingsViewComposer
                     // Header essentials
                     'header_help_label',
                     'header_cart_label',
+                    'header_contact_label',
+                    'header_menu_label',
+                    'header_mobile_cart_label',
                     'header_search_placeholder',
                     'header_quick_search_label',
                     'header_quick_search_1',

@@ -11,6 +11,7 @@ class NavigationMenu extends BaseModel
     use HasIsActive;
 
     protected $fillable = [
+        'company_id',
         'parent_id',
         'title',
         'url',

@@ -153,6 +153,9 @@ class AppServiceProvider extends ServiceProvider
         // Register services view composer for all views (Updated: 2026-02-14)
         view()->composer('*', \App\Http\ViewComposers\ServicesViewComposer::class);
 
+        view()->composer('partials.header', \App\Http\ViewComposers\NavigationViewComposer::class);
+        view()->composer('partials.themes.*.header', \App\Http\ViewComposers\NavigationViewComposer::class);
+
         RateLimiter::for('api', function (Request $request) {
             $settingsService = app(WebsiteSettingsService::class);
             $settings = $settingsService->getSecuritySettings();

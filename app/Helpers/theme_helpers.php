@@ -7,8 +7,7 @@
  * Supports multiple themes with fallback to default theme.
  */
 
-use App\Models\Website\WebsiteSetting;
-use Illuminate\Support\Facades\Cache;
+use App\Services\WebsiteSettingsService;
 
 if (!function_exists('get_allowed_themes')) {
     /**
@@ -48,12 +47,9 @@ if (!function_exists('get_active_theme')) {
      */
     function get_active_theme(): string
     {
-        $cacheKey = 'active_theme_setting';
-        
-        return Cache::remember($cacheKey, 3600, function () {
-            $theme = WebsiteSetting::getValue('active_theme', 'default');
-            return normalize_theme_identifier(is_string($theme) ? $theme : null);
-        });
+        $theme = app(WebsiteSettingsService::class)->get('active_theme', 'default');
+
+        return normalize_theme_identifier(is_string($theme) ? $theme : null);
     }
 }
 
