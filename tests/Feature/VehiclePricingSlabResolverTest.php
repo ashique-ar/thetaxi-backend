@@ -27,6 +27,7 @@ beforeEach(function () {
     Schema::create('vehicle_pricing_slab_definitions', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('service_type_id');
+        $table->uuid('service_package_id')->nullable();
         $table->string('name');
         $table->string('type')->nullable();
         $table->integer('min_minutes')->nullable();
@@ -106,6 +107,29 @@ it('blocks activating a second range-less legacy fallback', function () {
     expect($response->getStatusCode())->toBe(422)
         ->and($codes)->toContain('duplicate_duration_independent_fallback')
         ->and(VehiclePricingSlabDefinition::withInactive()->findOrFail($duplicateId)->is_active)->toBeFalse();
+});
+
+it('allows one flat-rate slab for each separately selected service package', function () {
+    $serviceId = insertSlabTestService();
+    foreach ([(string) Str::uuid(), (string) Str::uuid()] as $index => $packageId) {
+        DB::table('vehicle_pricing_slab_definitions')->insert([
+            'id' => (string) Str::uuid(),
+            'service_type_id' => $serviceId,
+            'service_package_id' => $packageId,
+            'name' => 'Package '.($index + 1),
+            'type' => 'flat_rate',
+            'sort_order' => $index + 1,
+            'priority' => 0,
+            'is_active' => true,
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    $health = app(VehiclePricingSlabConfigurationService::class)->currentHealth($serviceId);
+
+    expect($health['healthy'])->toBeTrue()
+        ->and(collect($health['issues'])->pluck('code'))->not->toContain('duplicate_duration_independent_fallback');
 });
 
 it('blocks activating overlapping legacy hour packages', function () {

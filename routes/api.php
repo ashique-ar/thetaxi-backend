@@ -1629,6 +1629,7 @@ Route::middleware(['auth:api'])->group(function () {
                 Route::get('/', [VehiclePricingSlabDefinitionController::class, 'index']);
                 Route::post('/', [VehiclePricingSlabDefinitionController::class, 'store']);
                 Route::get('/service-types', [VehiclePricingSlabDefinitionController::class, 'getServiceTypes']);
+                Route::get('/service-types/{serviceTypeId}/packages', [VehiclePricingSlabDefinitionController::class, 'getServicePackages']);
                 Route::get('/health', [VehiclePricingSlabDefinitionController::class, 'health']);
                 Route::get('/{id}', [VehiclePricingSlabDefinitionController::class, 'show']);
                 Route::put('/{id}', [VehiclePricingSlabDefinitionController::class, 'update']);

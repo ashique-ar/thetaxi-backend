@@ -30,6 +30,7 @@ class VehiclePricingSlabDefinition extends BaseModel
      */
     protected $fillable = [
         'service_type_id',
+        'service_package_id',
         'name',
         'min_days',
         'max_days',
@@ -72,6 +73,11 @@ class VehiclePricingSlabDefinition extends BaseModel
     public function serviceType(): BelongsTo
     {
         return $this->belongsTo(ServiceType::class, 'service_type_id');
+    }
+
+    public function servicePackage(): BelongsTo
+    {
+        return $this->belongsTo(\App\Models\Service\ServicePackage::class, 'service_package_id');
     }
 
     /**

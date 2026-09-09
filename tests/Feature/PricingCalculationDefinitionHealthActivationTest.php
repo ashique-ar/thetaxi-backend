@@ -434,6 +434,7 @@ it('publishes the final-pricing runtime variables used by formulas and condition
     expect($response->getStatusCode())->toBe(200);
     foreach ([
         'number_of_days', 'journey_distance', 'actual_distance', 'package_included_km',
+        'package_included_hours', 'package_has_hour_limit',
         'manual_additional_charge', 'late_return_fee', 'is_weekend', 'is_holiday',
         'month', 'day_of_week', 'customer_type',
     ] as $name) {

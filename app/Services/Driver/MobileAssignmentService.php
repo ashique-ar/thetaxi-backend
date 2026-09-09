@@ -1050,8 +1050,6 @@ class MobileAssignmentService
                 'included_hours' => $snapshot['default_duration_hours'] ?? 0,
                 'included_minutes' => ((int) ($snapshot['default_duration_hours'] ?? 0) * 60)
                     + (int) ($snapshot['default_duration_minutes'] ?? 0),
-                'charges_extra_hours' => (bool) ($snapshot['charges_extra_hours'] ?? false),
-                'charges_extra_km' => (bool) ($snapshot['charges_extra_km'] ?? true),
                 'rate_type' => $snapshot['rate_type'] ?? null,
                 'snapshot' => true,
             ];

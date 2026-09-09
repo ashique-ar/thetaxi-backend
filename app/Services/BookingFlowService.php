@@ -22,6 +22,8 @@ use App\Models\Service\ServicePackage;
 use App\Models\Service\ServicePackageReturnRule;
 use App\Models\Company;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupPricing;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
@@ -2214,6 +2216,76 @@ class BookingFlowService
     }
 
     /**
+     * Ensure package money comes only from the normal slab/common-rate tables
+     * and cannot silently fall back to a zero fare.
+     */
+    private function assertSelectedPackagePricingConfigured(array $inputs, string $serviceTypeId): void
+    {
+        $packageId = $inputs['service_package_id'] ?? null;
+        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
+        if (!$packageId || !$vehicleGroupId) {
+            return;
+        }
+
+        $slab = VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $serviceTypeId)
+            ->where('service_package_id', $packageId)
+            ->where('is_active', true)
+            ->first();
+        if (!$slab) {
+            return; // Existing website packages use their established flow.
+        }
+
+        $ownerType = $inputs['owner_type'] ?? null;
+        $ownerId = $inputs['owner_id'] ?? null;
+        $scopeValues = static function ($query) use ($ownerType, $ownerId) {
+            return $query->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                $query->where(function ($scope) use ($ownerType, $ownerId) {
+                    $scope->where(function ($exact) use ($ownerType, $ownerId) {
+                        $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                    })->orWhere(function ($global) {
+                        $global->whereNull('owner_type')->whereNull('owner_id');
+                    });
+                });
+            }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'));
+        };
+
+        $hasSlabRate = $scopeValues(VehicleGroupPricing::query()
+            ->where('vehicle_group_id', $vehicleGroupId)
+            ->where('slab_definition_id', $slab->id)
+            ->where('is_active', true))
+            ->whereNotNull('rate')
+            ->exists();
+
+        $requiredCodes = ['extra_km_rate'];
+        if (($inputs['package_has_hour_limit'] ?? 0) > 0) {
+            $requiredCodes[] = 'extra_hour_rate';
+        }
+        $configuredCodes = $scopeValues(VehicleGroupCommonRatePricing::query()
+            ->where('vehicle_group_id', $vehicleGroupId)
+            ->where('is_active', true)
+            ->whereNotNull('value')
+            ->whereHas('commonRateDefinition', fn ($query) => $query
+                ->where('service_type_id', $serviceTypeId)
+                ->whereIn('code', $requiredCodes)
+                ->where('is_active', true)))
+            ->with('commonRateDefinition:id,code')
+            ->get()
+            ->pluck('commonRateDefinition.code')
+            ->unique();
+
+        $missing = collect($requiredCodes)->diff($configuredCodes)->values()->all();
+        if (!$hasSlabRate) {
+            array_unshift($missing, 'package slab rate');
+        }
+        if ($missing !== []) {
+            throw new \DomainException(
+                'The selected package is not priced for this corporate vehicle group: '.implode(', ', $missing)
+            );
+        }
+    }
+
+    /**
      * Calculate return trip pricing based on service package return rules.
      *
      * This method calculates the fare for a return trip based on:
@@ -4235,17 +4307,6 @@ class BookingFlowService
 
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
-            if ($servicePackageInfo) {
-                $calculationInputs['package_id'] = (string) $servicePackageInfo['id'];
-                $calculationInputs['service_package_id'] = (string) $servicePackageInfo['id'];
-                $calculationInputs['package_included_km'] = isset($calculationInputs['package_included_km'])
-                    ? (float) $calculationInputs['package_included_km']
-                    : (float) ($servicePackageInfo['max_km_per_package'] ?? $servicePackageInfo['max_km_per_day'] ?? 0);
-                $calculationInputs['package_included_hours'] = isset($calculationInputs['package_included_hours'])
-                    ? (float) $calculationInputs['package_included_hours']
-                    : (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
-                        + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
-            }
 
             // Resolve district pricing adjustment
             $districtInfo = null;
@@ -4857,6 +4918,18 @@ class BookingFlowService
             'distance_details' => $distanceDetails,
             'adjustment_details' => $adjustmentDetails,
             'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
+            'package_info' => $servicePackageInfo ? [
+                'id' => (string) $servicePackageInfo['id'],
+                'name' => $servicePackageInfo['name'] ?? null,
+                'code' => $servicePackageInfo['code'] ?? null,
+                'description' => data_get($servicePackageInfo, 'service_package.description'),
+                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
+                'default_duration_hours' => $servicePackageInfo['default_duration_hours'] ?? 0,
+                'default_duration_minutes' => $servicePackageInfo['default_duration_minutes'] ?? 0,
+                'rate_type' => $servicePackageInfo['rate_type'] ?? null,
+                'snapshotted_at' => now()->toIso8601String(),
+            ] : null,
             'distance_policy' => $contractual['distance_policy'] ?? null,
             'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
