@@ -29,19 +29,6 @@ return new class extends Migration
             return;
         }
 
-        $definitionCreatorId = DB::table('vehicle_pricing_calculation_definitions')
-            ->where('service_type_id', $service->id)
-            ->whereNotNull('created_by')
-            ->value('created_by');
-        if (!$definitionCreatorId && Schema::hasTable('users')) {
-            $definitionCreatorId = DB::table('users')->whereNull('deleted_at')->value('id');
-        }
-        if (!$definitionCreatorId) {
-            throw new RuntimeException(
-                'Hourly Package calculations require a valid created_by user, but no existing definition or user was found.'
-            );
-        }
-
         $config = json_decode((string) $service->form_config, true) ?: [];
         $config['trip_mode'] = 'open_package';
         $config['disable_route_preview'] = true;
@@ -121,8 +108,6 @@ return new class extends Migration
                 [
                     'id' => DB::table('vehicle_pricing_calculation_definitions')->where('service_type_id', $service->id)->where('name', 'Hourly Package - '.$definition['name'])->value('id') ?? (string) Str::uuid(),
                     'description' => 'Package-selected hourly open-package calculation.',
-                    'created_by' => $definitionCreatorId,
-                    'updated_by' => $definitionCreatorId,
                     'formula' => $formula, 'variables' => json_encode($variables),
                     'conditions' => json_encode([['field' => 'package_id', 'operator' => '=', 'value' => $packageId]]),
                     // Pricing definitions are activated after mandatory rates

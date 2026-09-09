@@ -57,8 +57,6 @@ beforeEach(function (): void {
         $table->text('formula');
         $table->json('variables')->nullable();
         $table->json('conditions')->nullable();
-        $table->uuid('created_by');
-        $table->uuid('updated_by')->nullable();
         $table->string('status');
         $table->string('owner_type')->nullable();
         $table->uuid('owner_id')->nullable();
@@ -72,16 +70,6 @@ beforeEach(function (): void {
         'code' => 'hourly_package',
         'uses_dropoff_time' => true,
         'form_config' => json_encode(['dropoff_location' => ['required' => true]]),
-        'created_at' => now(), 'updated_at' => now(),
-    ]);
-    DB::table('vehicle_pricing_calculation_definitions')->insert([
-        'id' => '20000000-0000-4000-8000-000000000001',
-        'service_type_id' => '10000000-0000-4000-8000-000000000001',
-        'name' => 'Hourly Package',
-        'formula' => '1',
-        'status' => 'active',
-        'created_by' => '30000000-0000-4000-8000-000000000001',
-        'priority' => 0,
         'created_at' => now(), 'updated_at' => now(),
     ]);
 });
