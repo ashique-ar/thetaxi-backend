@@ -132,6 +132,10 @@ class VehicleGroupPricingController extends Controller
         $page = $request->input('page', 1);
         $perPage = $request->input('per_page', 50);
         $search = $request->input('search');
+        $vehicleFilters = array_filter($request->only([
+            'grade_id', 'class_id', 'fuel_type_id', 'transmission_id', 'category_id',
+            'make_id', 'model_id', 'ownership_type', 'payment_model',
+        ]), fn ($value) => filled($value));
 
         // Build cache key for frequent queries
         $cacheKey = 'unified_pricing_' . md5(serialize([
@@ -143,7 +147,8 @@ class VehicleGroupPricingController extends Controller
             'include_inactive' => $includeInactive,
             'page' => $page,
             'per_page' => $perPage,
-            'search' => $search
+            'search' => $search,
+            'vehicle_filters' => $vehicleFilters,
         ]));
 
         // Try to get from cache first (cache for 5 minutes for frequently accessed data)
@@ -187,6 +192,18 @@ class VehicleGroupPricingController extends Controller
                     });
                 })
                 ->when($vehicleGroupId, fn($q) => $q->where('id', $vehicleGroupId))
+                ->when($vehicleFilters, function ($q) use ($vehicleFilters) {
+                    foreach (['grade_id', 'class_id', 'fuel_type_id', 'transmission_id', 'category_id', 'make_id', 'model_id'] as $field) {
+                        if (isset($vehicleFilters[$field])) {
+                            $q->where($field, $vehicleFilters[$field]);
+                        }
+                    }
+                    foreach (['ownership_type', 'payment_model'] as $field) {
+                        if (isset($vehicleFilters[$field])) {
+                            $q->whereHas('vehicles', fn ($vehicles) => $vehicles->where($field, $vehicleFilters[$field]));
+                        }
+                    }
+                })
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
                 ->when($search, function ($q) use ($search) {
                     $q->where(function ($query) use ($search) {
