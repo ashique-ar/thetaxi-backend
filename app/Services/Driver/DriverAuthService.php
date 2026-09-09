@@ -2,9 +2,12 @@
 
 namespace App\Services\Driver;
 
+use App\Notifications\DriverPasswordResetNotification;
 use App\Models\User;
 use App\Models\Driver\Driver;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Passport\Passport;
 
@@ -329,6 +332,73 @@ class DriverAuthService
     public function revokeAllTokens(User $user): void
     {
         $user->tokens()->update(['revoked' => true]);
+    }
+
+    /** Change a driver's password and invalidate every existing mobile session. */
+    public function changePassword(User $user, string $currentPassword, string $newPassword): void
+    {
+        if (! Hash::check($currentPassword, $user->password)) {
+            throw ValidationException::withMessages([
+                'current_password' => ['Current password is incorrect.'],
+            ]);
+        }
+
+        $driver = $this->getDriver($user);
+        if (! $driver) {
+            throw ValidationException::withMessages(['account' => ['Driver account not found.']]);
+        }
+
+        $user->forceFill([
+            'password' => Hash::make($newPassword),
+            'password_changed_at' => now(),
+            'remember_token' => Str::random(60),
+            'login_attempts' => 0,
+            'locked_until' => null,
+        ])->save();
+
+        $this->revokeAllTokens($user);
+        $this->deviceService->deactivateOtherDevices($driver);
+        $driver->update(['current_device_uuid' => null]);
+    }
+
+    /** Send a recovery email only when the address belongs to a driver. */
+    public function sendPasswordResetEmail(string $email): void
+    {
+        $user = User::query()->whereRaw('LOWER(email) = ?', [Str::lower($email)])->first();
+        if (! $user || ! $this->isDriver($user)) {
+            return;
+        }
+
+        $user->notify(new DriverPasswordResetNotification(Password::createToken($user)));
+    }
+
+    /** Reset only a driver account and invalidate all prior sessions/devices. */
+    public function resetPassword(array $credentials): void
+    {
+        $user = User::query()->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])->first();
+        if (! $user || ! $this->isDriver($user)) {
+            throw ValidationException::withMessages(['email' => ['The reset link is invalid or has expired.']]);
+        }
+
+        $status = Password::reset($credentials, function (User $resetUser, string $password): void {
+            $driver = $this->getDriver($resetUser);
+            $resetUser->forceFill([
+                'password' => Hash::make($password),
+                'password_changed_at' => now(),
+                'remember_token' => Str::random(60),
+                'login_attempts' => 0,
+                'locked_until' => null,
+            ])->save();
+            $this->revokeAllTokens($resetUser);
+            if ($driver) {
+                $this->deviceService->deactivateOtherDevices($driver);
+                $driver->update(['current_device_uuid' => null]);
+            }
+        });
+
+        if ($status !== Password::PASSWORD_RESET) {
+            throw ValidationException::withMessages(['email' => ['The reset link is invalid or has expired.']]);
+        }
     }
 
     /**

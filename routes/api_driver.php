@@ -29,6 +29,8 @@ Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'v
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
 });
 
 // Protected routes (Passport authentication required)
@@ -37,6 +39,7 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
     // Authentication routes
     Route::prefix('auth')->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
+        Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
         Route::get('profile', [AuthController::class, 'profile']);
         Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
     });

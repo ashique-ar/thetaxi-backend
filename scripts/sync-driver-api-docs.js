@@ -69,6 +69,19 @@ const versionGet = requestItem(
 versionGet.request.auth = { type: 'noauth' };
 upsertAfter('App Settings', 'Version Check', versionGet);
 
+const forgotPassword = requestItem('Forgot Password', 'POST', '{{base_url}}/api/driver/auth/forgot-password',
+    { email: 'driver@example.com' }, 'Requests a one-time mobile password reset link. The response never reveals whether the account exists.', []);
+forgotPassword.request.auth = { type: 'noauth' };
+upsertAfter('Authentication', 'Login', forgotPassword);
+const resetPassword = requestItem('Reset Password', 'POST', '{{base_url}}/api/driver/auth/reset-password',
+    { email: 'driver@example.com', token: 'one-time-token', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' },
+    'Resets an eligible driver password, clears lockout state, and revokes all sessions.', []);
+resetPassword.request.auth = { type: 'noauth' };
+upsertAfter('Authentication', 'Forgot Password', resetPassword);
+upsertAfter('Authentication', 'Profile', requestItem('Change Password', 'POST', '{{base_url}}/api/driver/auth/change-password',
+    { current_password: 'CurrentPassword1!', new_password: 'NewPassword1!', new_password_confirmation: 'NewPassword1!' },
+    'Changes the authenticated driver password and revokes every existing session/device.', []));
+
 upsertAfter('Location Tracking', 'Bulk Upload Buffered Locations', requestItem(
     'Report Location Health',
     'POST',
@@ -227,6 +240,23 @@ const errorSchema = {
         error_code: { type: 'string' },
         errors: { type: 'object', additionalProperties: true },
     },
+};
+
+const passwordSchema = { type: 'string', format: 'password', minLength: 8 };
+openapi.paths['/api/driver/auth/forgot-password'] = {
+    post: { tags: ['Authentication'], summary: 'Request driver password reset', security: [],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string', format: 'email' } } } } } },
+        responses: { 200: { description: 'Enumeration-safe acknowledgement' }, 422: { description: 'Invalid email format', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+};
+openapi.paths['/api/driver/auth/reset-password'] = {
+    post: { tags: ['Authentication'], summary: 'Reset driver password', security: [],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'token', 'password', 'password_confirmation'], properties: { email: { type: 'string', format: 'email' }, token: { type: 'string' }, password: passwordSchema, password_confirmation: passwordSchema } } } } },
+        responses: { 200: { description: 'Password reset; all sessions revoked' }, 422: { description: 'Invalid or expired reset link', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+};
+openapi.paths['/api/driver/auth/change-password'] = {
+    post: { tags: ['Authentication'], summary: 'Change driver password', security: protectedSecurity,
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['current_password', 'new_password', 'new_password_confirmation'], properties: { current_password: passwordSchema, new_password: passwordSchema, new_password_confirmation: passwordSchema } } } } },
+        responses: { 200: { description: 'Password changed; reauthentication required' }, 401: { description: 'Unauthenticated', content: { 'application/json': { schema: errorSchema } } }, 422: { description: 'Current password or validation failure', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
 };
 
 openapi.paths['/api/driver/location/health'] = {
