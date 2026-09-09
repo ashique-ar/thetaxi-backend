@@ -18,6 +18,7 @@ class UpdateVehiclePricingSlabDefinitionRequest extends FormRequest
     {
         return [
             'service_type_id' => ['sometimes', 'exists:service_types,id'],
+            'service_package_id' => ['sometimes', 'nullable', 'uuid', 'exists:service_packages,id'],
             'name' => ['sometimes', 'string', 'max:255'],
             'min_days' => ['nullable', 'required_if:type,days,per_day', 'integer', 'min:0'],
             'max_days' => ['nullable', 'integer', 'gte:min_days'],

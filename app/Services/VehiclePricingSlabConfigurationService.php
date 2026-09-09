@@ -335,6 +335,30 @@ class VehiclePricingSlabConfigurationService
      */
     private function analyzeLegacyUnit(string $serviceId, string $type, Collection $definitions): array
     {
+        $scopes = $definitions->groupBy(
+            fn ($definition) => (string) ($this->value($definition, 'service_package_id') ?: '__generic__')
+        );
+        if ($scopes->isEmpty()) {
+            return $this->analyzeLegacyUnitScope($serviceId, $type, $definitions);
+        }
+
+        $results = $scopes->map(
+            fn (Collection $scopeDefinitions) => $this->analyzeLegacyUnitScope($serviceId, $type, $scopeDefinitions)
+        );
+
+        return [
+            'type' => $type,
+            'configured' => $definitions->isNotEmpty(),
+            'healthy' => $results->every(fn (array $result) => $result['healthy']),
+            'definition_count' => $definitions->count(),
+            'fallback_count' => $results->sum('fallback_count'),
+            'ranges' => $results->flatMap(fn (array $result) => $result['ranges'])->values()->all(),
+            'issues' => $results->flatMap(fn (array $result) => $result['issues'])->values()->all(),
+        ];
+    }
+
+    private function analyzeLegacyUnitScope(string $serviceId, string $type, Collection $definitions): array
+    {
         $issues = [];
         $boundedRanges = collect();
         $fallbackRanges = collect();

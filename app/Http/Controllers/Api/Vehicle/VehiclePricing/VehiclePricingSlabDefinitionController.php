@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\CreateVehiclePricingSlabDefinitionRequest;
 use App\Http\Requests\Vehicle\VehiclePricingSlabDefinition\UpdateVehiclePricingSlabDefinitionRequest;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServicePackage;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\JsonResponse;
@@ -20,7 +21,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         private readonly VehiclePricingSlabConfigurationService $slabConfiguration
     )
     {
-        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'health', 'findForHours', 'getServiceTypes']);
+        $this->middleware('permission:vehicle-pricing-slabs.view')->only(['index', 'show', 'health', 'findForHours', 'getServiceTypes', 'getServicePackages']);
         $this->middleware('permission:vehicle-pricing-slabs.create')->only(['store']);
         $this->middleware('permission:vehicle-pricing-slabs.edit')->only(['update', 'toggleStatus']);
         $this->middleware('permission:vehicle-pricing-slabs.delete')->only(['destroy']);
@@ -31,7 +32,7 @@ class VehiclePricingSlabDefinitionController extends Controller
      */
     public function index(Request $request): JsonResponse
     {
-        $query = VehiclePricingSlabDefinition::withInactive()->with(['serviceType']);
+        $query = VehiclePricingSlabDefinition::withInactive()->with(['serviceType', 'servicePackage:id,service_type_id,name,code,is_active']);
 
         // Filter by service type if provided
         if ($request->has('service_type_id')) {
@@ -106,6 +107,23 @@ class VehiclePricingSlabDefinitionController extends Controller
         ]);
     }
 
+    public function getServicePackages(string $serviceTypeId): JsonResponse
+    {
+        ServiceType::findOrFail($serviceTypeId);
+
+        return response()->json([
+            'success' => true,
+            'data' => ServicePackage::withInactive()
+                ->where('service_type_id', $serviceTypeId)
+                ->where('is_active', true)
+                ->select(['id', 'service_type_id', 'name', 'code', 'is_active'])
+                ->orderBy('sort_order')
+                ->orderBy('name')
+                ->get(),
+            'message' => 'Service packages retrieved successfully',
+        ]);
+    }
+
     /**
      * Store a newly created slab definition.
      */
@@ -115,6 +133,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['owner_type'] = null;
         $data['owner_id'] = null;
         $data['is_active'] = $data['is_active'] ?? true;
+        $this->assertPackageBelongsToService($data['service_package_id'] ?? null, $data['service_type_id']);
         if ($nameConflict = $this->findNameConflict($data['service_type_id'], $data['name'])) {
             return $this->duplicateNameResponse($nameConflict);
         }
@@ -187,6 +206,7 @@ class VehiclePricingSlabDefinitionController extends Controller
         $data['owner_type'] = null;
         $data['owner_id'] = null;
         $candidate = array_merge($slabDefinition->toArray(), $data);
+        $this->assertPackageBelongsToService($candidate['service_package_id'] ?? null, $candidate['service_type_id']);
         if (
             $nameConflict = $this->findNameConflict(
                 $candidate['service_type_id'],
@@ -554,6 +574,11 @@ class VehiclePricingSlabDefinitionController extends Controller
         return VehiclePricingSlabDefinition::query()
             ->where('service_type_id', $data['service_type_id'])
             ->where('type', $type)
+            ->when(
+                $data['service_package_id'] ?? null,
+                fn ($query, $packageId) => $query->where('service_package_id', $packageId),
+                fn ($query) => $query->whereNull('service_package_id')
+            )
             ->when($excludeId, fn($query) => $query->where('id', '!=', $excludeId))
             ->where($minKey, '<=', $maximum ?? PHP_INT_MAX)
             ->where(function ($query) use ($maxKey, $minimum) {
@@ -561,6 +586,19 @@ class VehiclePricingSlabDefinitionController extends Controller
             })
             ->orderByDesc('priority')
             ->first();
+    }
+
+    private function assertPackageBelongsToService(?string $packageId, string $serviceTypeId): void
+    {
+        if (!$packageId) {
+            return;
+        }
+
+        if (!ServicePackage::withInactive()->where('id', $packageId)->where('service_type_id', $serviceTypeId)->exists()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'service_package_id' => 'The selected package does not belong to the selected service type.',
+            ]);
+        }
     }
 
     private function findNameConflict(
