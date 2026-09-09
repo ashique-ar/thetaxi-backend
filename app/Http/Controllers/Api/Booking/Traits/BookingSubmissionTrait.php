@@ -429,7 +429,10 @@ trait BookingSubmissionTrait
                 ),
                 'can_edit_pricing' => Gate::allows('update', $booking),
                 'can_edit_approval' => Gate::allows('update', $booking),
-                'can_cancel' => Gate::allows('delete', $booking),
+                'can_cancel' => Gate::allows('update', $booking) && $booking->canBeCancelled(),
+                'cancellation_block_reason' => Gate::allows('update', $booking)
+                    ? $booking->cancellationBlockReason()
+                    : 'You do not have permission to cancel bookings.',
                 'can_override' => Gate::allows('update', $booking),
             ];
             $editData['permissions'] = $permissions;
@@ -663,6 +666,12 @@ trait BookingSubmissionTrait
                 'status' => 'error',
                 'message' => 'Booking not found'
             ], 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error deleting booking: ' . $e->getMessage());
             return response()->json([
@@ -695,6 +704,12 @@ trait BookingSubmissionTrait
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
             return response()->json(['status' => 'error', 'message' => 'Booking not found'], 404);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage(),
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating booking status: ' . $e->getMessage());
             return response()->json([

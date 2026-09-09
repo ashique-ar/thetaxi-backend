@@ -9142,6 +9142,8 @@ class BookingFlowService
             'code' => $itemCode,
             'status' => $item->status ?? 'pending',
             'booking_status' => $booking?->status,
+            'can_cancel' => $booking?->canBeCancelled() ?? false,
+            'cancellation_block_reason' => $booking?->cancellationBlockReason(),
             'lifecycle_contract' => $lifecycleContract,
             'allowed_actions' => $lifecycleContract['allowed_actions'] ?? [],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
@@ -10161,8 +10163,19 @@ class BookingFlowService
                 'message' => 'Booking deleted successfully'
             ];
         }
+
+        if ($booking->canBeCancelled()) {
+            $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
+
+            return [
+                'deleted' => false,
+                'cancelled' => true,
+                'message' => 'Booking cancelled successfully',
+            ];
+        }
+
         throw ValidationException::withMessages([
-            'booking' => ['Only draft bookings can be deleted. Use the booking cancellation workflow for submitted bookings.'],
+            'booking' => [$booking->cancellationBlockReason() ?: 'This booking cannot be cancelled.'],
         ]);
     }
 
@@ -10175,6 +10188,11 @@ class BookingFlowService
         $previousStatus = (string) $booking->status;
 
         if ($status === 'cancelled') {
+            if (!$booking->canBeCancelled()) {
+                throw ValidationException::withMessages([
+                    'booking' => [$booking->cancellationBlockReason() ?: 'This booking cannot be cancelled.'],
+                ]);
+            }
             $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
         } else {
             $booking->update(['status' => $status]);
