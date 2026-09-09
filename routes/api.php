@@ -2028,6 +2028,8 @@ Route::middleware(['auth:api'])->group(function () {
         });
         Route::put('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'update'])
             ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/{id}/default', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'setDefault'])
+            ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/{id}/toggle', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/reorder', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'reorder'])
