@@ -79,3 +79,11 @@ it('resolves published cms services before legacy inquiry service pages', functi
         ->toContain("app(CmsController::class)->show('services', \$slug)")
         ->toContain('InquiryServicePage::withInactive()');
 });
+
+it('reserves the theme four hero overlap so the next section is not clipped', function () {
+    $css = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/themes/theme-04/theme-04.css');
+
+    expect($css)
+        ->toContain('min-height: calc(var(--t4-hero-height) - 26px);')
+        ->toContain("@media (max-width: 991px)");
+});

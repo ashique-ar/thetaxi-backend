@@ -473,6 +473,7 @@ body.theme-theme-04 .t4-hero__copy>small {
 body.theme-theme-04 .t4-booking-panel {
     position: relative;
     z-index: 3;
+    min-height: calc(var(--t4-hero-height) - 26px);
     margin-top: calc((var(--t4-hero-height) * -1) + 26px);
     padding-bottom: 18px;
     pointer-events: none;
@@ -2018,6 +2019,7 @@ body.theme-theme-04 .t4-error-page__card p {
     }
 
     body.theme-theme-04 .t4-booking-panel {
+        min-height: 0;
         margin-top: 0;
         padding-block: 30px 58px;
         background: var(--t4-surface-soft);
