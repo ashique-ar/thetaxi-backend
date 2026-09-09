@@ -133,8 +133,49 @@ return new class extends Migration
             );
         }
 
+        // Package prices remain separate editable common-rate values, but the
+        // calculation authority is shared. Runtime resolves only the package
+        // selected and locked on the booking into these stable variables.
         DB::table('vehicle_pricing_calculation_definitions')
-            ->where('service_type_id', $service->id)->where('name', 'Hourly Package')->update(['status' => 'inactive']);
+            ->where('service_type_id', $service->id)
+            ->where('name', 'like', 'Hourly Package - %')
+            ->delete();
+
+        $sharedVariables = [
+            ['name' => 'package_base_rate', 'type' => 'number', 'is_required' => true],
+            ['name' => 'total_distance', 'type' => 'distance', 'default_value' => 0, 'is_required' => false],
+            ['name' => 'package_included_km', 'type' => 'distance', 'is_required' => true],
+            ['name' => 'package_extra_km_rate', 'type' => 'number', 'is_required' => true],
+            ['name' => 'package_charges_extra_km', 'type' => 'number', 'is_required' => true],
+            ['name' => 'duration_hours', 'type' => 'duration', 'default_value' => 0, 'is_required' => false],
+            ['name' => 'package_included_hours', 'type' => 'duration', 'is_required' => true],
+            ['name' => 'package_extra_hour_rate', 'type' => 'number', 'is_required' => true],
+            ['name' => 'package_charges_extra_hours', 'type' => 'number', 'is_required' => true],
+        ];
+        $sharedFormula = 'package_base_rate'
+            .' + (max(0, total_distance - package_included_km) * package_extra_km_rate * package_charges_extra_km)'
+            .' + (max(0, duration_hours - package_included_hours) * package_extra_hour_rate * package_charges_extra_hours)';
+        $sharedId = DB::table('vehicle_pricing_calculation_definitions')
+            ->where('service_type_id', $service->id)->where('name', 'Hourly Package')->value('id');
+        DB::table('vehicle_pricing_calculation_definitions')->updateOrInsert(
+            ['service_type_id' => $service->id, 'name' => 'Hourly Package'],
+            [
+                'id' => $sharedId ?? (string) Str::uuid(),
+                'description' => 'Shared calculation for the package preselected at booking.',
+                'created_by' => $definitionCreatorId,
+                'updated_by' => $definitionCreatorId,
+                'formula' => $sharedFormula,
+                'variables' => json_encode($sharedVariables),
+                'conditions' => json_encode([]),
+                'status' => 'active',
+                'owner_type' => null,
+                'owner_id' => null,
+                'priority' => 500,
+                'updated_at' => now(),
+                'created_at' => now(),
+                'deleted_at' => null,
+            ]
+        );
     }
 
     public function down(): void

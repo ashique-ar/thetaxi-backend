@@ -2214,6 +2214,93 @@ class BookingFlowService
     }
 
     /**
+     * Map the selected package's editable common rates to the stable inputs
+     * consumed by the single shared package calculation.
+     */
+    private function resolveSelectedPackagePricingInputs(
+        array $inputs,
+        array $packageInfo,
+        string $serviceTypeId
+    ): array {
+        $packageCode = strtoupper((string) ($packageInfo['code'] ?? ''));
+        $vehicleGroupId = $inputs['vehicle_group_id'] ?? null;
+        if ($packageCode === '' || !$vehicleGroupId) {
+            return $inputs;
+        }
+
+        $rateCodes = [
+            'package_base_rate' => "PACKAGE_RATE_{$packageCode}",
+            'package_extra_km_rate' => "EXTRA_KM_RATE_{$packageCode}",
+        ];
+        if ((bool) ($packageInfo['charges_extra_hours'] ?? false)) {
+            $rateCodes['package_extra_hour_rate'] = "EXTRA_HOUR_RATE_{$packageCode}";
+        }
+
+        // This convention is opt-in. Website packages which do not define a
+        // PACKAGE_RATE_<PACKAGE_CODE> continue through their existing flow.
+        $definitions = VehiclePricingCommonRateDefinition::query()
+            ->where('service_type_id', $serviceTypeId)
+            ->whereIn('code', array_values($rateCodes))
+            ->where('is_active', true)
+            ->get()
+            ->keyBy('code');
+        if (!$definitions->has($rateCodes['package_base_rate'])) {
+            return $inputs;
+        }
+
+        $ownerType = $inputs['owner_type'] ?? null;
+        $ownerId = $inputs['owner_id'] ?? null;
+        $missing = [];
+
+        foreach ($rateCodes as $inputName => $rateCode) {
+            $definition = $definitions->get($rateCode);
+            if (!$definition) {
+                $missing[] = $rateCode;
+                continue;
+            }
+
+            $pricing = VehicleGroupCommonRatePricing::query()
+                ->where('vehicle_group_id', $vehicleGroupId)
+                ->where('common_rate_definition_id', $definition->id)
+                ->where('is_active', true)
+                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                    $query->where(function ($scope) use ($ownerType, $ownerId) {
+                        $scope->where(function ($exact) use ($ownerType, $ownerId) {
+                            $exact->where('owner_type', $ownerType)->where('owner_id', $ownerId);
+                        })->orWhere(function ($global) {
+                            $global->whereNull('owner_type')->whereNull('owner_id');
+                        });
+                    });
+                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                ->orderByRaw(
+                    'CASE WHEN owner_type = ? AND owner_id = ? THEN 0 ELSE 1 END',
+                    [$ownerType, $ownerId]
+                )
+                ->orderByDesc('priority')
+                ->first();
+
+            if (!$pricing || !is_numeric($pricing->value)) {
+                $missing[] = $rateCode;
+                continue;
+            }
+            $inputs[$inputName] = (float) $pricing->value;
+        }
+
+        if ($missing !== []) {
+            throw new \DomainException(
+                'The selected hourly package is not priced for this corporate vehicle group: '
+                .implode(', ', $missing)
+            );
+        }
+
+        $inputs['package_extra_hour_rate'] = $inputs['package_extra_hour_rate'] ?? 0.0;
+        $inputs['package_charges_extra_hours'] = (bool) ($packageInfo['charges_extra_hours'] ?? false) ? 1.0 : 0.0;
+        $inputs['package_charges_extra_km'] = (bool) ($packageInfo['charges_extra_km'] ?? false) ? 1.0 : 0.0;
+
+        return $inputs;
+    }
+
+    /**
      * Calculate return trip pricing based on service package return rules.
      *
      * This method calculates the fare for a return trip based on:
@@ -4245,6 +4332,11 @@ class BookingFlowService
                     ? (float) $calculationInputs['package_included_hours']
                     : (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
                         + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
+                $calculationInputs = $this->resolveSelectedPackagePricingInputs(
+                    $calculationInputs,
+                    $servicePackageInfo,
+                    $serviceTypeId
+                );
             }
 
             // Resolve district pricing adjustment
