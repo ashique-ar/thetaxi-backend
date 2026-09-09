@@ -1372,6 +1372,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ['name' => 'journey_distance', 'type' => 'distance', 'description' => 'Contractual journey distance in KM used by pricing', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'actual_distance', 'type' => 'distance', 'description' => 'Measured final journey distance in KM when available', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'package_included_km', 'type' => 'distance', 'description' => 'Distance included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
+                ['name' => 'package_included_hours', 'type' => 'duration', 'description' => 'Hours included by the selected service package', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
+                ['name' => 'package_has_hour_limit', 'type' => 'number', 'description' => 'Selected package hour-limit flag (1 when extra hours apply, otherwise 0)', 'is_required' => false, 'default_value' => 0, 'category' => 'duration'],
                 ['name' => 'delivery_distance', 'type' => 'distance', 'description' => 'Vehicle delivery distance in KM', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'pickup_distance', 'type' => 'distance', 'description' => 'Vehicle pickup distance in KM (return distance)', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
                 ['name' => 'extra_km', 'type' => 'distance', 'description' => 'Extra KM beyond package/daily limit', 'is_required' => false, 'default_value' => 0, 'category' => 'distance'],
