@@ -57,8 +57,6 @@ class ServicePackageController extends Controller
                         'rate_type' => $package->rate_type,
                         'default_duration_hours' => $package->default_duration_hours,
                         'default_duration_minutes' => $package->default_duration_minutes,
-                        'charges_extra_hours' => (bool) $package->charges_extra_hours,
-                        'charges_extra_km' => (bool) $package->charges_extra_km,
                         'sort_order' => $package->sort_order,
                     ];
                 });
@@ -147,11 +145,9 @@ class ServicePackageController extends Controller
             'max_km_per_day' => 'nullable|numeric|min:0',
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
-            'rate_type' => 'required|string|in:flat,hourly,daily',
+            'rate_type' => 'required|string|in:flat,per_hour,per_day',
             'default_duration_hours' => 'required|integer|min:0',
             'default_duration_minutes' => 'required|integer|min:0|max:59',
-            'charges_extra_hours' => 'boolean',
-            'charges_extra_km' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
             'supports_return_trip' => 'boolean',
         ]);
@@ -199,11 +195,9 @@ class ServicePackageController extends Controller
             'max_km_per_day' => 'nullable|numeric|min:0',
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
-            'rate_type' => 'required|string|in:flat,hourly,daily',
+            'rate_type' => 'required|string|in:flat,per_hour,per_day',
             'default_duration_hours' => 'required|integer|min:0',
             'default_duration_minutes' => 'required|integer|min:0|max:59',
-            'charges_extra_hours' => 'boolean',
-            'charges_extra_km' => 'boolean',
             'sort_order' => 'nullable|integer|min:0',
             'service_type_id' => 'required|exists:service_types,id',
             'is_active' => 'boolean',
@@ -244,7 +238,7 @@ class ServicePackageController extends Controller
         $totalMinutes = ((int) $validated['default_duration_hours'] * 60)
             + (int) $validated['default_duration_minutes'];
 
-        if ($totalMinutes < 1 && ($validated['charges_extra_hours'] ?? false)) {
+        if ($totalMinutes < 1) {
             throw ValidationException::withMessages([
                 'default_duration_minutes' => 'Package duration must be at least one minute.',
             ]);
