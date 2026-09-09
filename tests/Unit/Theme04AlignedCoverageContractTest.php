@@ -57,6 +57,13 @@ it('wraps rather than duplicates the shared booking behavior', function () {
         ->toContain('tabs[target].click()');
 });
 
+it('keeps the desktop booking desk overlapping the responsive hero', function () {
+    expect($this->styles)
+        ->toContain("body.theme-theme-04 {\n    --t4-hero-height:")
+        ->toContain('min-height: var(--t4-hero-height)')
+        ->toContain('margin-top: calc((var(--t4-hero-height) * -1) + 26px)');
+});
+
 it('preserves header routes, currency, contact and cart integration hooks', function () {
     expect($this->header)
         ->toContain("route('home')")

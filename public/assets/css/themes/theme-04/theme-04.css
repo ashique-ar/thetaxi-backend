@@ -377,8 +377,11 @@ body.theme-theme-04 .t4-header__cart .cart-badge {
 }
 
 /* Integrated hero and booking panel */
-body.theme-theme-04 .t4-hero {
+body.theme-theme-04 {
     --t4-hero-height: clamp(580px, 70vh, 760px);
+}
+
+body.theme-theme-04 .t4-hero {
     position: relative;
     min-height: var(--t4-hero-height);
     overflow: hidden;
