@@ -299,6 +299,94 @@
                     ]
                 },
                 {
+                    "name": "Forgot Password",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/forgot-password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "forgot-password"
+                            ]
+                        },
+                        "description": "Requests a one-time mobile password reset link. The response never reveals whether the account exists.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"driver@example.com\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Reset Password",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/reset-password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "reset-password"
+                            ]
+                        },
+                        "description": "Resets an eligible driver password, clears lockout state, and revokes all sessions.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"email\": \"driver@example.com\",\n    \"token\": \"one-time-token\",\n    \"password\": \"NewPassword1!\",\n    \"password_confirmation\": \"NewPassword1!\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
+                },
+                {
                     "name": "Get Profile",
                     "request": {
                         "auth": {
@@ -496,6 +584,57 @@
                             "body": "{\n    \"status\": \"error\",\n    \"message\": \"Logout failed\",\n    \"error_code\": \"AUTH_LOGOUT_FAILED\",\n    \"errors\": []\n}"
                         }
                     ]
+                },
+                {
+                    "name": "Change Password",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/change-password",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "change-password"
+                            ]
+                        },
+                        "description": "Changes the authenticated driver password and revokes every existing session/device.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"current_password\": \"CurrentPassword1!\",\n    \"new_password\": \"NewPassword1!\",\n    \"new_password_confirmation\": \"NewPassword1!\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": []
                 }
             ],
             "description": "Driver authentication endpoints including login, logout, profile, and token refresh."

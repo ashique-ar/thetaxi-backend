@@ -13,6 +13,7 @@ use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\MobileAssignmentService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
 /**
@@ -104,6 +105,62 @@ class AuthController extends Controller
                 'error_code' => 'AUTH_FAILED',
                 'error' => $e->getMessage()
             ], 500);
+        }
+    }
+
+    public function forgotPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
+        $this->authService->sendPasswordResetEmail($data['email']);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'If an eligible driver account exists, a password reset email has been sent.',
+        ]);
+    }
+
+    public function resetPassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'token' => ['required', 'string'],
+            'email' => ['required', 'string', 'email', 'max:255'],
+            'password' => ['required', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()->uncompromised()],
+        ]);
+
+        try {
+            $this->authService->resetPassword($data);
+            return response()->json(['status' => 'success', 'message' => 'Password reset successfully. Please sign in again.']);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => collect($e->errors())->flatten()->first(),
+                'error_code' => 'AUTH_RESET_INVALID',
+                'errors' => $e->errors(),
+            ], 422);
+        }
+    }
+
+    public function changePassword(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'current_password' => ['required', 'string'],
+            'new_password' => ['required', 'different:current_password', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()->uncompromised()],
+        ]);
+
+        try {
+            $this->authService->changePassword($request->user(), $data['current_password'], $data['new_password']);
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Password changed successfully. Please sign in again.',
+                'data' => ['reauthentication_required' => true],
+            ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => collect($e->errors())->flatten()->first(),
+                'error_code' => 'AUTH_PASSWORD_CHANGE_FAILED',
+                'errors' => $e->errors(),
+            ], 422);
         }
     }
 

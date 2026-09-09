@@ -29,6 +29,9 @@ Public endpoints:
 - `POST /api/driver/version-check`
 - `POST /api/public/driver-mobile/version-check`
 - `POST /api/driver/auth/login`
+- `POST /api/driver/auth/forgot-password`
+- `POST /api/driver/auth/reset-password`
+- `POST /api/driver/auth/change-password`
 
 ## Quick Start
 
@@ -114,6 +117,9 @@ Notifications:
 | Method | Endpoint | Auth | Purpose |
 |---|---|---:|---|
 | POST | `/api/driver/auth/login` | No | Login and register/update device |
+| POST | `/api/driver/auth/forgot-password` | No | Request an enumeration-safe reset email |
+| POST | `/api/driver/auth/reset-password` | No | Reset a driver password using the one-time link |
+| POST | `/api/driver/auth/change-password` | Yes | Change password and revoke all sessions |
 | GET | `/api/driver/auth/profile` | Yes | Current driver profile and assignment stats |
 | POST | `/api/driver/auth/refresh` | Yes | Refresh access token |
 | POST | `/api/driver/auth/logout` | Yes | Revoke current token/session |
