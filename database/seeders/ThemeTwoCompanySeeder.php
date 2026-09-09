@@ -24,7 +24,7 @@ class ThemeTwoCompanySeeder extends Seeder
         $this->seedHeader(null);
     }
 
-    private function seedHeader(string $companyId): void
+    private function seedHeader(?string $companyId): void
     {
         $items = [
             ['Home', '/', 1],
