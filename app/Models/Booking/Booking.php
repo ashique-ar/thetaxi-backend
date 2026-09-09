@@ -3,8 +3,6 @@
 namespace App\Models\Booking;
 
 use App\Models\BaseModel;
-use App\Models\Website\WebsiteSetting;
-use App\Models\BusinessSetting;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehicleAssignment;
 use App\Enums\BookingLifecycleStatus;
@@ -861,7 +859,7 @@ class Booking extends BaseModel
      */
     public function canBeCancelled(): bool
     {
-        if (!in_array($this->status, ['pending', 'pending_approval', 'confirmed'])) {
+        if (!in_array($this->status, ['pending', 'pending_approval', 'approved', 'confirmed', 'allocated'])) {
             return false;
         }
 
@@ -882,24 +880,35 @@ class Booking extends BaseModel
             return false;
         }
 
-        $cancellationAllowed = $this->normalizeSettingBoolean(
-            BusinessSetting::getSetting('cancellation_allowed')
-                ?? WebsiteSetting::getValue('cancellation_allowed', null),
-            true
-        );
-        if (!$cancellationAllowed) {
-            return false;
+        return now()->addHours(2)->lte($startDateTime);
+    }
+
+    public function cancellationBlockReason(): ?string
+    {
+        if (in_array($this->status, ['cancelled', 'completed', 'in_progress'], true)) {
+            return 'This booking has already started or reached a final status.';
         }
 
-        $cancellationHours = (int) (
-            BusinessSetting::getSetting('cancellation_hours')
-            ?? WebsiteSetting::getValue('cancellation_hours', 0)
-        );
-        if ($cancellationHours > 0) {
-            return now()->addHours($cancellationHours)->lte($startDateTime);
+        if (!in_array($this->status, ['pending', 'pending_approval', 'approved', 'confirmed', 'allocated'], true)) {
+            return 'This booking cannot be cancelled from its current status.';
         }
 
-        return true;
+        $startDateTime = $this->from_date?->copy();
+        if (!$startDateTime) {
+            return 'The booking start time is unavailable.';
+        }
+
+        if ($this->from_time) {
+            try {
+                $startDateTime->setTimeFromTimeString($this->from_time);
+            } catch (\Exception $e) {
+                return 'The booking start time is invalid.';
+            }
+        }
+
+        return now()->addHours(2)->gt($startDateTime)
+            ? 'Bookings can only be cancelled at least 2 hours before the scheduled start.'
+            : null;
     }
 
     /**
