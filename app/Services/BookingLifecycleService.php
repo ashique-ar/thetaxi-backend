@@ -2385,6 +2385,9 @@ class BookingLifecycleService
         if ($packageIncludedKm !== null) {
             $params['package_included_km'] = $packageIncludedKm;
         }
+        if ($hasIncludedDuration) {
+            $params['package_included_hours'] = $includedMinutes / 60;
+        }
         if ($distanceKm !== null) {
             $params += [
                 'journey_distance' => (float) $distanceKm,
