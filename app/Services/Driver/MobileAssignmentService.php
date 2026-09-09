@@ -1038,6 +1038,23 @@ class MobileAssignmentService
             return null;
         }
 
+        $snapshot = is_array($metadata['package_info'] ?? null) ? $metadata['package_info'] : null;
+        if ($snapshot && (string) ($snapshot['id'] ?? '') === (string) $packageId) {
+            return [
+                'id' => $packageId,
+                'name' => $snapshot['name'] ?? null,
+                'code' => $snapshot['code'] ?? null,
+                'description' => $snapshot['description'] ?? null,
+                'included_km_per_day' => $snapshot['max_km_per_day'] ?? null,
+                'included_km_per_package' => $snapshot['max_km_per_package'] ?? null,
+                'included_hours' => $snapshot['default_duration_hours'] ?? 0,
+                'included_minutes' => ((int) ($snapshot['default_duration_hours'] ?? 0) * 60)
+                    + (int) ($snapshot['default_duration_minutes'] ?? 0),
+                'rate_type' => $snapshot['rate_type'] ?? null,
+                'snapshot' => true,
+            ];
+        }
+
         $package = \App\Models\Service\ServicePackage::find($packageId);
         if (!$package) {
             return ['id' => $packageId];
@@ -1054,6 +1071,7 @@ class MobileAssignmentService
             'included_minutes' => ((int) $package->default_duration_hours * 60)
                 + (int) $package->default_duration_minutes,
             'rate_type' => $package->rate_type,
+            'snapshot' => false,
         ];
     }
 

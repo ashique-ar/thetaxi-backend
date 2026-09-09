@@ -517,6 +517,7 @@ class VehiclePricingCalculationDefinition extends Model
         $durationDays = $inputs['duration_days'] ?? $inputs['days'] ?? 0;
         $ownerType = $inputs['owner_type'] ?? null;
         $ownerId = $inputs['owner_id'] ?? null;
+        $servicePackageId = $inputs['service_package_id'] ?? $inputs['package_id'] ?? null;
 
         if (!$vehicleGroupId) {
             return null;
@@ -530,6 +531,11 @@ class VehiclePricingCalculationDefinition extends Model
 
         $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
+            ->when(
+                $servicePackageId,
+                fn ($query) => $query->where('service_package_id', $servicePackageId),
+                fn ($query) => $query->whereNull('service_package_id')
+            )
             ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
             ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));
 
