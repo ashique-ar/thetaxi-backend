@@ -13,7 +13,7 @@ class ThemeOneCompanySeeder extends Seeder
     {
         $company = Company::updateOrCreate(
             ['domain' => 'thetaxi.lk'],
-            ['name' => 'The Taxi', 'website' => 'https://thetaxi.lk', 'is_active' => true, 'is_default' => true]
+            ['name' => 'The Taxi', 'website' => 'https://thetaxi.lk', 'is_active' => true, 'is_default' => false]
         );
 
         foreach (['active_theme' => 'default', 'site_name' => 'The Taxi', 'header_help_label' => 'Need Help?', 'header_cart_label' => 'My Cart'] as $type => $value) {
@@ -21,9 +21,10 @@ class ThemeOneCompanySeeder extends Seeder
         }
 
         $this->seedHeader($company->id);
+        $this->seedHeader(null);
     }
 
-    private function seedHeader(string $companyId): void
+    private function seedHeader(?string $companyId): void
     {
         $items = [
             ['Home', '/', 1],
