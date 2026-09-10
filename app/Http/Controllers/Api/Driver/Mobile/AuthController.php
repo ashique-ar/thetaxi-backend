@@ -115,14 +115,14 @@ class AuthController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'If an eligible driver account exists, a password reset email has been sent.',
+            'message' => 'If an eligible driver account exists, a password reset OTP has been sent.',
         ]);
     }
 
     public function resetPassword(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'token' => ['required', 'string'],
+            'otp' => ['required', 'digits:6'],
             'email' => ['required', 'string', 'email', 'max:255'],
             'password' => ['required', 'confirmed', Password::min(8)->letters()->mixedCase()->numbers()->symbols()->uncompromised()],
         ]);

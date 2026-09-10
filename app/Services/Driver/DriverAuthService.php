@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\Driver\Driver;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Password;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Passport\Passport;
@@ -21,6 +22,8 @@ use Laravel\Passport\Passport;
  */
 class DriverAuthService
 {
+    private const PASSWORD_OTP_EXPIRES_MINUTES = 10;
+
     /**
      * @var DeviceService
      */
@@ -361,7 +364,7 @@ class DriverAuthService
         $driver->update(['current_device_uuid' => null]);
     }
 
-    /** Send a recovery email only when the address belongs to a driver. */
+    /** Send a recovery OTP only when the address belongs to a driver. */
     public function sendPasswordResetEmail(string $email): void
     {
         $user = User::query()->whereRaw('LOWER(email) = ?', [Str::lower($email)])->first();
@@ -369,15 +372,30 @@ class DriverAuthService
             return;
         }
 
-        $user->notify(new DriverPasswordResetNotification(Password::createToken($user)));
+        $otp = (string) random_int(100000, 999999);
+        DB::table(config('auth.passwords.users.table'))->updateOrInsert(
+            ['email' => $user->getEmailForPasswordReset()],
+            ['token' => Hash::make($otp), 'created_at' => now()]
+        );
+        $user->notify(new DriverPasswordResetNotification($otp, self::PASSWORD_OTP_EXPIRES_MINUTES));
     }
 
     /** Reset only a driver account and invalidate all prior sessions/devices. */
     public function resetPassword(array $credentials): void
     {
+        $credentials['email'] = Str::lower($credentials['email']);
+        $credentials['token'] = $credentials['otp'];
+        unset($credentials['otp']);
         $user = User::query()->whereRaw('LOWER(email) = ?', [Str::lower($credentials['email'])])->first();
         if (! $user || ! $this->isDriver($user)) {
-            throw ValidationException::withMessages(['email' => ['The reset link is invalid or has expired.']]);
+            throw ValidationException::withMessages(['email' => ['The OTP is invalid or has expired.']]);
+        }
+        $otpIsCurrent = DB::table(config('auth.passwords.users.table'))
+            ->where('email', $user->getEmailForPasswordReset())
+            ->where('created_at', '>=', now()->subMinutes(self::PASSWORD_OTP_EXPIRES_MINUTES))
+            ->exists();
+        if (! $otpIsCurrent) {
+            throw ValidationException::withMessages(['email' => ['The OTP is invalid or has expired.']]);
         }
 
         $status = Password::reset($credentials, function (User $resetUser, string $password): void {
@@ -397,7 +415,7 @@ class DriverAuthService
         });
 
         if ($status !== Password::PASSWORD_RESET) {
-            throw ValidationException::withMessages(['email' => ['The reset link is invalid or has expired.']]);
+            throw ValidationException::withMessages(['email' => ['The OTP is invalid or has expired.']]);
         }
     }
 

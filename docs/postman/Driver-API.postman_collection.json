@@ -329,7 +329,7 @@
                                 "forgot-password"
                             ]
                         },
-                        "description": "Requests a one-time mobile password reset link. The response never reveals whether the account exists.",
+                        "description": "Emails a six-digit password reset OTP. The response never reveals whether the account exists.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"email\": \"driver@example.com\"\n}",
@@ -376,7 +376,7 @@
                         "description": "Resets an eligible driver password, clears lockout state, and revokes all sessions.",
                         "body": {
                             "mode": "raw",
-                            "raw": "{\n    \"email\": \"driver@example.com\",\n    \"token\": \"one-time-token\",\n    \"password\": \"NewPassword1!\",\n    \"password_confirmation\": \"NewPassword1!\"\n}",
+                            "raw": "{\n    \"email\": \"driver@example.com\",\n    \"otp\": \"123456\",\n    \"password\": \"NewPassword1!\",\n    \"password_confirmation\": \"NewPassword1!\"\n}",
                             "options": {
                                 "raw": {
                                     "language": "json"

@@ -12540,7 +12540,7 @@
                                 "type": "object",
                                 "required": [
                                     "email",
-                                    "token",
+                                    "otp",
                                     "password",
                                     "password_confirmation"
                                 ],
@@ -12549,8 +12549,10 @@
                                         "type": "string",
                                         "format": "email"
                                     },
-                                    "token": {
-                                        "type": "string"
+                                    "otp": {
+                                        "type": "string",
+                                        "pattern": "^\\d{6}$",
+                                        "example": "123456"
                                     },
                                     "password": {
                                         "type": "string",
@@ -12572,7 +12574,7 @@
                         "description": "Password reset; all sessions revoked"
                     },
                     "422": {
-                        "description": "Invalid or expired reset link",
+                        "description": "Invalid or expired OTP",
                         "content": {
                             "application/json": {
                                 "schema": {

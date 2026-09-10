@@ -70,11 +70,11 @@ versionGet.request.auth = { type: 'noauth' };
 upsertAfter('App Settings', 'Version Check', versionGet);
 
 const forgotPassword = requestItem('Forgot Password', 'POST', '{{base_url}}/api/driver/auth/forgot-password',
-    { email: 'driver@example.com' }, 'Requests a one-time mobile password reset link. The response never reveals whether the account exists.', []);
+    { email: 'driver@example.com' }, 'Emails a six-digit password reset OTP. The response never reveals whether the account exists.', []);
 forgotPassword.request.auth = { type: 'noauth' };
 upsertAfter('Authentication', 'Login', forgotPassword);
 const resetPassword = requestItem('Reset Password', 'POST', '{{base_url}}/api/driver/auth/reset-password',
-    { email: 'driver@example.com', token: 'one-time-token', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' },
+    { email: 'driver@example.com', otp: '123456', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' },
     'Resets an eligible driver password, clears lockout state, and revokes all sessions.', []);
 resetPassword.request.auth = { type: 'noauth' };
 upsertAfter('Authentication', 'Forgot Password', resetPassword);
@@ -250,8 +250,8 @@ openapi.paths['/api/driver/auth/forgot-password'] = {
 };
 openapi.paths['/api/driver/auth/reset-password'] = {
     post: { tags: ['Authentication'], summary: 'Reset driver password', security: [],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'token', 'password', 'password_confirmation'], properties: { email: { type: 'string', format: 'email' }, token: { type: 'string' }, password: passwordSchema, password_confirmation: passwordSchema } } } } },
-        responses: { 200: { description: 'Password reset; all sessions revoked' }, 422: { description: 'Invalid or expired reset link', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'otp', 'password', 'password_confirmation'], properties: { email: { type: 'string', format: 'email' }, otp: { type: 'string', pattern: '^\\d{6}$', example: '123456' }, password: passwordSchema, password_confirmation: passwordSchema } } } } },
+        responses: { 200: { description: 'Password reset; all sessions revoked' }, 422: { description: 'Invalid or expired OTP', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
 };
 openapi.paths['/api/driver/auth/change-password'] = {
     post: { tags: ['Authentication'], summary: 'Change driver password', security: protectedSecurity,
