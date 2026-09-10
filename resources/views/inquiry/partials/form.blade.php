@@ -49,6 +49,7 @@
             $isTextarea = $field->type === 'textarea';
             $isSelect = $field->type === 'select';
             $isRadio = $field->type === 'radio';
+            $isTelephone = in_array($field->type, ['tel', 'phone'], true);
             $wrapperClasses = 'inquiry-field-wrap';
             if ($isTextarea) {
                 $wrapperClasses .= ' inquiry-textarea-wrap';
@@ -113,8 +114,8 @@
                 {{ $field->label }}
                 @if ($isConditionalRequired)<span aria-hidden="true">*</span>@endif
             </label>
-            <div class="single-search-box{{ $isTextarea ? ' inquiry-textarea-box' : '' }}">
-                @if (!empty($field->icon) && !$isTextarea)
+            <div class="inquiry-control{{ $isTextarea ? ' inquiry-control--textarea' : '' }}{{ $isTelephone ? ' inquiry-control--phone' : '' }}">
+                @if (!empty($field->icon) && !$isTextarea && !$isTelephone)
                     <i class="{{ $field->icon }}"></i>
                 @endif
 

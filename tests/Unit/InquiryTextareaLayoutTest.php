@@ -7,10 +7,10 @@ test('dynamic inquiry fields have persistent labels and full-width textareas', f
     expect($form)
         ->toContain("\$wrapperClasses .= ' inquiry-textarea-wrap'")
         ->toContain('class="inquiry-field-label"')
-        ->toContain("!empty(\$field->icon) && !\$isTextarea")
-        ->toContain("\$isTextarea ? ' inquiry-textarea-box' : ''")
+        ->toContain("!empty(\$field->icon) && !\$isTextarea && !\$isTelephone")
+        ->toContain("\$isTextarea ? ' inquiry-control--textarea' : ''")
         ->and($page)
-        ->toContain('.inquiry-form-card .inquiry-textarea-box > textarea')
+        ->toContain('.inquiry-form-card .inquiry-control--textarea > textarea')
         ->toContain('display: block !important;')
         ->toContain('width: 100% !important;');
 });

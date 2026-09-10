@@ -102,23 +102,6 @@ $type = $section['type'] ?? '';
         margin-bottom: 1rem;
     }
 
-    .inquiry-full-width textarea {
-        width: 100%;
-        padding: 15px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-family: inherit;
-        font-size: 14px;
-        resize: vertical;
-        min-height: 120px;
-    }
-
-    .inquiry-full-width textarea:focus {
-        outline: none;
-        border-color: var(--primary-color1);
-        box-shadow: 0 0 0 2px rgba(191, 38, 41, 0.1);
-    }
-
     .inquiry-submit-btn {
         width: 100%;
         margin-top: 1rem;
@@ -203,35 +186,87 @@ $type = $section['type'] ?? '';
         font-size: 13px;
         font-weight: 600;
         line-height: 1.35;
+        text-align: left !important;
     }
 
     .inquiry-form-card .inquiry-field-label span {
         color: var(--primary-color1);
     }
 
-    .inquiry-form-card .single-search-box {
-        align-content: center;
+    .inquiry-form-card .inquiry-control {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        width: 100%;
+        min-width: 0;
         min-height: 58px;
         padding: 10px 16px;
+        border: 1px solid var(--borders-color);
+        border-radius: 10px;
+        background: #fff;
+        box-sizing: border-box;
     }
 
-    .inquiry-form-card .single-search-box > input,
-    .inquiry-form-card .single-search-box > select,
-    .inquiry-form-card .single-search-box > textarea,
-    .inquiry-form-card .single-search-box > .nice-select,
-    .inquiry-form-card .single-search-box > .custom-select-dropdown,
-    .inquiry-form-card .single-search-box > .iti {
+    .inquiry-form-card .inquiry-control > i {
+        flex: 0 0 18px;
+        width: 18px;
+        text-align: center;
+    }
+
+    .inquiry-form-card .inquiry-control > input,
+    .inquiry-form-card .inquiry-control > select,
+    .inquiry-form-card .inquiry-control > textarea,
+    .inquiry-form-card .inquiry-control > .nice-select,
+    .inquiry-form-card .inquiry-control > .custom-select-dropdown,
+    .inquiry-form-card .inquiry-control > .iti {
         flex: 1 1 auto !important;
         width: 100% !important;
         min-width: 0 !important;
     }
 
-    .inquiry-form-card .single-search-box > input,
-    .inquiry-form-card .single-search-box > select {
+    .inquiry-form-card .inquiry-control > input,
+    .inquiry-form-card .inquiry-control > select,
+    .inquiry-form-card .inquiry-control > textarea {
         padding: 0 !important;
         border: 0 !important;
         background: transparent !important;
         box-shadow: none !important;
+        box-sizing: border-box !important;
+    }
+
+    .inquiry-form-card .inquiry-control:focus-within {
+        border-color: var(--primary-color1);
+        box-shadow: 0 0 0 3px rgba(var(--primary-color1-opc), 0.1);
+    }
+
+    .inquiry-form-card .inquiry-control:has(.is-invalid) {
+        border-color: #dc3545;
+        background: #fff8f8;
+    }
+
+    .inquiry-form-card .inquiry-control > .nice-select {
+        height: auto !important;
+        min-height: 0 !important;
+        padding: 0 24px 0 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        line-height: 1.5 !important;
+    }
+
+    .inquiry-form-card .inquiry-control > .iti {
+        display: block !important;
+        flex-basis: 0 !important;
+        max-width: 100% !important;
+    }
+
+    .inquiry-form-card .inquiry-control > .iti input[type='tel'] {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-width: 100% !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        box-sizing: border-box !important;
     }
 
     .inquiry-form-card .inquiry-help-text,
@@ -245,15 +280,15 @@ $type = $section['type'] ?? '';
         line-height: 1.45;
     }
 
-    .inquiry-form-card .inquiry-textarea-box {
+    .inquiry-form-card .inquiry-control--textarea {
         display: block !important;
         padding: 16px 18px !important;
     }
 
-    .inquiry-form-card .inquiry-textarea-box > textarea {
+    .inquiry-form-card .inquiry-control--textarea > textarea {
         width: 100% !important;
         min-width: 0 !important;
-        min-height: 120px !important;
+        min-height: 140px !important;
         padding: 0 !important;
         border: 0 !important;
         border-radius: 0 !important;
@@ -263,7 +298,7 @@ $type = $section['type'] ?? '';
         resize: vertical !important;
     }
 
-    .inquiry-form-card .inquiry-textarea-box > textarea:focus {
+    .inquiry-form-card .inquiry-control--textarea > textarea:focus {
         outline: 0;
         box-shadow: none;
     }
@@ -482,13 +517,6 @@ $type = $section['type'] ?? '';
                     btnText.textContent = originalText;
                 }
             }, 30000);
-        });
-
-        form.querySelectorAll('textarea').forEach((textarea) => {
-            textarea.addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = this.scrollHeight + 'px';
-            });
         });
 
         const conditionalFields = Array.from(form.querySelectorAll('[data-conditional]'));
