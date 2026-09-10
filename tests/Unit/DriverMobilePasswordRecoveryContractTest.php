@@ -9,6 +9,18 @@ it('exposes driver scoped password recovery routes', function () {
         ->toContain("Route::post('change-password'");
 });
 
+it('includes the password reset token storage migration', function () {
+    $migration = file_get_contents(base_path(
+        'database/migrations/2026_09_10_000002_create_password_reset_tokens_table.php'
+    ));
+
+    expect($migration)
+        ->toContain("Schema::create('password_reset_tokens'")
+        ->toContain("$table->string('email')->primary()")
+        ->toContain("$table->string('token')")
+        ->toContain("$table->timestamp('created_at')->nullable()");
+});
+
 it('keeps recovery enumeration safe and driver scoped', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/AuthController.php'));
     $service = file_get_contents(app_path('Services/Driver/DriverAuthService.php'));
