@@ -53,7 +53,7 @@
             if ($isTextarea) {
                 $wrapperClasses .= ' inquiry-textarea-wrap';
             }
-            if ($field->width === 'full') {
+            if ($isTextarea || $field->width === 'full') {
                 $wrapperClasses .= ' inquiry-full-width';
             }
             $conditionalLogic = $field->conditional_logic;
@@ -103,20 +103,24 @@
                 $shouldShow = $conditionOperator === 'not_equals' ? !$matches : $matches;
             }
             $inputId = 'field-' . $field->id;
-            $displayLabel = $field->label . ($field->is_required ? ' *' : '');
         @endphp
 
         <div class="{{ $wrapperClasses }}"
             @if ($conditional) data-conditional='@json($conditional)' @endif
             @if ($conditional && !$shouldShow) style="display:none !important;" @endif>
+            <label id="{{ $inputId }}-label" class="inquiry-field-label"
+                @unless ($isRadio) for="{{ $inputId }}" @endunless>
+                {{ $field->label }}
+                @if ($isConditionalRequired)<span aria-hidden="true">*</span>@endif
+            </label>
             <div class="single-search-box{{ $isTextarea ? ' inquiry-textarea-box' : '' }}">
-                @if (!empty($field->icon))
+                @if (!empty($field->icon) && !$isTextarea)
                     <i class="{{ $field->icon }}"></i>
                 @endif
 
                 @if ($isTextarea)
                     <textarea id="{{ $inputId }}" name="{{ $field->name }}"
-                        placeholder="{{ ($field->placeholder ?? $field->label) . ($field->is_required ? ' *' : '') }}"
+                        placeholder="{{ $field->placeholder ?? $field->label }}"
                         class="@error($field->name) is-invalid @enderror"
                         rows="4"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
@@ -126,7 +130,7 @@
                         class="form-select @error($field->name) is-invalid @enderror"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                         @if ($field->is_required) required @endif>
-                        <option value="">Select {{ $displayLabel }}</option>
+                        <option value="">Select {{ $field->label }}</option>
                         @foreach ($field->options ?? [] as $option)
                             @php
                                 $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
@@ -139,7 +143,7 @@
                         @endforeach
                     </select>
                 @elseif ($isRadio)
-                    <div class="inquiry-radio-group">
+                    <div class="inquiry-radio-group" role="radiogroup" aria-labelledby="{{ $inputId }}-label">
                         @foreach ($field->options ?? [] as $index => $option)
                             @php
                                 $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
@@ -158,7 +162,7 @@
                     </div>
                 @else
                     <input id="{{ $inputId }}" type="{{ $field->type }}" name="{{ $field->name }}"
-                        placeholder="{{ ($field->placeholder ?? $field->label) . ($field->is_required ? ' *' : '') }}"
+                        placeholder="{{ $field->placeholder ?? $field->label }}"
                         class="@error($field->name) is-invalid @enderror"
                         value="{{ old($field->name, $field->default_value) }}"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"

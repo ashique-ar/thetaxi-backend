@@ -192,10 +192,27 @@ $type = $section['type'] ?? '';
 
     .inquiry-form-card .inquiry-field-wrap {
         min-width: 0;
+        display: flex;
+        flex-direction: column;
+    }
+
+    .inquiry-form-card .inquiry-field-label {
+        display: block;
+        margin: 0 0 7px 2px;
+        color: #344054;
+        font-size: 13px;
+        font-weight: 600;
+        line-height: 1.35;
+    }
+
+    .inquiry-form-card .inquiry-field-label span {
+        color: var(--primary-color1);
     }
 
     .inquiry-form-card .single-search-box {
         align-content: center;
+        min-height: 58px;
+        padding: 10px 16px;
     }
 
     .inquiry-form-card .single-search-box > input,
@@ -204,32 +221,36 @@ $type = $section['type'] ?? '';
     .inquiry-form-card .single-search-box > .nice-select,
     .inquiry-form-card .single-search-box > .custom-select-dropdown,
     .inquiry-form-card .single-search-box > .iti {
-        flex: 1 1 calc(100% - 30px);
-        width: auto;
+        flex: 1 1 auto !important;
+        width: 100% !important;
+        min-width: 0 !important;
+    }
+
+    .inquiry-form-card .single-search-box > input,
+    .inquiry-form-card .single-search-box > select {
+        padding: 0 !important;
+        border: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
 
     .inquiry-form-card .inquiry-help-text,
     .inquiry-form-card .inquiry-field-wrap > .text-danger {
-        padding: 0 12px;
+        padding: 0 4px;
+    }
+
+    .inquiry-form-card .inquiry-help-text {
+        min-height: 38px;
+        margin-top: 7px;
+        line-height: 1.45;
     }
 
     .inquiry-form-card .inquiry-textarea-box {
-        display: grid !important;
-        grid-template-columns: 18px minmax(0, 1fr) !important;
-        align-items: start !important;
-        gap: 12px !important;
+        display: block !important;
         padding: 16px 18px !important;
     }
 
-    .inquiry-form-card .inquiry-textarea-box > i {
-        width: 18px !important;
-        min-width: 18px !important;
-        margin-top: 3px;
-        text-align: center !important;
-    }
-
     .inquiry-form-card .inquiry-textarea-box > textarea {
-        grid-column: 2 !important;
         width: 100% !important;
         min-width: 0 !important;
         min-height: 120px !important;
@@ -249,7 +270,6 @@ $type = $section['type'] ?? '';
 
     .inquiry-form-card .inquiry-textarea-wrap .inquiry-help-text {
         display: block;
-        padding-top: 8px;
         text-align: left;
     }
 
@@ -408,6 +428,10 @@ $type = $section['type'] ?? '';
         .inquiry-form-card .inquiry-help-text,
         .inquiry-form-card .inquiry-field-wrap > .text-danger {
             padding: 0 6px;
+        }
+
+        .inquiry-form-card .inquiry-help-text {
+            min-height: 0;
         }
     }
 
