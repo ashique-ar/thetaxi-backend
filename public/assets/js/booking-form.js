@@ -169,14 +169,15 @@
 
                 if (dateInput._flatpickr) dateInput._flatpickr.set('minDate', minDate);
                 if (dateInput._litepicker && typeof dateInput._litepicker.setOptions === 'function') {
-                    dateInput._litepicker.setOptions({ minDate });
+                    dateInput._litepicker.setOptions({ minDate: minIsoDate });
                 }
 
                 const isFresh = form.dataset.hasSearchContext === 'false';
                 if (setInitial && isFresh) {
-                    dateInput.value = minDate;
-                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(minDate, false, 'd/m/Y');
-                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(minDate);
+                    const initialDate = parseDateValue(dateInput.value) >= minIsoDate ? dateInput.value : minDate;
+                    dateInput.value = initialDate;
+                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(initialDate, false, 'd/m/Y');
+                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(initialDate);
                 }
 
                 if (!timeInput) return;

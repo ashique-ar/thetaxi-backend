@@ -253,7 +253,10 @@
             } elseif ($fieldType === 'date') {
                 $isPickupDate = str_contains($fieldName, 'pickup') || $submitAs === 'date';
                 $rawDate = $isPickupDate ? $pickupDate : $dropoffDate;
-                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : ($hasSearchContext ? $fieldDefault : '');
+                $formattedDefault = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $fieldDefault)
+                    ? date('d/m/Y', strtotime($fieldDefault))
+                    : $fieldDefault;
+                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : $formattedDefault;
                 $currentValue = old($submitAs, $formatted);
             } elseif ($fieldType === 'time') {
                 $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time';

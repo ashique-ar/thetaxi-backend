@@ -146,6 +146,14 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertStringContainsString("['submit_as'] ?? \$mapping", $request);
     }
 
+    public function test_date_picker_minimum_uses_unambiguous_iso_format(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('setOptions({ minDate: minIsoDate })', $script);
+        $this->assertStringNotContainsString('setOptions({ minDate });', $script);
+    }
+
     private function requestWithConfiguredDateTime(): BookingSearchRequest
     {
         $request = new class extends BookingSearchRequest {
