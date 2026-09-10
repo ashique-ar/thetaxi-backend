@@ -10,8 +10,10 @@ test('dynamic inquiry fields have persistent labels and full-width textareas', f
         ->toContain("!empty(\$field->icon) && !\$isTextarea && !\$isTelephone")
         ->toContain("\$isTextarea ? ' inquiry-control--textarea' : ''")
         ->and($styles)
-        ->toContain('body form[data-inquiry-form] .inquiry-control--textarea > textarea')
-        ->toContain('body form[data-inquiry-form] .inquiry-control > .iti input')
+        ->toContain('body .filter-wrapper .filter-input-wrap form[data-inquiry-form].filter-input.show')
+        ->toContain('grid-template-columns: minmax(0, 1fr) !important;')
+        ->toContain('form[data-inquiry-form] .inquiry-control--textarea > textarea')
+        ->toContain('form[data-inquiry-form] .inquiry-control > .iti input')
         ->toContain('display: block !important;')
         ->toContain('width: 100% !important;');
 });
