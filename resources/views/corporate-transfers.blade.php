@@ -45,20 +45,10 @@
                                 </div>
                             @endif
 
-                            <!-- Success Message Display -->
-                            @if (session('success'))
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    {{ session('success') }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                        aria-label="Close"></button>
-                                </div>
-                            @endif
-
                             <!-- Corporate Transport Form -->
                             <form id="corporate-transport-form" class="filter-input show "
                                 data-service="corporate-transport" action="{{ route('booking.enquiry') }}" method="POST">
                                 @csrf
-                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'corporate-company-website'])
                                 <input type="hidden" name="service_type" value="corporate-transport">
                                 <input type="hidden" name="inquiry_type" value="corporate">
 
@@ -235,6 +225,7 @@
                                     @enderror
                                 </div>
 
+                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'corporate-company-website'])
                                 <button type="submit" class="primary-btn1 corporate-submit-btn">
                                     <span>{{ $settings['corporate_form_submit_text'] ?? 'Submit Enquiry' }}</span>
                                 </button>

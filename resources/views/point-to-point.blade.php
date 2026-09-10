@@ -35,15 +35,6 @@
                                 </div>
                             @endif
 
-                            <!-- Success Message Display -->
-                            @if (session('success'))
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    {{ session('success') }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                        aria-label="Close"></button>
-                                </div>
-                            @endif
-
                             <!-- Drop & Pickup Form -->
                             <form id="point_to_point-form" class="filter-input show" data-service="point_to_point"
                                 action="{{ route('booking.search') }}" method="GET">

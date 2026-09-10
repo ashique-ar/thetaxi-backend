@@ -21,19 +21,11 @@
     </div>
 @endif
 
-@if (session('success'))
-    <div class="alert alert-success alert-dismissible fade show" role="alert">
-        {{ session('success') }}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    </div>
-@endif
-
 <form class="filter-input show" data-inquiry-form
     data-phone-initial-country="{{ $phoneInitialCountry }}"
     data-phone-preferred-countries="{{ implode(',', $phonePreferredCountries) }}"
     action="{{ route($formAction) }}" method="POST">
     @csrf
-    @include('inquiry.partials.spam-protection', ['honeypotId' => 'service-inquiry-company-website'])
     <input type="hidden" name="inquiry_service_page_id" value="{{ $servicePage->id }}">
     <input type="hidden" name="service_slug" value="{{ $servicePage->slug }}">
     @if (!empty($servicePage->inquiry_type))
@@ -180,6 +172,7 @@
         </div>
     @endforeach
 
+    @include('inquiry.partials.spam-protection', ['honeypotId' => 'service-inquiry-company-website'])
     <button type="submit" class="primary-btn1 inquiry-submit-btn">
         <span>{{ $form->submit_label ?? 'Submit Inquiry' }}</span>
     </button>

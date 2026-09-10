@@ -189,7 +189,6 @@
 
     @if ($isInquiry)
         @csrf
-        @include('inquiry.partials.spam-protection', ['honeypotId' => $formId . '-company-website'])
     @endif
     <input type="hidden" name="service_type" value="{{ $serviceCode }}">
 
@@ -475,6 +474,9 @@
         @endif
     @endif
 
+    @if ($isInquiry)
+        @include('inquiry.partials.spam-protection', ['honeypotId' => $formId . '-company-website'])
+    @endif
     <button type="submit" class="primary-btn1 booking-search-submit">
         <span>{{ $submitLabel }}</span>
     </button>

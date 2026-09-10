@@ -493,6 +493,8 @@
             if (!notification) {
                 notification = document.createElement('div');
                 notification.id = 'cart-notification';
+                notification.setAttribute('role', 'status');
+                notification.setAttribute('aria-live', 'polite');
                 notification.style.cssText = `
                     position: fixed;
                     top: 20px;
@@ -516,6 +518,10 @@
                 notification.style.transform = 'translateX(400px)';
             }, duration);
         };
+
+        @if (session('success'))
+            window.showSuccessNotification(@json(session('success')), 5000);
+        @endif
     </script>
 
     <!-- AOS Animation JS -->
