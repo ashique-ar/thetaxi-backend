@@ -174,13 +174,9 @@
 
                 const isFresh = form.dataset.hasSearchContext === 'false';
                 if (setInitial && isFresh) {
-                    const configuredDate = resolveConfiguredDateDefault(form, dateInput);
-                    const initialDate = configuredDate && parseDateValue(configuredDate) >= minIsoDate
-                        ? configuredDate
-                        : minDate;
-                    dateInput.value = initialDate;
-                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(initialDate, false, 'd/m/Y');
-                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(initialDate);
+                    dateInput.value = minDate;
+                    if (dateInput._flatpickr) dateInput._flatpickr.setDate(minDate, false, 'd/m/Y');
+                    if (dateInput._litepicker && typeof dateInput._litepicker.setDate === 'function') dateInput._litepicker.setDate(minDate);
                 }
 
                 if (!timeInput) return;
@@ -197,29 +193,6 @@
             dateInput.addEventListener('change', () => applyConstraints(false));
             applyConstraints(true);
         });
-    }
-
-    function resolveConfiguredDateDefault(form, input) {
-        try {
-            const encoded = form.dataset.fieldDefaults || '';
-            if (!encoded) return '';
-            const binary = atob(encoded);
-            const defaults = JSON.parse(new TextDecoder().decode(
-                Uint8Array.from(binary, character => character.charCodeAt(0))
-            ));
-            const value = String(defaults[input.name] || '').trim();
-            const token = value.toLowerCase();
-            const date = new Date();
-            if (token === 'today' || token === 'tomorrow' || /^\+\d+\s*days?$/.test(token)) {
-                if (token === 'tomorrow') date.setDate(date.getDate() + 1);
-                const match = token.match(/^\+(\d+)\s*days?$/);
-                if (match) date.setDate(date.getDate() + Number(match[1]));
-                return formatDate(date);
-            }
-            return value;
-        } catch (error) {
-            return '';
-        }
     }
 
     function validateAdvanceBookingSelection(form) {
@@ -4094,21 +4067,24 @@
         }
     }
 
-    /** Initialize return-trip functionality for every configured service form. */
+    /**
+     * Initialize Return Trip functionality for Ride Now form
+     */
     function initReturnTrip() {
-        document.querySelectorAll('[data-return-trip]').forEach((section) => {
-        const form = section.closest('form');
-        const returnToggle = section.querySelector('[data-return-toggle]');
-        const returnDetails = section.querySelector('[data-return-details]');
-        const returnDateInput = section.querySelector('[data-return-date]');
-        const pricingInfo = section.querySelector('[data-return-pricing-info]');
-        if (!form || !returnToggle || !returnDetails) return;
+        const returnToggle = document.getElementById('ride_now-return-toggle');
+        const returnDetails = document.getElementById('ride_now-return-details');
+        const returnDateInput = document.getElementById('ride_now-return-date');
+        const pricingInfo = document.getElementById('ride_now-return-pricing-info');
+
+        if (!returnToggle || !returnDetails) {
+            return;
+        }
 
         // If return toggle is already checked (from search params), initialize everything
         if (returnToggle.checked) {
-            initReturnDatePicker(section);
-            updateReturnRouteLocations(section);
-            calculateReturnPricing(section);
+            initReturnDatePicker();
+            updateReturnRouteLocations();
+            calculateReturnPricing();
         }
 
         // Toggle return trip details visibility
@@ -4116,13 +4092,13 @@
             if (this.checked) {
                 returnDetails.style.display = 'grid';
                 // Initialize return date picker if needed
-                initReturnDatePicker(section);
+                initReturnDatePicker();
                 // Set default return date to pickup date
-                syncReturnDateWithPickup(section);
+                syncReturnDateWithPickup();
                 // Update return route locations
-                updateReturnRouteLocations(section);
+                updateReturnRouteLocations();
                 // Calculate initial pricing
-                calculateReturnPricing(section);
+                calculateReturnPricing();
             } else {
                 returnDetails.style.display = 'none';
                 if (pricingInfo) {
@@ -4133,49 +4109,49 @@
 
         // Listen for return date changes
         if (returnDateInput) {
-            returnDateInput.addEventListener('change', () => calculateReturnPricing(section));
+            returnDateInput.addEventListener('change', calculateReturnPricing);
         }
 
         // Listen for pickup date changes to update return pricing
-        const pickupDateInput = form.querySelector('input[name="pickup_date"], input[name="from_date"], input[name="date"]');
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
         if (pickupDateInput) {
             pickupDateInput.addEventListener('change', function () {
                 if (returnToggle.checked) {
-                    syncReturnDateWithPickup(section);
-                    calculateReturnPricing(section);
+                    syncReturnDateWithPickup();
+                    calculateReturnPricing();
                 }
             });
         }
 
         // Listen for pickup/dropoff location changes to update return route display
-        if (form) {
-            const pickupInput = form.querySelector('input[name="pickup"], input[name="pickup_location"], input[name="from"]');
-            const dropoffInput = form.querySelector('input[name="dropoff"], input[name="dropoff_location"], input[name="to"]');
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (rideNowForm) {
+            const pickupInput = rideNowForm.querySelector('input[name="pickup"]');
+            const dropoffInput = rideNowForm.querySelector('input[name="dropoff"]');
 
             if (pickupInput) {
-                pickupInput.addEventListener('change', () => updateReturnRouteLocations(section));
-                pickupInput.addEventListener('blur', () => updateReturnRouteLocations(section));
+                pickupInput.addEventListener('change', updateReturnRouteLocations);
+                pickupInput.addEventListener('blur', updateReturnRouteLocations);
             }
             if (dropoffInput) {
-                dropoffInput.addEventListener('change', () => updateReturnRouteLocations(section));
-                dropoffInput.addEventListener('blur', () => updateReturnRouteLocations(section));
+                dropoffInput.addEventListener('change', updateReturnRouteLocations);
+                dropoffInput.addEventListener('blur', updateReturnRouteLocations);
             }
         }
-        });
 
     }
 
     /**
      * Update return route location display (shows dropoff → pickup for return)
      */
-    function updateReturnRouteLocations(section) {
-        const form = section?.closest('form');
-        if (!form) return;
+    function updateReturnRouteLocations() {
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (!rideNowForm) return;
 
-        const pickupInput = form.querySelector('input[name="pickup"], input[name="pickup_location"], input[name="from"]');
-        const dropoffInput = form.querySelector('input[name="dropoff"], input[name="dropoff_location"], input[name="to"]');
-        const returnPickupEl = section.querySelector('[data-return-pickup-location]');
-        const returnDropoffEl = section.querySelector('[data-return-dropoff-location]');
+        const pickupInput = rideNowForm.querySelector('input[name="pickup"]');
+        const dropoffInput = rideNowForm.querySelector('input[name="dropoff"]');
+        const returnPickupEl = document.getElementById('return-pickup-location');
+        const returnDropoffEl = document.getElementById('return-dropoff-location');
 
         if (returnPickupEl && pickupInput) {
             returnPickupEl.textContent = pickupInput.value || 'Pickup';
@@ -4188,15 +4164,15 @@
     /**
      * Initialize date picker for return date (Litepicker, Flatpickr or Bootstrap fallback)
      */
-    function initReturnDatePicker(section) {
-        const returnDateInput = section?.querySelector('[data-return-date]');
+    function initReturnDatePicker() {
+        const returnDateInput = document.getElementById('ride_now-return-date');
         if (!returnDateInput) return;
 
         // If already attached, skip
         if (returnDateInput._litepicker || returnDateInput._flatpickr) return;
 
         // Get minimum date from pickup date
-        const pickupDateInput = section.closest('form').querySelector('input[name="pickup_date"], input[name="from_date"], input[name="date"]');
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
         let startDate = new Date();
         if (pickupDateInput && pickupDateInput.value) {
             const parsed = parseDDMMYYYY(pickupDateInput.value);
@@ -4223,7 +4199,7 @@
                 },
                 setup: (picker) => {
                     picker.on('selected', (date) => {
-                        calculateReturnPricing(section);
+                        calculateReturnPricing();
                     });
                 }
             });
@@ -4242,7 +4218,7 @@
                     firstDayOfWeek: 1
                 },
                 onChange: function (selectedDates, dateStr, instance) {
-                    calculateReturnPricing(section);
+                    calculateReturnPricing();
                 }
             });
         } else if (typeof $ !== 'undefined' && $.fn.datepicker) {
@@ -4260,7 +4236,7 @@
                 container: 'body',
                 zIndexOffset: 9999
             }).on('changeDate', function () {
-                calculateReturnPricing(section);
+                calculateReturnPricing();
             });
         }
     }
@@ -4268,9 +4244,9 @@
     /**
      * Sync return date with pickup date (set return date = pickup date by default)
      */
-    function syncReturnDateWithPickup(section) {
-        const pickupDateInput = section?.closest('form')?.querySelector('input[name="pickup_date"], input[name="from_date"], input[name="date"]');
-        const returnDateInput = section?.querySelector('[data-return-date]');
+    function syncReturnDateWithPickup() {
+        const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
+        const returnDateInput = document.getElementById('ride_now-return-date');
 
         if (pickupDateInput && returnDateInput) {
             returnDateInput.value = pickupDateInput.value;
@@ -4286,23 +4262,23 @@
     /**
      * Calculate return trip pricing via API
      */
-    function calculateReturnPricing(section) {
-        const returnToggle = section?.querySelector('[data-return-toggle]');
+    function calculateReturnPricing() {
+        const returnToggle = document.getElementById('ride_now-return-toggle');
         if (!returnToggle || !returnToggle.checked) {
             return;
         }
 
-        const form = section.closest('form');
-        if (!form) return;
+        const rideNowForm = document.getElementById('ride_now-form');
+        if (!rideNowForm) return;
 
         // Get selected package (supports radio/select/hidden and legacy/new names)
         let packageId = '';
-        const packageInput = form.querySelector('input[name="package_id"]:checked, input[name="service_package_id"]:checked');
+        const packageInput = rideNowForm.querySelector('input[name="package_id"]:checked, input[name="service_package_id"]:checked');
         if (packageInput) {
             packageId = packageInput.value;
         }
         if (!packageId) {
-            const packageField = form.querySelector(
+            const packageField = rideNowForm.querySelector(
                 'select[name="package_id"], select[name="service_package_id"], input[type="hidden"][name="package_id"], input[type="hidden"][name="service_package_id"]'
             );
             if (packageField && packageField.value) {
@@ -4310,8 +4286,8 @@
             }
         }
 
-        const pickupDateInput = form.querySelector('input[name="pickup_date"], input[name="from_date"], input[name="date"]');
-        const returnDateInput = section.querySelector('[data-return-date]');
+        const pickupDateInput = rideNowForm.querySelector('input[name="pickup_date"]');
+        const returnDateInput = document.getElementById('ride_now-return-date');
 
         if (!pickupDateInput || !returnDateInput) {
             return;
@@ -4326,7 +4302,7 @@
 
         // Calculate day offset locally for immediate UI feedback
         const dayOffset = Math.floor((returnDate - pickupDate) / (1000 * 60 * 60 * 24));
-        updateReturnPricingUI(section, dayOffset);
+        updateReturnPricingUI(dayOffset);
 
         // Optionally call API for exact pricing (if one-way fare is known)
         // This would typically be called after vehicle selection
@@ -4335,27 +4311,38 @@
     /**
      * Update return pricing UI based on day offset
      */
-    function updateReturnPricingUI(section, dayOffset) {
-        const pricingInfo = section.querySelector('[data-return-pricing-info]');
-        const discountLabel = section.querySelector('[data-return-discount-label]');
-        const discountValue = section.querySelector('[data-return-discount-value]');
+    function updateReturnPricingUI(dayOffset) {
+        const pricingInfo = document.getElementById('ride_now-return-pricing-info');
+        const discountLabel = document.getElementById('ride_now-return-discount-label');
+        const discountValue = document.getElementById('ride_now-return-discount-value');
 
         if (!pricingInfo || !discountLabel || !discountValue) {
             return;
         }
 
         let label = '';
+        let discount = 0;
+
         if (dayOffset === 0) {
             label = 'Same Day Return';
+            discount = 50;
         } else if (dayOffset === 1) {
             label = 'Next Day Return';
+            discount = 10;
         } else {
             label = `${dayOffset}+ Days Return`;
+            discount = 0;
         }
 
         discountLabel.textContent = label;
-        discountValue.textContent = 'Package discount applied in results';
-        pricingInfo.style.display = 'flex';
+
+        if (discount > 0) {
+            discountValue.textContent = `${discount}% off`;
+            pricingInfo.style.display = 'flex';
+        } else {
+            discountValue.textContent = 'Standard fare';
+            pricingInfo.style.display = 'flex';
+        }
     }
 
     /**
