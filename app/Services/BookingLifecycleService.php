@@ -2516,7 +2516,22 @@ class BookingLifecycleService
                     'candidate_failures' => $candidateFailures,
                 ]);
 
-                $this->alertOpsPricingResolutionFailed($booking, $bookingItem, $audit);
+                AuditLog::create([
+                    'user_id' => Auth::id(),
+                    'action' => 'final_pricing_pending_manual_review',
+                    'entity' => 'BookingItem',
+                    'entity_id' => $bookingItem->id,
+                    'timestamp' => Carbon::now('UTC'),
+                    'details' => [
+                        'booking_id' => $booking->id,
+                        'booking_number' => $booking->booking_number,
+                        'booking_item_id' => $bookingItem->id,
+                        'service_type_id' => $bookingItem->service_type_id,
+                        'vehicle_group_id' => $bookingItem->vehicle_group_id,
+                        'reason' => $audit['reason'],
+                        'candidate_failures' => $candidateFailures,
+                    ],
+                ]);
 
                 return $audit;
             }
@@ -2735,40 +2750,6 @@ class BookingLifecycleService
             ->contains(fn (BookingItem $item) => $this->isPricingPendingReview(
                 data_get($item->metadata, 'final_pricing_audit')
             ));
-    }
-
-    /**
-     * Best-effort ops notification the moment pricing resolution fails.
-     * Failure to send must never affect trip/booking completion.
-     */
-    private function alertOpsPricingResolutionFailed(Booking $booking, BookingItem $bookingItem, array $audit): void
-    {
-        $opsEmail = $this->websiteSettingsService->get(
-            'pricing_alert_email',
-            $this->websiteSettingsService->get('company_email')
-        );
-        if (empty($opsEmail)) {
-            return;
-        }
-
-        try {
-            \Illuminate\Support\Facades\Mail::to($opsEmail)->queue(new \App\Mail\PricingResolutionFailedMail([
-                'booking_id' => (string) $booking->id,
-                'booking_number' => $booking->booking_number,
-                'booking_item_id' => (string) $bookingItem->id,
-                'service_type_id' => (string) $bookingItem->service_type_id,
-                'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
-                'reason' => $audit['reason'] ?? 'no_matching_calculation_definition',
-                'candidate_failures' => $audit['candidate_failures'] ?? [],
-                'detected_at' => Carbon::now('UTC')->toIso8601String(),
-            ]));
-        } catch (\Throwable $e) {
-            Log::error('Failed to send ops alert for pending final pricing', [
-                'booking_id' => (string) $booking->id,
-                'booking_item_id' => (string) $bookingItem->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     /**
