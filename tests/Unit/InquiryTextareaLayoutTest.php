@@ -9,6 +9,6 @@ test('dynamic inquiry textareas use the dedicated full-width field layout', func
         ->toContain("\$isTextarea ? ' inquiry-textarea-box' : ''")
         ->and($page)
         ->toContain('.inquiry-form-card .inquiry-textarea-box > textarea')
-        ->toContain('flex: 1 1 auto;')
-        ->toContain('width: 100%;');
+        ->toContain('grid-template-columns: 18px minmax(0, 1fr) !important;')
+        ->toContain('width: 100% !important;');
 });

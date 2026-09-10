@@ -1,6 +1,9 @@
 <?php
 
 test('Cloudflare protection renders at the bottom of every inquiry form', function () {
+    expect(file_get_contents(dirname(__DIR__, 2).'/resources/views/inquiry/partials/spam-protection.blade.php'))
+        ->toContain('class="inquiry-spam-protection"');
+
     foreach ([
         'inquiry/partials/form.blade.php',
         'contact.blade.php',

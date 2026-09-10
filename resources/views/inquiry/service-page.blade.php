@@ -186,6 +186,8 @@ $type = $section['type'] ?? '';
 
     .inquiry-form-card .filter-input-wrap .filter-input.show {
         grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+        column-gap: 10px;
+        row-gap: 16px;
     }
 
     .inquiry-form-card .inquiry-field-wrap {
@@ -212,27 +214,32 @@ $type = $section['type'] ?? '';
     }
 
     .inquiry-form-card .inquiry-textarea-box {
-        align-items: flex-start;
-        padding: 16px 20px;
+        display: grid !important;
+        grid-template-columns: 18px minmax(0, 1fr) !important;
+        align-items: start !important;
+        gap: 12px !important;
+        padding: 16px 18px !important;
     }
 
     .inquiry-form-card .inquiry-textarea-box > i {
-        flex: 0 0 18px;
-        margin-top: 4px;
-        text-align: center;
+        width: 18px !important;
+        min-width: 18px !important;
+        margin-top: 3px;
+        text-align: center !important;
     }
 
     .inquiry-form-card .inquiry-textarea-box > textarea {
-        flex: 1 1 auto;
-        width: 100%;
-        min-height: 120px;
-        padding: 0;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        box-shadow: none;
-        line-height: 1.6;
-        resize: vertical;
+        grid-column: 2 !important;
+        width: 100% !important;
+        min-width: 0 !important;
+        min-height: 120px !important;
+        padding: 0 !important;
+        border: 0 !important;
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
+        line-height: 1.6 !important;
+        resize: vertical !important;
     }
 
     .inquiry-form-card .inquiry-textarea-box > textarea:focus {
