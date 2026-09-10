@@ -227,7 +227,11 @@ class InquiryController extends Controller
      */
     private function rejectSpamOrDuplicatePayload(Request $request, array $meta): bool
     {
-        $message = Str::lower((string) ($meta['message'] ?? ''));
+        $content = Arr::flatten($request->except([
+            '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
+            'name', 'contact_person', 'full_name', 'email', 'phone',
+        ]));
+        $message = Str::lower(implode(' ', array_filter($content, 'is_scalar')));
         $identityReason = $this->invalidInquiryIdentityReason((string) ($meta['name'] ?? ''));
 
         if ($identityReason !== null) {

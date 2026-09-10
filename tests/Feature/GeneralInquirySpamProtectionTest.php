@@ -24,7 +24,7 @@ function inquiryPayloadSpamCheck(array $meta): bool
     $controller = (new ReflectionClass(InquiryController::class))->newInstanceWithoutConstructor();
     $method = new ReflectionMethod(InquiryController::class, 'rejectSpamOrDuplicatePayload');
 
-    return $method->invoke($controller, Request::create('/contact', 'POST'), $meta);
+    return $method->invoke($controller, Request::create('/contact', 'POST', $meta), $meta);
 }
 
 it('rate limits both public inquiry submission routes', function (): void {
@@ -161,6 +161,15 @@ it('allows genuine unicode names without weakening identity validation', functio
         'email' => 'anna@example.com',
         'phone' => '+94771234568',
         'message' => 'Please quote an airport transfer to Colombo.',
+    ]))->toBeFalse();
+});
+
+it('does not treat the customer email as an external link', function (): void {
+    expect(inquiryPayloadSpamCheck([
+        'name' => 'Tivan Perera',
+        'email' => 'tivan@example.com',
+        'phone' => '+94771234567',
+        'message' => 'Corporate transport test alpha',
     ]))->toBeFalse();
 });
 
