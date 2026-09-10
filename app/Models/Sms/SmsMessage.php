@@ -3,6 +3,8 @@
 namespace App\Models\Sms;
 
 use App\Models\BaseModel;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\User;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -71,6 +73,16 @@ class SmsMessage extends BaseModel
     public function campaign(): BelongsTo
     {
         return $this->belongsTo(SmsCampaign::class, 'campaign_id');
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
+    }
+
+    public function bookingItem(): BelongsTo
+    {
+        return $this->belongsTo(BookingItem::class);
     }
 
     public function createdBy(): BelongsTo

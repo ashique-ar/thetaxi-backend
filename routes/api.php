@@ -107,7 +107,6 @@ use App\Http\Controllers\Api\InquiryServicePageController;
 use App\Http\Controllers\Api\InquiryServicePageSectionController;
 use App\Http\Controllers\Api\InvoiceController;
 use App\Http\Controllers\Api\LoyaltyController;
-use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\NotificationController;
 use App\Http\Controllers\Api\NotificationLogController;
 use App\Http\Controllers\Api\NotificationTemplateController;
@@ -431,6 +430,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('settings', [SmsManagementController::class, 'settings']);
         Route::put('settings', [SmsManagementController::class, 'updateSettings']);
         Route::post('credentials/test', [SmsManagementController::class, 'testCredentials'])->middleware('throttle:sms-test');
+        Route::get('booking-options', [SmsManagementController::class, 'bookingOptions']);
         Route::post('admin-booking-summary/preview', [SmsManagementController::class, 'previewAdminBookingSummary'])->middleware('throttle:sms-preview');
         Route::post('templates/preview', [SmsManagementController::class, 'previewTransactionalTemplate'])->middleware('throttle:sms-preview');
         Route::post('send', [SmsManagementController::class, 'send'])->middleware('throttle:sms-send');
@@ -750,6 +750,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::get('opportunities', [SalesCrmController::class, 'opportunities'])->middleware('permission:sales.crm.view');
         Route::get('opportunity-administration-context', [SalesCrmController::class, 'administrationContext'])->middleware('permission:sales.crm.view');
+        Route::get('opportunity-booking-options', [SalesCrmController::class, 'linkableBookingOptions'])->middleware('permission:sales.crm.manage');
         Route::get('opportunities/{opportunity}', [SalesCrmController::class, 'showOpportunity'])
             ->whereUuid('opportunity')->middleware('permission:sales.crm.view');
         Route::post('opportunities', [SalesCrmController::class, 'createOpportunity'])->middleware('permission:sales.crm.manage');
@@ -1844,47 +1845,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
     });
 
-    Route::group(['prefix' => 'medical-records'], function () {
-        Route::get('/', [MedicalRecordController::class, 'index'])
-            ->middleware('permission:medical-records.view');
-        Route::post('/', [MedicalRecordController::class, 'store'])
-            ->middleware('permission:medical-records.create');
-        Route::get('/categories', [MedicalRecordController::class, 'getCategories'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/stats', [MedicalRecordController::class, 'getStats'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/expiring', [MedicalRecordController::class, 'getExpiringRecords'])
-            ->middleware('permission:medical-records.view');
-        Route::post('/bulk-update', [MedicalRecordController::class, 'bulkUpdate'])
-            ->middleware('permission:medical-records.manage');
-        Route::post('/bulk/delete', [MedicalRecordController::class, 'bulkDelete'])
-            ->middleware('permission:medical-records.delete');
-        Route::post('/bulk/export', [MedicalRecordController::class, 'bulkExport'])
-            ->middleware('permission:medical-records.view');
-        Route::post('/bulk/status', [MedicalRecordController::class, 'bulkStatus'])
-            ->middleware('permission:medical-records.manage');
-        Route::post('/send-reminders', [MedicalRecordController::class, 'sendReminders'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/compliance-report', [MedicalRecordController::class, 'getComplianceReport'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/compliance/{subjectType}/{subjectId}', [MedicalRecordController::class, 'getSubjectComplianceReport'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/subject/{subjectType}/{subjectId}', [MedicalRecordController::class, 'getRecordsBySubject'])
-            ->middleware('permission:medical-records.view');
-        Route::get('/{id}/document', [MedicalRecordController::class, 'downloadDocument'])
-            ->middleware('permission:medical-records.view');
-        Route::post('/{id}/upload-document', [MedicalRecordController::class, 'uploadDocument'])
-            ->middleware('permission:medical-records.edit');
-        Route::post('/{id}/upload', [MedicalRecordController::class, 'uploadDocument'])
-            ->middleware('permission:medical-records.edit');
-        Route::get('/{id}', [MedicalRecordController::class, 'show'])
-            ->middleware('permission:medical-records.view');
-        Route::put('/{id}', [MedicalRecordController::class, 'update'])
-            ->middleware('permission:medical-records.edit');
-        Route::delete('/{id}', [MedicalRecordController::class, 'destroy'])
-            ->middleware('permission:medical-records.delete');
-    });
-
     Route::group(['prefix' => 'availability'], function () {
         Route::post('/check-vehicle', [AvailabilityController::class, 'checkVehicleAvailability'])
             ->middleware('permission:vehicle-availability.view');
@@ -2943,11 +2903,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('booking-form-tabs', [BookingFormTabController::class, 'index']);
             Route::get('booking-form-tabs/{id}', [BookingFormTabController::class, 'show']);
         });
-        Route::put('booking-form-tabs/{id}', [BookingFormTabController::class, 'update'])
+        Route::put('booking-form-tabs/{id}', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'update'])
             ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/{id}/default', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'setDefault'])
-            ->middleware('permission:settings.edit');
-        Route::post('booking-form-tabs/{id}/toggle', [\App\Http\Controllers\Api\Admin\BookingFormTabController::class, 'toggle'])
+        Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/reorder', [BookingFormTabController::class, 'reorder'])
             ->middleware('permission:settings.edit');

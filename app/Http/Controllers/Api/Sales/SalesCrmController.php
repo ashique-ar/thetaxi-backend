@@ -64,18 +64,6 @@ class SalesCrmController extends Controller
             ])->values();
         $companyIds = $profiles->pluck('company_id')->unique()->values();
         $sourceUserIds = $profiles->pluck('staff.user_id')->filter()->unique()->values();
-        $bookings = DB::table('bookings as booking')
-            ->leftJoin('staff as owner_staff', 'owner_staff.id', '=', 'booking.commission_owner_staff_id')
-            ->leftJoin('staff as creator_staff', 'creator_staff.user_id', '=', 'booking.created_user_id')
-            ->whereNull('booking.deleted_at')->whereNull('booking.sales_opportunity_id')
-            ->where(fn ($query) => $query->whereNull('booking.confirmed')->orWhere('booking.confirmed', false))
-            ->whereNull('booking.confirmed_at')->where(fn ($query) => $query->whereNull('booking.status')->orWhere('booking.status', '!=', 'confirmed'))
-            ->whereIn(DB::raw('COALESCE(owner_staff.company_id, creator_staff.company_id)'), $companyIds)
-            ->select(['booking.id', 'booking.booking_number', 'booking.customer_id'])
-            ->selectRaw('COALESCE(owner_staff.company_id, creator_staff.company_id) as company_id')
-            ->groupBy(['booking.id', 'booking.booking_number', 'booking.customer_id', 'booking.created_at'])
-            ->groupByRaw('COALESCE(owner_staff.company_id, creator_staff.company_id)')
-            ->orderByDesc('booking.created_at')->limit(100)->get();
         $inquiries = DB::table('inquiries as inquiry')->leftJoin('sales_opportunities as opportunity', 'opportunity.inquiry_id', '=', 'inquiry.id')
             ->whereNull('inquiry.deleted_at')->whereNull('opportunity.id')
             ->when($ids !== null, fn ($query) => $query->where(fn ($scope) => $scope
@@ -89,12 +77,37 @@ class SalesCrmController extends Controller
             ->orderByDesc('phone.call_time')->limit(100)->get();
 
         return response()->json(['status' => 'success', 'data' => [
-            'profiles' => $profiles, 'linkable_bookings' => $bookings,
+            'profiles' => $profiles,
             'inquiries' => $inquiries, 'phone_calls' => $phoneCalls,
             'crm_enabled_by_company' => $companyIds->mapWithKeys(fn ($companyId) => [
                 $companyId => $this->policySettings->featureEnabled((string) $companyId, 'crm'),
             ]),
         ]]);
+    }
+
+    public function linkableBookingOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'],
+            'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $opportunity = SalesOpportunity::query()->findOrFail($data['opportunity_id']);
+        $this->assertOpportunityScope($request, $opportunity, true);
+        $rows = $this->linkableBookingQuery($opportunity)
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('booking.id', $id))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($query) use ($data) {
+                $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($data['search'])).'%';
+                $query->where(fn ($match) => $match->where('booking.booking_number', 'like', $term)->orWhere('booking.log_code', 'like', $term));
+            })
+            ->orderByDesc('booking.created_at')->paginate($request->integer('per_page', 25));
+        $rows->getCollection()->transform(fn ($booking) => [
+            'value' => (string) $booking->id,
+            'label' => $booking->booking_number ?: ($booking->log_code ? 'Draft '.$booking->log_code : 'Draft booking '.substr((string) $booking->created_at, 0, 10)),
+            'metadata' => ['log_code' => $booking->log_code, 'created_at' => $booking->created_at],
+            'status' => 'draft',
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function createOpportunity(Request $request, SalesCrmService $crm): JsonResponse
@@ -141,7 +154,25 @@ class SalesCrmController extends Controller
     {
         $this->assertOpportunityScope($request, $opportunity, true);
         $data = $request->validate(['booking_id' => ['required', 'uuid', 'exists:bookings,id'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        return response()->json(['status' => 'success', 'data' => $crm->linkBooking($opportunity, Booking::query()->findOrFail($data['booking_id']), $data['idempotency_key'], (string) $request->user()->id)]);
+        $bookingId = $this->linkableBookingQuery($opportunity)->where('booking.id', $data['booking_id'])->value('booking.id');
+        abort_unless($bookingId, 422, 'The selected draft booking is no longer eligible for this opportunity.');
+        return response()->json(['status' => 'success', 'data' => $crm->linkBooking($opportunity, Booking::query()->findOrFail($bookingId), $data['idempotency_key'], (string) $request->user()->id)]);
+    }
+
+    private function linkableBookingQuery(SalesOpportunity $opportunity)
+    {
+        $ownerStaffId = SalesProfile::query()->whereKey($opportunity->owner_sales_profile_id)->activeAt(now())->value('staff_id');
+        abort_unless($ownerStaffId, 422, 'Opportunity owner must have an active Sales Profile.');
+        return DB::table('bookings as booking')
+            ->leftJoin('staff as owner_staff', 'owner_staff.id', '=', 'booking.commission_owner_staff_id')
+            ->leftJoin('staff as creator_staff', 'creator_staff.user_id', '=', 'booking.created_user_id')
+            ->whereNull('booking.deleted_at')->whereNull('booking.sales_opportunity_id')
+            ->where(fn ($query) => $query->whereNull('booking.confirmed')->orWhere('booking.confirmed', false))
+            ->whereNull('booking.confirmed_at')->where(fn ($query) => $query->whereNull('booking.status')->orWhere('booking.status', '!=', 'confirmed'))
+            ->whereRaw('COALESCE(owner_staff.company_id, creator_staff.company_id) = ?', [$opportunity->company_id])
+            ->whereRaw('COALESCE(owner_staff.id, creator_staff.id) = ?', [$ownerStaffId])
+            ->when($opportunity->customer_id, fn ($query, $customerId) => $query->where(fn ($customer) => $customer->whereNull('booking.customer_id')->orWhere('booking.customer_id', $customerId)))
+            ->select(['booking.id', 'booking.booking_number', 'booking.log_code', 'booking.created_at']);
     }
 
     public function activities(Request $request): JsonResponse

@@ -43,7 +43,7 @@ class SmsService
                 'processing' => SmsCampaign::query()->where('status', 'processing')->count(),
                 'completed' => SmsCampaign::query()->where('status', 'completed')->count(),
             ],
-            'recent_messages' => SmsMessage::query()->latest()->limit(10)->get(),
+            'recent_messages' => SmsMessage::query()->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])->latest()->limit(10)->get(),
             'recent_campaigns' => SmsCampaign::query()->latest()->limit(10)->get(),
             'health' => $this->getOperationalHealth(),
         ];
@@ -469,7 +469,7 @@ class SmsService
 
     public function getMessages(array $filters = []): LengthAwarePaginator
     {
-        return SmsMessage::query()
+        return SmsMessage::query()->with(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number'])
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['channel']), fn($query) => $query->where('channel', $filters['channel']))
             ->when(!empty($filters['campaign_id']), fn($query) => $query->where('campaign_id', $filters['campaign_id']))

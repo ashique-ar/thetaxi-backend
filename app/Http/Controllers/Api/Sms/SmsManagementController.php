@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Sms;
 
 use App\Http\Controllers\Controller;
+use App\Models\Booking\Booking;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
@@ -34,6 +35,7 @@ class SmsManagementController extends Controller
             'masks',
             'previewAdminBookingSummary',
             'previewTransactionalTemplate',
+            'bookingOptions',
         ]);
         $this->middleware('permission:communication.manage|sms.settings.manage')->only([
             'updateSettings',
@@ -283,6 +285,7 @@ class SmsManagementController extends Controller
 
     public function showMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
+        $smsMessage->loadMissing(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number']);
         return response()->json([
             'status' => 'success',
             'data' => [
@@ -305,25 +308,10 @@ class SmsManagementController extends Controller
     public function previewAdminBookingSummary(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'booking_reference' => ['nullable', 'string', 'max:100'],
+            'booking_id' => ['nullable', 'uuid'],
             'template' => ['nullable', 'string', 'max:2000'],
         ]);
-        $booking = null;
-
-        if (!empty($data['booking_reference'])) {
-            $reference = $data['booking_reference'];
-            $booking = \App\Models\Booking\Booking::query()
-                ->whereKey($reference)
-                ->orWhere('booking_number', $reference)
-                ->first();
-
-            if (!$booking) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'The selected booking could not be found.',
-                ], 404);
-            }
-        }
+        $booking = $this->previewBooking($request, $data['booking_id'] ?? null);
 
         return response()->json([
             'status' => 'success',
@@ -347,21 +335,9 @@ class SmsManagementController extends Controller
         $data = $request->validate([
             'event_key' => ['required', 'string', Rule::in($events)],
             'template' => ['required', 'string', 'max:2000'],
-            'booking_reference' => ['nullable', 'string', 'max:100'],
+            'booking_id' => ['nullable', 'uuid'],
         ]);
-        $booking = null;
-
-        if (!empty($data['booking_reference'])) {
-            $reference = $data['booking_reference'];
-            $booking = \App\Models\Booking\Booking::query()
-                ->whereKey($reference)
-                ->orWhere('booking_number', $reference)
-                ->first();
-
-            if (!$booking) {
-                return response()->json(['status' => 'error', 'message' => 'The selected booking could not be found.'], 404);
-            }
-        }
+        $booking = $this->previewBooking($request, $data['booking_id'] ?? null);
 
         return response()->json([
             'status' => 'success',
@@ -371,6 +347,32 @@ class SmsManagementController extends Controller
                 $booking
             ),
         ]);
+    }
+
+    public function bookingOptions(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->can('bookings.view'), 403);
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
+        $query = Booking::query()->when($data['selected_id'] ?? null, fn ($q, $id) => $q->whereKey($id));
+        if (empty($data['selected_id']) && !empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($q) => $q->where('booking_number', 'like', $term)->orWhere('log_code', 'like', $term));
+        }
+        $rows = $query->latest('created_at')->paginate($data['per_page'] ?? 25, ['id', 'booking_number', 'log_code', 'status', 'created_at']);
+        $rows->getCollection()->transform(fn (Booking $booking) => [
+            'value' => (string) $booking->id,
+            'label' => $booking->booking_number ?: ($booking->log_code ? 'Draft ' . $booking->log_code : 'Booking created ' . $booking->created_at?->format('Y-m-d')),
+            'metadata' => ['status' => $booking->status, 'created_at' => $booking->created_at?->toISOString()],
+            'status' => (string) ($booking->status ?: 'unknown'),
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    private function previewBooking(Request $request, ?string $bookingId): ?Booking
+    {
+        if (!$bookingId) return null;
+        abort_unless($request->user()->can('bookings.view'), 403);
+        return Booking::query()->findOrFail($bookingId);
     }
 
     public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
@@ -574,6 +576,8 @@ class SmsManagementController extends Controller
             'source' => $message->source,
             'booking_id' => $message->booking_id,
             'booking_item_id' => $message->booking_item_id,
+            'booking_label' => $message->booking_id ? ($message->booking?->booking_number ?: 'Unavailable booking') : null,
+            'booking_item_label' => $message->booking_item_id ? ($message->bookingItem?->trip_number ? 'Trip ' . $message->bookingItem->trip_number : 'Unavailable trip') : null,
             'driver_assignment_id' => $message->driver_assignment_id,
             'event_key' => $message->event_key,
             'template_key' => $message->template_key,
