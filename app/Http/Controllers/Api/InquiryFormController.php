@@ -139,6 +139,7 @@ class InquiryFormController extends Controller
             'submit_label' => ['nullable', 'string', 'max:255'],
             'success_message' => ['nullable', 'string'],
             'settings' => ['nullable', 'array'],
+            'settings.submission_workflow' => ['nullable', Rule::in(['general', 'corporate', 'point_to_point'])],
             'is_active' => ['nullable', 'boolean'],
             'fields' => ['nullable', 'array'],
             'fields.*.id' => ['nullable', 'uuid'],

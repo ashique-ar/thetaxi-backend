@@ -318,6 +318,12 @@ class InquiryController extends Controller
                 ->with('error', 'This inquiry form is not configured yet.');
         }
 
+
+        $inquiryType = $form->resolveSubmissionWorkflow(
+            $form->settings ?? [],
+            $servicePage->inquiry_type
+        );
+
         $this->normalizeDynamicFormInput($request, $form);
         $validated = $request->validate($form->buildValidationRules());
         $meta = $this->buildDynamicInquiryMeta($servicePage, $form, $validated);
@@ -334,7 +340,7 @@ class InquiryController extends Controller
 
         try {
             $payload = [
-                'type' => $servicePage->inquiry_type ?? 'general',
+                'type' => $inquiryType,
                 'service_page_id' => $servicePage->id,
                 'service_code' => $servicePage->code,
                 'form_id' => $form->id,
@@ -349,7 +355,7 @@ class InquiryController extends Controller
                 'name' => $meta['name'],
                 'email' => $meta['email'],
                 'phone' => $meta['phone'],
-                'inquiry_type' => $servicePage->inquiry_type ?? 'general',
+                'inquiry_type' => $inquiryType,
                 'inquiry_service_page_id' => $servicePage->id,
                 'service_type' => $servicePage->code,
                 'subject' => $meta['subject'],
