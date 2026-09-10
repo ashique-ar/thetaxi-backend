@@ -50,6 +50,9 @@
             $isSelect = $field->type === 'select';
             $isRadio = $field->type === 'radio';
             $wrapperClasses = 'inquiry-field-wrap';
+            if ($isTextarea) {
+                $wrapperClasses .= ' inquiry-textarea-wrap';
+            }
             if ($field->width === 'full') {
                 $wrapperClasses .= ' inquiry-full-width';
             }
@@ -106,7 +109,7 @@
         <div class="{{ $wrapperClasses }}"
             @if ($conditional) data-conditional='@json($conditional)' @endif
             @if ($conditional && !$shouldShow) style="display:none !important;" @endif>
-            <div class="single-search-box">
+            <div class="single-search-box{{ $isTextarea ? ' inquiry-textarea-box' : '' }}">
                 @if (!empty($field->icon))
                     <i class="{{ $field->icon }}"></i>
                 @endif

@@ -211,10 +211,39 @@ $type = $section['type'] ?? '';
         padding: 0 12px;
     }
 
-    .inquiry-form-card .inquiry-full-width .single-search-box textarea {
+    .inquiry-form-card .inquiry-textarea-box {
+        align-items: flex-start;
+        padding: 16px 20px;
+    }
+
+    .inquiry-form-card .inquiry-textarea-box > i {
+        flex: 0 0 18px;
+        margin-top: 4px;
+        text-align: center;
+    }
+
+    .inquiry-form-card .inquiry-textarea-box > textarea {
+        flex: 1 1 auto;
+        width: 100%;
+        min-height: 120px;
+        padding: 0;
         border: 0;
-        padding: 8px 0;
+        border-radius: 0;
+        background: transparent;
         box-shadow: none;
+        line-height: 1.6;
+        resize: vertical;
+    }
+
+    .inquiry-form-card .inquiry-textarea-box > textarea:focus {
+        outline: 0;
+        box-shadow: none;
+    }
+
+    .inquiry-form-card .inquiry-textarea-wrap .inquiry-help-text {
+        display: block;
+        padding-top: 8px;
+        text-align: left;
     }
 
     .inquiry-form-intro {
