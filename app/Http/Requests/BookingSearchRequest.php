@@ -406,6 +406,14 @@ class BookingSearchRequest extends FormRequest
         };
 
         $hasPackageSelector = false;
+        $pickupDateField = collect($fields)->mapWithKeys(function ($config, $fieldName) {
+            $submitAs = (string) ($config['submit_as'] ?? $fieldName);
+            $semanticName = strtolower($fieldName . ' ' . $submitAs);
+            return (($config['type'] ?? null) === 'date'
+                && !str_contains($semanticName, 'dropoff')
+                && !str_contains($semanticName, 'return')
+                && !str_contains($submitAs, 'to_')) ? [$submitAs => true] : [];
+        })->keys()->first();
 
         foreach ($fields as $fieldName => $config) {
             $submitAs = $config['submit_as'] ?? $fieldName;
@@ -426,17 +434,12 @@ class BookingSearchRequest extends FormRequest
                     break;
 
                 case 'date':
-                    $isDropoff = str_contains($fieldName, 'dropoff') || str_contains($fieldName, 'return');
-                    if ($isDropoff) {
-                        // Dropoff/return dates must be after pickup date
-                        $rules[$submitAs] = $required
-                            ? 'required|date|after_or_equal:today'
-                            : 'nullable|date|after_or_equal:today';
-                    } else {
-                        $rules[$submitAs] = $required
-                            ? 'required|date|after_or_equal:today'
-                            : 'nullable|date|after_or_equal:today';
-                    }
+                    $semanticName = strtolower($fieldName . ' ' . $submitAs);
+                    $isDropoff = str_contains($semanticName, 'dropoff')
+                        || str_contains($semanticName, 'return')
+                        || str_contains($submitAs, 'to_');
+                    $minimum = $isDropoff && $pickupDateField ? $pickupDateField : 'today';
+                    $rules[$submitAs] = ($required ? 'required' : 'nullable') . '|date|after_or_equal:' . $minimum;
                     break;
 
                 case 'time':
@@ -545,7 +548,7 @@ class BookingSearchRequest extends FormRequest
         // Return trip fields
         if ($allowReturnTrip) {
             $rules['is_return_trip'] = 'nullable|boolean';
-            $rules['return_date'] = 'required_if:is_return_trip,1|nullable|date|after_or_equal:today';
+            $rules['return_date'] = 'required_if:is_return_trip,1|nullable|date|after_or_equal:' . ($pickupDateField ?: 'today');
             $rules['return_time'] = 'required_if:is_return_trip,1|nullable|date_format:H:i';
         }
 

@@ -146,6 +146,41 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertStringContainsString("['submit_as'] ?? \$mapping", $request);
     }
 
+    public function test_dynamic_return_date_allows_same_day_but_not_before_pickup(): void
+    {
+        $request = new class extends BookingSearchRequest {
+            protected function resolveServiceFormConfig(string $serviceCode): array
+            {
+                return [[
+                    'start' => ['type' => 'date', 'required' => true, 'submit_as' => 'from_date'],
+                    'finish' => ['type' => 'date', 'required' => false, 'submit_as' => 'return_date'],
+                ], false, true, null];
+            }
+        };
+        $request->initialize(['service_type' => 'day-package']);
+        $rules = $request->rules();
+
+        $this->assertFalse(Validator::make([
+            'service_type' => 'day-package', 'from_date' => '2026-10-10',
+            'is_return_trip' => 1, 'return_date' => '2026-10-10',
+        ], $rules)->fails());
+        $this->assertTrue(Validator::make([
+            'service_type' => 'day-package', 'from_date' => '2026-10-10',
+            'is_return_trip' => 1, 'return_date' => '2026-10-09',
+        ], $rules)->fails());
+    }
+
+    public function test_return_trip_ui_is_shared_by_dynamic_service_forms(): void
+    {
+        $form = file_get_contents(resource_path('views/components/dynamic-booking-form.blade.php'));
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('$useReturnTripBlock = $allowReturnTrip', $form);
+        $this->assertStringContainsString('data-return-trip', $form);
+        $this->assertStringContainsString("querySelectorAll('[data-return-trip]')", $script);
+        $this->assertStringNotContainsString("getElementById('ride_now-return-toggle')", $script);
+    }
+
     private function requestWithConfiguredDateTime(): BookingSearchRequest
     {
         $request = new class extends BookingSearchRequest {

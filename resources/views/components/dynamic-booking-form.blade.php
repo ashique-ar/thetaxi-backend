@@ -91,12 +91,11 @@
         }
     }
 
-    // Backward-compatible return-trip UX for Ride Now.
-    // The frontend JS still targets legacy IDs/classes (ride_now-return-*).
+    // One shared return-trip control for every dynamically configured service.
     $allowReturnTrip = (bool) ($serviceTypeModel?->allow_return_trip ?? false);
-    $useLegacyRideNowReturnBlock = ($serviceCode === 'ride_now' && $allowReturnTrip);
+    $useReturnTripBlock = $allowReturnTrip;
     $rideNowReturnFieldKeys = [];
-    if ($useLegacyRideNowReturnBlock) {
+    if ($useReturnTripBlock) {
         foreach ($sortedFields as $key => $cfg) {
             $submitAs = $cfg['submit_as'] ?? $key;
             if (in_array($submitAs, ['is_return_trip', 'return_date', 'return_time'], true)) {
@@ -341,13 +340,14 @@
         </div>
     @endif
 
-    @if($useLegacyRideNowReturnBlock)
-        <div class="return-trip-section" id="ride_now-return-trip-section">
+    @if($useReturnTripBlock)
+        <div class="return-trip-section" id="{{ $prefix }}-return-trip-section" data-return-trip>
             <div class="return-trip-toggle">
                 <label class="return-trip-checkbox-label">
                     <input type="checkbox"
                            name="is_return_trip"
-                           id="ride_now-return-toggle"
+                           id="{{ $prefix }}-return-toggle"
+                           data-return-toggle
                            value="1"
                            {{ $rideNowIsReturnTrip ? 'checked' : '' }}>
                     <span class="return-trip-text">
@@ -364,7 +364,8 @@
             </div>
 
             <div class="return-trip-details"
-                 id="ride_now-return-details"
+                 id="{{ $prefix }}-return-details"
+                 data-return-details
                  style="display: {{ $rideNowIsReturnTrip ? 'grid' : 'none' }};">
                 <div class="return-route-summary">
                     <div class="route-badge">
@@ -375,9 +376,9 @@
                         </svg>
                         <span class="route-text">
                             <strong>{{ $settings['booking_return_route_label'] ?? 'Return:' }}</strong>
-                            <span id="return-dropoff-location">{{ $dropoffLoc['address'] ?? ($settings['booking_return_dropoff_placeholder'] ?? 'Drop-off') }}</span>
+                            <span data-return-dropoff-location>{{ $dropoffLoc['address'] ?? ($settings['booking_return_dropoff_placeholder'] ?? 'Drop-off') }}</span>
                             &rarr;
-                            <span id="return-pickup-location">{{ $pickupLoc['address'] ?? ($settings['booking_return_pickup_placeholder'] ?? 'Pickup') }}</span>
+                            <span data-return-pickup-location>{{ $pickupLoc['address'] ?? ($settings['booking_return_pickup_placeholder'] ?? 'Pickup') }}</span>
                         </span>
                     </div>
                 </div>
@@ -388,7 +389,8 @@
                         @include('components.partials.calendar-icon')
                         <input type="text"
                            name="return_date"
-                           id="ride_now-return-date"
+                           id="{{ $prefix }}-return-date"
+                           data-return-date
                            placeholder="{{ $settings['booking_return_date_placeholder'] ?? 'DD/MM/YYYY' }}"
                            class="custom-datepicker @error('return_date') is-invalid @enderror"
                            value="{{ $rideNowReturnDate }}"
@@ -406,7 +408,8 @@
                         <div class="custom-select-dropdown">
                             <input type="time"
                                name="return_time"
-                               id="ride_now-return-time"
+                               id="{{ $prefix }}-return-time"
+                               data-return-time
                                value="{{ $rideNowReturnTime }}"
                                    class="@error('return_time') is-invalid @enderror">
                         </div>
@@ -417,11 +420,12 @@
                 </div>
 
                 <div class="return-pricing-info"
-                     id="ride_now-return-pricing-info"
+                     id="{{ $prefix }}-return-pricing-info"
+                     data-return-pricing-info
                      style="display: {{ $rideNowIsReturnTrip ? 'block' : 'none' }};">
                     <div class="text-success">
-                        <span id="ride_now-return-discount-label">{{ $settings['booking_return_discount_label'] ?? 'Same Day Return' }}</span>
-                        <span class="fw-bold" id="ride_now-return-discount-value">{{ $settings['booking_return_discount_value'] ?? '50% off return' }}</span>
+                        <span data-return-discount-label>{{ $settings['booking_return_discount_label'] ?? 'Return discount' }}</span>
+                        <span class="fw-bold" data-return-discount-value>{{ $settings['booking_return_discount_value'] ?? 'Calculated from package rules' }}</span>
                     </div>
                 </div>
             </div>
