@@ -16,9 +16,9 @@ it('includes the password reset token storage migration', function () {
 
     expect($migration)
         ->toContain("Schema::create('password_reset_tokens'")
-        ->toContain("$table->string('email')->primary()")
-        ->toContain("$table->string('token')")
-        ->toContain("$table->timestamp('created_at')->nullable()");
+        ->toContain("\$table->string('email')->primary()")
+        ->toContain("\$table->string('token')")
+        ->toContain("\$table->timestamp('created_at')->nullable()");
 });
 
 it('keeps recovery enumeration safe and driver scoped', function () {
