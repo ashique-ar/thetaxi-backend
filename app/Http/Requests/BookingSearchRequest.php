@@ -14,6 +14,7 @@ use Carbon\Carbon;
 
 class BookingSearchRequest extends FormRequest
 {
+    public const MINIMUM_DURATION_MINUTES = 120;
 
 
     /**
@@ -655,6 +656,19 @@ class BookingSearchRequest extends FormRequest
                     );
                 }
             }
+
+            try {
+                $usesDropoffTime = (bool) ($this->resolveServiceFormConfig((string) $this->input('service_type'))[1] ?? false);
+                [$endField, $endDateTime] = $usesDropoffTime ? $this->resolveEndDateTime($siteTimezone) : [null, null];
+                if ($endDateTime && $endDateTime->lt($startDateTime->copy()->addMinutes(self::MINIMUM_DURATION_MINUTES))) {
+                    $validator->errors()->add(
+                        $endField,
+                        'Return must be at least ' . (self::MINIMUM_DURATION_MINUTES / 60) . ' hours after pickup.'
+                    );
+                }
+            } catch (\Throwable $exception) {
+                Log::warning('Failed to validate booking end time', ['error' => $exception->getMessage()]);
+            }
         });
     }
 
@@ -1178,6 +1192,41 @@ class BookingSearchRequest extends FormRequest
         }
 
         return [$dateField, $date];
+    }
+
+    protected function resolveEndDateTime(string $timezone): array
+    {
+        foreach ([
+            ['dropoff_date', 'dropoff_time'],
+            ['return_date', 'return_time'],
+            ['to_date', 'to_time'],
+        ] as [$dateField, $timeField]) {
+            if ($this->filled($dateField) && $this->filled($timeField)) {
+                try {
+                    return [$dateField, Carbon::parse((string) $this->input($dateField), $timezone)
+                        ->setTimeFromTimeString((string) $this->input($timeField))];
+                } catch (\Throwable $exception) {
+                    return [$dateField, null];
+                }
+            }
+        }
+
+        $resolvedConfig = $this->resolveServiceFormConfig((string) $this->input('service_type'));
+        $fields = is_array($resolvedConfig[0] ?? null) ? $resolvedConfig[0] : [];
+        $mappings = is_array($resolvedConfig[4] ?? null) ? $resolvedConfig[4] : [];
+        $dateField = $this->resolveMappedRequestField(data_get($mappings, 'dates.to_date'), $fields);
+        $timeField = $this->resolveMappedRequestField(data_get($mappings, 'dates.to_time'), $fields);
+
+        if (!$dateField || !$timeField || !$this->filled($dateField) || !$this->filled($timeField)) {
+            return [null, null];
+        }
+
+        try {
+            return [$dateField, Carbon::parse((string) $this->input($dateField), $timezone)
+                ->setTimeFromTimeString((string) $this->input($timeField))];
+        } catch (\Throwable $exception) {
+            return [$dateField, null];
+        }
     }
 
     private function normalizeSiteTimezone(mixed $timezone): string

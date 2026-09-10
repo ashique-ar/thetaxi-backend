@@ -89,6 +89,7 @@
         setDefaultDatesAndLocations();
         hideFreshDynamicFormDefaults();
         setupAdvanceBookingConstraints();
+        setupEndTimeConstraints();
     }
 
     /**
@@ -228,6 +229,67 @@
         return advanceHours > 0
             ? `Bookings must be made at least ${advanceHours} hours in advance. Earliest available time is ${earliest}.`
             : `The pickup date and time must be in the future. Earliest available time is ${earliest}.`;
+    }
+
+    function setupEndTimeConstraints() {
+        document.querySelectorAll('.filter-input[data-end-date-field][data-end-time-field]').forEach((form) => {
+            const minutes = Number(form.dataset.minimumDurationMinutes || 0);
+            const startDate = form.querySelector(`[name="${CSS.escape(form.dataset.startDateField || '')}"]`);
+            const startTime = form.querySelector(`[name="${CSS.escape(form.dataset.startTimeField || '')}"]`);
+            const endDate = form.querySelector(`[name="${CSS.escape(form.dataset.endDateField || '')}"]`);
+            const endTime = form.querySelector(`[name="${CSS.escape(form.dataset.endTimeField || '')}"]`);
+            if (!minutes || !startDate || !startTime || !endDate || !endTime) return;
+
+            const parseDate = (value) => {
+                const match = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+                if (match) return new Date(+match[3], +match[2] - 1, +match[1]);
+                const iso = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+                return iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : null;
+            };
+            const combine = (dateInput, timeInput) => {
+                const date = parseDate(dateInput.value);
+                const time = String(timeInput.value || '').match(/^(\d{2}):(\d{2})/);
+                if (!date || !time) return null;
+                date.setHours(+time[1], +time[2], 0, 0);
+                return date;
+            };
+            const formatDate = (date) => `${String(date.getDate()).padStart(2, '0')}/${String(date.getMonth() + 1).padStart(2, '0')}/${date.getFullYear()}`;
+            const formatIsoDate = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+            const formatTime = (date) => `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+
+            const apply = () => {
+                const pickup = combine(startDate, startTime);
+                if (!pickup) return;
+                const minimum = new Date(pickup.getTime() + minutes * 60000);
+                const minimumDate = formatIsoDate(minimum);
+                const selectedEndDate = parseDate(endDate.value);
+
+                endDate.dataset.minDate = minimumDate;
+                if (endDate._flatpickr) endDate._flatpickr.set('minDate', minimumDate);
+                if (endDate._litepicker?.setOptions) endDate._litepicker.setOptions({ minDate: minimumDate });
+
+                if (!selectedEndDate || formatIsoDate(selectedEndDate) < minimumDate) {
+                    endDate.value = formatDate(minimum);
+                    if (endDate._flatpickr) endDate._flatpickr.setDate(endDate.value, false, 'd/m/Y');
+                    if (endDate._litepicker?.setDate) endDate._litepicker.setDate(minimumDate);
+                }
+
+                const sameMinimumDay = formatIsoDate(parseDate(endDate.value)) === minimumDate;
+                endTime.min = sameMinimumDay ? formatTime(minimum) : '00:00';
+                const selectedEnd = combine(endDate, endTime);
+                if (!selectedEnd || selectedEnd < minimum) endTime.value = formatTime(minimum);
+            };
+
+            form.__validateEndTime = () => {
+                const pickup = combine(startDate, startTime);
+                const dropoff = combine(endDate, endTime);
+                return pickup && dropoff && dropoff < new Date(pickup.getTime() + minutes * 60000)
+                    ? `Return must be at least ${minutes / 60} hours after pickup.`
+                    : null;
+            };
+            [startDate, startTime, endDate].forEach(input => input.addEventListener('change', apply));
+            apply();
+        });
     }
 
     function cleanupFailedSubmissionAliases(form) {
@@ -3524,6 +3586,11 @@
         if (advanceBookingError) {
             isValid = false;
             errorMessages.push(advanceBookingError);
+        }
+        const endTimeError = typeof form.__validateEndTime === 'function' ? form.__validateEndTime() : null;
+        if (endTimeError) {
+            isValid = false;
+            errorMessages.push(endTimeError);
         }
         
         console.log('After required inputs check, isValid =', isValid);

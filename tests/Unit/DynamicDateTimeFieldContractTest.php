@@ -154,6 +154,17 @@ class DynamicDateTimeFieldContractTest extends TestCase
         $this->assertStringNotContainsString('setOptions({ minDate });', $script);
     }
 
+    public function test_end_time_constraint_uses_dates_and_rolls_across_midnight(): void
+    {
+        $form = file_get_contents(resource_path('views/components/dynamic-booking-form.blade.php'));
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('data-minimum-duration-minutes', $form);
+        $this->assertStringContainsString('pickup.getTime() + minutes * 60000', $script);
+        $this->assertStringContainsString("endDate._litepicker.setDate(minimumDate)", $script);
+        $this->assertStringContainsString("endTime.min = sameMinimumDay", $script);
+    }
+
     private function requestWithConfiguredDateTime(): BookingSearchRequest
     {
         $request = new class extends BookingSearchRequest {

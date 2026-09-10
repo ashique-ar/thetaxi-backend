@@ -76,6 +76,8 @@
     };
     $startDateField = $resolveConfiguredControlName($dateMappings['from_date'] ?? '', $sortedFields);
     $startTimeField = $resolveConfiguredControlName($dateMappings['from_time'] ?? '', $sortedFields);
+    $endDateField = $resolveConfiguredControlName($dateMappings['to_date'] ?? '', $sortedFields);
+    $endTimeField = $resolveConfiguredControlName($dateMappings['to_time'] ?? '', $sortedFields);
     foreach ($sortedFields as $key => $fieldConfig) {
         $candidateName = (string) ($fieldConfig['submit_as'] ?? $key);
         $candidateType = (string) ($fieldConfig['type'] ?? '');
@@ -88,6 +90,12 @@
         }
         if (!$isReturnControl && $startTimeField === '' && $candidateType === 'time') {
             $startTimeField = $candidateName;
+        }
+        if ($isReturnControl && $endDateField === '' && in_array($candidateType, ['date', 'datetime'], true)) {
+            $endDateField = $candidateName;
+        }
+        if ($isReturnControl && $endTimeField === '' && $candidateType === 'time') {
+            $endTimeField = $candidateName;
         }
     }
 
@@ -183,6 +191,9 @@
       data-site-now-epoch="{{ ($bookingSiteNow ?? now())->getTimestampMs() }}"
       data-start-date-field="{{ $startDateField }}"
       data-start-time-field="{{ $startTimeField }}"
+      data-end-date-field="{{ $endDateField }}"
+      data-end-time-field="{{ $endTimeField }}"
+      data-minimum-duration-minutes="{{ ($serviceTypeModel?->uses_dropoff_time ?? true) ? \App\Http\Requests\BookingSearchRequest::MINIMUM_DURATION_MINUTES : 0 }}"
       action="{{ $actionRoute }}"
       method="{{ $isInquiry ? 'POST' : 'GET' }}"
       novalidate>
