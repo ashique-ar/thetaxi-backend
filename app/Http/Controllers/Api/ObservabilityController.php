@@ -30,7 +30,7 @@ class ObservabilityController extends Controller
         ]);
         $data = ObservabilitySanitizer::strings($data);
 
-        Log::channel('observability_frontend')->log($data['level'], $data['message'], [
+        Log::channel('loki_frontend')->log($data['level'], $data['message'], [
             ...$data,
             'project' => config('app.project_slug'),
             'project_display_name' => config('app.project_display_name'),

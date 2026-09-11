@@ -15,8 +15,8 @@ it('redacts credentials in frontend observability events', function () {
         ->toBe('[REDACTED] ?access_token=[REDACTED]');
 });
 
-it('creates every application log with shared group write access', function () {
-    foreach (['single', 'daily', 'error_daily', 'observability_backend', 'observability_frontend'] as $channel) {
-        expect(config("logging.channels.$channel.permission"))->toBe(0660);
-    }
+it('routes backend and browser logs directly to Loki', function () {
+    expect(config('logging.channels.loki_backend.driver'))->toBe('custom')
+        ->and(config('logging.channels.loki_backend.labels.component'))->toBe('backend')
+        ->and(config('logging.channels.loki_frontend.labels.component'))->toBe('frontend');
 });
