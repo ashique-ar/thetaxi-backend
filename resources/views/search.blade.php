@@ -74,9 +74,15 @@
 
     <div class="search-page-layout">
     <!-- Booking Form Section -->
-    <div class="search-booking-section mb-5" id="searchBookingSection">
-        <div class="search-booking-panel" id="searchBookingFormPanel">
-            <div class="container">
+    <div class="search-booking-section mb-5 {{ is_theme('theme-04') ? 't4-booking-panel' : '' }}" id="searchBookingSection">
+        <div class="container">
+            <div class="search-booking-panel {{ is_theme('theme-04') ? 't4-booking-panel__card' : '' }}" id="searchBookingFormPanel">
+                @if (is_theme('theme-04'))
+                    <header>
+                        <span class="t4-kicker">Journey booking</span>
+                        <strong>Book Your Ride</strong>
+                    </header>
+                @endif
                 @include('components.booking-form', ['search' => $search])
             </div>
         </div>

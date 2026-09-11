@@ -276,8 +276,8 @@ body.theme-theme-04.theme-page-cms-show .content-body { padding-bottom: clamp(38
 body.theme-theme-04.theme-page-cms-show :where(.article-sidebar, .cms-booking-section) { position: sticky; top: 110px; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; }
 
 /* Search + fleet discovery: horizontal trip summary and product catalogue. */
-body.theme-theme-04.theme-page-search .search-booking-section { margin: 0 !important; padding: 36px 0; border-bottom: 1px solid var(--t4-line); background: #fff; }
-body.theme-theme-04.theme-page-search .search-booking-panel .filter-wrapper { margin: 0 !important; border: 1px solid var(--t4-line) !important; border-radius: 10px !important; background: #fff !important; box-shadow: none !important; }
+body.theme-theme-04.theme-page-search .search-booking-section { min-height: 0; margin: 0 !important; padding: 36px 0; border-bottom: 1px solid var(--t4-line); background: #fff; pointer-events: auto; }
+body.theme-theme-04.theme-page-search .search-booking-panel { width: 100%; }
 body.theme-theme-04.theme-page-search :where(.search-results-section, .vehicle-list-section, .vehicle-card-section) { padding-block: var(--t4-section); }
 body.theme-theme-04.theme-page-search :where(.vehicle-card, .search-result-card) { overflow: hidden; border: 1px solid var(--t4-line) !important; border-radius: 10px !important; background: #fff !important; box-shadow: none !important; }
 body.theme-theme-04.theme-page-search :where(.distance-info, .duration-info, .search-summary) { border: 1px solid var(--t4-line); border-left: 4px solid var(--t4-accent); border-radius: 8px; background: #fff !important; }
