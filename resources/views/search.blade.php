@@ -72,6 +72,7 @@
         }
     @endphp
 
+    <div class="search-page-layout">
     <!-- Booking Form Section -->
     <div class="search-booking-section mb-5" id="searchBookingSection">
         <div class="search-booking-panel" id="searchBookingFormPanel">
@@ -329,6 +330,7 @@
                 </div>
             @endif
         </div>
+    </div>
     </div>
 
     <!-- Cart Summary Float Component (Requirements: 3.1, 3.2) -->
