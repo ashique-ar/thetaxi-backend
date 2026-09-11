@@ -62,14 +62,10 @@ return [
             'ignore_exceptions' => false,
         ],
 
-        'sentry_logs' => [
-            'driver' => 'sentry_logs',
-            'level' => env('SENTRY_LOG_LEVEL', env('LOG_LEVEL', 'warning')),
-        ],
-
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
+            'permission' => 0660,
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
         ],
@@ -77,6 +73,7 @@ return [
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
+            'permission' => 0660,
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
@@ -85,6 +82,7 @@ return [
         'error_daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel-error.log'),
+            'permission' => 0660,
             'level' => env('LOG_ERROR_LEVEL', 'error'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
@@ -93,6 +91,7 @@ return [
         'observability_backend' => [
             'driver' => 'daily',
             'path' => storage_path('logs/observability-backend.log'),
+            'permission' => 0660,
             'level' => env('OBSERVABILITY_LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'formatter' => ObservabilityJsonFormatter::class,
@@ -102,6 +101,7 @@ return [
         'observability_frontend' => [
             'driver' => 'daily',
             'path' => storage_path('logs/observability-frontend.log'),
+            'permission' => 0660,
             'level' => env('OBSERVABILITY_LOG_LEVEL', 'info'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'formatter' => ObservabilityJsonFormatter::class,

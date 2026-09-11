@@ -65,7 +65,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\SeoIndexableMiddleware::class);
-        $middleware->appendToGroup('api', \App\Http\Middleware\SentryUserContext::class);
         $middleware->prependToGroup('api', \App\Http\Middleware\ObservabilityContext::class);
 
         // Exclude payment callback routes from CSRF verification
@@ -87,14 +86,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // Passport reports rejected bearer tokens before Laravel's auth
         // middleware turns them into the expected 401 response. Expired,
         // revoked, or otherwise invalid client tokens are routine auth
-        // failures and should not be recorded as production application
-        // errors or sent to Sentry.
+        // failures and should not be recorded as production application errors.
         $exceptions->dontReportWhen(
             fn (\Throwable $exception): bool => $exception instanceof OAuthServerException
                 && $exception->getCode() === 9
         );
-
-        \Sentry\Laravel\Integration::handles($exceptions);
 
         $exceptions->render(function (UnauthorizedException $exception, Request $request) {
             $payload = [
