@@ -336,17 +336,25 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): JsonResponse
     {
-        $user = User::find($customer->user_id);
-        \App\Models\UserContext::where('user_id', $customer->user_id)
-            ->where('context_type', 'customer')
-            ->where('context_id', $customer->id)
-            ->update(['is_active' => false]);
+        DB::transaction(function () use ($customer) {
+            \App\Models\Activity::create([
+                'log_name' => 'Customer', 'description' => 'deleted', 'event' => 'deleted',
+                'subject_type' => Customer::class, 'subject_id' => $customer->id,
+                'causer_type' => User::class, 'causer_id' => request()->user()->id,
+                'properties' => ['old' => $customer->getAttributes()],
+            ]);
+            $customer->disableLogging();
+            $user = User::find($customer->user_id);
+            \App\Models\UserContext::where('user_id', $customer->user_id)
+                ->where('context_type', 'customer')
+                ->where('context_id', $customer->id)
+                ->update(['is_active' => false, 'updated_user_id' => request()->user()->id]);
+            $customer->delete();
 
-        $customer->delete();
-
-        if ($user && !$user->contexts()->where('is_active', true)->exists()) {
-            $user->delete();
-        }
+            if ($user && !$user->contexts()->where('is_active', true)->exists()) {
+                $user->delete();
+            }
+        });
 
         return response()->json([
             'status' => 'success',

@@ -303,6 +303,13 @@ class DriverController extends Controller
     public function destroy(Driver $driver): JsonResponse
     {
         DB::transaction(function () use ($driver) {
+            \App\Models\Activity::create([
+                'log_name' => 'Driver', 'description' => 'deleted', 'event' => 'deleted',
+                'subject_type' => Driver::class, 'subject_id' => $driver->id,
+                'causer_type' => User::class, 'causer_id' => request()->user()->id,
+                'properties' => ['old' => $driver->getAttributes()],
+            ]);
+            $driver->disableLogging();
             \App\Models\UserContext::where('user_id', $driver->user_id)
                 ->where('context_type', 'driver')
                 ->where('context_id', $driver->id)

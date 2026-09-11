@@ -66,6 +66,7 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->appendToGroup('web', \App\Http\Middleware\WebsiteSettingsSecurity::class);
         $middleware->appendToGroup('web', \App\Http\Middleware\SeoIndexableMiddleware::class);
         $middleware->appendToGroup('api', \App\Http\Middleware\SentryUserContext::class);
+        $middleware->prependToGroup('api', \App\Http\Middleware\ObservabilityContext::class);
 
         // Exclude payment callback routes from CSRF verification
         $middleware->preventRequestForgery(except: [

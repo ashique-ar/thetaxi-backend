@@ -62,8 +62,15 @@ class User extends Authenticatable
     public function getActivitylogOptions(): LogOptions
     {
         return LogOptions::defaults()
-            ->logFillable()->useLogName(class_basename($this));
+            ->logOnly([
+                'email', 'first_name', 'last_name', 'phone', 'role_id', 'agent_id',
+                'is_active', 'email_verified_at', 'phone_verified_at', 'status',
+            ])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName(class_basename($this));
     }
+
 
     /**
      * The attributes that are mass assignable.

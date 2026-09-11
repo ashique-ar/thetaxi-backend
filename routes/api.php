@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Http\Controllers\Api\Booking\BookingLifecycleController;
 use App\Http\Controllers\Api\Booking\CustomerMobileActivityController;
+use App\Http\Controllers\Api\AccountActivityController;
 use App\Http\Controllers\Api\Customer\Mobile\DeviceController as CustomerMobileDeviceController;
 use App\Http\Controllers\Api\AssignmentController;
 use App\Http\Controllers\Api\CollectionCommissionController;
@@ -15,6 +16,7 @@ use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\ReportsController;
 use App\Http\Controllers\Api\SystemController;
 use App\Http\Controllers\Api\SystemBackupController;
+use App\Http\Controllers\Api\ObservabilityController;
 use App\Http\Controllers\Api\UtilityController;
 use App\Http\Controllers\Api\UserContextController;
 use Illuminate\Support\Facades\Route;
@@ -98,6 +100,9 @@ use App\Http\Controllers\Api\Auth\AuthController;
 use App\Http\Controllers\Api\Auth\TwoFactorController;
 use App\Http\Controllers\Api\Auth\SocialAuthController;
 use App\Http\Controllers\Api\UserController;
+
+Route::post('observability/frontend-log', [ObservabilityController::class, 'frontend'])
+    ->middleware('throttle:30,1');
 use App\Http\Controllers\Api\RoleController;
 use App\Http\Controllers\Api\PermissionController;
 use App\Http\Controllers\Api\GamificationController;
@@ -437,6 +442,10 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('documents/{document}/verify', [DocumentController::class, 'verify'])->whereUuid('document');
     Route::post('documents/{document}/reject', [DocumentController::class, 'reject'])->whereUuid('document');
     Route::delete('documents/{document}', [DocumentController::class, 'destroy'])->whereUuid('document');
+
+    Route::get('account-activities', [AccountActivityController::class, 'index']);
+    Route::post('account-activities/customers/{customer}/restore', [AccountActivityController::class, 'restoreCustomer'])->whereUuid('customer');
+    Route::post('account-activities/drivers/{driver}/restore', [AccountActivityController::class, 'restoreDriver'])->whereUuid('driver');
 
     Route::middleware(['permission:customers.view'])->group(function () {
         Route::get('customers/search', [CustomerController::class, 'search']);

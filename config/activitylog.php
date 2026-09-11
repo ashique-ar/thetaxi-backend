@@ -27,7 +27,7 @@ return [
      * You can specify an auth driver here that gets user models.
      * If this is null we'll use the current Laravel auth driver.
      */
-    'default_auth_driver' => null,
+    'default_auth_driver' => 'api',
 
     /*
      * If set to true, the subject returns soft deleted models.

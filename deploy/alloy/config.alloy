@@ -1,0 +1,39 @@
+local.file_match "application_logs" {
+  path_targets = [
+    {
+      "__path__"     = sys.env("LARAVEL_LOG_DIR") + "/observability-backend*.log",
+      "project"      = sys.env("PROJECT_SLUG"),
+      "component"    = "backend",
+      "environment"  = sys.env("ENVIRONMENT"),
+      "server"       = sys.env("SERVER_ID"),
+      "service_name" = sys.env("PROJECT_SLUG") + "-backend",
+      "source"        = "laravel",
+    },
+    {
+      "__path__"     = sys.env("LARAVEL_LOG_DIR") + "/observability-frontend*.log",
+      "project"      = sys.env("PROJECT_SLUG"),
+      "component"    = "frontend",
+      "environment"  = sys.env("ENVIRONMENT"),
+      "server"       = sys.env("SERVER_ID"),
+      "service_name" = sys.env("PROJECT_SLUG") + "-frontend",
+      "source"        = "angular-browser",
+    },
+  ]
+}
+
+loki.source.file "application_logs" {
+  targets       = local.file_match.application_logs.targets
+  forward_to    = [loki.write.central.receiver]
+  tail_from_end = true
+}
+
+loki.write "central" {
+  endpoint {
+    url = sys.env("LOKI_URL")
+
+    basic_auth {
+      username      = sys.env("LOKI_USERNAME")
+      password_file = "/etc/alloy/loki_password"
+    }
+  }
+}

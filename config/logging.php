@@ -2,6 +2,7 @@
 
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
+use App\Logging\ObservabilityJsonFormatter;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
@@ -54,7 +55,10 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', env('LOG_STACK', 'single')),
+            'channels' => array_values(array_unique([
+                ...explode(',', env('LOG_STACK', 'single')),
+                'observability_backend',
+            ])),
             'ignore_exceptions' => false,
         ],
 
@@ -83,6 +87,24 @@ return [
             'path' => storage_path('logs/laravel-error.log'),
             'level' => env('LOG_ERROR_LEVEL', 'error'),
             'days' => env('LOG_DAILY_DAYS', 14),
+            'replace_placeholders' => true,
+        ],
+
+        'observability_backend' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/observability-backend.log'),
+            'level' => env('OBSERVABILITY_LOG_LEVEL', 'debug'),
+            'days' => env('LOG_DAILY_DAYS', 14),
+            'formatter' => ObservabilityJsonFormatter::class,
+            'replace_placeholders' => true,
+        ],
+
+        'observability_frontend' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/observability-frontend.log'),
+            'level' => env('OBSERVABILITY_LOG_LEVEL', 'info'),
+            'days' => env('LOG_DAILY_DAYS', 14),
+            'formatter' => ObservabilityJsonFormatter::class,
             'replace_placeholders' => true,
         ],
 
