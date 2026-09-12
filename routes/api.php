@@ -1305,6 +1305,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.view');
             Route::get('{bookingId}/items/{bookingItemId}/price-history', [BookingFlowController::class, 'getTripPriceHistory'])
                 ->middleware('permission:bookings.price_override');
+            Route::put('{bookingId}/items/{bookingItemId}/price', [BookingFlowController::class, 'updateTripPrice'])
+                ->middleware('permission:bookings.price_override');
             Route::post('clone/{bookingId}', [BookingFlowController::class, 'cloneBooking'])
                 ->middleware('permission:bookings.create');
 
