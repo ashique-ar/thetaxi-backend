@@ -268,6 +268,9 @@
             }
         }
     </style>
+    @if (is_theme('theme-04'))
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/ui-ux.css') }}">
+    @endif
 </head>
 
 <?php
