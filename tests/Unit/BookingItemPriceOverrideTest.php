@@ -56,6 +56,24 @@ class BookingItemPriceOverrideTest extends TestCase
         self::assertSame('Agreed quote', $result['reason']);
     }
 
+    public function test_an_existing_override_can_be_changed_again(): void
+    {
+        $existing = new BookingItem([
+            'total_price' => 850,
+            'price_override_amount' => 850,
+            'price_override_reason' => 'First agreement',
+        ]);
+
+        $result = $this->resolve([
+            'final_price' => 925.75,
+            'price_adjustment_reason' => 'Revised agreement',
+        ], 1000, $existing);
+
+        self::assertSame(925.75, $result['effective_price']);
+        self::assertTrue($result['changed']);
+        self::assertSame('Revised agreement', $result['reason']);
+    }
+
     public function test_normal_booking_resources_remove_original_price_values(): void
     {
         $resource = (new ReflectionClass(BookingFlowResource::class))->newInstanceWithoutConstructor();

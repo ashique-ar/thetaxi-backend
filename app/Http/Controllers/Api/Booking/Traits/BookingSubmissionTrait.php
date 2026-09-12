@@ -892,7 +892,11 @@ trait BookingSubmissionTrait
         ]);
 
         $total = (float) $booking->bookingItems()->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_price');
-        $booking->forceFill(['base_amount' => $total, 'total_estimated' => $total])->save();
+        $totals = ['base_amount' => $total, 'total_estimated' => $total];
+        if ($booking->total_actual !== null) {
+            $totals['total_actual'] = max(0, (float) $booking->total_actual + $finalPrice - $previousPrice);
+        }
+        $booking->forceFill($totals)->save();
 
         return response()->json(['status' => 'success', 'data' => [
             'booking_item_id' => (string) $item->id,

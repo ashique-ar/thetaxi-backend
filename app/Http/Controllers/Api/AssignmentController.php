@@ -50,6 +50,7 @@ class AssignmentController extends Controller
 
             $booking = Booking::with([
                 'customer.user',
+                'corporateAccount',
                 'vehicle.vehicleGroup',
                 'driver.user',
                 'vehicleAssignments.vehicle',
@@ -206,6 +207,7 @@ class AssignmentController extends Controller
                     : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
             );
             $customerUser = $booking->customer?->user;
+            $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
 
             $result = [
                 'booking' => [
@@ -213,7 +215,16 @@ class AssignmentController extends Controller
                     'booking_number' => $booking->booking_number,
                     'reference_number' => $booking->confirmation_number ?? $booking->invoice_number ?? $booking->booking_number,
                     'booking_source' => $booking->booking_source ?? $booking->created_from,
+                    'is_corporate_booking' => (bool) $booking->is_corporate_booking,
                     'customer_name' => $customerName,
+                    'corporate_name' => $booking->corporateAccount?->name,
+                    'passenger_count' => $booking->passenger_count,
+                    'luggage_count' => $booking->luggage_count,
+                    'special_requirements' => $booking->special_requirements,
+                    'trip_notes' => $selectedBookingItem?->notes,
+                    'pickup_landmark' => $selectedBookingItem?->pickup_landmark,
+                    'dropoff_landmark' => $selectedBookingItem?->dropoff_landmark,
+                    'is_self_driven' => $selectedBookingItem?->is_self_driven,
                     'customer_email' => $booking->customer?->email ?? $customerUser?->email,
                     'customer_phone' => $booking->customer?->phone ?? $booking->customer?->mobile ?? $customerUser?->phone,
                     'service_type_id' => $selectedBookingItem?->service_type_id ?? $selectedServiceType?->id,
@@ -253,6 +264,10 @@ class AssignmentController extends Controller
                     'currency' => $pricingMetrics['currency'],
                     'created_at' => $booking->created_at?->toIso8601String(),
                     'updated_at' => $booking->updated_at?->toIso8601String(),
+                    ...($canManagePrice ? [
+                        'price_overridden' => $selectedBookingItem?->price_override_amount !== null,
+                        'price_override_reason' => $selectedBookingItem?->price_override_reason,
+                    ] : []),
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
                 'selection_warning' => $selectionWarning,
