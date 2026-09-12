@@ -123,12 +123,6 @@ class CartController extends Controller
             if (!empty($distanceDetails)) {
                 $item['distance_details'] = $distanceDetails;
 
-                Log::debug('Enriched cart item with distance details', [
-                    'cart_key' => $key,
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'service_type_id' => $serviceTypeId,
-                    'distance_details' => $distanceDetails,
-                ]);
             }
 
             $enrichedItems[$key] = $item;
@@ -345,15 +339,6 @@ class CartController extends Controller
             // Extract service_package_id directly from input or search_data
             $directPackageId = $input['service_package_id'] ?? $input['package_id'] ?? null;
 
-            Log::debug('Cart add - Return trip raw data extraction', [
-                'input_is_return_trip' => $input['is_return_trip'] ?? null,
-                'isReturnTrip_parsed' => $isReturnTrip,
-                'input_return_trip_date' => $input['return_trip_date'] ?? null,
-                'searchData_return_trip_date' => $searchData['return_trip_date'] ?? null,
-                'returnTripDate_final' => $returnTripDate,
-                'direct_package_id' => $directPackageId,
-                'searchData_package_id' => $searchData['service_package_id'] ?? $searchData['package_id'] ?? null,
-            ]);
 
             // Get vehicle details if it exists
             $vehicleGroup = null;
@@ -374,22 +359,6 @@ class CartController extends Controller
             $pricingInfo = null; // Store full pricing info including distance_details
             $returnTripPricing = null; // Store return trip pricing details
 
-            Log::info(
-                'Adding item to cart',
-                [
-                    'vehicle_id' => $vehicleId,
-                    'vehicle_group_id' => $vehicleId,
-                    'pickup_date' => $pickupDate,
-                    'return_date' => $returnDate,
-                    'service_type' => $serviceType,
-                    'pickup_location' => $pickupLocation,
-                    'dropoff_location' => $returnLocation,
-                    'days' => $days,
-                    'vehicleGroup' => $vehicleGroup,
-                    'is_return_trip' => $isReturnTrip,
-                    'return_trip_date' => $returnTripDate,
-                ]
-            );
             try {
                 // Get service type
                 $serviceTypeModel = ServiceType::publicContext()
@@ -403,11 +372,6 @@ class CartController extends Controller
                     })
                     ->where('is_active', true)
                     ->first();
-                Log::info('Service type lookup', [
-                    'service_type' => $serviceType,
-                    'service_type_model' => $serviceTypeModel,
-                    'vehicle_group' => $vehicleGroup
-                ]);
                 if ($serviceTypeModel && $vehicleGroup) {
 
                     // Build location arrays with coordinates
@@ -430,15 +394,6 @@ class CartController extends Controller
                         ?? $request->input('service_package_id')
                         ?? $request->input('package_id');
 
-                    Log::debug('Cart add - extracting service package ID', [
-                        'from_search_data_service_package_id' => $searchData['service_package_id'] ?? null,
-                        'from_search_data_package_id' => $searchData['package_id'] ?? null,
-                        'direct_package_id' => $directPackageId,
-                        'from_request' => $request->input('service_package_id') ?? $request->input('package_id') ?? null,
-                        'final_package_id' => $servicePackageIdForPricing,
-                        'is_return_trip' => $isReturnTrip,
-                        'return_trip_date' => $returnTripDate,
-                    ]);
 
                     $pricingParams = [
                         'service_type' => $serviceTypeModel->id,
@@ -461,10 +416,6 @@ class CartController extends Controller
                         $pricingParams['package_id'] = $servicePackageIdForPricing;
                     }
 
-                    Log::info('Cart add pricing params', [
-                        'service_package_id' => $servicePackageIdForPricing,
-                        'pricing_params' => $pricingParams
-                    ]);
 
                     $availability = $this->bookingFlowService
                         ->getPublicVehicleGroupAvailability($pricingParams);
@@ -478,11 +429,6 @@ class CartController extends Controller
                     // Recalculate pricing server-side after availability is confirmed.
                     $pricingResult = $this->bookingFlowService->calculatePricing($pricingParams);
 
-                    Log::info('Pricing data from BookingFlowService', [
-                        'service_package_id' => $servicePackageIdForPricing,
-                        'vehicle_group_id' => $vehicleId,
-                        'pricing_result' => $pricingResult,
-                    ]);
 
                     if (!isset($pricingResult['summary']['total']) || (float) $pricingResult['summary']['total'] <= 0) {
                         throw new \Exception('Pricing not available for this vehicle group and service type combination');
@@ -541,14 +487,6 @@ class CartController extends Controller
                         }
                     }
 
-                    Log::info('Pricing calculated for cart item', [
-                        'service_package_id' => $servicePackageIdForPricing,
-                        'total_price' => $totalPrice,
-                        'per_day_price' => $perDayPrice,
-                        'days' => $days,
-                        'is_return_trip' => $isReturnTrip,
-                        'pricing_info' => $pricingInfo
-                    ]);
                 }
             } catch (\Exception $e) {
                 Log::error('Failed to calculate pricing for cart item', [
@@ -664,15 +602,6 @@ class CartController extends Controller
                 'added_at' => now()
             ];
 
-            Log::info('Cart item created with pricing', [
-                'service_package_id' => $servicePackageId,
-                'service_package_info' => $servicePackageInfo,
-                'distance_details' => $cartItem['distance_details'],
-                'price' => $cartItem['price'],
-                'total_price' => $cartItem['total_price'],
-                'is_package' => $cartItem['is_package'],
-                'days' => $cartItem['days']
-            ]);
 
             // Get or create cart
             $dbCart = $this->cartService->getOrCreateCart();
@@ -1361,11 +1290,6 @@ class CartController extends Controller
             }
 
             $vehicleGroupId = $items[$cartKey]['vehicle_group_id'] ?? null;
-            Log::info('Getting extra km rate for cart item', [
-                'cart_key' => $cartKey,
-                'cart_item' => $items[$cartKey],
-                'vehicle_group_id' => $vehicleGroupId
-            ]);
             if (!$vehicleGroupId) {
                 return response()->json([
                     'success' => false,
@@ -1380,13 +1304,6 @@ class CartController extends Controller
                 $currentExtraKm = $this->cartService->getItemExtraKm($dbCart, $cartKey);
                 $hasSlabPricing = $offer['has_slab'];
 
-                Log::debug('Extra KM rate lookup for cart item', [
-                    'cart_key' => $cartKey,
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'service_type_id' => $serviceTypeId,
-                    'extra_km_rate' => $extraKmRate,
-                    'has_slab_pricing' => $hasSlabPricing,
-                ]);
 
                 // Convert extra KM rate to selected currency
                 $convertedRate = null;

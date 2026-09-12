@@ -97,7 +97,6 @@ class PopupService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Popup created successfully', ['popup_id' => $popup->id]);
 
             return $popup;
         } catch (\Exception $e) {
@@ -138,7 +137,6 @@ class PopupService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Popup updated successfully', ['popup_id' => $popup->id]);
 
             return $popup->fresh();
         } catch (\Exception $e) {
@@ -163,7 +161,6 @@ class PopupService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Popup deleted successfully', ['popup_id' => $id]);
 
             return true;
         } catch (\Exception $e) {
@@ -190,10 +187,6 @@ class PopupService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Popup status toggled', [
-                'popup_id' => $popup->id,
-                'new_status' => $popup->is_active,
-            ]);
 
             return $popup->fresh();
         } catch (\Exception $e) {
@@ -301,7 +294,6 @@ class PopupService
             Cache::forget(self::CACHE_PREFIX . 'active_' . $page);
         }
 
-        Log::debug('Popup cache cleared');
     }
 
     /**

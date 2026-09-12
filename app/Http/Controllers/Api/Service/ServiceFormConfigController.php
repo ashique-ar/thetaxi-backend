@@ -61,7 +61,6 @@ class ServiceFormConfigController extends Controller
     public function getFormConfig(string $serviceTypeId): JsonResponse
     {
         try {
-            \Log::info('Loading form config for service type: ' . $serviceTypeId);
             
             $serviceType = ServiceType::find($serviceTypeId);
 
@@ -79,9 +78,7 @@ class ServiceFormConfigController extends Controller
                     $query->where('is_active', true)->orderBy('sort_order');
                 }]);
 
-            \Log::info('Building form config for: ' . $serviceType->name);
             $config = $this->buildFormConfig($serviceType);
-            \Log::info('Form config built successfully');
 
             return response()->json([
                 'status' => 'success',

@@ -249,12 +249,6 @@ class PriceAdjustmentController extends Controller
             $adjustment = PriceAdjustment::create($validator->validated());
             $adjustment->load(['serviceType', 'vehicleGroup']);
 
-            Log::info("Price adjustment created", [
-                'adjustment_id' => $adjustment->id,
-                'name' => $adjustment->name,
-                'scope' => $adjustment->scope,
-                'created_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'Price adjustment created successfully',
@@ -314,11 +308,6 @@ class PriceAdjustmentController extends Controller
             $adjustment->update($validator->validated());
             $adjustment->load(['serviceType', 'vehicleGroup']);
 
-            Log::info("Price adjustment updated", [
-                'adjustment_id' => $adjustment->id,
-                'name' => $adjustment->name,
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'Price adjustment updated successfully',
@@ -347,11 +336,6 @@ class PriceAdjustmentController extends Controller
             $adjustmentName = $adjustment->name;
             $adjustment->delete();
 
-            Log::info("Price adjustment deleted", [
-                'adjustment_id' => $id,
-                'name' => $adjustmentName,
-                'deleted_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'Price adjustment deleted successfully'
@@ -378,11 +362,6 @@ class PriceAdjustmentController extends Controller
             $adjustment->is_active = !$adjustment->is_active;
             $adjustment->save();
 
-            Log::info("Price adjustment status toggled", [
-                'adjustment_id' => $id,
-                'new_status' => $adjustment->is_active ? 'active' : 'inactive',
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'Price adjustment status updated successfully',
@@ -616,12 +595,6 @@ class PriceAdjustmentController extends Controller
             $updated = PriceAdjustment::whereIn('id', $request->adjustment_ids)
                 ->update(['is_active' => $request->is_active]);
 
-            Log::info("Bulk updated price adjustments status", [
-                'adjustment_ids' => $request->adjustment_ids,
-                'new_status' => $request->is_active ? 'active' : 'inactive',
-                'updated_count' => $updated,
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => "Successfully updated {$updated} price adjustments",

@@ -470,17 +470,6 @@ class CheckoutController extends Controller
             $discount = max(0, $this->currencyService->normalizeAmount($discount));
             $total = max(0, $this->currencyService->normalizeAmount($total));
 
-            // Log total amounts for debugging
-            Log::info('Cart totals retrieved', [
-                'cart_id' => $cartModel->id,
-                'cart_totals_json' => $cartModel->totals,
-                'subtotal' => $subtotal,
-                'service_fee' => $serviceFee,
-                'tax' => $tax,
-                'vat' => $vat,
-                'discount' => $discount,
-                'total' => $total,
-            ]);
 
             // Calculate payment amount based on type
             // Fetch advance percentage from database
@@ -593,7 +582,6 @@ class CheckoutController extends Controller
                             ['booking_id' => $booking->id, 'terms_and_condition_id' => $termId],
                             ['terms_version' => $version, 'accepted_at' => now()]
                         );
-                        Log::info('Saved accepted T&C for booking', ['booking_id' => $booking->id, 'terms_id' => $termId, 'version' => $version]);
                     }
                 }
             }
@@ -772,54 +760,19 @@ class CheckoutController extends Controller
             // Store cart items for reference
             session()->put('pending_booking_id', $booking->id);
             session()->put('pending_booking_cart', $cart);
-            Log::info('Pending booking data', ['booking_id' => $booking->id, 'cart' => $cart, 'validated' => $validated]);
             // Handle different payment types
-            Log::info('Processing checkout - Payment Type Handler', [
-                'booking_id' => $booking->id,
-                'payment_type' => $validated['payment_type'],
-                'payment_method' => $validated['payment_method'] ?? null,
-                'payment_amount' => $paymentAmount,
-                'customer_email' => $customer->user?->email ?? $validated['customer_email'],
-                'total' => $total,
-            ]);
 
             switch ($validated['payment_type']) {
                 case 'quotation':
-                    Log::info('Checkout: Processing QUOTATION request', [
-                        'booking_id' => $booking->id,
-                        'booking_number' => $booking->booking_number,
-                        'customer_id' => $customer->id,
-                        'customer_email' => $customer->user?->email ?? $validated['customer_email'],
-                    ]);
                     return $this->processQuotationRequest($booking);
 
                 case 'advance':
-                    Log::info('Checkout: Processing ADVANCE payment', [
-                        'booking_id' => $booking->id,
-                        'payment_type' => 'advance',
-                        'advance_percentage' => $advancePercentage,
-                        'payment_amount' => $paymentAmount,
-                        'total_amount' => $total,
-                        'payment_method' => $validated['payment_method'],
-                    ]);
                     return $this->processPayment($booking, $validated, $paymentAmount);
 
                 case 'full':
-                    Log::info('Checkout: Processing FULL payment', [
-                        'booking_id' => $booking->id,
-                        'payment_type' => 'full',
-                        'payment_amount' => $paymentAmount,
-                        'payment_method' => $validated['payment_method'],
-                    ]);
                     return $this->processPayment($booking, $validated, $paymentAmount);
 
                 case 'checkin':
-                    Log::info('Checkout: Processing PAY ON CHECK-IN (offline)', [
-                        'booking_id' => $booking->id,
-                        'payment_type' => 'checkin',
-                        'total_due' => $total,
-                        'customer_email' => $customer->user?->email ?? $validated['customer_email'],
-                    ]);
                     return $this->processOfflinePayment($booking, 'offline');
 
                 default:
@@ -850,20 +803,11 @@ class CheckoutController extends Controller
                 'payment_status' => 'not_required',
             ]);
 
-            Log::info('Quotation Request: Booking status updated', [
-                'booking_id' => $booking->id,
-                'booking_number' => $booking->booking_number,
-                'new_status' => config('booking.status.quotation_requested'),
-            ]);
 
             // Ensure booking number uses 'QT' prefix for quotations (6-digit sequence)
             if (strpos($booking->booking_number ?? '', 'QT') !== 0) {
                 $booking->booking_number = Booking::generateQuotationNumber();
                 $booking->save();
-                Log::info('Quotation Request: Booking number regenerated with QT prefix', [
-                    'booking_id' => $booking->id,
-                    'new_booking_number' => $booking->booking_number,
-                ]);
             }
 
             // Mark cart as checked out
@@ -877,15 +821,7 @@ class CheckoutController extends Controller
 
             // Send quotation request email to customer
             try {
-                Log::info('Quotation Request: Sending quotation email to customer', [
-                    'booking_id' => $booking->id,
-                    'customer_email' => $booking->customer?->user?->email,
-                    'mailable_class' => QuotationRequestMail::class,
-                ]);
                 $this->sendBookingEmail($booking, new QuotationRequestMail($booking));
-                Log::info('Quotation Request: Email sent successfully', [
-                    'booking_id' => $booking->id,
-                ]);
             } catch (\Exception $e) {
                 Log::error('Quotation Request: Failed to send quotation email', [
                     'booking_id' => $booking->id,
@@ -897,11 +833,6 @@ class CheckoutController extends Controller
 
             DB::commit();
 
-            Log::info('Quotation Request: Process completed successfully', [
-                'booking_id' => $booking->id,
-                'booking_number' => $booking->booking_number,
-                'redirect_to' => 'checkout.success',
-            ]);
 
             return redirect()->route('checkout.success', [
                 'type' => 'quotation',
@@ -925,25 +856,13 @@ class CheckoutController extends Controller
         try {
             $paymentMethod = $validated['payment_method'];
 
-            Log::info('Payment Processing: Starting payment process', [
-                'booking_id' => $booking->id,
-                'payment_method' => $paymentMethod,
-                'payment_type' => $booking->payment_type,
-                'amount' => $paymentAmount,
-            ]);
 
             // Process payment based on method
             switch ($paymentMethod) {
                 case 'online':
-                    Log::info('Payment Processing: Routing to ONLINE payment handler', [
-                        'booking_id' => $booking->id,
-                    ]);
                     return $this->processOnlinePayment($booking, $paymentAmount);
 
                 case 'offline':
-                    Log::info('Payment Processing: Routing to OFFLINE payment handler', [
-                        'booking_id' => $booking->id,
-                    ]);
                     return $this->processOfflinePayment($booking, $paymentMethod);
 
                 default:
@@ -975,11 +894,6 @@ class CheckoutController extends Controller
         try {
             // Create payment request with WebXPay
             $paymentType = $booking->payment_type === 'advance' ? 'advance' : 'full';
-            Log::info('Online Payment: Creating payment request via WebXPay', [
-                'booking_id' => $booking->id,
-                'amount' => $amount,
-                'payment_type' => $paymentType,
-            ]);
 
             $result = $this->webxPayService->createPayment($booking, $amount, $paymentType);
 
@@ -990,11 +904,6 @@ class CheckoutController extends Controller
                     'payment_gateway_order_id' => $result['order_id'] ?? null,
                 ]);
 
-                Log::info('Online Payment: Payment request created successfully', [
-                    'booking_id' => $booking->id,
-                    'order_id' => $result['order_id'],
-                    'payment_url' => $result['payment_url'] ?? 'N/A',
-                ]);
 
                 // Store booking ID and RSA encrypted payment data in session
                 session()->put('pending_booking_id', $booking->id);
@@ -1012,19 +921,12 @@ class CheckoutController extends Controller
                 ]);
 
                 // Send payment initiated email
-                Log::info('Online Payment: Sending payment initiated email', [
-                    'booking_id' => $booking->id,
-                    'amount' => $amount,
-                ]);
                 $this->sendPaymentInitiatedEmail($booking, $amount);
 
                 DB::commit();
 
                 // Check if WebXPay uses RSA form redirect
                 if (isset($result['method']) && $result['method'] === 'rsa_redirect') {
-                    Log::info('Online Payment: Redirecting to WebXPay RSA form', [
-                        'booking_id' => $booking->id,
-                    ]);
                     // Redirect to our payment redirect page that will auto-submit RSA form to WebXPay
                     return redirect()->route('checkout.webxpay.redirect');
                 }
@@ -1059,12 +961,6 @@ class CheckoutController extends Controller
      */
     protected function processOfflinePayment(Booking $booking, string $method)
     {
-        Log::info('Offline Payment: Processing offline payment', [
-            'booking_id' => $booking->id,
-            'payment_method' => $method,
-            'total_due' => $booking->total_estimated,
-            'payment_type' => $booking->payment_type,
-        ]);
 
         // For offline payments (pay on check-in), booking is confirmed but payment pending
         $booking->update([
@@ -1072,10 +968,6 @@ class CheckoutController extends Controller
             'payment_status' => 'pending',
         ]);
 
-        Log::info('Offline Payment: Booking status updated to confirmed with pending payment', [
-            'booking_id' => $booking->id,
-            'status' => config('booking.status.confirmed'),
-        ]);
 
         return $this->completeBooking($booking, $method, false);
     }
@@ -1097,12 +989,6 @@ class CheckoutController extends Controller
                 'confirmed_at' => $paymentProcessed ? now() : null,
             ]);
 
-            Log::info('Complete Booking: Booking status updated', [
-                'booking_id' => $booking->id,
-                'status' => $status,
-                'payment_status' => $paymentProcessed ? 'paid' : 'pending',
-                'payment_method' => $paymentMethod,
-            ]);
 
             // Mark cart as checked out and record promo code usage
             $dbCart = $this->cartService->getOrCreateCart();
@@ -1121,16 +1007,7 @@ class CheckoutController extends Controller
 
             // Send confirmation email to customer
             try {
-                Log::info('Complete Booking: Sending confirmation email', [
-                    'booking_id' => $booking->id,
-                    'customer_email' => $booking->customer?->user?->email,
-                    'payment_status' => $booking->payment_status,
-                    'mailable_class' => CheckoutConfirmationMail::class,
-                ]);
                 $this->sendBookingEmail($booking, new CheckoutConfirmationMail($booking));
-                Log::info('Complete Booking: Confirmation email sent successfully', [
-                    'booking_id' => $booking->id,
-                ]);
             } catch (\Exception $e) {
                 Log::error('Complete Booking: Failed to send confirmation email', [
                     'booking_id' => $booking->id,
@@ -1151,11 +1028,6 @@ class CheckoutController extends Controller
                 $message = 'Your booking has been received. Payment will be collected when you check-in to collect the vehicle.';
             }
 
-            Log::info('Complete Booking: Process completed successfully', [
-                'booking_id' => $booking->id,
-                'booking_number' => $booking->booking_number,
-                'message' => $message,
-            ]);
 
             return redirect()->route('checkout.success', [
                 'type' => 'payment',
@@ -1210,7 +1082,6 @@ class CheckoutController extends Controller
     public function webxpayCallback(Request $request)
     {
         try {
-            Log::info('WebXPay callback received', ['request' => $request->all(), 'session_pending_booking_id' => session()->get('pending_booking_id')]);
             // record callback received
             $this->paymentEventService->recordEvent('callback_received', [
                 'payload' => $request->all(),
@@ -1229,7 +1100,6 @@ class CheckoutController extends Controller
                 if ($customFieldsRaw) {
                     try {
                         $decoded = base64_decode($customFieldsRaw);
-                        Log::info('WebXPay callback custom_fields decoded', ['decoded' => $decoded]);
 
                         $parts = explode('|', $decoded);
                         $possibleBookingId = $parts[0] ?? null;
@@ -1264,7 +1134,6 @@ class CheckoutController extends Controller
             if (!$booking && $this->webxPayService->isEnabled()) {
                 $callbackData = $request->all();
                 $verificationResult = $this->webxPayService->verifyPayment($callbackData);
-                Log::info('WebXPay verification result', $verificationResult);
 
                 // Try to find booking before recording event (prioritize booking_number)
                 $verifiedBooking = null;
@@ -1309,12 +1178,10 @@ class CheckoutController extends Controller
 
             // Check if this is from mock gateway (test mode)
             if ($request->has('status') && !$this->webxPayService->isEnabled()) {
-                Log::info('WebXPay mock callback processing', ['booking_id' => $booking->id, 'status' => $request->input('status')]);
                 $this->paymentEventService->recordEvent('mock_callback_processing', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay']);
                 DB::beginTransaction();
 
                 if ($request->input('status') === 'success') {
-                    Log::info('WebXPay mock: marking booking as paid', ['booking_id' => $booking->id]);
                     $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'transaction_id' => $request->input('transaction_id'), 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'success']);
                     // Mock payment successful
                     $wasPaid = $booking->payment_status === 'paid';
@@ -1326,7 +1193,6 @@ class CheckoutController extends Controller
                         'confirmed_at' => now(),
                     ]);
 
-                    Log::info('WebXPay mock: booking updated', ['booking_id' => $booking->id, 'status' => $booking->status, 'payment_status' => $booking->payment_status]);
 
                     // Mark cart as checked out and record promo code usage
                     $dbCart = $this->cartService->getOrCreateCart();
@@ -1344,7 +1210,6 @@ class CheckoutController extends Controller
                             // Reload booking with eager loaded relations for email
                             $bookingForEmail = $this->reloadBookingForEmail($booking);
                             $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
-                            Log::info('Checkout confirmation email sent', ['booking_id' => $booking->id]);
                         }
                     } catch (\Exception $e) {
                         Log::error('Failed to send confirmation email', [
@@ -1365,7 +1230,6 @@ class CheckoutController extends Controller
                         'status' => 'confirmed'
                     ])->with('success', 'Payment successful! Your booking is confirmed.');
                 } else {
-                    Log::info('WebXPay mock: payment failed', ['booking_id' => $booking->id]);
                     $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'failed']);
                     // Mock payment failed
                     $booking->update([
@@ -1385,7 +1249,6 @@ class CheckoutController extends Controller
             if ($verificationResult === null) {
                 $callbackData = $request->all();
                 $verificationResult = $this->webxPayService->verifyPayment($callbackData);
-                Log::info('WebXPay verification result', $verificationResult);
 
                 // Store verification result for auditing
                 $this->paymentEventService->recordEvent('verification_result', [
@@ -1399,7 +1262,6 @@ class CheckoutController extends Controller
             }
 
             if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
-                Log::info('WebXPay: payment successful, processing booking', ['booking_id' => $booking->id, 'transaction_id' => $verificationResult['transaction_id'] ?? null]);
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
 
                 $wasPaid = false;
@@ -1418,7 +1280,6 @@ class CheckoutController extends Controller
                     ]);
                     $booking = $lockedBooking;
 
-                    Log::info('WebXPay: booking updated to confirmed', ['booking_id' => $booking->id]);
 
                     // Mark cart as checked out and record promo code usage
                     $dbCart = $this->cartService->getOrCreateCart();
@@ -1429,7 +1290,6 @@ class CheckoutController extends Controller
                 } else {
                     // Already paid by concurrent webhook — still commit (nothing to roll back)
                     $wasPaid = true;
-                    Log::info('WebXPay callback: booking already paid, skipping duplicate update', ['booking_id' => $booking->id]);
                 }
 
                 // Send confirmation email
@@ -1438,7 +1298,6 @@ class CheckoutController extends Controller
                         // Reload booking with eager loaded relations for email
                         $bookingForEmail = $this->reloadBookingForEmail($booking);
                         $this->sendBookingEmail($bookingForEmail, new CheckoutConfirmationMail($bookingForEmail));
-                        Log::info('Checkout confirmation email sent', ['booking_id' => $booking->id]);
                     }
                 } catch (\Exception $e) {
                     Log::error('Failed to send confirmation email', [
@@ -1488,7 +1347,6 @@ class CheckoutController extends Controller
         try {
             $callbackData = $request->all();
 
-            Log::info('WebXPay notification received', $callbackData);
 
             $verificationResult = $this->webxPayService->verifyPayment($callbackData);
 
@@ -1656,16 +1514,7 @@ class CheckoutController extends Controller
         try {
             // Reload booking with eager loaded relations for email
             $booking = $this->reloadBookingForEmail($booking);
-            Log::info('Payment Initiated Email: Sending to customer', [
-                'booking_id' => $booking->id,
-                'customer_email' => $booking->customer?->user?->email,
-                'amount' => $amount,
-                'mailable_class' => PaymentInitiatedMail::class,
-            ]);
             $this->sendBookingEmail($booking, new PaymentInitiatedMail($booking, $amount));
-            Log::info('Payment Initiated Email: Sent successfully', [
-                'booking_id' => $booking->id,
-            ]);
         } catch (\Exception $e) {
             Log::error('Payment Initiated Email: Failed to send', [
                 'booking_id' => $booking->id,
@@ -1721,13 +1570,6 @@ class CheckoutController extends Controller
                 $orderAmount
             );
 
-            Log::info('Promo code usage recorded for booking', [
-                'promo_code' => $promoCode->code,
-                'booking_id' => $booking->id,
-                'customer_id' => $customerId,
-                'discount_amount' => $discountAmount,
-                'order_amount' => $orderAmount,
-            ]);
         } catch (\Exception $e) {
             // Log error but don't fail the booking
             Log::error('Failed to record promo code usage', [
@@ -1879,12 +1721,6 @@ class CheckoutController extends Controller
             // Prefer route parameter token for path-based links (e.g., /payment-resume/{token})
             $token = $request->route('token') ?? $request->get('token');
 
-            Log::info('CheckoutController: resumePayment called', [
-                'token' => $token,
-                'full_url' => $request->fullUrl(),
-                'method' => $request->method(),
-                'ip' => $request->ip(),
-            ]);
 
             if (!$token) {
                 Log::warning('CheckoutController: resumePayment called without token', [
@@ -2069,30 +1905,18 @@ class CheckoutController extends Controller
     {
         try {
             $token = $request->route('token');
-            Log::info('Quotation to booking conversion accessed', [
-                'token' => $token,
-                'user_agent' => $request->userAgent(),
-                'ip_address' => $request->ip(),
-            ]);
 
             if (!$token) {
                 return redirect()->route('home')->with('error', 'Invalid quotation link.');
             }
 
             $quotationData = BookingLinkHelper::decryptBookingData($token);
-            Log::info('Decrypted quotation data', ['data' => $quotationData]);
 
             if (!$quotationData || $quotationData['type'] !== 'quotation_conversion') {
                 return redirect()->route('home')->with('error', 'Invalid quotation link.');
             }
 
             $quotationBooking = Booking::find($quotationData['booking_id']);
-            Log::info('Fetched quotation booking', [
-                'booking_id' => $quotationBooking ? $quotationBooking->id : null,
-                'status' => $quotationBooking ? $quotationBooking->status : null,
-                'total_estimated' => $quotationBooking ? $quotationBooking->total_estimated : null,
-                'amount_to_pay' => $quotationBooking ? $quotationBooking->amount_to_pay : null,
-            ]);
 
             if (!$quotationBooking) {
                 return redirect()->route('home')->with('error', 'Quotation not found.');
@@ -2103,16 +1927,11 @@ class CheckoutController extends Controller
                 // Set a default amount or use the quotation amount if available
                 $quotationBooking->total_estimated = $quotationBooking->quotation_amount ?? 1000; // Fallback amount
                 $quotationBooking->save();
-                Log::info('Set default amount for quotation booking', ['amount' => $quotationBooking->total_estimated]);
             }
 
             // Generate payment link directly using the PendingPaymentManager
             try {
                 $paymentLink = \App\Services\PendingPaymentManager::createPaymentLink($quotationBooking);
-                Log::info('Generated payment link for quotation conversion', [
-                    'payment_link_token' => $paymentLink->token,
-                    'amount_due' => $paymentLink->amount_due
-                ]);
 
                 // Guard: if payment amount is not valid, stop and report
                 if (($paymentLink->amount_due ?? 0) <= 0) {

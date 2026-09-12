@@ -932,17 +932,10 @@ class BookingLifecycleService
                             if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
                                 $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
                             }
-                            $triggered = $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
+                            $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
                                 $vehicleForMaintenance,
                                 $mileageIn
                             );
-                            if (!empty($triggered)) {
-                                Log::info('Post-trip maintenance triggered', [
-                                    'vehicle_id' => $vehicleId,
-                                    'mileage'    => $mileageIn,
-                                    'triggered'  => array_column($triggered, 'schedule_id'),
-                                ]);
-                            }
                         }
                     } catch (\Throwable $e) {
                         Log::error('Post-trip maintenance check failed', [
@@ -1544,10 +1537,6 @@ class BookingLifecycleService
 
             // Generate and email invoice on completion
             if ((bool) ($completionData['suppress_completion_emails'] ?? false)) {
-                Log::info('Completion invoice email suppressed', [
-                    'booking_id' => $bookingId,
-                    'source' => $completionData['activity_source'] ?? 'booking_completion',
-                ]);
             } elseif ($this->isPricingPendingReview($completionData['final_pricing'] ?? null)) {
                 Log::warning('Invoice deferred: final pricing pending manual review', [
                     'booking_id' => $bookingId,
@@ -3181,9 +3170,6 @@ class BookingLifecycleService
     private function runAggregateCompletionEffects(Booking $booking, bool $suppressCompletionEmails = false): void
     {
         if ($suppressCompletionEmails) {
-            Log::info('Aggregate completion invoice email suppressed', [
-                'booking_id' => $booking->id,
-            ]);
         } elseif ($this->bookingHasPendingPricingReview($booking)) {
             Log::warning('Aggregate invoice deferred: one or more items have final pricing pending manual review', [
                 'booking_id' => $booking->id,
@@ -4560,12 +4546,6 @@ class BookingLifecycleService
             }
 
             // Log availability update
-            Log::info('Availability pool updated', [
-                'booking_id' => $bookingId,
-                'vehicle_id' => $vehicle->id,
-                'new_status' => $vehicle->availability_status,
-                'qc_passed' => !$qc->repair_required,
-            ]);
 
             return [
                 'vehicle_id' => $vehicle->id,

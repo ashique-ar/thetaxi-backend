@@ -123,7 +123,6 @@ class InvoiceService
                 'email_sending_at' => null,
                 'email_last_error' => null,
             ]);
-            Log::info('Invoice email skipped — booking has emails suppressed', ['invoice_id' => $invoice->id]);
             return;
         }
 
@@ -190,10 +189,6 @@ class InvoiceService
                 'email_last_error' => null,
             ]);
 
-            Log::info('Invoice email sent', [
-                'invoice_id' => $invoice->id,
-                'to'         => $invoice->customer_email,
-            ]);
 
             if ($booking) {
                 $this->notifyInvoiceSent($booking, $invoice);

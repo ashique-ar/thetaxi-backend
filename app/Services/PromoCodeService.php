@@ -113,7 +113,6 @@ class PromoCodeService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Promo code created successfully', ['promo_code_id' => $promoCode->id, 'code' => $promoCode->code]);
 
             return $promoCode;
         } catch (\Exception $e) {
@@ -184,7 +183,6 @@ class PromoCodeService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Promo code updated successfully', ['promo_code_id' => $promoCode->id]);
 
             return $promoCode->fresh();
         } catch (\Exception $e) {
@@ -212,7 +210,6 @@ class PromoCodeService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Promo code soft deleted successfully', ['promo_code_id' => $id]);
 
             return true;
         } catch (\Exception $e) {
@@ -242,10 +239,6 @@ class PromoCodeService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Promo code status toggled', [
-                'promo_code_id' => $promoCode->id,
-                'new_status' => $promoCode->is_active,
-            ]);
 
             return $promoCode->fresh();
         } catch (\Exception $e) {
@@ -454,12 +447,6 @@ class PromoCodeService
             DB::commit();
             $this->clearCache();
 
-            Log::info('Promo code usage recorded', [
-                'promo_code_id' => $promoCode->id,
-                'customer_id' => $customerId,
-                'booking_id' => $bookingId,
-                'discount_amount' => $discountAmount,
-            ]);
 
             return $usage;
         } catch (\Exception $e) {
@@ -534,7 +521,6 @@ class PromoCodeService
         Cache::forget(self::CACHE_PREFIX . 'active');
         Cache::forget(self::CACHE_PREFIX . 'statistics');
         
-        Log::debug('Promo code cache cleared');
     }
 
     /**

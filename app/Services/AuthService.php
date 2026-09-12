@@ -132,8 +132,6 @@ class AuthService
                 $clientIp = $request->input('client_ip', $request->ip());
                 $clientLocation = $this->resolveClientLocation($request, $clientIp);
 
-                // Log what we're receiving for diagnostics
-                \Log::info('AuthService::createToken - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
 
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,
@@ -149,7 +147,6 @@ class AuthService
                     'current' => true
                 ]);
             } else {
-                \Log::info('AuthService::createToken - no request provided when creating token for user ' . $user->id);
             }
         } catch (\Throwable $e) {
             // don't block token creation on logging errors
@@ -213,7 +210,6 @@ class AuthService
                 $clientIp = $request->input('client_ip', $request->ip());
                 $clientLocation = $this->resolveClientLocation($request, $clientIp);
 
-                \Log::info('AuthService::authenticateWithRefresh - request ip: ' . $request->ip() . ' client_ip: ' . ($clientIp ?? 'NULL') . ' client_location: ' . ($clientLocation ?? 'NULL') . ' ua: ' . substr(($ua ?? 'NULL'), 0, 200));
 
                 \App\Models\ApiSession::create([
                     'token_id' => $token->token->id,

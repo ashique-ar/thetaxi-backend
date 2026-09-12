@@ -64,12 +64,6 @@ class PendingPaymentManager
             ->first();
 
         if ($existing) {
-            Log::info('PendingPaymentManager: Reusing existing active pending payment link', [
-                'booking_id' => $booking->id,
-                'payment_link_id' => $existing->id,
-                'amount_due' => $existing->amount_due,
-                'token' => $existing->token,
-            ]);
 
             // Ensure context and amount are up-to-date
             $existing->update([
@@ -93,12 +87,6 @@ class PendingPaymentManager
             'access_count' => 0,
         ]);
 
-        Log::info('PendingPaymentManager: Created new pending payment link', [
-            'booking_id' => $booking->id,
-            'payment_link_id' => $paymentLink->id,
-            'amount_due' => $paymentLink->amount_due,
-            'token' => $paymentLink->token,
-        ]);
 
         return $paymentLink;
     }
@@ -133,14 +121,6 @@ class PendingPaymentManager
     public static function generatePaymentLinkUrl(Booking $booking, int $expiryHours = 168): string
     {
         try {
-            Log::info('PendingPaymentManager: Starting payment link generation', [
-                'booking_id' => $booking->id,
-                'booking_code' => $booking->booking_code ?? 'N/A',
-                'total_estimated' => $booking->total_estimated,
-                'amount_to_pay' => $booking->amount_to_pay,
-                'quotation_amount' => $booking->quotation_amount ?? 'N/A',
-                'base_amount' => $booking->base_amount ?? 'N/A',
-            ]);
 
             $paymentLink = self::createPaymentLink($booking, $expiryHours);
 
@@ -167,13 +147,6 @@ class PendingPaymentManager
 
             $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
 
-            Log::info('PendingPaymentManager: Payment link generated successfully', [
-                'booking_id' => $booking->id,
-                'amount_due' => $paymentLink->amount_due,
-                'original_url' => $originalUrl,
-                'short_url' => $shortUrl,
-                'short_code' => $shortenedUrl->short_code,
-            ]);
 
             return $shortUrl;
         } catch (\Exception $e) {

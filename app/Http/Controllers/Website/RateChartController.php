@@ -220,14 +220,6 @@ class RateChartController extends Controller
                 'mode' => 'preview'
             ];
 
-            Log::debug("Rate chart: Calculating rate", [
-                'vehicle_group' => $group->name,
-                'requested_days' => $days,
-                'from_date' => $fromDate->format('Y-m-d'),
-                'to_date' => $toDate->format('Y-m-d'),
-                'diff_in_days' => $fromDate->diffInDays($toDate),
-                'calculated_days' => $fromDate->diffInDays($toDate) + 1,
-            ]);
 
             $pricingResult = $this->bookingFlowService->calculatePricing([
                 'service_type' => $serviceType->id,

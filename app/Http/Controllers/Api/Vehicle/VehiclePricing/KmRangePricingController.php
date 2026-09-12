@@ -146,12 +146,6 @@ class KmRangePricingController extends Controller
             $rule = KmRangePricingRule::create($validator->validated());
             $rule->load(['serviceType', 'vehicleGroup']);
 
-            Log::info("KM-range pricing rule created", [
-                'rule_id' => $rule->id,
-                'name' => $rule->name,
-                'scope' => $rule->scope,
-                'created_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'KM-range pricing rule created successfully',
@@ -216,11 +210,6 @@ class KmRangePricingController extends Controller
             $rule->update($validator->validated());
             $rule->load(['serviceType', 'vehicleGroup']);
 
-            Log::info("KM-range pricing rule updated", [
-                'rule_id' => $rule->id,
-                'name' => $rule->name,
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'KM-range pricing rule updated successfully',
@@ -249,11 +238,6 @@ class KmRangePricingController extends Controller
             $ruleName = $rule->name;
             $rule->delete();
 
-            Log::info("KM-range pricing rule deleted", [
-                'rule_id' => $id,
-                'name' => $ruleName,
-                'deleted_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'KM-range pricing rule deleted successfully'
@@ -280,11 +264,6 @@ class KmRangePricingController extends Controller
             $rule->is_active = !$rule->is_active;
             $rule->save();
 
-            Log::info("KM-range pricing rule status toggled", [
-                'rule_id' => $id,
-                'new_status' => $rule->is_active ? 'active' : 'inactive',
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => 'KM-range pricing rule status updated successfully',
@@ -518,12 +497,6 @@ class KmRangePricingController extends Controller
             $updated = KmRangePricingRule::whereIn('id', $request->rule_ids)
                 ->update(['is_active' => $request->is_active]);
 
-            Log::info("Bulk updated KM-range pricing rules status", [
-                'rule_ids' => $request->rule_ids,
-                'new_status' => $request->is_active ? 'active' : 'inactive',
-                'updated_count' => $updated,
-                'updated_by' => auth()->id()
-            ]);
 
             return response()->json([
                 'message' => "Successfully updated {$updated} KM-range pricing rules",

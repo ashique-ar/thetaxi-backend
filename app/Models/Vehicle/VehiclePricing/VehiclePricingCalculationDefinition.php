@@ -611,13 +611,6 @@ class VehiclePricingCalculationDefinition extends Model
             return $result;
         }
 
-        Log::debug('Calculating KM overages - Initial', [
-            'journey_distance' => $result['journey_distance'],
-            'result' => $result,
-            'slab_info' => $slabInfo,
-            'service_package_info' => $servicePackageInfo,
-            'inputs' => $inputs
-        ]);
 
         // Package allowances belong to the selected service package, not to a
         // duration slab. Resolve them before the slab guard so fixed/common
@@ -659,12 +652,6 @@ class VehiclePricingCalculationDefinition extends Model
             return $result;
         }
 
-        Log::debug('Calculating KM overages', [
-            'journey_distance' => $result['journey_distance'],
-            'slab_info' => $slabInfo,
-            'service_package_info' => $servicePackageInfo,
-            'inputs' => $inputs
-        ]);
         $actualKm = $journeyDistance;
 
         // Enhanced daily calculation for calendar days
@@ -711,7 +698,6 @@ class VehiclePricingCalculationDefinition extends Model
             // mileage is unavailable. There is no boundary to exceed.
             $result['extra_km'] = 0.0;
         }
-        Log::debug('KM overages calculated', $result);
         return $result;
     }
 
@@ -1354,7 +1340,6 @@ class VehiclePricingCalculationDefinition extends Model
             };
 
             if (!$conditionMet) {
-                Log::debug("Condition not met: {$field} {$operator} " . json_encode($expectedValue) . " (actual: " . json_encode($actualValue) . ")");
                 return false;
             }
         }
@@ -1576,15 +1561,6 @@ class VehiclePricingCalculationDefinition extends Model
                     $currentAmount += $adjustmentAmount;
                 }
 
-                if (!empty($kmRangeResult['rules_applied'])) {
-                    Log::info('KM range pricing applied to distance leg', [
-                        'vehicle_group_id' => $vehicleGroupId,
-                        'distance_type' => $distanceType,
-                        'distance' => $distance,
-                        'leg_adjustment' => $kmRangeResult['total_adjustment'] ?? 0,
-                        'current_amount' => $currentAmount,
-                    ]);
-                }
             }
         }
 

@@ -712,15 +712,12 @@ class LoyaltyController extends Controller
      */
     private function logRedemption(Customer $customer, int $points, string $reason, ?string $bookingId = null): void
     {
-        // You can implement a custom logging mechanism here
-        // For now, we'll just log it to the Laravel log
-        \Log::info('Loyalty Points Redeemed', [
+        \Log::info('Loyalty points redeemed', [
             'customer_id' => $customer->id,
             'user_id' => $customer->user_id,
             'points' => $points,
             'reason' => $reason,
             'booking_id' => $bookingId,
-            'timestamp' => now()
         ]);
     }
 }

@@ -523,11 +523,6 @@ class VehicleGroupPricingController extends Controller
         }
 
         if ($validator->fails()) {
-            Log::info('Vehicle group pricing validation failed', [
-                'errors' => $validator->errors()->toArray(),
-                'request' => $request->all(),
-                'vehicle_group_id' => $vehicleGroupId
-            ]);
 
             return response()->json([
                 'success' => false,

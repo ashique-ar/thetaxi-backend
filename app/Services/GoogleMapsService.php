@@ -101,7 +101,6 @@ class GoogleMapsService
 
             $data = $resp->json();
             if (($data['status'] ?? '') !== 'OK' || empty($data['routes'][0]['legs'][0]['distance']['value'])) {
-                Log::info('Directions no route', ['status' => $data['status'] ?? 'UNKNOWN']);
                 return 0.0;
             }
 
@@ -133,7 +132,6 @@ class GoogleMapsService
 
             $data = $resp->json();
             if (($data['status'] ?? '') !== 'OK' || empty($data['routes'][0]['legs'][0])) {
-                Log::info('Directions no route', ['status' => $data['status'] ?? 'UNKNOWN']);
                 return ['distance_km' => 0.0, 'duration_seconds' => 0];
             }
 

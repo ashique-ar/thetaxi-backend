@@ -1420,8 +1420,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ->unique('code')
                 ->values();
 
-                Log::info('Common Rates Found: ', ['count' => $commonRates->count()]);
-                Log::info('Common Rates Details: ', $commonRates->toArray());
             $commonRateVariables = $commonRates->map(function ($rate) {
                 return [
                     'name' => $rate->code,

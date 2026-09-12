@@ -99,14 +99,6 @@ class BookingController extends Controller
             }
             $searchParams['service_package_id'] = $searchParams['package_type']['id'] ?? null;
 
-            Log::debug('Search - Package setup for service type', [
-                'frontend_service' => $frontendService,
-                'package_id_from_request' => $packageId,
-                'package_type' => $searchParams['package_type'] ?? null,
-                'service_package_id' => $searchParams['service_package_id'],
-                'is_return_trip' => $searchParams['is_return_trip'] ?? false,
-                'return_date' => $searchParams['return_date'] ?? null,
-            ]);
 
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
@@ -235,16 +227,6 @@ class BookingController extends Controller
                     $params['dropoff_location']['address'] .= ' (Airport)';
                 }
 
-                // Log mapping for airport transfers to help debug address field mismatches
-                Log::info('Airport search payload mapping', [
-                    'from' => $requestData['from'] ?? null,
-                    'to' => $requestData['to'] ?? null,
-                    'pickup' => $requestData['pickup'] ?? null,
-                    'dropoff' => $requestData['dropoff'] ?? null,
-                    'pickup_lat' => $requestData['pickup_lat'] ?? null,
-                    'dropoff_lat' => $requestData['dropoff_lat'] ?? null,
-                    'transfer_type' => $requestData['transfer_type'] ?? null,
-                ]);
 
                 break;
 
@@ -558,10 +540,6 @@ class BookingController extends Controller
             $params['package_id'] = $selectedPackageId;
             $params['service_package_id'] = $selectedPackageId;
 
-            Log::info('ServicePackage selected in booking search', [
-                'service_type' => $serviceType->code,
-                'package_id' => $selectedPackageId,
-            ]);
         }
 
         return $params;
@@ -1076,19 +1054,6 @@ class BookingController extends Controller
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
 
-            Log::debug('[km-debug] Search results prepared for view', [
-                'frontend_service' => $frontendService,
-                'service_type_id' => $searchParams['service_type_id'] ?? $searchParams['service_type'] ?? null,
-                'service_package_id' => $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null,
-                'package_type' => !empty($searchParams['package_type']) ? [
-                    'id' => $searchParams['package_type']['id'] ?? null,
-                    'name' => $searchParams['package_type']['name'] ?? null,
-                    'max_km_per_day' => $searchParams['package_type']['max_km_per_day'] ?? null,
-                    'max_km_per_package' => $searchParams['package_type']['max_km_per_package'] ?? null,
-                ] : null,
-                'results_count' => count($transformedData),
-                'first_result_distance_details' => $transformedData[0]['pricing_info']['distance_details'] ?? null,
-            ]);
 
             // Wrap results in expected structure for blade template
             $results = [
@@ -1222,14 +1187,6 @@ class BookingController extends Controller
         $outboundDate = $searchParams['from_date'] ?? null;
         $packageId = $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null;
 
-        // Log return trip params for debugging
-        Log::debug('TransformResultsForPublicView - Return trip params', [
-            'is_return_trip' => $isReturnTrip,
-            'return_date' => $returnDate,
-            'outbound_date' => $outboundDate,
-            'package_id' => $packageId,
-            'has_package' => !empty($packageId),
-        ]);
 
         foreach ($vehicleGroups as $index => $groupData) {
             // Check if we have minimum required data
@@ -1323,13 +1280,6 @@ class BookingController extends Controller
                         }
                     }
 
-                    Log::debug('Return trip pricing calculated', [
-                        'vehicle_group_id' => $groupData['id'],
-                        'one_way_fare' => $oneWayFare,
-                        'return_fare' => $returnTripPricing['return_fare'] ?? 0,
-                        'total_fare' => $returnTripPricing['total_fare'] ?? 0,
-                        'discount_percentage' => $returnTripPricing['discount_percentage'] ?? 0,
-                    ]);
                 } catch (\Exception $e) {
                     Log::warning('Failed to calculate return trip pricing', [
                         'vehicle_group_id' => $groupData['id'],
@@ -1338,27 +1288,7 @@ class BookingController extends Controller
                 }
             }
 
-            // Log pricing info for debugging
-            Log::debug('TransformResultsForPublicView - Pricing formatted', [
-                'vehicle_group_id' => $groupData['id'],
-                'pricing_info_has_distance_details' => isset($pricingInfo['distance_details']),
-                'distance_details' => $pricingInfo['distance_details'] ?? null,
-                'base_amount' => $formattedPricing['base_amount'] ?? 0,
-                'is_return_trip' => $isReturnTrip,
-            ]);
 
-            Log::debug('[km-debug] Public result transformation', [
-                'vehicle_group_id' => $groupData['id'],
-                'vehicle_group_name' => $groupData['name'] ?? null,
-                'service_type' => $serviceType,
-                'selected_package_id' => $packageId,
-                'selected_package_km' => !empty($searchParams['package_type']) ? [
-                    'max_km_per_day' => $searchParams['package_type']['max_km_per_day'] ?? null,
-                    'max_km_per_package' => $searchParams['package_type']['max_km_per_package'] ?? null,
-                ] : null,
-                'raw_distance_details' => $pricingInfo['distance_details'] ?? null,
-                'formatted_distance_details' => $formattedPricing['distance_details'] ?? null,
-            ]);
 
             // Build result using the ACTUAL structure from BookingFlowService
             $results[] = [
@@ -2532,13 +2462,6 @@ class BookingController extends Controller
                 new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup)
             );
 
-            Log::info('Quotation request emails sent successfully', [
-                'inquiry_id' => $inquiry->id,
-                'inquiry_number' => $inquiry->inquiry_number ?? null,
-                'customer_email' => $requestData['customer_email'],
-                'admin_email' => $adminEmail,
-                'vehicle_group' => $vehicleGroup->name,
-            ]);
 
         } catch (\Exception $e) {
             Log::error('Error sending quotation request emails', [

@@ -30,7 +30,6 @@ class CmsController extends Controller
      */
     public function index(string $contentTypeSlug, Request $request): View
     {
-        Log::info("CMS Index: type={$contentTypeSlug}", $request->all());
 
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
@@ -84,7 +83,6 @@ class CmsController extends Controller
      */
     public function show(string $contentTypeSlug, string $contentSlug): View
     {
-        Log::info("CMS Show: type={$contentTypeSlug}, slug={$contentSlug}");
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
             ->firstOrFail();
@@ -250,11 +248,6 @@ class CmsController extends Controller
                             ];
                         }, $suggestedVehicles ?: []);
 
-                        Log::debug('CMS Booking Suggestion Details', [
-                            'search_params' => $searchParams,
-                            'result_count' => count($suggestedVehicles),
-                            'groups' => $groupSummaries
-                        ]);
 
                         // If no suggestions or all groups are quotation-only, attempt a relaxed fallback
                         $allQuoted = true;
@@ -266,29 +259,22 @@ class CmsController extends Controller
                         }
 
                         if (count($suggestedVehicles) === 0 || $allQuoted) {
-                            Log::info('CMS Show: No suitable suggested vehicles or all quoted; attempting relaxed search without pickup/dropoff to broaden results');
                             $fallbackParams = $searchParams;
                             unset($fallbackParams['pickup_location'], $fallbackParams['dropoff_location']);
                             try {
                                 $fallbackAvailability = $this->bookingFlowService->getAvailableVehicleGroups($fallbackParams, true);
                                 $fallbackGroups = $fallbackAvailability['data'] ?? [];
-                                Log::debug('CMS Booking Suggestion Fallback Details', [
-                                    'fallback_result_count' => count($fallbackGroups),
-                                ]);
                                 if (count($fallbackGroups) > 0) {
                                     $suggestedVehicles = $fallbackGroups;
-                                    Log::info('CMS Show: Using fallback vehicle suggestions for display', ['count' => count($suggestedVehicles)]);
                                 }
                             } catch (\Exception $e) {
                                 Log::warning('CMS Show fallback availability failed: ' . $e->getMessage());
                             }
                         }
                     } catch (\Exception $e) {
-                        Log::debug('CMS Booking Suggestion - logging failed', ['error' => $e->getMessage()]);
                     }
                 } else {
                     // Helpful debug log for missing service type mapping
-                    Log::debug('CMS Show: service type not found for availability lookup', ['service_type_raw' => $serviceTypeRaw]);
                 }
             } catch (\Exception $e) {
                 Log::warning("CMS Booking Suggestion Failed: " . $e->getMessage());

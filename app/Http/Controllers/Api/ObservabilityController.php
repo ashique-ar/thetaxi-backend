@@ -29,6 +29,8 @@ class ObservabilityController extends Controller
             'request_id' => ['nullable', 'string', 'max:100'],
         ]);
         $data = ObservabilitySanitizer::strings($data);
+        $data['client_timestamp'] = $data['timestamp'];
+        unset($data['timestamp']);
 
         Log::channel('loki_frontend')->log($data['level'], $data['message'], [
             ...$data,

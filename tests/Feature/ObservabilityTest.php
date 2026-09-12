@@ -1,6 +1,7 @@
 <?php
 
 use App\Support\ObservabilitySanitizer;
+use App\Logging\CreateLokiLogger;
 
 it('validates and records frontend observability events', function () {
     $this->postJson('/api/observability/frontend-log', [
@@ -19,4 +20,18 @@ it('routes backend and browser logs directly to Loki', function () {
     expect(config('logging.channels.loki_backend.driver'))->toBe('custom')
         ->and(config('logging.channels.loki_backend.labels.component'))->toBe('backend')
         ->and(config('logging.channels.loki_frontend.labels.component'))->toBe('frontend');
+
+    $logger = (new CreateLokiLogger)(config('logging.channels.loki_backend'));
+    expect($logger->getTimezone()->getName())->toBe(config('app.timezone'));
+});
+
+it('keeps debug tracing out of application logging', function () {
+    $files = new RecursiveIteratorIterator(new RecursiveDirectoryIterator(app_path()));
+
+    foreach ($files as $file) {
+        if ($file->isFile() && $file->getExtension() === 'php') {
+            expect(file_get_contents($file->getPathname()))
+                ->not->toMatch('/\\bLog::debug\\s*\\(/');
+        }
+    }
 });

@@ -533,7 +533,6 @@ class WebsiteSettingController extends Controller
             Artisan::call('optimize:clear');
             $this->settingsService->clearAllCache();
 
-            Log::info('Optimize clear triggered by user: ' . $request->user()->id);
 
             return response()->json([
                 'status' => 'success',

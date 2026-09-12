@@ -35,12 +35,6 @@ class DeviceService
         $deviceUuid = $deviceData['device_uuid'] ?? null;
         $deviceFingerprint = $deviceData['device_fingerprint'] ?? null;
         
-        Log::info('Attempting to register/update device', [
-            'driver_id' => $driver->id,
-            'device_uuid_provided' => !empty($deviceUuid),
-            'device_fingerprint_provided' => !empty($deviceFingerprint),
-            'platform' => $deviceData['platform'] ?? 'unknown',
-        ]);
         
         $updateData = [
             'device_name' => $deviceData['device_name'] ?? null,
@@ -94,23 +88,11 @@ class DeviceService
                         ->lockForUpdate()
                         ->first();
                     
-                    if ($existingDevice) {
-                        Log::info('Device found by fingerprint', [
-                            'driver_id' => $driver->id,
-                            'device_id' => $existingDevice->id,
-                            'existing_uuid' => $existingDevice->device_uuid,
-                        ]);
-                    }
                 }
                 
                 if ($existingDevice) {
                     // Restore if soft-deleted
                     if ($existingDevice->trashed()) {
-                        Log::info('Restoring soft-deleted device', [
-                            'driver_id' => $driver->id,
-                            'device_id' => $existingDevice->id,
-                            'device_uuid' => $existingDevice->device_uuid,
-                        ]);
                         $existingDevice->restore();
                     }
                     
@@ -118,12 +100,6 @@ class DeviceService
                     $existingDevice->update($updateData);
                     $device = $existingDevice;
                     
-                    Log::info('Driver device updated', [
-                        'driver_id' => $driver->id,
-                        'device_id' => $device->id,
-                        'device_uuid' => $device->device_uuid,
-                        'platform' => $device->platform,
-                    ]);
                 } else {
                     // Create new device with generated UUID
                     $newDeviceUuid = $deviceUuid ?: \Illuminate\Support\Str::uuid()->toString();
@@ -134,13 +110,6 @@ class DeviceService
                         'registered_at' => $now,
                     ]));
                     
-                    Log::info('Driver device created', [
-                        'driver_id' => $driver->id,
-                        'device_id' => $device->id,
-                        'device_uuid' => $device->device_uuid,
-                        'uuid_generated' => empty($deviceUuid),
-                        'platform' => $device->platform,
-                    ]);
                 }
                 
                 return $device;
@@ -190,11 +159,6 @@ class DeviceService
             'last_active_at' => now(),
         ]);
         
-        Log::info('Push token updated', [
-            'driver_id' => $driver->id,
-            'device_id' => $device->id,
-            'push_provider' => $device->push_provider,
-        ]);
         
         return $device;
     }
@@ -305,11 +269,6 @@ class DeviceService
             'push_token' => null, // Clear push token on deactivation
         ]);
         
-        Log::info('Driver device deactivated', [
-            'driver_id' => $driver->id,
-            'device_id' => $device->id,
-            'device_uuid' => $deviceUuid,
-        ]);
         
         return true;
     }
@@ -336,13 +295,6 @@ class DeviceService
             'push_token' => null,
         ]);
         
-        if ($count > 0) {
-            Log::info('Other driver devices deactivated', [
-                'driver_id' => $driver->id,
-                'deactivated_count' => $count,
-                'kept_device_uuid' => $exceptDeviceUuid,
-            ]);
-        }
         
         return $count;
     }
@@ -413,11 +365,6 @@ class DeviceService
         
         $device->delete();
         
-        Log::info('Driver device removed', [
-            'driver_id' => $driver->id,
-            'device_id' => $device->id,
-            'device_uuid' => $deviceUuid,
-        ]);
         
         return true;
     }
