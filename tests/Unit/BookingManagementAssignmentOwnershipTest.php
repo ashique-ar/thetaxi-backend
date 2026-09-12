@@ -2,6 +2,21 @@
 
 use Illuminate\Support\Str;
 
+it('projects booking requirements and selected trip instructions into the summary', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
+    $detailsMethod = Str::between($source, 'public function getAssignmentDetails(', 'private function buildTrackingPayload(');
+
+    expect($detailsMethod)
+        ->toContain("'corporateAccount',")
+        ->toContain("'corporate_name' => \$booking->corporateAccount?->name")
+        ->toContain("'passenger_count' => \$booking->passenger_count")
+        ->toContain("'luggage_count' => \$booking->luggage_count")
+        ->toContain("'special_requirements' => \$booking->special_requirements")
+        ->toContain("'trip_notes' => \$selectedBookingItem?->notes")
+        ->toContain("'pickup_landmark' => \$selectedBookingItem?->pickup_landmark")
+        ->toContain("'dropoff_landmark' => \$selectedBookingItem?->dropoff_landmark");
+});
+
 it('treats a selected booking item as the authoritative assignment owner', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
     $detailsMethod = Str::between(

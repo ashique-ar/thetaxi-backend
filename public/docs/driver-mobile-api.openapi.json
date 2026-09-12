@@ -82,10 +82,7 @@
             "DriverAssignmentService": {
                 "type": "object",
                 "description": "Stable service identity included in every canonical driver assignment projection.",
-                "required": [
-                    "name",
-                    "type"
-                ],
+                "required": ["name", "type"],
                 "properties": {
                     "id": {
                         "type": "string",
@@ -103,10 +100,7 @@
                     },
                     "type": {
                         "type": "string",
-                        "enum": [
-                            "with_driver",
-                            "self_drive"
-                        ]
+                        "enum": ["with_driver", "self_drive"]
                     }
                 }
             },
@@ -128,10 +122,7 @@
                     },
                     "route_mode": {
                         "type": "string",
-                        "enum": [
-                            "fixed_route",
-                            "open_package"
-                        ]
+                        "enum": ["fixed_route", "open_package"]
                     },
                     "requires_destination": {
                         "type": "boolean"
@@ -154,18 +145,11 @@
             "DriverBookingParty": {
                 "type": "object",
                 "description": "The traveler the driver should contact. Corporate employee/general-contact identity takes precedence over the account owner.",
-                "required": [
-                    "type",
-                    "traveler_type",
-                    "traveler_name"
-                ],
+                "required": ["type", "traveler_type", "traveler_name"],
                 "properties": {
                     "type": {
                         "type": "string",
-                        "enum": [
-                            "individual",
-                            "corporate"
-                        ]
+                        "enum": ["individual", "corporate"]
                     },
                     "account_name": {
                         "type": "string",
@@ -173,11 +157,7 @@
                     },
                     "traveler_type": {
                         "type": "string",
-                        "enum": [
-                            "customer",
-                            "employee",
-                            "general_contact"
-                        ]
+                        "enum": ["customer", "employee", "general_contact"]
                     },
                     "traveler_name": {
                         "type": "string",
@@ -199,9 +179,7 @@
     "paths": {
         "/api/driver/version-check": {
             "post": {
-                "tags": [
-                    "App Settings"
-                ],
+                "tags": ["App Settings"],
                 "summary": "Version Check",
                 "description": "Public pre-login version check. If `can_continue` is false, the app should block usage and redirect to Play Store/App Store internally. The API does not return a store URL.",
                 "operationId": "post_api_driver_version_check_Version_Check",
@@ -290,9 +268,7 @@
                 }
             },
             "get": {
-                "tags": [
-                    "App Settings"
-                ],
+                "tags": ["App Settings"],
                 "summary": "Check driver app version (GET)",
                 "description": "GET form of the canonical public pre-login version check. POST is preferred; both methods return the same response contract.",
                 "security": [],
@@ -390,9 +366,7 @@
         },
         "/api/public/driver-mobile/version-check": {
             "post": {
-                "tags": [
-                    "App Settings"
-                ],
+                "tags": ["App Settings"],
                 "summary": "Version Check (Compatibility Alias)",
                 "description": "Compatibility alias for older integrations. Prefer `/api/driver/version-check` for new driver app builds.",
                 "operationId": "post_api_public_driver_mobile_version_check_Version_Check_Compatibility_Alias",
@@ -483,9 +457,7 @@
         },
         "/api/driver/auth/login": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Login",
                 "description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null).",
                 "operationId": "post_api_driver_auth_login_Login",
@@ -692,9 +664,7 @@
         },
         "/api/driver/auth/profile": {
             "get": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Get Profile",
                 "description": "Retrieve the authenticated driver's profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts.",
                 "operationId": "get_api_driver_auth_profile_Get_Profile",
@@ -816,9 +786,7 @@
         },
         "/api/driver/auth/refresh": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Refresh Token",
                 "description": "Refresh the access token using the refresh token.",
                 "operationId": "post_api_driver_auth_refresh_Refresh_Token",
@@ -937,9 +905,7 @@
         },
         "/api/driver/auth/logout": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Logout",
                 "description": "Logout the authenticated driver by revoking their current token.",
                 "operationId": "post_api_driver_auth_logout_Logout",
@@ -1012,11 +978,9 @@
         },
         "/api/driver/status/online": {
             "post": {
-                "tags": [
-                    "Status Management"
-                ],
+                "tags": ["Status Management"],
                 "summary": "Go Online",
-                "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details.",
+                "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` ” an array of DriverAssignments in active/pending_approval status with booking and booking_item details.",
                 "operationId": "post_api_driver_status_online_Go_Online",
                 "security": [
                     {
@@ -1174,9 +1138,7 @@
         },
         "/api/driver/status/offline": {
             "post": {
-                "tags": [
-                    "Status Management"
-                ],
+                "tags": ["Status Management"],
                 "summary": "Go Offline",
                 "description": "Set the driver's status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details.",
                 "operationId": "post_api_driver_status_offline_Go_Offline",
@@ -1277,9 +1239,7 @@
         },
         "/api/driver/status": {
             "get": {
-                "tags": [
-                    "Status Management"
-                ],
+                "tags": ["Status Management"],
                 "summary": "Get Current Status",
                 "description": "Retrieve the driver's current online/offline status and active session information.",
                 "operationId": "get_api_driver_status_Get_Current_Status",
@@ -1469,9 +1429,7 @@
         },
         "/api/driver/heartbeat": {
             "post": {
-                "tags": [
-                    "Heartbeat"
-                ],
+                "tags": ["Heartbeat"],
                 "summary": "Send Heartbeat",
                 "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`.",
                 "operationId": "post_api_driver_heartbeat_Send_Heartbeat",
@@ -1539,9 +1497,7 @@
         },
         "/api/driver/location": {
             "post": {
-                "tags": [
-                    "Location Tracking"
-                ],
+                "tags": ["Location Tracking"],
                 "summary": "Update Location",
                 "description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving.",
                 "operationId": "post_api_driver_location_Update_Location",
@@ -1721,9 +1677,7 @@
         },
         "/api/driver/location/bulk": {
             "post": {
-                "tags": [
-                    "Location Tracking"
-                ],
+                "tags": ["Location Tracking"],
                 "summary": "Bulk Upload Buffered Locations",
                 "description": "Upload location points buffered on the device during temporary network issues. Duplicate points are skipped when `recorded_at`, `latitude`, and `longitude` match an already stored point for the active session or another point in the same payload.",
                 "operationId": "post_api_driver_location_bulk_Bulk_Upload_Buffered_Locations",
@@ -1925,9 +1879,7 @@
         },
         "/api/driver/location/history": {
             "get": {
-                "tags": [
-                    "Location Tracking"
-                ],
+                "tags": ["Location Tracking"],
                 "summary": "Get Location History",
                 "description": "Retrieve driver location history using the same endpoint for both live and replay use cases.\n\nDefault behavior:\n- Returns active session route points.\n- If no active session exists, returns the latest session route points.\n\nOptional filters:\n- assignment_id: get trip-specific route points (works after trip end)\n- session_id: get route points for a specific session\n- from/to: recorded_at time window\n- limit: max points (1-10000)\n\nEach route point includes assignment_id so maps can distinguish trip-linked vs general movement.",
                 "operationId": "get_api_driver_location_history_Get_Location_History",
@@ -2043,9 +1995,7 @@
         },
         "/api/driver/sessions": {
             "get": {
-                "tags": [
-                    "Sessions"
-                ],
+                "tags": ["Sessions"],
                 "summary": "List Sessions",
                 "description": "Retrieve paginated list of driver's session history.",
                 "operationId": "get_api_driver_sessions_List_Sessions",
@@ -2221,9 +2171,7 @@
         },
         "/api/driver/sessions/{session_id}": {
             "get": {
-                "tags": [
-                    "Sessions"
-                ],
+                "tags": ["Sessions"],
                 "summary": "Get Session Details",
                 "description": "Retrieve detailed information about a specific session including route points and statistics.",
                 "operationId": "get_api_driver_sessions_session_id_Get_Session_Details",
@@ -2492,9 +2440,7 @@
         },
         "/api/driver/devices": {
             "get": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "List Devices",
                 "description": "Retrieve all devices registered for the authenticated driver.",
                 "operationId": "get_api_driver_devices_List_Devices",
@@ -2654,9 +2600,7 @@
                 }
             },
             "put": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "Update Device",
                 "description": "Update the current driver device information. `device_uuid` is required so the backend can identify the device record.",
                 "operationId": "put_api_driver_devices_Update_Device",
@@ -2856,9 +2800,7 @@
         },
         "/api/driver/devices/current": {
             "get": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "Get Current Device",
                 "description": "Retrieve information about the current device.",
                 "operationId": "get_api_driver_devices_current_Get_Current_Device",
@@ -3033,9 +2975,7 @@
         },
         "/api/driver/devices/push-token": {
             "post": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "Update Push Token",
                 "description": "Update the push notification token for the current device.",
                 "operationId": "post_api_driver_devices_push_token_Update_Push_Token",
@@ -3244,9 +3184,7 @@
         },
         "/api/driver/devices/{device_uuid}/deactivate": {
             "post": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "Deactivate Device",
                 "description": "Deactivate a specific device.",
                 "operationId": "post_api_driver_devices_device_uuid_deactivate_Deactivate_Device",
@@ -3325,9 +3263,7 @@
         },
         "/api/driver/devices/{device_uuid}": {
             "delete": {
-                "tags": [
-                    "Device Management"
-                ],
+                "tags": ["Device Management"],
                 "summary": "Remove Device",
                 "description": "Remove a device from the driver's account.",
                 "operationId": "delete_api_driver_devices_device_uuid_Remove_Device",
@@ -3406,9 +3342,7 @@
         },
         "/api/driver/notifications": {
             "get": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "List Notifications",
                 "description": "List driver notifications. Supports pagination, unread-only filtering, and optional notification type filtering.",
                 "operationId": "get_api_driver_notifications_List_Notifications",
@@ -3571,9 +3505,7 @@
         },
         "/api/driver/notifications/unread-count": {
             "get": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "Get Unread Count",
                 "description": "Get unread notification count for the authenticated driver user.",
                 "operationId": "get_api_driver_notifications_unread_count_Get_Unread_Count",
@@ -3619,9 +3551,7 @@
         },
         "/api/driver/notifications/{notification_id}": {
             "get": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "Get Notification Detail",
                 "description": "Fetch one notification owned by the authenticated driver user.",
                 "operationId": "get_api_driver_notifications_notification_id_Get_Notification_Detail",
@@ -3761,9 +3691,7 @@
                 }
             },
             "delete": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "Delete Notification",
                 "description": "Delete one notification owned by the authenticated driver user.",
                 "operationId": "delete_api_driver_notifications_notification_id_Delete_Notification",
@@ -3847,9 +3775,7 @@
         },
         "/api/driver/notifications/{notification_id}/mark-read": {
             "post": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "Mark Notification Read",
                 "description": "Mark one notification as read.",
                 "operationId": "post_api_driver_notifications_notification_id_mark_read_Mark_Notification_Read",
@@ -3963,9 +3889,7 @@
         },
         "/api/driver/notifications/mark-all-read": {
             "post": {
-                "tags": [
-                    "Notification Management"
-                ],
+                "tags": ["Notification Management"],
                 "summary": "Mark All Notifications Read",
                 "description": "Mark all notifications as read for the authenticated driver user.",
                 "operationId": "post_api_driver_notifications_mark_all_read_Mark_All_Notifications_Read",
@@ -4016,9 +3940,7 @@
         },
         "/api/driver/assignments": {
             "get": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "List Assignments",
                 "description": "List driver assignments with optional status/date/range filters. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
                 "operationId": "get_api_driver_assignments_List_Assignments",
@@ -4352,9 +4274,7 @@
         },
         "/api/driver/assignments/current": {
             "get": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "Get Current Assignment",
                 "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
                 "operationId": "get_api_driver_assignments_current_Get_Current_Assignment",
@@ -4600,9 +4520,7 @@
         },
         "/api/driver/assignments/{assignment_id}/accept": {
             "post": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "Accept Assignment",
                 "description": "Accept a driver assignment. The response can include generated `route_stops` with `id`, `booking_stop_id`, `type_sequence`, and `display_label` for multi-stop hires.",
                 "operationId": "post_api_driver_assignments_assignment_id_accept_Accept_Assignment",
@@ -5107,9 +5025,7 @@
         },
         "/api/driver/assignments/{assignment_id}/decline": {
             "post": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "Decline Assignment",
                 "description": "Decline a driver assignment with a reason.",
                 "operationId": "post_api_driver_assignments_assignment_id_decline_Decline_Assignment",
@@ -5621,9 +5537,7 @@
         },
         "/api/driver/hires": {
             "get": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "List Hires (Completed)",
                 "description": "List completed hire history for the authenticated driver.",
                 "operationId": "get_api_driver_hires_List_Hires_Completed",
@@ -6146,9 +6060,7 @@
         },
         "/api/driver/assignments/{assignment_id}/status": {
             "get": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Get Trip Status",
                 "description": "Canonical endpoint: get trip status for a specific assignment. Response includes all generated route stops in `stops`, the next actionable stop in `current_stop`, and assignment-level `allowed_actions`. Use each stop `id` for stop action endpoints. Use `booking_stop_id`, `type_sequence`, and `display_label` to identify the exact booking pickup/dropoff in the mobile UI. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "get_api_driver_assignments_assignment_id_status_Get_Trip_Status",
@@ -6346,9 +6258,7 @@
                                         "trip_started_at": "2026-05-21T08:15:00+05:30",
                                         "stops": [],
                                         "current_stop": null,
-                                        "allowed_actions": [
-                                            "complete"
-                                        ],
+                                        "allowed_actions": ["complete"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 96.4,
@@ -6408,9 +6318,7 @@
         },
         "/api/driver/assignments/{assignment_id}/arrived": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Confirm Pickup Arrival",
                 "description": "Canonical endpoint: mark pickup arrival for a specific assignment. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_arrived_Confirm_Pickup_Arrival",
@@ -6966,9 +6874,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -6985,9 +6891,7 @@
         },
         "/api/driver/assignments/{assignment_id}/start": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Start Trip",
                 "description": "Canonical endpoint: start trip for a specific assignment. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_start_Start_Trip",
@@ -7531,9 +7435,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -7584,9 +7486,7 @@
         },
         "/api/driver/assignments/{assignment_id}/stops/{stop_id}/arrived": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Mark Route Stop Arrived",
                 "description": "Multi-stop endpoint. Marks the current route stop as arrived. Use `current_stop.id` from trip status as `{{stop_id}}`; `booking_stop_id`, `type_sequence`, and `display_label` identify which pickup/dropoff this is. Previous stops must already be completed or skipped.",
                 "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_arrived_Mark_Route_Stop_Arrived",
@@ -8260,9 +8160,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -8315,9 +8213,7 @@
         },
         "/api/driver/assignments/{assignment_id}/stops/{stop_id}/picked-up": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Complete Pickup Stop",
                 "description": "Multi-stop endpoint. Completes an arrived pickup stop as picked_up. Use only when `current_stop.type` is `pickup` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Pickup 2` in mobile.",
                 "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_picked_up_Complete_Pickup_Stop",
@@ -8989,9 +8885,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -9041,9 +8935,7 @@
         },
         "/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Complete Dropoff Stop",
                 "description": "Multi-stop endpoint. Completes an arrived dropoff stop as dropped_off. Use only when `current_stop.type` is `dropoff` and `current_stop.status` is `arrived`; display `current_stop.display_label` such as `Drop-off 1` in mobile.",
                 "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_dropped_off_Complete_Dropoff_Stop",
@@ -9715,9 +9607,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -9767,9 +9657,7 @@
         },
         "/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Skip Route Stop",
                 "description": "Multi-stop endpoint. Skips the current pickup/dropoff stop. Skipped stops are terminal and allow the driver to move to the next stop. Use `booking_stop_id` and `display_label` in logs/UI to show exactly which booking stop was skipped.",
                 "operationId": "post_api_driver_assignments_assignment_id_stops_stop_id_skip_Skip_Route_Stop",
@@ -10440,9 +10328,7 @@
                                                 "skip"
                                             ]
                                         },
-                                        "allowed_actions": [
-                                            "stop_action"
-                                        ],
+                                        "allowed_actions": ["stop_action"],
                                         "estimated_distance_to_pickup_km": null,
                                         "near_pickup": false,
                                         "cumulative_distance_km": 12.5,
@@ -10492,9 +10378,7 @@
         },
         "/api/driver/assignments/{assignment_id}/complete": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "End Trip",
                 "description": "Canonical endpoint: complete trip for a specific assignment. Backend calculates/stores the final hire amount and returns payment instructions. If `payment.collection_required` is true, call collect-payment next. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_complete_End_Trip",
@@ -10889,9 +10773,7 @@
         },
         "/api/driver/assignments/{assignment_id}/collect-payment": {
             "post": {
-                "tags": [
-                    "Trip Tracking"
-                ],
+                "tags": ["Trip Tracking"],
                 "summary": "Collect Cash Payment",
                 "description": "Call only after complete-trip response returns `payment.collection_required = true`. Records cash collected by driver. This endpoint is shared by fixed-route, multi-stop, and open-package chauffeur hires; mobile behavior is selected from trip_mode, destination_known, and is_multi_stop in the assignment/status response.",
                 "operationId": "post_api_driver_assignments_assignment_id_collect_payment_Collect_Cash_Payment",
@@ -11063,9 +10945,7 @@
         },
         "/api/driver/earnings/summary": {
             "get": {
-                "tags": [
-                    "Earnings"
-                ],
+                "tags": ["Earnings"],
                 "summary": "Get Earnings Summary",
                 "description": "Get earnings summary for today/this week/this month.",
                 "operationId": "get_api_driver_earnings_summary_Get_Earnings_Summary",
@@ -11187,9 +11067,7 @@
         },
         "/api/driver/earnings/daily": {
             "get": {
-                "tags": [
-                    "Earnings"
-                ],
+                "tags": ["Earnings"],
                 "summary": "Get Daily Earnings",
                 "description": "Get earnings breakdown for a specific date.",
                 "operationId": "get_api_driver_earnings_daily_Get_Daily_Earnings",
@@ -11670,9 +11548,7 @@
         },
         "/api/driver/earnings/range": {
             "get": {
-                "tags": [
-                    "Earnings"
-                ],
+                "tags": ["Earnings"],
                 "summary": "Get Range Earnings",
                 "description": "Get earnings breakdown for a custom date range.",
                 "operationId": "get_api_driver_earnings_range_Get_Range_Earnings",
@@ -12167,9 +12043,7 @@
         },
         "/api/driver/location/health": {
             "post": {
-                "tags": [
-                    "Location Tracking"
-                ],
+                "tags": ["Location Tracking"],
                 "summary": "Report mobile location health",
                 "description": "Reports GPS queue/fix health to operations monitoring. This is telemetry acknowledgement and does not upload route points.",
                 "security": [
@@ -12183,10 +12057,7 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": [
-                                    "state",
-                                    "queue_count"
-                                ],
+                                "required": ["state", "queue_count"],
                                 "properties": {
                                     "state": {
                                         "type": "string",
@@ -12323,9 +12194,7 @@
         },
         "/api/driver/assignments/{assignment_id}/acknowledge": {
             "post": {
-                "tags": [
-                    "Booking Assignments"
-                ],
+                "tags": ["Booking Assignments"],
                 "summary": "Acknowledge assignment notification",
                 "description": "Records that the driver opened the assignment notification. It does not accept the assignment.",
                 "security": [
@@ -12465,9 +12334,7 @@
         },
         "/api/driver/auth/forgot-password": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Request driver password reset",
                 "security": [],
                 "requestBody": {
@@ -12476,9 +12343,7 @@
                         "application/json": {
                             "schema": {
                                 "type": "object",
-                                "required": [
-                                    "email"
-                                ],
+                                "required": ["email"],
                                 "properties": {
                                     "email": {
                                         "type": "string",
@@ -12527,9 +12392,7 @@
         },
         "/api/driver/auth/reset-password": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Reset driver password",
                 "security": [],
                 "requestBody": {
@@ -12607,9 +12470,7 @@
         },
         "/api/driver/auth/change-password": {
             "post": {
-                "tags": [
-                    "Authentication"
-                ],
+                "tags": ["Authentication"],
                 "summary": "Change driver password",
                 "security": [
                     {
