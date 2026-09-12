@@ -171,6 +171,7 @@ class AllPermissionsSeeder extends Seeder
         'bookings.approve',
         'bookings.complete',
         'bookings.complete_repairs',
+        'bookings.price_override',
         'bookings.dispatch',
         'bookings.export',
         'bookings.process_return',

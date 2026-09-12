@@ -2604,6 +2604,11 @@ class BookingLifecycleService
             $finalCalculationCurrencyAmount * $currencyContext['exchange_rate'],
             2
         );
+        if ($bookingItem->price_override_amount !== null) {
+            $audit['calculated_completion_price'] = $finalBase;
+            $finalBase = (float) $bookingItem->price_override_amount;
+            $audit['manual_price_preserved'] = true;
+        }
         $audit += [
             'calculated_base' => $calculatedBase,
             'calculated_base_converted' => round(

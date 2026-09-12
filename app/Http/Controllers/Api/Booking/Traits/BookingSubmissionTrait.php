@@ -250,6 +250,12 @@ trait BookingSubmissionTrait
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
             $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
             $bookingForEdit = Booking::findOrFail($bookingId);
+            if (!Gate::allows('update', $bookingForEdit)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized to edit this booking',
+                ], 403);
+            }
             $structureEditable = in_array(
                 (string) $bookingForEdit->status,
                 ['draft', 'pending', 'pending_approval', 'approved', 'confirmed'],

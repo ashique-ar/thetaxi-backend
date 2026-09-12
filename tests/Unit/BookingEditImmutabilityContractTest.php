@@ -18,3 +18,11 @@ it('rejects structural booking updates after allocation', function () {
         ->toContain('Trip structure is locked after allocation. Use lifecycle actions for operational changes.')
         ->toContain("['draft', 'pending', 'pending_approval', 'approved', 'confirmed']");
 });
+
+it('authorizes the update mutation itself', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'));
+
+    expect($controller)
+        ->toContain("if (!Gate::allows('update', \$bookingForEdit))")
+        ->toContain('Unauthorized to edit this booking');
+});

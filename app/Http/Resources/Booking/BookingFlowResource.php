@@ -21,7 +21,6 @@ class BookingFlowResource extends JsonResource
             'status' => $this->status,
             'approval_status' => $this->approval_status,
             'requires_approval' => $this->requires_approval,
-            'has_overrides' => $this->has_overrides,
 
             // Customer information
             'customer' => $this->whenLoaded('customer', function () {
@@ -105,12 +104,8 @@ class BookingFlowResource extends JsonResource
                 'total_estimated' => $this->total_estimated,
                 'total_actual' => $this->total_actual,
                 'currency' => $this->currency,
-                'base_price_override' => $this->base_price_override,
-                'base_price_override_reason' => $this->base_price_override_reason,
                 'discounts' => $this->discounts,
                 'addon_overrides' => $this->addon_overrides,
-                'original_totals' => $this->original_totals,
-                'edited_totals' => $this->edited_totals,
                 'gamify_points_earned' => $this->gamify_points_earned,
                 'gamify_discount_applied' => $this->gamify_discount_applied,
                 'gamify_details' => $this->gamify_details,
@@ -210,10 +205,9 @@ class BookingFlowResource extends JsonResource
             ],
 
             // Override and workflow information
-            'override_reasons' => $this->override_reasons,
             'concurrent_assignments' => $this->concurrent_assignments,
             'workflow_step' => $this->workflow_step,
-            'workflow_data' => $this->workflow_data,
+            'workflow_data' => $this->withoutOriginalPrices((array) $this->workflow_data),
 
             // Add-ons
             'addons' => $this->whenLoaded('addons', function () {
@@ -262,8 +256,28 @@ class BookingFlowResource extends JsonResource
             'cancelled_at' => $this->cancelled_at?->format('Y-m-d H:i:s'),
 
             // Multi-trip details
-            'booking_items' => $this->whenLoaded('bookingItems'),
+            'booking_items' => $this->whenLoaded('bookingItems', function () {
+                return $this->bookingItems->map(fn ($item) => $this->withoutOriginalPrices($item->toArray()));
+            }),
             'variable_customizations' => $this->whenLoaded('variableCustomizations'),
         ];
+    }
+
+    private function withoutOriginalPrices(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if (in_array((string) $key, [
+                'price_override_amount', 'price_override_reason', 'price_overridden_by',
+                'price_overridden_at', 'price_adjustment_reason', 'final_price',
+            ], true) || preg_match('/(^original_|_original_|price_before_|calculated_(price|base))/', (string) $key)) {
+                unset($values[$key]);
+                continue;
+            }
+            if (is_array($value)) {
+                $values[$key] = $this->withoutOriginalPrices($value);
+            }
+        }
+
+        return $values;
     }
 }

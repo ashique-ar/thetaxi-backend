@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingVariableCustomization;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
@@ -49,6 +50,7 @@ use App\Services\Pricing\PricingHolidayCalendarService;
 use App\Services\Pricing\PricingContextPolicyService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Auth\Access\AuthorizationException;
 
 
 class BookingFlowService
@@ -2025,6 +2027,7 @@ class BookingFlowService
 
     public function submitBookingForApproval(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
@@ -2544,6 +2547,7 @@ class BookingFlowService
 
     public function confirmBooking(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
@@ -2661,6 +2665,8 @@ class BookingFlowService
                 // Handle vehicle and driver assignments for confirmed booking
                 $this->createBookingAssignments($booking, $params, 'active');
             }
+
+            $this->syncBookingTotalsFromItems($booking);
 
             if (!$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
                 $notifyInternalTeam = filter_var($params['notify_internal_team'] ?? true, FILTER_VALIDATE_BOOL);
@@ -2882,6 +2888,8 @@ class BookingFlowService
             $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
         }
 
+        $calculatedTotal = (float) ($pricing['total_amount'] ?? $booking->total_estimated ?? 0);
+        $overrideAttributes = $this->resolveItemPriceOverride($params, $calculatedTotal, $bookingItem);
         $itemAttributes = [
             'booking_id' => $booking->id,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -2889,8 +2897,8 @@ class BookingFlowService
             'vehicle_id' => $params['vehicle_id'] ?? null,
             'driver_id' => $params['driver_id'] ?? null,
             'quantity' => 1,
-            'unit_price' => $pricing['total_amount'] ?? $booking->base_amount ?? 0,
-            'total_price' => $pricing['total_amount'] ?? $booking->total_estimated ?? 0,
+            'unit_price' => $overrideAttributes['effective_price'],
+            'total_price' => $overrideAttributes['effective_price'],
             'from_date' => $params['from_date'] ?? null,
             'to_date' => $params['to_date'] ?? null,
             'from_time' => $params['from_time'] ?? null,
@@ -2926,6 +2934,8 @@ class BookingFlowService
             ]),
         ];
 
+        $previousPrice = $bookingItem ? (float) $bookingItem->total_price : $calculatedTotal;
+        $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
         if ($bookingItem) {
             if ($bookingItem->trashed()) {
                 $bookingItem->restore();
@@ -2935,7 +2945,126 @@ class BookingFlowService
             $bookingItem = BookingItem::create($itemAttributes);
         }
 
+        $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+
         return $bookingItem;
+    }
+
+    private function assertCanOverrideTripPrices(array $params): void
+    {
+        $bookingId = $params['booking_id'] ?? null;
+        $hasPriceOverride = collect($params['booking_items'] ?? [])->contains(function ($item) use ($bookingId): bool {
+            if (!is_array($item) || !array_key_exists('final_price', $item) || $item['final_price'] === null || $item['final_price'] === '') {
+                return false;
+            }
+
+            if ($bookingId && !empty($item['id'])) {
+                $existing = BookingItem::query()
+                    ->where('booking_id', $bookingId)
+                    ->whereKey($item['id'])
+                    ->first();
+                if ($existing && abs((float) $existing->total_price - (float) $item['final_price']) < 0.01) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if ($hasPriceOverride && !Auth::user()?->can('bookings.price_override')) {
+            throw new AuthorizationException('You do not have permission to change trip prices.');
+        }
+    }
+
+    private function withoutOriginalPriceFields(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if (preg_match('/(^original_|_original_|price_before_|calculated_(price|base))/', (string) $key)) {
+                unset($values[$key]);
+            } elseif (is_array($value)) {
+                $values[$key] = $this->withoutOriginalPriceFields($value);
+            }
+        }
+
+        return $values;
+    }
+
+    private function resolveItemPriceOverride(array $itemData, float $calculatedPrice, ?BookingItem $existing = null): array
+    {
+        $hasSubmittedPrice = array_key_exists('final_price', $itemData) && $itemData['final_price'] !== null && $itemData['final_price'] !== '';
+        if ($hasSubmittedPrice && (!is_scalar($itemData['final_price']) || !is_numeric($itemData['final_price']))) {
+            throw ValidationException::withMessages(['booking_items' => 'Every trip final price must be a valid number.']);
+        }
+        $effectivePrice = $hasSubmittedPrice
+            ? round((float) $itemData['final_price'], 2)
+            : ($existing?->price_override_amount !== null ? (float) $existing->price_override_amount : round($calculatedPrice, 2));
+
+        if ($effectivePrice < 0) {
+            throw ValidationException::withMessages(['booking_items' => 'Trip final prices cannot be negative.']);
+        }
+
+        $isOverride = abs($effectivePrice - round($calculatedPrice, 2)) >= 0.01;
+        $reason = trim((string) ($itemData['price_adjustment_reason'] ?? ($existing?->price_override_reason ?? '')));
+        if (mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages(['booking_items' => 'Trip price change reasons cannot exceed 500 characters.']);
+        }
+        if ($isOverride && $reason === '') {
+            throw ValidationException::withMessages(['booking_items' => 'A reason is required for every changed trip price.']);
+        }
+
+        return [
+            'effective_price' => $effectivePrice,
+            'calculated_price' => round($calculatedPrice, 2),
+            'reason' => $isOverride ? $reason : null,
+            'changed' => $isOverride && $hasSubmittedPrice && (!$existing || abs((float) $existing->total_price - $effectivePrice) >= 0.01),
+            'columns' => [
+                'price_override_amount' => $isOverride ? $effectivePrice : null,
+                'price_override_reason' => $isOverride ? $reason : null,
+                'price_overridden_by' => $isOverride ? Auth::id() : null,
+                'price_overridden_at' => $isOverride ? now() : null,
+            ],
+        ];
+    }
+
+    private function recordItemPriceOverride(BookingItem $item, float $previousPrice, array $override): void
+    {
+        if (!$override['changed']) {
+            return;
+        }
+
+        BookingActivity::create([
+            'booking_id' => $item->booking_id,
+            'booking_item_id' => $item->id,
+            'event_key' => 'trip_price_changed',
+            'channel' => 'system',
+            'result_status' => 'completed',
+            'source' => 'portal',
+            'title' => 'Trip price changed',
+            'detail' => $override['reason'],
+            'idempotency_key' => 'trip-price-'.Str::uuid(),
+            'meta' => [
+                'previous_price' => round($previousPrice, 2),
+                'calculated_price' => $override['calculated_price'],
+                'final_price' => $override['effective_price'],
+                'changed_by' => Auth::id(),
+                'changed_by_name' => trim((string) (Auth::user()?->full_name ?: Auth::user()?->email)),
+                'currency' => $item->currency ?: config('booking.base_currency', 'LKR'),
+            ],
+            'event_at' => now(),
+        ]);
+    }
+
+    private function syncBookingTotalsFromItems(Booking $booking): void
+    {
+        $total = (float) $booking->bookingItems()
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->sum('total_price');
+
+        $booking->forceFill([
+            'base_amount' => $total,
+            'total_estimated' => $total,
+            'total_actual' => $total,
+        ])->save();
     }
 
     /**
@@ -2963,6 +3092,7 @@ class BookingFlowService
 
     public function updateBooking(string $bookingId, array $params, array $changeAnalytics): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         return DB::transaction(function () use ($bookingId, $params) {
 
             $booking = Booking::with(['bookingItems', 'bookingAddons', 'variableCustomizations'])->findOrFail($bookingId);
@@ -3153,6 +3283,18 @@ class BookingFlowService
                         ? $existingBookingItems->get($submittedItemId)
                         : null;
 
+                    $overrideAttributes = $this->resolveItemPriceOverride(
+                        $itemData,
+                        (float) $itemTotals['total_estimated'],
+                        $bookingItem
+                    );
+                    $previousPrice = $bookingItem
+                        ? (float) $bookingItem->total_price
+                        : (float) $itemTotals['total_estimated'];
+                    $itemAttributes['unit_price'] = $overrideAttributes['effective_price'];
+                    $itemAttributes['total_price'] = $overrideAttributes['effective_price'];
+                    $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
+
                     if ($bookingItem && ($bookingItem->approved_at || $bookingItem->dispatch()->exists())) {
                         $lockedPackageId = data_get($bookingItem->metadata, 'service_package_id')
                             ?? data_get($bookingItem->metadata, 'package_info.id');
@@ -3171,13 +3313,15 @@ class BookingFlowService
                         $bookingItem = BookingItem::create($itemAttributes);
                     }
 
+                    $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+
                     $retainedBookingItemIds[] = (string) $bookingItem->id;
 
                     // Accumulate totals
-                    $totalBaseAmount += $itemTotals['base_amount'];
+                    $totalBaseAmount += $overrideAttributes['effective_price'];
                     $totalAddonsCost += $itemTotals['addons_cost'];
                     $totalDiscountAmount += $itemTotals['discount_amount'];
-                    $totalEstimated += $itemTotals['total_estimated'];
+                    $totalEstimated += $overrideAttributes['effective_price'];
                 }
 
                 $booking->bookingItems()
@@ -7844,9 +7988,10 @@ class BookingFlowService
         // fallback currency
         $currency = $summary['currency'] ?? 'LKR';
 
-        // Transform booking items for multi-trip support
-        $bookingItems = $booking->bookingItems->map(function ($item) {
-            return [
+        // Transform booking items for multi-trip support. Price-change metadata is internal-only.
+        $canViewPriceAudit = Auth::user()?->can('bookings.price_override') === true;
+        $bookingItems = $booking->bookingItems->map(function ($item) use ($canViewPriceAudit) {
+            $data = [
                 'id' => (string) $item->id,
                 'booking_id' => (string) $item->booking_id,
                 'service_type_id' => $item->service_type_id ? (string) $item->service_type_id : null,
@@ -7876,7 +8021,7 @@ class BookingFlowService
                 'quantity' => (int) ($item->quantity ?? 1),
                 'unit_price' => (float) ($item->unit_price ?? 0),
                 'total_price' => (float) ($item->total_price ?? 0),
-                'pricing_breakdown' => $item->pricing_breakdown ?? null,
+                'pricing_breakdown' => $canViewPriceAudit ? ($item->pricing_breakdown ?? null) : null,
                 'addons' => $item->addons ?? [],
                 'customizations' => $item->customizations ?? [],
                 'discounts' => $item->discounts ?? [],
@@ -7914,7 +8059,34 @@ class BookingFlowService
                 'notes' => $item->notes ?? null,
                 'metadata' => $item->metadata ?? null,
             ];
+
+            if ($canViewPriceAudit) {
+                $data['price_override_amount'] = $item->price_override_amount !== null
+                    ? (float) $item->price_override_amount
+                    : null;
+                $data['price_override_reason'] = $item->price_override_reason;
+            }
+
+            return $data;
         })->toArray();
+
+        $priceAdjustmentAudit = $canViewPriceAudit
+            ? BookingActivity::query()
+                ->where('booking_id', $booking->id)
+                ->where('event_key', 'trip_price_changed')
+                ->latest('event_at')
+                ->get()
+                ->map(fn (BookingActivity $activity) => [
+                    'booking_item_id' => (string) $activity->booking_item_id,
+                    'previous_price' => (float) data_get($activity->meta, 'previous_price', 0),
+                    'calculated_price' => (float) data_get($activity->meta, 'calculated_price', 0),
+                    'final_price' => (float) data_get($activity->meta, 'final_price', 0),
+                    'reason' => $activity->detail,
+                    'changed_by' => data_get($activity->meta, 'changed_by_name'),
+                    'currency' => data_get($activity->meta, 'currency', config('booking.base_currency', 'LKR')),
+                    'changed_at' => $activity->event_at?->toIso8601String(),
+                ])->values()->toArray()
+            : [];
 
         // Normalize addons (prefer snapshot → fallback to relation)
         $addons = [];
@@ -8063,12 +8235,13 @@ class BookingFlowService
 
             // Multi-trip booking items (primary data source for edit form)
             'booking_items' => $bookingItems,
+            'price_adjustment_audit' => $priceAdjustmentAudit,
 
             // Addons data
             'addons' => [
                 'selected_addons' => $booking->bookingAddons->pluck('addon_id')->toArray(),
-                'addon_list' => $addons,
-                'addon_data' => $booking->bookingAddons->mapWithKeys(function ($bookingAddon) {
+                'addon_list' => $canViewPriceAudit ? $addons : $this->withoutOriginalPriceFields($addons),
+                'addon_data' => $booking->bookingAddons->mapWithKeys(function ($bookingAddon) use ($canViewPriceAudit) {
                     $orig = (float) ($bookingAddon->addon->amount ?? 0);
                     $rate = (float) ($bookingAddon->rate ?? $orig);
                     return [
@@ -8076,7 +8249,7 @@ class BookingFlowService
                             'quantity' => (int) ($bookingAddon->qty ?? 1),
                             'custom_price' => $rate !== $orig ? $rate : null,
                             'total_price' => (float) ($bookingAddon->amount ?? 0),
-                            'original_price' => $orig,
+                            'original_price' => $canViewPriceAudit ? $orig : null,
                             'is_customized' => $rate !== $orig,
                         ]
                     ];
@@ -8092,20 +8265,20 @@ class BookingFlowService
                 'total_amount' => (float) ($booking->total_estimated ?? 0),
                 'currency' => $currency,
                 'exchange_rate' => (float) ($summary['exchange_rate'] ?? 1),
-                'base_price_override' => $booking->base_price_override ? (float) $booking->base_price_override : null,
-                'base_price_override_reason' => $booking->base_price_override_reason ?? null,
+                'base_price_override' => $canViewPriceAudit && $booking->base_price_override ? (float) $booking->base_price_override : null,
+                'base_price_override_reason' => $canViewPriceAudit ? ($booking->base_price_override_reason ?? null) : null,
                 'has_custom_base_price' => !is_null($booking->base_price_override),
                 'is_pricing_locked' => !is_null($booking->base_price_override) || $booking->bookingAddons->whereNotNull('rate')->count() > 0,
                 'breakdown' => [
-                    'base_pricing' => (array) ($pricingSnapshot['base_pricing']['breakdown'] ?? []),
-                    'addons' => $addons,
+                    'base_pricing' => $canViewPriceAudit ? (array) ($pricingSnapshot['base_pricing']['breakdown'] ?? []) : [],
+                    'addons' => $canViewPriceAudit ? $addons : $this->withoutOriginalPriceFields($addons),
                     'subtotal' => (float) ($summary['subtotal'] ?? $booking->base_amount ?? 0),
                     'addons_total' => (float) ($summary['addons_total'] ?? $booking->addons_cost ?? 0),
                     'discount_total' => (float) ($discountSummary['total_discount_amount'] ?? $booking->discount_amount ?? 0),
                     'tax_amount' => (float) ($booking->tax_amount ?? 0),
                     'total' => (float) ($booking->total_estimated ?? 0),
                 ],
-                'detailed_breakdown' => $detailed,
+                'detailed_breakdown' => $canViewPriceAudit ? $detailed : [],
                 'discount_summary' => $discountSummary,
                 'duration' => $duration,
                 'calculation_params' => [
@@ -8122,7 +8295,9 @@ class BookingFlowService
                         'longitude' => $booking->dropoff_longitude,
                     ],
                 ],
-                'variable_customizations' => $variableCustomizations,
+                'variable_customizations' => $canViewPriceAudit
+                    ? $variableCustomizations
+                    : $this->withoutOriginalPriceFields($variableCustomizations),
             ],
 
             // State and status
@@ -12121,6 +12296,7 @@ class BookingFlowService
      */
     public function saveBookingDraft(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
