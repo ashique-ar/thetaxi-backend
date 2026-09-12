@@ -400,11 +400,14 @@ it('records skipped automation decisions for the communication timeline', functi
 it('keeps non-queued provider execution outside the lifecycle transaction', function (): void {
     $source = file_get_contents(app_path('Services/Sms/SmsService.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_11_000002_create_booking_activities_table.php'));
+    $auditMigration = file_get_contents(database_path('migrations/2026_09_12_000004_add_audit_fields_to_booking_activities_table.php'));
 
     expect($source)->toContain('DB::afterCommit(function () use ($message)')
         ->and($migration)->toContain("Schema::create('booking_activities'")
         ->and($migration)->toContain("\$table->string('result_status')->index()")
-        ->and($migration)->toContain("\$table->string('idempotency_key')->unique()");
+        ->and($migration)->toContain("\$table->string('idempotency_key')->unique()")
+        ->and($auditMigration)->toContain("\$table->uuid('created_user_id')->nullable()->index()")
+        ->and($auditMigration)->toContain("\$table->uuid('updated_user_id')->nullable()->index()");
 });
 
 it('records trip start without SMS and queues optional aggregate completion once', function (): void {
