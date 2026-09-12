@@ -859,14 +859,6 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = $this->resolveVariable($varName, $varType, $inputs, $runtimeDefault, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
-            $isPricingRate = in_array($varType, ['slab_rate', 'common_rate'], true);
-            if ($value === null && $isPricingRate) {
-                // Price rows are configured after the reusable calculation
-                // definition. Missing slab/common-rate values therefore
-                // contribute zero; configuration health reports the warning.
-                $value = 0;
-            }
-
             if ($value === null && $isRequired) {
                 $missingVariables[] = $varName;
                 continue;

@@ -585,6 +585,19 @@ class AssignmentController extends Controller
 
         return [
             'currency' => $bookingItem?->currency,
+            'actual_start_at' => $this->toUtcIsoTimestamp($assignment?->trip_started_at ?? $assignment?->actual_start ?? data_get($bookingItem?->lifecycle_data, 'actual_start_time')),
+            'actual_end_at' => $this->toUtcIsoTimestamp($assignment?->trip_completed_at ?? $assignment?->actual_end ?? $bookingItem?->returned_at ?? data_get($bookingItem?->lifecycle_data, 'actual_return_time')),
+            'actual_distance_km' => $this->firstNumeric([$assignment?->total_distance_km, $finalAuditInputs['distance_km'] ?? null]),
+            'actual_waiting_minutes' => $this->firstNumeric([
+                $waitingSeconds !== null ? (float) $waitingSeconds / 60 : null,
+                $finalAuditInputs['total_waiting_minutes'] ?? null,
+                $finalAuditInputs['waiting_minutes'] ?? null,
+            ]),
+            'actual_duration_minutes' => $this->firstNumeric([
+                $assignment?->trip_started_at && $assignment?->trip_completed_at
+                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60 : null,
+                $finalAuditInputs['duration_minutes'] ?? null,
+            ]),
             'base_amount' => $this->firstNumeric([
                 $summary['base_total'] ?? null,
                 $basePricing['base_amount'] ?? null,

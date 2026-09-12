@@ -2045,6 +2045,20 @@ class BookingLifecycleService
     // HELPER METHODS
     // ========================
 
+    private function finalPricingDriverAssignment(Booking $booking, BookingItem $item): ?DriverAssignment
+    {
+        return DriverAssignment::query()
+            ->where('booking_id', $booking->id)
+            ->where('booking_item_id', $item->id)
+            // PostgreSQL sorts nulls first for DESC. Prefer completed telemetry,
+            // then the started trip over a duplicate closed during cleanup.
+            ->orderByRaw('CASE WHEN trip_completed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('trip_completed_at')
+            ->orderByRaw('CASE WHEN trip_started_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
     /**
      * Re-run the configured pricing graph with measured operational data before
      * an invoice can be generated. Driver mobile telemetry wins for chauffeur
@@ -2075,15 +2089,7 @@ class BookingLifecycleService
             ->firstOrFail();
 
         $isSelfDriven = (bool) ($context['is_self_driven'] ?? $bookingItem->is_self_driven);
-        $assignment = null;
-        if (!$isSelfDriven) {
-            $assignment = DriverAssignment::query()
-                ->where('booking_id', $booking->id)
-                ->when($bookingItem->id, fn ($query) => $query->where('booking_item_id', $bookingItem->id))
-                ->orderByDesc('trip_completed_at')
-                ->orderByDesc('updated_at')
-                ->first();
-        }
+        $assignment = $isSelfDriven ? null : $this->finalPricingDriverAssignment($booking, $bookingItem);
 
         $hasDriverTelemetry = $assignment && (
             $assignment->trip_started_at

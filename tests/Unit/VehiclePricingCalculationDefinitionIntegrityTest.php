@@ -161,7 +161,7 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         $this->assertSame(0.0, (float) $resolved['missing_common_rate']);
     }
 
-    public function test_missing_required_slab_and_common_rates_default_to_zero(): void
+    public function test_missing_required_slab_and_common_rates_reject_calculation(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'slab_rate + driver_allowance';
@@ -170,10 +170,28 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             ['name' => 'driver_allowance', 'type' => 'common_rate', 'is_required' => true],
         ];
 
-        $resolved = $this->resolveVariables($definition);
+        $result = $definition->calculatePrice([]);
 
-        $this->assertSame(0.0, (float) $resolved['slab_rate']);
-        $this->assertSame(0.0, (float) $resolved['driver_allowance']);
+        $this->assertFalse($result['calculation_success']);
+        $this->assertSame('missing_required_variables', $result['failure_reason']);
+        $this->assertContains('slab_rate', $result['missing_variables']);
+        $this->assertContains('driver_allowance', $result['missing_variables']);
+    }
+
+    public function test_missing_distance_rate_cannot_turn_twenty_six_minutes_into_a_fare(): void
+    {
+        $definition = new VehiclePricingCalculationDefinition();
+        $definition->formula = 'total_distance * service_rate_per_km + duration_minutes';
+        $definition->variables = [
+            ['name' => 'total_distance', 'type' => 'distance', 'is_required' => true],
+            ['name' => 'service_rate_per_km', 'type' => 'common_rate', 'is_required' => true],
+            ['name' => 'duration_minutes', 'type' => 'duration', 'is_required' => true],
+        ];
+
+        $result = $definition->calculatePrice(['total_distance' => 5.95, 'duration_minutes' => 26]);
+
+        $this->assertFalse($result['calculation_success']);
+        $this->assertContains('service_rate_per_km', $result['missing_variables']);
     }
 
     public function test_semantic_condition_operators_match_the_configuration_contract(): void
