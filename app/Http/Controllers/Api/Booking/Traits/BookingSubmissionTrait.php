@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Booking\Traits;
 
 use App\Http\Resources\Booking\BookingFlowResource;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingActivity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -815,6 +816,32 @@ trait BookingSubmissionTrait
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function getTripPriceHistory(string $bookingId, string $bookingItemId): JsonResponse
+    {
+        $booking = Booking::findOrFail($bookingId);
+        abort_unless(Gate::allows('update', $booking) && Auth::user()?->can('bookings.price_override'), 403);
+        abort_unless($booking->bookingItems()->whereKey($bookingItemId)->exists(), 404);
+
+        $history = BookingActivity::query()
+            ->where('booking_id', $bookingId)
+            ->where('booking_item_id', $bookingItemId)
+            ->where('event_key', 'trip_price_changed')
+            ->latest('event_at')
+            ->get()
+            ->map(fn (BookingActivity $activity) => [
+                'booking_item_id' => (string) $activity->booking_item_id,
+                'previous_price' => (float) data_get($activity->meta, 'previous_price', 0),
+                'calculated_price' => (float) data_get($activity->meta, 'calculated_price', 0),
+                'final_price' => (float) data_get($activity->meta, 'final_price', 0),
+                'reason' => $activity->detail,
+                'changed_by' => data_get($activity->meta, 'changed_by_name'),
+                'currency' => data_get($activity->meta, 'currency', config('booking.base_currency', 'LKR')),
+                'changed_at' => $activity->event_at?->toIso8601String(),
+            ])->values();
+
+        return response()->json(['status' => 'success', 'data' => $history]);
     }
 
     public function cloneBooking(string $bookingId): JsonResponse

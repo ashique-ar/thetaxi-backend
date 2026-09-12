@@ -7783,28 +7783,17 @@ class BookingFlowService
                     ? (float) $item->price_override_amount
                     : null;
                 $data['price_override_reason'] = $item->price_override_reason;
+                $data['calculated_price'] = (float) (BookingActivity::query()
+                    ->where('booking_item_id', $item->id)
+                    ->where('event_key', 'trip_price_changed')
+                    ->latest('event_at')
+                    ->value('meta->calculated_price') ?? $item->total_price ?? 0);
             }
 
             return $data;
         })->toArray();
 
-        $priceAdjustmentAudit = $canViewPriceAudit
-            ? BookingActivity::query()
-                ->where('booking_id', $booking->id)
-                ->where('event_key', 'trip_price_changed')
-                ->latest('event_at')
-                ->get()
-                ->map(fn (BookingActivity $activity) => [
-                    'booking_item_id' => (string) $activity->booking_item_id,
-                    'previous_price' => (float) data_get($activity->meta, 'previous_price', 0),
-                    'calculated_price' => (float) data_get($activity->meta, 'calculated_price', 0),
-                    'final_price' => (float) data_get($activity->meta, 'final_price', 0),
-                    'reason' => $activity->detail,
-                    'changed_by' => data_get($activity->meta, 'changed_by_name'),
-                    'currency' => data_get($activity->meta, 'currency', config('booking.base_currency', 'LKR')),
-                    'changed_at' => $activity->event_at?->toIso8601String(),
-                ])->values()->toArray()
-            : [];
+        $priceAdjustmentAudit = [];
 
         // Normalize addons (prefer snapshot → fallback to relation)
         $addons = [];
