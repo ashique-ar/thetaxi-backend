@@ -79,6 +79,9 @@ class MailDispatchService
         }
 
         $pending->send($mailable);
+        Log::info('Email dispatched', [
+            'mailable' => $mailable::class,
+        ]);
     }
 
     protected function shouldIncludeSenderCopy(Mailable $mailable): bool

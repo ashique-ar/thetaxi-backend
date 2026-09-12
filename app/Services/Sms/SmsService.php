@@ -12,6 +12,7 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 use Throwable;
 
@@ -362,6 +363,14 @@ class SmsService
                 'sent_at' => now(),
                 'error_message' => null,
             ]);
+            Log::info('SMS sent', [
+                'sms_message_id' => $message->id,
+                'campaign_id' => $message->campaign_id,
+                'channel' => $message->channel,
+                'provider' => $message->provider,
+                'provider_message_id' => $response['provider_message_id'] ?? null,
+                'attempt' => $message->attempts,
+            ]);
         } catch (SmsBlackoutException $exception) {
             $message->update([
                 'status' => 'queued',
@@ -375,6 +384,11 @@ class SmsService
                 ]),
             ]);
 
+            Log::notice('SMS deferred by blackout window', [
+                'sms_message_id' => $message->id,
+                'retry_at' => $exception->retryAt->format(DATE_ATOM),
+            ]);
+
             throw $exception;
         } catch (Throwable $exception) {
             $message->update([
@@ -383,6 +397,15 @@ class SmsService
                 'provider_status_at' => now(),
                 'error_message' => $exception->getMessage(),
                 'failed_at' => now(),
+            ]);
+            Log::error('SMS delivery failed', [
+                'sms_message_id' => $message->id,
+                'campaign_id' => $message->campaign_id,
+                'channel' => $message->channel,
+                'provider' => $message->provider,
+                'attempt' => $message->attempts,
+                'exception' => $exception::class,
+                'error' => $exception->getMessage(),
             ]);
         }
 
@@ -423,6 +446,12 @@ class SmsService
             'provider_response' => array_merge($message->provider_response ?? [], [
                 'delivery_callback' => $this->redactProviderPayload($payload),
             ]),
+        ]);
+
+        Log::info('SMS delivery status updated', [
+            'sms_message_id' => $message->id,
+            'status' => $normalizedStatus,
+            'provider' => $message->provider,
         ]);
 
         if ($message->campaign_id) {

@@ -833,6 +833,12 @@ class CheckoutController extends Controller
 
             DB::commit();
 
+            Log::info('Checkout quotation completed', [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'status' => $booking->status,
+            ]);
+
 
             return redirect()->route('checkout.success', [
                 'type' => 'quotation',
@@ -924,6 +930,13 @@ class CheckoutController extends Controller
                 $this->sendPaymentInitiatedEmail($booking, $amount);
 
                 DB::commit();
+
+                Log::info('Checkout payment initiated', [
+                    'booking_id' => $booking->id,
+                    'payment_type' => $paymentType,
+                    'gateway_order_id' => $result['order_id'] ?? null,
+                    'status' => $booking->status,
+                ]);
 
                 // Check if WebXPay uses RSA form redirect
                 if (isset($result['method']) && $result['method'] === 'rsa_redirect') {
@@ -1018,6 +1031,14 @@ class CheckoutController extends Controller
             }
 
             DB::commit();
+
+            Log::info('Checkout booking completed', [
+                'booking_id' => $booking->id,
+                'booking_number' => $booking->booking_number,
+                'payment_method' => $paymentMethod,
+                'payment_status' => $booking->payment_status,
+                'status' => $booking->status,
+            ]);
 
             // Prepare success message based on payment status and method
             if ($paymentProcessed) {

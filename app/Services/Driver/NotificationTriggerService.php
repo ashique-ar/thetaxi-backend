@@ -111,13 +111,20 @@ class NotificationTriggerService
         }
 
         if (!empty($channels)) {
-            $this->recordDelivery($assignment, implode('+', array_unique($channels)), Carbon::now());
+            $channel = implode('+', array_unique($channels));
+            $this->recordDelivery($assignment, $channel, Carbon::now());
             if (!empty($payload['notification_id'])) {
                 DriverAssignmentNotification::query()->whereKey($payload['notification_id'])->update([
                     'delivered_at' => now(),
-                    'delivery_channel' => implode('+', array_unique($channels)),
+                    'delivery_channel' => $channel,
                 ]);
             }
+            Log::info('Driver assignment notification delivered', [
+                'assignment_id' => $assignment->id,
+                'driver_id' => $assignment->driver_id,
+                'channel' => $channel,
+                'attempt' => $attempt,
+            ]);
             return;
         }
 
@@ -300,6 +307,11 @@ class NotificationTriggerService
             ]);
 
         } else {
+            Log::warning('Driver notification delivered without a booking dispatch record', [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'channel' => $channel,
+            ]);
         }
     }
 

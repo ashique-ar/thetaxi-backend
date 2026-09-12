@@ -146,7 +146,6 @@ class AuthService
                     'last_active' => now(),
                     'current' => true
                 ]);
-            } else {
             }
         } catch (\Throwable $e) {
             // don't block token creation on logging errors
@@ -181,6 +180,11 @@ class AuthService
 
         // Update user's last login
         $user->updateLastLogin();
+
+        \Log::info('Authentication succeeded', [
+            'user_id' => $user->id,
+            'session_recorded' => (bool) $request,
+        ]);
 
         return [
             'user' => $user,
@@ -298,6 +302,10 @@ class AuthService
             }
 
             \App\Models\ApiSession::create($meta);
+            \Log::info('Authentication token refreshed', [
+                'user_id' => $user->id,
+                'session_recorded' => true,
+            ]);
         } catch (\Throwable $e) {
             \Log::warning('Failed to create api_session for refreshed token: ' . $e->getMessage());
         }

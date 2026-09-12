@@ -5311,6 +5311,7 @@ class BookingFlowService
                 if ($vehicle) {
                     $params['vehicle_group_id'] = $vehicle->vehicle_group_id;
                 }
+            }
 
             // Also check 'vehicles' array (multi-select format but with only one item)
             if (empty($params['vehicle_group_id']) && !empty($params['vehicles']) && count($params['vehicles']) === 1) {
@@ -5607,6 +5608,7 @@ class BookingFlowService
             if (!empty($existingCustomizations)) {
                 $appliedCustomizations = $this->applyVariableCustomizations($existingCustomizations, $params);
             }
+        }
 
         // Calculate base pricing with duration and variable customizations
         $basePricingResult = $this->calculateDynamicPricingWithCustomizations(
@@ -11651,8 +11653,13 @@ class BookingFlowService
                     'status' => $status,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Failed to create vehicle assignment for booking {$booking->id}: " . $e->getMessage());
-                Log::error("Vehicle assignment params: ", $vehicleAssignmentParams ?? []);
+                Log::error('Vehicle assignment creation failed', [
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $bookingItem->id ?? null,
+                    'vehicle_id' => $vehicleAssignmentParams['vehicle_id'] ?? null,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
                 // Re-throw so we can see the issue
                 throw $e;
             }
@@ -11690,8 +11697,13 @@ class BookingFlowService
                     'status' => $status,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Failed to create driver assignment for booking {$booking->id}: " . $e->getMessage());
-                Log::error("Driver assignment params: ", $driverAssignmentParams ?? []);
+                Log::error('Driver assignment creation failed', [
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $bookingItem->id ?? null,
+                    'driver_id' => $driverAssignmentParams['driver_id'] ?? null,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
                 // Re-throw so we can see the issue
                 throw $e;
             }
