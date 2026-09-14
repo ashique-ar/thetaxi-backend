@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use Carbon\Carbon;
@@ -46,11 +47,15 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $vehicleGroupCacheToken = md5(json_encode([
+            $rateChartCacheToken = md5(json_encode([
                 VehicleGroup::withTrashed()->max('updated_at'),
                 VehicleGroup::withTrashed()->max('deleted_at'),
+                // Calculation edits must also invalidate cached quotation-only results.
+                VehiclePricingCalculationDefinition::where('service_type_id', $dayRentalService->id)
+                    ->orderBy('id')
+                    ->get(),
             ]));
-            $cacheKey = "rate_chart:day_rental:v6:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}:{$vehicleGroupCacheToken}";
+            $cacheKey = "rate_chart:day_rental:v7:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}:{$rateChartCacheToken}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
