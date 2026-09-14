@@ -42,6 +42,16 @@ class CorporateTransportParticipation extends BaseModel
         'metadata' => 'array',
     ];
 
+    public function setServiceDateAttribute($value): void
+    {
+        $this->attributes['service_date'] = \Carbon\Carbon::parse($value)->toDateString();
+    }
+
+    public function driverStops()
+    {
+        return $this->hasMany(\App\Models\DriverAssignmentStop::class, 'booking_stop_id', 'booking_stop_id');
+    }
+
     public function employee()
     {
         return $this->belongsTo(CorporateEmployee::class, 'corporate_employee_id');

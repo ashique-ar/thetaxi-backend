@@ -795,6 +795,12 @@ class TripTrackingService
         }
 
         $metadata = is_array($bookingItem->metadata) ? $bookingItem->metadata : [];
+        if (!empty($metadata['staff_transport_stops']) && !empty($metadata['staff_transport'])) {
+            $stops = array_map(fn ($stop) => $this->makeRouteStop(
+                $stop['type'], $stop, null, null, null, $stop['stop_id']
+            ), $metadata['staff_transport_stops']);
+            return $this->prepareRouteStopsForPersistence($bookingItem, array_values(array_filter($stops)));
+        }
         $primaryPickupContact = is_array($metadata['primary_pickup_contact'] ?? null)
             ? $metadata['primary_pickup_contact']
             : [];

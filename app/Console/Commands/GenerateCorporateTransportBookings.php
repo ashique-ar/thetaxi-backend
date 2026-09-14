@@ -12,7 +12,7 @@ class GenerateCorporateTransportBookings extends Command
         {--corporate= : Limit generation to one corporate UUID}
         {--dry-run : Resolve rosters without creating or updating bookings}
         {--force : Generate even if cutoff has not passed}
-        {--lookahead=1 : Number of days ahead to evaluate when --date is omitted}';
+        {--lookahead=14 : Number of days ahead to evaluate when --date is omitted}';
 
     protected $description = 'Generate grouped multi-stop bookings for corporate staff transport rosters';
 

@@ -1813,6 +1813,8 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
+            Route::get('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'locations']);
+            Route::post('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeLocation']);
             Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
             Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
             Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
@@ -1833,6 +1835,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
 
             Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster/export', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'exportRoster']);
             Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
             Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
             Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
@@ -1952,6 +1955,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);
 
         Route::prefix('{corporate}/staff-transport')->group(function () {
+            Route::get('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'locations']);
+            Route::post('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeLocation']);
             Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
             Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
             Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
@@ -1968,6 +1973,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::put('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateMember']);
             Route::delete('programs/{program}/routes/{route}/members/{member}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'deleteMember']);
             Route::post('roster/build', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'buildRoster']);
+            Route::get('roster/export', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'exportRoster']);
             Route::get('roster', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'roster']);
             Route::get('my-calendar', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'myCalendar']);
             Route::post('my-calendar/{participation}/status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setMyParticipation']);
