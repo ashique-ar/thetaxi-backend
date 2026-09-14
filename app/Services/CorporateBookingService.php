@@ -1033,6 +1033,7 @@ class CorporateBookingService
         $tripQuery->setEagerLoads([]);
         $this->applyBookingItemFilters($tripQuery, $filters);
         $tripCount = (clone $tripQuery)->count('booking_items.id');
+        $matchingBookingItemIds = (clone $tripQuery)->pluck('booking_items.id');
 
         $byStatus = (clone $query)
             ->select('status')
@@ -1052,7 +1053,8 @@ class CorporateBookingService
         $financial = [];
         if (($filters['can_view_payments'] ?? false) === true) {
             $financial = ['financial_metrics_visible' => true, ...$this->financialProjection->summarizeBookings(
-                (clone $query)->get(['bookings.id', 'bookings.total_actual'])
+                (clone $query)->get(['bookings.id', 'bookings.total_actual']),
+                $matchingBookingItemIds,
             )];
         } else {
             $financial = ['financial_metrics_visible' => false];

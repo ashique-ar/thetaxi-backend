@@ -6,6 +6,7 @@ use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Finance\FinancialSettlementItem;
 use App\Models\Finance\FinancialAccountSettlement;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingItem;
 use App\Models\Invoice;
 use Illuminate\Support\Collection;
 
@@ -17,7 +18,7 @@ class CorporateFinancialProjectionService
             ->where('owner_type', 'corporate')
             ->where('owner_id', $corporateId)
             ->whereNotIn('status', ['void', 'draft'])
-            ->with(['document', 'items:id,settlement_id,booking_id,charge_amount,paid_before_amount,refund_amount,adjustment_amount,allocated_amount,outstanding_amount,status'])
+            ->with(['document', 'items:id,settlement_id,booking_id,booking_item_ids,charge_amount,paid_before_amount,refund_amount,adjustment_amount,allocated_amount,outstanding_amount,status'])
             ->orderByDesc('period_end')
             ->orderByDesc('created_at')
             ->get();
@@ -31,6 +32,14 @@ class CorporateFinancialProjectionService
             ->get(['payment_purpose', 'amount', 'refunded_amount', 'allocated_amount']);
         $fareReceipts = $receipts->whereIn('payment_purpose', ['booking_payment', 'service_deposit']);
         $securityReceipts = $receipts->where('payment_purpose', 'security_deposit');
+        $billedItemIds = $settlements->flatMap(fn($settlement) => $settlement->items)
+            ->flatMap(fn($item) => $item->booking_item_ids ?? [])->map(fn($id) => (string) $id)->unique();
+        $monthlyItems = BookingItem::query()
+            ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)
+                ->where('corporate_account_id', $corporateId)->where('payment_collection_method', 'monthly_invoice'))
+            ->where('status', 'completed')->get(['id', 'total_price', 'final_priced_at']);
+        $unbilledItems = $monthlyItems->whereNotNull('final_priced_at')->reject(fn($item) => $billedItemIds->contains((string) $item->id));
+        $pricingPendingItems = $monthlyItems->whereNull('final_priced_at');
 
         $aging = ['current' => 0.0, 'days_1_30' => 0.0, 'days_31_60' => 0.0, 'days_61_90' => 0.0, 'days_91_plus' => 0.0];
         $disputedOutstanding = 0.0;
@@ -91,6 +100,9 @@ class CorporateFinancialProjectionService
                 'outstanding_total' => round((float) $settlements->sum('outstanding_total'), 2),
                 'disputed_outstanding' => round($disputedOutstanding, 2),
                 'unapplied_receipts' => round((float) $fareReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount)), 2),
+                'unbilled_monthly_total' => round((float) $unbilledItems->sum('total_price'), 2),
+                'unbilled_monthly_trip_count' => $unbilledItems->count(),
+                'final_pricing_pending_trip_count' => $pricingPendingItems->count(),
                 'security_deposit_received' => round((float) $securityReceipts->sum('amount'), 2),
                 'security_deposit_refunded' => round((float) $securityReceipts->sum('refunded_amount'), 2),
                 'security_deposit_held' => round((float) $securityReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount)), 2),
@@ -130,7 +142,7 @@ class CorporateFinancialProjectionService
         ];
     }
 
-    public function summarizeBookings(Collection $bookings): array
+    public function summarizeBookings(Collection $bookings, ?Collection $bookingItemIds = null): array
     {
         $bookingIds = $bookings->pluck('id')->map(fn($id) => (string) $id)->values();
         if ($bookingIds->isEmpty()) {
@@ -147,10 +159,12 @@ class CorporateFinancialProjectionService
             ->whereIn('booking_id', $bookingIds)
             ->whereHas('settlement', fn($query) => $query->whereNotIn('status', ['void', 'draft']))
             ->with(['settlement:id,status,due_date,invoice_number,issued_at'])
-            ->orderByDesc('created_at')
             ->get()
-            ->unique(fn($item) => (string) $item->booking_id)
-            ->keyBy(fn($item) => (string) $item->booking_id);
+            ->when($bookingItemIds !== null, fn(Collection $items) => $items->filter(function ($item) use ($bookingItemIds) {
+                $itemIds = collect($item->booking_item_ids ?? []);
+                return $itemIds->isEmpty() || $itemIds->intersect($bookingItemIds)->isNotEmpty();
+            }))
+            ->groupBy(fn($item) => (string) $item->booking_id);
 
         $directInvoices = Invoice::query()
             ->whereIn('booking_id', $bookingIds)
@@ -167,23 +181,21 @@ class CorporateFinancialProjectionService
             $receiptGross = (float) $bookingReceipts->sum('amount');
             $receiptRefunded = (float) $bookingReceipts->sum('refunded_amount');
             $receiptNet = max(0, $receiptGross - $receiptRefunded);
-            $settlementItem = $settlementItems->get($id);
+            $bookingSettlementItems = $settlementItems->get($id, collect());
             $directInvoice = $directInvoices->get($id);
 
-            if ($settlementItem) {
-                $settlement = $settlementItem->settlement;
-                $isIssued = !in_array((string) $settlement?->status, ['draft', 'void', ''], true);
-                $summary['invoiced_value'] += $isIssued ? (float) $settlementItem->charge_amount : 0;
-                $summary['invoiced_booking_count'] += $isIssued ? 1 : 0;
-                $summary['paid_value'] += (float) $settlementItem->paid_before_amount + (float) $settlementItem->allocated_amount;
-                $summary['refunded_value'] += (float) $settlementItem->refund_amount;
-                $summary['credited_value'] += min(0, (float) $settlementItem->adjustment_amount) * -1;
-                $summary['positive_adjustment_value'] += max(0, (float) $settlementItem->adjustment_amount);
-                $summary['outstanding_value'] += (float) $settlementItem->outstanding_amount;
-                if ((string) $settlement?->status === 'disputed') {
-                    $summary['disputed_value'] += (float) $settlementItem->outstanding_amount;
-                    $summary['disputed_booking_count']++;
-                }
+            if ($bookingSettlementItems->isNotEmpty()) {
+                $issuedItems = $bookingSettlementItems->filter(fn($item) => !in_array((string) $item->settlement?->status, ['draft', 'void', ''], true));
+                $summary['invoiced_value'] += (float) $issuedItems->sum('charge_amount');
+                $summary['invoiced_booking_count'] += $issuedItems->isNotEmpty() ? 1 : 0;
+                $summary['paid_value'] += (float) $issuedItems->sum(fn($item) => (float) $item->paid_before_amount + (float) $item->allocated_amount);
+                $summary['refunded_value'] += (float) $issuedItems->sum('refund_amount');
+                $summary['credited_value'] += (float) $issuedItems->sum(fn($item) => min(0, (float) $item->adjustment_amount) * -1);
+                $summary['positive_adjustment_value'] += (float) $issuedItems->sum(fn($item) => max(0, (float) $item->adjustment_amount));
+                $summary['outstanding_value'] += (float) $issuedItems->sum('outstanding_amount');
+                $disputed = $issuedItems->filter(fn($item) => (string) $item->settlement?->status === 'disputed');
+                $summary['disputed_value'] += (float) $disputed->sum('outstanding_amount');
+                $summary['disputed_booking_count'] += $disputed->isNotEmpty() ? 1 : 0;
                 continue;
             }
 

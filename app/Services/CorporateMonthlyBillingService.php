@@ -8,6 +8,7 @@ use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateBillingTerm;
 use App\Models\Finance\FinancialAccountSettlement;
 use App\Models\Finance\FinancialSettlementItem;
+use App\Models\Finance\FinancialPaymentAllocation;
 use App\Models\Finance\FinancialAuditEvent;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
@@ -71,16 +72,17 @@ class CorporateMonthlyBillingService
 
         $periodItems = BookingItem::query()
             ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)->where('corporate_account_id', $corporateId))
-            ->whereDate('from_date', '>=', $start->toDateString())
-            ->whereDate('to_date', '<=', $end->toDateString())
+            ->whereBetween('from_date', [$start, $end])
             ->with(['booking:id,booking_number,corporate_account_id,status,currency,payment_collection_method', 'serviceType:id,name'])
             ->orderBy('from_date')->get();
 
-        $eligible = $periodItems->filter(fn($item) =>
-            $item->booking?->payment_collection_method === 'monthly_invoice'
-            && $item->status === 'completed'
-            && $item->final_priced_at
-            && ! $alreadyBilledIds->contains((string) $item->id)
+        $eligible = $periodItems->filter(
+            fn($item) =>
+                $item->booking?->payment_collection_method === 'monthly_invoice'
+                && $item->status === 'completed'
+                && $item->final_priced_at
+                && strtoupper((string) ($item->currency ?: $item->booking?->currency)) === strtoupper((string) $terms->currency)
+                && !$alreadyBilledIds->contains((string) $item->id)
         );
         $excluded = $periodItems->reject(fn($item) => $eligible->contains('id', $item->id))->map(fn($item) => [
             'booking_id' => $item->booking_id,
@@ -90,7 +92,8 @@ class CorporateMonthlyBillingService
                 ? 'not_monthly_corporate_credit'
                 : ($alreadyBilledIds->contains((string) $item->id)
                     ? 'already_billed'
-                    : ($item->status !== 'completed' ? 'not_completed' : 'final_pricing_pending')),
+                    : ($item->status !== 'completed' ? 'not_completed'
+                        : (!$item->final_priced_at ? 'final_pricing_pending' : 'currency_mismatch'))),
         ])->values();
 
         $groups = $eligible->groupBy('booking_id')->map(function ($items) {
@@ -122,12 +125,14 @@ class CorporateMonthlyBillingService
             'corporate_id' => $corporateId,
             'period_start' => $start->toDateString(),
             'period_end' => $end->toDateString(),
-            'generation_key' => $this->generationKey($corporateId, $start, $end),
+            'generation_key' => $this->generationKey($corporateId, $start, $end, $eligible->pluck('id')->map(fn($id) => (string) $id)->sort()->values()->all()),
             'terms' => $this->termsSnapshot($terms),
             'opening_balance' => round($openingBalance, 2),
             'booking_count' => $groups->count(),
             'trip_count' => $eligible->count(),
             'charges_total' => round((float) $groups->sum('charge_amount'), 2),
+            'projected_balance' => round($openingBalance + (float) $groups->sum('charge_amount'), 2),
+            'credit_limit_exceeded' => $terms->credit_limit !== null && $openingBalance + (float) $groups->sum('charge_amount') > (float) $terms->credit_limit,
             'included' => $groups,
             'excluded' => $excluded,
         ];
@@ -135,14 +140,20 @@ class CorporateMonthlyBillingService
 
     public function generate(string $corporateId, string $periodStart, string $periodEnd, ?string $userId): FinancialAccountSettlement
     {
-        $generationKey = $this->generationKey($corporateId, Carbon::parse($periodStart)->startOfDay(), Carbon::parse($periodEnd)->endOfDay());
-        $existing = FinancialAccountSettlement::where('generation_key', $generationKey)->first();
+        $preview = $this->preview($corporateId, $periodStart, $periodEnd);
+        $existing = FinancialAccountSettlement::where('generation_key', $preview['generation_key'])->first();
         if ($existing) {
             return $existing->load(['items.booking', 'document']);
         }
-        $preview = $this->preview($corporateId, $periodStart, $periodEnd);
         if ($preview['included']->isEmpty()) {
+            $previous = FinancialAccountSettlement::query()->where('owner_type', 'corporate')->where('owner_id', $corporateId)
+                ->whereDate('period_start', $preview['period_start'])->whereDate('period_end', $preview['period_end'])->latest()->first();
+            if ($previous)
+                return $previous->load(['items.booking', 'document']);
             throw ValidationException::withMessages(['period_start' => ['No completed, final-priced, unbilled trips are available for this period.']]);
+        }
+        if ($preview['credit_limit_exceeded']) {
+            throw ValidationException::withMessages(['credit_limit' => ['This billing run would exceed the corporate credit limit.']]);
         }
 
         return DB::transaction(function () use ($preview, $corporateId, $userId) {
@@ -155,29 +166,57 @@ class CorporateMonthlyBillingService
             $dueDate = Carbon::parse($preview['period_end'])->addDays((int) $terms['due_days']);
             $settlement = FinancialAccountSettlement::create([
                 'settlement_number' => 'CB-' . Carbon::parse($preview['period_end'])->format('Ym') . '-' . strtoupper(substr(hash('sha256', $preview['generation_key']), 0, 8)),
-                'owner_type' => 'corporate', 'owner_id' => $corporateId,
-                'billing_terms_id' => $terms['id'], 'billing_cycle' => $terms['billing_cycle'],
-                'generation_key' => $preview['generation_key'], 'billing_terms_snapshot' => $terms,
-                'period_start' => $preview['period_start'], 'period_end' => $preview['period_end'], 'due_date' => $dueDate,
-                'status' => 'draft', 'created_user_id' => $userId, 'updated_user_id' => $userId,
+                'owner_type' => 'corporate',
+                'owner_id' => $corporateId,
+                'billing_terms_id' => $terms['id'],
+                'billing_cycle' => $terms['billing_cycle'],
+                'generation_key' => $preview['generation_key'],
+                'billing_terms_snapshot' => $terms,
+                'period_start' => $preview['period_start'],
+                'period_end' => $preview['period_end'],
+                'due_date' => $dueDate,
+                'status' => 'draft',
+                'created_user_id' => $userId,
+                'updated_user_id' => $userId,
             ]);
 
             foreach ($preview['included'] as $group) {
-                $receiptNet = (float) BookingPaymentReceipt::query()->where('booking_id', $group['booking_id'])
+                $receipts = BookingPaymentReceipt::query()->where('booking_id', $group['booking_id'])
                     ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
-                    ->selectRaw('COALESCE(SUM(amount-refunded_amount),0) as total')->value('total');
-                $previouslyApplied = (float) FinancialSettlementItem::query()->where('booking_id', $group['booking_id'])
-                    ->whereHas('settlement', fn($query) => $query->where('status', '!=', 'void'))
-                    ->selectRaw('COALESCE(SUM(paid_before_amount+allocated_amount),0) as total')->value('total');
-                $paidBefore = min((float) $group['charge_amount'], max(0, $receiptNet - $previouslyApplied));
-                $settlement->items()->create([
+                    ->lockForUpdate()->orderBy('received_at')->orderBy('created_at')->get();
+                $available = (float) $receipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
+                $paidBefore = min((float) $group['charge_amount'], $available);
+                $item = $settlement->items()->create([
                     'booking_id' => $group['booking_id'],
                     'booking_item_ids' => collect($group['items'])->pluck('booking_item_id')->all(),
                     'source_snapshot' => $group,
-                    'charge_amount' => $group['charge_amount'], 'paid_before_amount' => $paidBefore,
+                    'charge_amount' => $group['charge_amount'],
+                    'paid_before_amount' => $paidBefore,
                     'outstanding_amount' => max(0, (float) $group['charge_amount'] - $paidBefore),
                     'status' => $paidBefore >= (float) $group['charge_amount'] ? 'paid' : ($paidBefore > 0 ? 'partial' : 'open'),
                 ]);
+                $remaining = $paidBefore;
+                foreach ($receipts as $receipt) {
+                    $amount = min($remaining, max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
+                    if ($amount <= 0)
+                        continue;
+                    $receipt->update([
+                        'allocated_amount' => (float) $receipt->allocated_amount + $amount,
+                        'allocation_status' => $amount >= (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount ? 'allocated' : 'partially_allocated',
+                    ]);
+                    FinancialPaymentAllocation::create([
+                        'settlement_id' => $settlement->id,
+                        'settlement_item_id' => $item->id,
+                        'booking_id' => $item->booking_id,
+                        'payment_receipt_id' => $receipt->id,
+                        'amount' => $amount,
+                        'allocated_by' => $userId,
+                        'allocated_at' => now(),
+                    ]);
+                    $remaining = round($remaining - $amount, 2);
+                    if ($remaining <= 0)
+                        break;
+                }
             }
             $settlement = $this->settlements->recalculate($settlement);
             $statement = $this->statementSnapshot($settlement, (float) $preview['opening_balance']);
@@ -185,9 +224,14 @@ class CorporateMonthlyBillingService
             Storage::disk('local')->put($path, Pdf::loadView('finance.corporate-statement', ['settlement' => $settlement, 'statement' => $statement])->output());
             $settlement->update(['statement_snapshot' => $statement, 'statement_pdf_path' => $path, 'statement_pdf_disk' => 'local']);
             FinancialAuditEvent::create([
-                'subject_type' => 'account_settlement', 'subject_id' => $settlement->id,
-                'event_type' => 'corporate_monthly_billing_generated', 'from_status' => null, 'to_status' => $settlement->status,
-                'amount' => $settlement->charges_total, 'performed_by' => $userId, 'occurred_at' => now(),
+                'subject_type' => 'account_settlement',
+                'subject_id' => $settlement->id,
+                'event_type' => 'corporate_monthly_billing_generated',
+                'from_status' => null,
+                'to_status' => $settlement->status,
+                'amount' => $settlement->charges_total,
+                'performed_by' => $userId,
+                'occurred_at' => now(),
                 'metadata' => ['generation_key' => $preview['generation_key'], 'period_start' => $preview['period_start'], 'period_end' => $preview['period_end'], 'trip_count' => $preview['trip_count']],
             ]);
 
@@ -198,7 +242,9 @@ class CorporateMonthlyBillingService
     public function issue(FinancialAccountSettlement $settlement, bool $sendDocuments = true): FinancialAccountSettlement
     {
         abort_unless($settlement->owner_type === 'corporate' && $settlement->generation_key, 422, 'This is not a generated corporate billing settlement.');
-        $issued = $this->settlements->issue($settlement, ['send_invoice' => $sendDocuments]);
+        $issued = $this->settlements->issue($settlement, [
+            'send_invoice' => $sendDocuments && data_get($settlement->billing_terms_snapshot, 'delivery_preferences.email_invoice', false),
+        ]);
         if ($sendDocuments && data_get($issued->billing_terms_snapshot, 'delivery_preferences.email_statement', false)) {
             $recipients = collect(data_get($issued->billing_terms_snapshot, 'recipients', []))->filter()->values();
             if ($recipients->isEmpty()) {
@@ -210,10 +256,10 @@ class CorporateMonthlyBillingService
                             ->attach(Storage::disk($issued->statement_pdf_disk)->path($issued->statement_pdf_path));
                     });
                     $issued->update(['statement_sent_at' => now(), 'statement_sent_to' => $recipients->all(), 'statement_last_error' => null]);
-                    FinancialAuditEvent::create(['subject_type'=>'account_settlement','subject_id'=>$issued->id,'event_type'=>'corporate_statement_sent','from_status'=>$issued->status,'to_status'=>$issued->status,'metadata'=>['sent_to'=>$recipients->all()],'performed_by'=>auth()->id(),'occurred_at'=>now()]);
+                    FinancialAuditEvent::create(['subject_type' => 'account_settlement', 'subject_id' => $issued->id, 'event_type' => 'corporate_statement_sent', 'from_status' => $issued->status, 'to_status' => $issued->status, 'metadata' => ['sent_to' => $recipients->all()], 'performed_by' => auth()->id(), 'occurred_at' => now()]);
                 } catch (\Throwable $exception) {
                     $issued->update(['statement_last_error' => $exception->getMessage()]);
-                    FinancialAuditEvent::create(['subject_type'=>'account_settlement','subject_id'=>$issued->id,'event_type'=>'corporate_statement_delivery_failed','from_status'=>$issued->status,'to_status'=>$issued->status,'metadata'=>['error_class'=>get_class($exception)],'performed_by'=>auth()->id(),'occurred_at'=>now()]);
+                    FinancialAuditEvent::create(['subject_type' => 'account_settlement', 'subject_id' => $issued->id, 'event_type' => 'corporate_statement_delivery_failed', 'from_status' => $issued->status, 'to_status' => $issued->status, 'metadata' => ['error_class' => get_class($exception)], 'performed_by' => auth()->id(), 'occurred_at' => now()]);
                 }
             }
         }
@@ -228,23 +274,26 @@ class CorporateMonthlyBillingService
             ->orderByDesc('effective_from')->firstOrFail();
     }
 
-    private function generationKey(string $corporateId, Carbon $start, Carbon $end): string
+    private function generationKey(string $corporateId, Carbon $start, Carbon $end, array $bookingItemIds): string
     {
-        return hash('sha256', implode('|', [$corporateId, $start->toDateString(), $end->toDateString(), 'monthly-v1']));
+        return hash('sha256', implode('|', [$corporateId, $start->toDateString(), $end->toDateString(), implode(',', $bookingItemIds), 'monthly-v2']));
     }
 
     private function termsSnapshot(CorporateBillingTerm $terms): array
     {
-        return collect($terms->only(['id','billing_cycle','cutoff_day','invoice_day','due_days','credit_limit','currency','billing_name','tax_identifier','billing_address','recipients','delivery_preferences','effective_from','effective_to']))
+        return collect($terms->only(['id', 'billing_cycle', 'cutoff_day', 'invoice_day', 'due_days', 'credit_limit', 'currency', 'billing_name', 'tax_identifier', 'billing_address', 'recipients', 'delivery_preferences', 'effective_from', 'effective_to']))
             ->map(fn($value) => $value instanceof \DateTimeInterface ? $value->format('Y-m-d') : $value)->all();
     }
 
     private function statementSnapshot(FinancialAccountSettlement $settlement, float $opening): array
     {
         return [
-            'period_start' => $settlement->period_start->toDateString(), 'period_end' => $settlement->period_end->toDateString(),
-            'opening_balance' => round($opening, 2), 'charges' => (float) $settlement->charges_total,
-            'payments' => (float) $settlement->payments_total, 'refunds' => (float) $settlement->refunds_total,
+            'period_start' => $settlement->period_start->toDateString(),
+            'period_end' => $settlement->period_end->toDateString(),
+            'opening_balance' => round($opening, 2),
+            'charges' => (float) $settlement->charges_total,
+            'payments' => (float) $settlement->payments_total,
+            'refunds' => (float) $settlement->refunds_total,
             'adjustments' => (float) $settlement->adjustments_total,
             'period_closing_balance' => (float) $settlement->outstanding_total,
             'account_closing_balance' => round($opening + (float) $settlement->outstanding_total, 2),

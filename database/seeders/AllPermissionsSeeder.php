@@ -67,6 +67,7 @@ class AllPermissionsSeeder extends Seeder
         'driving-licenses',
         'email-templates',
         'exports',
+        'financial-settlements',
         'faq-categories',
         'faqs',
         'footer-links',
@@ -303,7 +304,7 @@ class AllPermissionsSeeder extends Seeder
         $rolePermissions = [
             'sub-admin' => array_values(array_filter(
                 $allPermissions,
-                fn (string $permission) => ! preg_match('/^(roles|permissions|system)\./', $permission)
+                fn(string $permission) => !preg_match('/^(roles|permissions|system)\./', $permission)
             )),
             'data-entry' => $this->matchingPermissions(
                 $allPermissions,
@@ -317,7 +318,7 @@ class AllPermissionsSeeder extends Seeder
                 ['reports.view', 'analytics.view']
             ))),
             'accountant' => array_values(array_unique(array_merge(
-                $this->matchingPermissions($allPermissions, '/^(payments|invoices|collection-commissions)\./'),
+                $this->matchingPermissions($allPermissions, '/^(payments|invoices|collection-commissions|financial-settlements)\./'),
                 ['vehicle-leases.view', 'vehicle-leases.payments']
             ))),
             'rep-marketing' => $this->permissionsForResources(
@@ -457,7 +458,7 @@ class AllPermissionsSeeder extends Seeder
     {
         $permissions = collect($permissionNames)
             ->unique()
-            ->map(fn (string $name) => $permissionModels[$name] ?? null)
+            ->map(fn(string $name) => $permissionModels[$name] ?? null)
             ->filter()
             ->values();
 
@@ -474,7 +475,7 @@ class AllPermissionsSeeder extends Seeder
     {
         return array_values(array_filter(
             $permissions,
-            fn (string $permission) => preg_match($pattern, $permission) === 1
+            fn(string $permission) => preg_match($pattern, $permission) === 1
         ));
     }
 
