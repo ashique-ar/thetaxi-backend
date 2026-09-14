@@ -8,6 +8,8 @@ use App\Models\Finance\FinancialAccountSettlement;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Finance\CorporateRemittance;
+use App\Models\Finance\FinancialAuditEvent;
+use App\Models\Corporate\CorporateBillingTerm;
 use App\Models\Invoice;
 use Illuminate\Support\Collection;
 
@@ -30,11 +32,14 @@ class CorporateFinancialProjectionService
             ->pluck('id');
         $receipts = BookingPaymentReceipt::query()
             ->whereIn('booking_id', $bookingIds)
-            ->get(['payment_purpose', 'amount', 'refunded_amount', 'allocated_amount']);
-        $fareReceipts = $receipts->whereIn('payment_purpose', ['booking_payment', 'service_deposit']);
+            ->get(['payment_purpose', 'amount', 'refunded_amount', 'allocated_amount', 'corporate_remittance_id', 'reference', 'received_at', 'created_at']);
+        $fareReceipts = $receipts->whereNull('corporate_remittance_id')->whereIn('payment_purpose', ['booking_payment', 'service_deposit']);
         $securityReceipts = $receipts->where('payment_purpose', 'security_deposit');
-        $billedItemIds = $settlements->flatMap(fn($settlement) => $settlement->items)
-            ->flatMap(fn($item) => $item->booking_item_ids ?? [])->map(fn($id) => (string) $id)->unique();
+        $billedItemIds = FinancialSettlementItem::query()
+            ->whereHas('settlement', fn($query) => $query->where('owner_type', 'corporate')
+                ->where('owner_id', $corporateId)->where('status', '!=', 'void'))
+            ->get(['booking_item_ids'])->flatMap(fn($item) => $item->booking_item_ids ?? [])
+            ->map(fn($id) => (string) $id)->unique();
         $monthlyItems = BookingItem::query()
             ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)
                 ->where('corporate_account_id', $corporateId)->where('payment_collection_method', 'monthly_invoice'))
@@ -44,6 +49,13 @@ class CorporateFinancialProjectionService
         $remittances = CorporateRemittance::query()->where('corporate_id', $corporateId)->latest('received_at')->get();
         $legacyReceipts = BookingPaymentReceipt::query()->whereIn('booking_id', $bookingIds)
             ->whereNull('corporate_remittance_id')->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])->get();
+        $terms = CorporateBillingTerm::withInactive()->where('corporate_id', $corporateId)
+            ->whereDate('effective_from', '<=', today())
+            ->where(fn($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', today()))
+            ->orderByDesc('effective_from')->first();
+        $unapplied = (float) $fareReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount))
+            + (float) $remittances->sum('unapplied_amount');
+        $creditUsed = max(0, (float) $settlements->sum('outstanding_total') + (float) $unbilledItems->sum('total_price') - $unapplied);
 
         $aging = ['current' => 0.0, 'days_1_30' => 0.0, 'days_31_60' => 0.0, 'days_61_90' => 0.0, 'days_91_plus' => 0.0];
         $disputedOutstanding = 0.0;
@@ -95,15 +107,26 @@ class CorporateFinancialProjectionService
             ],
         ])->values();
         $runningBalance = 0.0;
+        $adjustmentEvents = FinancialAuditEvent::query()
+            ->where('subject_type', 'account_settlement')
+            ->whereIn('subject_id', $settlements->pluck('id'))
+            ->whereIn('event_type', ['additional_charge', 'refund', 'credit_note', 'waiver'])
+            ->orderBy('occurred_at')->get();
         $activity = $settlements->map(fn($settlement) => [
             'date' => $settlement->issued_at?->toIso8601String(), 'type' => 'invoice',
             'reference' => $settlement->invoice_number ?: $settlement->settlement_number,
-            'amount' => round((float) $settlement->charges_total + (float) $settlement->adjustments_total - (float) $settlement->refunds_total, 2),
-        ])->concat($remittances->map(fn($remittance) => [
+            'amount' => round((float) $settlement->charges_total, 2),
+        ])->concat($adjustmentEvents->map(fn($event) => [
+            'date' => $event->occurred_at?->toIso8601String(),
+            'type' => $event->event_type,
+            'reference' => data_get($event->metadata, 'reference'),
+            'amount' => in_array($event->event_type, ['refund', 'credit_note', 'waiver'], true)
+                ? -(float) $event->amount : (float) $event->amount,
+        ]))->concat($remittances->map(fn($remittance) => [
             'date' => $remittance->received_at?->toIso8601String(), 'type' => 'remittance',
             'reference' => $remittance->reference, 'amount' => -(float) $remittance->amount,
         ]))->concat($legacyReceipts->map(fn($receipt) => [
-            'date' => $receipt->received_at?->toIso8601String(), 'type' => 'payment',
+            'date' => ($receipt->received_at ?: $receipt->created_at ?: $settlements->min('issued_at'))?->toIso8601String(), 'type' => 'payment',
             'reference' => $receipt->reference, 'amount' => -max(0, (float) $receipt->amount - (float) $receipt->refunded_amount),
         ]))->filter(fn($row) => $row['date'])->sortBy('date')->values()->map(function ($row) use (&$runningBalance) {
             $runningBalance = round($runningBalance + (float) $row['amount'], 2);
@@ -118,21 +141,35 @@ class CorporateFinancialProjectionService
                 'adjustments_total' => round((float) $settlements->sum('adjustments_total'), 2),
                 'outstanding_total' => round((float) $settlements->sum('outstanding_total'), 2),
                 'disputed_outstanding' => round($disputedOutstanding, 2),
-                'unapplied_receipts' => round((float) $fareReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount)) + (float) $remittances->sum('unapplied_amount'), 2),
+                'unapplied_receipts' => round($unapplied, 2),
                 'unbilled_monthly_total' => round((float) $unbilledItems->sum('total_price'), 2),
                 'unbilled_monthly_trip_count' => $unbilledItems->count(),
                 'final_pricing_pending_trip_count' => $pricingPendingItems->count(),
+                'draft_invoice_count' => FinancialAccountSettlement::query()->where('owner_type', 'corporate')
+                    ->where('owner_id', $corporateId)->where('status', 'draft')->count(),
+                'credit_limit' => $terms?->credit_limit !== null ? (float) $terms->credit_limit : null,
+                'credit_used' => round($creditUsed, 2),
+                'credit_available' => $terms?->credit_limit !== null ? round((float) $terms->credit_limit - $creditUsed, 2) : null,
+                'credit_limit_exceeded' => $terms?->credit_limit !== null && $creditUsed >= (float) $terms->credit_limit,
                 'security_deposit_received' => round((float) $securityReceipts->sum('amount'), 2),
                 'security_deposit_refunded' => round((float) $securityReceipts->sum('refunded_amount'), 2),
                 'security_deposit_held' => round((float) $securityReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount)), 2),
             ],
             'aging' => collect($aging)->map(fn($value) => round((float) $value, 2))->all(),
             'settlements' => $rows,
-            'remittances' => $remittances->map(fn($remittance) => [
+            'remittances' => $remittances->load('allocations.reversal', 'allocations.settlement')->map(fn($remittance) => [
                 'id' => $remittance->id, 'reference' => $remittance->reference, 'currency' => $remittance->currency,
                 'payment_method' => $remittance->payment_method, 'amount' => (float) $remittance->amount,
                 'allocated_amount' => (float) $remittance->allocated_amount, 'unapplied_amount' => (float) $remittance->unapplied_amount,
                 'received_at' => $remittance->received_at?->toIso8601String(),
+                'allocations' => $remittance->allocations->map(fn($allocation) => [
+                    'id' => $allocation->id,
+                    'settlement_id' => $allocation->settlement_id,
+                    'invoice_number' => $allocation->settlement?->invoice_number ?: $allocation->settlement?->settlement_number,
+                    'amount' => (float) $allocation->amount,
+                    'reversed_at' => $allocation->reversal?->reversed_at?->toIso8601String(),
+                    'reversal_reason' => $allocation->reversal?->reason,
+                ])->values(),
             ])->values(),
             'account_activity' => $activity,
         ];

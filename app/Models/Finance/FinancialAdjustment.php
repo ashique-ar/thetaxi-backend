@@ -5,6 +5,8 @@ class FinancialAdjustment extends BaseModel
 {
     protected $fillable = ['settlement_id', 'settlement_item_id', 'booking_id', 'type', 'amount', 'reason', 'reference', 'metadata', 'created_user_id'];
     protected $casts = ['amount' => 'decimal:2', 'metadata' => 'array'];
+    public function settlement() { return $this->belongsTo(FinancialAccountSettlement::class, 'settlement_id'); }
+    public function booking() { return $this->belongsTo(\App\Models\Booking\Booking::class); }
 
     protected static function booted(): void
     {

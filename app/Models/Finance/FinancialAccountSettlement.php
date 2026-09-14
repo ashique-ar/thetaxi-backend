@@ -20,4 +20,8 @@ class FinancialAccountSettlement extends BaseModel
     {
         return $this->hasOne(FinancialSettlementDocument::class, 'settlement_id');
     }
+    public function auditEvents(): HasMany
+    {
+        return $this->hasMany(FinancialAuditEvent::class, 'subject_id')->where('subject_type', 'account_settlement');
+    }
 }

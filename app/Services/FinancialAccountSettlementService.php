@@ -16,6 +16,7 @@ use App\Models\Finance\FinancialSettlementItem;
 use App\Models\Finance\CorporateRemittance;
 use App\Models\Finance\CorporateRemittanceAllocation;
 use App\Models\Finance\DriverCashSettlementItem;
+use App\Models\Finance\FinancialAllocationReversal;
 use App\Models\Corporate\Corporate;
 use App\Models\Customer;
 use Barryvdh\DomPDF\Facade\Pdf;
@@ -302,6 +303,38 @@ class FinancialAccountSettlementService
         });
     }
 
+    public function reverseCorporateRemittanceAllocation(CorporateRemittanceAllocation $allocation, string $reason, ?string $userId): CorporateRemittance
+    {
+        return DB::transaction(function () use ($allocation, $reason, $userId) {
+            $allocation = CorporateRemittanceAllocation::query()->lockForUpdate()->findOrFail($allocation->id);
+            abort_if(FinancialAllocationReversal::where('corporate_remittance_allocation_id', $allocation->id)->exists(), 422, 'This allocation has already been reversed.');
+            $remittance = CorporateRemittance::query()->lockForUpdate()->findOrFail($allocation->remittance_id);
+            $settlement = FinancialAccountSettlement::query()->lockForUpdate()->findOrFail($allocation->settlement_id);
+            $receiptIds = BookingPaymentReceipt::query()->where('corporate_remittance_id', $remittance->id)->pluck('id');
+            $payments = FinancialPaymentAllocation::query()->where('settlement_id', $settlement->id)
+                ->whereIn('payment_receipt_id', $receiptIds)->with('receipt')->get();
+            abort_unless(abs((float) $payments->sum('amount') - (float) $allocation->amount) <= 0.01, 422, 'Allocation evidence does not reconcile; reversal was not applied.');
+            foreach ($payments as $payment) {
+                $item = FinancialSettlementItem::query()->lockForUpdate()->findOrFail($payment->settlement_item_id);
+                $item->update([
+                    'allocated_amount' => max(0, (float) $item->allocated_amount - (float) $payment->amount),
+                    'outstanding_amount' => (float) $item->outstanding_amount + (float) $payment->amount,
+                    'status' => 'open',
+                ]);
+                $payment->receipt?->update([
+                    'allocated_amount' => max(0, (float) $payment->receipt->allocated_amount - (float) $payment->amount),
+                    'allocation_status' => 'reversed',
+                ]);
+            }
+            FinancialAllocationReversal::create(['corporate_remittance_allocation_id' => $allocation->id, 'amount' => $allocation->amount, 'reason' => $reason, 'reversed_by' => $userId, 'reversed_at' => now()]);
+            $remittance->update(['allocated_amount' => max(0, (float) $remittance->allocated_amount - (float) $allocation->amount), 'unapplied_amount' => (float) $remittance->unapplied_amount + (float) $allocation->amount]);
+            $from = $settlement->status;
+            $settlement = $this->recalculate($settlement);
+            $this->audit('account_settlement', $settlement->id, 'payment_allocation_reversed', $from, $settlement->status, (float) $allocation->amount, ['allocation_id' => $allocation->id, 'remittance_id' => $remittance->id, 'reason' => $reason], $userId);
+            return $remittance->fresh('allocations.reversal', 'allocations.settlement');
+        });
+    }
+
     public function updateCollectionFollowUp(FinancialAccountSettlement $settlement, array $data, ?string $userId): FinancialAccountSettlement
     {
         abort_unless($settlement->owner_type === 'corporate' && !in_array($settlement->status, ['paid', 'void'], true), 422, 'Only open corporate invoices can have collection follow-up.');
@@ -396,7 +429,7 @@ class FinancialAccountSettlementService
         return DB::transaction(function () use ($settlement, $data, $userId) {
             $item = $settlement->items()->where('booking_id', $data['booking_id'])->firstOrFail();
             $amount = round((float) $data['amount'], 2);
-            FinancialAdjustment::create(['settlement_id' => $settlement->id, 'settlement_item_id' => $item->id, 'booking_id' => $item->booking_id, 'type' => $data['type'], 'amount' => $amount, 'reason' => $data['reason'], 'reference' => $data['reference'] ?? null, 'metadata' => $data['metadata'] ?? null, 'created_user_id' => $userId]);
+            $adjustment = FinancialAdjustment::create(['settlement_id' => $settlement->id, 'settlement_item_id' => $item->id, 'booking_id' => $item->booking_id, 'type' => $data['type'], 'amount' => $amount, 'reason' => $data['reason'], 'reference' => $data['reference'] ?? null, 'metadata' => $data['metadata'] ?? null, 'created_user_id' => $userId]);
             if (in_array($data['type'], ['refund', 'credit_note'], true))
                 $item->refund_amount = (float) $item->refund_amount + $amount;
             else
@@ -409,7 +442,7 @@ class FinancialAccountSettlementService
             elseif (in_array($data['type'], ['refund', 'credit_note'], true))
                 $item->booking?->update(['refund_status' => $data['type'] === 'refund' ? 'refunded' : 'credit_noted']);
             $settlement = $this->recalculate($settlement);
-            $this->audit('account_settlement', $settlement->id, $data['type'], null, $settlement->status, $amount, ['booking_id' => $data['booking_id'], 'reason' => $data['reason'], 'reference' => $data['reference'] ?? null], $userId, $data['booking_id']);
+            $this->audit('account_settlement', $settlement->id, $data['type'], null, $settlement->status, $amount, ['adjustment_id' => $adjustment->id, 'booking_id' => $data['booking_id'], 'reason' => $data['reason'], 'reference' => $data['reference'] ?? null], $userId, $data['booking_id']);
             return $settlement;
         });
     }

@@ -12,4 +12,8 @@ class CorporateRemittanceAllocation extends BaseModel
     {
         return $this->belongsTo(FinancialAccountSettlement::class, 'settlement_id');
     }
+    public function reversal()
+    {
+        return $this->hasOne(FinancialAllocationReversal::class, 'corporate_remittance_allocation_id');
+    }
 }

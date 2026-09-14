@@ -42,9 +42,16 @@ class CorporateManagementReportController extends Controller
             ]);
         }
 
-        return response()->streamDownload(function () use ($rows) {
+        return response()->streamDownload(function () use ($rows, $payload) {
             $output = fopen('php://output', 'wb');
             fwrite($output, "\xEF\xBB\xBF");
+            if (isset($payload['financial_period']['summary'])) {
+                fputcsv($output, ['Financial basis', 'Selected travel period']);
+                foreach ($payload['financial_period']['summary'] as $key => $value) {
+                    fputcsv($output, [str_replace('_', ' ', $key), $value]);
+                }
+                fputcsv($output, []);
+            }
             fputcsv($output, ['Dimension', 'Label', 'Bookings', 'Trips', 'Estimated value', 'Finalized charges']);
             foreach ($rows as $row) {
                 fputcsv($output, $row);

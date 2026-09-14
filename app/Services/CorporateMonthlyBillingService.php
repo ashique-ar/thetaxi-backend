@@ -152,10 +152,6 @@ class CorporateMonthlyBillingService
                 return $previous->load(['items.booking', 'document']);
             throw ValidationException::withMessages(['period_start' => ['No completed, final-priced, unbilled trips are available for this period.']]);
         }
-        if ($preview['credit_limit_exceeded']) {
-            throw ValidationException::withMessages(['credit_limit' => ['This billing run would exceed the corporate credit limit.']]);
-        }
-
         return DB::transaction(function () use ($preview, $corporateId, $userId) {
             Corporate::query()->whereKey($corporateId)->lockForUpdate()->firstOrFail();
             $concurrent = FinancialAccountSettlement::where('generation_key', $preview['generation_key'])->first();
@@ -268,7 +264,7 @@ class CorporateMonthlyBillingService
 
     private function effectiveTerms(string $corporateId, Carbon $at): CorporateBillingTerm
     {
-        return CorporateBillingTerm::query()->where('corporate_id', $corporateId)
+        return CorporateBillingTerm::withInactive()->where('corporate_id', $corporateId)
             ->whereDate('effective_from', '<=', $at->toDateString())
             ->where(fn($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', $at->toDateString()))
             ->orderByDesc('effective_from')->firstOrFail();

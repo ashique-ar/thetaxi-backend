@@ -9,28 +9,43 @@ use Illuminate\Console\Command;
 
 class GenerateCorporateMonthlyBilling extends Command
 {
-    protected $signature = 'corporate:generate-monthly-billing {--date=}';
-    protected $description = 'Generate due corporate monthly billing drafts from active billing terms';
+    protected $signature = 'corporate:generate-monthly-billing {--date=} {--months=1} {--issue}';
+    protected $description = 'Generate due corporate billing, including late-finalized trips';
 
     public function handle(CorporateMonthlyBillingService $billing): int
     {
         $date = Carbon::parse($this->option('date') ?: today())->startOfDay();
-        $terms = CorporateBillingTerm::query()->whereDate('effective_from', '<=', $date)
-            ->where(fn($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', $date))
-            ->where(fn($query) => $query->where('invoice_day', $date->day)
-                ->when($date->isLastOfMonth(), fn($q) => $q->orWhere('invoice_day', '>', $date->day)))
-            ->orderByDesc('effective_from')->get()->unique('corporate_id');
+        $months = max(1, min(60, (int) $this->option('months')));
+        $corporateIds = CorporateBillingTerm::withInactive()->whereDate('effective_from', '<=', $date)
+            ->distinct()->pluck('corporate_id');
 
-        foreach ($terms as $term) {
-            [$start, $end] = self::period($date, (int) $term->cutoff_day);
-            try {
-                $settlement = $billing->generate($term->corporate_id, $start, $end, null);
-                $this->info("{$term->corporate_id}: {$settlement->settlement_number}");
-            } catch (\Illuminate\Validation\ValidationException $exception) {
-                $this->warn("{$term->corporate_id}: " . collect($exception->errors())->flatten()->first());
-            } catch (\Throwable $exception) {
-                report($exception);
-                $this->error("{$term->corporate_id}: {$exception->getMessage()}");
+        foreach ($corporateIds as $corporateId) {
+            for ($offset = 0; $offset < $months; $offset++) {
+                $invoiceMonth = $date->copy()->subMonthsNoOverflow($offset)->startOfMonth();
+                $term = CorporateBillingTerm::withInactive()->where('corporate_id', $corporateId)
+                    ->whereDate('effective_from', '<=', $invoiceMonth->copy()->endOfMonth())
+                    ->where(fn($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', $invoiceMonth))
+                    ->orderByDesc('effective_from')->first();
+                if (!$term) {
+                    continue;
+                }
+                $invoiceDate = $invoiceMonth->copy()->day(min((int) $term->invoice_day, $invoiceMonth->daysInMonth));
+                if ($invoiceDate->gt($date)) {
+                    continue;
+                }
+                [$start, $end] = self::period($invoiceDate, (int) $term->cutoff_day);
+                try {
+                    $settlement = $billing->generate($corporateId, $start, $end, null);
+                    if ($this->option('issue') && $settlement->status === 'draft') {
+                        $settlement = $billing->issue($settlement);
+                    }
+                    $this->info("{$corporateId}: {$settlement->settlement_number} ({$settlement->status})");
+                } catch (\Illuminate\Validation\ValidationException $exception) {
+                    $this->line("{$corporateId}: " . collect($exception->errors())->flatten()->first());
+                } catch (\Throwable $exception) {
+                    report($exception);
+                    $this->error("{$corporateId}: {$exception->getMessage()}");
+                }
             }
         }
         return self::SUCCESS;

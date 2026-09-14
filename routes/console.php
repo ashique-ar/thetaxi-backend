@@ -31,10 +31,19 @@ Schedule::command('maintenance:check-scheduled')
 Schedule::command('bookings:process-payment-schedules')
     ->dailyAt('07:00')
     ->withoutOverlapping();
-
+    
 //until we go for production will comment this out if not corporates will aget mails
-// Schedule::command('corporate:deliver-management-reports')->dailyAt('06:00')->withoutOverlapping();
-// Schedule::command('corporate:generate-monthly-billing')->dailyAt('05:30')->withoutOverlapping();
+// Schedule::command('corporate:generate-monthly-billing --months=12 --issue')
+//     ->dailyAt('05:30')
+//     ->withoutOverlapping();
+
+// Schedule::command('corporate:deliver-management-reports')
+//     ->dailyAt('06:00')
+//     ->withoutOverlapping();
+
+// Schedule::command('corporate:process-collection-follow-ups')
+//     ->hourly()
+//     ->withoutOverlapping();
 
 Schedule::call(fn() => app(\App\Services\FinancialAccountSettlementService::class)->markOverdueSettlements())
     ->dailyAt('00:05')

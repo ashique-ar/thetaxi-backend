@@ -20,6 +20,9 @@ use App\Models\Corporate\Corporate;
 use App\Models\Finance\CorporateRemittance;
 use App\Models\Booking\BookingItem;
 use App\Models\Finance\FinancialSettlementItem;
+use App\Models\Finance\CorporateRemittanceAllocation;
+use App\Models\Finance\FinancialAdjustment;
+use Barryvdh\DomPDF\Facade\Pdf;
 
 class FinancialSettlementController extends Controller
 {
@@ -73,7 +76,7 @@ class FinancialSettlementController extends Controller
             $settlement->owner_name = $settlement->owner_type === 'corporate' ? $corporateNames[$settlement->owner_id] ?? null : null;
             return $settlement;
         });
-        $billedMonthlyItemIds = FinancialSettlementItem::query()->whereHas('settlement', fn($q) => $q->where('owner_type', 'corporate')->whereNotIn('status', ['void', 'draft']))
+        $billedMonthlyItemIds = FinancialSettlementItem::query()->whereHas('settlement', fn($q) => $q->where('owner_type', 'corporate')->where('status', '!=', 'void'))
             ->pluck('booking_item_ids')->flatten()->filter()->map(fn($id) => (string) $id)->unique();
         $monthlyItems = BookingItem::query()->where('status', 'completed')->whereHas('booking', fn($q) => $q->where('is_corporate_booking', true)->where('payment_collection_method', 'monthly_invoice'));
         $pendingMonthly = (clone $monthlyItems)->whereNotNull('final_priced_at')->whereNotIn('id', $billedMonthlyItemIds);
@@ -98,6 +101,7 @@ class FinancialSettlementController extends Controller
                     'corporate_open_invoices' => FinancialAccountSettlement::where('owner_type', 'corporate')->whereNotIn('status', ['paid', 'void', 'draft'])->count(),
                     'corporate_overdue' => (float) FinancialAccountSettlement::where('owner_type', 'corporate')->where('status', 'overdue')->sum('outstanding_total'),
                     'corporate_disputed' => FinancialAccountSettlement::where('owner_type', 'corporate')->where('status', 'disputed')->count(),
+                    'corporate_draft_invoices' => FinancialAccountSettlement::where('owner_type', 'corporate')->where('status', 'draft')->count(),
                     'pending_monthly_trip_count' => (clone $pendingMonthly)->count(),
                     'pending_monthly_total' => (float) (clone $pendingMonthly)->sum('total_price'),
                     'final_pricing_pending_trip_count' => (clone $monthlyItems)->whereNull('final_priced_at')->count(),
@@ -105,6 +109,7 @@ class FinancialSettlementController extends Controller
                 ],
                 'settlements' => $rows,
                 'driver_net_positions' => $driverPositions,
+                'recent_corporate_remittances' => CorporateRemittance::query()->with(['allocations.reversal', 'allocations.settlement'])->latest('received_at')->limit(20)->get(),
                 'vehicle_lease_accounting' => $leaseAccounting,
             ]
         ]);
@@ -112,8 +117,10 @@ class FinancialSettlementController extends Controller
 
     public function show(FinancialAccountSettlement $financialSettlement)
     {
-        $this->service->monitorReconciliation($financialSettlement);
-        return response()->json(['status' => 'success', 'data' => $financialSettlement->load(['items.booking', 'allocations'])]);
+        $issues = $this->service->monitorReconciliation($financialSettlement);
+        $data = $financialSettlement->load(['items.booking', 'allocations']);
+        $data->reconciliation_issues = $issues;
+        return response()->json(['status' => 'success', 'data' => $data]);
     }
 
     public function store(Request $request)
@@ -154,6 +161,12 @@ class FinancialSettlementController extends Controller
     {
         $data = $request->validate(['settlement_ids'=>'required|array|min:1','settlement_ids.*'=>'uuid|distinct']);
         return response()->json(['status'=>'success','message'=>'Unapplied remittance allocated to selected invoices.','data'=>$this->service->allocateCorporateRemittance($remittance,$data['settlement_ids'],Auth::id())]);
+    }
+
+    public function reverseCorporateRemittanceAllocation(Request $request, CorporateRemittanceAllocation $allocation)
+    {
+        $data = $request->validate(['reason' => 'required|string|max:1000']);
+        return response()->json(['status' => 'success', 'message' => 'Allocation reversed to unapplied corporate credit.', 'data' => $this->service->reverseCorporateRemittanceAllocation($allocation, $data['reason'], Auth::id())]);
     }
 
     public function followUp(Request $request, FinancialAccountSettlement $financialSettlement)
@@ -220,5 +233,12 @@ class FinancialSettlementController extends Controller
         $document = $financialSettlement->document ?: $this->service->generateDocument($financialSettlement);
         abort_unless($document->pdf_path && Storage::disk($document->pdf_disk)->exists($document->pdf_path), 404, 'Invoice document is not available.');
         return Storage::disk($document->pdf_disk)->download($document->pdf_path, $document->invoice_number . '.pdf');
+    }
+
+    public function downloadAdjustment(FinancialAdjustment $adjustment)
+    {
+        $adjustment->load('settlement', 'booking');
+        return Pdf::loadView('finance.financial-adjustment', compact('adjustment'))
+            ->download(strtoupper(str_replace('_', '-', $adjustment->type)).'-'.$adjustment->id.'.pdf');
     }
 }
