@@ -18,6 +18,8 @@ use App\Services\BookingPaymentLedgerService;
 use App\Services\VehicleLeaseAccountingService;
 use App\Models\Corporate\Corporate;
 use App\Models\Finance\CorporateRemittance;
+use App\Models\Booking\BookingItem;
+use App\Models\Finance\FinancialSettlementItem;
 
 class FinancialSettlementController extends Controller
 {
@@ -61,9 +63,20 @@ class FinancialSettlementController extends Controller
             $query->where('status', $request->status);
         if ($request->filled('corporate_id'))
             $query->where('owner_type', 'corporate')->where('owner_id', $request->corporate_id);
+        if ($request->boolean('attention_only'))
+            $query->whereNotIn('status', ['paid', 'void', 'draft']);
         if ($request->boolean('follow_up_due'))
             $query->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<=', now())->whereNotIn('status', ['paid', 'void']);
         $rows = (clone $query)->withCount('items')->latest()->paginate((int) $request->input('per_page', 25));
+        $corporateNames = Corporate::query()->whereIn('id', $rows->getCollection()->where('owner_type', 'corporate')->pluck('owner_id'))->pluck('name', 'id');
+        $rows->getCollection()->transform(function ($settlement) use ($corporateNames) {
+            $settlement->owner_name = $settlement->owner_type === 'corporate' ? $corporateNames[$settlement->owner_id] ?? null : null;
+            return $settlement;
+        });
+        $billedMonthlyItemIds = FinancialSettlementItem::query()->whereHas('settlement', fn($q) => $q->where('owner_type', 'corporate')->whereNotIn('status', ['void', 'draft']))
+            ->pluck('booking_item_ids')->flatten()->filter()->map(fn($id) => (string) $id)->unique();
+        $monthlyItems = BookingItem::query()->where('status', 'completed')->whereHas('booking', fn($q) => $q->where('is_corporate_booking', true)->where('payment_collection_method', 'monthly_invoice'));
+        $pendingMonthly = (clone $monthlyItems)->whereNotNull('final_priced_at')->whereNotIn('id', $billedMonthlyItemIds);
         $driverPositions = DriverHireSettlement::query()->whereNotIn('status', ['paid', 'recovered'])->select('driver_id')->selectRaw('SUM(final_balance) as net_balance')->groupBy('driver_id')->with('driver.user')->get()->map(fn($row) => ['driver_id' => $row->driver_id, 'driver_name' => trim(($row->driver?->user?->first_name ?? '') . ' ' . ($row->driver?->user?->last_name ?? '')), 'net_balance' => (float) $row->net_balance, 'position' => (float) $row->net_balance > 0 ? 'company_owes_driver' : ((float) $row->net_balance < 0 ? 'driver_owes_company' : 'settled')]);
         return response()->json([
             'status' => 'success',
@@ -81,6 +94,14 @@ class FinancialSettlementController extends Controller
                     'driver_settlements_overdue' => (float) DriverHireSettlement::whereNotIn('status', ['paid', 'recovered'])->whereNotNull('settlement_due_date')->whereDate('settlement_due_date', '<', today())->sum(DB::raw('ABS(final_balance)')),
                     'disputed' => FinancialAccountSettlement::where('status', 'disputed')->count() + BookingPaymentReceipt::where('driver_company_settlement_status', 'disputed')->count(),
                     'collection_follow_up_due' => FinancialAccountSettlement::where('owner_type', 'corporate')->whereNotNull('next_follow_up_at')->where('next_follow_up_at', '<=', now())->whereNotIn('status', ['paid', 'void'])->count(),
+                    'active_corporates' => Corporate::active()->count(),
+                    'corporate_open_invoices' => FinancialAccountSettlement::where('owner_type', 'corporate')->whereNotIn('status', ['paid', 'void', 'draft'])->count(),
+                    'corporate_overdue' => (float) FinancialAccountSettlement::where('owner_type', 'corporate')->where('status', 'overdue')->sum('outstanding_total'),
+                    'corporate_disputed' => FinancialAccountSettlement::where('owner_type', 'corporate')->where('status', 'disputed')->count(),
+                    'pending_monthly_trip_count' => (clone $pendingMonthly)->count(),
+                    'pending_monthly_total' => (float) (clone $pendingMonthly)->sum('total_price'),
+                    'final_pricing_pending_trip_count' => (clone $monthlyItems)->whereNull('final_priced_at')->count(),
+                    'unapplied_remittance_total' => (float) CorporateRemittance::sum('unapplied_amount'),
                 ],
                 'settlements' => $rows,
                 'driver_net_positions' => $driverPositions,

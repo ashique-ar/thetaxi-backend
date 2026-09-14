@@ -6,9 +6,15 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\StoreEmployeeRequest;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\Corporate\CorporateDepartment;
+use App\Models\Corporate\CorporateDivision;
+use App\Models\User;
 use App\Services\CorporateService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
+use Throwable;
 
 class CorporateEmployeeController extends Controller
 {
@@ -72,6 +78,105 @@ class CorporateEmployeeController extends Controller
             'message' => 'Employee added successfully',
             'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
         ], 201);
+    }
+
+    public function importTemplate(Request $request)
+    {
+        $department = CorporateDepartment::where('corporate_id', $request->corporate_id)->where('is_active', true)->with('divisions')->first();
+        $rows = [
+            ['email', 'first_name', 'last_name', 'phone', 'employee_code', 'department', 'division', 'role'],
+            ['jane@example.com', 'Jane', 'Perera', '0771234567', 'EMP-001', $department?->name ?? 'Operations', $department?->divisions->first()?->name ?? '', 'Corporate Employee'],
+        ];
+
+        return response()->streamDownload(function () use ($rows) {
+            $output = fopen('php://output', 'w');
+            foreach ($rows as $row) fputcsv($output, $row);
+            fclose($output);
+        }, 'corporate-employees-template.csv', ['Content-Type' => 'text/csv']);
+    }
+
+    public function import(Request $request): JsonResponse
+    {
+        $request->validate(['file' => ['required', 'file', 'mimes:csv,txt', 'max:5120']]);
+        $corporate = Corporate::findOrFail($request->corporate_id);
+        $handle = fopen($request->file('file')->getRealPath(), 'r');
+        $headers = array_map(fn($value) => Str::lower(trim((string) $value, "\xEF\xBB\xBF \t\n\r\0\x0B")), fgetcsv($handle) ?: []);
+        $required = ['email', 'first_name', 'last_name', 'department', 'role'];
+        if (array_diff($required, $headers)) {
+            fclose($handle);
+            return response()->json(['status' => 'error', 'message' => 'CSV headers must include: '.implode(', ', $required)], 422);
+        }
+
+        $created = 0;
+        $skipped = 0;
+        $errors = [];
+        $seenEmails = [];
+        $rowNumber = 1;
+        while (($values = fgetcsv($handle)) !== false) {
+            $rowNumber++;
+            if ($rowNumber > 2001) {
+                $errors[] = ['row' => $rowNumber, 'message' => 'Import is limited to 2,000 employees per file.'];
+                break;
+            }
+            $values = array_pad($values, count($headers), '');
+            $row = array_map('trim', array_combine($headers, array_slice($values, 0, count($headers))));
+            if (!array_filter($row)) continue;
+            $email = Str::lower($row['email'] ?? '');
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'Email is invalid.'];
+                continue;
+            }
+            if (isset($seenEmails[$email]) || User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->exists()) {
+                $seenEmails[$email] = true;
+                $skipped++;
+                continue;
+            }
+
+            $department = CorporateDepartment::where('corporate_id', $corporate->id)->where('is_active', true)->whereRaw('LOWER(name) = ?', [Str::lower($row['department'] ?? '')])->first();
+            if (!$department) {
+                $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'Department was not found in this corporate account.'];
+                continue;
+            }
+            $division = null;
+            if (!empty($row['division'])) {
+                $division = CorporateDivision::where('department_id', $department->id)->where('is_active', true)->whereRaw('LOWER(name) = ?', [Str::lower($row['division'])])->first();
+                if (!$division) {
+                    $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'Division was not found under the selected department.'];
+                    continue;
+                }
+            }
+            if (empty($row['first_name']) || empty($row['last_name']) || empty($row['role'])) {
+                $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'First name, last name, and role are required.'];
+                continue;
+            }
+            $roleName = Str::of($row['role'])->trim()->replace([' ', '-'], '_')->toString();
+            $role = Role::where('guard_name', 'api')->whereRaw('LOWER(name) = ?', [Str::lower($roleName)])
+                ->where(fn($q) => $q->whereIn('name', ['Corporate_Master_Admin', 'Transport_Coordinator', 'Approval_Manager', 'Corporate_Employee'])->orWhere('name', 'like', 'Corporate_%'))->first();
+            if (!$role) {
+                $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'Role was not found in the corporate role list.'];
+                continue;
+            }
+
+            try {
+                $this->corporateService->addEmployee($corporate, [
+                    'email' => $email,
+                    'first_name' => $row['first_name'],
+                    'last_name' => $row['last_name'],
+                    'phone' => ($row['phone'] ?? '') ?: null,
+                    'employee_code' => ($row['employee_code'] ?? '') ?: null,
+                    'department_id' => $department->id,
+                    'division_id' => $division?->id,
+                    'role' => $role->name,
+                ]);
+                $seenEmails[$email] = true;
+                $created++;
+            } catch (Throwable $error) {
+                $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => $error->getMessage()];
+            }
+        }
+        fclose($handle);
+
+        return response()->json(['status' => 'success', 'message' => "Imported {$created} employees; skipped {$skipped} existing email accounts.", 'data' => ['created' => $created, 'skipped' => $skipped, 'failed' => count($errors), 'errors' => $errors]]);
     }
 
     public function show(Request $request, string $id): JsonResponse

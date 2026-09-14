@@ -1767,6 +1767,8 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Employee Management
         Route::get('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'index']);
+        Route::get('employees-import-template', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'importTemplate'])->middleware('permission:manage_employees');
+        Route::post('employees-import', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'import'])->middleware('permission:manage_employees');
         Route::post('employees', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'store'])->middleware('permission:manage_employees');
         Route::get('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'show']);
         Route::put('employees/{id}', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'update']);
