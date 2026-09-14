@@ -117,6 +117,14 @@ class CorporateStaffTransportService
             if (!empty($data[$field])) CorporateEmployeeLocation::where('corporate_employee_id', $employee->id)->where('is_active', true)->findOrFail($data[$field]);
         }
         $data['corporate_employee_id'] = $employee->id;
+        $duplicate = $route->members()
+            ->where('corporate_employee_id', $employee->id)
+            ->where(fn ($query) => empty($data['shift_id']) ? $query->whereNull('shift_id') : $query->where('shift_id', $data['shift_id']))
+            ->when($memberId, fn ($query) => $query->where('id', '!=', $memberId))
+            ->exists();
+        if ($duplicate) {
+            throw ValidationException::withMessages(['corporate_employee_id' => ['This employee is already assigned to the selected route and shift.']]);
+        }
 
         if ($memberId) {
             $member = $route->members()->findOrFail($memberId);
@@ -433,8 +441,8 @@ class CorporateStaffTransportService
             'vehicle_group_id' => $route->vehicle_group_id,
             'service_type_id' => $route->service_type_id,
             'service_type' => $route->service_type_id,
-            'from_date' => $from->toIso8601String(), 'from_time' => $from->format('H:i'),
-            'to_date' => $to->toIso8601String(), 'to_time' => $to->format('H:i'),
+            'from_date' => $from->toIso8601String(), 'from_time' => substr((string) $shift->pickup_time, 0, 5),
+            'to_date' => $to->toIso8601String(), 'to_time' => $shift->dropoff_time ? substr((string) $shift->dropoff_time, 0, 5) : null,
             'pickup_location' => $metadata['primary_pickup'],
             'dropoff_location' => $metadata['primary_dropoff'],
             'metadata' => $metadata['metadata'],
@@ -468,7 +476,7 @@ class CorporateStaffTransportService
                 'frozen_at' => now(),
             ]);
         }
-        foreach ($participations as $participation) {
+        foreach ($included as $participation) {
             $participation->employee?->user?->notify(new \App\Notifications\CorporateTransportNotification($route->name.' on '.$date.' has been '.($amend ? 'updated' : 'scheduled').'. Check My Transport for your participation.'));
         }
         $this->logGeneration($programId, $routeId, $shiftId, $date, $direction, $booking->id, $amend ? 'updated' : 'created', $included->count(), 'Generated priced staff transport booking', false);

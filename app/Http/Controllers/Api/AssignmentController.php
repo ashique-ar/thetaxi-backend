@@ -593,6 +593,13 @@ class AssignmentController extends Controller
                 $finalAuditInputs['total_waiting_minutes'] ?? null,
                 $finalAuditInputs['waiting_minutes'] ?? null,
             ]),
+            'total_waiting_seconds' => $waitingSeconds !== null
+                ? (int) $waitingSeconds
+                : (isset($finalAuditInputs['total_waiting_minutes'])
+                    ? (int) round((float) $finalAuditInputs['total_waiting_minutes'] * 60)
+                    : (isset($finalAuditInputs['waiting_minutes'])
+                        ? (int) round((float) $finalAuditInputs['waiting_minutes'] * 60)
+                        : null)),
             'actual_duration_minutes' => $this->firstNumeric([
                 $assignment?->trip_started_at && $assignment?->trip_completed_at
                     ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60 : null,
@@ -655,10 +662,16 @@ class AssignmentController extends Controller
                 $finalAuditInputs['pickup_waiting_minutes'] ?? null,
                 $assignment?->pickup_waiting_time_seconds !== null ? (int) $assignment->pickup_waiting_time_seconds / 60 : null,
             ]),
+            'pickup_waiting_seconds' => $assignment?->pickup_waiting_time_seconds !== null
+                ? (int) $assignment->pickup_waiting_time_seconds
+                : (isset($finalAuditInputs['pickup_waiting_minutes']) ? (int) round((float) $finalAuditInputs['pickup_waiting_minutes'] * 60) : null),
             'hire_waiting_minutes' => $this->firstNumeric([
                 $finalAuditInputs['hire_waiting_minutes'] ?? null,
                 $assignment?->hire_waiting_time_seconds !== null ? (int) $assignment->hire_waiting_time_seconds / 60 : null,
             ]),
+            'hire_waiting_seconds' => $assignment?->hire_waiting_time_seconds !== null
+                ? (int) $assignment->hire_waiting_time_seconds
+                : (isset($finalAuditInputs['hire_waiting_minutes']) ? (int) round((float) $finalAuditInputs['hire_waiting_minutes'] * 60) : null),
             'total_waiting_minutes' => $this->firstNumeric([
                 $finalAuditInputs['total_waiting_minutes'] ?? null,
                 $waitingMinutes,

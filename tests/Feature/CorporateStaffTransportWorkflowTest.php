@@ -66,6 +66,7 @@ it('generates a priced corporate trip once and preserves completed trips and pri
     $mock->shouldReceive('createStaffTransportBooking')->once()->andReturnUsing(function ($company, $payload) {
         expect($payload['payment_collection_method'])->toBe('monthly_invoice');
         expect($payload['booking_items'][0]['metadata']['staff_transport_stops'])->toHaveCount(2);
+        expect($payload['booking_items'][0]['from_time'])->toBe('08:00');
         $bookingId=(string) Str::uuid();
         DB::table('bookings')->insert(['id'=>$bookingId,'booking_source'=>'corporate']);
         DB::table('booking_items')->insert(['id'=>(string) Str::uuid(),'booking_id'=>$bookingId,'total_price'=>3500]);
@@ -85,6 +86,16 @@ it('rolls back preview rosters and reports invalid locations without making book
     DB::table('corporate_employee_locations')->update(['is_active'=>false]);
     $result = $this->service->generateForDate('2026-09-15', $this->ids['company'], true, true);
     expect($result['errors'])->toBe(1);
+    expect(DB::table('corporate_transport_participations')->count())->toBe(0);
+    expect(DB::table('bookings')->count())->toBe(0);
+});
+
+it('previews pricing readiness without persisting its generated roster', function () {
+    $mock = Mockery::mock(CorporateBookingService::class);
+    $mock->shouldReceive('previewStaffTransportPricing')->once()->andReturn(['total_amount'=>3500]);
+    app()->instance(CorporateBookingService::class, $mock);
+    $result = $this->service->generateForDate('2026-09-15', $this->ids['company'], true, true);
+    expect($result['ready'])->toBe(1);
     expect(DB::table('corporate_transport_participations')->count())->toBe(0);
     expect(DB::table('bookings')->count())->toBe(0);
 });

@@ -225,6 +225,7 @@ class CorporateBookingService
     public function createStaffTransportBooking(Corporate $corporate, array $data): Booking
     {
         $contactEmployee = $corporate->employees()->where('is_active', true)->findOrFail($data['contact_employee_id']);
+        unset($data['contact_employee_id']);
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
         // Program activation authorizes its recurring journeys; pricing and dispatch
         // still use the same booking flow as other corporate work.
@@ -239,6 +240,7 @@ class CorporateBookingService
 
     public function previewStaffTransportPricing(Corporate $corporate, array $data): array
     {
+        unset($data['contact_employee_id']);
         return $this->bookingFlowService->calculatePricing($this->prepareCorporateBookingPayload($corporate, $data) + [
             'is_corporate_booking' => true, 'corporate_account_id' => $corporate->id,
         ]);
@@ -246,6 +248,7 @@ class CorporateBookingService
 
     public function amendStaffTransportBooking(Booking $booking, array $data): Booking
     {
+        unset($data['contact_employee_id']);
         $data = $this->prepareCorporateBookingPayload($booking->corporateAccount, $data);
         return $this->bookingFlowService->updateBooking($booking->id, $data + [
             'is_corporate_booking' => true,
