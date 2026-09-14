@@ -68,3 +68,18 @@ it('creates vehicle and driver assignment records for every booking item', funct
         ->toContain('$this->createBookingAssignments($booking, $params, $status, $bookingItem)')
         ->toContain("'booking_item_id' => \$bookingItem->id");
 });
+
+it('does not project a drivers later live position onto a completed trip', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
+    $trackingMethod = Str::between(
+        $source,
+        'private function buildTrackingPayload(',
+        'private function buildActualLifecyclePoint('
+    );
+
+    expect($trackingMethod)
+        ->toContain('$tripCompleted = $tripAssignment->trip_completed_at')
+        ->toContain('$historicalLatitude = $tripAssignment->final_latitude')
+        ->toContain("'is_online' => false")
+        ->toContain("'source' => \$tripCompleted ? 'trip_completion' : 'driver_live_location'");
+});

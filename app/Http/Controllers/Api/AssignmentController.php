@@ -1035,6 +1035,28 @@ class AssignmentController extends Controller
                 $stopPoints = $this->extractStopPointsFromBookingItem($bookingItem);
             }
 
+            $tripCompleted = $tripAssignment->trip_completed_at
+                || $tripAssignment->actual_end
+                || in_array((string) $tripAssignment->status, ['completed', 'cancelled'], true);
+            if ($tripCompleted) {
+                $historicalLatitude = $tripAssignment->final_latitude ?? ($latestPoint['latitude'] ?? null);
+                $historicalLongitude = $tripAssignment->final_longitude ?? ($latestPoint['longitude'] ?? null);
+                $livePayload = [
+                    ...$livePayload,
+                    'is_online' => false,
+                    'last_active_at' => $this->toUtcIsoTimestamp(
+                        $tripAssignment->trip_completed_at ?? $tripAssignment->actual_end
+                    ) ?? ($latestPoint['recorded_at'] ?? null),
+                    'latitude' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude)
+                        ? (float) $historicalLatitude
+                        : null,
+                    'longitude' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude)
+                        ? (float) $historicalLongitude
+                        : null,
+                    'has_location' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude),
+                ];
+            }
+
             $acceptPoint = null;
             if ($tripAssignment->confirmed_at) {
                 if ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
@@ -1045,7 +1067,7 @@ class AssignmentController extends Controller
                         'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
                         'source' => 'route_point',
                     ];
-                } elseif ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
+                } elseif (!$tripCompleted && $this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
                     $acceptPoint = [
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $livePayload['latitude'],
@@ -1059,11 +1081,13 @@ class AssignmentController extends Controller
             $currentDriverPoint = null;
             if ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
                 $currentDriverPoint = [
-                    'label' => $tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Live Location',
+                    'label' => $tripCompleted
+                        ? 'Trip Last Known Location'
+                        : ($tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Live Location'),
                     'latitude' => (float) $livePayload['latitude'],
                     'longitude' => (float) $livePayload['longitude'],
                     'timestamp' => $livePayload['last_active_at'],
-                    'source' => 'driver_live_location',
+                    'source' => $tripCompleted ? 'trip_completion' : 'driver_live_location',
                 ];
             } elseif ($latestPoint && $this->isValidCoordinate($latestPoint['latitude'] ?? null, $latestPoint['longitude'] ?? null)) {
                 $currentDriverPoint = [

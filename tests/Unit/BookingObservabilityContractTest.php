@@ -177,7 +177,8 @@ it('segments replay chronologically at lifecycle and telemetry gaps with page-sc
 
     expect($service)
         ->toContain('private function segmentRoutePoints(')
-        ->toContain("'gap_threshold_seconds' => 300")
+        ->toContain("'gap_threshold_seconds' => RouteEvidenceService::GAP_THRESHOLD_SECONDS")
+        ->toContain("'implausible_movement'")
         ->toContain("'invalid_coordinate_count'")
         ->toContain("'inaccurate_point_count'")
         ->toContain("'implausible_speed_count'")
