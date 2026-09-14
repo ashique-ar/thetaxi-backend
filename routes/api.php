@@ -1434,13 +1434,14 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:financial-settlements.view');
-            Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
-            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
-            Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
-            Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
-            Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');
-            Route::get('{financialSettlement}', [FinancialSettlementController::class, 'show'])->middleware('permission:bookings.view');
+            Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:financial-settlements.view');
+            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:financial-settlements.view');
+            Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:financial-settlements.manage');
+            Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:financial-settlements.manage');
+            Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:financial-settlements.manage');
+            Route::get('{financialSettlement}', [FinancialSettlementController::class, 'show'])->middleware('permission:financial-settlements.view');
             Route::post('corporates/{corporate}/remittances', [FinancialSettlementController::class, 'receiveCorporateRemittance'])->whereUuid('corporate')->middleware('permission:financial-settlements.manage');
+            Route::post('corporate-remittances/{remittance}/allocate', [FinancialSettlementController::class, 'allocateCorporateRemittance'])->whereUuid('remittance')->middleware('permission:financial-settlements.manage');
             Route::post('', [FinancialSettlementController::class, 'store'])->middleware('permission:financial-settlements.manage');
             Route::post('{financialSettlement}/issue', [FinancialSettlementController::class, 'issue'])->middleware('permission:financial-settlements.manage');
             Route::post('{financialSettlement}/payments', [FinancialSettlementController::class, 'receivePayment'])->middleware('permission:financial-settlements.manage');
@@ -1448,8 +1449,8 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('{financialSettlement}/adjustments', [FinancialSettlementController::class, 'adjust'])->middleware('permission:financial-settlements.manage');
             Route::post('{financialSettlement}/dispute', [FinancialSettlementController::class, 'dispute'])->middleware('permission:financial-settlements.manage');
             Route::post('{financialSettlement}/resolve-dispute', [FinancialSettlementController::class, 'resolveDispute'])->middleware('permission:financial-settlements.manage');
-            Route::get('{financialSettlement}/audit', [FinancialSettlementController::class, 'audit'])->middleware('permission:bookings.view');
-            Route::get('{financialSettlement}/invoice', [FinancialSettlementController::class, 'downloadInvoice'])->middleware('permission:bookings.view');
+            Route::get('{financialSettlement}/audit', [FinancialSettlementController::class, 'audit'])->middleware('permission:financial-settlements.view');
+            Route::get('{financialSettlement}/invoice', [FinancialSettlementController::class, 'downloadInvoice'])->middleware('permission:financial-settlements.view');
         });
 
         // Booking Item Assignment (inline from booking list)
@@ -1920,9 +1921,9 @@ Route::middleware(['auth:api'])->group(function () {
             Route::get('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'terms'])->middleware('permission:corporates.view');
             Route::post('{corporate}/billing/terms', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'storeTerms'])->middleware('permission:corporates.manage');
             Route::patch('{corporate}/billing/terms/{term}/end', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'endTerms'])->whereUuid('term')->middleware('permission:corporates.manage');
-            Route::post('{corporate}/billing/preview', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:bookings.view');
-            Route::post('{corporate}/billing/generate', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:bookings.update');
-            Route::post('{corporate}/billing/settlements/{settlement}/issue', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:bookings.update');
+            Route::post('{corporate}/billing/preview', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'preview'])->middleware('permission:financial-settlements.view');
+            Route::post('{corporate}/billing/generate', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'generate'])->middleware('permission:financial-settlements.manage');
+            Route::post('{corporate}/billing/settlements/{settlement}/issue', [\App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController::class, 'issue'])->whereUuid('settlement')->middleware('permission:financial-settlements.manage');
             Route::get('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'show']);
             Route::put('{corporate}/distance-pricing-policy', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'update']);
             Route::get('{corporate}/distance-pricing-policy/services', [\App\Http\Controllers\Api\Corporate\CorporateDistancePolicyController::class, 'services']);

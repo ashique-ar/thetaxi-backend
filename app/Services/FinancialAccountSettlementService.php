@@ -179,6 +179,7 @@ class FinancialAccountSettlementService
                 if ($remaining <= 0 || (float) $item->outstanding_amount <= 0)
                     continue;
                 $amount = min($remaining, (float) $item->outstanding_amount);
+                $receiptKey = isset($data['idempotency_key']) ? $data['idempotency_key'] . ':' . $item->booking_id : null;
                 $this->ledger->receive($item->booking, [
                     'amount' => $amount,
                     'payment_method' => $data['payment_method'],
@@ -188,9 +189,12 @@ class FinancialAccountSettlementService
                     'notes' => $data['notes'] ?? null,
                     'received_via' => 'company',
                     'skip_settlement_allocation' => true,
-                    'idempotency_key' => isset($data['idempotency_key']) ? $data['idempotency_key'] . ':' . $item->booking_id : null,
+                    'idempotency_key' => $receiptKey,
+                    'corporate_remittance_id' => $data['corporate_remittance_id'] ?? null,
                 ], $userId);
-                $receipt = BookingPaymentReceipt::where('booking_id', $item->booking_id)->latest('created_at')->firstOrFail();
+                $receipt = BookingPaymentReceipt::where('booking_id', $item->booking_id)
+                    ->when($receiptKey, fn($query) => $query->where('idempotency_key', $receiptKey))
+                    ->latest('created_at')->firstOrFail();
                 $receipt->update(['allocated_amount' => $amount, 'allocation_status' => 'allocated']);
                 $allocation = FinancialPaymentAllocation::create([
                     'settlement_id' => $settlement->id,
@@ -259,12 +263,41 @@ class FinancialAccountSettlementService
                     'received_at' => $data['received_at'],
                     'notes' => $data['notes'] ?? null,
                     'idempotency_key' => $data['idempotency_key'] . ':' . $settlement->id,
+                    'corporate_remittance_id' => $remittance->id,
                 ], $userId);
                 CorporateRemittanceAllocation::create(['remittance_id' => $remittance->id, 'settlement_id' => $settlement->id, 'amount' => $amount]);
                 $remaining = round($remaining - $amount, 2);
             }
             $remittance->update(['allocated_amount' => round((float) $data['amount'] - $remaining, 2), 'unapplied_amount' => $remaining]);
             $this->audit('corporate_remittance', $remittance->id, 'corporate_remittance_received', null, $remaining > 0 ? 'partially_allocated' : 'allocated', (float) $data['amount'], ['corporate_id' => $corporate->id, 'reference' => $data['reference'] ?? null, 'unapplied_amount' => $remaining], $userId);
+            return $remittance->fresh('allocations.settlement');
+        });
+    }
+
+    public function allocateCorporateRemittance(CorporateRemittance $remittance, array $settlementIds, ?string $userId): CorporateRemittance
+    {
+        abort_if((float) $remittance->unapplied_amount <= 0, 422, 'This remittance has no unapplied balance.');
+        return DB::transaction(function () use ($remittance, $settlementIds, $userId) {
+            $remittance = CorporateRemittance::query()->lockForUpdate()->findOrFail($remittance->id);
+            $settlements = FinancialAccountSettlement::query()->whereIn('id', $settlementIds)
+                ->where('owner_type', 'corporate')->where('owner_id', $remittance->corporate_id)
+                ->whereIn('status', ['open', 'partial', 'overdue'])->orderByRaw('due_date IS NULL')->orderBy('due_date')->lockForUpdate()->get();
+            $remaining = (float) $remittance->unapplied_amount;
+            foreach ($settlements as $settlement) {
+                if ($remaining <= 0) break;
+                abort_unless(strtoupper((string) data_get($settlement->billing_terms_snapshot, 'currency', $remittance->currency)) === strtoupper($remittance->currency), 422, 'Invoice currency does not match the remittance.');
+                $amount = min($remaining, (float) $settlement->outstanding_total);
+                if ($amount <= 0) continue;
+                $this->receivePayment($settlement, [
+                    'amount' => $amount, 'payment_method' => $remittance->payment_method, 'reference' => $remittance->reference,
+                    'received_at' => $remittance->received_at, 'notes' => $remittance->notes,
+                    'idempotency_key' => $remittance->idempotency_key.':reallocation:'.$settlement->id,
+                    'corporate_remittance_id' => $remittance->id,
+                ], $userId);
+                CorporateRemittanceAllocation::create(['remittance_id' => $remittance->id, 'settlement_id' => $settlement->id, 'amount' => $amount]);
+                $remaining = round($remaining - $amount, 2);
+            }
+            $remittance->update(['allocated_amount' => (float) $remittance->amount - $remaining, 'unapplied_amount' => $remaining]);
             return $remittance->fresh('allocations.settlement');
         });
     }
@@ -300,10 +333,13 @@ class FinancialAccountSettlementService
         if ($outstanding <= 0 && $status === 'paid') {
             $settlement->document()?->update(['status' => 'paid']);
             foreach ($settlement->items()->with('booking')->get() as $item) {
+                $hasOtherOutstanding = FinancialSettlementItem::query()->where('booking_id', $item->booking_id)
+                    ->where('settlement_id', '!=', $settlement->id)->where('outstanding_amount', '>', 0)
+                    ->whereHas('settlement', fn($query) => $query->where('status', '!=', 'void'))->exists();
                 $item->booking?->update([
-                    'payment_status' => 'paid',
-                    'invoice_status' => 'paid',
-                    'settled_at' => $settlement->settled_at,
+                    'payment_status' => $hasOtherOutstanding ? 'partially_paid' : 'paid',
+                    'invoice_status' => $hasOtherOutstanding ? 'partially_paid' : 'paid',
+                    'settled_at' => $hasOtherOutstanding ? null : $settlement->settled_at,
                     $settlement->owner_type === 'corporate' ? 'corporate_settlement_status' : 'customer_settlement_status' => 'settled',
                 ]);
             }
@@ -431,7 +467,8 @@ class FinancialAccountSettlementService
         $sentTo = $recipients->implode(',');
         try {
             Mail::raw('Please find attached account invoice ' . $document->invoice_number . ' for settlement ' . $settlement->settlement_number . '.', function ($message) use ($recipients, $document) {
-                $message->to($recipients->all())->subject('Account invoice ' . $document->invoice_number)->attach(Storage::disk($document->pdf_disk)->path($document->pdf_path)); });
+                $message->to($recipients->all())->subject('Account invoice ' . $document->invoice_number)->attach(Storage::disk($document->pdf_disk)->path($document->pdf_path));
+            });
             $document->update(['sent_at' => now(), 'sent_to' => $sentTo, 'last_error' => null]);
             $this->audit('account_settlement', $settlement->id, 'invoice_sent', null, $document->status, null, ['invoice_number' => $document->invoice_number, 'document_id' => $document->id, 'sent_to' => $recipients->all()], auth()->id());
         } catch (\Throwable $e) {

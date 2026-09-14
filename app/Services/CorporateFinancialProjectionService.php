@@ -7,6 +7,7 @@ use App\Models\Finance\FinancialSettlementItem;
 use App\Models\Finance\FinancialAccountSettlement;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
+use App\Models\Finance\CorporateRemittance;
 use App\Models\Invoice;
 use Illuminate\Support\Collection;
 
@@ -40,6 +41,9 @@ class CorporateFinancialProjectionService
             ->where('status', 'completed')->get(['id', 'total_price', 'final_priced_at']);
         $unbilledItems = $monthlyItems->whereNotNull('final_priced_at')->reject(fn($item) => $billedItemIds->contains((string) $item->id));
         $pricingPendingItems = $monthlyItems->whereNull('final_priced_at');
+        $remittances = CorporateRemittance::query()->where('corporate_id', $corporateId)->latest('received_at')->get();
+        $legacyReceipts = BookingPaymentReceipt::query()->whereIn('booking_id', $bookingIds)
+            ->whereNull('corporate_remittance_id')->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])->get();
 
         $aging = ['current' => 0.0, 'days_1_30' => 0.0, 'days_31_60' => 0.0, 'days_61_90' => 0.0, 'days_91_plus' => 0.0];
         $disputedOutstanding = 0.0;
@@ -90,6 +94,21 @@ class CorporateFinancialProjectionService
                 'has_error' => !empty($settlement->statement_last_error),
             ],
         ])->values();
+        $runningBalance = 0.0;
+        $activity = $settlements->map(fn($settlement) => [
+            'date' => $settlement->issued_at?->toIso8601String(), 'type' => 'invoice',
+            'reference' => $settlement->invoice_number ?: $settlement->settlement_number,
+            'amount' => round((float) $settlement->charges_total + (float) $settlement->adjustments_total - (float) $settlement->refunds_total, 2),
+        ])->concat($remittances->map(fn($remittance) => [
+            'date' => $remittance->received_at?->toIso8601String(), 'type' => 'remittance',
+            'reference' => $remittance->reference, 'amount' => -(float) $remittance->amount,
+        ]))->concat($legacyReceipts->map(fn($receipt) => [
+            'date' => $receipt->received_at?->toIso8601String(), 'type' => 'payment',
+            'reference' => $receipt->reference, 'amount' => -max(0, (float) $receipt->amount - (float) $receipt->refunded_amount),
+        ]))->filter(fn($row) => $row['date'])->sortBy('date')->values()->map(function ($row) use (&$runningBalance) {
+            $runningBalance = round($runningBalance + (float) $row['amount'], 2);
+            return [...$row, 'running_balance' => $runningBalance];
+        });
 
         return [
             'summary' => [
@@ -99,7 +118,7 @@ class CorporateFinancialProjectionService
                 'adjustments_total' => round((float) $settlements->sum('adjustments_total'), 2),
                 'outstanding_total' => round((float) $settlements->sum('outstanding_total'), 2),
                 'disputed_outstanding' => round($disputedOutstanding, 2),
-                'unapplied_receipts' => round((float) $fareReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount)), 2),
+                'unapplied_receipts' => round((float) $fareReceipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount)) + (float) $remittances->sum('unapplied_amount'), 2),
                 'unbilled_monthly_total' => round((float) $unbilledItems->sum('total_price'), 2),
                 'unbilled_monthly_trip_count' => $unbilledItems->count(),
                 'final_pricing_pending_trip_count' => $pricingPendingItems->count(),
@@ -109,6 +128,13 @@ class CorporateFinancialProjectionService
             ],
             'aging' => collect($aging)->map(fn($value) => round((float) $value, 2))->all(),
             'settlements' => $rows,
+            'remittances' => $remittances->map(fn($remittance) => [
+                'id' => $remittance->id, 'reference' => $remittance->reference, 'currency' => $remittance->currency,
+                'payment_method' => $remittance->payment_method, 'amount' => (float) $remittance->amount,
+                'allocated_amount' => (float) $remittance->allocated_amount, 'unapplied_amount' => (float) $remittance->unapplied_amount,
+                'received_at' => $remittance->received_at?->toIso8601String(),
+            ])->values(),
+            'account_activity' => $activity,
         ];
     }
 

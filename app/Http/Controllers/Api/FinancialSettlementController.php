@@ -17,6 +17,7 @@ use App\Models\Vehicle\Vehicle;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\VehicleLeaseAccountingService;
 use App\Models\Corporate\Corporate;
+use App\Models\Finance\CorporateRemittance;
 
 class FinancialSettlementController extends Controller
 {
@@ -126,6 +127,12 @@ class FinancialSettlementController extends Controller
             'settlement_ids.*' => 'uuid',
         ]);
         return response()->json(['status' => 'success', 'message' => 'Corporate remittance recorded and allocated to eligible invoices.', 'data' => $this->service->receiveCorporateRemittance($corporate, $data, Auth::id())], 201);
+    }
+
+    public function allocateCorporateRemittance(Request $request, CorporateRemittance $remittance)
+    {
+        $data = $request->validate(['settlement_ids'=>'required|array|min:1','settlement_ids.*'=>'uuid|distinct']);
+        return response()->json(['status'=>'success','message'=>'Unapplied remittance allocated to selected invoices.','data'=>$this->service->allocateCorporateRemittance($remittance,$data['settlement_ids'],Auth::id())]);
     }
 
     public function followUp(Request $request, FinancialAccountSettlement $financialSettlement)
