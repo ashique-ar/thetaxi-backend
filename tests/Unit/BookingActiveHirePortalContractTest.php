@@ -68,6 +68,22 @@ it('projects the persisted acceptance location onto the booking management map',
         ->toContain("'A'");
 });
 
+it('explains every booking map marker and provides quick location buttons', function () {
+    $component = file_get_contents(__DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/booking-management/booking-management.component.ts');
+    $template = file_get_contents(__DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/booking-management/booking-management.component.html');
+
+    expect($component)
+        ->toContain('trackingQuickPoints()')
+        ->toContain('jumpToTrackingPoint(')
+        ->toContain("'R',");
+    expect($template)
+        ->toContain('Map key')
+        ->toContain('Jump to a location')
+        ->toContain('Driver accepted the hire')
+        ->toContain('Latest driver location')
+        ->toContain('(click)="jumpToTrackingPoint(point)"');
+});
+
 it('connects the active hire paginator to server page parameters', function () {
     $component = file_get_contents(
         __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts'
