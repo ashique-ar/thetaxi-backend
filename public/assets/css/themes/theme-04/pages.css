@@ -344,7 +344,7 @@ body.theme-theme-04.theme-page-cms-show .content-body { padding-bottom: clamp(38
 body.theme-theme-04.theme-page-cms-show .content-body h1 { font-size: clamp(1.5rem, 2vw, 1.9rem) !important; }
 body.theme-theme-04.theme-page-cms-show .content-body h2 { font-size: clamp(1.25rem, 1.6vw, 1.55rem) !important; }
 body.theme-theme-04.theme-page-cms-show .content-body h3 { font-size: 1.1rem !important; }
-body.theme-theme-04.theme-page-cms-show :where(.article-sidebar, .cms-booking-section) { position: sticky; top: 110px; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; }
+body.theme-theme-04.theme-page-cms-show :where(.article-sidebar, .cms-booking-section) { position: sticky; top: 110px; }
 body.theme-theme-04.theme-page-cms-show .article-sidebar { position: static; }
 body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded {
     min-height: 0;
