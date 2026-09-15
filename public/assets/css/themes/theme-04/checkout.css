@@ -13,16 +13,23 @@ body.theme-theme-04 .checkout-success {
 body.theme-theme-04 .t4-checkout-layout {
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(350px, 400px);
+    grid-template-areas:
+        "billing booking"
+        "billing summary";
     gap: 32px;
     align-items: start;
     padding-block: var(--t4-section);
 }
 
 body.theme-theme-04 .t4-checkout-main,
-body.theme-theme-04 .t4-checkout-main .checkout-page > .container { min-width: 0; }
-body.theme-theme-04 .t4-checkout-main .checkout-workflow--theme-04 { padding: 0; }
-body.theme-theme-04 .t4-checkout-main .checkout-page > .container { width: 100%; max-width: none; padding: 0; }
-body.theme-theme-04 .t4-checkout-booking { position: sticky; top: 96px; min-width: 0; }
+body.theme-theme-04 .t4-checkout-main .checkout-page,
+body.theme-theme-04 .t4-checkout-main .checkout-page > .container,
+body.theme-theme-04 .t4-checkout-main #checkout-form,
+body.theme-theme-04 .t4-checkout-main #checkout-form > .row { display: contents; }
+body.theme-theme-04 .t4-checkout-main #checkout-form > .row > .col-lg-7 { grid-area: billing; width: auto; }
+body.theme-theme-04 .t4-checkout-main #checkout-form > .row > .col-lg-5 { grid-area: summary; width: auto; }
+body.theme-theme-04 .t4-checkout-main .alert-warning { grid-area: billing; }
+body.theme-theme-04 .t4-checkout-booking { grid-area: booking; min-width: 0; }
 body.theme-theme-04 .t4-checkout-booking .t4-booking-panel { min-height: 0; margin: 0; padding: 0; background: transparent; }
 body.theme-theme-04 .t4-checkout-booking .t4-booking-panel > .container { width: 100%; max-width: none; padding: 0; }
 body.theme-theme-04 .t4-checkout-booking .t4-booking-panel__card { width: 100%; }
@@ -47,8 +54,12 @@ body.theme-theme-04 .checkout-workflow--theme-04 .payment-type-selection .col-6 
 body.theme-theme-04 .checkout-workflow--theme-04 :where(input, select, textarea, .select2-selection) { max-width: 100%; }
 
 @media (max-width: 991px) {
-    body.theme-theme-04 .t4-checkout-layout { grid-template-columns: 1fr; gap: 32px; padding-block: 48px; }
-    body.theme-theme-04 .t4-checkout-booking { position: static; }
+    body.theme-theme-04 .t4-checkout-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas: "booking" "billing" "summary";
+        gap: 32px;
+        padding-block: 48px;
+    }
     body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack { position: static; }
 }
 

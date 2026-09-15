@@ -41,7 +41,9 @@ it('places the existing dynamic Theme 04 booking form beside checkout', function
 
     expect($this->theme04Checkout)
         ->toContain('grid-template-columns: minmax(0, 1fr) minmax(350px, 400px)')
-        ->toContain('.t4-checkout-booking { position: sticky;')
+        ->toContain('"billing booking"')
+        ->toContain('"billing summary"')
+        ->toContain('#checkout-form > .row { display: contents; }')
         ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }');
 });
 
