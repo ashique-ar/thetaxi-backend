@@ -516,11 +516,7 @@
             </div>
 
             @unless (is_theme('theme-04'))
-                <div class="booking-section cms-booking-section mb-5" id="booking-section">
-                    <div class="cms-booking-header">
-                        <h2>Book Your Ride</h2>
-                        <p>{{ $hasContentBookingLocations ? 'The form is prefilled from this page where location data is available.' : 'Use the standard booking form with the same default values used on the home page.' }}</p>
-                    </div>
+                <div class="mb-5" id="booking-section">
                     <div class="filter-wrapper text-center hotel mb-5">
                         @include('components.booking-form', ['search' => $search ?? null])
                     </div>
