@@ -58,3 +58,14 @@ it('uses one idempotent reduced-motion-aware slider behavior', function () {
         ->toContain('syncHeroVideo')
         ->toContain('video.play()')->toContain('video.pause()');
 });
+
+it('keeps the default theme hero pagination horizontal', function () {
+    $css = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/theme-01.css');
+
+    expect($css)
+        ->toContain('body.theme-default .shared-hero-pagination .swiper-pagination-bullet')
+        ->toContain('display: flex;')
+        ->toContain('width: 10px;')
+        ->toContain('height: 10px;')
+        ->toContain('width: 28px;');
+});

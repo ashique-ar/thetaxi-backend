@@ -716,7 +716,7 @@ body.theme-theme-04 .t4-booking-panel .filter-input>.primary-btn1 {
 
 body.theme-theme-04 .t4-booking-panel .booking-advance-note {
     grid-column: 1 / -1;
-    margin: 0 !important;
+    margin: 10px 0 0 !important;
     padding: 7px 0 0 !important;
     font-size: 0.65625rem !important;
     line-height: 1.55;

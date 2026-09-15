@@ -116,4 +116,29 @@ body.theme-default .shared-hero-slider .swiper-wrapper,
 body.theme-default .shared-hero-slider .swiper-slide,
 body.theme-default .shared-hero-slide__media { width: 100%; height: 100%; }
 body.theme-default .shared-hero-slide__media { display: block; object-fit: cover; }
-body.theme-default .shared-hero-pagination { position: absolute; z-index: 4; right: 24px; bottom: 24px; left: auto; width: auto; }
+body.theme-default .shared-hero-pagination {
+    position: absolute;
+    z-index: 4;
+    right: 24px;
+    bottom: 24px;
+    left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: auto;
+}
+
+body.theme-default .shared-hero-pagination .swiper-pagination-bullet {
+    width: 10px;
+    height: 10px;
+    margin: 0 !important;
+    border-radius: 50%;
+    background: #fff;
+    opacity: 0.65;
+}
+
+body.theme-default .shared-hero-pagination .swiper-pagination-bullet-active {
+    width: 28px;
+    border-radius: 999px;
+    opacity: 1;
+}
