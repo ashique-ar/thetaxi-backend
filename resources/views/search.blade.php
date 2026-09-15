@@ -79,8 +79,8 @@
             <div class="search-booking-panel {{ is_theme('theme-04') ? 't4-booking-panel__card' : '' }}" id="searchBookingFormPanel">
                 @if (is_theme('theme-04'))
                     <header>
-                        <span class="t4-kicker">Journey booking</span>
-                        <strong>Book Your Ride</strong>
+                        <span class="t4-kicker">Book Your Ride</span>
+                        {{-- <strong>Book Your Ride</strong> --}}
                     </header>
                 @endif
                 @include('components.booking-form', ['search' => $search])

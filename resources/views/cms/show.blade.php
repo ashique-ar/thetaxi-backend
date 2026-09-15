@@ -281,6 +281,28 @@
             border-radius: 12px;
         }
 
+        @if ($contentType->slug === 'about')
+            .article-image img {
+                width: auto;
+                max-width: min(100%, 520px);
+                max-height: 360px;
+                object-fit: contain;
+                margin-inline: auto;
+            }
+
+            .content-body img {
+                width: auto !important;
+                max-width: min(100%, 520px) !important;
+                max-height: 520px;
+                object-fit: contain;
+                margin-inline: auto;
+            }
+
+            .cms-article-title {
+                font-size: clamp(1.8rem, 2.5vw, 2.6rem);
+            }
+        @endif
+
         .cms-booking-section {
             margin-top: 58px;
             padding: 28px 28px 10px;

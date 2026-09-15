@@ -45,6 +45,16 @@ test('the shared asset resolver preserves domain independent masked paths', func
         ->toContain('return $path;');
 });
 
+test('about article media is constrained without changing other cms types', function () {
+    $view = file_get_contents(dirname(__DIR__, 2) . '/resources/views/cms/show.blade.php');
+
+    expect($view)
+        ->toContain("@if (\$contentType->slug === 'about')")
+        ->toContain('max-width: min(100%, 520px)')
+        ->toContain('max-height: 360px;')
+        ->toContain('font-size: clamp(1.8rem, 2.5vw, 2.6rem);');
+});
+
 test('about media uses the existing common s3 disk', function () {
     $projectRoot = dirname(__DIR__, 2);
     $filesystems = file_get_contents($projectRoot . '/config/filesystems.php');
