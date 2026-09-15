@@ -10,6 +10,23 @@ body.theme-theme-04 .checkout-success {
     color: var(--t4-text);
 }
 
+body.theme-theme-04 .t4-checkout-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(350px, 400px);
+    gap: 32px;
+    align-items: start;
+    padding-block: var(--t4-section);
+}
+
+body.theme-theme-04 .t4-checkout-main,
+body.theme-theme-04 .t4-checkout-main .checkout-page > .container { min-width: 0; }
+body.theme-theme-04 .t4-checkout-main .checkout-workflow--theme-04 { padding: 0; }
+body.theme-theme-04 .t4-checkout-main .checkout-page > .container { width: 100%; max-width: none; padding: 0; }
+body.theme-theme-04 .t4-checkout-booking { position: sticky; top: 96px; min-width: 0; }
+body.theme-theme-04 .t4-checkout-booking .t4-booking-panel { min-height: 0; margin: 0; padding: 0; background: transparent; }
+body.theme-theme-04 .t4-checkout-booking .t4-booking-panel > .container { width: 100%; max-width: none; padding: 0; }
+body.theme-theme-04 .t4-checkout-booking .t4-booking-panel__card { width: 100%; }
+
 body.theme-theme-04 .checkout-workflow--theme-04 { padding: var(--t4-section) 0; background: var(--t4-surface-soft); }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-wrapper { overflow: hidden; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; box-shadow: none; }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-title { padding: 22px 26px; border-bottom: 4px solid var(--t4-accent); background: #fff; }
@@ -26,8 +43,12 @@ body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-selected-addon
 body.theme-theme-04 .checkout-workflow--theme-04 .pricing-area { padding-top: 20px; border-top: 3px solid var(--t4-text); }
 body.theme-theme-04 .checkout-workflow--theme-04 .total-row { padding-top: 16px; border-top: 2px solid var(--t4-accent); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-remove-item-btn, .checkout-clear-cart-btn, .apply-promo-checkout-btn, .checkout-toggle-addons, .checkout-toggle-extra-km) { min-height: 44px; border-radius: 6px; }
+body.theme-theme-04 .checkout-workflow--theme-04 .payment-type-selection .col-6 { width: 100%; }
+body.theme-theme-04 .checkout-workflow--theme-04 :where(input, select, textarea, .select2-selection) { max-width: 100%; }
 
 @media (max-width: 991px) {
+    body.theme-theme-04 .t4-checkout-layout { grid-template-columns: 1fr; gap: 32px; padding-block: 48px; }
+    body.theme-theme-04 .t4-checkout-booking { position: static; }
     body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack { position: static; }
 }
 

@@ -33,6 +33,18 @@ it('keeps checkout fields, submission and empty-cart behavior shared', function 
         ->toContain('Browse Vehicles');
 });
 
+it('places the existing dynamic Theme 04 booking form beside checkout', function () {
+    expect($this->checkout)
+        ->toContain("@unless (is_theme('theme-04'))")
+        ->toContain('class="container t4-checkout-layout"')
+        ->toContain("@include('partials.themes.theme-04.booking-form', ['embedded' => true])");
+
+    expect($this->theme04Checkout)
+        ->toContain('grid-template-columns: minmax(0, 1fr) minmax(350px, 400px)')
+        ->toContain('.t4-checkout-booking { position: sticky;')
+        ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }');
+});
+
 it('preserves cart item, addon, extra-km, promotion and payment-selection hooks', function () {
     expect($this->cartItem)
         ->toContain('checkout-cart-item')

@@ -4,6 +4,7 @@ beforeEach(function () {
     $projectRoot = dirname(__DIR__, 2);
 
     $this->home = file_get_contents($projectRoot . '/resources/views/home.blade.php');
+    $this->vehicleCard = file_get_contents($projectRoot . '/resources/views/components/vehicle-card.blade.php');
     $this->theme04 = file_get_contents($projectRoot . '/public/assets/css/themes/theme-04/theme-04.css');
     $this->sections = [
         'partners' => 't4-partners',
@@ -17,6 +18,14 @@ beforeEach(function () {
         'blogs' => 't4-stories',
         'faqs' => 't4-faq',
     ];
+});
+
+it('does not present kilometre allowances as included on Theme 04 vehicle cards', function () {
+    expect($this->vehicleCard)
+        ->toContain("\$showKmAllowance = !is_theme('theme-04')")
+        ->toContain('$hasFreeKmPerDay = $showKmAllowance')
+        ->toContain('$showKmAllowance && isset($distanceDetails[\'free_km_per_package\'])')
+        ->toContain('$hasAllowedKm = $showKmAllowance');
 });
 
 it('covers all hidden and visible combinations and every possible surviving neighbor pair', function () {

@@ -21,13 +21,13 @@
     </div>
     <!-- End Breadcrumb section -->
 
-    <!-- Booking Form Section -->
-    <div class="filter-wrapper text-center hotel mb-5">
-        <div class="container">
-            @include('components.booking-form')
+    @unless (is_theme('theme-04'))
+        <div class="filter-wrapper text-center hotel mb-5">
+            <div class="container">
+                @include('components.booking-form')
+            </div>
         </div>
-    </div>
-    <!-- End Booking Form Section -->
+    @endunless
 
     @php
         // Cart data is passed from controller
@@ -90,6 +90,11 @@
         };
         $paymentAmount = floor(max(0, $paymentAmount));
     @endphp
+
+    @if (is_theme('theme-04'))
+        <div class="container t4-checkout-layout">
+            <div class="t4-checkout-main">
+    @endif
 
     <!-- Checkout Page Start-->
     <div class="checkout-page {{ theme_class('checkout-workflow') }}" id="checkoutContentStart">
@@ -569,6 +574,14 @@
         </div>
     </div>
     <!--Checkout Page End-->
+
+    @if (is_theme('theme-04'))
+            </div>
+            <aside class="t4-checkout-booking" aria-label="Update journey search">
+                @include('partials.themes.theme-04.booking-form', ['embedded' => true])
+            </aside>
+        </div>
+    @endif
 
     <div class="modal fade checkout-addon-modal" id="checkoutAddonModal" tabindex="-1"
         aria-labelledby="checkoutAddonModalLabel" aria-hidden="true">

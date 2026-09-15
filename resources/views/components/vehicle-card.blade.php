@@ -369,11 +369,12 @@
             $distanceDetails = $pricing['distance_details'] ?? [];
             $durationInfo = $pricing['duration_info'] ?? [];
             $durationDays = $durationInfo['days'] ?? 1;
+            $showKmAllowance = !is_theme('theme-04');
 
-            $hasFreeKmPerDay = isset($distanceDetails['free_km_per_day']) && $distanceDetails['free_km_per_day'] > 0;
+            $hasFreeKmPerDay = $showKmAllowance && isset($distanceDetails['free_km_per_day']) && $distanceDetails['free_km_per_day'] > 0;
             $hasFreeKmPerPackage =
-                isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
-            $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
+                $showKmAllowance && isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
+            $hasAllowedKm = $showKmAllowance && isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
             $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
             $hasExtraHourPrice =
                 $serviceType === 'day_rental' &&
