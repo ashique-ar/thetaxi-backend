@@ -139,7 +139,47 @@ body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(.card, .accordion
     border: 1px solid var(--t4-line) !important;
     border-radius: 10px !important;
     background: #fff !important;
+    color: var(--t4-text);
     box-shadow: none !important;
+}
+
+/* Older page bundles often assume a dark panel. Theme 04 turns these panels
+   white, so their inherited white copy must return to the light-surface palette. */
+body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(
+    .card,
+    .accordion-item,
+    .feature-card,
+    .benefit-card,
+    .single-contact,
+    .contact-card,
+    .location-card,
+    .contact-form-wrap,
+    .faq-search-wrap,
+    .faq-wrap,
+    .cms-article-main,
+    .sidebar-widget,
+    .cms-booking-section,
+    .vehicle-card,
+    .search-result-card,
+    .vehicle-info-card,
+    .inquiry-form-card,
+    .rate-chart-card,
+    .mobile-rate-card,
+    .checkout-form-wrapper,
+    .checkout-form,
+    .checkout-addon-panel
+) :where(h1, h2, h3, h4, h5, h6, p, li, label, small, dt, dd) {
+    color: var(--t4-text) !important;
+}
+
+body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(
+    .text-muted,
+    .form-text,
+    .help-text,
+    .subtitle,
+    .description
+) {
+    color: var(--t4-muted) !important;
 }
 
 body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(.card, .feature-card, .benefit-card, .single-contact, .contact-card) {
@@ -156,7 +196,13 @@ body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(input:not([type="
     border: 1px solid var(--t4-line) !important;
     border-radius: 7px !important;
     background-color: #fff !important;
+    color: var(--t4-text) !important;
     box-shadow: none !important;
+}
+
+body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(input, textarea, .form-control)::placeholder {
+    color: var(--t4-muted) !important;
+    opacity: 1;
 }
 
 body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(input, select, textarea, .form-control, .form-select):focus {
@@ -271,9 +317,18 @@ body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-pag
 body.theme-theme-04.theme-page-cms-show .cms-article-page { margin: 0 !important; padding: var(--t4-section) 0; }
 body.theme-theme-04.theme-page-cms-show .cms-article-main { overflow: hidden; border: 1px solid var(--t4-line); border-top: 4px solid var(--t4-accent); border-radius: 11px; background: #fff; }
 body.theme-theme-04.theme-page-cms-show :where(.cms-article-title, .article-meta, .content-body) { padding-inline: clamp(24px, 5vw, 64px); }
-body.theme-theme-04.theme-page-cms-show .cms-article-title { padding-top: clamp(30px, 5vw, 62px); font-size: clamp(2.6rem, 5vw, 5.4rem); line-height: 0.98; }
+body.theme-theme-04.theme-page-cms-show .cms-article-title { padding-top: clamp(24px, 4vw, 42px); font-size: clamp(1.65rem, 2.2vw, 2.25rem) !important; line-height: 1.08; }
 body.theme-theme-04.theme-page-cms-show .content-body { padding-bottom: clamp(38px, 6vw, 76px); color: var(--t4-muted); font-size: 1rem; line-height: 1.85; }
+body.theme-theme-04.theme-page-cms-show .content-body h1 { font-size: clamp(1.5rem, 2vw, 1.9rem) !important; }
+body.theme-theme-04.theme-page-cms-show .content-body h2 { font-size: clamp(1.25rem, 1.6vw, 1.55rem) !important; }
+body.theme-theme-04.theme-page-cms-show .content-body h3 { font-size: 1.1rem !important; }
 body.theme-theme-04.theme-page-cms-show :where(.article-sidebar, .cms-booking-section) { position: sticky; top: 110px; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; }
+body.theme-theme-04.theme-page-cms-show .article-sidebar { position: static; }
+body.theme-theme-04.theme-page-cms-show .cms-booking-section { padding: 20px; }
+body.theme-theme-04.theme-page-cms-show .cms-booking-header h2 { font-size: 1.35rem; }
+body.theme-theme-04.theme-page-cms-show .cms-booking-section .filter-wrapper { margin-bottom: 0 !important; }
+body.theme-theme-04.theme-page-cms-show .cms-booking-section :where(.row, .filter-group) { display: block; }
+body.theme-theme-04.theme-page-cms-show .cms-booking-section :where([class*="col-"], .single-search-box) { width: 100%; max-width: none; margin-bottom: 12px; }
 
 /* Search + fleet discovery: horizontal trip summary and product catalogue. */
 body.theme-theme-04.theme-page-search .search-booking-section { min-height: 0; margin: 0 !important; padding: 36px 0; border-bottom: 1px solid var(--t4-line); background: #fff; pointer-events: auto; }

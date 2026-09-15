@@ -56,11 +56,18 @@ test('about article media is constrained without changing other cms types', func
 
 test('cms article headings use the compact shared scale', function () {
     $view = file_get_contents(dirname(__DIR__, 2) . '/resources/views/cms/show.blade.php');
+    $themeFour = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/themes/theme-04/pages.css');
 
     expect($view)
         ->toContain('font-size: clamp(1.65rem, 2.2vw, 2.25rem);')
         ->toContain('font-size: clamp(1.25rem, 1.6vw, 1.55rem);')
         ->toContain('font-size: 1.1rem;');
+
+    expect($themeFour)
+        ->toContain('.theme-page-cms-show .cms-article-title')
+        ->toContain('font-size: clamp(1.65rem, 2.2vw, 2.25rem) !important;')
+        ->toContain('.theme-page-cms-show .content-body h2 { font-size: clamp(1.25rem, 1.6vw, 1.55rem) !important; }')
+        ->not->toContain('font-size: clamp(2.6rem, 5vw, 5.4rem)');
 });
 
 test('about media uses the existing common s3 disk', function () {
@@ -71,6 +78,37 @@ test('about media uses the existing common s3 disk', function () {
         ->toContain("'s3' => [")
         ->toContain("env('AWS_ACCESS_KEY_ID')")
         ->not->toContain("'cms_media' => [");
+});
+
+test('theme four renders the shared booking form in the cms sidebar', function () {
+    $root = dirname(__DIR__, 2);
+    $view = file_get_contents($root . '/resources/views/cms/show.blade.php');
+    $bookingForm = file_get_contents($root . '/resources/views/components/booking-form.blade.php');
+    $themeFour = file_get_contents($root . '/public/assets/css/themes/theme-04/pages.css');
+
+    expect($view)
+        ->toContain("@if (is_theme('theme-04'))")
+        ->toContain("@include('components.booking-form'")
+        ->toContain("@unless (is_theme('theme-04'))");
+
+    expect($bookingForm)->toContain("@include('components.dynamic-booking-form'");
+    expect(file_exists($root . '/resources/views/cms/partials/booking.blade.php'))->toBeFalse();
+    expect($themeFour)->toContain('.theme-page-cms-show .cms-booking-section :where([class*="col-"], .single-search-box)');
+
+    expect(strpos($view, "@unless (is_theme('theme-04'))"))
+        ->toBeGreaterThan(strpos($view, '</aside>'));
+});
+
+test('theme four white surfaces reset inherited white text', function () {
+    $css = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/themes/theme-04/pages.css');
+
+    expect($css)
+        ->toContain('.cms-article-main,')
+        ->toContain('.contact-form-wrap,')
+        ->toContain('.checkout-form-wrapper,')
+        ->toContain('color: var(--t4-text) !important;')
+        ->toContain(':where(input, textarea, .form-control)::placeholder')
+        ->toContain('color: var(--t4-muted) !important;');
 });
 
 test('every external about content link is migrated by the seeder', function () {
