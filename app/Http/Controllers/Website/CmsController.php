@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Website;
 use App\Http\Controllers\Controller;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
+use App\Services\WebsiteSettingsService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -14,22 +16,32 @@ class CmsController extends Controller
     protected \App\Services\BookingFlowService $bookingFlowService;
     protected \App\Services\CurrencyService $currencyService;
     protected \App\Services\DiscountService $discountService;
+    protected WebsiteSettingsService $websiteSettingsService;
 
     public function __construct(
         \App\Services\BookingFlowService $bookingFlowService,
         \App\Services\CurrencyService $currencyService,
-        \App\Services\DiscountService $discountService
+        \App\Services\DiscountService $discountService,
+        WebsiteSettingsService $websiteSettingsService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
+        $this->websiteSettingsService = $websiteSettingsService;
     }
 
     /**
      * Display a listing of content for a specific content type
      */
-    public function index(string $contentTypeSlug, Request $request): View
+    public function index(string $contentTypeSlug, Request $request): View|RedirectResponse
     {
+        if ($contentTypeSlug === 'about') {
+            $slug = $this->websiteSettingsService->get('about_page_slug');
+
+            if ($slug) {
+                return redirect()->route('cms.show', ['contentType' => 'about', 'content' => $slug]);
+            }
+        }
 
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)

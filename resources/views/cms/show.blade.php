@@ -372,6 +372,11 @@
                 font-size: 1rem;
             }
         }
+
+        .filter-wrapper.hotel {
+            margin-top: 155px !important;
+        }
+
     </style>
 @endpush
 

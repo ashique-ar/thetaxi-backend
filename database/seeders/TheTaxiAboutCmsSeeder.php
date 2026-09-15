@@ -4,6 +4,7 @@ namespace Database\Seeders;
 
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
+use App\Models\Website\WebsiteSetting;
 use Illuminate\Database\Seeder;
 
 class TheTaxiAboutCmsSeeder extends Seeder
@@ -47,6 +48,8 @@ class TheTaxiAboutCmsSeeder extends Seeder
                 'display_order' => 1,
             ])->save();
         }
+
+        WebsiteSetting::setValue('about_page_slug', 'about-thetaxi');
     }
 
     private function body(): string

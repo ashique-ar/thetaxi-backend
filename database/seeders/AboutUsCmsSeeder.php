@@ -6,6 +6,7 @@ use App\Models\Company;
 use App\Models\NavigationMenu;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
+use App\Models\Website\WebsiteSetting;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Storage;
@@ -51,6 +52,8 @@ class AboutUsCmsSeeder extends Seeder
                     ])->save();
             }
         }
+
+        WebsiteSetting::setValue('about_page_slug', 'who-we-are');
 
         foreach (Company::pluck('id')->prepend(null) as $companyId) {
             $this->seedNavigation($companyId);
