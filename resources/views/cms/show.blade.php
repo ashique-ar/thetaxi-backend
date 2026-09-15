@@ -451,12 +451,10 @@
                 <aside class="col-xl-4 col-lg-4">
                     <div class="article-sidebar">
                         @if (is_theme('theme-04'))
-                            <div class="booking-section cms-booking-section mb-4" id="booking-section">
-                                <div class="cms-booking-header"><h2>Book Your Ride</h2></div>
-                                <div class="filter-wrapper text-center hotel mb-0">
-                                    @include('components.booking-form', ['search' => $search ?? null])
-                                </div>
-                            </div>
+                            @include('partials.themes.theme-04.booking-form', [
+                                'search' => $search ?? null,
+                                'embedded' => true,
+                            ])
                         @endif
 
                         <div class="sidebar-widget share-widget">

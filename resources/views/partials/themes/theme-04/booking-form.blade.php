@@ -1,11 +1,13 @@
-<section class="t4-booking-panel home-booking-form-section" aria-label="Book or enquire about a journey" data-t4-journey-desk>
+@php($embedded = $embedded ?? false)
+
+<section class="t4-booking-panel home-booking-form-section {{ $embedded ? 't4-booking-panel--embedded' : '' }}" aria-label="Book or enquire about a journey" data-t4-journey-desk>
     <div class="container">
         <div class="t4-booking-panel__card">
             <header>
                 <span class="t4-kicker">Book Your Ride</span>
                 {{-- <strong>Book Your Ride</strong> --}}
             </header>
-            @include('components.booking-form')
+            @include('components.booking-form', ['search' => $search ?? null])
         </div>
     </div>
 </section>

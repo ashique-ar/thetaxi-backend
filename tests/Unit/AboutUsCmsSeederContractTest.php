@@ -84,16 +84,23 @@ test('theme four renders the shared booking form in the cms sidebar', function (
     $root = dirname(__DIR__, 2);
     $view = file_get_contents($root . '/resources/views/cms/show.blade.php');
     $bookingForm = file_get_contents($root . '/resources/views/components/booking-form.blade.php');
+    $themeBookingForm = file_get_contents($root . '/resources/views/partials/themes/theme-04/booking-form.blade.php');
     $themeFour = file_get_contents($root . '/public/assets/css/themes/theme-04/pages.css');
 
     expect($view)
         ->toContain("@if (is_theme('theme-04'))")
-        ->toContain("@include('components.booking-form'")
+        ->toContain("@include('partials.themes.theme-04.booking-form'")
+        ->toContain("'embedded' => true")
         ->toContain("@unless (is_theme('theme-04'))");
 
+    expect($themeBookingForm)
+        ->toContain('@php($embedded = $embedded ?? false)')
+        ->toContain("@include('components.booking-form', ['search' => $search ?? null])");
     expect($bookingForm)->toContain("@include('components.dynamic-booking-form'");
     expect(file_exists($root . '/resources/views/cms/partials/booking.blade.php'))->toBeFalse();
-    expect($themeFour)->toContain('.theme-page-cms-show .cms-booking-section :where([class*="col-"], .single-search-box)');
+    expect($themeFour)
+        ->toContain('.theme-page-cms-show .t4-booking-panel--embedded')
+        ->toContain('.t4-booking-panel--embedded .t4-booking-panel__card { width: 100%; }');
 
     expect(strpos($view, "@unless (is_theme('theme-04'))"))
         ->toBeGreaterThan(strpos($view, '</aside>'));

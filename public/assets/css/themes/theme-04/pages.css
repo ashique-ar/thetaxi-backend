@@ -348,11 +348,14 @@ body.theme-theme-04.theme-page-cms-show .content-body h2 { font-size: clamp(1.25
 body.theme-theme-04.theme-page-cms-show .content-body h3 { font-size: 1.1rem !important; }
 body.theme-theme-04.theme-page-cms-show :where(.article-sidebar, .cms-booking-section) { position: sticky; top: 110px; border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; }
 body.theme-theme-04.theme-page-cms-show .article-sidebar { position: static; }
-body.theme-theme-04.theme-page-cms-show .cms-booking-section { padding: 20px; }
-body.theme-theme-04.theme-page-cms-show .cms-booking-header h2 { font-size: 1.35rem; }
-body.theme-theme-04.theme-page-cms-show .cms-booking-section .filter-wrapper { margin-bottom: 0 !important; }
-body.theme-theme-04.theme-page-cms-show .cms-booking-section :where(.row, .filter-group) { display: block; }
-body.theme-theme-04.theme-page-cms-show .cms-booking-section :where([class*="col-"], .single-search-box) { width: 100%; max-width: none; margin-bottom: 12px; }
+body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded {
+    min-height: 0;
+    margin: 0 0 24px;
+    padding: 0;
+    background: transparent;
+}
+body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded > .container { width: 100%; max-width: none; padding: 0; }
+body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded .t4-booking-panel__card { width: 100%; }
 
 /* Search + fleet discovery: horizontal trip summary and product catalogue. */
 body.theme-theme-04.theme-page-search .search-booking-section { min-height: 0; margin: 0 !important; padding: 36px 0; border-bottom: 1px solid var(--t4-line); background: #fff; pointer-events: auto; }
