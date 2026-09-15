@@ -299,6 +299,30 @@ body.theme-theme-04.theme-page-cms-index .cms-filters {
     box-shadow: none;
 }
 
+body.theme-theme-04.theme-page-cms-index .cms-header {
+    padding: clamp(48px, 7vw, 82px) 0;
+    border-width: 0 0 1px;
+    border-radius: 0;
+    color: var(--t4-text);
+}
+
+body.theme-theme-04.theme-page-cms-index .cms-header::before { display: none; }
+body.theme-theme-04.theme-page-cms-index .cms-header h1 {
+    color: var(--t4-text) !important;
+    font-family: Inter, "Segoe UI", Arial, sans-serif;
+    font-size: clamp(2.25rem, 5vw, 4.5rem);
+    font-weight: 500;
+    letter-spacing: -0.04em;
+    line-height: 1;
+    text-shadow: none;
+}
+body.theme-theme-04.theme-page-cms-index .cms-header :where(.breadcrumb-item, .breadcrumb-item a, .subtitle) {
+    color: var(--t4-muted) !important;
+}
+body.theme-theme-04.theme-page-cms-index .cms-header .breadcrumb-item + .breadcrumb-item::before {
+    color: var(--t4-accent);
+}
+
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.enhanced-blog-card, .blog-card2) {
     height: 100%;
     overflow: hidden;
@@ -508,6 +532,14 @@ body.theme-theme-04:is(.theme-page-checkout-webxpay-callback, .theme-page-checko
     body.theme-theme-04:not(.theme-page-home) .breadcrumb-section { min-height: 190px; padding-block: 48px; }
     body.theme-theme-04:not(.theme-page-home) .breadcrumb-section h1 { font-size: clamp(2.35rem, 11vw, 3.35rem); letter-spacing: -0.035em; line-height: 0.98; }
     body.theme-theme-04:not(.theme-page-home) .breadcrumb-section::after { display: none; }
+    body.theme-theme-04.theme-page-cms-index .cms-header { padding: 42px 0; }
+    body.theme-theme-04.theme-page-cms-index .cms-header h1 { font-size: clamp(2rem, 10vw, 2.8rem); }
+    body.theme-theme-04.theme-page-cms-index .cms-filters { margin-bottom: 24px; padding: 20px 0; border-inline: 0; border-radius: 0; }
+    body.theme-theme-04.theme-page-cms-index :where(.content-stats, .filter-tags) { align-items: stretch; }
+    body.theme-theme-04.theme-page-cms-index .content-stats { gap: 14px; }
+    body.theme-theme-04.theme-page-cms-index :where(.content-stats, .filter-tags) { flex-direction: column; }
+    body.theme-theme-04.theme-page-cms-index .filter-tag { width: 100%; margin: 0; text-align: center; }
+    body.theme-theme-04.theme-page-cms-index .travel-inspiration-page > .container { padding-inline: 0; }
     body.theme-theme-04.theme-page-about .about-wrapper { padding: 24px; }
     body.theme-theme-04:not(.theme-page-home) .t4-site-main :where(.section-title, .section-title1) > h2 { font-size: clamp(1.9rem, 9vw, 2.65rem); }
     body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section { min-height: 0; }

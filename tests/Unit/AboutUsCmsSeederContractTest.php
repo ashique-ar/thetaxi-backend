@@ -111,6 +111,27 @@ test('theme four white surfaces reset inherited white text', function () {
         ->toContain('color: var(--t4-muted) !important;');
 });
 
+test('cms category masthead and shared cards remain readable on mobile', function () {
+    $root = dirname(__DIR__, 2);
+    $css = file_get_contents($root . '/public/assets/css/themes/theme-04/pages.css');
+    $card = file_get_contents($root . '/resources/views/components/cms-card.blade.php');
+    $section = file_get_contents($root . '/resources/views/components/cms-section.blade.php');
+
+    expect($css)
+        ->toContain('.cms-header :where(.breadcrumb-item, .breadcrumb-item a, .subtitle)')
+        ->toContain('.cms-header h1 { font-size: clamp(2rem, 10vw, 2.8rem); }')
+        ->toContain('.travel-inspiration-page > .container { padding-inline: 0; }');
+
+    expect($card)
+        ->toContain('.cms-content-card .blog-img-wrap')
+        ->toContain('aspect-ratio: 16 / 9;')
+        ->toContain('.cms-content-card:hover');
+
+    expect($section)
+        ->toContain('.cms-content-section .container')
+        ->toContain('font-size: clamp(1.75rem, 9vw, 2.35rem);');
+});
+
 test('every external about content link is migrated by the seeder', function () {
     $seeder = new \Database\Seeders\AboutUsCmsSeeder();
     $reflection = new ReflectionClass($seeder);

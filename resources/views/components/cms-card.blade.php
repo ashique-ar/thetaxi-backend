@@ -600,9 +600,29 @@
     }
 
     @media (max-width: 575px) {
+        .cms-content-card {
+            width: 100%;
+        }
+
+        .cms-content-card .blog-img-wrap {
+            aspect-ratio: 16 / 9;
+        }
+
         .cms-content-card .blog-content {
             min-height: 0;
-            padding: 18px;
+            padding: 16px;
+        }
+
+        .cms-content-card .blog-content h4 {
+            font-size: 17px;
+        }
+
+        .cms-content-card .location {
+            white-space: normal;
+        }
+
+        .cms-content-card:hover {
+            transform: none;
         }
     }
 </style>
