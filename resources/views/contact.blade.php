@@ -11,8 +11,8 @@
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['contact_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>{{ $settings['contact_hero_heading'] ?? 'Inquiry' }}</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>

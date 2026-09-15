@@ -69,3 +69,15 @@ it('keeps the default theme hero pagination horizontal', function () {
         ->toContain('height: 10px;')
         ->toContain('width: 28px;');
 });
+
+it('keeps theme 04 hero pagination horizontal and theme scoped', function () {
+    $css = file_get_contents(dirname(__DIR__, 2) . '/public/assets/css/themes/theme-04/theme-04.css');
+
+    expect($css)
+        ->toContain('body.theme-theme-04 .shared-hero-pagination .swiper-pagination-bullet')
+        ->toContain('display: flex;')
+        ->toContain('width: 10px;')
+        ->toContain('height: 10px;')
+        ->toContain('width: 28px;')
+        ->toContain('background: var(--t4-accent);');
+});

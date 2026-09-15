@@ -22,8 +22,8 @@
             {{-- <video autoplay loop muted playsinline src="{{ asset('assets/video/home4-banner-video.mp4')}}"></video> --}}
         </div>
         <div class="banner-content-wrap">
-            <div class="container">
-                <div class="banner-content">
+            <div class="container banner-content">
+            <div class="">
                     <h1>{{ $settings['corporate_hero_heading'] ?? 'Corporate Transport Solutions' }}</h1>
                     <p>{{ $settings['corporate_hero_subheading'] ?? 'Professional transportation services tailored for your business needs' }}
                     </p>

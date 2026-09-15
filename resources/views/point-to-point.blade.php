@@ -13,8 +13,8 @@
             <video autoplay loop muted playsinline src="{{ asset('assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
-            <div class="container">
-                <div class="banner-content">
+            <div class="container banner-content">
+            <div class="">
                     <h1>Point-to-Point Transfers</h1>
                     <p>Reliable door-to-door transportation service for your convenience</p>
 

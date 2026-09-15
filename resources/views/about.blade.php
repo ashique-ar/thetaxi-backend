@@ -10,8 +10,8 @@
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['about_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>{{ $settings['about_hero_heading'] ?? 'About ' . ($settings['brand_name'] ?? $settings['company_name'] ?? 'Company') }}</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
