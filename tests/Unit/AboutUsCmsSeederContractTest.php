@@ -51,8 +51,16 @@ test('about article media is constrained without changing other cms types', func
     expect($view)
         ->toContain("@if (\$contentType->slug === 'about')")
         ->toContain('max-width: min(100%, 520px)')
-        ->toContain('max-height: 360px;')
-        ->toContain('font-size: clamp(1.8rem, 2.5vw, 2.6rem);');
+        ->toContain('max-height: 360px;');
+});
+
+test('cms article headings use the compact shared scale', function () {
+    $view = file_get_contents(dirname(__DIR__, 2) . '/resources/views/cms/show.blade.php');
+
+    expect($view)
+        ->toContain('font-size: clamp(1.65rem, 2.2vw, 2.25rem);')
+        ->toContain('font-size: clamp(1.25rem, 1.6vw, 1.55rem);')
+        ->toContain('font-size: 1.1rem;');
 });
 
 test('about media uses the existing common s3 disk', function () {

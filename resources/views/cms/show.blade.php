@@ -54,7 +54,7 @@
             max-width: 880px;
             margin: 0 0 12px;
             color: #111827;
-            font-size: clamp(2rem, 3vw, 3.15rem);
+            font-size: clamp(1.65rem, 2.2vw, 2.25rem);
             line-height: 1.08;
             font-weight: 800;
             letter-spacing: 0;
@@ -222,7 +222,7 @@
         }
 
         .content-body h1 {
-            font-size: clamp(1.75rem, 2.4vw, 2.45rem);
+            font-size: clamp(1.5rem, 2vw, 1.9rem);
         }
 
         .content-body>h1:first-child {
@@ -232,7 +232,7 @@
         .content-body h2 {
             position: relative;
             padding-top: 8px;
-            font-size: clamp(1.45rem, 2vw, 1.9rem);
+            font-size: clamp(1.25rem, 1.6vw, 1.55rem);
         }
 
         .content-body h2::before {
@@ -246,7 +246,7 @@
         }
 
         .content-body h3 {
-            font-size: 1.22rem;
+            font-size: 1.1rem;
         }
 
         .content-body p {
@@ -298,9 +298,6 @@
                 margin-inline: auto;
             }
 
-            .cms-article-title {
-                font-size: clamp(1.8rem, 2.5vw, 2.6rem);
-            }
         @endif
 
         .cms-booking-section {
