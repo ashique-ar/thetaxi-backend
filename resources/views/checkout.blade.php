@@ -91,11 +91,6 @@
         $paymentAmount = floor(max(0, $paymentAmount));
     @endphp
 
-    @if (is_theme('theme-04'))
-        <div class="container t4-checkout-layout">
-            <div class="t4-checkout-main">
-    @endif
-
     <!-- Checkout Page Start-->
     <div class="checkout-page {{ theme_class('checkout-workflow') }}" id="checkoutContentStart">
         <div class="container">
@@ -106,11 +101,10 @@
                     <a href="{{ route('search') }}" class="primary-btn1 mt-3">Browse Vehicles</a>
                 </div>
             @else
-                <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
-                    @csrf
-
-                    <div class="row g-lg-4 gy-5">
+                <div class="row g-lg-4 gy-5">
                         <div class="col-lg-7">
+                            <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
+                                @csrf
                             <div class="checkout-form-wrapper">
                                 <div class="checkout-form-title">
                                     <h4>Billing Information</h4>
@@ -406,9 +400,15 @@
                                     </div>
                                 </div>
                             </div>
+                            </form>
                         </div>
 
                         <div class="col-lg-5">
+                            @if (is_theme('theme-04'))
+                                <aside class="t4-checkout-booking" aria-label="Update journey search">
+                                    @include('partials.themes.theme-04.booking-form', ['embedded' => true])
+                                </aside>
+                            @endif
                             <div class="checkout-sidebar-stack">
                                 @include('checkout.partials.cart-summary')
                                             <!-- Payment Type Selection Section -->
@@ -425,6 +425,7 @@
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
                                                                         value="full" id="payment_full"
+                                                                        form="checkout-form"
                                                                         {{ $paymentType === 'full' ? 'checked' : '' }}
                                                                         class="payment-radio">
                                                                     <label for="payment_full" class="payment-label">
@@ -445,6 +446,7 @@
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="advance" id="payment_advance"
+                                                                            form="checkout-form"
                                                                             {{ $paymentType === 'advance' ? 'checked' : '' }}
                                                                             class="payment-radio">
                                                                         <label for="payment_advance"
@@ -469,6 +471,7 @@
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="checkin" id="payment_checkin"
+                                                                            form="checkout-form"
                                                                             {{ $paymentType === 'checkin' ? 'checked' : '' }}
                                                                             class="payment-radio">
                                                                         <label for="payment_checkin"
@@ -490,6 +493,7 @@
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
                                                                         value="quotation" id="payment_quotation"
+                                                                        form="checkout-form"
                                                                         {{ $paymentType === 'quotation' ? 'checked' : '' }}
                                                                         class="payment-radio">
                                                                     <label for="payment_quotation" class="payment-label">
@@ -541,9 +545,10 @@
 
                                             <!-- Hidden payment method field - set automatically based on payment type -->
                                             <input type="hidden" name="payment_method" id="payment_method_field"
-                                                value="">
+                                                value="" form="checkout-form">
 
-                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
+                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn"
+                                                form="checkout-form">
                                                 <span>
                                                     @if ($paymentType === 'quotation')
                                                         Submit Quotation Request
@@ -569,19 +574,10 @@
                             </div>
                         </div>
                     </div>
-                </form>
             @endif
         </div>
     </div>
     <!--Checkout Page End-->
-
-    @if (is_theme('theme-04'))
-            </div>
-            <aside class="t4-checkout-booking" aria-label="Update journey search">
-                @include('partials.themes.theme-04.booking-form', ['embedded' => true])
-            </aside>
-        </div>
-    @endif
 
     <div class="modal fade checkout-addon-modal" id="checkoutAddonModal" tabindex="-1"
         aria-labelledby="checkoutAddonModalLabel" aria-hidden="true">

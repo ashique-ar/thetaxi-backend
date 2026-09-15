@@ -34,17 +34,19 @@ it('keeps checkout fields, submission and empty-cart behavior shared', function 
 });
 
 it('places the existing dynamic Theme 04 booking form beside checkout', function () {
+    $themeBooking = "@include('partials.themes.theme-04.booking-form', ['embedded' => true])";
+
     expect($this->checkout)
         ->toContain("@unless (is_theme('theme-04'))")
-        ->toContain('class="container t4-checkout-layout"')
-        ->toContain("@include('partials.themes.theme-04.booking-form', ['embedded' => true])");
+        ->toContain($themeBooking)
+        ->toContain('form="checkout-form"')
+        ->and(strpos($this->checkout, $themeBooking))->toBeLessThan(strpos($this->checkout, "@include('checkout.partials.cart-summary')"));
 
     expect($this->theme04Checkout)
-        ->toContain('grid-template-columns: minmax(0, 1fr) minmax(350px, 400px)')
-        ->toContain('"billing booking"')
-        ->toContain('"billing summary"')
-        ->toContain('#checkout-form > .row { display: contents; }')
-        ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }');
+        ->toContain('.t4-checkout-booking { min-width: 0; margin-bottom: 24px; }')
+        ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }')
+        ->toContain('grid-template-columns: 64px minmax(0, 1fr)')
+        ->toContain('.checkout-cart-item .item-total { min-width: 88px; }');
 });
 
 it('preserves cart item, addon, extra-km, promotion and payment-selection hooks', function () {
