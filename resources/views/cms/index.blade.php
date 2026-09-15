@@ -750,78 +750,77 @@
             <div class="row gy-4" id="contentGrid">
 
                 <!-- Travel Inspiration Page Start-->
-                <div class="travel-inspiration-page pt-100 mb-100">
-                    <div class="container">
-                        <div class="row gy-md-5 gy-4 mb-60">
-                            @forelse($contents as $index => $content)
-                                <div class="col-lg-4 col-md-6 col-sm-12" data-aos="fade-up"
-                                    data-aos-delay="{{ ($index % 3) * 100 }}">
-                                    <article class="enhanced-blog-card">
-                                        <div class="card-image">
-                                            <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
-                                                alt="{{ $content->title }}" loading="lazy">
-                                            <div class="card-overlay"></div>
-                                            <div class="category-badge">{{ $contentType->title }}</div>
-                                            @if ($content->is_featured ?? false)
-                                                <div class="featured-badge">Featured</div>
-                                            @endif
-                                        </div>
-                                        <div class="card-content">
-                                            <div class="card-meta">
-                                                <span class="date">
-                                                    <i class="bi bi-calendar3"></i>
-                                                    {{ $content->published_at ? $content->published_at->format('M d, Y') : $content->created_at->format('M d, Y') }}
-                                                </span>
-                                                <span class="views">
-                                                    <i class="bi bi-eye"></i>
-                                                    {{ $content->views_count ?? 0 }}
-                                                </span>
-                                            </div>
-                                            <h3 class="card-title">
-                                                <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}">
-                                                    {{ $content->title }}
-                                                </a>
-                                            </h3>
-                                            <p class="card-excerpt">
-                                                {{ $content->excerpt ?? Str::limit(strip_tags($content->content), 120) }}
-                                            </p>
-                                            <div class="card-footer">
-                                                <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}"
-                                                    class="read-more">
-                                                    Read More
-                                                    <i class="bi bi-arrow-right"></i>
-                                                </a>
-                                                @if ($content->author)
-                                                    <small class="author">By {{ $content->author }}</small>
-                                                @endif
-                                            </div>
-                                        </div>
-                                    </article>
-                                </div>
-                            @empty
-                                <div class="col-12">
-                                    <div class="no-results">
-                                        <div class="icon">
-                                            <i class="bi bi-search"></i>
-                                        </div>
-                                        <h3>No {{ strtolower($contentType->title) }} found</h3>
-                                        <p>
-                                            @if (request('search'))
-                                                No results found for "<strong>{{ request('search') }}</strong>". Try
-                                                adjusting your search terms.
-                                            @else
-                                                There are currently no published {{ strtolower($contentType->title) }}
-                                                available.
-                                            @endif
-                                        </p>
-                                        @if (request()->hasAny(['search', 'sort', 'featured']))
-                                            <a href="{{ route('cms.index', $contentType->slug) }}"
-                                                class="filter-tag">Clear All Filters</a>
+                <div class="travel-inspiration-page pt-2 mb-100">
+
+                    <div class="row gy-md-5 gy-4 mb-60">
+                        @forelse($contents as $index => $content)
+                            <div class="col-lg-4 col-md-6 col-sm-12" data-aos="fade-up"
+                                data-aos-delay="{{ ($index % 3) * 100 }}">
+                                <article class="enhanced-blog-card">
+                                    <div class="card-image">
+                                        <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
+                                            alt="{{ $content->title }}" loading="lazy">
+                                        <div class="card-overlay"></div>
+                                        <div class="category-badge">{{ $contentType->title }}</div>
+                                        @if ($content->is_featured ?? false)
+                                            <div class="featured-badge">Featured</div>
                                         @endif
                                     </div>
+                                    <div class="card-content">
+                                        <div class="card-meta">
+                                            <span class="date">
+                                                <i class="bi bi-calendar3"></i>
+                                                {{ $content->published_at ? $content->published_at->format('M d, Y') : $content->created_at->format('M d, Y') }}
+                                            </span>
+                                            <span class="views">
+                                                <i class="bi bi-eye"></i>
+                                                {{ $content->views_count ?? 0 }}
+                                            </span>
+                                        </div>
+                                        <h3 class="card-title">
+                                            <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}">
+                                                {{ $content->title }}
+                                            </a>
+                                        </h3>
+                                        <p class="card-excerpt">
+                                            {{ $content->excerpt ?? Str::limit(strip_tags($content->content), 120) }}
+                                        </p>
+                                        <div class="card-footer">
+                                            <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}"
+                                                class="read-more">
+                                                Read More
+                                                <i class="bi bi-arrow-right"></i>
+                                            </a>
+                                            @if ($content->author)
+                                                <small class="author">By {{ $content->author }}</small>
+                                            @endif
+                                        </div>
+                                    </div>
+                                </article>
+                            </div>
+                        @empty
+                            <div class="col-12">
+                                <div class="no-results">
+                                    <div class="icon">
+                                        <i class="bi bi-search"></i>
+                                    </div>
+                                    <h3>No {{ strtolower($contentType->title) }} found</h3>
+                                    <p>
+                                        @if (request('search'))
+                                            No results found for "<strong>{{ request('search') }}</strong>". Try
+                                            adjusting your search terms.
+                                        @else
+                                            There are currently no published {{ strtolower($contentType->title) }}
+                                            available.
+                                        @endif
+                                    </p>
+                                    @if (request()->hasAny(['search', 'sort', 'featured']))
+                                        <a href="{{ route('cms.index', $contentType->slug) }}"
+                                            class="filter-tag">Clear All Filters</a>
+                                    @endif
                                 </div>
-                            @endforelse
-                        </div>
+                            </div>
+                        @endforelse
                     </div>
 
                     <!-- Enhanced Pagination -->

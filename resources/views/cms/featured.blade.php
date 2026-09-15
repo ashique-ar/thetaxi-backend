@@ -24,8 +24,7 @@
     <!-- Breadcrumb section End-->
 
     <!-- Featured Content Page Start-->
-    <div class="travel-inspiration-page pt-100 mb-100">
-        <div class="container">
+    <div class="travel-inspiration-page pt-2 mb-100">
             <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
                 data-wow-duration="1500ms">
                 <div class="col-xl-8 col-lg-10">
@@ -126,7 +125,6 @@
                     </div>
                 </div>
             @endif
-        </div>
     </div>
     <!--Featured Content Page End-->
 @endsection

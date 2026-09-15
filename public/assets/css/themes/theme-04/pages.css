@@ -288,7 +288,6 @@ body.theme-theme-04.theme-page-faq .accordion-item { border-width: 0 0 1px !impo
 /* CMS catalogue, search and featured: clean reference-style media catalogue. */
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.content-container, .travel-inspiration-page, .search-results-section) {
     margin: 0 !important;
-    padding: var(--t4-section) 0;
 }
 
 body.theme-theme-04.theme-page-cms-index .cms-header,
@@ -300,7 +299,6 @@ body.theme-theme-04.theme-page-cms-index .cms-filters {
 }
 
 body.theme-theme-04.theme-page-cms-index .cms-header {
-    padding: clamp(48px, 7vw, 82px) 0;
     border-width: 0 0 1px;
     border-radius: 0;
     color: var(--t4-text);
