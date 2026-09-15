@@ -17,7 +17,7 @@
         .cms-header {
             background: linear-gradient(135deg, #BF2629 0%, #8B1A1C 100%);
             color: white;
-            padding: 80px 0;
+            padding: 10px 0;
             position: relative;
             overflow: hidden;
         }
@@ -49,7 +49,6 @@
         .cms-header .subtitle {
             font-size: 1.2rem;
             opacity: 0.9;
-            margin-bottom: 2rem;
         }
 
         .cms-filters {
