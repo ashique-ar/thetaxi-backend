@@ -95,7 +95,8 @@ test('theme four renders the shared booking form in the cms sidebar', function (
 
     expect($themeBookingForm)
         ->toContain('@php($embedded = $embedded ?? false)')
-        ->toContain("@include('components.booking-form', ['search' => $search ?? null])");
+        ->toContain("@include('components.booking-form'")
+        ->toContain("'search' => \$search ?? null");
     expect($bookingForm)->toContain("@include('components.dynamic-booking-form'");
     expect(file_exists($root . '/resources/views/cms/partials/booking.blade.php'))->toBeFalse();
     expect($themeFour)
