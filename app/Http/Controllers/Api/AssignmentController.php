@@ -1059,7 +1059,15 @@ class AssignmentController extends Controller
 
             $acceptPoint = null;
             if ($tripAssignment->confirmed_at) {
-                if ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
+                if ($this->isValidCoordinate($tripAssignment->accept_latitude, $tripAssignment->accept_longitude)) {
+                    $acceptPoint = [
+                        'label' => 'Driver Accepted',
+                        'latitude' => (float) $tripAssignment->accept_latitude,
+                        'longitude' => (float) $tripAssignment->accept_longitude,
+                        'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
+                        'source' => 'assignment_acceptance',
+                    ];
+                } elseif ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
                     $acceptPoint = [
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $firstPoint['latitude'],

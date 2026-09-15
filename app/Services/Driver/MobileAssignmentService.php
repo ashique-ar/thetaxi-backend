@@ -28,7 +28,8 @@ class MobileAssignmentService
 {
     public function __construct(
         private NotificationTriggerService $notificationService,
-        private TripTrackingService $tripTrackingService
+        private TripTrackingService $tripTrackingService,
+        private ?LocationService $locationService = null,
     )
     {
     }
@@ -282,7 +283,7 @@ class MobileAssignmentService
      *
      * @throws \InvalidArgumentException
      */
-    public function acceptAssignment(Driver $driver, DriverAssignment $assignment): DriverAssignment
+    public function acceptAssignment(Driver $driver, DriverAssignment $assignment, array $location = []): DriverAssignment
     {
         $this->assertAssignmentOwnership($driver, $assignment);
 
@@ -294,7 +295,7 @@ class MobileAssignmentService
             throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
         }
 
-        return DB::transaction(function () use ($driver, $assignment) {
+        return DB::transaction(function () use ($driver, $assignment, $location) {
             $now = Carbon::now('UTC');
 
             $assignment->update([
@@ -302,12 +303,22 @@ class MobileAssignmentService
                 'confirmed_at' => $now,
                 'confirmed_by' => $driver->user_id,
                 'trip_phase' => TripPhase::ACCEPTED,
+                'accept_latitude' => $location['latitude'] ?? null,
+                'accept_longitude' => $location['longitude'] ?? null,
             ]);
 
             // Link active session to assignment
             $session = $driver->activeSession;
             if ($session) {
                 $session->update(['assignment_id' => $assignment->id]);
+            }
+
+            if (isset($location['latitude'], $location['longitude'])) {
+                ($this->locationService ?? app(LocationService::class))->updateLocation($driver, [
+                    'latitude' => $location['latitude'],
+                    'longitude' => $location['longitude'],
+                    'recorded_at' => $now,
+                ]);
             }
 
             $updated = $assignment->fresh([

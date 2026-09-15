@@ -94,7 +94,6 @@ class HomeController extends Controller
                 'testimonials' => $testimonials,
                 'faqs' => $faqs,
                 'search' => (object) [
-                    'service_type' => 'airport_transfers',
                     'from_date' => null,
                     'to_date' => null,
                     'from_time' => null,
@@ -127,7 +126,7 @@ class HomeController extends Controller
             'testimonials' => collect(),
             'faqs' => collect(),
             // No settings here - ViewComposer handles all settings
-            'search' => (object) ['service_type' => 'airport_transfers', 'passengers' => 1],
+            'search' => (object) ['passengers' => 1],
         ];
     }
 }

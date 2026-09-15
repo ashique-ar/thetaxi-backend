@@ -145,7 +145,7 @@ class AssignmentController extends Controller
                 ], 404);
             }
 
-            $updated = $this->assignmentService->acceptAssignment($driver, $assignment);
+            $updated = $this->assignmentService->acceptAssignment($driver, $assignment, $request->validated());
 
             return response()->json([
                 'status' => 'success',

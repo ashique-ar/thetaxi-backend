@@ -37,6 +37,37 @@ it('offers one-map and list views for the active hire screen', function () {
         ->toContain('#activeHiresMap');
 });
 
+it('captures driver location from acceptance through completion in both activity timelines', function () {
+    $mobile = file_get_contents(__DIR__ . '/../../../driver-mobile-app/lib/modules/taxi_app/data/remote/hire_api_service.dart');
+    $acceptUi = file_get_contents(__DIR__ . '/../../../driver-mobile-app/lib/modules/taxi_app/presentation/widgets/hire_assignment_dialog.dart');
+    $request = file_get_contents(__DIR__ . '/../../app/Http/Requests/Driver/Mobile/AcceptAssignmentRequest.php');
+    $service = file_get_contents(__DIR__ . '/../../app/Services/Driver/MobileAssignmentService.php');
+    $bookingTrace = file_get_contents(__DIR__ . '/../../app/Services/BookingObservabilityService.php');
+    $driverActivity = file_get_contents(__DIR__ . '/../../app/Http/Controllers/Api/Driver/DriverController.php');
+
+    expect($mobile)->toContain("'latitude': latitude")->toContain("'longitude': longitude");
+    expect($acceptUi)->toContain('PresenceLocationResolver().resolve()');
+    expect($request)->toContain("'latitude' => ['nullable', 'required_with:longitude'");
+    expect($service)->toContain("'accept_latitude' => \$location['latitude'] ?? null")
+        ->toContain('updateLocation($driver');
+    expect($bookingTrace)->toContain("'assignment_confirmed' => \$assignment->accept_latitude");
+    expect($driverActivity)->toContain("'latitude' => \$assignment->accept_latitude")
+        ->toContain("'latitude' => \$assignment->final_latitude");
+});
+
+it('projects the persisted acceptance location onto the booking management map', function () {
+    $assignmentController = file_get_contents(__DIR__ . '/../../app/Http/Controllers/Api/AssignmentController.php');
+    $bookingManagement = file_get_contents(__DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/booking-management/booking-management.component.ts');
+
+    expect($assignmentController)
+        ->toContain('isValidCoordinate($tripAssignment->accept_latitude, $tripAssignment->accept_longitude)')
+        ->toContain("'source' => 'assignment_acceptance'");
+    expect($bookingManagement)
+        ->toContain("reference?.accept?.latitude")
+        ->toContain("new google.maps.Marker")
+        ->toContain("'A'");
+});
+
 it('connects the active hire paginator to server page parameters', function () {
     $component = file_get_contents(
         __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts'

@@ -21,6 +21,11 @@ class AcceptAssignmentRequest extends FormRequest
 
     public function rules(): array
     {
-        return [];
+        return [
+            // Nullable during rollout so older installed builds remain compatible.
+            'latitude' => ['nullable', 'required_with:longitude', 'numeric', 'between:-90,90'],
+            'longitude' => ['nullable', 'required_with:latitude', 'numeric', 'between:-180,180'],
+            'client_recorded_at' => ['nullable', 'date'],
+        ];
     }
 }

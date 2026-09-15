@@ -677,7 +677,23 @@ class BookingObservabilityService
                         'to_status' => $type,
                         'severity' => $type === 'trip_completed' ? 'success' : 'info',
                         'correlation_id' => implode(':', ['assignment', $assignment->id, $type]),
-                        'metadata' => ['assignment_status' => (string) $assignment->status],
+                        'metadata' => array_filter([
+                            'assignment_status' => (string) $assignment->status,
+                            'latitude' => match ($type) {
+                                'assignment_confirmed' => $assignment->accept_latitude,
+                                'pickup_arrived' => $assignment->pickup_arrival_latitude,
+                                'trip_started' => $assignment->trip_start_latitude,
+                                'trip_completed' => $assignment->final_latitude,
+                                default => null,
+                            },
+                            'longitude' => match ($type) {
+                                'assignment_confirmed' => $assignment->accept_longitude,
+                                'pickup_arrived' => $assignment->pickup_arrival_longitude,
+                                'trip_started' => $assignment->trip_start_longitude,
+                                'trip_completed' => $assignment->final_longitude,
+                                default => null,
+                            },
+                        ], fn ($value) => $value !== null),
                         'evidence' => ['section' => 'tracking', 'label' => 'View trip tracking'],
                         'actor_display_snapshot' => $actorSnapshot,
                     ];

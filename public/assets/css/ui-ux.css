@@ -8,13 +8,13 @@
 }
 
 html {
-    font-size: 16px;
+    font-size: 18px;
     scroll-padding-top: 96px;
 }
 
 body {
     color: var(--ui-text);
-    font-size: 16px;
+    font-size: 18px;
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
@@ -27,12 +27,12 @@ body :where(p, li, dd, address, blockquote) {
 body main :where(p, li, dd),
 body .modal :where(p, li),
 body .offcanvas :where(p, li) {
-    font-size: max(1rem, 16px);
+    font-size: max(1rem, 18px);
 }
 
 body :where(label, .form-label, legend) {
     color: var(--ui-text);
-    font-size: max(.9375rem, 15px) !important;
+    font-size: max(.9375rem, 17px) !important;
     font-weight: 600;
     line-height: 1.45;
 }
@@ -41,7 +41,7 @@ body :where(input:not([type="checkbox"]):not([type="radio"]):not([type="range"])
     min-height: 48px;
     border-color: var(--ui-border) !important;
     border-radius: var(--ui-radius);
-    font-size: max(1rem, 16px) !important;
+    font-size: max(1rem, 18px) !important;
     line-height: 1.45;
 }
 
@@ -62,23 +62,23 @@ body :where(input, select, textarea, .form-control, .form-select):focus {
 
 body :where(button, .btn, .primary-btn1, .primary-btn2, [role="button"]) {
     min-height: 44px;
-    font-size: max(.9375rem, 15px) !important;
+    font-size: max(.9375rem, 17px) !important;
     font-weight: 650;
     line-height: 1.3;
 }
 
 body header :where(nav a, .main-menu a, .menu-list a, .mobile-menu a),
 body footer :where(a, p, li) {
-    font-size: max(.9375rem, 15px) !important;
+    font-size: max(.9375rem, 17px) !important;
 }
 
 body :where(.form-text, .help-text, .text-muted, small, .small) {
-    font-size: max(.875rem, 14px) !important;
+    font-size: max(.875rem, 16px) !important;
     line-height: 1.5;
 }
 
 body :where(.alert, .validation-error, .invalid-feedback, .error-message) {
-    font-size: max(.9375rem, 15px) !important;
+    font-size: max(.9375rem, 17px) !important;
     line-height: 1.5;
 }
 
@@ -91,7 +91,7 @@ body main :where(.card-body, .modal-body, .offcanvas-body) {
 }
 
 body table {
-    font-size: max(.9375rem, 15px);
+    font-size: max(.9375rem, 17px);
     line-height: 1.5;
 }
 
@@ -106,7 +106,7 @@ body :where(.table-responsive, .cart-table-wrapper) {
 }
 
 body :where(.dropdown-menu, .select2-results__option, .nice-select .option) {
-    font-size: max(.9375rem, 15px) !important;
+    font-size: max(.9375rem, 17px) !important;
     line-height: 1.45;
 }
 

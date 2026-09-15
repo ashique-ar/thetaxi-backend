@@ -1310,6 +1310,8 @@ class DriverController extends Controller
                 'metadata' => [
                     'assignment_id' => $assignment->id,
                     'trip_phase' => $assignment->trip_phase?->value,
+                    'latitude' => $assignment->accept_latitude,
+                    'longitude' => $assignment->accept_longitude,
                 ],
             ];
         }
@@ -1351,6 +1353,8 @@ class DriverController extends Controller
                 'metadata' => [
                     'assignment_id' => $assignment->id,
                     'trip_phase' => $assignment->trip_phase?->value,
+                    'latitude' => $assignment->trip_start_latitude,
+                    'longitude' => $assignment->trip_start_longitude,
                 ],
             ];
         }
@@ -1370,6 +1374,8 @@ class DriverController extends Controller
                 'metadata' => [
                     'assignment_id' => $assignment->id,
                     'trip_phase' => $assignment->trip_phase?->value,
+                    'latitude' => $assignment->pickup_arrival_latitude,
+                    'longitude' => $assignment->pickup_arrival_longitude,
                 ],
             ];
         }
@@ -1394,6 +1400,8 @@ class DriverController extends Controller
                     'assignment_id' => $assignment->id,
                     'trip_phase' => $assignment->trip_phase?->value,
                     'total_distance_km' => $assignment->total_distance_km !== null ? (float) $assignment->total_distance_km : null,
+                    'latitude' => $assignment->final_latitude,
+                    'longitude' => $assignment->final_longitude,
                 ],
             ];
         }

@@ -10,7 +10,7 @@ test('only Theme 04 loads its readable UI baseline last', function () {
         ->and(strpos($layout, "assetVersion('assets/css/ui-ux.css')"))
         ->toBeGreaterThan(strpos($layout, "theme_asset('page_stylesheet')"))
         ->and($styles)
-        ->toContain('font-size: max(1rem, 16px)')
+        ->toContain('font-size: max(1rem, 18px)')
         ->toContain('min-height: 48px')
         ->toContain(':focus-visible')
         ->toContain('@media (prefers-reduced-motion: reduce)');
