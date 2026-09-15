@@ -87,6 +87,8 @@ it('prefers the active replacement assignment and narrowly correlates session-ga
     expect($service)
         ->toContain("CASE WHEN status = 'active'")
         ->toContain("trip_phase NOT IN ('completed', 'declined')")
+        ->toContain("withCount('routePoints')")
+        ->toContain("orderByDesc('route_points_count')")
         ->toContain("where('assignment_id', \$assignment->id)")
         ->toContain("whereNull('assignment_id')")
         ->toContain("whereIn('session_id', \$sessionIds)")

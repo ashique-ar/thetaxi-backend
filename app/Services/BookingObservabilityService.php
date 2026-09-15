@@ -299,9 +299,10 @@ class BookingObservabilityService
 
     private function assignmentForItem(Booking $booking, string $bookingItemId): ?DriverAssignment
     {
-        return DriverAssignment::with('driver')->where('booking_id', $booking->id)
+        return DriverAssignment::with('driver')->withCount('routePoints')->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
             ->orderByRaw("CASE WHEN status = 'active' AND (trip_phase IS NULL OR trip_phase NOT IN ('completed', 'declined')) THEN 0 ELSE 1 END")
+            ->orderByDesc('route_points_count')
             ->latest('updated_at')
             ->first();
     }
