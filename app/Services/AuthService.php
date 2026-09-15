@@ -270,6 +270,8 @@ class AuthService
             throw new \Exception('User not found or inactive');
         }
 
+        $apiSession = \App\Models\ApiSession::where('token_id', $token->id)->latest()->first();
+
         // Revoke old token
         $token->revoke();
 
@@ -301,7 +303,11 @@ class AuthService
                 $meta['location'] = $clientLocation;
             }
 
-            \App\Models\ApiSession::create($meta);
+            if ($apiSession) {
+                $apiSession->update($meta);
+            } else {
+                \App\Models\ApiSession::create($meta);
+            }
             \Log::info('Authentication token refreshed', [
                 'user_id' => $user->id,
                 'session_recorded' => true,

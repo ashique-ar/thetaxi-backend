@@ -8795,17 +8795,15 @@ class BookingFlowService
             'active' => $query
                 ->whereNull('booking_items.completed_at')
                 ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
+                ->whereRaw("(booking_items.to_date + COALESCE(booking_items.to_time, '23:59:59')::time) >= ?", [now()])
                 ->whereHas('booking', function ($bookingQuery) {
-                        $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
+                        $bookingQuery->where(function ($paymentQuery) {
+                            $paymentQuery->where('payment_status', 'paid')
+                                ->orWhereIn('payment_collection_status', ['driver_collected', 'online_paid', 'paid']);
+                        })->whereHas('driverAssignments', function ($assignmentQuery) {
                             $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
-                            ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
-                        })->orWhereHas('dispatches', function ($dispatchQuery) {
-                            $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                            ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
-                            ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
-                                $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
-                                ->where('trip_phase', 'completed');
-                            });
+                            ->where('status', 'active')
+                            ->where('trip_phase', 'in_progress');
                         });
                     }),
             'return_due' => $query->whereHas('booking', function ($bookingQuery) {

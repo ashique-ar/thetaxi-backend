@@ -178,12 +178,20 @@ class BookingObservabilityService
                 'driver.user:id,first_name,last_name',
             ])
             ->where('status', 'active')
+            ->where('trip_phase', 'in_progress')
+            ->whereHas('bookingItem', function ($query) {
+                $query->whereNull('completed_at')
+                    ->whereNotIn('status', ['completed', 'cancelled', 'rejected'])
+                    ->whereRaw("(booking_items.to_date + COALESCE(booking_items.to_time, '23:59:59')::time) >= ?", [now()]);
+            })
+            ->whereHas('booking', function ($query) {
+                $query->where(function ($paymentQuery) {
+                    $paymentQuery->where('payment_status', 'paid')
+                        ->orWhereIn('payment_collection_status', ['driver_collected', 'online_paid', 'paid']);
+                });
+            })
             ->when($dashboardScope === 'standard', function ($query) {
                 $query->whereHas('booking', fn($bookingQuery) => $bookingQuery->whereNull('corporate_account_id'));
-            })
-            ->where(function ($query) {
-                $query->whereNull('trip_phase')
-                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
             })
             ->latest('updated_at')
             ->limit(max(1, min($limit, 200)))

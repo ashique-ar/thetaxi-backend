@@ -12,6 +12,31 @@ it('filters active hires on the server before booking pagination', function () {
         ->toContain('response?.data?.pagination');
 });
 
+it('defines active hires as paid, non-overdue trips currently in progress', function () {
+    $flow = file_get_contents(__DIR__ . '/../../app/Services/BookingFlowService.php');
+    $observability = file_get_contents(__DIR__ . '/../../app/Services/BookingObservabilityService.php');
+
+    foreach ([$flow, $observability] as $source) {
+        expect($source)
+            ->toContain("->where('trip_phase', 'in_progress')")
+            ->toContain("->where('payment_status', 'paid')")
+            ->toContain("COALESCE(booking_items.to_time, '23:59:59')::time");
+    }
+});
+
+it('offers one-map and list views for the active hire screen', function () {
+    $component = file_get_contents(__DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts');
+    $template = file_get_contents(__DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.html');
+
+    expect($component)
+        ->toContain("viewMode = signal<'list' | 'map'>('list')")
+        ->toContain('getActiveTrips(200)')
+        ->toContain('new google.maps.Marker');
+    expect($template)
+        ->toContain("setViewMode('map')")
+        ->toContain('#activeHiresMap');
+});
+
 it('connects the active hire paginator to server page parameters', function () {
     $component = file_get_contents(
         __DIR__ . '/../../../portal-thetaxi/src/app/modules/booking/components/ongoing-hire-management/ongoing-hire-management.component.ts'
