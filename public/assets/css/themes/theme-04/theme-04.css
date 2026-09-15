@@ -898,10 +898,6 @@ body.theme-theme-04 :where(.t4-services__grid, .t4-destinations__grid, .t4-activ
     gap: 20px;
 }
 
-body.theme-theme-04 .t4-services__grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-
 body.theme-theme-04 .t4-stories__grid {
     grid-template-columns: 1.2fr 0.9fr 0.9fr;
 }
