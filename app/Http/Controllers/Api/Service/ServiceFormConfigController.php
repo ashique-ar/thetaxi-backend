@@ -7,6 +7,7 @@ use App\Models\Service\ServiceType;
 use App\Models\Airport;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use App\Services\Pricing\PricingContextPolicyService;
 
 class ServiceFormConfigController extends Controller
@@ -854,6 +855,10 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options' => 'nullable|array',
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
+                'form_config.*.options.*.action' => 'nullable|in:fixed_location,google_search',
+                'form_config.*.options.*.address' => 'nullable|string|max:500',
+                'form_config.*.options.*.latitude' => 'nullable|numeric|between:-90,90',
+                'form_config.*.options.*.longitude' => 'nullable|numeric|between:-180,180',
                 'field_mappings' => 'nullable|array',
                 'field_mappings.dates' => 'nullable|array',
                 'field_mappings.dates.from_date' => 'nullable|string',
@@ -869,6 +874,19 @@ class ServiceFormConfigController extends Controller
             $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
 
             $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
+
+            foreach ($formConfig as $fieldName => $fieldConfig) {
+                foreach ($fieldConfig['options'] ?? [] as $optionIndex => $option) {
+                    if (($option['action'] ?? null) !== 'fixed_location') {
+                        continue;
+                    }
+                    if (empty($option['address']) || !isset($option['latitude'], $option['longitude'])) {
+                        throw ValidationException::withMessages([
+                            "form_config.{$fieldName}.options.{$optionIndex}.address" => 'Select this fixed location from Google search.',
+                        ]);
+                    }
+                }
+            }
 
             // Clean up user-entered mapping values before saving.
             foreach ($formConfig as $fieldName => $fieldConfig) {

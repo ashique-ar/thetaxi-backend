@@ -90,7 +90,7 @@ body.theme-theme-04:not(.theme-page-home) .breadcrumb-section h1 {
     max-width: 840px;
     margin: 0;
     color: var(--t4-text) !important;
-    font-family: Georgia, "Times New Roman", serif !important;
+    font-family: Inter, "Segoe UI", Arial, sans-serif !important;
     font-size: clamp(2.75rem, 5.5vw, 5.8rem);
     font-weight: 500;
     letter-spacing: -0.045em;
@@ -265,7 +265,7 @@ body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-pag
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { min-height: 250px; overflow: hidden; }
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) img { width: 100%; height: 100%; object-fit: cover; }
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-content, .blog-content) { padding: 24px !important; }
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4) { font-family: Georgia, "Times New Roman", serif; font-size: 1.55rem; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 1.55rem; }
 
 /* CMS detail: magazine body + ruled booking/sidebar ledger. */
 body.theme-theme-04.theme-page-cms-show .cms-article-page { margin: 0 !important; padding: var(--t4-section) 0; }
@@ -344,7 +344,7 @@ body.theme-theme-04.theme-page-vehicle-details .main-vehicle-image img { max-hei
 body.theme-theme-04.theme-page-vehicle-details .thumbnail-img { border: 1px solid var(--t4-line); border-radius: 7px !important; background: var(--t4-surface-soft); }
 body.theme-theme-04.theme-page-vehicle-details .thumbnail-img.active { border-color: var(--t4-accent); box-shadow: 0 0 0 2px rgb(224 18 27 / 18%); }
 body.theme-theme-04.theme-page-vehicle-details .vehicle-info-card { padding: clamp(24px, 4vw, 46px); border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; }
-body.theme-theme-04.theme-page-vehicle-details .vehicle-title { font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.2rem, 4.5vw, 4.2rem); font-weight: 500; letter-spacing: -.035em; line-height: .98; }
+body.theme-theme-04.theme-page-vehicle-details .vehicle-title { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: clamp(2.2rem, 4.5vw, 4.2rem); font-weight: 500; letter-spacing: -.035em; line-height: .98; }
 body.theme-theme-04.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t4-line); border-left: 1px solid var(--t4-line); }
 body.theme-theme-04.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t4-line); border-bottom: 1px solid var(--t4-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
 body.theme-theme-04.theme-page-vehicle-details .booking-form-card { position: sticky; top: 96px; }
@@ -381,7 +381,7 @@ body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfe
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-video-area :where(img, video) { width: 100%; min-height: 0; height: 100%; border-radius: 0; object-fit: cover; }
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section .banner-content-wrap { position: relative; z-index: 2; display: flex; min-height: 610px; padding: 42px 0; align-items: center; }
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section .banner-content { width: min(52%, 680px); text-align: left; }
-body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section h1 { color: var(--t4-text) !important; font-family: Georgia, "Times New Roman", serif !important; font-size: clamp(3rem, 5.4vw, 5.8rem); font-weight: 500 !important; letter-spacing: -0.045em; line-height: 0.94; }
+body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section h1 { color: var(--t4-text) !important; font-family: Inter, "Segoe UI", Arial, sans-serif !important; font-size: clamp(3rem, 5.4vw, 5.8rem); font-weight: 500 !important; letter-spacing: -0.045em; line-height: 0.94; }
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section .banner-content > p { color: var(--t4-muted) !important; font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 0.95rem; font-weight: 400; line-height: 1.7; }
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .home4-banner-section .filter-wrapper { margin-top: 28px !important; }
 body.theme-theme-04:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .filter-wrapper .single-search-box :where(input, select, textarea) { border: 0 !important; background: transparent !important; box-shadow: none !important; }
@@ -400,7 +400,7 @@ body.theme-theme-04.theme-page-rate-chart .rate-chart-hero {
     background: #fff !important;
     color: var(--t4-text) !important;
 }
-body.theme-theme-04.theme-page-rate-chart .rate-chart-hero h1 { color: var(--t4-text) !important; font-family: Georgia, "Times New Roman", serif; font-size: clamp(2.75rem, 5vw, 5rem); font-weight: 500; letter-spacing: -0.04em; }
+body.theme-theme-04.theme-page-rate-chart .rate-chart-hero h1 { color: var(--t4-text) !important; font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: clamp(2.75rem, 5vw, 5rem); font-weight: 500; letter-spacing: -0.04em; }
 body.theme-theme-04.theme-page-rate-chart .rate-chart-hero p { color: var(--t4-muted) !important; }
 body.theme-theme-04.theme-page-rate-chart .rate-chart-container { padding: var(--t4-section) 0 !important; background: var(--t4-surface-soft) !important; }
 body.theme-theme-04.theme-page-rate-chart .rate-table-wrapper { border: 1px solid var(--t4-line); border-radius: 10px; background: #fff; box-shadow: var(--t4-shadow); }
@@ -427,7 +427,7 @@ body.theme-theme-04 .checkout-success--theme-04 > .container > .row > .card,
 body.theme-theme-04 .payment-resume--theme-04 > .container > .row > .card { overflow: hidden; border: 1px solid var(--t4-line) !important; border-top: 4px solid var(--t4-accent) !important; border-radius: 10px !important; background: #fff !important; box-shadow: var(--t4-shadow) !important; }
 body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) :where(.reference-box, .highlight-box, .booking-item-email, .payment-benefits) { border: 1px solid var(--t4-line) !important; border-left: 4px solid var(--t4-accent) !important; border-radius: 8px !important; background: var(--t4-surface-soft) !important; }
 body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) .section { padding-block: 20px; border-bottom: 1px solid var(--t4-line); }
-body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) .section-title { font-family: Georgia, "Times New Roman", serif; font-size: clamp(1.65rem, 3.5vw, 2.5rem); font-weight: 500; }
+body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) .section-title { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: clamp(1.65rem, 3.5vw, 2.5rem); font-weight: 500; }
 body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) :where(.info-table, .info-table td, .info-table th) { border-color: var(--t4-line) !important; }
 body.theme-theme-04 :where(.checkout-success--theme-04, .payment-resume--theme-04) :where(.status-badge, .service-type-badge) { border-radius: 6px !important; }
 body.theme-theme-04 .payment-resume--theme-04 #payment-resume-form .submit-btn { min-height: 48px; border: 0; border-radius: 6px; background: var(--t4-accent); color: #fff; }

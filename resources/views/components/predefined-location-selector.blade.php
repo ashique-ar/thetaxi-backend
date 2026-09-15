@@ -18,28 +18,55 @@ $prefix = isset($prefix) ? $prefix . '_' : '';
 $selectId = $prefix . $name . '_location_select';
 $customInputId = $prefix . $name . '_custom_input';
 $predefinedCodeId = $prefix . $name . '_predefined_code';
+$configuredOptions = collect($configuredOptions ?? [])->map(static function ($option) {
+    $isCustom = ($option['action'] ?? 'fixed_location') === 'google_search';
+    return [
+        'code' => $option['value'] ?? '',
+        'name' => $option['label'] ?? '',
+        'address' => $option['address'] ?? ($option['label'] ?? ''),
+        'latitude' => $option['latitude'] ?? '',
+        'longitude' => $option['longitude'] ?? '',
+        'action' => $isCustom ? 'custom' : 'configured',
+    ];
+})->filter(static fn ($option) => $option['code'] !== '' && $option['name'] !== '')->values();
+$locationOptions = $configuredOptions->isNotEmpty()
+    ? $configuredOptions
+    : collect($predefinedLocations ?? [])->map(static function ($location) {
+        return [
+            'code' => is_array($location) ? $location['code'] : $location->code,
+            'name' => is_array($location) ? $location['name'] : $location->name,
+            'address' => is_array($location) ? ($location['address'] ?? $location['name']) : ($location->address ?? $location->name),
+            'latitude' => is_array($location) ? $location['latitude'] : $location->latitude,
+            'longitude' => is_array($location) ? $location['longitude'] : $location->longitude,
+            'action' => 'predefined',
+        ];
+    })->push(['code' => 'custom', 'name' => 'My Doorstep (Enter Custom Location)', 'address' => '', 'latitude' => '', 'longitude' => '', 'action' => 'custom']);
 
 $selectedLocationCode = '';
 $selectedLocationName = '';
+$selectedLocationAction = '';
 $isCustom = true;
 
-if ($currentValue && isset($predefinedLocations) && !empty($predefinedLocations)) {
-    foreach ($predefinedLocations as $location) {
-        $lCode = is_array($location) ? $location['code'] : $location->code;
-        $lName = is_array($location) ? $location['name'] : $location->name;
-        $lAddr = is_array($location) ? ($location['address'] ?? $lName) : ($location->address ?? $lName);
+if ($currentValue) {
+    foreach ($locationOptions as $location) {
+        $lCode = $location['code'];
+        $lName = $location['name'];
+        $lAddr = $location['address'];
         if ($lName === $currentValue || $lAddr === $currentValue) {
             $selectedLocationCode = $lCode;
             $selectedLocationName = $lName;
-            $isCustom = false;
+            $selectedLocationAction = $location['action'];
+            $isCustom = $location['action'] === 'custom';
             break;
         }
     }
 }
 
-if ($isCustom && $currentValue) {
-    $selectedLocationCode = 'custom';
-    $selectedLocationName = 'My Doorstep (Enter Custom Location)';
+if ($isCustom && $currentValue && !$selectedLocationCode) {
+    $customOption = $locationOptions->firstWhere('action', 'custom');
+    $selectedLocationCode = $customOption['code'] ?? 'custom';
+    $selectedLocationName = $customOption['name'] ?? 'My Doorstep (Enter Custom Location)';
+    $selectedLocationAction = 'custom';
 }
 @endphp
 
@@ -62,22 +89,17 @@ if ($isCustom && $currentValue) {
             </div>
             <ul class="pls-dropdown-list" role="listbox" style="display: none;">
                 <li class="pls-dropdown-option {{ !$selectedLocationCode ? 'pls-selected' : '' }}" data-value="" data-type="none" role="option">Select {{ $label }}</li>
-                @if(isset($predefinedLocations) && count($predefinedLocations) > 0)
-                    @foreach($predefinedLocations as $location)
+                @foreach($locationOptions as $location)
                         @php
-                            $locCode = is_array($location) ? $location['code'] : $location->code;
-                            $locName = is_array($location) ? $location['name'] : $location->name;
-                            $locLat  = is_array($location) ? $location['latitude'] : $location->latitude;
-                            $locLng  = is_array($location) ? $location['longitude'] : $location->longitude;
-                            $locAddr = is_array($location) ? ($location['address'] ?? $locName) : ($location->address ?? $locName);
+                            $locCode = $location['code']; $locName = $location['name'];
+                            $locLat = $location['latitude']; $locLng = $location['longitude']; $locAddr = $location['address'];
+                            $locType = $location['action'];
                         @endphp
                         <li class="pls-dropdown-option {{ $selectedLocationCode === $locCode ? 'pls-selected' : '' }}"
-                            data-value="{{ $locCode }}" data-type="predefined"
+                            data-value="{{ $locCode }}" data-type="{{ $locType }}"
                             data-lat="{{ $locLat }}" data-lng="{{ $locLng }}" data-address="{{ $locAddr }}"
                             role="option">{{ $locName }}</li>
-                    @endforeach
-                @endif
-                <li class="pls-dropdown-option {{ $selectedLocationCode === 'custom' ? 'pls-selected' : '' }}" data-value="custom" data-type="custom" role="option">My Doorstep (Enter Custom Location)</li>
+                @endforeach
             </ul>
         </div>
 
@@ -87,21 +109,16 @@ if ($isCustom && $currentValue) {
                 style="display:none !important;position:absolute;opacity:0;pointer-events:none;"
                 {{ $required && !$isCustom ? 'required' : '' }}>
             <option value="">Select {{ $label }}</option>
-            @if(isset($predefinedLocations) && count($predefinedLocations) > 0)
-                @foreach($predefinedLocations as $location)
+            @foreach($locationOptions as $location)
                     @php
-                        $locCode = is_array($location) ? $location['code'] : $location->code;
-                        $locName = is_array($location) ? $location['name'] : $location->name;
-                        $locLat  = is_array($location) ? $location['latitude'] : $location->latitude;
-                        $locLng  = is_array($location) ? $location['longitude'] : $location->longitude;
-                        $locAddr = is_array($location) ? ($location['address'] ?? $locName) : ($location->address ?? $locName);
+                        $locCode = $location['code']; $locName = $location['name'];
+                        $locLat = $location['latitude']; $locLng = $location['longitude']; $locAddr = $location['address'];
+                        $locType = $location['action'];
                     @endphp
-                    <option value="{{ $locCode }}" data-type="predefined"
+                    <option value="{{ $locCode }}" data-type="{{ $locType }}"
                             data-lat="{{ $locLat }}" data-lng="{{ $locLng }}" data-address="{{ $locAddr }}"
                             {{ $selectedLocationCode === $locCode ? 'selected' : '' }}>{{ $locName }}</option>
-                @endforeach
-            @endif
-            <option value="custom" data-type="custom" {{ $selectedLocationCode === 'custom' ? 'selected' : '' }}>My Doorstep (Enter Custom Location)</option>
+            @endforeach
         </select>
         </div>
     </div>
@@ -138,7 +155,7 @@ if ($isCustom && $currentValue) {
 </div>
 
 <!-- Hidden fields for predefined location data -->
-<input type="hidden" name="{{ $name }}_predefined" id="{{ $predefinedCodeId }}" value="{{ !$isCustom ? $selectedLocationCode : '' }}">
+<input type="hidden" name="{{ $name }}_predefined" id="{{ $predefinedCodeId }}" value="{{ $selectedLocationAction === 'predefined' ? $selectedLocationCode : '' }}">
 
 <script>
 (function() {
@@ -164,7 +181,7 @@ if ($isCustom && $currentValue) {
             if (!selectedOption) return;
             var selType = selectedOption.dataset.type;
             var selValue = selectedOption.dataset.value;
-            if (selType === 'predefined' && selValue) {
+            if ((selType === 'predefined' || selType === 'configured') && selValue) {
                 var address = selectedOption.dataset.address || '';
                 var lat = selectedOption.dataset.lat || '';
                 var lng = selectedOption.dataset.lng || '';
@@ -246,7 +263,7 @@ if ($isCustom && $currentValue) {
             trigger.setAttribute('aria-expanded', 'false');
 
             // Handle selection logic
-            if (type === 'predefined' && value) {
+            if ((type === 'predefined' || type === 'configured') && value) {
                 if (customWrapper) customWrapper.style.display = 'none';
                 if (customInput) { customInput.disabled = true; customInput.required = false; customInput.value = ''; }
 
@@ -261,7 +278,7 @@ if ($isCustom && $currentValue) {
                     if (lngInput) lngInput.value = lng;
                 }
 
-                if (predefinedCodeInput) predefinedCodeInput.value = value;
+                if (predefinedCodeInput) predefinedCodeInput.value = type === 'predefined' ? value : '';
 
                 var searchScope = parentForm || document;
                 var hiddenField = searchScope.querySelector('input[name="' + fieldName + '"][type="hidden"]:not([id$="_hidden"])');

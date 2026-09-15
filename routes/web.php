@@ -53,9 +53,10 @@ Route::get('/vehicles', fn () => redirect()->route('cms.index', ['contentType' =
 Route::get('/vehicle/{id}', [VehicleController::class, 'show'])->name('vehicle.details');
 Route::post('/vehicle/{id}/update-pricing', [VehicleController::class, 'updatePricing'])->name('vehicle.updatePricing');
 
-Route::get('/about', function () {
-    return view('about');
-})->name('about');
+Route::get('/about', [CmsController::class, 'index'])
+    ->defaults('contentType', 'about')
+    ->name('about');
+Route::redirect('/about-us', '/about', 301);
 
 Route::get('/contact', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('contact');
 Route::get('/inquiry', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('inquiry');
@@ -161,6 +162,11 @@ Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
 Route::get('/content/search', [CmsController::class, 'search'])->name('cms.search');
 Route::get('/content/featured', [CmsController::class, 'featured'])->name('cms.featured');
 
+// Public masked media route must precede the generic CMS catch-alls.
+Route::get('/resources/{path}', [FileUploadController::class, 'assets'])
+    ->where('path', '.*')
+    ->name('resources.assets');
+
 // Dynamic CMS content routes - these handle all content types dynamically
 Route::get('/{contentType}', [CmsController::class, 'index'])
     ->name('cms.index')
@@ -173,8 +179,3 @@ Route::get('/{contentType}/{content}', [CmsController::class, 'show'])
 
 // Sitemap
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
-
-// File upload routes for admin system
-Route::controller(FileUploadController::class)->group(function () {
-    Route::get('resources/{path}', 'assets')->where('path', '.*');
-});

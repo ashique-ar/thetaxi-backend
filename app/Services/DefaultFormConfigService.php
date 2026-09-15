@@ -213,9 +213,36 @@ class DefaultFormConfigService
                 'submit_as' => 'pickup',
                 'location_mode' => 'predefined_or_custom',
                 'placeholder' => 'Select pickup location',
-                'default' => 'Head Office',
-                'default_lat' => '6.9187556338924585',
-                'default_lng' => '79.88803557115918',
+                'default' => 'Casons Head Office, 181, Gothami Gardens, Gothami Road, Rajagiriya, Sri Lanka.',
+                'default_lat' => '6.9271',
+                'default_lng' => '79.8612',
+                'options' => [
+                    [
+                        'value' => 'CASONS_HQ',
+                        'label' => 'Casons Head Office',
+                        'action' => 'fixed_location',
+                        'address' => 'Casons Head Office, 181, Gothami Gardens, Gothami Road, Rajagiriya, Sri Lanka.',
+                        'latitude' => 6.9271,
+                        'longitude' => 79.8612,
+                    ],
+                    [
+                        'value' => 'MATTALA_AIRPORT', 'label' => 'Mattala Airport', 'action' => 'fixed_location',
+                        'address' => 'Mattala Rajapaksa International Airport, Hambantota', 'latitude' => 6.2847, 'longitude' => 81.1242,
+                    ],
+                    [
+                        'value' => 'BIA_AIRPORT', 'label' => 'BIA Airport', 'action' => 'fixed_location',
+                        'address' => 'Bandaranaike International Airport, Katunayake', 'latitude' => 7.1808, 'longitude' => 79.8841,
+                    ],
+                    [
+                        'value' => 'JAFFNA_AIRPORT', 'label' => 'Jaffna Airport', 'action' => 'fixed_location',
+                        'address' => 'Jaffna International Airport, Palaly', 'latitude' => 9.7923, 'longitude' => 80.0701,
+                    ],
+                    [
+                        'value' => 'custom',
+                        'label' => 'My Doorstep (Search Google)',
+                        'action' => 'google_search',
+                    ],
+                ],
             ],
             'date' => [
                 'type' => 'date',

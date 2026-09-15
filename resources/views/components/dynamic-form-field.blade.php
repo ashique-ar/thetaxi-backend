@@ -61,6 +61,7 @@
                     'currentLat' => $currentLat ?? '',
                     'currentLng' => $currentLng ?? '',
                     'predefinedLocations' => $predefinedLocations ?? collect(),
+                    'configuredOptions' => $options,
                 ])
                 @break
 

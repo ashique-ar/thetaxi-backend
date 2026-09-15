@@ -102,9 +102,19 @@ class DynamicPredefinedLocationNormalizationTest extends TestCase
         $publicSelector = file_get_contents(
             resource_path('views/components/predefined-location-selector.blade.php')
         );
+        $defaults = \App\Services\DefaultFormConfigService::getDefaults('self_drive');
 
         $this->assertStringContainsString("value: 'predefined_or_custom'", $portalEditor);
+        $this->assertStringContainsString("'fixed_location' | 'google_search'", $portalEditor);
+        $this->assertStringContainsString('onOptionLocationSelected', $portalEditor);
+        $this->assertStringContainsString('window.setTimeout(() => toast.dismiss(), 3000)', $portalEditor);
+        $this->assertStringContainsString("'action' => \$isCustom ? 'custom' : 'configured'", $publicSelector);
         $this->assertStringContainsString('name="{{ $name }}_predefined"', $publicSelector);
+        $this->assertSame(
+            ['CASONS_HQ', 'MATTALA_AIRPORT', 'BIA_AIRPORT', 'JAFFNA_AIRPORT', 'custom'],
+            array_column($defaults['pickup_location']['options'], 'value')
+        );
+        $this->assertFileExists(database_path('seeders/RentalServiceFormLocationOptionsSeeder.php'));
     }
 
     private function configuredLocationRequest(array $input): BookingSearchRequest
