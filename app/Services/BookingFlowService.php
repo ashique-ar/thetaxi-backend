@@ -7732,6 +7732,14 @@ class BookingFlowService
             if ($servicePackageId) {
                 $metadata['service_package_id'] = (string) $servicePackageId;
             }
+            $serviceFormConfig = is_array($item->serviceType?->form_config)
+                ? $item->serviceType->form_config
+                : [];
+            $metadata['service_package_required'] = (bool) (
+                data_get($serviceFormConfig, 'service_package_id.required')
+                ?? data_get($serviceFormConfig, 'fields.service_package_id.required')
+                ?? false
+            );
 
             $data = [
                 'id' => (string) $item->id,
