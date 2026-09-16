@@ -1707,14 +1707,13 @@ class BookingFlowService
                 fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
             )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
+            ->where(fn($query) => $this->whereBookingItemOverlaps(
+                $query,
+                $fromDate,
+                $fromTime,
+                $toDate,
+                $toTime
+            ))
             ->with('booking.customer')
             ->select('booking_items.*')
             ->get()
@@ -1787,14 +1786,13 @@ class BookingFlowService
                 fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
             )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
+            ->where(fn($query) => $this->whereBookingItemOverlaps(
+                $query,
+                $fromDate,
+                $fromTime,
+                $toDate,
+                $toTime
+            ))
             ->with('booking.customer', 'booking.vehicle')
             ->select('booking_items.*')
             ->get()
@@ -1833,6 +1831,28 @@ class BookingFlowService
             'driver_status' => $driver->status,
             'recommendations' => $this->generateDriverConflictRecommendations($conflicts, $driverId, $params),
         ];
+    }
+
+    private function whereBookingItemOverlaps($query, Carbon $fromDate, string $fromTime, Carbon $toDate, string $toTime): void
+    {
+        $fromDate = $fromDate->toDateString();
+        $toDate = $toDate->toDateString();
+
+        $query
+            ->where(function ($start) use ($toDate, $toTime) {
+                $start->where('booking_items.from_date', '<', $toDate)
+                    ->orWhere(function ($sameDay) use ($toDate, $toTime) {
+                        $sameDay->whereDate('booking_items.from_date', $toDate)
+                            ->where('booking_items.from_time', '<=', $toTime);
+                    });
+            })
+            ->where(function ($end) use ($fromDate, $fromTime) {
+                $end->where('booking_items.to_date', '>', $fromDate)
+                    ->orWhere(function ($sameDay) use ($fromDate, $fromTime) {
+                        $sameDay->whereDate('booking_items.to_date', $fromDate)
+                            ->where('booking_items.to_time', '>=', $fromTime);
+                    });
+            });
     }
 
     /**
