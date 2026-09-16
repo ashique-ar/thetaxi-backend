@@ -357,16 +357,7 @@ class PricingCalculationDefinitionHealthService
                 []
             ),
         ];
-        $expectedRuntimeInputs = $referencedVariables
-            ->filter(fn (array $variable) => in_array(
-                $variable['type'] ?? null,
-                ['duration', 'distance', 'number'],
-                true
-            ) && ($variable['is_required'] ?? true) && ($variable['default_value'] ?? null) === null)
-            ->pluck('name')
-            ->filter()
-            ->values()
-            ->all();
+        $expectedRuntimeInputs = [];
 
         return [
             'healthy' => !$this->containsErrors($issues),

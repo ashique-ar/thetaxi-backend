@@ -133,7 +133,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.name' => ['required', 'string', 'max:255', 'distinct', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
-            'variables.*.is_required' => 'nullable|boolean',
             'variables.*.description' => 'nullable|string',
             'conditions' => 'nullable|array',
             'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
@@ -179,6 +178,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ], 422);
         }
 
+        $variables = $this->withoutVariableRequirements($request->input('variables', []));
         $status = (string) $request->get('status', 'draft');
         $candidateId = (string) Str::uuid();
         $activationHealth = null;
@@ -189,7 +189,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'description' => $request->description,
                 'service_type_id' => $request->service_type_id,
                 'formula' => $request->formula,
-                'variables' => $request->variables ?? [],
+                'variables' => $variables,
                 'conditions' => $request->conditions ?? [],
                 'status' => 'active',
                 'priority' => $request->input('priority', 0),
@@ -206,7 +206,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
             $definition->formula = $request->formula;
-            $definition->variables = $request->variables ?? [];
+            $definition->variables = $variables;
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $status;
             $definition->owner_type = null;
@@ -343,7 +343,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.name' => ['required', 'string', 'max:255', 'distinct', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
-            'variables.*.is_required' => 'nullable|boolean',
             'variables.*.description' => 'nullable|string',
             'conditions' => 'nullable|array',
             'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
@@ -391,6 +390,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
         try {
             $definition = VehiclePricingCalculationDefinition::findOrFail($id);
+            $variables = $this->withoutVariableRequirements($request->input('variables', []));
             $status = (string) $request->get('status', $definition->status);
             $activationHealth = null;
             if ($status === 'active') {
@@ -400,7 +400,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'description' => $request->description,
                     'service_type_id' => $request->service_type_id,
                     'formula' => $request->formula,
-                    'variables' => $request->variables ?? [],
+                    'variables' => $variables,
                     'conditions' => $request->conditions ?? [],
                     'status' => 'active',
                     'priority' => $request->input('priority', $definition->priority ?? 0),
@@ -414,7 +414,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
             $definition->formula = $request->formula;
-            $definition->variables = $request->variables ?? [];
+            $definition->variables = $variables;
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $status;
             $definition->owner_type = null;
@@ -458,6 +458,17 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function withoutVariableRequirements(array $variables): array
+    {
+        return array_map(function ($variable) {
+            if (is_array($variable)) {
+                unset($variable['is_required']);
+            }
+
+            return $variable;
+        }, $variables);
     }
 
     /**

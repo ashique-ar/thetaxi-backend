@@ -128,7 +128,7 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         $this->assertSame(['base_rate' => 6900.0], $resolved);
     }
 
-    public function test_missing_required_variable_is_not_reported_as_a_matched_zero_price(): void
+    public function test_legacy_required_flag_is_ignored_and_missing_variable_defaults_to_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'required_charge';
@@ -138,12 +138,9 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             'is_required' => true,
         ]];
 
-        $result = $definition->calculatePrice([]);
+        $resolved = $this->resolveVariables($definition);
 
-        $this->assertFalse($result['conditions_met']);
-        $this->assertFalse($result['calculation_success']);
-        $this->assertSame('missing_required_variables', $result['failure_reason']);
-        $this->assertContains('required_charge', $result['missing_variables']);
+        $this->assertSame(0.0, (float) $resolved['required_charge']);
     }
 
     public function test_missing_optional_rate_defaults_to_zero(): void
@@ -161,7 +158,7 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
         $this->assertSame(0.0, (float) $resolved['missing_common_rate']);
     }
 
-    public function test_missing_required_slab_and_common_rates_reject_calculation(): void
+    public function test_missing_slab_and_common_rates_default_to_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'slab_rate + driver_allowance';
@@ -170,15 +167,13 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             ['name' => 'driver_allowance', 'type' => 'common_rate', 'is_required' => true],
         ];
 
-        $result = $definition->calculatePrice([]);
+        $resolved = $this->resolveVariables($definition);
 
-        $this->assertFalse($result['calculation_success']);
-        $this->assertSame('missing_required_variables', $result['failure_reason']);
-        $this->assertContains('slab_rate', $result['missing_variables']);
-        $this->assertContains('driver_allowance', $result['missing_variables']);
+        $this->assertSame(0.0, (float) $resolved['slab_rate']);
+        $this->assertSame(0.0, (float) $resolved['driver_allowance']);
     }
 
-    public function test_missing_distance_rate_cannot_turn_twenty_six_minutes_into_a_fare(): void
+    public function test_missing_distance_rate_defaults_to_zero(): void
     {
         $definition = new VehiclePricingCalculationDefinition();
         $definition->formula = 'total_distance * service_rate_per_km + duration_minutes';
@@ -188,10 +183,18 @@ class VehiclePricingCalculationDefinitionIntegrityTest extends BaseTestCase
             ['name' => 'duration_minutes', 'type' => 'duration', 'is_required' => true],
         ];
 
-        $result = $definition->calculatePrice(['total_distance' => 5.95, 'duration_minutes' => 26]);
+        $method = new ReflectionMethod($definition, 'resolveAllVariables');
+        $resolved = $method->invoke(
+            $definition,
+            ['total_distance' => 5.95, 'duration_minutes' => 26],
+            null,
+            [],
+            [],
+            null,
+            null
+        );
 
-        $this->assertFalse($result['calculation_success']);
-        $this->assertContains('service_rate_per_km', $result['missing_variables']);
+        $this->assertSame(0.0, (float) $resolved['service_rate_per_km']);
     }
 
     public function test_semantic_condition_operators_match_the_configuration_contract(): void

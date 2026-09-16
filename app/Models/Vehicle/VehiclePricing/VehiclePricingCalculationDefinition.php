@@ -810,8 +810,6 @@ class VehiclePricingCalculationDefinition extends Model
     private function resolveAllVariables(array $inputs, ?array $slabInfo, array $kmCalculations, ?array $appliedCustomizations, ?array $servicePackageInfo = null, ?array $districtInfo = null): array
     {
         $resolvedVariables = [];
-        $missingVariables = [];
-
         foreach ($this->variables ?? [] as $variable) {
 
             $varName = $variable['name'];
@@ -822,7 +820,6 @@ class VehiclePricingCalculationDefinition extends Model
                 continue;
             }
             $varType = $variable['type'] ?? 'number';
-            $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
             // Definition-driven variables only
 
@@ -830,47 +827,33 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = array_key_exists('extra_km', $kmCalculations)
                     ? $kmCalculations['extra_km']
                     : null;
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'allowed_km') {
                 $value = array_key_exists('allowed_km', $kmCalculations)
                     ? $kmCalculations['allowed_km']
                     : null;
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'journey_distance') {
                 // journey_distance comes from kmCalculations first, then inputs
                 $value = $kmCalculations['journey_distance'] ?? ($inputs['journey_distance'] ?? null);
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'total_distance') {
                 // total_distance should come from inputs (includes pickup+journey+delivery), NOT kmCalculations
                 $value = $inputs['total_distance'] ?? ($kmCalculations['total_distance'] ?? null);
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } else {
-                $runtimeDefault = $isRequired && in_array($varType, ['duration', 'distance'], true)
-                    ? null
-                    : $defaultValue;
-                $value = $this->resolveVariable($varName, $varType, $inputs, $runtimeDefault, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
-            }
-
-            if ($value === null && $isRequired) {
-                $missingVariables[] = $varName;
-                continue;
+                $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
             $resolvedVariables[$varName] = $value ?? 0;
-        }
-
-        if (!empty($missingVariables)) {
-            throw new \InvalidArgumentException(
-                "Missing required variables: " . implode(', ', $missingVariables)
-            );
         }
         return $resolvedVariables;
     }
