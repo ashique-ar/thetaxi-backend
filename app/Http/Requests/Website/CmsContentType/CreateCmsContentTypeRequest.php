@@ -3,6 +3,7 @@
 namespace App\Http\Requests\Website\CmsContentType;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class CreateCmsContentTypeRequest extends FormRequest
 {
@@ -10,6 +11,7 @@ class CreateCmsContentTypeRequest extends FormRequest
     public function rules()
     {
         return [
+            'parent_id' => ['nullable', 'uuid', Rule::exists('cms_content_types', 'id')->whereNull('parent_id')],
             'title' => ['required', 'string', 'max:255'],
             'slug' => ['required', 'string', 'max:255', 'unique:cms_content_types,slug'],
             'description' => ['nullable', 'string'],

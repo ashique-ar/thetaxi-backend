@@ -43,9 +43,10 @@ it('places the existing dynamic Theme 04 booking form beside checkout', function
         ->and(strpos($this->checkout, $themeBooking))->toBeLessThan(strpos($this->checkout, "@include('checkout.partials.cart-summary')"));
 
     expect($this->theme04Checkout)
-        ->toContain('.t4-checkout-booking { min-width: 0; margin-bottom: 24px; }')
+        ->toContain('.col-lg-5 { display: flex; min-width: 0; flex-direction: column; gap: 24px; }')
         ->toContain('.t4-checkout-booking .t4-booking-panel__card { width: 100%; }')
-        ->toContain('grid-template-columns: 64px minmax(0, 1fr)')
+        ->toContain('grid-template-columns: 64px minmax(0, 1fr) !important')
+        ->toContain('width: auto !important; min-width: 0;')
         ->toContain('.checkout-cart-item .item-total { min-width: 88px; }');
 });
 

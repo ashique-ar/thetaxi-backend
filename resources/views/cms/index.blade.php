@@ -709,6 +709,11 @@
                     </div>
                     <div class="col-lg-6 col-md-12">
                         <div class="filter-tags">
+                            @foreach ($contentType->children as $childType)
+                                <a href="{{ route('cms.index', $childType->slug) }}" class="filter-tag">
+                                    {{ $childType->title }}
+                                </a>
+                            @endforeach
                             <span class="me-2"><strong>Sort by:</strong></span>
                             <a href="{{ route('cms.index', $contentType->slug) }}?{{ http_build_query(array_merge(request()->except('sort'), ['sort' => 'latest'])) }}"
                                 class="filter-tag {{ request('sort', 'latest') === 'latest' ? 'active' : '' }}">Latest</a>
@@ -761,7 +766,7 @@
                                         <img src="{{ $content->thumbnail && s3_asset($content->thumbnail) ? s3_asset($content->thumbnail) : s3_asset($settings['cms_content_placeholder_image'] ?? 'assets/img/default-blog.jpg') }}"
                                             alt="{{ $content->title }}" loading="lazy">
                                         <div class="card-overlay"></div>
-                                        <div class="category-badge">{{ $contentType->title }}</div>
+                                        <div class="category-badge">{{ $content->contentType->title }}</div>
                                         @if ($content->is_featured ?? false)
                                             <div class="featured-badge">Featured</div>
                                         @endif
@@ -778,7 +783,7 @@
                                             </span>
                                         </div>
                                         <h3 class="card-title">
-                                            <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}">
+                                            <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}">
                                                 {{ $content->title }}
                                             </a>
                                         </h3>
@@ -786,7 +791,7 @@
                                             {{ $content->excerpt ?? Str::limit(strip_tags($content->content), 120) }}
                                         </p>
                                         <div class="card-footer">
-                                            <a href="{{ route('cms.show', [$contentType->slug, $content->slug]) }}"
+                                            <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}"
                                                 class="read-more">
                                                 Read More
                                                 <i class="bi bi-arrow-right"></i>

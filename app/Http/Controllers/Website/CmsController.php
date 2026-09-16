@@ -45,10 +45,12 @@ class CmsController extends Controller
 
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
+            ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('display_order')->orderBy('title')])
             ->firstOrFail();
 
         $query = CmsContent::published()
-            ->byType($contentTypeSlug)
+            ->whereIn('cms_content_type_id', $contentType->children->pluck('id')->prepend($contentType->id))
             ->with(['contentType']);
 
         // Search functionality
@@ -97,6 +99,7 @@ class CmsController extends Controller
     {
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
             ->firstOrFail();
 
         $content = CmsContent::published()
