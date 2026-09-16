@@ -7716,7 +7716,9 @@ class BookingFlowService
             $servicePackageId = $metadata['service_package_id']
                 ?? $metadata['package_id']
                 ?? data_get($metadata, 'package_info.id')
+                ?? data_get($metadata, 'service_package_info.id')
                 ?? data_get($item->pricing_breakdown, 'package_info.id')
+                ?? data_get($item->pricing_breakdown, 'service_package_info.id')
                 ?? data_get($item->pricing_breakdown, 'calculation_metadata.runtime_context.package_id');
             if ($servicePackageId) {
                 $metadata['service_package_id'] = (string) $servicePackageId;
