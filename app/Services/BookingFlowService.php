@@ -7711,7 +7711,7 @@ class BookingFlowService
 
         // Transform booking items for multi-trip support. Price-change metadata is internal-only.
         $canViewPriceAudit = Auth::user()?->can('bookings.price_override') === true;
-        $bookingItems = $booking->bookingItems->map(function ($item) use ($canViewPriceAudit) {
+        $bookingItems = $booking->bookingItems->map(function ($item) use ($canViewPriceAudit, $pricingSnapshot) {
             $metadata = is_array($item->metadata) ? $item->metadata : [];
             $servicePackageId = $metadata['service_package_id']
                 ?? $metadata['package_id']
@@ -7719,7 +7719,16 @@ class BookingFlowService
                 ?? data_get($metadata, 'service_package_info.id')
                 ?? data_get($item->pricing_breakdown, 'package_info.id')
                 ?? data_get($item->pricing_breakdown, 'service_package_info.id')
-                ?? data_get($item->pricing_breakdown, 'calculation_metadata.runtime_context.package_id');
+                ?? data_get($item->pricing_breakdown, 'base_pricing.package_info.id')
+                ?? data_get($item->pricing_breakdown, 'base_pricing.service_package_info.id')
+                ?? data_get($item->pricing_breakdown, 'calculation_metadata.runtime_context.package_id')
+                ?? data_get($pricingSnapshot, 'package_info.id')
+                ?? data_get($pricingSnapshot, 'service_package_info.id')
+                ?? data_get($pricingSnapshot, 'base_pricing.package_info.id')
+                ?? data_get($pricingSnapshot, 'base_pricing.service_package_info.id')
+                ?? data_get($pricingSnapshot, 'calculation_metadata.runtime_context.package_id')
+                ?? data_get($pricingSnapshot, 'pricing_scope.requested_service_package_id')
+                ?? data_get($pricingSnapshot, 'pricing_scope.pricing_service_package_id');
             if ($servicePackageId) {
                 $metadata['service_package_id'] = (string) $servicePackageId;
             }
