@@ -369,12 +369,11 @@
             $distanceDetails = $pricing['distance_details'] ?? [];
             $durationInfo = $pricing['duration_info'] ?? [];
             $durationDays = $durationInfo['days'] ?? 1;
-            $showKmAllowance = !is_theme('theme-04');
 
-            $hasFreeKmPerDay = $showKmAllowance && isset($distanceDetails['free_km_per_day']) && $distanceDetails['free_km_per_day'] > 0;
+            $hasFreeKmPerDay = isset($distanceDetails['free_km_per_day']) && $distanceDetails['free_km_per_day'] > 0;
             $hasFreeKmPerPackage =
-                $showKmAllowance && isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
-            $hasAllowedKm = $showKmAllowance && isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
+                isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
+            $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
             $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
             $hasExtraHourPrice =
                 $serviceType === 'day_rental' &&
@@ -430,7 +429,7 @@
                 @endif
 
                 {{-- Explicit included/allowed total KM (show when available) --}}
-                @if ($hasAllowedKm)
+                @if ($hasAllowedKm && !$hasFreeKmPerDay && !$hasFreeKmPerPackage)
                     <small class="pricing-detail-item">
                         <i class="bi bi-check2-circle"></i>
                         <strong>Included:</strong> {{ number_format($distanceDetails['allowed_total_km'], 0) }} km
@@ -777,6 +776,10 @@
             }
 
             /* Action Buttons */
+            .vehicle-actions {
+                margin-top: auto !important;
+            }
+
             .vehicle-actions .btn {
                 font-weight: 600;
                 padding: 10px 16px;

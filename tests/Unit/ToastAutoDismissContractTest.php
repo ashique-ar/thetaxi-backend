@@ -21,4 +21,14 @@ class ToastAutoDismissContractTest extends TestCase
             $this->assertStringContainsString('setTimeout(() => alert.remove()', $source, $view);
         }
     }
+
+    #[Test]
+    public function cart_notification_is_removed_after_it_hides(): void
+    {
+        $source = file_get_contents(base_path('resources/views/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('clearTimeout(notification.hideTimer)', $source);
+        $this->assertStringContainsString('clearTimeout(notification.removeTimer)', $source);
+        $this->assertStringContainsString('notification.removeTimer = setTimeout(() => notification.remove(), 300)', $source);
+    }
 }

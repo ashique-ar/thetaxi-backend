@@ -38,7 +38,6 @@ body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-selected-addon
 body.theme-theme-04 .checkout-workflow--theme-04 .pricing-area { padding-top: 20px; border-top: 3px solid var(--t4-text); }
 body.theme-theme-04 .checkout-workflow--theme-04 .total-row { padding-top: 16px; border-top: 2px solid var(--t4-accent); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.checkout-remove-item-btn, .checkout-clear-cart-btn, .apply-promo-checkout-btn, .checkout-toggle-addons, .checkout-toggle-extra-km) { min-height: 44px; border-radius: 6px; }
-body.theme-theme-04 .checkout-workflow--theme-04 .payment-type-selection .col-6 { width: 100%; }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(input, select, textarea, .select2-selection) { max-width: 100%; }
 
 @media (max-width: 991px) {

@@ -20,12 +20,15 @@ beforeEach(function () {
     ];
 });
 
-it('does not present kilometre allowances as included on Theme 04 vehicle cards', function () {
+it('shows one shared kilometre allowance in every theme', function () {
     expect($this->vehicleCard)
-        ->toContain("\$showKmAllowance = !is_theme('theme-04')")
-        ->toContain('$hasFreeKmPerDay = $showKmAllowance')
-        ->toContain('$showKmAllowance && isset($distanceDetails[\'free_km_per_package\'])')
-        ->toContain('$hasAllowedKm = $showKmAllowance');
+        ->not->toContain("\$showKmAllowance = !is_theme('theme-04')")
+        ->toContain("\$hasFreeKmPerDay = isset(\$distanceDetails['free_km_per_day'])")
+        ->toContain('@if ($hasAllowedKm && !$hasFreeKmPerDay && !$hasFreeKmPerPackage)');
+});
+
+it('keeps shared vehicle card actions at the bottom in every theme', function () {
+    expect($this->vehicleCard)->toContain(".vehicle-actions {\n                margin-top: auto !important;");
 });
 
 it('covers all hidden and visible combinations and every possible surviving neighbor pair', function () {

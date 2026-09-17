@@ -517,8 +517,11 @@
             notification.textContent = message;
             notification.style.transform = 'translateX(0)';
 
-            setTimeout(() => {
+            clearTimeout(notification.hideTimer);
+            clearTimeout(notification.removeTimer);
+            notification.hideTimer = setTimeout(() => {
                 notification.style.transform = 'translateX(400px)';
+                notification.removeTimer = setTimeout(() => notification.remove(), 300);
             }, duration);
         };
 
