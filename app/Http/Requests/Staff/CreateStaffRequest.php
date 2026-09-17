@@ -20,6 +20,7 @@ class CreateStaffRequest extends FormRequest
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'required_without:user_id', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->input('user_id'))],
             'phone' => ['required', 'string', 'max:30'],
+            'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
             'staff_type' => ['required', 'string', 'max:100'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['required_if:collection_commission_enabled,true', 'numeric', 'min:0', 'max:100'],

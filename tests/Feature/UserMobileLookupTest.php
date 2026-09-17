@@ -37,5 +37,10 @@ class UserMobileLookupTest extends TestCase
             ->assertOk()
             ->assertJsonPath('data.0.id', $user->id)
             ->assertJsonPath('data.0.has_context', true);
+
+        $this->actingAs($operator, 'api')
+            ->postJson('/api/business-codes/customer/reserve')
+            ->assertOk()
+            ->assertJsonPath('data.code', 'CUST001');
     }
 }

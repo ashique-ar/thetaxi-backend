@@ -12,6 +12,7 @@ use App\Services\AuthService;
 use App\Services\UserService;
 use App\Services\UserContextService;
 use App\Services\PermissionAssignmentService;
+use App\Services\BusinessCodeGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -82,6 +83,16 @@ class UserController extends Controller
             ->get();
 
         return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
+    public function reserveBusinessCode(string $entity, BusinessCodeGenerator $generator): JsonResponse
+    {
+        abort_unless(in_array($entity, ['customer', 'staff', 'driver'], true), 404);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['code' => $generator->generate($entity)],
+        ]);
     }
 
     /**

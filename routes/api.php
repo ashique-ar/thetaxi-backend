@@ -305,6 +305,8 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::get('users/lookup-by-mobile', [UserController::class, 'lookupByMobile'])
         ->middleware('permission:customers.create|staff.create|drivers.create');
+    Route::post('business-codes/{entity}/reserve', [UserController::class, 'reserveBusinessCode'])
+        ->middleware('permission:customers.create|staff.create|drivers.create');
 
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
