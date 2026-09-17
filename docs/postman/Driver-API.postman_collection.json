@@ -218,15 +218,15 @@
             ]
         },
         {
-            "name": "Mobile OTP Authentication",
+            "name": "Driver Onboarding",
             "item": [
                 {
-                    "name": "Request Mobile OTP",
+                    "name": "List Countries",
                     "request": {
                         "auth": {
                             "type": "noauth"
                         },
-                        "method": "POST",
+                        "method": "GET",
                         "header": [
                             {
                                 "key": "Accept",
@@ -240,27 +240,18 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/auth/request-otp",
+                            "raw": "{{base_url}}/api/driver/onboarding/countries",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "driver",
-                                "auth",
-                                "request-otp"
+                                "onboarding",
+                                "countries"
                             ]
                         },
-                        "description": "Send a six-digit SMS OTP. Expires after 10 minutes.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"mobile\": \"+94771234567\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
+                        "description": "Public country options for the address step. Display name and save id."
                     },
                     "response": [
                         {
@@ -276,17 +267,17 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"OTP sent.\",\n    \"data\": {\n        \"expires_in\": 600\n    }\n}"
+                            "body": "[\n    {\n        \"id\": \"country-uuid\",\n        \"name\": \"Sri Lanka\",\n        \"code\": \"LK\"\n    }\n]"
                         }
                     ]
                 },
                 {
-                    "name": "Verify Mobile OTP",
+                    "name": "List States by Country",
                     "request": {
                         "auth": {
                             "type": "noauth"
                         },
-                        "method": "POST",
+                        "method": "GET",
                         "header": [
                             {
                                 "key": "Accept",
@@ -300,48 +291,26 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/auth/verify-otp",
+                            "raw": "{{base_url}}/api/driver/onboarding/countries/{{country_id}}/states",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "driver",
-                                "auth",
-                                "verify-otp"
+                                "onboarding",
+                                "countries",
+                                "{{country_id}}",
+                                "states"
                             ]
                         },
-                        "description": "Verify mobile. Existing drivers receive the normal login response; other users receive an onboarding token and prefilled application.",
-                        "body": {
-                            "mode": "raw",
-                            "raw": "{\n    \"mobile\": \"+94771234567\",\n    \"otp\": \"123456\",\n    \"device_uuid\": \"device-uuid\",\n    \"device_fingerprint\": \"fingerprint\",\n    \"device_name\": \"Nimal phone\",\n    \"device_model\": \"Pixel 9\",\n    \"device_manufacturer\": \"Google\",\n    \"platform\": \"android\",\n    \"os_version\": \"16\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"fcm-token\",\n    \"push_provider\": \"fcm\",\n    \"locale\": \"en-LK\",\n    \"timezone\": \"Asia/Colombo\"\n}",
-                            "options": {
-                                "raw": {
-                                    "language": "json"
-                                }
-                            }
-                        }
+                        "description": "Public state options for the selected country. Display name and save id."
                     },
                     "response": [
                         {
-                            "name": "Registration Created",
+                            "name": "OK",
                             "originalRequest": {},
-                            "status": "Registration Created",
-                            "code": 201,
-                            "_postman_previewlanguage": "json",
-                            "header": [
-                                {
-                                    "key": "Content-Type",
-                                    "value": "application/json"
-                                }
-                            ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"flow\": \"registration\",\n        \"onboarding_token\": \"token\",\n        \"application\": {\n            \"id\": \"application-uuid\",\n            \"mobile\": \"+94771234567\",\n            \"status\": \"draft\",\n            \"current_step\": 1\n        }\n    }\n}"
-                        },
-                        {
-                            "name": "Existing Driver Login",
-                            "originalRequest": {},
-                            "status": "Existing Driver Login",
+                            "status": "OK",
                             "code": 200,
                             "_postman_previewlanguage": "json",
                             "header": [
@@ -351,15 +320,10 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"flow\": \"login\",\n        \"user\": {},\n        \"driver\": {},\n        \"device\": {},\n        \"token\": {\n            \"access_token\": \"token\",\n            \"refresh_token\": \"token\",\n            \"expires_in\": 3600\n        },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
+                            "body": "[\n    {\n        \"id\": \"state-uuid\",\n        \"country_id\": \"country-uuid\",\n        \"name\": \"Western Province\"\n    }\n]"
                         }
                     ]
-                }
-            ]
-        },
-        {
-            "name": "Driver Onboarding",
-            "item": [
+                },
                 {
                     "name": "Get Onboarding Progress",
                     "request": {
@@ -456,7 +420,7 @@
                                 "1"
                             ]
                         },
-                        "description": "Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format. Date of birth is system-only: mobile does not send it and the API does not return it. In changes_requested status, only reviewer-listed fields are writable.",
+                        "description": "Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format; date of birth is derived by the server. In changes_requested status, only reviewer-listed fields are writable.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"first_name\": \"Nimal\",\n    \"last_name\": \"Perera\",\n    \"email\": \"nimal@example.com\",\n    \"nic\": \"901234567V\"\n}",
@@ -481,7 +445,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 2,\n        \"payload\": {\n            \"identity\": {\n                \"first_name\": \"Nimal\",\n                \"last_name\": \"Perera\",\n                \"email\": \"nimal@example.com\",\n                \"nic\": \"901234567V\"\n            }\n        }\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 2,\n        \"payload\": {\n            \"identity\": {\n                \"first_name\": \"Nimal\",\n                \"last_name\": \"Perera\",\n                \"email\": \"nimal@example.com\",\n                \"nic\": \"901234567V\",\n                \"dob\": \"1990-05-02\"\n            }\n        }\n    }\n}"
                         }
                     ]
                 },
@@ -524,7 +488,7 @@
                                 "3"
                             ]
                         },
-                        "description": "Save address.",
+                        "description": "Use UUID IDs returned by the country/state lookups. The state must belong to the selected country.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"address\": \"10 Main Street\",\n    \"country_id\": \"country-uuid\",\n    \"state_id\": \"state-uuid\",\n    \"city\": \"Colombo\",\n    \"postal_code\": \"00100\"\n}",
@@ -767,6 +731,146 @@
                             ],
                             "cookie": [],
                             "body": "{\n    \"status\": \"success\",\n    \"message\": \"Application submitted for review.\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"submitted\",\n        \"current_step\": 5\n    }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Mobile OTP Authentication",
+            "item": [
+                {
+                    "name": "Request Mobile OTP",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/request-otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "request-otp"
+                            ]
+                        },
+                        "description": "Send a six-digit SMS OTP. Expires after 10 minutes.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"mobile\": \"+94771234567\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"OTP sent.\",\n    \"data\": {\n        \"expires_in\": 600\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Verify Mobile OTP",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/auth/verify-otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "verify-otp"
+                            ]
+                        },
+                        "description": "Verify mobile. Existing drivers receive the normal login response; other users receive an onboarding token and prefilled application.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"mobile\": \"+94771234567\",\n    \"otp\": \"123456\",\n    \"device_uuid\": \"device-uuid\",\n    \"device_fingerprint\": \"fingerprint\",\n    \"device_name\": \"Nimal phone\",\n    \"device_model\": \"Pixel 9\",\n    \"device_manufacturer\": \"Google\",\n    \"platform\": \"android\",\n    \"os_version\": \"16\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"fcm-token\",\n    \"push_provider\": \"fcm\",\n    \"locale\": \"en-LK\",\n    \"timezone\": \"Asia/Colombo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Registration Created",
+                            "originalRequest": {},
+                            "status": "Registration Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"flow\": \"registration\",\n        \"onboarding_token\": \"token\",\n        \"application\": {\n            \"id\": \"application-uuid\",\n            \"mobile\": \"+94771234567\",\n            \"status\": \"draft\",\n            \"current_step\": 1\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Existing Driver Login",
+                            "originalRequest": {},
+                            "status": "Existing Driver Login",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"flow\": \"login\",\n        \"user\": {},\n        \"driver\": {},\n        \"device\": {},\n        \"token\": {\n            \"access_token\": \"token\",\n            \"refresh_token\": \"token\",\n            \"expires_in\": 3600\n        },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
                         }
                     ]
                 }

@@ -47,8 +47,11 @@ class OnboardingController extends Controller
                 'nic' => ['required', 'string', 'regex:/^(?:\d{9}[vVxX]|\d{12})$/'],
             ],
             3 => [
-                'address' => ['required', 'string', 'max:500'], 'country_id' => ['required', 'uuid', 'exists:countries,id'],
-                'state_id' => ['required', 'uuid', 'exists:states,id'], 'city' => ['required', 'string', 'max:100'],
+                'address' => ['required', 'string', 'max:500'],
+                'country_id' => ['required', 'uuid', Rule::exists('countries', 'id')->whereNull('deleted_at')],
+                'state_id' => ['required', 'uuid', Rule::exists('states', 'id')
+                    ->where('country_id', $request->input('country_id'))->whereNull('deleted_at')],
+                'city' => ['required', 'string', 'max:100'],
                 'postal_code' => ['nullable', 'string', 'max:20'],
             ],
             4 => [

@@ -26,6 +26,8 @@ Registration is mobile + OTP only. Do not request or submit a password during re
 
 Do not ask for or display date of birth. Submit the old or new Sri Lankan NIC in onboarding step 1; the backend derives and stores DOB internally and does not return it in onboarding responses.
 
+For the address step, call `GET /api/driver/onboarding/countries`, then call `GET /api/driver/onboarding/countries/{country_id}/states` when a country is selected. These are records from our backend `countries` and `states` tables: display `name`, save the UUID `id`, never send a name as an ID, and clear the selected state when the country changes. Submit both IDs in onboarding step 3. The backend rejects states that do not belong to the selected country. These two lookup endpoints do not require a bearer token.
+
 ## Important responses
 
 - Invalid/expired OTP: HTTP 422; remain on the OTP screen and show the server validation message.

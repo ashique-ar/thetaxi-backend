@@ -30,11 +30,13 @@ class UtilityController extends Controller
     /**
      * Display a listing of the resource.
      */
-    public function states(Request $request)
+    public function states(Request $request, ?string $country = null)
     {
-        $countryId = (string) $request->country;
+        $countryId = $country ?? (string) $request->validate([
+            'country' => ['required', 'uuid', 'exists:countries,id'],
+        ])['country'];
         $states = Cache::remember("ref.states.{$countryId}", 86400, fn () =>
-            State::where('country_id', $countryId)->get()
+            State::where('country_id', $countryId)->orderBy('name')->get()
         );
         return response()
             ->json(StateResource::collection($states))

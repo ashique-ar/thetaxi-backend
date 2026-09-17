@@ -38,3 +38,15 @@ it('documents every driver API response body and the canonical onboarding payloa
         ->and(data_get($docs, 'paths./api/driver/auth/verify-otp.post.requestBody.content.application/json.schema.properties.device_uuid'))->toBeArray()
         ->and(data_get($docs, 'paths./api/driver/onboarding/documents.post.requestBody.content.multipart/form-data.schema.properties.file.format'))->toBe('binary');
 });
+
+it('exposes and documents country and state lookups for driver onboarding', function (): void {
+    $root = dirname(__DIR__, 2);
+    $routes = file_get_contents($root.'/routes/api_driver.php');
+    $docs = json_decode(file_get_contents($root.'/public/docs/driver-mobile-api.openapi.json'), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($routes)
+        ->toContain("Route::get('countries', [UtilityController::class, 'countries'])")
+        ->toContain("Route::get('countries/{country}/states', [UtilityController::class, 'states'])")
+        ->and(data_get($docs, 'paths./api/driver/onboarding/countries.get.responses.200'))->toBeArray()
+        ->and(data_get($docs, 'paths./api/driver/onboarding/countries/{country_id}/states.get.parameters.0.name'))->toBe('country_id');
+});

@@ -13806,7 +13806,7 @@
                     "Driver Onboarding"
                 ],
                 "summary": "Save identity, address, or vehicle onboarding step",
-                "description": "Payload must match the selected step: 1 identity, 3 address, 4 vehicle.",
+                "description": "Payload must match the selected step: 1 identity, 3 address, 4 vehicle. Address country_id and state_id are backend UUIDs returned by the lookup endpoints, and the state must belong to the selected country.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -13859,7 +13859,7 @@
                                             "nic": {
                                                 "type": "string",
                                                 "pattern": "^(?:\\d{9}[vVxX]|\\d{12})$",
-                                                "description": "Sri Lankan NIC. DOB is derived and stored internally; it is not accepted or returned by the mobile onboarding API."
+                                                "description": "Sri Lankan NIC. The server derives payload.identity.dob from this value."
                                             }
                                         }
                                     },
@@ -14139,6 +14139,114 @@
                                 "example": {
                                     "message": "Validation error"
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/countries": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List countries for the address step",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Country list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "id",
+                                            "name"
+                                        ],
+                                        "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "name": {
+                                                "type": "string"
+                                            },
+                                            "code": {
+                                                "type": "string",
+                                                "nullable": true
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": [
+                                    {
+                                        "id": "country-uuid",
+                                        "name": "Sri Lanka",
+                                        "code": "LK"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/countries/{country_id}/states": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List states for the selected country",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "country_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "State list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "id",
+                                            "country_id",
+                                            "name"
+                                        ],
+                                        "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "country_id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "name": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": [
+                                    {
+                                        "id": "state-uuid",
+                                        "country_id": "country-uuid",
+                                        "name": "Western Province"
+                                    }
+                                ]
                             }
                         }
                     }

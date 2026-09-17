@@ -1,7 +1,10 @@
 <?php
 
 use App\Models\User;
+use App\Models\Country;
+use App\Models\State;
 use App\Models\Driver\DriverOnboardingApplication;
+use App\Models\Driver\Driver;
 use App\Models\Vehicle\VehicleGrade;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\VehicleMake;
@@ -31,6 +34,24 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
         'first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'nimal@example.com', 'nic' => '901234567V',
     ])->assertOk()->assertJsonPath('data.current_step', 2);
 
+    $country = Country::create(['name' => 'Sri Lanka', 'code' => 'LK']);
+    $otherCountry = Country::create(['name' => 'India', 'code' => 'IN']);
+    $state = State::create(['country_id' => $country->id, 'name' => 'Western Province']);
+    $otherState = State::create(['country_id' => $otherCountry->id, 'name' => 'Tamil Nadu']);
+
+    $this->getJson('/api/driver/onboarding/countries')->assertOk()
+        ->assertJsonFragment(['id' => $country->id, 'name' => 'Sri Lanka']);
+    $this->getJson("/api/driver/onboarding/countries/{$country->id}/states")->assertOk()
+        ->assertJsonFragment(['id' => $state->id, 'country_id' => $country->id])
+        ->assertJsonMissing(['id' => $otherState->id]);
+    $this->withToken($token)->patchJson('/api/driver/onboarding/steps/3', [
+        'address' => '10 Main Street', 'country_id' => $country->id, 'state_id' => $otherState->id, 'city' => 'Colombo',
+    ])->assertUnprocessable()->assertJsonValidationErrors('state_id');
+    $this->withToken($token)->patchJson('/api/driver/onboarding/steps/3', [
+        'address' => '10 Main Street', 'country_id' => $country->id, 'state_id' => $state->id, 'city' => 'Colombo',
+    ])->assertOk()->assertJsonPath('data.payload.address.country_id', $country->id)
+        ->assertJsonPath('data.payload.address.state_id', $state->id);
+
     DriverOnboardingApplication::first()->update([
         'status' => 'changes_requested',
         'review_issues' => [['field' => 'identity.nic', 'message' => 'NIC is unclear.']],
@@ -50,6 +71,8 @@ it('classifies an approved vehicle through a make model and latest grade vehicle
         'phone' => '+94770000002', 'password' => bcrypt('Password1!'), 'is_active' => true]);
     $make = VehicleMake::create(['name' => 'Toyota']);
     $model = VehicleModel::create(['make_id' => $make->id, 'name' => 'Axio']);
+    $country = Country::create(['name' => 'Sri Lanka', 'code' => 'LK']);
+    $state = State::create(['country_id' => $country->id, 'name' => 'Western Province']);
     VehicleGrade::create(['name' => 'Economy']);
     $latestGrade = VehicleGrade::create(['name' => 'Standard']);
     $latestGrade->forceFill(['created_at' => now()->addSecond()])->saveQuietly();
@@ -57,7 +80,7 @@ it('classifies an approved vehicle through a make model and latest grade vehicle
         'user_id' => $driverUser->id, 'mobile' => $driverUser->phone, 'access_token_hash' => hash('sha256', 'token'),
         'mobile_verified_at' => now(), 'status' => 'submitted', 'payload' => [
             'identity' => ['first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'driver@example.com', 'nic' => '901234567V', 'dob' => '1990-05-02'],
-            'address' => ['address' => 'Colombo', 'country_id' => null, 'state_id' => null, 'city' => 'Colombo', 'postal_code' => '00100'],
+            'address' => ['address' => 'Colombo', 'country_id' => $country->id, 'state_id' => $state->id, 'city' => 'Colombo', 'postal_code' => '00100'],
             'vehicle' => ['make_id' => $make->id, 'model_id' => $model->id, 'model_year' => 2024, 'color' => 'White',
                 'registration_year' => 2024, 'license_plate' => 'CAB-1234', 'is_owner' => true],
         ],
@@ -68,9 +91,12 @@ it('classifies an approved vehicle through a make model and latest grade vehicle
 
     $application->refresh();
     $vehicle = Vehicle::withoutGlobalScopes()->findOrFail($application->vehicle_id);
+    $driver = Driver::withoutGlobalScopes()->findOrFail($application->driver_id);
     $group = VehicleGroup::findOrFail($vehicle->vehicle_group_id);
     expect($group->make_id)->toBe($make->id)
         ->and($group->model_id)->toBe($model->id)
         ->and($group->grade_id)->toBe($latestGrade->id)
-        ->and($vehicle->getAttributes())->not->toHaveKeys(['make_id', 'model_id']);
+        ->and($vehicle->getAttributes())->not->toHaveKeys(['make_id', 'model_id'])
+        ->and($driver->country_id)->toBe($country->id)
+        ->and($driver->state_id)->toBe($state->id);
 });

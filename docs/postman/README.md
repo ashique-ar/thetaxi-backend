@@ -50,6 +50,7 @@ Onboarding begins only when mobile OTP authentication returns `data.flow=registr
 
 1. Save the returned `onboarding_token`. Use it for every onboarding call; it is not a normal driver access token.
 2. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document. Mobile sends only the NIC, never DOB; DOB is system-only.
+   Load `GET /api/driver/onboarding/countries`, then load `GET /api/driver/onboarding/countries/{country_id}/states` after the country is selected. Submit those returned IDs as `country_id` and `state_id` in step 3.
 3. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
 4. Submit the application. While status is `submitted`, the app must show the review screen and must not allow operational navigation.
 5. If status becomes `changes_requested`, display each `review_issues[].message`. Enable only fields returned in `editable_fields`; upload of any other document receives HTTP 403.
@@ -153,6 +154,15 @@ Notifications:
 | GET | `/api/driver/auth/profile` | Yes | Current driver profile and assignment stats |
 | POST | `/api/driver/auth/refresh` | Yes | Refresh access token |
 | POST | `/api/driver/auth/logout` | Yes | Revoke current token/session |
+
+### Onboarding Reference Data
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/onboarding/countries` | No | Countries for the address country selector |
+| GET | `/api/driver/onboarding/countries/{country_id}/states` | No | States for the selected country |
+
+Both endpoints return records from the backend `countries` and `states` tables. Use each item's UUID `id` as the saved value and `name` as the label; never send the name as the ID. Reload and clear the state selection whenever the country changes. Step 3 rejects a `state_id` that does not belong to the submitted `country_id`.
 
 ### Status, Session, and Location
 
