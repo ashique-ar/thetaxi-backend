@@ -19,9 +19,9 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
         'first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'nimal@example.com',
         'phone' => '+94771234567', 'password' => bcrypt('Password1!'), 'is_active' => true,
     ]);
-    Cache::put('driver_onboarding_otp:'.sha1('+94771234567'), Hash::make('123456'), now()->addMinutes(10));
+    Cache::put('driver_auth_otp:'.sha1('+94771234567'), Hash::make('123456'), now()->addMinutes(10));
 
-    $verified = $this->postJson('/api/driver/onboarding/verify-otp', ['mobile' => '+94771234567', 'otp' => '123456'])
+    $verified = $this->postJson('/api/driver/auth/verify-otp', ['mobile' => '+94771234567', 'otp' => '123456'])
         ->assertCreated()->assertJsonPath('data.application.user_id', $user->id)
         ->assertJsonPath('data.application.payload.identity.first_name', 'Nimal');
 

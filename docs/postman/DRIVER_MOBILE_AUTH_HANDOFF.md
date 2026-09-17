@@ -12,8 +12,8 @@ Show two options:
 ## Default mobile flow
 
 1. Collect the mobile in international format, for example `+94771234567`.
-2. Call `POST /api/driver/onboarding/request-otp` with `{ "mobile": "+94771234567" }`.
-3. Collect the six-digit OTP and call `POST /api/driver/onboarding/verify-otp`. Include the normal device fields used by email login.
+2. Call `POST /api/driver/auth/request-otp` with `{ "mobile": "+94771234567" }`.
+3. Collect the six-digit OTP and call `POST /api/driver/auth/verify-otp`. Include the normal device fields used by email login.
 4. Branch only on `data.flow`:
    - `login`: save `data.token.access_token`, refresh token, driver, and device; continue to the normal authenticated app.
    - `registration`: save `data.onboarding_token` in a separate onboarding credential; open the registration stepper and use that token for onboarding endpoints.

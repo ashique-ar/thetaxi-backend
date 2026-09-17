@@ -12942,10 +12942,10 @@
                 }
             }
         },
-        "/api/driver/onboarding/request-otp": {
+        "/api/driver/auth/request-otp": {
             "post": {
                 "tags": [
-                    "Driver Onboarding"
+                    "Authentication"
                 ],
                 "summary": "Send mobile verification OTP",
                 "security": [],
@@ -13073,10 +13073,10 @@
                 }
             }
         },
-        "/api/driver/onboarding/verify-otp": {
+        "/api/driver/auth/verify-otp": {
             "post": {
                 "tags": [
-                    "Driver Onboarding"
+                    "Authentication"
                 ],
                 "summary": "Verify OTP, then log in or start onboarding",
                 "description": "Existing drivers receive HTTP 200 with the normal authenticated login payload. New drivers receive HTTP 201 with an onboarding token.",

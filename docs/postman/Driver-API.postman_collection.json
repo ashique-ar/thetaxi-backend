@@ -218,7 +218,7 @@
             ]
         },
         {
-            "name": "Driver Onboarding",
+            "name": "Mobile OTP Authentication",
             "item": [
                 {
                     "name": "Request Mobile OTP",
@@ -240,14 +240,14 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/onboarding/request-otp",
+                            "raw": "{{base_url}}/api/driver/auth/request-otp",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "driver",
-                                "onboarding",
+                                "auth",
                                 "request-otp"
                             ]
                         },
@@ -300,14 +300,14 @@
                             }
                         ],
                         "url": {
-                            "raw": "{{base_url}}/api/driver/onboarding/verify-otp",
+                            "raw": "{{base_url}}/api/driver/auth/verify-otp",
                             "host": [
                                 "{{base_url}}"
                             ],
                             "path": [
                                 "api",
                                 "driver",
-                                "onboarding",
+                                "auth",
                                 "verify-otp"
                             ]
                         },
@@ -354,7 +354,12 @@
                             "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"flow\": \"login\",\n        \"user\": {},\n        \"driver\": {},\n        \"device\": {},\n        \"token\": {\n            \"access_token\": \"token\",\n            \"refresh_token\": \"token\",\n            \"expires_in\": 3600\n        },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
                         }
                     ]
-                },
+                }
+            ]
+        },
+        {
+            "name": "Driver Onboarding",
+            "item": [
                 {
                     "name": "Get Onboarding Progress",
                     "request": {

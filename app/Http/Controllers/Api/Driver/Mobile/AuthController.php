@@ -9,10 +9,17 @@ use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
 use App\Models\DriverAssignment;
+use App\Models\Driver\DriverOnboardingApplication;
+use App\Models\User;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\MobileAssignmentService;
+use App\Services\Sms\SmsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
 use Illuminate\Validation\ValidationException;
 
@@ -35,6 +42,66 @@ class AuthController extends Controller
         private DriverAuthService $authService,
         private MobileAssignmentService $assignmentService
     ) {}
+
+    public function requestOtp(Request $request, SmsService $sms): JsonResponse
+    {
+        $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        $otp = (string) random_int(100000, 999999);
+        Cache::put($this->otpKey($mobile), Hash::make($otp), now()->addMinutes(10));
+        $sms->queueSingleMessage([
+            'recipient' => $mobile, 'message' => "Your driver app OTP is {$otp}. It expires in 10 minutes.",
+            'source' => 'manual', 'context_type' => 'driver_authentication', 'event_key' => 'driver_authentication_otp',
+        ]);
+
+        return response()->json(['status' => 'success', 'message' => 'OTP sent.', 'data' => ['expires_in' => 600]]);
+    }
+
+    public function verifyOtp(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'mobile' => ['required', 'string', 'max:30'], 'otp' => ['required', 'digits:6'],
+            'device_uuid' => ['nullable', 'string', 'max:255'], 'device_fingerprint' => ['nullable', 'string', 'max:500'],
+            'device_name' => ['nullable', 'string', 'max:255'], 'device_model' => ['nullable', 'string', 'max:255'],
+            'device_manufacturer' => ['nullable', 'string', 'max:255'], 'platform' => ['nullable', Rule::in(['ios', 'android'])],
+            'os_version' => ['nullable', 'string', 'max:50'], 'app_version' => ['nullable', 'string', 'max:50'],
+            'app_build' => ['nullable', 'string', 'max:50'], 'push_token' => ['nullable', 'string', 'max:500'],
+            'push_provider' => ['nullable', Rule::in(['fcm', 'apns'])], 'locale' => ['nullable', 'string', 'max:10'],
+            'timezone' => ['nullable', 'string', 'max:50'],
+        ]);
+        $mobile = $this->mobile($data['mobile']);
+        $hash = Cache::get($this->otpKey($mobile)) ?? Cache::get($this->legacyOtpKey($mobile));
+        if (! $hash || ! Hash::check($data['otp'], $hash)) {
+            throw ValidationException::withMessages(['otp' => ['The OTP is invalid or has expired.']]);
+        }
+        Cache::forget($this->otpKey($mobile));
+        Cache::forget($this->legacyOtpKey($mobile));
+
+        $user = $this->findUser($mobile);
+        if ($user && $user->driverContext()) {
+            $result = $this->authService->loginWithOtp($user, $data);
+            $driver = $result['driver'];
+            $activeAssignment = $this->assignmentService->getCurrentAssignment($driver);
+            return response()->json(['status' => 'success', 'message' => 'Login successful', 'data' => [
+                'flow' => 'login', 'user' => new UserResource($result['user']), 'driver' => new DriverResource($driver),
+                'device' => new DriverDeviceResource($result['device']), 'token' => $result['tokens'],
+                'current_assignment' => $activeAssignment, 'trip_phase' => $activeAssignment?->trip_phase?->value,
+            ]]);
+        }
+
+        $token = Str::random(64);
+        $application = DriverOnboardingApplication::create([
+            'user_id' => $user?->id, 'mobile' => $mobile, 'access_token_hash' => hash('sha256', $token),
+            'mobile_verified_at' => now(), 'payload' => ['identity' => array_filter([
+                'first_name' => $user?->first_name, 'last_name' => $user?->last_name, 'email' => $user?->email,
+            ])],
+        ]);
+        $applicationData = $application->load('documents')->toArray();
+        unset($applicationData['payload']['identity']['dob']);
+
+        return response()->json(['status' => 'success', 'data' => [
+            'flow' => 'registration', 'onboarding_token' => $token, 'application' => $applicationData,
+        ]], 201);
+    }
 
     /**
      * Authenticate a driver and return access tokens.
@@ -281,4 +348,22 @@ class AuthController extends Controller
             ], 401);
         }
     }
+
+    private function mobile(string $value): string
+    {
+        $mobile = '+'.preg_replace('/\D+/', '', $value);
+        if (! str_starts_with(trim($value), '+') || ! preg_match('/^\+[1-9]\d{7,14}$/', $mobile)) {
+            throw ValidationException::withMessages(['mobile' => ['Enter the mobile number in international format, for example +94771234567.']]);
+        }
+        return $mobile;
+    }
+
+    private function findUser(string $mobile): ?User
+    {
+        $digits = ltrim($mobile, '+');
+        return User::whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') = ?", [$digits])->first();
+    }
+
+    private function otpKey(string $mobile): string { return 'driver_auth_otp:'.sha1($mobile); }
+    private function legacyOtpKey(string $mobile): string { return 'driver_onboarding_otp:'.sha1($mobile); }
 }

@@ -32,8 +32,10 @@ Public endpoints:
 - `POST /api/driver/auth/forgot-password`
 - `POST /api/driver/auth/reset-password`
 - `POST /api/driver/auth/change-password`
-- `POST /api/driver/onboarding/request-otp`
-- `POST /api/driver/onboarding/verify-otp`
+- `POST /api/driver/auth/request-otp`
+- `POST /api/driver/auth/verify-otp`
+
+## Mobile Authentication
 
 The mobile app must present **Mobile + OTP** as the default authentication option and **Email + Password** as the secondary login option. Registration never accepts an email/password credential: an unregistered mobile must complete OTP verification and continue through onboarding.
 
@@ -44,14 +46,14 @@ After OTP verification, branch on `data.flow`:
 
 ## Driver Registration Stepper
 
-1. Request and verify the mobile OTP. Verification returns an `onboarding_token` and prefills identity fields when the mobile belongs to an existing user.
-   Mobile sends only the NIC, never DOB. DOB is derived and stored internally and is intentionally omitted from onboarding responses.
-2. Use `Authorization: Bearer {onboarding_token}` for all remaining onboarding calls. This is not a normal driver login token.
-3. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document.
-4. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
-5. Submit the application. While status is `submitted`, the app must show the review screen and must not allow operational navigation.
-6. If status becomes `changes_requested`, display each `review_issues[].message`. Enable only fields returned in `editable_fields`; upload of any other document receives HTTP 403.
-7. Resubmit after corrections. Status `approved` includes the created driver and vehicle IDs; only then proceed to normal driver login. Status `rejected` is terminal.
+Onboarding begins only when mobile OTP authentication returns `data.flow=registration`.
+
+1. Save the returned `onboarding_token`. Use it for every onboarding call; it is not a normal driver access token.
+2. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document. Mobile sends only the NIC, never DOB; DOB is system-only.
+3. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
+4. Submit the application. While status is `submitted`, the app must show the review screen and must not allow operational navigation.
+5. If status becomes `changes_requested`, display each `review_issues[].message`. Enable only fields returned in `editable_fields`; upload of any other document receives HTTP 403.
+6. Resubmit after corrections. Status `approved` includes the created driver and vehicle IDs; only then proceed to normal driver login. Status `rejected` is terminal.
 
 Licence, insurance, and revenue-licence expiry dates are mandatory on their primary uploads. Replacement uploads supersede the prior row, preserving renewal history. The server sends configured reminders from the same generic document records.
 
@@ -65,7 +67,7 @@ Vehicle make and model classify the `vehicle_group`; they are never stored on th
 2. Select **Company Driver API - Development** environment.
 3. Set `base_url`, `driver_email`, `driver_password`, and device variables.
 4. Run **App Settings > Version Check**.
-5. Run **Authentication > Login**. The collection saves `access_token`, `refresh_token`, `driver_id`, `user_id`, `device_uuid`, and `assignment_id` where present.
+5. Run **Mobile OTP Authentication > Request Mobile OTP**, then **Verify Mobile OTP**. Use **Authentication > Login** only for the secondary email/password option.
 6. Run authenticated requests.
 
 ## Environment Variables
@@ -143,8 +145,8 @@ Notifications:
 | Method | Endpoint | Auth | Purpose |
 |---|---|---:|---|
 | POST | `/api/driver/auth/login` | No | Secondary email + password login and device registration |
-| POST | `/api/driver/onboarding/request-otp` | No | Default sign-in/sign-up: send a mobile OTP |
-| POST | `/api/driver/onboarding/verify-otp` | No | Return driver tokens (`flow=login`) or an onboarding token (`flow=registration`) |
+| POST | `/api/driver/auth/request-otp` | No | Default sign-in/sign-up: send a mobile OTP |
+| POST | `/api/driver/auth/verify-otp` | No | Return driver tokens (`flow=login`) or an onboarding token (`flow=registration`) |
 | POST | `/api/driver/auth/forgot-password` | No | Request an enumeration-safe six-digit OTP email |
 | POST | `/api/driver/auth/reset-password` | No | Reset a driver password using the OTP |
 | POST | `/api/driver/auth/change-password` | Yes | Change password and revoke all sessions |
