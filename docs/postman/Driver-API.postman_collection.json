@@ -451,7 +451,7 @@
                                 "1"
                             ]
                         },
-                        "description": "Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format; date of birth is derived by the server. In changes_requested status, only reviewer-listed fields are writable.",
+                        "description": "Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format. Date of birth is system-only: mobile does not send it and the API does not return it. In changes_requested status, only reviewer-listed fields are writable.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"first_name\": \"Nimal\",\n    \"last_name\": \"Perera\",\n    \"email\": \"nimal@example.com\",\n    \"nic\": \"901234567V\"\n}",
@@ -476,7 +476,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 2,\n        \"payload\": {\n            \"identity\": {\n                \"first_name\": \"Nimal\",\n                \"last_name\": \"Perera\",\n                \"email\": \"nimal@example.com\",\n                \"nic\": \"901234567V\",\n                \"dob\": \"1990-05-02\"\n            }\n        }\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 2,\n        \"payload\": {\n            \"identity\": {\n                \"first_name\": \"Nimal\",\n                \"last_name\": \"Perera\",\n                \"email\": \"nimal@example.com\",\n                \"nic\": \"901234567V\"\n            }\n        }\n    }\n}"
                         }
                     ]
                 },

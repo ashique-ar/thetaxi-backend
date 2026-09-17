@@ -12,6 +12,7 @@ it('keeps mobile otp as the combined driver login and registration decision poin
         ->toContain("'flow' => 'login'")
         ->toContain("'flow' => 'registration'")
         ->toContain('loginWithOtp($user, $data)')
+        ->toContain("unset(\$data['payload']['identity']['dob'])")
         ->and($service)->toContain('public function loginWithOtp(User $user, array $credentials): array')
         ->and(data_get($docs, 'paths./api/driver/onboarding/verify-otp.post.responses.200'))->toBeArray()
         ->and(data_get($docs, 'paths./api/driver/onboarding/verify-otp.post.responses.201'))->toBeArray();

@@ -291,7 +291,10 @@ class OnboardingController extends Controller
     private function applicationData(DriverOnboardingApplication $application): array
     {
         $application->loadMissing('documents');
-        return [...$application->toArray(), 'editable_fields' => $application->status === 'changes_requested'
+        $data = $application->toArray();
+        unset($data['payload']['identity']['dob']);
+
+        return [...$data, 'editable_fields' => $application->status === 'changes_requested'
             ? collect($application->review_issues)->pluck('field')->values()->all() : null];
     }
 

@@ -13859,7 +13859,7 @@
                                             "nic": {
                                                 "type": "string",
                                                 "pattern": "^(?:\\d{9}[vVxX]|\\d{12})$",
-                                                "description": "Sri Lankan NIC. The server derives payload.identity.dob from this value."
+                                                "description": "Sri Lankan NIC. DOB is derived and stored internally; it is not accepted or returned by the mobile onboarding API."
                                             }
                                         }
                                     },

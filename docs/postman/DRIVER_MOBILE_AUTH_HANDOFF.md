@@ -24,7 +24,7 @@ Never decide locally whether the number is registered. The server makes that dec
 
 Registration is mobile + OTP only. Do not request or submit a password during registration. After admin approval, the same mobile + OTP flow returns normal driver tokens. Email + password remains an optional sign-in method for an existing driver account.
 
-Do not ask the driver for date of birth. Submit the old or new Sri Lankan NIC in onboarding step 1; the backend derives and stores DOB automatically.
+Do not ask for or display date of birth. Submit the old or new Sri Lankan NIC in onboarding step 1; the backend derives and stores DOB internally and does not return it in onboarding responses.
 
 ## Important responses
 

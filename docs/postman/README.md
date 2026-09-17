@@ -45,6 +45,7 @@ After OTP verification, branch on `data.flow`:
 ## Driver Registration Stepper
 
 1. Request and verify the mobile OTP. Verification returns an `onboarding_token` and prefills identity fields when the mobile belongs to an existing user.
+   Mobile sends only the NIC, never DOB. DOB is derived and stored internally and is intentionally omitted from onboarding responses.
 2. Use `Authorization: Bearer {onboarding_token}` for all remaining onboarding calls. This is not a normal driver login token.
 3. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document.
 4. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
