@@ -174,7 +174,9 @@ class CustomerController extends Controller
 
         try {
             return DB::transaction(function () use ($data) {
-                $existingUser = User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first();
+                $existingUser = !empty($data['user_id'])
+                    ? User::lockForUpdate()->findOrFail($data['user_id'])
+                    : User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first();
             
                 if ($existingUser) {
                     $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)

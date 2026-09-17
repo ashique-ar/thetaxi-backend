@@ -232,6 +232,7 @@ class VehicleOwnerController extends Controller
     private function upsertDriverContext(User $user, array $data, string $actorUserId): Driver
     {
         $contextData = $this->buildDriverContextData($data, $actorUserId);
+        $contextData['code'] = Driver::withTrashed()->where('user_id', $user->id)->value('code');
         $driverContext = $this->contextService->switchContext($user, 'driver', $contextData);
         $driver = Driver::findOrFail($driverContext->getAttribute('context_id'));
         $driver->fill($contextData);

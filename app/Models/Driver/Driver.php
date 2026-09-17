@@ -62,6 +62,10 @@ use Illuminate\Database\Eloquent\Relations\MorphOne;
  */
 class Driver extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::creating(fn (Driver $driver) => $driver->code ??= app(\App\Services\BusinessCodeGenerator::class)->generate('driver'));
+    }
 
 
     /**

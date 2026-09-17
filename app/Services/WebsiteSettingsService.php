@@ -94,6 +94,7 @@ class WebsiteSettingsService
         'payment' => 'getPaymentSettings',
         'booking' => 'getBookingSettings',
         'pricing' => 'getPricingSettings',
+        'numbering' => 'getNumberingSettings',
         'driverMobile' => 'getDriverMobileSettings',
         'driver-mobile' => 'getDriverMobileSettings',
         'security' => 'getSecuritySettings',
@@ -1078,6 +1079,15 @@ class WebsiteSettingsService
     {
         return $this->getMultiple([
             'internal_pricing_mode',
+        ]);
+    }
+
+    public function getNumberingSettings(): array
+    {
+        return $this->getMultiple([
+            'customer_code_prefix', 'customer_code_suffix', 'customer_code_digits', 'customer_code_start_number',
+            'staff_code_prefix', 'staff_code_suffix', 'staff_code_digits', 'staff_code_start_number',
+            'driver_code_prefix', 'driver_code_suffix', 'driver_code_digits', 'driver_code_start_number',
         ]);
     }
 

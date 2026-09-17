@@ -63,6 +63,27 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
+    public function lookupByMobile(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'mobile' => ['required', 'string', 'max:30'],
+            'context' => ['required', Rule::in(['customer', 'staff', 'driver'])],
+        ]);
+
+        $digits = preg_replace('/\D+/', '', $data['mobile']);
+        abort_if(strlen($digits) < 7, 422, 'Enter a valid mobile number.');
+        $users = User::query()
+            ->select(['id', 'first_name', 'last_name', 'email', 'phone', 'is_active'])
+            ->withExists(['contexts as has_context' => fn ($query) => $query
+                ->where('context_type', $data['context'])
+                ->where('is_active', true)])
+            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') = ?", [$digits])
+            ->limit(10)
+            ->get();
+
+        return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
     /**
      * Get dynamic filter options for the user list.
      */

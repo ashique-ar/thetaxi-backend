@@ -34,6 +34,10 @@ use App\Traits\UUID;
  */
 class Staff extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::creating(fn (Staff $staff) => $staff->code ??= app(\App\Services\BusinessCodeGenerator::class)->generate('staff'));
+    }
     
 
     /**

@@ -103,7 +103,9 @@ class DriverController extends Controller
         $data = $this->normalizeDriverPayload($data);
 
         try {
-            $existingUser = User::where('email', $data['email'])->first();
+            $existingUser = !empty($data['user_id'])
+                ? User::findOrFail($data['user_id'])
+                : User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->first();
 
             if ($existingUser) {
                 $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)

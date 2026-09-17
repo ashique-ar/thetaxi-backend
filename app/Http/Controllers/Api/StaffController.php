@@ -12,10 +12,13 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use App\Services\PaymentMethodSyncService;
+use App\Services\UserContextService;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class StaffController extends Controller
 {
-    public function __construct()
+    public function __construct(private UserContextService $contextService)
     {
         $this->middleware('permission:staff.view')->only(['index','show']);
         $this->middleware('permission:staff.create')->only(['store']);
@@ -118,7 +121,28 @@ class StaffController extends Controller
         $data['created_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
-        $staff = Staff::create($data);
+        $staff = DB::transaction(function () use ($data) {
+            $user = !empty($data['user_id'])
+                ? User::findOrFail($data['user_id'])
+                : User::create([
+                    'first_name' => $data['first_name'],
+                    'last_name' => $data['last_name'] ?? null,
+                    'email' => strtolower(trim($data['email'])),
+                    'phone' => $data['phone'],
+                    'password' => bcrypt(Str::random(12)),
+                    'email_verified_at' => now(),
+                    'is_active' => true,
+                ]);
+
+            $contextData = collect($data)->only([
+                'staff_type', 'collection_commission_enabled', 'collection_commission_rate',
+                'code', 'nic', 'dob', 'license_no', 'license_expiry', 'address',
+                'country_id', 'state_id', 'city', 'created_user_id',
+            ])->all();
+            $context = $this->contextService->switchContext($user, 'staff', $contextData);
+
+            return Staff::findOrFail($context->context_id);
+        });
 
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);

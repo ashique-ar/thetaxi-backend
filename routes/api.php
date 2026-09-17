@@ -303,6 +303,9 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('booking-flow/service-types/{serviceType}/form-config', [ServiceFormConfigController::class, 'getFormConfig'])
         ->middleware('auth:api');
 
+    Route::get('users/lookup-by-mobile', [UserController::class, 'lookupByMobile'])
+        ->middleware('permission:customers.create|staff.create|drivers.create');
+
     Route::middleware(['permission:users.view'])->group(function () {
         Route::get('users', [UserController::class, 'index']);
         Route::get('users/filter-options', [UserController::class, 'filterOptions']);

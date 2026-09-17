@@ -23,6 +23,7 @@ class CreateCustomerRequest extends FormRequest
     public function rules()
     {
         return [
+            "user_id" => "nullable|exists:users,id",
             "first_name" => "required|string|max:255",
             "last_name" => "required|string|max:255",
             "email" => "required|email|max:255",
@@ -31,7 +32,6 @@ class CreateCustomerRequest extends FormRequest
             "type" => "required|string|max:50",
             "sub_type" => "nullable|string|max:50",
             "category" => "nullable|string|max:50",
-            'code' => ['nullable', 'string', 'max:100', 'unique:customers,code'],
             'nic' => ['nullable', 'string', 'max:100'],
             'passport_number' => ['nullable', 'string', 'max:100'],
             'license_no' => ['nullable', 'string', 'max:100'],
