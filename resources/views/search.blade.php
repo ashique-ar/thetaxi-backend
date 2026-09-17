@@ -101,7 +101,7 @@
 
     <!-- Vehicle Results Section -->
     <div class="package-standard-wrapper {{ theme_class('discovery-results') }}" id="vehicleResultsSection">
-        <div class="container">
+        <div class="{{!is_theme('theme-04') ? 'container' : ''}}">
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">
                 <div class="col-12">
@@ -336,7 +336,6 @@
                 </div>
             @endif
         </div>
-    </div>
     </div>
 
     <!-- Cart Summary Float Component (Requirements: 3.1, 3.2) -->
