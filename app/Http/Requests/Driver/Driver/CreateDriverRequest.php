@@ -19,7 +19,7 @@ class CreateDriverRequest extends FormRequest
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'string', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
+            'phone' => ['required', 'string', 'max:20'],
             'code' => ['nullable', 'string', 'max:50', 'unique:drivers,code'],
             'nic' => ['nullable', 'string', 'max:20'],
             'license_no' => ['nullable', 'string', 'max:100'],

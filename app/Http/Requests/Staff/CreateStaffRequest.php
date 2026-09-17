@@ -19,7 +19,7 @@ class CreateStaffRequest extends FormRequest
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->input('user_id'))],
-            'phone' => ['nullable', 'string', 'max:30'],
+            'phone' => ['required', 'string', 'max:30'],
             'status' => ['nullable', 'in:active,inactive,on_leave'],
             'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
             'staff_type' => ['nullable', 'string', 'max:100'],

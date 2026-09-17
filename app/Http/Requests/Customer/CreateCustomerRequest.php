@@ -27,7 +27,7 @@ class CreateCustomerRequest extends FormRequest
             "first_name" => "nullable|string|max:255",
             "last_name" => "nullable|string|max:255",
             "email" => "nullable|email|max:255",
-            "phone" => "nullable|string|max:20",
+            "phone" => "required|string|max:20",
             'code' => ['nullable', 'string', 'max:100', 'unique:customers,code'],
             "wedding_date" => "nullable|date",
             "type" => "nullable|string|max:50",
