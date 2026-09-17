@@ -153,28 +153,15 @@ class CartController extends Controller
             // Set rate limit cache for 1 second
             cache()->put($cacheKey, true, 1);
 
-            // Cache cart data for 30 seconds to reduce database queries
-            $cartCacheKey = 'cart_data_' . session()->getId();
-            $fromCache = cache()->has($cartCacheKey);
-
-            $cartArray = cache()->remember($cartCacheKey, 30, function () {
-                $dbCart = $this->cartService->getOrCreateCart();
-                return $this->cartService->toArray($dbCart);
-            });
-
-            // Log cart access for monitoring
-            // Log::info('Cart API accessed', [
-            //     'session_id' => session()->getId(),
-            //     'from_cache' => $fromCache,
-            //     'cart_items_count' => count($cartArray['items'] ?? []),
-            //     'user_agent' => request()->userAgent()
-            // ]);
+            $cartArray = $this->cartService->toArray($this->cartService->getOrCreateCart());
 
             return response()->json([
                 'success' => true,
                 'items' => $cartArray['items'] ?? [],
                 'totals' => $cartArray['totals'] ?? [],
-                'count' => count($cartArray['items'] ?? [])
+                'count' => count($cartArray['items'] ?? []),
+                'currency' => $cartArray['currency'] ?? getSelectedCurrency(),
+                'currency_symbol' => $cartArray['currency_symbol'] ?? getCurrencySymbol(),
             ]);
         } catch (\Exception $e) {
             Log::error('Cart get error', [

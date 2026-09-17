@@ -10,7 +10,7 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
-        $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : '$';
+        $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : getCurrencySymbol();
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
             config('booking.advance_payment.percentage', 50),

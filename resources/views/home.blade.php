@@ -894,6 +894,7 @@
 <script>
     // Cart management for featured vehicles
     let cart = [];
+    let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
 
     $(document).ready(function() {
         // Load existing cart
@@ -1169,6 +1170,7 @@
             success: function(response) {
                 if (response.success) {
                     cart = response.items || [];
+                    cartCurrencySymbol = response.currency_symbol || (response.totals && response.totals.currency_symbol) || '{{ getCurrencySymbol() }}';
                     updateCartDisplay();
                     if (cart.length > 0) {
                         showCartFloat();
@@ -1243,6 +1245,7 @@
         }
 
         $('#cartFloatItems').empty();
+        $('#cartSummaryFloat .currency-symbol').text(cartCurrencySymbol);
 
         // Helper function to get pricing label based on service type
         function getPricingLabel(serviceType) {
@@ -1284,7 +1287,7 @@
             const pricingLabel = getPricingLabel(serviceType);
             const durationLabel = getDurationLabel(serviceType, days);
             const fixedRate = isFixedRate(serviceType);
-            const currencySymbol = item.currency_symbol || '{{ getCurrencySymbol() }}';
+            const currencySymbol = cartCurrencySymbol;
 
             // Build pricing display based on service type
             let pricingHtml = '';
