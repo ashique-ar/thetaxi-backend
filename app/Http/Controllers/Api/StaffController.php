@@ -128,12 +128,12 @@ class StaffController extends Controller
             $user = !empty($data['user_id'])
                 ? User::findOrFail($data['user_id'])
                 : User::create([
-                    'first_name' => $data['first_name'],
+                    'first_name' => $data['first_name'] ?? null,
                     'last_name' => $data['last_name'] ?? null,
-                    'email' => strtolower(trim($data['email'])),
-                    'phone' => $data['phone'],
+                    'email' => !empty($data['email']) ? strtolower(trim($data['email'])) : null,
+                    'phone' => $data['phone'] ?? null,
                     'password' => bcrypt(Str::random(12)),
-                    'email_verified_at' => now(),
+                    'email_verified_at' => !empty($data['email']) ? now() : null,
                     'is_active' => ($data['status'] ?? 'active') === 'active',
                 ]);
 

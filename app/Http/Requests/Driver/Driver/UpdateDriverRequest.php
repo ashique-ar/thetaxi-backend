@@ -12,12 +12,12 @@ class UpdateDriverRequest extends FormRequest
     {
         $driverId = $this->route('driver')->id;
         return [
-            'user_id' => ['sometimes', 'required', 'exists:users,id'],
-            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'exists:users,id'],
+            'first_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'email' => [
                 'sometimes',
-                'required',
+                'nullable',
                 'email',
                 'max:255',
                 function ($attribute, $value, $fail) use ($driverId) {

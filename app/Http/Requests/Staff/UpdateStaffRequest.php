@@ -13,13 +13,13 @@ class UpdateStaffRequest extends FormRequest
         $id = $this->route('staff')->id;
 
         return [
-            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'first_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'email' => ['sometimes', 'required', 'email', 'max:255'],
-            'phone' => ['sometimes', 'required', 'string', 'max:30'],
+            'email' => ['sometimes', 'nullable', 'email', 'max:255'],
+            'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
             'status' => ['sometimes', 'in:active,inactive,on_leave'],
-            'user_id' => ['sometimes', 'required', 'exists:users,id'],
-            'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
+            'user_id' => ['sometimes', 'nullable', 'exists:users,id'],
+            'staff_type' => ['sometimes', 'nullable', 'string', 'max:100'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],
             'code' => ["sometimes", "nullable", "string", "max:100", "unique:staff,code,{$id}"],

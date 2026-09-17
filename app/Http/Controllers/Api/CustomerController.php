@@ -179,7 +179,7 @@ class CustomerController extends Controller
             return DB::transaction(function () use ($data) {
                 $existingUser = !empty($data['user_id'])
                     ? User::lockForUpdate()->findOrFail($data['user_id'])
-                    : User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first();
+                    : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first() : null);
             
                 if ($existingUser) {
                     $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
@@ -199,7 +199,7 @@ class CustomerController extends Controller
 
                 $contextData = [
                     'code' => $data['code'] ?? null,
-                    'type' => $data['type'],
+                    'type' => $data['type'] ?? null,
                     'sub_type' => $data['sub_type'] ?? null,
                     'category' => $data['category'] ?? null,
                     'nic' => $data['nic'] ?? null,
@@ -235,19 +235,19 @@ class CustomerController extends Controller
             } else {
                 // Create new user
                 $user = User::create([
-                    'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
-                    'email' => $data['email'],
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                    'email' => $data['email'] ?? null,
                     'password' => bcrypt($data['password'] ?? Str::random(12)),
-                    'phone' => $data['phone'],
-                    'email_verified_at' => now(), // Auto-verify for customers created by admin
+                    'phone' => $data['phone'] ?? null,
+                    'email_verified_at' => !empty($data['email']) ? now() : null,
                     'is_active' => true,
                 ]);
 
                 // Create customer context
                 $contextData = [
                     'code' => $data['code'] ?? null,
-                    'type' => $data['type'],
+                    'type' => $data['type'] ?? null,
                     'sub_type' => $data['sub_type'] ?? null,
                     'category' => $data['category'] ?? null,
                     'nic' => $data['nic'] ?? null,

@@ -106,7 +106,7 @@ class DriverController extends Controller
         try {
             $existingUser = !empty($data['user_id'])
                 ? User::findOrFail($data['user_id'])
-                : User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->first();
+                : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->first() : null);
 
             if ($existingUser) {
                 $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
@@ -192,12 +192,12 @@ class DriverController extends Controller
 
             } else {
                 $user = User::create([
-                    'first_name' => $data['first_name'],
+                    'first_name' => $data['first_name'] ?? null,
                     'last_name' => $data['last_name'] ?? null,
-                    'email' => $data['email'],
+                    'email' => $data['email'] ?? null,
                     'password' => bcrypt($data['password'] ?? Str::random(12)),
                     'phone' => $data['phone'] ?? null,
-                    'email_verified_at' => now(),
+                    'email_verified_at' => !empty($data['email']) ? now() : null,
                     'is_active' => true,
                 ]);
 

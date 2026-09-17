@@ -21,11 +21,11 @@ class UpdateCustomerRequest extends FormRequest
         $customerId = $this->route('customer')->id;
 
         return [
-            'first_name' => 'sometimes|required|string|max:255',
-            'last_name' => 'sometimes|required|string|max:255',
+            'first_name' => 'sometimes|nullable|string|max:255',
+            'last_name' => 'sometimes|nullable|string|max:255',
             'email' => [
                 'sometimes',
-                'required',
+                'nullable',
                 'email',
                 'max:255',
                 function ($attribute, $value, $fail) use ($customerId) {
@@ -40,7 +40,7 @@ class UpdateCustomerRequest extends FormRequest
             ],
             'phone' => [
                 'sometimes',
-                'required',
+                'nullable',
                 'string',
                 'max:20',
                 function ($attribute, $value, $fail) use ($customerId) {
@@ -54,7 +54,7 @@ class UpdateCustomerRequest extends FormRequest
                 },
             ],
             'wedding_date' => 'sometimes|nullable|date',
-            'type' => 'sometimes|required|string|max:50',
+            'type' => 'sometimes|nullable|string|max:50',
             'sub_type' => 'sometimes|nullable|string|max:50',
             'category' => 'sometimes|nullable|string|max:50',
             'code' => ['sometimes', 'nullable', 'string', 'max:100', "unique:customers,code,{$customerId}"],
@@ -70,7 +70,7 @@ class UpdateCustomerRequest extends FormRequest
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
-            'default_payment_arrangement' => ['sometimes', 'required', 'in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
+            'default_payment_arrangement' => ['sometimes', 'nullable', 'in:cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
             'payment_methods' => ['sometimes', 'nullable', 'array'],
             'payment_methods.*.id' => ['nullable', 'uuid'],
             'payment_methods.*.method_type' => ['required_with:payment_methods', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],
