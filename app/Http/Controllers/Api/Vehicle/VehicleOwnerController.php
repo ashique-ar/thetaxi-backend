@@ -3,6 +3,8 @@
 
 namespace App\Http\Controllers\Api\Vehicle;
 
+use App\Support\SriLankanNic;
+
 use App\Http\Controllers\Controller;
 use App\Http\Resources\Driver\DriverResource;
 use App\Models\User;
@@ -193,6 +195,7 @@ class VehicleOwnerController extends Controller
 
     private function buildOwnerContextData(array $data, string $actorUserId): array
     {
+        $dob = SriLankanNic::dateOfBirth($data['nic'] ?? null) ?? ($data['dob'] ?? null);
         return [
             'owner_type_id' => $data['owner_type_id'] ?? null,
             'nic' => $data['nic'] ?? null,
@@ -201,7 +204,7 @@ class VehicleOwnerController extends Controller
             'state_id' => $data['state_id'] ?? null,
             'city' => $data['city'] ?? null,
             'postal_code' => $data['postal_code'] ?? null,
-            'dob' => $data['dob'] ?? null,
+            'dob' => $dob,
             'license_number' => $data['license_number'] ?? null,
             'license_expiry' => $data['license_expiry'] ?? null,
             'notes' => $data['notes'] ?? null,
@@ -211,13 +214,14 @@ class VehicleOwnerController extends Controller
 
     private function buildDriverContextData(array $data, string $actorUserId): array
     {
+        $dob = SriLankanNic::dateOfBirth($data['driver_nic'] ?? $data['nic'] ?? null) ?? ($data['dob'] ?? null);
         return [
             'code' => $data['driver_code'] ?? null,
             'nic' => $data['driver_nic'] ?? null,
             'license_no' => $data['license_number'] ?? null,
             'license_type' => $data['driver_license_type'] ?? null,
             'license_expiry' => $data['license_expiry'] ?? null,
-            'dob' => $data['dob'] ?? null,
+            'dob' => $dob,
             'address' => $data['address'] ?? null,
             'country_id' => $data['country_id'] ?? null,
             'state_id' => $data['state_id'] ?? null,

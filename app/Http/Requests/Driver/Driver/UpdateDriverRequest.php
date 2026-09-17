@@ -40,6 +40,8 @@ class UpdateDriverRequest extends FormRequest
             'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'license_no' => ['sometimes', 'nullable', 'string', 'max:100'],
             'license_expiry' => ['sometimes', 'nullable', 'date'],
+            'license_issued_at' => ['sometimes', 'nullable', 'date', 'before_or_equal:license_expiry'],
+            'license_reminder_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
             'license_type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'dob' => ['sometimes', 'nullable', 'date'],
             'address' => ['sometimes', 'nullable', 'string'],

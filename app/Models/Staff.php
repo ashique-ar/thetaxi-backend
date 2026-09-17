@@ -59,6 +59,13 @@ class Staff extends BaseModel
         'country_id',
         'state_id',
         'city',
+        'gender',
+        'postal_code',
+        'department',
+        'position',
+        'joining_date',
+        'reporting_to',
+        'emergency_contact',
         'created_user_id',
         'updated_user_id'
     ];
@@ -73,6 +80,8 @@ class Staff extends BaseModel
         'license_expiry' => 'date',
         'collection_commission_enabled' => 'boolean',
         'collection_commission_rate' => 'decimal:2',
+        'joining_date' => 'date',
+        'emergency_contact' => 'array',
     ];
 
     // Relations

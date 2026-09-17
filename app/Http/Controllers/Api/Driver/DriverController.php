@@ -24,6 +24,7 @@ use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
+use App\Support\SriLankanNic;
 
 class DriverController extends Controller
 {
@@ -133,6 +134,8 @@ class DriverController extends Controller
                     'license_no' => $data['license_no'] ?? null,
                     'license_type' => $data['license_type'] ?? null,
                     'license_expiry' => $data['license_expiry'] ?? null,
+                    'license_issued_at' => $data['license_issued_at'] ?? null,
+                    'license_reminder_days' => $data['license_reminder_days'] ?? 30,
                     'dob' => $data['dob'] ?? null,
                     'address' => $data['address'] ?? null,
                     'country_id' => $data['country_id'] ?? null,
@@ -204,6 +207,8 @@ class DriverController extends Controller
                     'license_no' => $data['license_no'] ?? null,
                     'license_type' => $data['license_type'] ?? null,
                     'license_expiry' => $data['license_expiry'] ?? null,
+                    'license_issued_at' => $data['license_issued_at'] ?? null,
+                    'license_reminder_days' => $data['license_reminder_days'] ?? 30,
                     'dob' => $data['dob'] ?? null,
                     'country_id' => $data['country_id'] ?? null,
                     'state_id' => $data['state_id'] ?? null,
@@ -247,7 +252,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -257,6 +262,7 @@ class DriverController extends Controller
     public function update(UpdateDriverRequest $request, Driver $driver): JsonResponse
     {
         try {
+            $previousLicense = $driver->only(['license_no', 'license_expiry']);
             $data = $this->normalizeDriverPayload($request->validated());
             $data['updated_user_id'] = $request->user()->id;
 
@@ -280,12 +286,32 @@ class DriverController extends Controller
             unset($driverData['payment_method']);
             $driver->update($driverData);
 
+            if ($driver->license_no && $driver->license_expiry && (
+                $previousLicense['license_no'] !== $driver->license_no
+                || optional($previousLicense['license_expiry'])->toDateString() !== $driver->license_expiry->toDateString()
+            )) {
+                $previousDocuments = $driver->documents()->whereIn('document_type', ['driver_license', 'driver_license_front', 'driver_license_back'])
+                    ->whereIn('status', ['pending', 'verified', 'active'])->latest()->get();
+                $previous = $previousDocuments->first();
+                $driver->documents()->create([
+                    'document_type' => 'driver_license', 'document_number' => $driver->license_no,
+                    'expiry_date' => $driver->license_expiry, 'disk' => 'public', 'path' => '', 'file_name' => '',
+                    'status' => 'verified', 'verified_at' => now(), 'verified_by' => $request->user()->id,
+                    'replaces_document_id' => $previous?->id, 'created_user_id' => $request->user()->id,
+                    'metadata' => ['issued_date' => optional($driver->license_issued_at)->toDateString(),
+                        'previous_license_no' => $previousLicense['license_no'],
+                        'previous_expiry' => optional($previousLicense['license_expiry'])->toDateString()],
+                ]);
+                $previousDocuments->each->update(['status' => 'superseded']);
+                $driver->update(['license_last_reminded_on' => null]);
+            }
+
             if ($paymentMethod !== null) {
                 app(PaymentMethodSyncService::class)->syncOne($driver, $paymentMethod, $request->user()->id);
             }
 
             // Reload the relationship to get updated data
-            $driver->load(['user', 'licenseType', 'paymentMethod']);
+            $driver->load(['user', 'licenseType', 'paymentMethod', 'licenseRenewals']);
 
             return response()->json([
                 'status' => 'success',
@@ -401,6 +427,10 @@ class DriverController extends Controller
         }
 
         unset($data['status']);
+
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) {
+            $data['dob'] = $dob;
+        }
 
         return $data;
     }

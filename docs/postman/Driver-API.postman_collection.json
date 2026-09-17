@@ -63,8 +63,14 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/version-check",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "version-check"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "version-check"
+                            ]
                         },
                         "description": "Public pre-login version check. If `can_continue` is false, the app should block usage and redirect to Play Store/App Store internally. The API does not return a store URL."
                     },
@@ -116,12 +122,34 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/version-check?version={{app_version}}&build_number={{app_build}}&platform={{platform}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "version-check"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "version-check"
+                            ]
                         },
                         "description": "GET form of the canonical public pre-login version check. The POST request is preferred by the mobile app; both methods execute the same server contract."
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.2.0\",\n        \"latest_version\": \"1.3.0\",\n        \"update_required\": true,\n        \"current_build_number\": 120,\n        \"mandatory_update\": false,\n        \"can_continue\": true,\n        \"release_policy\": {\n            \"android_package_id\": \"com.example.driver\",\n            \"advertised_release_published\": true,\n            \"mandatory_release_validated\": false\n        },\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Version Check (Compatibility Alias)",
@@ -148,7 +176,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/public/driver-mobile/version-check",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "public",
@@ -182,6 +212,556 @@
                                 }
                             ],
                             "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"current_version\": \"1.0.0\",\n        \"latest_version\": \"1.1.0\",\n        \"update_required\": true,\n        \"mandatory_update\": true,\n        \"can_continue\": false,\n        \"message\": \"A new driver app version is available. Please update to continue.\"\n    }\n}"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "name": "Driver Onboarding",
+            "item": [
+                {
+                    "name": "Request Mobile OTP",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/request-otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "request-otp"
+                            ]
+                        },
+                        "description": "Send a six-digit SMS OTP. Expires after 10 minutes.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"mobile\": \"+94771234567\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"OTP sent.\",\n    \"data\": {\n        \"expires_in\": 600\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Verify Mobile OTP",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/verify-otp",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "verify-otp"
+                            ]
+                        },
+                        "description": "Verify mobile. Existing drivers receive the normal login response; other users receive an onboarding token and prefilled application.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"mobile\": \"+94771234567\",\n    \"otp\": \"123456\",\n    \"device_uuid\": \"device-uuid\",\n    \"device_fingerprint\": \"fingerprint\",\n    \"device_name\": \"Nimal phone\",\n    \"device_model\": \"Pixel 9\",\n    \"device_manufacturer\": \"Google\",\n    \"platform\": \"android\",\n    \"os_version\": \"16\",\n    \"app_version\": \"{{app_version}}\",\n    \"app_build\": \"{{app_build}}\",\n    \"push_token\": \"fcm-token\",\n    \"push_provider\": \"fcm\",\n    \"locale\": \"en-LK\",\n    \"timezone\": \"Asia/Colombo\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "Registration Created",
+                            "originalRequest": {},
+                            "status": "Registration Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"flow\": \"registration\",\n        \"onboarding_token\": \"token\",\n        \"application\": {\n            \"id\": \"application-uuid\",\n            \"mobile\": \"+94771234567\",\n            \"status\": \"draft\",\n            \"current_step\": 1\n        }\n    }\n}"
+                        },
+                        {
+                            "name": "Existing Driver Login",
+                            "originalRequest": {},
+                            "status": "Existing Driver Login",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Login successful\",\n    \"data\": {\n        \"flow\": \"login\",\n        \"user\": {},\n        \"driver\": {},\n        \"device\": {},\n        \"token\": {\n            \"access_token\": \"token\",\n            \"refresh_token\": \"token\",\n            \"expires_in\": 3600\n        },\n        \"current_assignment\": null,\n        \"trip_phase\": null\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Get Onboarding Progress",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding"
+                            ]
+                        },
+                        "description": "Resume the stepper. Use onboarding_token as the Bearer token."
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"mobile\": \"+94771234567\",\n        \"status\": \"draft\",\n        \"current_step\": 1,\n        \"payload\": {},\n        \"documents\": [],\n        \"review_issues\": null,\n        \"editable_fields\": null,\n        \"review_message\": null\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Save Identity Step",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/steps/1",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "steps",
+                                "1"
+                            ]
+                        },
+                        "description": "Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format; date of birth is derived by the server. In changes_requested status, only reviewer-listed fields are writable.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"first_name\": \"Nimal\",\n    \"last_name\": \"Perera\",\n    \"email\": \"nimal@example.com\",\n    \"nic\": \"901234567V\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 2,\n        \"payload\": {\n            \"identity\": {\n                \"first_name\": \"Nimal\",\n                \"last_name\": \"Perera\",\n                \"email\": \"nimal@example.com\",\n                \"nic\": \"901234567V\",\n                \"dob\": \"1990-05-02\"\n            }\n        }\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Save Address Step",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/steps/3",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "steps",
+                                "3"
+                            ]
+                        },
+                        "description": "Save address.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"address\": \"10 Main Street\",\n    \"country_id\": \"country-uuid\",\n    \"state_id\": \"state-uuid\",\n    \"city\": \"Colombo\",\n    \"postal_code\": \"00100\"\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 4\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Save Vehicle Step",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/steps/4",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "steps",
+                                "4"
+                            ]
+                        },
+                        "description": "Save vehicle and ownership details. Make/model classify the vehicle group; approval assigns the latest configured grade and stores only vehicle_group_id on the vehicle.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n    \"make_id\": \"make-uuid\",\n    \"model_id\": \"model-uuid\",\n    \"model_year\": 2024,\n    \"color\": \"White\",\n    \"registration_year\": 2024,\n    \"license_plate\": \"CAB-1234\",\n    \"is_owner\": true\n}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 5\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Upload Onboarding Document",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "document_type",
+                                    "value": "driver_license_front",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "document_number",
+                                    "value": "B1234567",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "expiry_date",
+                                    "value": "2030-12-31",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "reminder_days",
+                                    "value": "30",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": []
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/documents",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "documents"
+                            ]
+                        },
+                        "description": "Allowed types: driver_photo, driver_license_front/back, nic_front/back, vehicle_insurance, vehicle_revenue_license, vehicle_registration. JPG, PNG or PDF; maximum 10 MB."
+                    },
+                    "response": [
+                        {
+                            "name": "Created",
+                            "originalRequest": {},
+                            "status": "Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"document-uuid\",\n        \"document_type\": \"driver_license_front\",\n        \"document_number\": \"B1234567\",\n        \"expiry_date\": \"2030-12-31\",\n        \"reminder_days\": 30,\n        \"status\": \"pending\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "Submit for Review",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/submit",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "submit"
+                            ]
+                        },
+                        "description": "Submit only after every required step and document is present.",
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{}",
+                            "options": {
+                                "raw": {
+                                    "language": "json"
+                                }
+                            }
+                        }
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Application submitted for review.\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"submitted\",\n        \"current_step\": 5\n    }\n}"
                         }
                     ]
                 }
@@ -241,10 +821,17 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/login",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "login"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "login"
+                            ]
                         },
-                        "description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null)."
+                        "description": "Secondary email + password sign-in for existing drivers. Registration is available only through mobile + OTP."
                     },
                     "response": [
                         {
@@ -298,8 +885,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/forgot-password",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "forgot-password"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "forgot-password"
+                            ]
                         },
                         "description": "Emails a six-digit password reset OTP. The response never reveals whether the account exists.",
                         "body": {
@@ -312,7 +906,23 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"If an eligible driver account exists, a password reset OTP has been sent.\"\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Reset Password",
@@ -335,8 +945,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/reset-password",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "reset-password"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "reset-password"
+                            ]
                         },
                         "description": "Resets an eligible driver password, clears lockout state, and revokes all sessions.",
                         "body": {
@@ -349,7 +966,23 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Password reset successfully. Please sign in again.\"\n}"
+                        }
+                    ]
                 },
                 {
                     "name": "Get Profile",
@@ -373,8 +1006,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/profile",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "profile"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "profile"
+                            ]
                         },
                         "description": "Retrieve the authenticated driver's profile. Response now includes `assignment_statistics` with total_assignments, active_assignments, and completed_assignments counts."
                     },
@@ -443,8 +1083,15 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/refresh",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "refresh"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "refresh"
+                            ]
                         },
                         "description": "Refresh the access token using the refresh token."
                     },
@@ -497,8 +1144,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/logout",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "logout"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "logout"
+                            ]
                         },
                         "description": "Logout the authenticated driver by revoking their current token."
                     },
@@ -557,8 +1211,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/auth/change-password",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "auth", "change-password"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "auth",
+                                "change-password"
+                            ]
                         },
                         "description": "Changes the authenticated driver password and revokes every existing session/device.",
                         "body": {
@@ -571,7 +1232,23 @@
                             }
                         }
                     },
-                    "response": []
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"message\": \"Password changed successfully. Please sign in again.\",\n    \"data\": {\n        \"reauthentication_required\": true\n    }\n}"
+                        }
+                    ]
                 }
             ],
             "description": "Driver authentication endpoints including login, logout, profile, and token refresh."
@@ -629,8 +1306,15 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/status/online",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "status", "online"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status",
+                                "online"
+                            ]
                         },
                         "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` ” an array of DriverAssignments in active/pending_approval status with booking and booking_item details."
                     },
@@ -681,8 +1365,15 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/status/offline",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "status", "offline"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status",
+                                "offline"
+                            ]
                         },
                         "description": "Set the driver's status to offline and close the active session.\n\nIf a trip tracking session is active, the trip remains active and the response includes a `trip_warning` message and `active_trip` details."
                     },
@@ -725,8 +1416,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/status",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "status"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "status"
+                            ]
                         },
                         "description": "Retrieve the driver's current online/offline status and active session information."
                     },
@@ -793,8 +1490,14 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/heartbeat",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "heartbeat"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "heartbeat"
+                            ]
                         },
                         "description": "Send a heartbeat signal to indicate the driver is still active. Should be sent every 60 seconds while online.\n\nWhen a trip tracking session is active, the response includes `trip_phase` and `assignment_id`."
                     },
@@ -865,8 +1568,14 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/location",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "location"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location"
+                            ]
                         },
                         "description": "Send the driver's current GPS location. Creates a route point for the active session. During an active trip, the route point is also linked to the assignment_id. Should be sent every 10 seconds while moving."
                     },
@@ -939,8 +1648,15 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/location/bulk",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "location", "bulk"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "bulk"
+                            ]
                         },
                         "description": "Upload location points buffered on the device during temporary network issues. Duplicate points are skipped when `recorded_at`, `latitude`, and `longitude` match an already stored point for the active session or another point in the same payload."
                     },
@@ -987,8 +1703,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/location/health",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "location", "health"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "health"
+                            ]
                         },
                         "description": "Reports mobile GPS queue and fix health to operations monitoring. Use state values healthy, recovered, delayed, severe_gap, blocked, or queue_pressure.",
                         "body": {
@@ -1041,8 +1764,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/location/history?assignment_id={{history_assignment_id}}&session_id={{history_session_id}}&from={{history_from}}&to={{history_to}}&limit={{history_limit}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "location", "history"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "location",
+                                "history"
+                            ],
                             "query": [
                                 {
                                     "key": "assignment_id",
@@ -1137,8 +1867,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/sessions?page=1&per_page=15&status={{session_status}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "sessions"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "sessions"
+                            ],
                             "query": [
                                 {
                                     "key": "page",
@@ -1194,7 +1930,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/sessions/{{session_id}}",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1259,8 +1997,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices?active_only=false",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "devices"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices"
+                            ],
                             "query": [
                                 {
                                     "key": "active_only",
@@ -1307,8 +2051,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices/current",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "devices", "current"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "current"
+                            ]
                         },
                         "description": "Retrieve information about the current device."
                     },
@@ -1369,8 +2120,14 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "devices"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices"
+                            ]
                         },
                         "description": "Update the current driver device information. `device_uuid` is required so the backend can identify the device record."
                     },
@@ -1419,8 +2176,15 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices/push-token",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "devices", "push-token"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "devices",
+                                "push-token"
+                            ]
                         },
                         "description": "Update the push notification token for the current device."
                     },
@@ -1473,7 +2237,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices/{{device_uuid}}/deactivate",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1533,7 +2299,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/devices/{{device_uuid}}",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1593,8 +2361,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications?page=1&per_page={{notification_per_page}}&unread_only={{notification_unread_only}}&type={{notification_type}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "notifications"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "notifications"
+                            ],
                             "query": [
                                 {
                                     "key": "page",
@@ -1648,7 +2422,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications/unread-count",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1689,7 +2465,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1742,7 +2520,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}/mark-read",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1784,7 +2564,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications/mark-all-read",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1825,7 +2607,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/notifications/{{notification_id}}",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -1889,8 +2673,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "assignments"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments"
+                            ],
                             "query": [
                                 {
                                     "key": "page",
@@ -1955,8 +2745,14 @@
                                 ],
                                 "url": {
                                     "raw": "{{base_url}}/api/driver/assignments?page=1&per_page=15&status={{assignment_status}}&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
-                                    "host": ["{{base_url}}"],
-                                    "path": ["api", "driver", "assignments"],
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
+                                    "path": [
+                                        "api",
+                                        "driver",
+                                        "assignments"
+                                    ],
                                     "query": [
                                         {
                                             "key": "page",
@@ -2023,8 +2819,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/current",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "assignments", "current"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "assignments",
+                                "current"
+                            ]
                         },
                         "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification."
                     },
@@ -2075,7 +2878,9 @@
                                 ],
                                 "url": {
                                     "raw": "{{base_url}}/api/driver/assignments/current",
-                                    "host": ["{{base_url}}"],
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
                                     "path": [
                                         "api",
                                         "driver",
@@ -2126,7 +2931,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/accept",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2201,7 +3008,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/acknowledge",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2265,7 +3074,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/decline",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2334,8 +3145,14 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/hires?page=1&per_page=15&date={{filter_date}}&from={{filter_from}}&to={{filter_to}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "hires"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "hires"
+                            ],
                             "query": [
                                 {
                                     "key": "page",
@@ -2404,7 +3221,9 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2480,7 +3299,9 @@
                                 ],
                                 "url": {
                                     "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/status",
-                                    "host": ["{{base_url}}"],
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
                                     "path": [
                                         "api",
                                         "driver",
@@ -2541,7 +3362,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/arrived",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2597,7 +3420,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/start",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2670,7 +3495,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/arrived",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2733,7 +3560,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/picked-up",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2796,7 +3625,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/dropped-off",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2859,7 +3690,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/stops/{{stop_id}}/skip",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2922,7 +3755,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -2993,7 +3828,9 @@
                                 },
                                 "url": {
                                     "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/complete",
-                                    "host": ["{{base_url}}"],
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
                                     "path": [
                                         "api",
                                         "driver",
@@ -3047,7 +3884,9 @@
                         },
                         "url": {
                             "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
-                            "host": ["{{base_url}}"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
                             "path": [
                                 "api",
                                 "driver",
@@ -3097,7 +3936,9 @@
                                 },
                                 "url": {
                                     "raw": "{{base_url}}/api/driver/assignments/{{assignment_id}}/collect-payment",
-                                    "host": ["{{base_url}}"],
+                                    "host": [
+                                        "{{base_url}}"
+                                    ],
                                     "path": [
                                         "api",
                                         "driver",
@@ -3161,8 +4002,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/earnings/summary",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "earnings", "summary"]
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "summary"
+                            ]
                         },
                         "description": "Get earnings summary for today/this week/this month."
                     },
@@ -3203,8 +4051,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/earnings/daily?date={{filter_date}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "earnings", "daily"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "daily"
+                            ],
                             "query": [
                                 {
                                     "key": "date",
@@ -3251,8 +4106,15 @@
                         ],
                         "url": {
                             "raw": "{{base_url}}/api/driver/earnings/range?from={{filter_from}}&to={{filter_to}}",
-                            "host": ["{{base_url}}"],
-                            "path": ["api", "driver", "earnings", "range"],
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "earnings",
+                                "range"
+                            ],
                             "query": [
                                 {
                                     "key": "from",
@@ -3290,14 +4152,18 @@
             "listen": "prerequest",
             "script": {
                 "type": "text/javascript",
-                "exec": [""]
+                "exec": [
+                    ""
+                ]
             }
         },
         {
             "listen": "test",
             "script": {
                 "type": "text/javascript",
-                "exec": [""]
+                "exec": [
+                    ""
+                ]
             }
         }
     ],

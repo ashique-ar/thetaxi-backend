@@ -54,6 +54,14 @@ Schedule::command('vehicles:process-lease-schedules')
     ->dailyAt('07:15')
     ->withoutOverlapping();
 
+Schedule::command('drivers:send-license-reminders')
+    ->dailyAt('07:30')
+    ->withoutOverlapping();
+
+Schedule::command('documents:send-expiry-reminders')
+    ->dailyAt('07:40')
+    ->withoutOverlapping();
+
 Schedule::command('corporate-transport:generate-bookings')
     ->everyFifteenMinutes()
     ->withoutOverlapping(10);

@@ -13,6 +13,11 @@ class UpdateStaffRequest extends FormRequest
         $id = $this->route('staff')->id;
 
         return [
+            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'email' => ['sometimes', 'required', 'email', 'max:255'],
+            'phone' => ['sometimes', 'required', 'string', 'max:30'],
+            'status' => ['sometimes', 'in:active,inactive,on_leave'],
             'user_id' => ['sometimes', 'required', 'exists:users,id'],
             'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
@@ -26,6 +31,13 @@ class UpdateStaffRequest extends FormRequest
             'country_id' => ['sometimes', 'nullable', 'exists:countries,id'],
             'state_id' => ['sometimes', 'nullable', 'exists:states,id'],
             'city' => ['sometimes', 'nullable', 'string'],
+            'gender' => ['sometimes', 'nullable', 'string', 'max:30'],
+            'postal_code' => ['sometimes', 'nullable', 'string', 'max:20'],
+            'department' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'position' => ['sometimes', 'nullable', 'string', 'max:100'],
+            'joining_date' => ['sometimes', 'nullable', 'date'],
+            'reporting_to' => ['sometimes', 'nullable', 'exists:users,id'],
+            'emergency_contact' => ['sometimes', 'nullable', 'array'],
             'payment_methods' => ['sometimes', 'nullable', 'array'],
             'payment_methods.*.id' => ['nullable', 'uuid'],
             'payment_methods.*.method_type' => ['required_with:payment_methods', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],

@@ -58,7 +58,6 @@ class DriverAuthService
      */
     public function login(array $credentials): array
     {
-        // Find user by email
         $user = User::where('email', $credentials['email'])->first();
 
         if (!$user) {
@@ -104,7 +103,27 @@ class DriverAuthService
             ]);
         }
 
-        // Verify driver context exists
+        return $this->completeLogin($user, $credentials);
+    }
+
+    /** Authenticate a mobile-verified driver without requiring a password. */
+    public function loginWithOtp(User $user, array $credentials): array
+    {
+        if ($user->locked_until && ! $user->isLocked()) {
+            $user->unlockAccount();
+        }
+        if (! $user->isActive()) {
+            throw ValidationException::withMessages(['account' => ['Account is deactivated']]);
+        }
+        if ($user->isLocked()) {
+            throw ValidationException::withMessages(['account' => ['Account is locked due to multiple failed attempts']]);
+        }
+
+        return $this->completeLogin($user, $credentials);
+    }
+
+    private function completeLogin(User $user, array $credentials): array
+    {
         $driverContext = $user->driverContext();
         if (!$driverContext) {
             throw ValidationException::withMessages([

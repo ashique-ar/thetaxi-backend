@@ -33,6 +33,7 @@ use App\Http\Controllers\Api\Company\RegionController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\Driver\DriverController;
+use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
 use App\Http\Controllers\Api\Driver\DriverBattaRuleController;
 use App\Http\Controllers\Api\Driver\DriverHireSettlementController;
 use App\Http\Controllers\Api\Driver\DriverLogController;
@@ -697,8 +698,12 @@ Route::middleware(['auth:api'])->group(function () {
             Route::post('vehicle-insurances/{vehicleInsurance}/renew', [VehicleInsuranceController::class, 'renew']);
             Route::apiResource('vehicle-insurances.claims', VehicleInsuranceClaimController::class)->shallow(false);
             Route::apiResource('vehicle-insurances', VehicleInsuranceController::class);
-            Route::post('vehicle-revenue-licenses/{vehicleRevenueLicense}/renew', [VehicleRevenueLicenseController::class, 'renew']);
-            Route::apiResource('vehicle-revenue-licenses', VehicleRevenueLicenseController::class);
+            Route::post('vehicle-revenue-licenses/{document}/renew', [VehicleRevenueLicenseController::class, 'renew'])->whereUuid('document');
+            Route::get('vehicle-revenue-licenses', [VehicleRevenueLicenseController::class, 'index']);
+            Route::post('vehicle-revenue-licenses', [VehicleRevenueLicenseController::class, 'store']);
+            Route::get('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'show'])->whereUuid('document');
+            Route::put('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'update'])->whereUuid('document');
+            Route::delete('vehicle-revenue-licenses/{document}', [VehicleRevenueLicenseController::class, 'destroy'])->whereUuid('document');
             Route::apiResource('vehicle-insurance-providers', VehicleInsuranceProviderController::class);
             Route::apiResource('vehicle-insurance-types', VehicleInsuranceTypeController::class);
             Route::apiResource('vehicle-maintenance-schedules', VehicleMaintenanceScheduleController::class);
@@ -1028,6 +1033,9 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:drivers.view'])->group(function () {
+        Route::get('driver-onboarding-applications', [OnboardingController::class, 'index']);
+        Route::post('driver-onboarding-applications/{application}/review', [OnboardingController::class, 'review'])
+            ->middleware('permission:drivers.edit');
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);

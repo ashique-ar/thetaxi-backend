@@ -64,23 +64,23 @@ const versionGet = requestItem(
     '{{base_url}}/api/driver/version-check?version={{app_version}}&build_number={{app_build}}&platform={{platform}}',
     undefined,
     'GET form of the canonical public pre-login version check. The POST request is preferred by the mobile app; both methods execute the same server contract.',
-    [],
+    [response('OK', 200, { status: 'success', data: { current_version: '1.2.0', latest_version: '1.3.0', update_required: true, current_build_number: 120, mandatory_update: false, can_continue: true, release_policy: { android_package_id: 'com.example.driver', advertised_release_published: true, mandatory_release_validated: false }, message: 'A new driver app version is available. Please update to continue.' } })],
 );
 versionGet.request.auth = { type: 'noauth' };
 upsertAfter('App Settings', 'Version Check', versionGet);
 
 const forgotPassword = requestItem('Forgot Password', 'POST', '{{base_url}}/api/driver/auth/forgot-password',
-    { email: 'driver@example.com' }, 'Emails a six-digit password reset OTP. The response never reveals whether the account exists.', []);
+    { email: 'driver@example.com' }, 'Emails a six-digit password reset OTP. The response never reveals whether the account exists.', [response('OK', 200, { status: 'success', message: 'If an eligible driver account exists, a password reset OTP has been sent.' })]);
 forgotPassword.request.auth = { type: 'noauth' };
 upsertAfter('Authentication', 'Login', forgotPassword);
 const resetPassword = requestItem('Reset Password', 'POST', '{{base_url}}/api/driver/auth/reset-password',
     { email: 'driver@example.com', otp: '123456', password: 'NewPassword1!', password_confirmation: 'NewPassword1!' },
-    'Resets an eligible driver password, clears lockout state, and revokes all sessions.', []);
+    'Resets an eligible driver password, clears lockout state, and revokes all sessions.', [response('OK', 200, { status: 'success', message: 'Password reset successfully. Please sign in again.' })]);
 resetPassword.request.auth = { type: 'noauth' };
 upsertAfter('Authentication', 'Forgot Password', resetPassword);
 upsertAfter('Authentication', 'Profile', requestItem('Change Password', 'POST', '{{base_url}}/api/driver/auth/change-password',
     { current_password: 'CurrentPassword1!', new_password: 'NewPassword1!', new_password_confirmation: 'NewPassword1!' },
-    'Changes the authenticated driver password and revokes every existing session/device.', []));
+    'Changes the authenticated driver password and revokes every existing session/device.', [response('OK', 200, { status: 'success', message: 'Password changed successfully. Please sign in again.', data: { reauthentication_required: true } })]));
 
 upsertAfter('Location Tracking', 'Bulk Upload Buffered Locations', requestItem(
     'Report Location Health',
@@ -174,7 +174,7 @@ for (const folder of collection.item) {
     }
 }
 
-openapi.info.version = '2.5.0';
+openapi.info.version = '2.6.0';
 openapi.info.description = 'Complete canonical Driver Mobile API contract. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
 
 openapi.components.schemas.DriverBookingParty = {
@@ -241,22 +241,27 @@ const errorSchema = {
         errors: { type: 'object', additionalProperties: true },
     },
 };
+const jsonResponse = (description, schema, example) => ({
+    description,
+    content: { 'application/json': { schema, ...(example ? { example } : {}) } },
+});
+const errorResponse = (description) => jsonResponse(description, errorSchema, { message: description });
 
 const passwordSchema = { type: 'string', format: 'password', minLength: 8 };
 openapi.paths['/api/driver/auth/forgot-password'] = {
     post: { tags: ['Authentication'], summary: 'Request driver password reset', security: [],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email'], properties: { email: { type: 'string', format: 'email' } } } } } },
-        responses: { 200: { description: 'Enumeration-safe acknowledgement' }, 422: { description: 'Invalid email format', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+        responses: { 200: jsonResponse('Enumeration-safe acknowledgement', { type: 'object', properties: { status: { type: 'string' }, message: { type: 'string' } } }, { status: 'success', message: 'If an eligible driver account exists, a password reset OTP has been sent.' }), 422: errorResponse('Invalid email format'), 429: errorResponse('Rate limited') } },
 };
 openapi.paths['/api/driver/auth/reset-password'] = {
     post: { tags: ['Authentication'], summary: 'Reset driver password', security: [],
         requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['email', 'otp', 'password', 'password_confirmation'], properties: { email: { type: 'string', format: 'email' }, otp: { type: 'string', pattern: '^\\d{6}$', example: '123456' }, password: passwordSchema, password_confirmation: passwordSchema } } } } },
-        responses: { 200: { description: 'Password reset; all sessions revoked' }, 422: { description: 'Invalid or expired OTP', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+        responses: { 200: jsonResponse('Password reset; all sessions revoked', { type: 'object', properties: { status: { type: 'string' }, message: { type: 'string' } } }, { status: 'success', message: 'Password reset successfully. Please sign in again.' }), 422: errorResponse('Invalid or expired OTP'), 429: errorResponse('Rate limited') } },
 };
 openapi.paths['/api/driver/auth/change-password'] = {
     post: { tags: ['Authentication'], summary: 'Change driver password', security: protectedSecurity,
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['current_password', 'new_password', 'new_password_confirmation'], properties: { current_password: passwordSchema, new_password: passwordSchema, new_password_confirmation: passwordSchema } } } } },
-        responses: { 200: { description: 'Password changed; reauthentication required' }, 401: { description: 'Unauthenticated', content: { 'application/json': { schema: errorSchema } } }, 422: { description: 'Current password or validation failure', content: { 'application/json': { schema: errorSchema } } }, 429: { description: 'Rate limited' } } },
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['current_password', 'new_password', 'new_password_confirmation'], properties: { current_password: { type: 'string', format: 'password' }, new_password: passwordSchema, new_password_confirmation: passwordSchema } } } } },
+        responses: { 200: jsonResponse('Password changed; reauthentication required', { type: 'object', properties: { status: { type: 'string' }, message: { type: 'string' }, data: { type: 'object', properties: { reauthentication_required: { type: 'boolean' } } } } }, { status: 'success', message: 'Password changed successfully. Please sign in again.', data: { reauthentication_required: true } }), 401: errorResponse('Unauthenticated'), 422: errorResponse('Current password or validation failure'), 429: errorResponse('Rate limited') } },
 };
 
 openapi.paths['/api/driver/location/health'] = {
@@ -317,6 +322,80 @@ openapi.paths['/api/driver/assignments/{assignment_id}/acknowledge'] = {
         },
     },
 };
+
+const onboardingFolder = {
+    name: 'Driver Onboarding',
+    item: [
+        requestItem('Request Mobile OTP', 'POST', '{{base_url}}/api/driver/onboarding/request-otp', { mobile: '+94771234567' }, 'Send a six-digit SMS OTP. Expires after 10 minutes.', [response('OK', 200, { status: 'success', message: 'OTP sent.', data: { expires_in: 600 } })]),
+        requestItem('Verify Mobile OTP', 'POST', '{{base_url}}/api/driver/onboarding/verify-otp', {
+            mobile: '+94771234567', otp: '123456', device_uuid: 'device-uuid', device_fingerprint: 'fingerprint',
+            device_name: 'Nimal phone', device_model: 'Pixel 9', device_manufacturer: 'Google', platform: 'android',
+            os_version: '16', app_version: '{{app_version}}', app_build: '{{app_build}}', push_token: 'fcm-token',
+            push_provider: 'fcm', locale: 'en-LK', timezone: 'Asia/Colombo',
+        }, 'Verify mobile. Existing drivers receive the normal login response; other users receive an onboarding token and prefilled application.', [
+            response('Registration Created', 201, { status: 'success', data: { flow: 'registration', onboarding_token: 'token', application: { id: 'application-uuid', mobile: '+94771234567', status: 'draft', current_step: 1 } } }),
+            response('Existing Driver Login', 200, { status: 'success', message: 'Login successful', data: { flow: 'login', user: {}, driver: {}, device: {}, token: { access_token: 'token', refresh_token: 'token', expires_in: 3600 }, current_assignment: null, trip_phase: null } }),
+        ]),
+        requestItem('Get Onboarding Progress', 'GET', '{{base_url}}/api/driver/onboarding', undefined, 'Resume the stepper. Use onboarding_token as the Bearer token.', [response('OK', 200, { status: 'success', data: { id: 'application-uuid', mobile: '+94771234567', status: 'draft', current_step: 1, payload: {}, documents: [], review_issues: null, editable_fields: null, review_message: null } })]),
+        requestItem('Save Identity Step', 'PATCH', '{{base_url}}/api/driver/onboarding/steps/1', { first_name: 'Nimal', last_name: 'Perera', email: 'nimal@example.com', nic: '901234567V' }, 'Save identity. NIC accepts the Sri Lankan 9-digit plus V/X or 12-digit format; date of birth is derived by the server. In changes_requested status, only reviewer-listed fields are writable.', [response('OK', 200, { status: 'success', data: { id: 'application-uuid', status: 'draft', current_step: 2, payload: { identity: { first_name: 'Nimal', last_name: 'Perera', email: 'nimal@example.com', nic: '901234567V', dob: '1990-05-02' } } } })]),
+        requestItem('Save Address Step', 'PATCH', '{{base_url}}/api/driver/onboarding/steps/3', { address: '10 Main Street', country_id: 'country-uuid', state_id: 'state-uuid', city: 'Colombo', postal_code: '00100' }, 'Save address.', [response('OK', 200, { status: 'success', data: { id: 'application-uuid', status: 'draft', current_step: 4 } })]),
+        requestItem('Save Vehicle Step', 'PATCH', '{{base_url}}/api/driver/onboarding/steps/4', { make_id: 'make-uuid', model_id: 'model-uuid', model_year: 2024, color: 'White', registration_year: 2024, license_plate: 'CAB-1234', is_owner: true }, 'Save vehicle and ownership details. Make/model classify the vehicle group; approval assigns the latest configured grade and stores only vehicle_group_id on the vehicle.', [response('OK', 200, { status: 'success', data: { id: 'application-uuid', status: 'draft', current_step: 5 } })]),
+        requestItem('Submit for Review', 'POST', '{{base_url}}/api/driver/onboarding/submit', {}, 'Submit only after every required step and document is present.', [response('OK', 200, { status: 'success', message: 'Application submitted for review.', data: { id: 'application-uuid', status: 'submitted', current_step: 5 } })]),
+    ],
+};
+for (const item of onboardingFolder.item) item.request.auth = item.name.includes('OTP') ? { type: 'noauth' } : bearer;
+onboardingFolder.item.splice(6, 0, {
+    name: 'Upload Onboarding Document',
+    request: { auth: bearer, method: 'POST', header: [{ key: 'Accept', value: 'application/json' }],
+        body: { mode: 'formdata', formdata: [
+            { key: 'document_type', value: 'driver_license_front', type: 'text' },
+            { key: 'document_number', value: 'B1234567', type: 'text' },
+            { key: 'expiry_date', value: '2030-12-31', type: 'text' },
+            { key: 'reminder_days', value: '30', type: 'text' },
+            { key: 'file', type: 'file', src: [] },
+        ] }, url: { raw: '{{base_url}}/api/driver/onboarding/documents', host: ['{{base_url}}'], path: ['api', 'driver', 'onboarding', 'documents'] },
+        description: 'Allowed types: driver_photo, driver_license_front/back, nic_front/back, vehicle_insurance, vehicle_revenue_license, vehicle_registration. JPG, PNG or PDF; maximum 10 MB.' }, response: [response('Created', 201, { status: 'success', data: { id: 'document-uuid', document_type: 'driver_license_front', document_number: 'B1234567', expiry_date: '2030-12-31', reminder_days: 30, status: 'pending' } })],
+});
+collection.item = collection.item.filter((folder) => folder.name !== 'Driver Onboarding');
+collection.item.splice(1, 0, onboardingFolder);
+
+openapi.components.schemas.DriverOnboardingApplication = {
+    type: 'object', required: ['id', 'mobile', 'status', 'current_step'],
+    additionalProperties: true,
+    properties: {
+        id: { type: 'string', format: 'uuid' }, mobile: { type: 'string' }, current_step: { type: 'integer', minimum: 1, maximum: 6 },
+        status: { type: 'string', enum: ['draft', 'submitted', 'changes_requested', 'approved', 'rejected'] },
+        payload: { type: 'object', additionalProperties: true }, documents: { type: 'array', items: { type: 'object', additionalProperties: true } },
+        review_issues: { type: 'array', nullable: true, items: { type: 'object', required: ['field', 'message'], properties: { field: { type: 'string' }, message: { type: 'string' } } } },
+        editable_fields: { type: 'array', nullable: true, items: { type: 'string' } }, review_message: { type: 'string', nullable: true },
+    },
+};
+const onboardingEnvelope = { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string', example: 'success' }, data: { $ref: '#/components/schemas/DriverOnboardingApplication' } } };
+const onboardingResponse = { 200: jsonResponse('Onboarding application', onboardingEnvelope), 401: errorResponse('Missing or invalid onboarding token'), 404: errorResponse('Onboarding application not found'), 422: errorResponse('Validation error') };
+const deviceProperties = {
+    device_uuid: { type: 'string', maxLength: 255, nullable: true }, device_fingerprint: { type: 'string', maxLength: 500, nullable: true },
+    device_name: { type: 'string', maxLength: 255, nullable: true }, device_model: { type: 'string', maxLength: 255, nullable: true },
+    device_manufacturer: { type: 'string', maxLength: 255, nullable: true }, platform: { type: 'string', enum: ['ios', 'android'], nullable: true },
+    os_version: { type: 'string', maxLength: 50, nullable: true }, app_version: { type: 'string', maxLength: 50, nullable: true },
+    app_build: { type: 'string', maxLength: 50, nullable: true }, push_token: { type: 'string', maxLength: 500, nullable: true },
+    push_provider: { type: 'string', enum: ['fcm', 'apns'], nullable: true }, locale: { type: 'string', maxLength: 10, nullable: true },
+    timezone: { type: 'string', maxLength: 50, nullable: true },
+};
+openapi.paths['/api/driver/onboarding/request-otp'] = { post: { tags: ['Driver Onboarding'], summary: 'Send mobile verification OTP', security: [], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['mobile'], properties: { mobile: { type: 'string', maxLength: 30, example: '+94771234567' } } } } } }, responses: { 200: jsonResponse('OTP queued', { type: 'object', required: ['status', 'message', 'data'], properties: { status: { type: 'string' }, message: { type: 'string' }, data: { type: 'object', required: ['expires_in'], properties: { expires_in: { type: 'integer', example: 600 } } } } }, { status: 'success', message: 'OTP sent.', data: { expires_in: 600 } }), 422: errorResponse('Invalid mobile'), 429: errorResponse('Rate limited') } } };
+openapi.paths['/api/driver/onboarding/verify-otp'] = { post: { tags: ['Driver Onboarding'], summary: 'Verify OTP, then log in or start onboarding', description: 'Existing drivers receive HTTP 200 with the normal authenticated login payload. New drivers receive HTTP 201 with an onboarding token.', security: [], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['mobile', 'otp'], properties: { mobile: { type: 'string', maxLength: 30 }, otp: { type: 'string', pattern: '^\\d{6}$' }, ...deviceProperties } } } } }, responses: {
+    200: jsonResponse('Existing driver login', { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string' }, message: { type: 'string' }, data: { type: 'object', required: ['flow', 'user', 'driver', 'device', 'token'], properties: { flow: { type: 'string', enum: ['login'] }, user: { type: 'object', additionalProperties: true }, driver: { type: 'object', additionalProperties: true }, device: { type: 'object', additionalProperties: true }, token: { type: 'object', additionalProperties: true }, current_assignment: { type: 'object', nullable: true, additionalProperties: true }, trip_phase: { type: 'string', nullable: true } } } } }),
+    201: jsonResponse('New driver onboarding created', { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string' }, data: { type: 'object', required: ['flow', 'onboarding_token', 'application'], properties: { flow: { type: 'string', enum: ['registration'] }, onboarding_token: { type: 'string' }, application: { $ref: '#/components/schemas/DriverOnboardingApplication' } } } } }),
+    422: errorResponse('Invalid or expired OTP'), 429: errorResponse('Rate limited'),
+} } };
+openapi.paths['/api/driver/onboarding'] = { get: { tags: ['Driver Onboarding'], summary: 'Resume onboarding', description: 'Use onboarding_token as Bearer token, not the normal driver access token.', security: protectedSecurity, responses: onboardingResponse } };
+const identityStep = { type: 'object', additionalProperties: false, required: ['first_name', 'last_name', 'email', 'nic'], properties: { first_name: { type: 'string', maxLength: 100 }, last_name: { type: 'string', maxLength: 100 }, email: { type: 'string', format: 'email', maxLength: 255 }, nic: { type: 'string', pattern: '^(?:\\d{9}[vVxX]|\\d{12})$', description: 'Sri Lankan NIC. The server derives payload.identity.dob from this value.' } } };
+const addressStep = { type: 'object', additionalProperties: false, required: ['address', 'country_id', 'state_id', 'city'], properties: { address: { type: 'string', maxLength: 500 }, country_id: { type: 'string', format: 'uuid' }, state_id: { type: 'string', format: 'uuid' }, city: { type: 'string', maxLength: 100 }, postal_code: { type: 'string', maxLength: 20, nullable: true } } };
+const vehicleStep = { type: 'object', additionalProperties: false, required: ['make_id', 'model_id', 'model_year', 'color', 'registration_year', 'license_plate', 'is_owner'], properties: { make_id: { type: 'string', format: 'uuid' }, model_id: { type: 'string', format: 'uuid' }, model_year: { type: 'integer', minimum: 1950 }, color: { type: 'string', maxLength: 50 }, registration_year: { type: 'integer', minimum: 1950 }, license_plate: { type: 'string', maxLength: 30 }, is_owner: { type: 'boolean' } } };
+openapi.paths['/api/driver/onboarding/steps/{step}'] = { patch: { tags: ['Driver Onboarding'], summary: 'Save identity, address, or vehicle onboarding step', description: 'Payload must match the selected step: 1 identity, 3 address, 4 vehicle.', security: protectedSecurity, parameters: [{ name: 'step', in: 'path', required: true, schema: { type: 'integer', enum: [1, 3, 4] } }], requestBody: { required: true, content: { 'application/json': { schema: { oneOf: [identityStep, addressStep, vehicleStep] }, examples: { identity: { value: { first_name: 'Nimal', last_name: 'Perera', email: 'nimal@example.com', nic: '901234567V' } }, address: { value: { address: '10 Main Street', country_id: 'country-uuid', state_id: 'state-uuid', city: 'Colombo', postal_code: '00100' } }, vehicle: { value: { make_id: 'make-uuid', model_id: 'model-uuid', model_year: 2024, color: 'White', registration_year: 2024, license_plate: 'CAB-1234', is_owner: true } } } } } }, responses: { ...onboardingResponse, 403: errorResponse('Only reviewer-listed fields may be changed'), 409: errorResponse('Application cannot be edited') } } };
+openapi.paths['/api/driver/onboarding/documents'] = { post: { tags: ['Driver Onboarding'], summary: 'Upload or replace one onboarding document', security: protectedSecurity, requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['document_type', 'file'], properties: { document_type: { type: 'string', enum: ['driver_photo', 'driver_license_front', 'driver_license_back', 'nic_front', 'nic_back', 'vehicle_insurance', 'vehicle_revenue_license', 'vehicle_registration'] }, document_number: { type: 'string', maxLength: 100, nullable: true }, expiry_date: { type: 'string', format: 'date', nullable: true, description: 'Required for driver_license_front, vehicle_insurance, and vehicle_revenue_license.' }, reminder_days: { type: 'integer', minimum: 1, maximum: 365, nullable: true }, file: { type: 'string', format: 'binary', description: 'JPG, PNG, or PDF; maximum 10 MB.' } } } } } }, responses: { 201: jsonResponse('Document uploaded', { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string' }, data: { type: 'object', additionalProperties: true } } }), 401: errorResponse('Missing or invalid onboarding token'), 403: errorResponse('Field was not opened for correction'), 409: errorResponse('Application cannot be edited'), 422: errorResponse('Validation error') } } };
+openapi.paths['/api/driver/onboarding/submit'] = { post: { tags: ['Driver Onboarding'], summary: 'Submit completed onboarding for review', security: protectedSecurity, responses: onboardingResponse } };
+
+for (const stalePath of ['/api/driver/onboarding/steps/1', '/api/driver/onboarding/steps/3', '/api/driver/onboarding/steps/4']) delete openapi.paths[stalePath];
 
 write(collectionPath, collection);
 write(openApiPath, openapi);

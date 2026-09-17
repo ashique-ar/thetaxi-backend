@@ -2,6 +2,8 @@
 // app/Http/Controllers/Api/CustomerController.php
 namespace App\Http\Controllers\Api;
 
+use App\Support\SriLankanNic;
+
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
@@ -170,6 +172,7 @@ class CustomerController extends Controller
     public function store(CreateCustomerRequest $request): JsonResponse
     {
         $data = $request->validated();
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
 
         try {
@@ -301,6 +304,7 @@ class CustomerController extends Controller
     {
         try {
             $data = $request->validated();
+            if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
             $data['updated_user_id'] = $request->user()->id;
 
             $userData = array_intersect_key($data, array_flip([

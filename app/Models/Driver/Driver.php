@@ -83,6 +83,7 @@ class Driver extends BaseModel
         'license_no',
         'license_expiry',
         'license_type',
+        'license_issued_at',
         'dob',
         'address',
         'country_id',
@@ -91,6 +92,8 @@ class Driver extends BaseModel
         'remarks',
         'postal_code',
         'default_vehicle_id',
+        'license_reminder_days',
+        'license_last_reminded_on',
         'is_online',
         'last_active_at',
         'current_latitude',
@@ -115,6 +118,8 @@ class Driver extends BaseModel
      */
     protected $casts = [
         'license_expiry' => 'date',
+        'license_issued_at' => 'date',
+        'license_last_reminded_on' => 'date',
         'dob' => 'date',
         'is_online' => 'boolean',
         'last_active_at' => 'datetime',
@@ -241,6 +246,13 @@ class Driver extends BaseModel
     public function defaultVehicle()
     {
         return $this->belongsTo(Vehicle::class, 'default_vehicle_id');
+    }
+
+    public function licenseRenewals()
+    {
+        return $this->morphMany(Document::class, 'documentable')
+            ->whereIn('document_type', ['driver_license', 'driver_license_front', 'driver_license_back'])
+            ->latest('created_at');
     }
 
     /**

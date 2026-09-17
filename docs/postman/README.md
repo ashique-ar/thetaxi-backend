@@ -32,6 +32,31 @@ Public endpoints:
 - `POST /api/driver/auth/forgot-password`
 - `POST /api/driver/auth/reset-password`
 - `POST /api/driver/auth/change-password`
+- `POST /api/driver/onboarding/request-otp`
+- `POST /api/driver/onboarding/verify-otp`
+
+The mobile app must present **Mobile + OTP** as the default authentication option and **Email + Password** as the secondary login option. Registration never accepts an email/password credential: an unregistered mobile must complete OTP verification and continue through onboarding.
+
+After OTP verification, branch on `data.flow`:
+
+- `login`: the mobile already belongs to an approved driver. Save `data.token`, `data.driver`, and `data.device`, then enter the authenticated app.
+- `registration`: save `data.onboarding_token` separately from the normal access token and open/resume the registration stepper.
+
+## Driver Registration Stepper
+
+1. Request and verify the mobile OTP. Verification returns an `onboarding_token` and prefills identity fields when the mobile belongs to an existing user.
+2. Use `Authorization: Bearer {onboarding_token}` for all remaining onboarding calls. This is not a normal driver login token.
+3. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document.
+4. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
+5. Submit the application. While status is `submitted`, the app must show the review screen and must not allow operational navigation.
+6. If status becomes `changes_requested`, display each `review_issues[].message`. Enable only fields returned in `editable_fields`; upload of any other document receives HTTP 403.
+7. Resubmit after corrections. Status `approved` includes the created driver and vehicle IDs; only then proceed to normal driver login. Status `rejected` is terminal.
+
+Licence, insurance, and revenue-licence expiry dates are mandatory on their primary uploads. Replacement uploads supersede the prior row, preserving renewal history. The server sends configured reminders from the same generic document records.
+
+Driver-licence and vehicle revenue-licence histories are both stored in the generic `documents` resource. Renewals create a new document with `replaces_document_id`; the previous document becomes `superseded`. There are no separate renewal or revenue-licence tables.
+
+Vehicle make and model classify the `vehicle_group`; they are never stored on the individual vehicle. On approval, the backend reuses or creates the make/model group using the latest configured vehicle grade, then stores only `vehicle_group_id` on the approved vehicle.
 
 ## Quick Start
 
@@ -116,7 +141,9 @@ Notifications:
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---:|---|
-| POST | `/api/driver/auth/login` | No | Login and register/update device |
+| POST | `/api/driver/auth/login` | No | Secondary email + password login and device registration |
+| POST | `/api/driver/onboarding/request-otp` | No | Default sign-in/sign-up: send a mobile OTP |
+| POST | `/api/driver/onboarding/verify-otp` | No | Return driver tokens (`flow=login`) or an onboarding token (`flow=registration`) |
 | POST | `/api/driver/auth/forgot-password` | No | Request an enumeration-safe six-digit OTP email |
 | POST | `/api/driver/auth/reset-password` | No | Reset a driver password using the OTP |
 | POST | `/api/driver/auth/change-password` | Yes | Change password and revoke all sessions |

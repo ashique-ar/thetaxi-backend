@@ -20,6 +20,10 @@ use Symfony\Component\HttpFoundation\Response;
 
 class DocumentController extends Controller
 {
+    private const RENEWABLE_TYPES = [
+        'driver_license', 'driver_license_front', 'driver_license_back',
+        'vehicle_insurance', 'vehicle_revenue_license', 'vehicle_registration',
+    ];
     private const OWNER_TYPES = [
         'agreement' => Agreement::class,
         'customer' => Customer::class,
@@ -135,6 +139,10 @@ class DocumentController extends Controller
         $disk = $this->storageDisk();
         $ownerType = $this->normaliseOwnerType($data['owner_type']);
         $path = $file->store("documents/{$ownerType}/{$owner->getKey()}", $disk);
+        $previous = in_array($data['document_type'], self::RENEWABLE_TYPES, true)
+            ? $owner->documents()->where('document_type', $data['document_type'])
+                ->whereIn('status', ['pending', 'verified', 'active'])->latest()->first()
+            : null;
 
         $document = $owner->documents()->create([
             'document_type' => $data['document_type'],
@@ -146,8 +154,10 @@ class DocumentController extends Controller
             'file_size' => $file->getSize(),
             'file_type' => $file->getMimeType(),
             'status' => 'pending',
+            'replaces_document_id' => $previous?->id,
             'created_user_id' => $request->user()?->id,
         ]);
+        $previous?->update(['status' => 'superseded']);
 
         return response()->json([
             'status' => 'success',
@@ -255,6 +265,8 @@ class DocumentController extends Controller
             'file_size' => $document->file_size,
             'file_type' => $document->file_type,
             'status' => $document->status,
+            'replaces_document_id' => $document->replaces_document_id,
+            'metadata' => $document->metadata,
             'verification_notes' => $document->verification_notes,
             'verified_at' => $document->verified_at?->toISOString(),
             'created_at' => $document->created_at?->toISOString(),

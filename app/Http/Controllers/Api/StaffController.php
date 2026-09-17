@@ -2,6 +2,8 @@
 // app/Http/Controllers/Api/StaffController.php
 namespace App\Http\Controllers\Api;
 
+use App\Support\SriLankanNic;
+
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
 use App\Models\User;
@@ -118,6 +120,7 @@ class StaffController extends Controller
     public function store(CreateStaffRequest $request): JsonResponse
     {
         $data = $request->validated();
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
@@ -131,13 +134,14 @@ class StaffController extends Controller
                     'phone' => $data['phone'],
                     'password' => bcrypt(Str::random(12)),
                     'email_verified_at' => now(),
-                    'is_active' => true,
+                    'is_active' => ($data['status'] ?? 'active') === 'active',
                 ]);
 
             $contextData = collect($data)->only([
                 'staff_type', 'collection_commission_enabled', 'collection_commission_rate',
                 'code', 'nic', 'dob', 'license_no', 'license_expiry', 'address',
                 'country_id', 'state_id', 'city', 'created_user_id',
+                'gender', 'postal_code', 'department', 'position', 'joining_date', 'reporting_to', 'emergency_contact',
             ])->all();
             $context = $this->contextService->switchContext($user, 'staff', $contextData);
 
@@ -170,9 +174,18 @@ class StaffController extends Controller
     public function update(UpdateStaffRequest $request, Staff $staff): JsonResponse
     {
         $data = $request->validated();
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['updated_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
+        $userData = collect($data)->only(['first_name', 'last_name', 'email', 'phone'])->all();
+        if (array_key_exists('status', $data)) {
+            $userData['is_active'] = $data['status'] === 'active';
+        }
+        unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status']);
+        if ($userData !== []) {
+            $staff->user()->update($userData);
+        }
         $staff->update($data);
 
         if ($paymentMethods !== null) {

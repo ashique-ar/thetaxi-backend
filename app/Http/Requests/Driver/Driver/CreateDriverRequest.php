@@ -24,6 +24,8 @@ class CreateDriverRequest extends FormRequest
             'nic' => ['nullable', 'string', 'max:20'],
             'license_no' => ['nullable', 'string', 'max:100'],
             'license_expiry' => ['nullable', 'date'],
+            'license_issued_at' => ['nullable', 'date', 'before_or_equal:license_expiry'],
+            'license_reminder_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'license_type' => ['nullable', 'string', 'max:50'],
             'dob' => ['nullable', 'date'],
             'address' => ['nullable', 'string'],
