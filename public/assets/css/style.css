@@ -37548,10 +37548,10 @@ header.style-3.two .main-menu>ul>li.active>a i {
 }
 
 .checkout-page .order-sum-area .cart-body ul .single-item {
-  display: flex;
   align-items: center;
+  /* display: flex;
   justify-content: space-between;
-  margin-bottom: 25px;
+  margin-bottom: 25px; */
 }
 
 .checkout-page .order-sum-area .cart-body ul .single-item:last-child {

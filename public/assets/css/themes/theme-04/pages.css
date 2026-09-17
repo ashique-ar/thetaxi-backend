@@ -493,7 +493,7 @@ body.theme-theme-04.theme-page-rate-chart table :where(th, td) { padding: 16px 1
 
 /* Checkout/payment/status: numbered white sheets with a dark order ledger. */
 body.theme-theme-04:is(.theme-page-checkout, .theme-page-checkout-success, .theme-page-checkout-payment-resume, .theme-page-booking-status) .t4-site-main { background: #f3f4f5; }
-body.theme-theme-04.theme-page-checkout :where(.checkout-section, .checkout-page, .checkout-form-wrapper) { margin: 0 !important; padding-block: var(--t4-section); }
+body.theme-theme-04.theme-page-checkout :where(.checkout-section, .checkout-page, .checkout-form-wrapper) { margin: 0 !important; padding: 0 !important; }
 body.theme-theme-04.theme-page-checkout :where(.checkout-form-wrapper, .checkout-form, .checkout-addon-panel) { border: 1px solid var(--t4-line) !important; border-radius: 10px !important; background: #fff !important; box-shadow: none !important; }
 body.theme-theme-04.theme-page-checkout .checkout-form-title { padding-bottom: 18px; border-bottom: 3px solid var(--t4-accent); }
 body.theme-theme-04.theme-page-checkout :where(.order-summary, .cart-summary, .checkout-summary) { border: 0 !important; border-radius: 10px !important; background: var(--t4-text) !important; color: #fff !important; box-shadow: var(--t4-shadow) !important; }
