@@ -2300,6 +2300,8 @@ class BookingLifecycleService
         $extraMinutes = max(0, $durationMinutes - $includedMinutes);
 
         $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        $slabId = $metadata['slab_definition_id']
+            ?? data_get($bookingItem->pricing_breakdown, 'calculation_metadata.runtime_context.slab_definition_id');
         $additionalStops = $this->resolveBookedAdditionalStops($metadata);
         $packageIncludedKm = $this->resolvePackageIncludedKilometres(
             $metadata,
@@ -2343,6 +2345,7 @@ class BookingLifecycleService
             'pricing_context' => $bookingPricingContext,
             'service_type_context' => $bookingPricingContext,
             'package_id' => $packageId,
+            'slab_definition_id' => $slabId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,
             'to_date' => $bookingItem->to_date ?? $booking->to_date,

@@ -3093,6 +3093,8 @@ class BookingFlowService
                         'service_package_id' => $itemData['service_package_id']
                             ?? $itemData['package_id']
                             ?? data_get($itemData, 'metadata.service_package_id'),
+                        'slab_definition_id' => $itemData['slab_definition_id']
+                            ?? data_get($itemData, 'metadata.slab_definition_id'),
                         'booking_id' => $bookingId,
                         'preserve_custom_pricing' => $params['preserve_custom_pricing'] ?? false,
                         'variable_customizations' => $params['variable_customizations'] ?? [],
@@ -3161,7 +3163,9 @@ class BookingFlowService
                         'metadata' => array_merge(
                             is_array($itemData['metadata'] ?? null) ? $itemData['metadata'] : [],
                             [
-                                'service_package_id' => $itemPricingParams['service_package_id'] ?? null,
+                                'service_package_id' => $itemPricingParams['service_package_id']
+                                    ?? data_get($itemPricing, 'calculation_metadata.runtime_context.package_id'),
+                                'slab_definition_id' => data_get($itemPricing, 'calculation_metadata.runtime_context.slab_definition_id'),
                                 'package_info' => $itemPricing['package_info'] ?? null,
                             ]
                         ),
@@ -4439,6 +4443,7 @@ class BookingFlowService
                     'is_self_driven',
                     'booking_type',
                     'package_id',
+                    'slab_definition_id',
                     'package_included_km',
                     'additional_stops',
                     'stops',
@@ -10985,7 +10990,7 @@ class BookingFlowService
      */
     private function analyzeVehicleAvailability($vehicleGroup, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
     {
-        $allVehicles = $vehicleGroup->vehicles()->where('status', 'active')->get();
+        $allVehicles = $vehicleGroup->vehicles->where('status', 'active');
         $totalCount = $allVehicles->count();
         $availableCount = 0;
         $bookedCount = 0;
@@ -10995,7 +11000,6 @@ class BookingFlowService
         $vehicleDetails = [];
 
         foreach ($allVehicles as $vehicle) {
-            $conflicts = $this->getVehicleConflictsDetailed($vehicle, $fromDate, $toDate, $excludeBookingId);
             // Use the same authoritative checks as the specific-vehicle endpoint.
             // This keeps group counts aligned with maintenance, insurance and
             // assignment enforcement shown in the Add Trip vehicle cards.
@@ -11005,6 +11009,7 @@ class BookingFlowService
                 $toDate,
                 $excludeBookingId
             );
+            $conflicts = $enhancedAvailability['conflicts'];
             $availabilityStatus = $enhancedAvailability['availability_status'];
 
             if (in_array($availabilityStatus, ['available', 'available_concurrent'], true)) {
@@ -11047,60 +11052,6 @@ class BookingFlowService
             'override_available' => $overrideAvailable,
             'vehicle_details' => $vehicleDetails,
         ];
-    }
-
-    /**
-     * Get detailed vehicle conflicts with booking information
-     */
-    private function getVehicleConflictsDetailed($vehicle, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
-    {
-        $conflicts = [];
-
-        // Query through booking_items which contains the date fields
-        $bookingItems = BookingItem::where('booking_items.vehicle_id', $vehicle->id)
-            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-            // Keep the join aligned with Booking's SoftDeletes and active global
-            // scopes. Otherwise the joined row exists but the eager-loaded booking
-            // is null, and conflict formatting dereferences a missing relation.
-            ->whereNull('bookings.deleted_at')
-            ->where('bookings.is_active', true)
-            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
-                $q->where('bookings.id', '!=', $excludeBookingId);
-            })
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
-            ->select('booking_items.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.customer_id')
-            ->with(['booking.customer'])
-            ->get();
-
-        foreach ($bookingItems as $item) {
-            $booking = $item->booking;
-            $customerName = trim((string) ($booking->customer?->first_name ?? '') . ' ' . (string) ($booking->customer?->last_name ?? ''));
-            $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
-            $canOverride = $this->canOverrideBooking($booking);
-
-            $conflicts[] = [
-                'booking_id' => $booking->id,
-                'customer_name' => $customerName !== '' ? $customerName : 'Unknown',
-                'from' => is_string($item->from_date) ? $item->from_date : $item->from_date->format('Y-m-d H:i'),
-                'to' => is_string($item->to_date) ? $item->to_date : $item->to_date->format('Y-m-d H:i'),
-                'status' => $booking->status,
-                'type' => $item->service_type_id,
-                'overlap_type' => $overlapType,
-                'can_override' => $canOverride,
-                'priority' => $this->getBookingPriority($booking),
-                'reason' => $canOverride ? 'Override possible with approval' : 'Firm booking conflict',
-            ];
-        }
-
-        return $conflicts;
     }
 
     /**

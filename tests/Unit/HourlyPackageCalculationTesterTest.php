@@ -61,6 +61,15 @@ class HourlyPackageCalculationTesterTest extends TestCase
             'id' => 'slab', 'service_type_id' => 'service', 'service_package_id' => 'package',
             'is_active' => true, 'type' => 'flat_rate',
         ]);
+        DB::table('service_packages')->insert([
+            'id' => 'day-package', 'service_type_id' => 'service', 'is_active' => true,
+            'max_km_per_package' => 300, 'default_duration_hours' => 0,
+            'default_duration_minutes' => 0,
+        ]);
+        DB::table('vehicle_pricing_slab_definitions')->insert([
+            'id' => 'day-slab', 'service_type_id' => 'service', 'service_package_id' => 'day-package',
+            'is_active' => true, 'type' => 'days', 'min_days' => 2, 'max_days' => 4,
+        ]);
         DB::table('vehicle_group_pricing')->insert([
             'id' => 'price', 'vehicle_group_id' => 'group', 'slab_definition_id' => 'slab',
             'rate' => 14500, 'is_active' => true,
@@ -76,6 +85,15 @@ class HourlyPackageCalculationTesterTest extends TestCase
         $resolved = $prepare->invoke($controller, [$definition], $inputs, 'service', 'group', null, null);
         self::assertSame(80.0, $resolved['package_included_km']);
         self::assertSame(8.0, $resolved['package_included_hours']);
+        self::assertSame('slab', $resolved['slab_definition_id']);
+        $fromSlab = $prepare->invoke($controller, [$definition], [
+            'slab_definition_id' => 'slab', 'total_distance' => 50, 'duration_hours' => 8,
+        ], 'service', 'group', null, null);
+        self::assertSame('package', $fromSlab['service_package_id']);
+        self::assertSame(80.0, $fromSlab['package_included_km']);
+        $daySelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
+            ->resolvePackageSlab('service', 'day-package', null, 3 * 1440, 3);
+        self::assertSame('day-slab', $daySelection['slab']->id);
         self::assertSame(0, max(0, $resolved['total_distance'] - $resolved['package_included_km']));
         $evaluate = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
         self::assertSame(14500.0, $evaluate->invoke(new VehiclePricingCalculationDefinition(),

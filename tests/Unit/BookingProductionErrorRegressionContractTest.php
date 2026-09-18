@@ -50,6 +50,8 @@ it('uses authoritative vehicle enforcement consistently in group and specific av
 
     expect($groupAnalysis)
         ->toContain('getEnhancedVehicleAvailability(')
+        ->toContain("\$vehicleGroup->vehicles->where('status', 'active')")
+        ->not->toContain('getVehicleConflictsDetailed(')
         ->toContain("['enforcement']['blocking_reasons']")
         ->and($specificSearch)
         ->toContain("->where('status', 'active')")
