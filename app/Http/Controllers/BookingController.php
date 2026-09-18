@@ -89,15 +89,11 @@ class BookingController extends Controller
                 }
 
                 $searchParams['package_type'] = $selectedPackage?->toArray();
-            } else {
-                // Fallback to first active package for service type (important for ride_now with return trip)
-                $defaultPackage = $serviceType->packages()->where('is_active', true)->first();
-                $searchParams['package_type'] = $defaultPackage?->toArray();
             }
             if ($packageId && empty($searchParams['package_id'])) {
                 $searchParams['package_id'] = $packageId;
             }
-            $searchParams['service_package_id'] = $searchParams['package_type']['id'] ?? null;
+            $searchParams['service_package_id'] = data_get($searchParams, 'package_type.id');
 
 
             // Store search params and context in session for results page

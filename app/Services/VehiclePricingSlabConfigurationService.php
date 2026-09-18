@@ -36,6 +36,12 @@ class VehiclePricingSlabConfigurationService
         if ($slabId && !$slab) {
             throw new \InvalidArgumentException('The selected pricing slab is unavailable for this service.');
         }
+        if (!$packageId && !$slab) {
+            $slab = $this->resolve(VehiclePricingSlabDefinition::query()
+                ->where('service_type_id', $serviceTypeId)
+                ->whereNotNull('service_package_id')
+                ->where('is_active', true), $durationMinutes, $durationDays);
+        }
         if ($slab && $packageId && (string) $slab->service_package_id !== $packageId) {
             throw new \InvalidArgumentException('The selected slab and service package do not match.');
         }

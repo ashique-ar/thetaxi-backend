@@ -4336,7 +4336,11 @@ class BookingFlowService
             }
 
             // Package and slab are two references to the same managed price.
-            if (!empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
+            $usesPackagePricing = $calculationDefinitions->contains(fn ($definition) => collect($definition->variables ?? [])
+                ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
+                    'package_included_km', 'package_included_hours', 'package_has_hour_limit',
+                ], true)));
+            if ($usesPackagePricing || !empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
                 $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                     (string) $serviceTypeId,
                     $calculationInputs['package_id'] ?? null,

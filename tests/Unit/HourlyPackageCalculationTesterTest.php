@@ -94,6 +94,9 @@ class HourlyPackageCalculationTesterTest extends TestCase
         $daySelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
             ->resolvePackageSlab('service', 'day-package', null, 3 * 1440, 3);
         self::assertSame('day-slab', $daySelection['slab']->id);
+        $automaticSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
+            ->resolvePackageSlab('service', null, null, 3 * 1440, 3);
+        self::assertSame('day-package', $automaticSelection['package']->id);
         self::assertSame(0, max(0, $resolved['total_distance'] - $resolved['package_included_km']));
         $evaluate = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
         self::assertSame(14500.0, $evaluate->invoke(new VehiclePricingCalculationDefinition(),
