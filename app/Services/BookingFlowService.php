@@ -12086,6 +12086,7 @@ class BookingFlowService
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
             $this->applyPortalBookingSource($booking);
+            $this->applyBookingPaymentFields($booking, $params);
 
             // An incomplete draft may be saved before any trip or vehicle
             // group is selected. That is valid and is not a pricing failure.
