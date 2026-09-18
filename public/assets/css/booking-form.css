@@ -127,7 +127,7 @@
     .t2-filter-wrapper .dynamic-field-tablet-auto { grid-column: span 6 !important; }
 }
 
-@media (max-width: 576px) {
+@media (max-width: 767px) {
     .filter-wrapper .dynamic-field-mobile-full,
     .t2-filter-wrapper .dynamic-field-mobile-full { grid-column: span 12 !important; }
     .filter-wrapper .dynamic-field-mobile-half,
