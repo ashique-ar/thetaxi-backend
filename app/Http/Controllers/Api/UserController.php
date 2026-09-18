@@ -111,7 +111,8 @@ class UserController extends Controller
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'], 'role' => ['nullable', 'string'],
             'status' => ['nullable', 'in:active,inactive'], 'context' => ['nullable', 'string'],
-            'agent_id' => ['nullable', 'uuid'], 'verified' => ['nullable', 'in:email,phone'],
+            'agent_id' => ['nullable', 'uuid'], 'verified' => ['nullable', 'in:email,phone,email_unverified,phone_unverified'],
+            'created_from' => ['nullable', 'date_format:Y-m-d'], 'created_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:created_from'],
             'sort_by' => ['nullable', 'in:first_name,last_name,email,created_at,last_login_at'],
             'sort_order' => ['nullable', 'in:asc,desc'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -139,7 +140,7 @@ class UserController extends Controller
 
     public function export(Request $request)
     {
-        $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'sort_by', 'sort_order']);
+        $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'created_from', 'created_to', 'sort_by', 'sort_order']);
         $users = $this->userService->getAllUsers([...$filters, 'per_page' => 100000])->getCollection();
         $header = ['id', 'first_name', 'last_name', 'email', 'phone', 'is_active', 'roles', 'created_at'];
         $lines = [$header];

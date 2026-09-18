@@ -46,10 +46,18 @@ class AuthController extends Controller
     public function requestOtp(Request $request, SmsService $sms): JsonResponse
     {
         $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        $appHash = trim((string) config('sms.driver_app_hash'));
+        if ($appHash !== '' && ! preg_match('/^[A-Za-z0-9+\/]{11}$/', $appHash)) {
+            throw new \RuntimeException('Invalid driver Android SMS app hash configuration.');
+        }
         $otp = (string) random_int(100000, 999999);
         Cache::put($this->otpKey($mobile), Hash::make($otp), now()->addMinutes(10));
+        $message = "Your driver app OTP is {$otp}. It expires in 10 minutes.";
+        if ($appHash !== '') {
+            $message .= "\n{$appHash}";
+        }
         $sms->queueSingleMessage([
-            'recipient' => $mobile, 'message' => "Your driver app OTP is {$otp}. It expires in 10 minutes.",
+            'recipient' => $mobile, 'message' => $message,
             'source' => 'manual', 'context_type' => 'driver_authentication', 'event_key' => 'driver_authentication_otp',
         ]);
 

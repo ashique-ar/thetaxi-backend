@@ -531,6 +531,8 @@ class VehiclePricingCalculationDefinition extends Model
 
         $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
+            ->when($inputs['slab_definition_id'] ?? null,
+                fn ($query, $slabId) => $query->whereKey($slabId))
             ->when(
                 $servicePackageId,
                 fn ($query) => $query->where('service_package_id', $servicePackageId),
@@ -1049,6 +1051,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $ownerId = $inputs['owner_id'] ?? null;
                 $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                     ->where('is_active', true)
+                    ->when($inputs['slab_definition_id'] ?? null,
+                        fn ($query, $slabId) => $query->whereKey($slabId))
                     ->forOwner($ownerType, $ownerId)
                     ->where(function ($query) use ($durationHours, $durationDaysForFallback) {
                         $query->when($durationDaysForFallback > 0, function ($q) use ($durationDaysForFallback) {

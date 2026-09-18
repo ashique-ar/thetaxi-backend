@@ -13,6 +13,7 @@ Show two options:
 
 1. Collect the mobile in international format, for example `+94771234567`.
 2. Call `POST /api/driver/auth/request-otp` with `{ "mobile": "+94771234567" }`.
+   On Android, start Google SMS Retriever before this request. The backend appends the configured 11-character app hash as the last SMS line. The hash must match package `com.thetaxisl.driver` and the signing certificate of the installed build. No SMS read permission is needed. Keep manual code entry if retrieval times out. The production backend needs `DRIVER_ANDROID_SMS_APP_HASH` set to the Play app-signing hash (or the direct APK signing hash when distributed outside Play), followed by a config cache refresh.
 3. Collect the six-digit OTP and call `POST /api/driver/auth/verify-otp`. Include the normal device fields used by email login.
 4. Branch only on `data.flow`:
    - `login`: save `data.token.access_token`, refresh token, driver, and device; continue to the normal authenticated app.

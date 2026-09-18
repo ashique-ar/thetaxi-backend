@@ -1,6 +1,7 @@
 <?php
 
 return [
+    'driver_app_hash' => env('DRIVER_ANDROID_SMS_APP_HASH'),
     'health' => [
         'queue_age_minutes' => max(1, (int) env('SMS_ALERT_QUEUE_AGE_MINUTES', 10)),
         'callback_age_minutes' => max(1, (int) env('SMS_ALERT_CALLBACK_AGE_MINUTES', 30)),

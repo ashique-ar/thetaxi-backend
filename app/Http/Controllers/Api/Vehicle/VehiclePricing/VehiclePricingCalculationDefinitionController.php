@@ -13,6 +13,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Services\Pricing\PricingCalculationDefinitionHealthService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
+use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -709,6 +710,41 @@ class VehiclePricingCalculationDefinitionController extends Controller
         ?string $ownerId
     ): array {
         $inputs = $this->normalizeDurationInputs($inputs);
+        $usesPackage = collect($definitions)->contains(fn ($definition) => collect($definition->variables ?? [])
+            ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
+                'package_included_km', 'package_included_hours', 'package_has_hour_limit',
+            ], true)));
+        if ($usesPackage || !empty($inputs['slab_definition_id']) || !empty($inputs['service_package_id']) || !empty($inputs['package_id'])) {
+            $packageId = $inputs['service_package_id'] ?? $inputs['package_id'] ?? null;
+            $slabId = $inputs['slab_definition_id'] ?? null;
+            if (!$serviceTypeId || !$vehicleGroupId || ($usesPackage && !$packageId && !$slabId)) {
+                throw new \InvalidArgumentException('Select a service package or pricing slab and vehicle group before testing package pricing.');
+            }
+            $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
+                $serviceTypeId, $packageId, $slabId,
+                (float) ($inputs['duration_minutes'] ?? 0),
+                isset($inputs['duration_days']) ? (float) $inputs['duration_days'] : null);
+            $package = $selection['package'];
+            $slab = $selection['slab'];
+            if ($usesPackage && !$package) {
+                throw new \InvalidArgumentException('The selected slab is not linked to a service package.');
+            }
+            if ($slab && !VehicleGroupPricing::query()->where('vehicle_group_id', $vehicleGroupId)
+                ->where('slab_definition_id', $slab->id)->where('is_active', true)
+                ->where('rate', '>', 0)->forOwner($ownerType, $ownerId)->exists()) {
+                throw new \InvalidArgumentException('No active slab price is configured for this package and vehicle group.');
+            }
+            if ($slab) {
+                $inputs['slab_definition_id'] = (string) $slab->id;
+            }
+            if ($package) {
+                $inputs['package_id'] = $inputs['service_package_id'] = (string) $package->id;
+                $inputs['package_included_km'] = (float) ($package->max_km_per_package ?? $package->max_km_per_day ?? 0);
+                $inputs['package_included_hours'] = (float) $package->default_duration_hours
+                    + (float) $package->default_duration_minutes / 60;
+                $inputs['package_has_hour_limit'] = $inputs['package_included_hours'] > 0 ? 1 : 0;
+            }
+        }
         $inputs['owner_type'] = $ownerType;
         $inputs['owner_id'] = $ownerType && $ownerId ? $ownerId : null;
         if ($serviceTypeId) {
@@ -1003,6 +1039,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ],
             ]);
 
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Definition calculation test error: ' . $e->getMessage());
             

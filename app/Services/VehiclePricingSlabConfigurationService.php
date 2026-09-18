@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Service\ServicePackage;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
@@ -20,6 +21,43 @@ class VehiclePricingSlabConfigurationService
         'days' => 1440,
         'per_day' => 1440,
     ];
+
+    /** @return array{package: ?ServicePackage, slab: ?VehiclePricingSlabDefinition} */
+    public function resolvePackageSlab(
+        string $serviceTypeId,
+        ?string $packageId,
+        ?string $slabId,
+        float $durationMinutes = 0,
+        ?float $durationDays = null
+    ): array {
+        $slab = $slabId ? VehiclePricingSlabDefinition::query()
+            ->whereKey($slabId)->where('service_type_id', $serviceTypeId)
+            ->where('is_active', true)->first() : null;
+        if ($slabId && !$slab) {
+            throw new \InvalidArgumentException('The selected pricing slab is unavailable for this service.');
+        }
+        if ($slab && $packageId && (string) $slab->service_package_id !== $packageId) {
+            throw new \InvalidArgumentException('The selected slab and service package do not match.');
+        }
+        $packageId ??= $slab?->service_package_id;
+        $package = $packageId ? ServicePackage::query()
+            ->whereKey($packageId)->where('service_type_id', $serviceTypeId)
+            ->where('is_active', true)->first() : null;
+        if ($packageId && !$package) {
+            throw new \InvalidArgumentException('The selected service package is unavailable for this service.');
+        }
+        if ($package && !$slab) {
+            $slab = $this->resolve(VehiclePricingSlabDefinition::query()
+                ->where('service_type_id', $serviceTypeId)
+                ->where('service_package_id', $package->id)
+                ->where('is_active', true), $durationMinutes, $durationDays);
+            if (!$slab) {
+                throw new \InvalidArgumentException('No active pricing slab is linked to this service package.');
+            }
+        }
+
+        return ['package' => $package, 'slab' => $slab];
+    }
 
     /**
      * Resolve one duration slab using one deterministic unit precedence.

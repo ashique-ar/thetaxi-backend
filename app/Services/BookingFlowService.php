@@ -2175,6 +2175,8 @@ class BookingFlowService
         $slab = VehiclePricingSlabDefinition::query()
             ->where('service_type_id', $serviceTypeId)
             ->where('service_package_id', $packageId)
+            ->when($inputs['slab_definition_id'] ?? null,
+                fn ($query, $slabId) => $query->whereKey($slabId))
             ->where('is_active', true)
             ->first();
         if (!$slab) {
@@ -2199,7 +2201,7 @@ class BookingFlowService
             ->where('vehicle_group_id', $vehicleGroupId)
             ->where('slab_definition_id', $slab->id)
             ->where('is_active', true))
-            ->whereNotNull('rate')
+            ->where('rate', '>', 0)
             ->exists();
 
         $requiredCodes = ['extra_km_rate'];
@@ -4329,6 +4331,21 @@ class BookingFlowService
                     $params['journey_duration_seconds'] ?? ($calculationInputs['journey_duration_seconds'] ?? null);
             }
 
+            // Package and slab are two references to the same managed price.
+            if (!empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
+                $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
+                    (string) $serviceTypeId,
+                    $calculationInputs['package_id'] ?? null,
+                    $calculationInputs['slab_definition_id'] ?? null,
+                    (float) ($calculationInputs['duration_minutes'] ?? 0),
+                    isset($calculationInputs['duration_days']) ? (float) $calculationInputs['duration_days'] : null
+                );
+                $calculationInputs['slab_definition_id'] = $selection['slab']?->id;
+                if ($selection['package']) {
+                    $calculationInputs['package_id'] = $selection['package']->id;
+                }
+            }
+
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
             if ($servicePackageInfo) {
@@ -4676,6 +4693,9 @@ class BookingFlowService
 
         if (isset($params['package_id'])) {
             $inputs['package_id'] = $params['package_id'];
+        }
+        if (isset($params['slab_definition_id'])) {
+            $inputs['slab_definition_id'] = $params['slab_definition_id'];
         }
 
         if (isset($params['package_included_km']) && is_numeric($params['package_included_km'])) {
