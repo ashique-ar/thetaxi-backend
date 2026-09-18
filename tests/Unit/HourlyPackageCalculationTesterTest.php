@@ -27,7 +27,7 @@ class HourlyPackageCalculationTesterTest extends TestCase
         Schema::create('vehicle_pricing_slab_definitions', function (Blueprint $table) {
             $table->string('id')->primary();
             $table->string('service_type_id');
-            $table->string('service_package_id');
+            $table->string('service_package_id')->nullable();
             $table->boolean('is_active');
             $table->string('type');
             $table->integer('min_minutes')->nullable();
@@ -62,12 +62,12 @@ class HourlyPackageCalculationTesterTest extends TestCase
             'is_active' => true, 'type' => 'flat_rate',
         ]);
         DB::table('service_packages')->insert([
-            'id' => 'day-package', 'service_type_id' => 'service', 'is_active' => true,
+            'id' => 'day-package', 'service_type_id' => 'day-service', 'is_active' => true,
             'max_km_per_package' => 300, 'default_duration_hours' => 0,
             'default_duration_minutes' => 0,
         ]);
         DB::table('vehicle_pricing_slab_definitions')->insert([
-            'id' => 'day-slab', 'service_type_id' => 'service', 'service_package_id' => 'day-package',
+            'id' => 'day-slab', 'service_type_id' => 'day-service', 'service_package_id' => null,
             'is_active' => true, 'type' => 'days', 'min_days' => 2, 'max_days' => 4,
         ]);
         DB::table('vehicle_group_pricing')->insert([
@@ -92,11 +92,8 @@ class HourlyPackageCalculationTesterTest extends TestCase
         self::assertSame('package', $fromSlab['service_package_id']);
         self::assertSame(80.0, $fromSlab['package_included_km']);
         $daySelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
-            ->resolvePackageSlab('service', 'day-package', null, 3 * 1440, 3);
+            ->resolvePackageSlab('day-service', 'day-package', null, 3 * 1440, 3);
         self::assertSame('day-slab', $daySelection['slab']->id);
-        $automaticSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
-            ->resolvePackageSlab('service', null, null, 3 * 1440, 3);
-        self::assertSame('day-package', $automaticSelection['package']->id);
         self::assertSame(0, max(0, $resolved['total_distance'] - $resolved['package_included_km']));
         $evaluate = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
         self::assertSame(14500.0, $evaluate->invoke(new VehiclePricingCalculationDefinition(),

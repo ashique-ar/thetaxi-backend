@@ -531,12 +531,14 @@ class VehiclePricingCalculationDefinition extends Model
 
         $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
-            ->when($inputs['slab_definition_id'] ?? null,
-                fn ($query, $slabId) => $query->whereKey($slabId))
             ->when(
-                $servicePackageId,
-                fn ($query) => $query->where('service_package_id', $servicePackageId),
-                fn ($query) => $query->whereNull('service_package_id')
+                $inputs['slab_definition_id'] ?? null,
+                fn ($query, $slabId) => $query->whereKey($slabId),
+                fn ($query) => $query->when(
+                    $servicePackageId,
+                    fn ($query) => $query->where('service_package_id', $servicePackageId),
+                    fn ($query) => $query->whereNull('service_package_id')
+                )
             )
             ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
             ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));

@@ -58,7 +58,18 @@ class VehiclePricingSlabConfigurationService
                 ->where('service_package_id', $package->id)
                 ->where('is_active', true), $durationMinutes, $durationDays);
             if (!$slab) {
-                throw new \InvalidArgumentException('No active pricing slab is linked to this service package.');
+                $hasPackageSlabs = VehiclePricingSlabDefinition::query()
+                    ->where('service_type_id', $serviceTypeId)
+                    ->whereNotNull('service_package_id')
+                    ->where('is_active', true)
+                    ->exists();
+                $slab = !$hasPackageSlabs ? $this->resolve(VehiclePricingSlabDefinition::query()
+                    ->where('service_type_id', $serviceTypeId)
+                    ->whereNull('service_package_id')
+                    ->where('is_active', true), $durationMinutes, $durationDays) : null;
+                if (!$slab) {
+                    throw new \InvalidArgumentException('No active pricing slab is linked to this service package.');
+                }
             }
         }
 
