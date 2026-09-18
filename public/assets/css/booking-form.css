@@ -139,7 +139,7 @@
 
     .filter-wrapper .filter-input-wrap .filter-input > .primary-btn1,
     .t2-filter-wrapper .filter-input-wrap .filter-input > .primary-btn1 {
-        grid-column: span 12 !important;
+        grid-column: 1 / -1 !important;
     }
 }
 
