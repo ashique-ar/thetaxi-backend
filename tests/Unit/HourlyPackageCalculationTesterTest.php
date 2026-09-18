@@ -66,6 +66,11 @@ class HourlyPackageCalculationTesterTest extends TestCase
             'max_km_per_package' => 300, 'default_duration_hours' => 0,
             'default_duration_minutes' => 0,
         ]);
+        DB::table('service_packages')->insert([
+            'id' => 'rate-package', 'service_type_id' => 'rate-service', 'is_active' => true,
+            'max_km_per_package' => 0, 'default_duration_hours' => 0,
+            'default_duration_minutes' => 0,
+        ]);
         DB::table('vehicle_pricing_slab_definitions')->insert([
             'id' => 'day-slab', 'service_type_id' => 'day-service', 'service_package_id' => null,
             'is_active' => true, 'type' => 'days', 'min_days' => 2, 'max_days' => 4,
@@ -94,6 +99,10 @@ class HourlyPackageCalculationTesterTest extends TestCase
         $daySelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
             ->resolvePackageSlab('day-service', 'day-package', null, 3 * 1440, 3);
         self::assertSame('day-slab', $daySelection['slab']->id);
+        $rateSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
+            ->resolvePackageSlab('rate-service', 'rate-package', null, 0);
+        self::assertSame('rate-package', $rateSelection['package']->id);
+        self::assertNull($rateSelection['slab']);
         self::assertSame(0, max(0, $resolved['total_distance'] - $resolved['package_included_km']));
         $evaluate = new ReflectionMethod(VehiclePricingCalculationDefinition::class, 'evaluateFormulaWithVariables');
         self::assertSame(14500.0, $evaluate->invoke(new VehiclePricingCalculationDefinition(),
