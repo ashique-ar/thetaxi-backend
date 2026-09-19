@@ -1471,8 +1471,16 @@ class BookingFlowService
                 ?? ($item['return_date'] ?? ($item['dropoff_date'] ?? ($item['from_date'] ?? ($item['pickup_date'] ?? null)))),
             'to_time' => $item['to_time']
                 ?? ($item['return_time'] ?? ($item['dropoff_time'] ?? ($item['from_time'] ?? ($item['pickup_time'] ?? '10:00')))),
-            'pickup_location' => $item['pickup_location'] ?? null,
-            'dropoff_location' => $item['dropoff_location'] ?? null,
+            'pickup_location' => [
+                'address' => $item['pickup_location'] ?? null,
+                'latitude' => $item['pickup_latitude'] ?? ($item['pickup_lat'] ?? null),
+                'longitude' => $item['pickup_longitude'] ?? ($item['pickup_lng'] ?? null),
+            ],
+            'dropoff_location' => [
+                'address' => $item['dropoff_location'] ?? null,
+                'latitude' => $item['dropoff_latitude'] ?? ($item['dropoff_lat'] ?? null),
+                'longitude' => $item['dropoff_longitude'] ?? ($item['dropoff_lng'] ?? null),
+            ],
             'package_id' => $item['service_package_id'] ?? null,
             'service_type_context' => 'public',
         ];
