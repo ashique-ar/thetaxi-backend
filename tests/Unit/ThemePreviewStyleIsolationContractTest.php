@@ -130,10 +130,14 @@ it('fully removes the released filter input wrapper presentation in both preview
         ->toContain('box-shadow: none !important');
 });
 
-it('keeps the Theme 04 journey desk at the compact reference scale', function () {
+it('keeps the Theme 04 hero and journey desk responsive', function () {
     expect($this->theme04)
-        ->toContain('min-height: 520px')
-        ->toContain('width: min(390px, 37%)')
+        ->toContain('--t4-hero-height: clamp(620px, min(72svh, 42vw), 900px)')
+        ->toContain('--t4-hero-height: clamp(520px, 68svh, 680px)')
+        ->toContain('--t4-hero-height: clamp(520px, 75svh, 680px)')
+        ->toContain('--t4-hero-overlap: calc(var(--t4-hero-height) / 6)')
+        ->toContain('margin-top: calc(var(--t4-hero-overlap) * -1)')
+        ->toContain('width: min(500px, 42%)')
         ->toContain('grid-template-columns: 90px minmax(0, 1fr)')
         ->toContain('min-height: 54px')
         ->toContain('min-height: 40px !important')

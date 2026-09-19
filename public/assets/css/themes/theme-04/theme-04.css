@@ -378,7 +378,7 @@ body.theme-theme-04 .t4-header__cart .cart-badge {
 
 /* Integrated hero and booking panel */
 body.theme-theme-04 {
-    --t4-hero-height: clamp(580px, 70vh, 760px);
+    --t4-hero-height: clamp(620px, min(72svh, 42vw), 900px);
 }
 
 body.theme-theme-04 .t4-hero {
@@ -547,6 +547,8 @@ body.theme-theme-04 .t4-booking-panel {
 body.theme-theme-04.theme-page-home .t4-booking-panel+:where(
     .t4-partners,
     .t4-fleet,
+    .home-cms-section,
+    .home-vehicle-section,
     .t4-services,
     .t4-destinations,
     .t4-activities,
@@ -2067,17 +2069,22 @@ body.theme-theme-04 .t4-error-page__card p {
 }
 
 @media (max-width: 991px) {
+    body.theme-theme-04 {
+        --t4-hero-height: clamp(520px, 68svh, 680px);
+        --t4-hero-overlap: calc(var(--t4-hero-height) / 6);
+    }
+
     body.theme-theme-04 .t4-hero {
-        min-height: 560px;
+        min-height: var(--t4-hero-height);
     }
 
     body.theme-theme-04 .t4-hero__frame {
-        min-height: 560px;
+        min-height: var(--t4-hero-height);
     }
 
     body.theme-theme-04 .t4-hero__copy {
-        width: 52%;
-        margin-left: 48%;
+        width: min(560px, 72%);
+        margin-left: auto;
     }
 
     body.theme-theme-04 .t4-booking-panel {
@@ -2085,6 +2092,16 @@ body.theme-theme-04 .t4-error-page__card p {
         margin-top: 0;
         padding-block: 30px 58px;
         background: var(--t4-surface-soft);
+    }
+
+    body.theme-theme-04.theme-page-home .t4-booking-panel {
+        margin-top: calc(var(--t4-hero-overlap) * -1);
+        padding-top: 0;
+        background: transparent;
+    }
+
+    body.theme-theme-04 .t4-hero__frame {
+        padding-bottom: calc(var(--t4-hero-overlap) + 40px);
     }
 
     body.theme-theme-04 .t4-booking-panel__card {
@@ -2153,10 +2170,12 @@ body.theme-theme-04 .t4-error-page__card p {
 @media (max-width: 767px) {
     body.theme-theme-04 {
         --t4-section: 64px;
+        --t4-hero-height: clamp(520px, 75svh, 680px);
     }
 
     body.theme-theme-04 .t4-hero {
         min-height: 520px;
+        min-height: var(--t4-hero-height);
     }
 
     body.theme-theme-04 .t4-hero::after {
@@ -2164,9 +2183,9 @@ body.theme-theme-04 .t4-error-page__card p {
     }
 
     body.theme-theme-04 .t4-hero__frame {
-        min-height: 520px;
+        min-height: var(--t4-hero-height);
         align-items: end;
-        padding-bottom: 70px;
+        padding-bottom: calc(var(--t4-hero-overlap) + 70px);
     }
 
     body.theme-theme-04 .t4-hero__copy {
@@ -2176,7 +2195,7 @@ body.theme-theme-04 .t4-error-page__card p {
     }
 
     body.theme-theme-04 .t4-hero__copy :where(h1, h2) {
-        font-size: clamp(2.8rem, 14vw, 4.5rem);
+        font-size: clamp(2rem, 9vw, 3.2rem);
     }
 
     body.theme-theme-04 .t4-booking-panel__card {
@@ -2344,7 +2363,15 @@ body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet::
 body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
     border-bottom: 2px solid var(--t4-accent);
 }
+@media (max-width: 991px) {
+    body.theme-theme-04 .t4-hero .shared-hero-pagination { bottom: calc(var(--t4-hero-overlap) + 22px); }
+    body.theme-theme-04 .t4-hero__location { bottom: calc(var(--t4-hero-overlap) + 24px); }
+}
 @media (max-width: 767px) {
-    body.theme-theme-04 .t4-hero .shared-hero-pagination { left: 20px; bottom: 10px; }
-    body.theme-theme-04 .t4-hero__location { right: 20px; bottom: 16px; max-width: 45%; }
+    body.theme-theme-04 .t4-hero .shared-hero-pagination { left: 20px; bottom: calc(var(--t4-hero-overlap) + 10px); }
+    body.theme-theme-04 .t4-hero__location { right: 20px; bottom: calc(var(--t4-hero-overlap) + 16px); max-width: 45%; }
+}
+@media (max-width: 991px) and (max-height: 500px) {
+    body.theme-theme-04 { --t4-hero-height: 460px; }
+    body.theme-theme-04 .t4-hero__copy :where(h1, h2) { font-size: clamp(2rem, 5vw, 2.7rem); }
 }

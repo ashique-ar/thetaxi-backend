@@ -27,6 +27,8 @@ class WebsiteSettingController extends Controller
             'show',
             'getByKey',
             'homepage',
+            'homepageServiceTypes',
+            'homepageCmsOptions',
             'getCategory',
             'getAllCategorized',
             'general',
@@ -228,6 +230,36 @@ class WebsiteSettingController extends Controller
         ]);
     }
 
+    public function homepageServiceTypes(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => \App\Models\Service\ServiceType::publicContext()->active()
+                ->where(fn ($query) => $query->where('is_internal', false)->orWhereNull('is_internal'))
+                ->with(['packages' => fn ($query) => $query->where('is_active', true)->select('id', 'service_type_id', 'name')])
+                ->orderBy('priority')->orderBy('name')
+                ->get(['id', 'code', 'name']),
+        ]);
+    }
+
+    public function homepageCmsOptions(): JsonResponse
+    {
+        $types = \App\Models\Website\CmsContentType::query()
+            ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
+            ->orderBy('display_order')->orderBy('title')
+            ->get(['id', 'title', 'slug']);
+        $items = \App\Models\Website\CmsContent::published()
+            ->whereIn('cms_content_type_id', $types->pluck('id'))
+            ->orderBy('title')
+            ->get(['id', 'cms_content_type_id', 'title']);
+
+        return response()->json(['status' => 'success', 'data' => [
+            'types' => $types,
+            'items' => $items,
+        ]]);
+    }
+
     /**
      * Get settings by category
      */
@@ -264,6 +296,83 @@ class WebsiteSettingController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        if ($category === 'homepage' && array_key_exists('homepage_vehicle_sections', $request->settings)) {
+            $sections = $request->input('settings.homepage_vehicle_sections');
+            $sectionValidator = Validator::make(['sections' => $sections], [
+                'sections' => 'present|array',
+                'sections.*' => 'required|array',
+                'sections.*.enabled' => 'required|boolean',
+                'sections.*.service_type' => 'required|string|max:100',
+                'sections.*.title' => 'required|string|max:120',
+                'sections.*.eyebrow' => 'nullable|string|max:80',
+                'sections.*.description' => 'nullable|string|max:500',
+                'sections.*.duration_days' => 'required|integer|min:1|max:60',
+                'sections.*.package_id' => 'nullable|uuid',
+                'sections.*.package_hours' => 'nullable|integer|min:0|max:720',
+                'sections.*.estimated_distance_km' => 'nullable|integer|min:0|max:5000',
+                'sections.*.limit' => 'required|integer|min:1|max:24',
+            ]);
+            if ($sectionValidator->fails()) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid vehicle sections', 'errors' => $sectionValidator->errors()], 422);
+            }
+            $allowed = \App\Models\Service\ServiceType::publicContext()->active()
+                ->where(fn ($query) => $query->where('is_internal', false)->orWhereNull('is_internal'))
+                ->whereIn('code', array_column($sections, 'service_type'))->pluck('code')->all();
+            if (count(array_diff(array_column($sections, 'service_type'), $allowed))) {
+                return response()->json(['status' => 'error', 'message' => 'Select an active public service type for every vehicle section.'], 422);
+            }
+            foreach ($sections as $section) {
+                if (!empty($section['package_id']) && !\App\Models\Service\ServiceType::publicContext()
+                    ->where('code', $section['service_type'])
+                    ->whereHas('packages', fn ($query) => $query->where('id', $section['package_id'])->where('is_active', true))
+                    ->exists()) {
+                    return response()->json(['status' => 'error', 'message' => 'Select a package belonging to the chosen service type.'], 422);
+                }
+            }
+        }
+
+        if ($category === 'homepage' && array_key_exists('homepage_cms_sections', $request->settings)) {
+            $sections = $request->input('settings.homepage_cms_sections');
+            $sectionValidator = Validator::make(['sections' => $sections], [
+                'sections' => 'present|array',
+                'sections.*' => 'required|array',
+                'sections.*.enabled' => 'required|boolean',
+                'sections.*.content_type_id' => 'nullable|uuid',
+                'sections.*.title' => 'nullable|string|max:120',
+                'sections.*.eyebrow' => 'nullable|string|max:80',
+                'sections.*.description' => 'nullable|string|max:500',
+                'sections.*.mode' => 'required|in:manual,featured,latest',
+                'sections.*.content_ids' => 'present|array',
+                'sections.*.content_ids.*' => 'uuid',
+                'sections.*.limit' => 'required|integer|min:1|max:24',
+                'sections.*.link_text' => 'nullable|string|max:80',
+            ]);
+            if ($sectionValidator->fails()) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid CMS sections', 'errors' => $sectionValidator->errors()], 422);
+            }
+            $enabledSections = array_values(array_filter($sections, fn ($section) => $section['enabled']));
+            foreach ($enabledSections as $section) {
+                if (empty($section['content_type_id']) || empty(trim((string) ($section['title'] ?? '')))) {
+                    return response()->json(['status' => 'error', 'message' => 'Visible CMS sections need a content type and title.'], 422);
+                }
+            }
+            $validTypes = \App\Models\Website\CmsContentType::query()
+                ->where('is_active', true)
+                ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
+                ->whereIn('id', array_column($enabledSections, 'content_type_id'))->pluck('id')->all();
+            if (count(array_diff(array_column($enabledSections, 'content_type_id'), $validTypes))) {
+                return response()->json(['status' => 'error', 'message' => 'Select an active CMS content type for every section.'], 422);
+            }
+            foreach ($sections as $section) {
+                $ids = array_values(array_unique($section['content_ids']));
+                if ($section['enabled'] && $section['mode'] === 'manual' && (!$ids || \App\Models\Website\CmsContent::published()
+                    ->where('cms_content_type_id', $section['content_type_id'])
+                    ->whereIn('id', $ids)->count() !== count($ids))) {
+                    return response()->json(['status' => 'error', 'message' => 'Choose published items from the selected content type.'], 422);
+                }
+            }
         }
 
         try {

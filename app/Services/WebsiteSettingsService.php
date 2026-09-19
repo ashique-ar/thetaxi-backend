@@ -210,6 +210,8 @@ class WebsiteSettingsService
             'banner_image',
             'hero_slides',
             'hero_booking_note',
+            'homepage_vehicle_sections',
+            'homepage_cms_sections',
             'theme_02_slider_images',
             'banner_background',
             'homepage_breadcrumb_image',

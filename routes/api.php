@@ -531,6 +531,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('website-settings/category/{category}', [BusinessSettingController::class, 'updateCategory']);
         Route::post('website-settings/update-multiple', [WebsiteSettingController::class, 'updateMultiple']);
         Route::get('website-settings/homepage/settings', [WebsiteSettingController::class, 'homepage']);
+        Route::get('website-settings/homepage/service-types', [WebsiteSettingController::class, 'homepageServiceTypes']);
+        Route::get('website-settings/homepage/cms-options', [WebsiteSettingController::class, 'homepageCmsOptions']);
         // Trigger server-side cache clear (optimize:clear) - admin only
         Route::post('website-settings/optimize-clear', [WebsiteSettingController::class, 'optimizeClear']);
 

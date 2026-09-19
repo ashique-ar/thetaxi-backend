@@ -1,6 +1,6 @@
 @php($embedded = $embedded ?? false)
 
-<section class="t4-booking-panel home-booking-form-section {{ $embedded ? 't4-booking-panel--embedded' : '' }}" aria-label="Book or enquire about a journey" data-t4-journey-desk>
+<section class="t4-booking-panel home-booking-form-section {{ $embedded ? 't4-booking-panel--embedded' : '' }}" @if (!$embedded) id="home-booking" @endif aria-label="Book or enquire about a journey" data-t4-journey-desk>
     <div class="container">
         <div class="t4-booking-panel__card">
             <header>
