@@ -175,7 +175,7 @@
         .enhanced-blog-card .card-image {
             position: relative;
             overflow: hidden;
-            height: 250px;
+            height: 210px;
         }
 
         .enhanced-blog-card .card-image img {
@@ -231,7 +231,7 @@
         }
 
         .enhanced-blog-card .card-content {
-            padding: 25px;
+            padding: 18px;
             display: flex;
             flex-direction: column;
             flex: 1;
@@ -241,16 +241,16 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 15px;
+            margin-bottom: 10px;
             font-size: 13px;
             color: #888;
         }
 
         .enhanced-blog-card .card-title {
-            font-size: 1.4rem;
+            font-size: 1.25rem;
             font-weight: 700;
             color: #333;
-            margin-bottom: 12px;
+            margin-bottom: 8px;
             line-height: 1.3;
             display: -webkit-box;
             -webkit-line-clamp: 2;
@@ -271,7 +271,7 @@
         .enhanced-blog-card .card-excerpt {
             color: #666;
             line-height: 1.6;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
             display: -webkit-box;
             -webkit-line-clamp: 3;
             -webkit-box-orient: vertical;
@@ -282,7 +282,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-top: 15px;
+            padding-top: 10px;
             border-top: 1px solid #f0f0f0;
             margin-top: auto;
         }

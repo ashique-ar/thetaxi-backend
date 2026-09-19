@@ -24,12 +24,17 @@
                                 @if ($slide['caption'] !== '')
                                     <small>{{ $slide['caption'] }}</small>
                                 @endif
+                                <a class="t4-hero__action" href="{{ route('cms.index', ['contentType' => 'services']) }}">Discover Our Services <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
                             </div>
                         </div>
                     </div>
                 @endforeach
             </div>
-            @if (count($heroSlides) > 1)<div class="shared-hero-pagination" aria-label="Banner slides"></div>@endif
+            @if (count($heroSlides) > 1)
+                <button class="t4-hero__prev" type="button" aria-label="Previous banner"><i class="bi bi-chevron-left" aria-hidden="true"></i></button>
+                <button class="t4-hero__next" type="button" aria-label="Next banner"><i class="bi bi-chevron-right" aria-hidden="true"></i></button>
+                <div class="shared-hero-pagination" aria-label="Banner slides"></div>
+            @endif
         </div>
     </div>
 </section>

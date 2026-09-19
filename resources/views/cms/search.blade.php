@@ -112,7 +112,7 @@
                                 @foreach ($contents as $index => $content)
                                     <div class="col-lg-4 col-md-6 wow animate fadeInDown"
                                         data-wow-delay="{{ 200 + $index * 200 }}ms" data-wow-duration="1500ms">
-                                        <div class="blog-card2 two">
+                                        <div class="blog-card2 two cms-listing-card">
                                             <div class="blog-img-wrap">
                                                 <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}"
                                                     class="blog-img">
@@ -273,7 +273,7 @@
                 @forelse($contents as $content)
                     <div class="col-lg-4 col-md-6 wow animate fadeInDown"
                         data-wow-delay="{{ ($loop->index % 3) * 200 + 200 }}ms" data-wow-duration="1500ms">
-                        <div class="blog-card2 two">
+                        <div class="blog-card2 two cms-listing-card">
                             <div class="blog-img-wrap">
                                 <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}"
                                     class="blog-img">

@@ -330,10 +330,10 @@ body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-pag
     box-shadow: none !important;
 }
 
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { min-height: 250px; overflow: hidden; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { min-height: 210px; overflow: hidden; }
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) img { width: 100%; height: 100%; object-fit: cover; }
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-content, .blog-content) { padding: 24px !important; }
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 1.55rem; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-content, .blog-content) { padding: 18px !important; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4 a) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 1.25rem; line-height: 1.3; }
 
 /* CMS detail: magazine body + ruled booking/sidebar ledger. */
 body.theme-theme-04.theme-page-cms-show .cms-article-page { margin: 0 !important; padding: var(--t4-section) 0; }
