@@ -34,6 +34,42 @@ it('keeps theme 04 text attached to each managed slide', function () {
         ->not->toContain('t4-hero-title');
 });
 
+it('carries theme 04 hero details from the slide editor to the public view', function () {
+    $slide = get_hero_slides(['hero_slides' => [[
+        'desktop' => 'hero.jpg',
+        'eyebrow' => 'Explore Sri Lanka',
+        'cta_text' => 'See our fleet',
+        'cta_url' => '/vehicles',
+        'location_label' => 'Sigiriya, Sri Lanka',
+    ]] ])[0];
+
+    expect($slide)->toMatchArray([
+        'eyebrow' => 'Explore Sri Lanka',
+        'ctaText' => 'See our fleet',
+        'ctaUrl' => '/vehicles',
+        'locationLabel' => 'Sigiriya, Sri Lanka',
+    ]);
+    expect(get_hero_slides(['hero_slides' => [[
+        'desktop' => 'hero.jpg', 'cta_url' => 'javascript:alert(1)',
+    ]] ])[0]['ctaUrl'])->toBe('/services');
+
+    $root = dirname(__DIR__, 2);
+    $view = file_get_contents($root . '/resources/views/partials/themes/theme-04/hero.blade.php');
+    $editor = file_get_contents(dirname($root) . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.html');
+    $editorForm = file_get_contents(dirname($root) . '/portal-thetaxi/src/app/modules/admin/system/settings/website-settings-enhanced.component.ts');
+    foreach (['eyebrow', 'ctaText', 'ctaUrl', 'locationLabel'] as $field) {
+        expect($view)->toContain("\$slide['{$field}']");
+    }
+    foreach (['eyebrow', 'cta_text', 'cta_url', 'location_label'] as $field) {
+        expect($editor)->toContain('formControlName="' . $field . '"');
+        expect($editorForm)->toContain($field . ': [');
+    }
+    expect($editor)->toContain('formControlName="hero_booking_note"')
+        ->and($editorForm)->toContain("hero_booking_note: ['']")
+        ->and(file_get_contents($root . '/app/Services/WebsiteSettingsService.php'))->toContain("'hero_booking_note'")
+        ->and(file_get_contents($root . '/resources/views/partials/themes/theme-04/booking-form.blade.php'))->toContain("\$settings['hero_booking_note']");
+});
+
 it('renders the same shared slider and media partial in all four theme heroes', function () {
     $root = dirname(__DIR__, 2);
     foreach (['partials/hero.blade.php', 'partials/themes/theme-02/hero.blade.php',

@@ -513,6 +513,21 @@ body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next) {
 body.theme-theme-04 .t4-hero__prev { left: 0; }
 body.theme-theme-04 .t4-hero__next { right: 0; }
 body.theme-theme-04 :where(.t4-hero__prev, .t4-hero__next):focus-visible { outline: 3px solid #fff; outline-offset: -3px; }
+body.theme-theme-04 .t4-hero__location {
+    position: absolute;
+    right: 24px;
+    bottom: 24px;
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    max-width: 30%;
+    overflow: hidden;
+    color: #fff;
+    font-size: 0.85rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-shadow: 0 2px 8px rgb(0 0 0 / 60%);
+}
 
 body.theme-theme-04 .t4-booking-panel {
     position: relative;
@@ -545,7 +560,7 @@ body.theme-theme-04.theme-page-home .t4-booking-panel+:where(
 }
 
 body.theme-theme-04 .t4-booking-panel__card {
-    width: min(390px, 37%);
+    width: min(500px, 42%);
     min-height: 0;
     padding: 14px;
     border: 1px solid rgb(227 228 231 / 86%);
@@ -553,6 +568,13 @@ body.theme-theme-04 .t4-booking-panel__card {
     background: rgb(255 255 255 / 96%);
     box-shadow: var(--t4-shadow);
     pointer-events: auto;
+}
+body.theme-theme-04 .t4-booking-panel__note {
+    margin: 12px 4px 2px;
+    color: var(--t4-muted);
+    font-size: 0.8rem;
+    line-height: 1.4;
+    text-align: center;
 }
 
 body.theme-theme-04 .t4-booking-panel__card>header {
@@ -2144,7 +2166,7 @@ body.theme-theme-04 .t4-error-page__card p {
     body.theme-theme-04 .t4-hero__frame {
         min-height: 520px;
         align-items: end;
-        padding-bottom: 24px;
+        padding-bottom: 70px;
     }
 
     body.theme-theme-04 .t4-hero__copy {
@@ -2296,4 +2318,33 @@ body.theme-theme-04 .shared-hero-pagination .swiper-pagination-bullet-active {
     border-radius: 999px;
     background: var(--t4-accent);
     opacity: 1;
+}
+
+body.theme-theme-04 .t4-hero .shared-hero-pagination {
+    right: auto;
+    left: 68%;
+    bottom: 22px;
+    counter-reset: t4-slide;
+}
+body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet,
+body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
+    width: 28px;
+    height: 26px;
+    border-radius: 0;
+    background: transparent;
+    color: #fff;
+    font-size: 0.75rem;
+    line-height: 24px;
+    text-align: center;
+}
+body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet::after {
+    counter-increment: t4-slide;
+    content: counter(t4-slide, decimal-leading-zero);
+}
+body.theme-theme-04 .t4-hero .shared-hero-pagination .swiper-pagination-bullet-active {
+    border-bottom: 2px solid var(--t4-accent);
+}
+@media (max-width: 767px) {
+    body.theme-theme-04 .t4-hero .shared-hero-pagination { left: 20px; bottom: 10px; }
+    body.theme-theme-04 .t4-hero__location { right: 20px; bottom: 16px; max-width: 45%; }
 }

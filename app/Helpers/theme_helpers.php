@@ -151,7 +151,7 @@ if (!function_exists('get_hero_slides')) {
      * Generic slides take precedence; the Theme 02 array and single banner
      * fields remain backward-compatible fallbacks.
      *
-     * @return array<int, array{type:string,desktop:?string,mobile:?string,video:?string,poster:?string,heading:string,subheading:string,caption:string,alt:string}>
+     * @return array<int, array{type:string,desktop:?string,mobile:?string,video:?string,poster:?string,heading:string,subheading:string,caption:string,alt:string,eyebrow?:string,locationLabel?:string,ctaText?:string,ctaUrl?:string}>
      */
     function get_hero_slides(array $settings): array
     {
@@ -174,12 +174,19 @@ if (!function_exists('get_hero_slides')) {
                 $subheading = trim((string) ($slide['subheading'] ?? '')) ?: trim((string) ($settings['banner_subheading'] ?? ''));
                 $caption = trim((string) ($slide['caption'] ?? '')) ?: trim((string) ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? ''));
                 $alt = trim((string) ($slide['alt'] ?? ($heading ?: 'Homepage banner slide ' . ($index + 1))));
+                $eyebrow = trim((string) ($slide['eyebrow'] ?? ''));
+                $locationLabel = trim((string) ($slide['location_label'] ?? ''));
+                $ctaText = array_key_exists('cta_text', $slide) ? trim((string) $slide['cta_text']) : 'Discover Our Services';
+                $ctaUrl = trim((string) ($slide['cta_url'] ?? '/services'));
+                if (!preg_match('~^/(?!/)[a-zA-Z0-9/_#?=&%.\-]*$~', $ctaUrl)) {
+                    $ctaUrl = '/services';
+                }
 
                 if (($type === 'video' && empty($video)) || ($type === 'image' && empty($desktop))) {
                     continue;
                 }
 
-                $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster', 'heading', 'subheading', 'caption', 'alt');
+                $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster', 'heading', 'subheading', 'caption', 'alt', 'eyebrow', 'locationLabel', 'ctaText', 'ctaUrl');
             }
         }
 

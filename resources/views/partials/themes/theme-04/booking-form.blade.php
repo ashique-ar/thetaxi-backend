@@ -8,6 +8,9 @@
                 {{-- <strong>Book Your Ride</strong> --}}
             </header>
             @include('components.booking-form', ['search' => $search ?? null])
+            @if (!$embedded && !empty($settings['hero_booking_note']))
+                <p class="t4-booking-panel__note">{{ $settings['hero_booking_note'] }}</p>
+            @endif
         </div>
     </div>
 </section>

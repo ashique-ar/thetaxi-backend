@@ -209,6 +209,7 @@ class WebsiteSettingsService
             'banner_video',
             'banner_image',
             'hero_slides',
+            'hero_booking_note',
             'theme_02_slider_images',
             'banner_background',
             'homepage_breadcrumb_image',

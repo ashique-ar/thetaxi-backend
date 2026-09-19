@@ -12,7 +12,7 @@
                         @include('partials.hero-media', compact('slide', 'index'))
                         <div class="container t4-hero__frame">
                             <div class="t4-hero__copy">
-                                <span class="t4-kicker">{{ $theme04HeroBrand }}</span>
+                                <span class="t4-kicker">{{ !empty($slide['eyebrow']) ? $slide['eyebrow'] : $theme04HeroBrand }}</span>
                                 @if ($index === 0)
                                     <h1>{{ $slide['heading'] ?: 'All-in-one Travel Booking.' }}</h1>
                                 @else
@@ -24,8 +24,13 @@
                                 @if ($slide['caption'] !== '')
                                     <small>{{ $slide['caption'] }}</small>
                                 @endif
-                                <a class="t4-hero__action" href="{{ route('cms.index', ['contentType' => 'services']) }}">Discover Our Services <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                                @if (($slide['ctaText'] ?? 'Discover Our Services') !== '')
+                                    <a class="t4-hero__action" href="{{ $slide['ctaUrl'] ?? '/services' }}">{{ $slide['ctaText'] ?? 'Discover Our Services' }} <i class="bi bi-arrow-right" aria-hidden="true"></i></a>
+                                @endif
                             </div>
+                            @if (!empty($slide['locationLabel']))
+                                <span class="t4-hero__location"><i class="bi bi-geo-alt" aria-hidden="true"></i>{{ $slide['locationLabel'] }}</span>
+                            @endif
                         </div>
                     </div>
                 @endforeach
