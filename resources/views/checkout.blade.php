@@ -2723,6 +2723,13 @@
                     return false;
                 }
 
+                if (!window.intlTelInputUtils) {
+                    phoneErrorDiv.textContent = 'Phone validation is loading. Please try again.';
+                    phoneErrorDiv.style.display = 'block';
+                    phoneValidDiv.style.display = 'none';
+                    return false;
+                }
+
                 // Check if number is valid
                 if (iti.isValidNumber()) {
                     const countryData = iti.getSelectedCountryData();
@@ -2779,6 +2786,14 @@
                 validatePhoneNumber();
             });
 
+            document.querySelector('#checkout-form').addEventListener('submit', function(e) {
+                if (!validatePhoneNumber()) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    phoneInput.focus();
+                }
+            }, true);
+
             // Set default country from select
             const defaultCountry = $(phoneCountrySelect).val();
             if (defaultCountry && countryCodeMap[defaultCountry]) {
@@ -2787,11 +2802,9 @@
             }
 
             // Restore phone value if it exists (for form re-submission)
-            if (phoneInput.value) {
-                setTimeout(() => {
-                    validatePhoneNumber();
-                }, 200);
-            }
+            iti.promise.then(() => {
+                if (phoneInput.value) validatePhoneNumber();
+            });
         });
     </script>
 

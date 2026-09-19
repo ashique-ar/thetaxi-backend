@@ -3309,7 +3309,7 @@
             const candidates = [];
             names.forEach((name) => {
                 form.querySelectorAll('[name="' + name + '"]').forEach((element) => {
-                    if (element.disabled || typeof element.value === 'undefined' || String(element.value || '').trim() === '') return;
+                    if (element.disabled || (element.type === 'radio' && !element.checked) || typeof element.value === 'undefined' || String(element.value || '').trim() === '') return;
                     candidates.push(element);
                 });
             });
