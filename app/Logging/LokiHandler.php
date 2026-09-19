@@ -11,7 +11,6 @@ use Throwable;
 class LokiHandler extends AbstractProcessingHandler
 {
     private readonly Client $client;
-    private ?string $password = null;
 
     public function __construct(private readonly array $config)
     {
@@ -23,11 +22,10 @@ class LokiHandler extends AbstractProcessingHandler
     protected function write(LogRecord $record): void
     {
         try {
-            $this->password ??= trim((string) file_get_contents($this->config['password_file']));
-            if ($this->password === '') return;
+            if (empty($this->config['password'])) return;
 
             $this->client->post($this->config['url'], [
-                'auth' => [$this->config['username'], $this->password],
+                'auth' => [$this->config['username'], $this->config['password']],
                 'connect_timeout' => $this->config['timeout'],
                 'timeout' => $this->config['timeout'],
                 'http_errors' => false,

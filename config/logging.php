@@ -91,7 +91,7 @@ return [
             'level' => env('OBSERVABILITY_LOG_LEVEL', 'debug'),
             'url' => env('LOKI_URL'),
             'username' => env('LOKI_USERNAME'),
-            'password_file' => env('LOKI_PASSWORD_FILE', '/etc/alloy/loki_password'),
+            'password' => env('LOKI_PASSWORD'),
             'timeout' => (float) env('LOKI_TIMEOUT_SECONDS', 1),
             'labels' => [
                 'project' => env('PROJECT_SLUG'),
@@ -109,7 +109,7 @@ return [
             'level' => env('OBSERVABILITY_LOG_LEVEL', 'info'),
             'url' => env('LOKI_URL'),
             'username' => env('LOKI_USERNAME'),
-            'password_file' => env('LOKI_PASSWORD_FILE', '/etc/alloy/loki_password'),
+            'password' => env('LOKI_PASSWORD'),
             'timeout' => (float) env('LOKI_TIMEOUT_SECONDS', 1),
             'labels' => [
                 'project' => env('PROJECT_SLUG'),

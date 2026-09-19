@@ -2512,6 +2512,7 @@ class BookingFlowService
             $booking->confirmed_at = now();
             $booking->requires_approval = false;
             $booking->approval_status = 'not_required';
+            $booking->notification_sms = filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL);
             // Internal confirmation is email-silent by default. Opting in enables the
             // booking's customer email lifecycle, including this confirmation email.
             $booking->skip_all_emails = !filter_var(

@@ -173,6 +173,29 @@ it('honours the internal confirmation choice without suppressing configured admi
         ->and($payload['message'])->toBe('ADMIN BK-CHOICE');
 });
 
+it('keeps customer confirmation SMS off after an unticked booking is confirmed through another path', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => true,
+        'admin_booking_summary_enabled' => false,
+        'booking_confirmation_template' => 'Confirmed {booking_number}',
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $user = new User();
+    $user->setRawAttributes(['phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-unticked', 'booking_number' => 'BK-UNTICKED', 'notification_sms' => false]);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking);
+});
+
 it('renders booking schedule times from the dedicated time columns', function (): void {
     $settings = Mockery::mock(SmsSettingsService::class);
     $sms = Mockery::mock(SmsService::class);

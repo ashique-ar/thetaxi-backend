@@ -19,7 +19,10 @@ it('redacts credentials in frontend observability events', function () {
 it('routes backend and browser logs directly to Loki', function () {
     expect(config('logging.channels.loki_backend.driver'))->toBe('custom')
         ->and(config('logging.channels.loki_backend.labels.component'))->toBe('backend')
-        ->and(config('logging.channels.loki_frontend.labels.component'))->toBe('frontend');
+        ->and(config('logging.channels.loki_frontend.labels.component'))->toBe('frontend')
+        ->and(config('logging.channels.loki_backend'))->toHaveKey('password')
+        ->and(config('logging.channels.loki_frontend'))->toHaveKey('password')
+        ->and(config('logging.channels.loki_backend'))->not->toHaveKey('password_file');
 
     $logger = (new CreateLokiLogger)(config('logging.channels.loki_backend'));
     expect($logger->getTimezone()->getName())->toBe(config('app.timezone'));
