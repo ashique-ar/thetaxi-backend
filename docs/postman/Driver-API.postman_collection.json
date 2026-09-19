@@ -325,6 +325,110 @@
                     ]
                 },
                 {
+                    "name": "List Vehicle Makes",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/makes",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "makes"
+                            ]
+                        },
+                        "description": "Public vehicle make options. Display name and save id as make_id."
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"make-uuid\",\n            \"name\": \"Toyota\"\n        }\n    ]\n}"
+                        }
+                    ]
+                },
+                {
+                    "name": "List Models by Make",
+                    "request": {
+                        "auth": {
+                            "type": "noauth"
+                        },
+                        "method": "GET",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json",
+                                "type": "text"
+                            },
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/makes/{{make_id}}/models",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "makes",
+                                "{{make_id}}",
+                                "models"
+                            ]
+                        },
+                        "description": "Public models for the selected make. Display name and save id as model_id."
+                    },
+                    "response": [
+                        {
+                            "name": "OK",
+                            "originalRequest": {},
+                            "status": "OK",
+                            "code": 200,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": [\n        {\n            \"id\": \"model-uuid\",\n            \"make_id\": \"make-uuid\",\n            \"name\": \"Axio\"\n        }\n    ]\n}"
+                        }
+                    ]
+                },
+                {
                     "name": "Get Onboarding Progress",
                     "request": {
                         "auth": {
@@ -450,6 +554,88 @@
                     ]
                 },
                 {
+                    "name": "Upload Onboarding Document",
+                    "request": {
+                        "auth": {
+                            "type": "bearer",
+                            "bearer": [
+                                {
+                                    "key": "token",
+                                    "value": "{{access_token}}",
+                                    "type": "string"
+                                }
+                            ]
+                        },
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Accept",
+                                "value": "application/json"
+                            }
+                        ],
+                        "body": {
+                            "mode": "formdata",
+                            "formdata": [
+                                {
+                                    "key": "document_type",
+                                    "value": "driver_license_front",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "document_number",
+                                    "value": "B1234567",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "expiry_date",
+                                    "value": "2030-12-31",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "reminder_days",
+                                    "value": "30",
+                                    "type": "text"
+                                },
+                                {
+                                    "key": "file",
+                                    "type": "file",
+                                    "src": []
+                                }
+                            ]
+                        },
+                        "url": {
+                            "raw": "{{base_url}}/api/driver/onboarding/documents",
+                            "host": [
+                                "{{base_url}}"
+                            ],
+                            "path": [
+                                "api",
+                                "driver",
+                                "onboarding",
+                                "documents"
+                            ]
+                        },
+                        "description": "Allowed types: driver_photo, driver_license_front/back, nic_front/back, vehicle_insurance, vehicle_revenue_license, vehicle_registration. JPG, PNG or PDF; maximum 10 MB."
+                    },
+                    "response": [
+                        {
+                            "name": "Created",
+                            "originalRequest": {},
+                            "status": "Created",
+                            "code": 201,
+                            "_postman_previewlanguage": "json",
+                            "header": [
+                                {
+                                    "key": "Content-Type",
+                                    "value": "application/json"
+                                }
+                            ],
+                            "cookie": [],
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"document-uuid\",\n        \"document_type\": \"driver_license_front\",\n        \"document_number\": \"B1234567\",\n        \"expiry_date\": \"2030-12-31\",\n        \"reminder_days\": 30,\n        \"status\": \"pending\"\n    }\n}"
+                        }
+                    ]
+                },
+                {
                     "name": "Save Address Step",
                     "request": {
                         "auth": {
@@ -556,7 +742,7 @@
                                 "4"
                             ]
                         },
-                        "description": "Save vehicle and ownership details. Make/model classify the vehicle group; approval assigns the latest configured grade and stores only vehicle_group_id on the vehicle.",
+                        "description": "Send make_id from List Vehicle Makes and model_id from List Models by Make. The model must belong to the selected make. Approval classifies the vehicle group.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"make_id\": \"make-uuid\",\n    \"model_id\": \"model-uuid\",\n    \"model_year\": 2024,\n    \"color\": \"White\",\n    \"registration_year\": 2024,\n    \"license_plate\": \"CAB-1234\",\n    \"is_owner\": true\n}",
@@ -581,89 +767,7 @@
                                 }
                             ],
                             "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 5\n    }\n}"
-                        }
-                    ]
-                },
-                {
-                    "name": "Upload Onboarding Document",
-                    "request": {
-                        "auth": {
-                            "type": "bearer",
-                            "bearer": [
-                                {
-                                    "key": "token",
-                                    "value": "{{access_token}}",
-                                    "type": "string"
-                                }
-                            ]
-                        },
-                        "method": "POST",
-                        "header": [
-                            {
-                                "key": "Accept",
-                                "value": "application/json"
-                            }
-                        ],
-                        "body": {
-                            "mode": "formdata",
-                            "formdata": [
-                                {
-                                    "key": "document_type",
-                                    "value": "driver_license_front",
-                                    "type": "text"
-                                },
-                                {
-                                    "key": "document_number",
-                                    "value": "B1234567",
-                                    "type": "text"
-                                },
-                                {
-                                    "key": "expiry_date",
-                                    "value": "2030-12-31",
-                                    "type": "text"
-                                },
-                                {
-                                    "key": "reminder_days",
-                                    "value": "30",
-                                    "type": "text"
-                                },
-                                {
-                                    "key": "file",
-                                    "type": "file",
-                                    "src": []
-                                }
-                            ]
-                        },
-                        "url": {
-                            "raw": "{{base_url}}/api/driver/onboarding/documents",
-                            "host": [
-                                "{{base_url}}"
-                            ],
-                            "path": [
-                                "api",
-                                "driver",
-                                "onboarding",
-                                "documents"
-                            ]
-                        },
-                        "description": "Allowed types: driver_photo, driver_license_front/back, nic_front/back, vehicle_insurance, vehicle_revenue_license, vehicle_registration. JPG, PNG or PDF; maximum 10 MB."
-                    },
-                    "response": [
-                        {
-                            "name": "Created",
-                            "originalRequest": {},
-                            "status": "Created",
-                            "code": 201,
-                            "_postman_previewlanguage": "json",
-                            "header": [
-                                {
-                                    "key": "Content-Type",
-                                    "value": "application/json"
-                                }
-                            ],
-                            "cookie": [],
-                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"document-uuid\",\n        \"document_type\": \"driver_license_front\",\n        \"document_number\": \"B1234567\",\n        \"expiry_date\": \"2030-12-31\",\n        \"reminder_days\": 30,\n        \"status\": \"pending\"\n    }\n}"
+                            "body": "{\n    \"status\": \"success\",\n    \"data\": {\n        \"id\": \"application-uuid\",\n        \"status\": \"draft\",\n        \"current_step\": 5,\n        \"payload\": {\n            \"vehicle\": {\n                \"make_id\": \"make-uuid\",\n                \"model_id\": \"model-uuid\"\n            }\n        }\n    }\n}"
                         }
                     ]
                 },

@@ -105,6 +105,16 @@
                         <div class="col-lg-7">
                             <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
                                 @csrf
+                            @if ($errors->any() || session('error'))
+                                <div class="alert alert-danger" role="alert">
+                                    @if (session('error'))
+                                        <div>{{ session('error') }}</div>
+                                    @endif
+                                    @foreach ($errors->all() as $message)
+                                        <div>{{ $message }}</div>
+                                    @endforeach
+                                </div>
+                            @endif
                             <div class="checkout-form-wrapper">
                                 <div class="checkout-form-title">
                                     <h4>Billing Information</h4>
@@ -1848,6 +1858,7 @@
 
             // Form submission - disable submit button to prevent double submission
             $('#checkout-form').on('submit', function(e) {
+                syncAcceptedTerms();
                 const $termsPanel = $('#termsAcceptancePanel');
                 const $acceptTerms = $('#accept_all_terms');
                 if ($acceptTerms.length && !$acceptTerms.is(':checked')) {

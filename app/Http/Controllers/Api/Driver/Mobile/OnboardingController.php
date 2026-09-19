@@ -29,6 +29,20 @@ class OnboardingController extends Controller
         'vehicle_revenue_license', 'vehicle_registration',
     ];
 
+    public function makes(): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => VehicleMake::query()
+            ->select('id', 'name')->orderBy('name')->get()]);
+    }
+
+    public function models(string $make): JsonResponse
+    {
+        VehicleMake::query()->findOrFail($make);
+
+        return response()->json(['status' => 'success', 'data' => VehicleModel::query()
+            ->where('make_id', $make)->select('id', 'make_id', 'name')->orderBy('name')->get()]);
+    }
+
     public function show(Request $request): JsonResponse
     {
         return response()->json(['status' => 'success', 'data' => $this->applicationData($this->application($request))]);

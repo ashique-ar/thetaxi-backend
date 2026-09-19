@@ -14,8 +14,46 @@ use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
+
+it('lists active vehicle makes and models for driver registration', function (): void {
+    $make = VehicleMake::create(['name' => 'Toyota']);
+    $otherMake = VehicleMake::create(['name' => 'Honda']);
+    $model = VehicleModel::create(['make_id' => $make->id, 'name' => 'Axio']);
+    $otherModel = VehicleModel::create(['make_id' => $otherMake->id, 'name' => 'Fit']);
+    $deletedModel = VehicleModel::create(['make_id' => $make->id, 'name' => 'Old']);
+    $deletedModel->delete();
+
+    $this->getJson('/api/driver/onboarding/makes')->assertOk()
+        ->assertJsonFragment(['id' => $make->id, 'name' => 'Toyota']);
+    $this->getJson("/api/driver/onboarding/makes/{$make->id}/models")->assertOk()
+        ->assertJsonFragment(['id' => $model->id, 'make_id' => $make->id, 'name' => 'Axio'])
+        ->assertJsonMissing(['id' => $otherModel->id])
+        ->assertJsonMissing(['id' => $deletedModel->id]);
+    $this->getJson('/api/driver/onboarding/makes/'.Str::uuid().'/models')->assertNotFound();
+});
+
+it('saves make and model IDs only when the model belongs to the make', function (): void {
+    $make = VehicleMake::create(['name' => 'Toyota']);
+    $otherMake = VehicleMake::create(['name' => 'Honda']);
+    $model = VehicleModel::create(['make_id' => $make->id, 'name' => 'Axio']);
+    $otherModel = VehicleModel::create(['make_id' => $otherMake->id, 'name' => 'Fit']);
+    DriverOnboardingApplication::create([
+        'mobile' => '+94771234567', 'access_token_hash' => hash('sha256', 'onboarding-token'),
+        'mobile_verified_at' => now(), 'status' => 'draft', 'payload' => [],
+    ]);
+    $payload = ['make_id' => $make->id, 'model_id' => $otherModel->id, 'model_year' => 2024,
+        'color' => 'White', 'registration_year' => 2024, 'license_plate' => 'CAB-1234', 'is_owner' => true];
+
+    $this->withToken('onboarding-token')->patchJson('/api/driver/onboarding/steps/4', $payload)
+        ->assertUnprocessable()->assertJsonValidationErrors('model_id');
+    $this->withToken('onboarding-token')->patchJson('/api/driver/onboarding/steps/4',
+        [...$payload, 'model_id' => $model->id])->assertOk()
+        ->assertJsonPath('data.payload.vehicle.make_id', $make->id)
+        ->assertJsonPath('data.payload.vehicle.model_id', $model->id);
+});
 
 it('verifies mobile otp prefills an existing user and protects the draft with an onboarding token', function (): void {
     $user = User::create([

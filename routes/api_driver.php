@@ -40,6 +40,8 @@ Route::prefix('auth')->group(function () {
 Route::prefix('onboarding')->middleware('throttle:20,1')->group(function () {
     Route::get('countries', [UtilityController::class, 'countries']);
     Route::get('countries/{country}/states', [UtilityController::class, 'states'])->whereUuid('country');
+    Route::get('makes', [OnboardingController::class, 'makes']);
+    Route::get('makes/{make}/models', [OnboardingController::class, 'models'])->whereUuid('make');
     Route::get('', [OnboardingController::class, 'show']);
     Route::patch('steps/{step}', [OnboardingController::class, 'updateStep']);
     Route::post('documents', [OnboardingController::class, 'uploadDocument']);

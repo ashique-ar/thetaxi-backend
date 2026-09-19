@@ -59,4 +59,18 @@ class PublicCheckoutStatePreservationContractTest extends TestCase
         $this->assertStringContainsString('name="payment_type"', $checkout);
         $this->assertStringContainsString("old('terms_accepted', [])", $checkout);
     }
+
+    public function test_checkout_displays_validation_failures_and_checks_the_terms_it_shows(): void
+    {
+        $root = dirname(__DIR__, 2);
+        $controller = file_get_contents($root . '/app/Http/Controllers/CheckoutController.php');
+        $checkout = file_get_contents($root . '/resources/views/checkout.blade.php');
+
+        $this->assertSame(2, substr_count($controller, '$this->getCheckoutServiceTerms($cart)'));
+        $this->assertStringContainsString("data_get(\$item, 'service_type_data.id')", $controller);
+        $this->assertStringNotContainsString("'airport_transfers' => 'vehicle_rental'", $controller);
+        $this->assertStringContainsString('$errors->all()', $checkout);
+        $this->assertStringContainsString("session('error')", $checkout);
+        $this->assertStringContainsString("syncAcceptedTerms();\n                const \$termsPanel", str_replace("\r\n", "\n", $checkout));
+    }
 }

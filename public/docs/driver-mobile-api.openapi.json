@@ -13911,11 +13911,13 @@
                                         "properties": {
                                             "make_id": {
                                                 "type": "string",
-                                                "format": "uuid"
+                                                "format": "uuid",
+                                                "description": "ID from GET /api/driver/onboarding/makes."
                                             },
                                             "model_id": {
                                                 "type": "string",
-                                                "format": "uuid"
+                                                "format": "uuid",
+                                                "description": "ID from GET /api/driver/onboarding/makes/{make_id}/models; must belong to make_id."
                                             },
                                             "model_year": {
                                                 "type": "integer",
@@ -14247,6 +14249,174 @@
                                         "name": "Western Province"
                                     }
                                 ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/makes": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List vehicle makes for registration",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Vehicle makes",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success"
+                                            ]
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "id",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": [
+                                        {
+                                            "id": "make-uuid",
+                                            "name": "Toyota"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/makes/{make_id}/models": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List vehicle models for the selected make",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "make_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Vehicle models",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success"
+                                            ]
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "id",
+                                                    "make_id",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "make_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": [
+                                        {
+                                            "id": "model-uuid",
+                                            "make_id": "make-uuid",
+                                            "name": "Axio"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Vehicle make not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Vehicle make not found"
+                                }
                             }
                         }
                     }

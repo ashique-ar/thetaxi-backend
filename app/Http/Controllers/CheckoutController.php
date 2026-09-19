@@ -165,57 +165,8 @@ class CheckoutController extends Controller
         }
 
         // Get dynamic T&C grouped by service type and payment type based on cart items
-        $serviceMap = [
-            'airport_transfers' => 'vehicle_rental',
-            'ride_now' => 'vehicle_rental',
-            'day_rental' => 'vehicle_rental',
-            'point_to_point' => 'vehicle_rental',
-            'corporate_transport' => 'vehicle_rental',
-        ];
-
-        $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
-        $termsByService = [];
+        $termsByService = $this->getCheckoutServiceTerms($cart);
         $termsByPaymentType = [];
-
-        foreach ($serviceCodes as $code) {
-            // First, try to find ServiceType records that match the cart code
-            $serviceTypes = ServiceType::publicContext()->where('code', $code)->get();
-
-            // If this service code maps to a legacy grouping (eg. vehicle_rental), also try to find matching service types
-            $mapped = $serviceMap[$code] ?? null;
-            if ($mapped) {
-                $serviceTypes = $serviceTypes->merge(
-                    ServiceType::publicContext()
-                        ->where(function ($query) use ($mapped) {
-                            $query->where('code', $mapped)->orWhere('type', $mapped);
-                        })
-                        ->get()
-                );
-            }
-
-            // Prefer fetching terms by service_type_id for discovered service types
-            if ($serviceTypes && $serviceTypes->count()) {
-                foreach ($serviceTypes->unique('id') as $st) {
-                    $terms = TermsAndCondition::getServiceTerms($st->id);
-                    if ($terms && $terms->count()) {
-                        $termsByService[$st->code] = $terms;
-                    }
-                }
-            } else {
-                // Fallback to legacy behaviour: use mapped code or the code itself
-                $mappedFallback = $mapped ?? $code;
-                $terms = TermsAndCondition::getServiceTerms($mappedFallback);
-                if ($terms && $terms->count()) {
-                    $termsByService[$mappedFallback] = $terms;
-                }
-            }
-        }
-
-        // Always include general service terms if available
-        $general = TermsAndCondition::getGeneralServiceTerms();
-        if ($general && $general->count()) {
-            $termsByService['general'] = $general;
-        }
 
         $availablePaymentTypes = ['full', 'quotation'];
         if ($paymentSettings['advance_payment_enabled']) {
@@ -261,6 +212,44 @@ class CheckoutController extends Controller
             'offlinePaymentEnabled',
             'countries'
         ));
+    }
+
+    protected function getCheckoutServiceTerms(array $cart): array
+    {
+        $termsByService = [];
+
+        foreach ($cart as $item) {
+            $serviceTypeId = data_get($item, 'service_type_data.id');
+            $code = $item['service_type'] ?? null;
+            if (!$serviceTypeId && !$code) {
+                continue;
+            }
+
+            $serviceType = ServiceType::publicContext()
+                ->when($serviceTypeId, fn ($query) => $query->whereKey($serviceTypeId),
+                    fn ($query) => $query->where('code', $code))
+                ->first();
+            $terms = collect();
+            if ($serviceType) {
+                $terms = $terms->merge(TermsAndCondition::getServiceTerms($serviceType->id));
+                $code = $serviceType->code;
+            }
+            if ($code) {
+                $terms = $terms->merge(TermsAndCondition::getServiceTerms($code));
+            }
+            if ($terms->isNotEmpty()) {
+                $label = $serviceType?->name ?? $code;
+                $termsByService[$label] = collect($termsByService[$label] ?? [])
+                    ->merge($terms)->unique('id')->values();
+            }
+        }
+
+        $general = TermsAndCondition::getGeneralServiceTerms();
+        if ($general->isNotEmpty()) {
+            $termsByService['general'] = $general;
+        }
+
+        return $termsByService;
     }
 
     /**
@@ -411,20 +400,7 @@ class CheckoutController extends Controller
         $bookingCurrency = $cartData['currency'] ?? $this->currencyService->getSelectedCurrency();
 
         // Re-check dynamic Terms & Conditions acceptance based on cart service types
-        $serviceMap = [
-            'airport_transfers' => 'vehicle_rental',
-            'ride_now' => 'vehicle_rental',
-            'day_rental' => 'vehicle_rental',
-            'point_to_point' => 'vehicle_rental',
-            'corporate_transport' => 'vehicle_rental',
-        ];
-        $serviceCodes = collect($cart)->pluck('service_type')->filter()->unique();
-        $requiredTerms = collect();
-        foreach ($serviceCodes as $code) {
-            $mapped = $serviceMap[$code] ?? $code;
-            $requiredTerms = $requiredTerms->merge(TermsAndCondition::getServiceTerms($mapped));
-        }
-        $requiredTerms = $requiredTerms->merge(TermsAndCondition::getGeneralServiceTerms());
+        $requiredTerms = collect($this->getCheckoutServiceTerms($cart))->flatMap(fn ($terms) => $terms);
         $requiredTerms = $requiredTerms->merge(
             TermsAndCondition::getPaymentTermsForCheckout($validated['payment_type'] ?? 'full')
         );

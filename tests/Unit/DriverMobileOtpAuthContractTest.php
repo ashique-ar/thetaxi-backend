@@ -50,3 +50,16 @@ it('exposes and documents country and state lookups for driver onboarding', func
         ->and(data_get($docs, 'paths./api/driver/onboarding/countries.get.responses.200'))->toBeArray()
         ->and(data_get($docs, 'paths./api/driver/onboarding/countries/{country_id}/states.get.parameters.0.name'))->toBe('country_id');
 });
+
+it('documents vehicle lookups and make model IDs for onboarding', function (): void {
+    $docs = json_decode(file_get_contents(dirname(__DIR__, 2).'/public/docs/driver-mobile-api.openapi.json'), true, flags: JSON_THROW_ON_ERROR);
+    $folder = collect(json_decode(file_get_contents(dirname(__DIR__, 2).'/docs/postman/Driver-API.postman_collection.json'), true, flags: JSON_THROW_ON_ERROR)['item'])
+        ->firstWhere('name', 'Driver Onboarding');
+    $names = collect($folder['item'])->pluck('name');
+
+    expect(data_get($docs, 'paths./api/driver/onboarding/makes.get.responses.200'))->toBeArray()
+        ->and(data_get($docs, 'paths./api/driver/onboarding/makes/{make_id}/models.get.parameters.0.name'))->toBe('make_id')
+        ->and(data_get($docs, 'paths./api/driver/onboarding/steps/{step}.patch.requestBody.content.application/json.schema.oneOf.2.required'))
+            ->toContain('make_id', 'model_id')
+        ->and($names)->toContain('List Vehicle Makes', 'List Models by Make', 'Save Vehicle Step');
+});
