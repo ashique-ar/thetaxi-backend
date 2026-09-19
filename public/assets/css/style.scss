@@ -15187,20 +15187,13 @@ header.style-3 {
       font-size: 16px;
       line-height: 24px;
       margin-bottom: 0;
-      margin-top: 20px;
 
       @include xl-device() {
         font-size: 15px;
-        margin-top: 15px;
-      }
-
-      @include lg-device() {
-        margin-top: 15px;
       }
 
       @include sm-down-device() {
         font-size: 15px;
-        margin-top: 15px;
       }
     }
   }
@@ -15256,24 +15249,8 @@ header.style-3 {
     }
 
     .blog-content {
-      padding: 30px 20px 20px;
-
-      @include xxl-down-device() {
-        padding: 30px 12px 20px;
-      }
-
-      @include lg-device() {
-        padding: 30px 5px 20px;
-      }
-
-      @include lg-down-device() {
-        padding: 30px 10px 20px;
-      }
-
-      @include sm-down-device() {
-        padding: 25px 5px 15px;
-      }
-
+      padding: 10px;
+      
       .blog-date {
         color: var(--text-color);
         font-family: var(--font-poppins);
