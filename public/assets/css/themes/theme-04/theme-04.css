@@ -538,6 +538,11 @@ body.theme-theme-04 .t4-booking-panel {
     pointer-events: none;
 }
 
+body.theme-theme-04 .t4-booking-panel__inner {
+    position: relative;
+    height: 100%;
+}
+
 /*
  * The journey desk overlaps the hero. Any conditional homepage section can be
  * its next rendered sibling when the sections before it have no managed data.

@@ -338,7 +338,7 @@ body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-pag
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4 a) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 1.25rem; line-height: 1.3; }
 
 /* CMS detail: magazine body + ruled booking/sidebar ledger. */
-body.theme-theme-04.theme-page-cms-show .cms-article-page { margin: 0 !important; padding: var(--t4-section) 0; }
+body.theme-theme-04.theme-page-cms-show .cms-article-page { margin: 0 !important; padding: 32px 0 var(--t4-section); }
 body.theme-theme-04.theme-page-cms-show .cms-article-main { overflow: hidden; border: 1px solid var(--t4-line); border-top: 4px solid var(--t4-accent); border-radius: 11px; background: #fff; }
 /* body.theme-theme-04.theme-page-cms-show :where(.cms-article-title, .article-meta, .content-body) { padding-inline: clamp(24px, 5vw, 64px); } */
 body.theme-theme-04.theme-page-cms-show .cms-article-title { padding-top: clamp(24px, 4vw, 42px); font-size: clamp(1.65rem, 2.2vw, 2.25rem) !important; line-height: 1.08; }
@@ -356,6 +356,7 @@ body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded {
 }
 body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded > .container { width: 100%; max-width: none; padding: 0; }
 body.theme-theme-04.theme-page-cms-show .t4-booking-panel--embedded .t4-booking-panel__card { width: 100%; }
+body.theme-theme-04.theme-page-cms-show .article-sidebar .t4-booking-panel--embedded .t4-booking-panel__card { width: 100%; max-width: none; }
 
 /* Search + fleet discovery: horizontal trip summary and product catalogue. */
 body.theme-theme-04.theme-page-search .search-booking-section { min-height: 0; margin: 0 !important; padding: 36px 0; border-bottom: 1px solid var(--t4-line); background: #fff; pointer-events: auto; }
