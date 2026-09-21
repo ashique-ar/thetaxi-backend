@@ -17,9 +17,26 @@ use App\Http\Controllers\Website\InquiryServicePageController;
 use App\Http\Controllers\Website\RateChartController;
 use App\Http\Controllers\Website\SitemapController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use App\Services\WebsiteSettingsService;
 
 // Company Website Routes
 Route::get('/', [HomeController::class, 'index'])->name('home');
+Route::post('/newsletter/subscribe', function (Request $request, WebsiteSettingsService $settingsService) {
+    $email = $request->validateWithBag('newsletter', ['email' => 'required|email:rfc|max:255'])['email'];
+    $companyId = $settingsService->resolveCurrentCompanyId();
+    if (!filter_var($settingsService->get('footer_newsletter_enabled', true), FILTER_VALIDATE_BOOLEAN)) {
+        abort(404);
+    }
+    DB::table('newsletter_subscribers')->insertOrIgnore([
+        'email' => mb_strtolower($email),
+        'company_id' => $companyId ?? '',
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    return back()->with('newsletter_success', 'Thanks for subscribing!');
+})->middleware('throttle:5,1')->name('newsletter.subscribe');
 
 // Short URL redirects - must be early in routes to avoid conflicts
 Route::get('/s/{code}', [ShortUrlController::class, 'redirect'])->name('short-url.redirect');

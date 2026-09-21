@@ -511,11 +511,15 @@
 
     .cms-content-card .blog-img-wrap {
         position: relative;
-        aspect-ratio: 3 / 2;
+        height: 200px;
+        flex: 0 0 200px;
+        overflow: hidden;
         background: #f3f4f6;
     }
 
     .blog-card2.cms-content-card .blog-img-wrap .blog-img {
+        position: absolute;
+        inset: 0;
         height: 100%;
     }
 
@@ -528,6 +532,7 @@
 
     .cms-content-card .blog-img img {
         object-fit: cover;
+        object-position: center;
         transition: transform 0.35s ease;
     }
 
@@ -612,7 +617,8 @@
         }
 
         .cms-content-card .blog-img-wrap {
-            aspect-ratio: 16 / 9;
+            height: 170px;
+            flex-basis: 170px;
         }
 
         .blog-card2.two.cms-content-card .blog-content {

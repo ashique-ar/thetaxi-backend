@@ -115,6 +115,23 @@ class SettingsViewComposer
                     'footer_services_title',
                     'footer_routes_title',
                     'footer_support_title',
+                    // Theme 4 journey banner and footer controls
+                    'footer_cta_enabled',
+                    'footer_cta_image',
+                    'footer_cta_eyebrow',
+                    'footer_cta_heading',
+                    'footer_cta_description',
+                    'footer_cta_location',
+                    'footer_cta_book_label',
+                    'footer_cta_book_url',
+                    'footer_cta_chat_label',
+                    'footer_quick_title',
+                    'footer_privacy_url',
+                    'footer_terms_url',
+                    'footer_newsletter_enabled',
+                    'footer_newsletter_heading',
+                    'footer_newsletter_subheading',
+                    'footer_newsletter_placeholder',
 
                     // Footer dynamic links (services, routes, support)
                     'footer_services_link_1_text',

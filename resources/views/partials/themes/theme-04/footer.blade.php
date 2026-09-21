@@ -4,13 +4,13 @@
     $theme04SupportLinks = [];
 
     foreach (['services' => 'theme04ServicesLinks', 'routes' => 'theme04RoutesLinks', 'support' => 'theme04SupportLinks'] as $group => $target) {
-        $index = 1;
-        while (!empty($settings["footer_{$group}_link_{$index}_text"])) {
-            ${$target}[] = [
-                'text' => $settings["footer_{$group}_link_{$index}_text"],
-                'url' => $settings["footer_{$group}_link_{$index}_url"] ?? '#',
-            ];
-            $index++;
+        for ($index = 1; $index <= 10; $index++) {
+            if (!empty($settings["footer_{$group}_link_{$index}_text"]) && !empty($settings["footer_{$group}_link_{$index}_url"])) {
+                ${$target}[] = [
+                    'text' => $settings["footer_{$group}_link_{$index}_text"],
+                    'url' => $settings["footer_{$group}_link_{$index}_url"],
+                ];
+            }
         }
     }
 
@@ -20,28 +20,40 @@
     $theme04WhatsappHref = preg_replace('/[^0-9]/', '', $theme04Whatsapp);
     $theme04Email = $settings['company_email'] ?? '';
     $theme04Brand = $settings['site_name'] ?? $settings['brand_name'] ?? 'Company';
+    $theme04CtaEnabled = filter_var($settings['footer_cta_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+    $theme04NewsletterEnabled = filter_var($settings['footer_newsletter_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+    $theme04QuickLinks = $theme04RoutesLinks ?: ($theme04SupportLinks ?: [
+        ['text' => 'Home', 'url' => route('home')],
+        ['text' => 'Our Fleet', 'url' => route('vehicles')],
+        ['text' => 'About Us', 'url' => route('about')],
+        ['text' => 'Contact', 'url' => route('contact')],
+    ]);
+    $theme04ServicesLinks = $theme04ServicesLinks ?: [['text' => 'Airport Transfers', 'url' => route('point-to-point')]];
 @endphp
 
 <footer class="t4-footer">
-    @if ($settings['footer_newsletter_enabled'] ?? false)
-        <section class="t4-footer__newsletter" aria-labelledby="t4-newsletter-title">
-            <div>
-                <h2 id="t4-newsletter-title" class="t4-kicker">{{ $settings['footer_newsletter_heading'] ?? 'Subscribe to Our Newsletter' }}</h2>
-                <p>{{ $settings['footer_newsletter_subheading'] ?? 'Get the latest updates and offers.' }}</p>
+    @if ($theme04CtaEnabled)
+        <section class="t4-footer__cta" @if (!empty($settings['footer_cta_image'])) style="--t4-footer-image: url('{{ s3_asset($settings['footer_cta_image']) }}')" @endif>
+            <div class="t4-footer__cta-inner">
+                <div>
+                    <span class="t4-footer__eyebrow">{{ $settings['footer_cta_eyebrow'] ?? 'Explore Sri Lanka' }}</span>
+                    <h2>{{ $settings['footer_cta_heading'] ?? 'Your Next Journey Starts Here' }}</h2>
+                    <p>{{ $settings['footer_cta_description'] ?? 'Premium vehicles. Professional service. Unforgettable experiences.' }}</p>
+                    <div class="t4-footer__cta-actions">
+                        <a class="t4-footer__book" href="{{ $settings['footer_cta_book_url'] ?? route('home') }}">{{ $settings['footer_cta_book_label'] ?? 'Book Now' }} <span aria-hidden="true">→</span></a>
+                        @if ($theme04WhatsappHref !== '')<a class="t4-footer__chat" href="https://wa.me/{{ $theme04WhatsappHref }}"><i class="bi bi-whatsapp" aria-hidden="true"></i> {{ $settings['footer_cta_chat_label'] ?? 'Chat on WhatsApp' }}</a>@endif
+                    </div>
+                </div>
+                @if (!empty($settings['footer_cta_location']))<span class="t4-footer__location"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i> {{ $settings['footer_cta_location'] }}</span>@endif
             </div>
-            <form action="{{ $settings['footer_newsletter_action'] ?? '#' }}" method="POST">
-                @csrf
-                <label class="visually-hidden" for="t4-newsletter-email">Email address</label>
-                <input id="t4-newsletter-email" type="email" name="email" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Enter your email' }}" required>
-                <button type="submit">{{ $settings['footer_newsletter_button'] ?? 'Subscribe' }}</button>
-            </form>
         </section>
     @endif
 
     <div class="t4-footer__main">
         <div class="t4-footer__brand">
             <a href="{{ route('home') }}"><img src="{{ s3_asset($settings['logo_footer'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png') }}" alt="{{ $settings['logo_footer_alt'] ?? $theme04Brand }}"></a>
-            <p>{{ $settings['footer_company_tagline'] ?? ($settings['site_tagline'] ?? $settings['brand_tagline'] ?? 'Professional transport services') }}</p>
+            @if (!empty($settings['footer_company_tagline']))<small>{{ $settings['footer_company_tagline'] }}</small>@endif
+            <p>{{ ($settings['footer_description'] ?? null) ?: ($settings['site_tagline'] ?? 'Professional transport services') }}</p>
             <ul class="t4-footer__social" aria-label="Social media">
                 @foreach ([
                     'social_facebook' => ['Facebook', 'bxl-facebook'],
@@ -59,9 +71,8 @@
         </div>
 
         @foreach ([
+            [$settings['footer_quick_title'] ?? 'Quick Links', $theme04QuickLinks],
             [$settings['footer_services_title'] ?? 'Our Services', $theme04ServicesLinks],
-            [$settings['footer_routes_title'] ?? 'Popular Routes', $theme04RoutesLinks],
-            [$settings['footer_support_title'] ?? 'Support', $theme04SupportLinks],
         ] as [$title, $links])
             @if (!empty($links))
                 <nav class="t4-footer__links" aria-label="{{ $title }}">
@@ -73,15 +84,31 @@
 
         <div class="t4-footer__contact">
             <h3>{{ $settings['footer_inquiry_heading'] ?? 'Contact Us' }}</h3>
-            @if (!empty($settings['company_address']))<address><i class="bi bi-geo-alt" aria-hidden="true"></i>{{ $settings['company_address'] }}</address>@endif
             @if ($theme04PhoneHref !== '')<a href="tel:{{ $theme04PhoneHref }}"><i class="bi bi-telephone" aria-hidden="true"></i>{{ $theme04Phone }}</a>@endif
             @if ($theme04WhatsappHref !== '')<a href="https://wa.me/{{ $theme04WhatsappHref }}"><i class="bi bi-whatsapp" aria-hidden="true"></i>{{ $theme04Whatsapp }}</a>@endif
             @if ($theme04Email !== '')<a href="mailto:{{ $theme04Email }}"><i class="bi bi-envelope" aria-hidden="true"></i>{{ $theme04Email }}</a>@endif
+            @if (!empty($settings['company_address']))<address><i class="bi bi-geo-alt" aria-hidden="true"></i>{{ $settings['company_address'] }}</address>@endif
         </div>
+        @if ($theme04NewsletterEnabled)
+            <section class="t4-footer__newsletter" aria-labelledby="t4-newsletter-title">
+                <h3 id="t4-newsletter-title">{{ $settings['footer_newsletter_heading'] ?? 'Newsletter' }}</h3>
+                <p>{{ $settings['footer_newsletter_subheading'] ?? 'Get travel tips, special offers and updates.' }}</p>
+                @if (session('newsletter_success'))<p role="status">{{ session('newsletter_success') }}</p>@endif
+                @error('email', 'newsletter')<p role="alert">{{ $message }}</p>@enderror
+                <form action="{{ route('newsletter.subscribe') }}" method="POST">
+                    @csrf
+                    <label class="visually-hidden" for="t4-newsletter-email">Email address</label>
+                    <input id="t4-newsletter-email" type="email" name="email" value="{{ old('email') }}" placeholder="{{ $settings['footer_newsletter_placeholder'] ?? 'Your email address' }}" required>
+                    <button type="submit" aria-label="Subscribe to newsletter"><span aria-hidden="true">→</span></button>
+                </form>
+            </section>
+        @endif
     </div>
 
     <div class="t4-footer__bottom">
-        <p>{{ $settings['footer_copyright_text'] ?? 'Copyright ' . date('Y') }} <a href="{{ route('home') }}">{{ $theme04Brand }}</a> | All Rights Reserved.</p>
+        <p>© {{ date('Y') }} <a href="{{ route('home') }}">{{ $theme04Brand }}</a>. {{ ($settings['footer_copyright_text'] ?? null) ?: 'All rights reserved.' }}</p>
+        <nav aria-label="Legal links"><a href="{{ $settings['footer_privacy_url'] ?? url('/privacy-policy') }}">Privacy Policy</a><a href="{{ $settings['footer_terms_url'] ?? url('/terms-and-conditions') }}">Terms &amp; Conditions</a><a href="{{ route('sitemap') }}">Sitemap</a></nav>
+        <p>Designed with <span class="t4-footer__heart" aria-label="love">♥</span> in Sri Lanka</p>
         @if ($settings['footer_payment_methods_enabled'] ?? false)
             <ul aria-label="{{ $settings['footer_payment_methods_label'] ?? 'Accepted payment methods' }}">
                 @if ($settings['footer_payment_mastercard'] ?? true)<li><img src="{{ asset('assets/img/home1/icon/mastar-card-icon.svg') }}" alt="Mastercard"></li>@endif

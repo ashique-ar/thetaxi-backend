@@ -330,8 +330,10 @@ body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-pag
     box-shadow: none !important;
 }
 
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { min-height: 210px; overflow: hidden; }
-body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) img { width: 100%; height: 100%; object-fit: cover; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { height: 200px; min-height: 0; flex: 0 0 200px; overflow: hidden; }
+body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) img { width: 100%; height: 100%; object-fit: cover; object-position: center; }
+@media (max-width: 575px) { body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-image, .blog-img-wrap) { height: 170px; flex-basis: 170px; } }
+body.theme-theme-04 .list-view .enhanced-blog-card .card-image { height: 200px; flex: 0 0 300px; }
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-content, .blog-content) { padding: 18px !important; }
 body.theme-theme-04:is(.theme-page-cms-index, .theme-page-cms-search, .theme-page-cms-featured) :where(.card-title, .blog-content h4 a) { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: 1.25rem; line-height: 1.3; }
 

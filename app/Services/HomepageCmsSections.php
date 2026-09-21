@@ -59,6 +59,8 @@ class HomepageCmsSections
             }
             $sections[] = [
                 'type' => $type,
+                'layout' => in_array($section['layout'] ?? 'cards', ['cards', 'features', 'banner', 'testimonials', 'logos'], true) ? ($section['layout'] ?? 'cards') : 'cards',
+                'placement' => ($section['placement'] ?? 'before_fleet') === 'after_fleet' ? 'after_fleet' : 'before_fleet',
                 'title' => trim((string) ($section['title'] ?? '')) ?: $type->title,
                 'eyebrow' => trim((string) ($section['eyebrow'] ?? '')),
                 'description' => trim((string) ($section['description'] ?? '')),

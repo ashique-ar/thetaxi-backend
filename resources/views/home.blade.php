@@ -27,8 +27,9 @@
     </div>
 @endif
 <!-- End Booking Form Section -->
+@php($managedCmsLayouts = collect($cmsSections['sections'] ?? [])->pluck('layout'))
 
-@if (isset($partners) && $partners->count() > 0)
+@if (isset($partners) && $partners->count() > 0 && !$managedCmsLayouts->contains('logos'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.partner-register')
 @elseif (is_theme('theme-04'))
@@ -61,7 +62,9 @@
 
 @if ($cmsSections['managed'])
     @foreach ($cmsSections['sections'] as $section)
-        @include('partials.homepage-cms-section', ['section' => $section, 'sectionIndex' => $loop->index])
+        @if ($section['placement'] === 'before_fleet')
+            @include('partials.homepage-cms-section', ['section' => $section, 'sectionIndex' => 'before-' . $loop->index])
+        @endif
     @endforeach
 @else
 @if ($inspirations->count() > 0)
@@ -108,6 +111,13 @@
 @foreach ($vehicleSections as $section)
     @include('partials.homepage-vehicle-section', ['section' => $section, 'sectionIndex' => $loop->index])
 @endforeach
+@if ($cmsSections['managed'])
+    @foreach ($cmsSections['sections'] as $section)
+        @if ($section['placement'] === 'after_fleet')
+            @include('partials.homepage-cms-section', ['section' => $section, 'sectionIndex' => 'after-' . $loop->index])
+        @endif
+    @endforeach
+@endif
 @if (count($vehicleSections))
 <script>
 document.addEventListener('click', function (event) {
@@ -165,7 +175,7 @@ document.addEventListener('click', function (event) {
 
 <!-- home4 Offer Slider Section End-->
 
-@if ($settings['why_video_image'])
+@if ($settings['why_video_image'] && !$managedCmsLayouts->contains('features'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.why-choose-us')
 @elseif (is_theme('theme-04'))
@@ -283,7 +293,7 @@ document.addEventListener('click', function (event) {
 @endif
 @endif
 <!-- home4 Testimonial Section Start-->
-@if ($testimonials && $testimonials->count() > 0)
+@if ($testimonials && $testimonials->count() > 0 && !$managedCmsLayouts->contains('testimonials'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.testimonials')
 @elseif (is_theme('theme-04'))

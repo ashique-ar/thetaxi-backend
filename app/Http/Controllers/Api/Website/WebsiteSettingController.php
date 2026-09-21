@@ -344,6 +344,8 @@ class WebsiteSettingController extends Controller
                 'sections.*.eyebrow' => 'nullable|string|max:80',
                 'sections.*.description' => 'nullable|string|max:500',
                 'sections.*.mode' => 'required|in:manual,featured,latest',
+                'sections.*.layout' => 'nullable|in:cards,features,banner,testimonials,logos',
+                'sections.*.placement' => 'nullable|in:before_fleet,after_fleet',
                 'sections.*.content_ids' => 'present|array',
                 'sections.*.content_ids.*' => 'uuid',
                 'sections.*.limit' => 'required|integer|min:1|max:24',
