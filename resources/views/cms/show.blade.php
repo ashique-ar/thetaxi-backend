@@ -387,7 +387,7 @@
                 top: auto;
             }
 
-            .t4-booking-panel--embedded {
+            body.theme-theme-04 .t4-booking-panel.t4-booking-panel--embedded {
                 width: 100%;
                 min-height: 0;
                 margin: 0 0 24px;
@@ -395,14 +395,14 @@
                 background: transparent;
             }
 
-            .t4-booking-panel--embedded > .t4-booking-panel__inner,
-            .t4-booking-panel--embedded .t4-booking-panel__card {
+            body.theme-theme-04 .t4-booking-panel--embedded > .t4-booking-panel__inner,
+            body.theme-theme-04 .t4-booking-panel--embedded .t4-booking-panel__card {
                 width: 100%;
                 max-width: none;
                 padding-inline: 0;
             }
 
-            .t4-booking-panel--embedded .t4-booking-panel__card {
+            body.theme-theme-04 .t4-booking-panel--embedded .t4-booking-panel__card {
                 padding: 14px;
             }
         @endif

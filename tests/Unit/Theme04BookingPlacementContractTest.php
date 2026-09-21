@@ -15,6 +15,7 @@ it('keeps the Theme 4 hero form container aligned and the CMS form full width', 
         ->toContain('.cms-article-page { margin: 0 !important; padding: 32px 0 var(--t4-section); }')
         ->and($cmsShow)
         ->toContain("@if (is_theme('theme-04'))")
-        ->toContain('.t4-booking-panel--embedded > .t4-booking-panel__inner,')
+        ->toContain('body.theme-theme-04 .t4-booking-panel.t4-booking-panel--embedded {')
+        ->toContain('body.theme-theme-04 .t4-booking-panel--embedded > .t4-booking-panel__inner,')
         ->toContain('padding-top: 32px;');
 });
