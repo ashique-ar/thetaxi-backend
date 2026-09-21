@@ -971,6 +971,9 @@ class BookingFlowService
         $hasRequiredPricingLocations =
             (!(bool) ($calculationRequirements['pickup_location_required'] ?? true) || $hasUsablePickup)
             && (!(bool) ($calculationRequirements['dropoff_location_required'] ?? true) || $hasUsableDropoff);
+        $packageSelectionRequired = (bool) data_get($selectedServiceTypeModel?->form_config, 'service_package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.service_package_id.required', false);
+        $hasSelectedPackage = !empty($params['service_package_id']) || !empty($params['package_id']);
 
         $availability = [];
 
@@ -1009,7 +1012,7 @@ class BookingFlowService
                 // Calculate duration
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
-                if ($serviceTypeModel && $hasRequiredPricingLocations) {
+                if ($serviceTypeModel && $hasRequiredPricingLocations && (!$packageSelectionRequired || $hasSelectedPackage)) {
                     // Check if service type uses dropoff time
                     $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
 
@@ -1094,6 +1097,8 @@ class BookingFlowService
                         // Log for debugging
                     }
                 }
+            } catch (\DomainException $e) {
+                $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
             } catch (\Exception $e) {
                 $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
                 Log::warning("Pricing calculation failed for vehicle group {$group->id}: " . $e->getMessage());
@@ -5400,6 +5405,13 @@ class BookingFlowService
             }
         } catch (\InvalidArgumentException $e) {
             Log::notice('Pricing calculation rejected invalid input', [
+                'error' => $e->getMessage(),
+                'params' => $params
+            ]);
+
+            throw $e;
+        } catch (\DomainException $e) {
+            Log::notice('Pricing configuration is incomplete', [
                 'error' => $e->getMessage(),
                 'params' => $params
             ]);
