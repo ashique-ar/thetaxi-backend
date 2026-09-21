@@ -144,6 +144,8 @@ class ServiceFormConfigController extends Controller
             is_array($storedConfig['field_mappings'] ?? null) ? $storedConfig['field_mappings'] : [],
             $serviceType
         );
+        $packages = $this->getPackagesConfig($serviceType);
+        $fields = self::withPackageFieldOptions($fields, $packages);
 
         $config = [
             'service_type' => [
@@ -164,7 +166,7 @@ class ServiceFormConfigController extends Controller
             ],
             'fields' => $fields,
             'field_mappings' => $resolvedFieldMappings,
-            'packages' => $this->getPackagesConfig($serviceType),
+            'packages' => $packages,
             'location_restrictions' => $this->getLocationRestrictions($serviceType),
             'validation_rules' => $this->getValidationRules($serviceType),
         ];
@@ -178,6 +180,23 @@ class ServiceFormConfigController extends Controller
         }
 
         return $config;
+    }
+
+    private static function withPackageFieldOptions(array $fields, array $packages): array
+    {
+        if (!isset($fields['service_package_id'])) {
+            return $fields;
+        }
+
+        $fields['service_package_id']['options'] = array_map(fn (array $package) => [
+            'id' => $package['id'],
+            'value' => $package['id'],
+            'label' => $package['name'],
+            'name' => $package['name'],
+            'description' => $package['description'] ?? null,
+        ], $packages);
+
+        return $fields;
     }
 
     private function resolveTripMode(ServiceType $serviceType, array $storedConfig, array $fields): string
