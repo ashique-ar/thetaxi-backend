@@ -70,6 +70,8 @@ class StoreCorporateBookingRequest extends FormRequest
             'booking_items.*.addons' => ['nullable', 'array'],
             'booking_items.*.notes' => ['nullable', 'string'],
             'booking_items.*.metadata' => ['nullable', 'array'],
+            'booking_items.*.service_package_id' => ['nullable', 'uuid'],
+            'booking_items.*.package_id' => ['nullable', 'uuid'],
             'selected_addons' => ['nullable', 'array'],
             'applied_discounts' => ['nullable', 'array'],
             'variable_customizations' => ['nullable', 'array'],

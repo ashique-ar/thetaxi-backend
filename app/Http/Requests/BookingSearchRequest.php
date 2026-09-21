@@ -597,7 +597,7 @@ class BookingSearchRequest extends FormRequest
             unset($fields['field_mappings']);
 
             $pickupRequired = isset($fields['pickup_location']) && (bool) ($fields['pickup_location']['required'] ?? false);
-            $packageRequired = isset($fields['service_package_id']) && (bool) ($fields['service_package_id']['required'] ?? false);
+            $packageRequired = (bool) ($fields['package_id']['required'] ?? $fields['service_package_id']['required'] ?? false);
             $dropoffOptional = !isset($fields['dropoff_location']) || !(bool) ($fields['dropoff_location']['required'] ?? false);
 
             return $pickupRequired && $packageRequired && $dropoffOptional;

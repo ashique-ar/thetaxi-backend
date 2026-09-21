@@ -184,17 +184,19 @@ class ServiceFormConfigController extends Controller
 
     private static function withPackageFieldOptions(array $fields, array $packages): array
     {
-        if (!isset($fields['service_package_id'])) {
-            return $fields;
-        }
-
-        $fields['service_package_id']['options'] = array_map(fn (array $package) => [
+        $options = array_map(fn (array $package) => [
             'id' => $package['id'],
             'value' => $package['id'],
             'label' => $package['name'],
             'name' => $package['name'],
             'description' => $package['description'] ?? null,
         ], $packages);
+
+        foreach (['package_id', 'service_package_id'] as $field) {
+            if (isset($fields[$field])) {
+                $fields[$field]['options'] = $options;
+            }
+        }
 
         return $fields;
     }
@@ -210,8 +212,8 @@ class ServiceFormConfigController extends Controller
             return trim($mode);
         }
 
-        $hasRequiredPackage = isset($fields['service_package_id'])
-            && (bool) ($fields['service_package_id']['required'] ?? false);
+        $hasRequiredPackage = collect(['package_id', 'service_package_id'])
+            ->contains(fn (string $field) => (bool) ($fields[$field]['required'] ?? false));
         $hasRequiredPickup = isset($fields['pickup_location'])
             && (bool) ($fields['pickup_location']['required'] ?? false);
         $dropoffMissingOrOptional = !isset($fields['dropoff_location'])

@@ -378,7 +378,7 @@ class BookingFlowService
         );
 
         if ($tripMode === null) {
-            $packageRequired = isset($fields['service_package_id']) && (bool) ($fields['service_package_id']['required'] ?? false);
+            $packageRequired = (bool) ($fields['package_id']['required'] ?? $fields['service_package_id']['required'] ?? false);
             $tripMode = ($pickupRequired && !$dropoffRequired && $packageRequired) ? 'open_package' : 'fixed_route';
         }
 
@@ -971,7 +971,9 @@ class BookingFlowService
         $hasRequiredPricingLocations =
             (!(bool) ($calculationRequirements['pickup_location_required'] ?? true) || $hasUsablePickup)
             && (!(bool) ($calculationRequirements['dropoff_location_required'] ?? true) || $hasUsableDropoff);
-        $packageSelectionRequired = (bool) data_get($selectedServiceTypeModel?->form_config, 'service_package_id.required', false)
+        $packageSelectionRequired = (bool) data_get($selectedServiceTypeModel?->form_config, 'package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'service_package_id.required', false)
             || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.service_package_id.required', false);
         $hasSelectedPackage = !empty($params['service_package_id']) || !empty($params['package_id']);
 
@@ -3108,7 +3110,8 @@ class BookingFlowService
                         'selected_addons' => $itemData['addons'] ?? [],
                         'service_package_id' => $itemData['service_package_id']
                             ?? $itemData['package_id']
-                            ?? data_get($itemData, 'metadata.service_package_id'),
+                            ?? data_get($itemData, 'metadata.service_package_id')
+                            ?? data_get($itemData, 'metadata.package_id'),
                         'slab_definition_id' => $itemData['slab_definition_id']
                             ?? data_get($itemData, 'metadata.slab_definition_id'),
                         'booking_id' => $bookingId,
@@ -5591,6 +5594,7 @@ class BookingFlowService
                 'service_package_id' => $item['service_package_id']
                     ?? $item['package_id']
                     ?? $itemMetadata['service_package_id']
+                    ?? $itemMetadata['package_id']
                     ?? null,
                 'slab_definition_id' => $item['slab_definition_id']
                     ?? $itemMetadata['slab_definition_id']
@@ -7815,7 +7819,9 @@ class BookingFlowService
                 ? $item->serviceType->form_config
                 : [];
             $metadata['service_package_required'] = (bool) (
-                data_get($serviceFormConfig, 'service_package_id.required')
+                data_get($serviceFormConfig, 'package_id.required')
+                ?? data_get($serviceFormConfig, 'fields.package_id.required')
+                ?? data_get($serviceFormConfig, 'service_package_id.required')
                 ?? data_get($serviceFormConfig, 'fields.service_package_id.required')
                 ?? false
             );
