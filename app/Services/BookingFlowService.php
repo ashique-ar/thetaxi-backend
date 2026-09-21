@@ -3101,6 +3101,9 @@ class BookingFlowService
                         'to_time' => $itemData['to_time'] ?? null,
                         'pickup_location' => $itemData['pickup_location'] ?? null,
                         'dropoff_location' => $itemData['dropoff_location'] ?? null,
+                        'corporate_account_id' => $params['corporate_account_id'] ?? null,
+                        'is_corporate_booking' => $params['is_corporate_booking'] ?? false,
+                        'pricing_context' => $params['pricing_context'] ?? null,
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
                         'selected_addons' => $itemData['addons'] ?? [],
                         'service_package_id' => $itemData['service_package_id']
@@ -5585,6 +5588,13 @@ class BookingFlowService
                     ?? $itemMetadata['multi_route_stop_order']
                     ?? $params['ordered_additional_stops']
                     ?? [],
+                'service_package_id' => $item['service_package_id']
+                    ?? $item['package_id']
+                    ?? $itemMetadata['service_package_id']
+                    ?? null,
+                'slab_definition_id' => $item['slab_definition_id']
+                    ?? $itemMetadata['slab_definition_id']
+                    ?? null,
                 // Use item-specific addons
                 'selected_addons' => $itemAddons,
             ]);
