@@ -125,15 +125,8 @@
         @if (isset($vehicle['category']['name']['name']))
             <span class="category-badge">{{ $vehicle['category']['name']['name'] }}</span>
         @endif
-    </div>
 
-    <!-- Vehicle Info -->
-    <div class="vehicle-card-content">
-        <!-- Vehicle Name -->
-        <h5 class="vehicle-name">{{ $vehicle['name'] ?? 'Unknown Vehicle' }}</h5>
-
-
-        <!-- Vehicle Specs Grid -->
+        <!-- Capacity details stay readable without consuming card-body space. -->
         <div class="vehicle-specs">
             <div class="spec-item">
                 @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
@@ -147,23 +140,26 @@
                     <i class="bi bi-people-fill"></i>
                     <span>{{ $vehicle['no_of_doors'] }} Doors</span>
                 @endif
-
                 @if (isset($vehicle['transmission']['name']))
                     <i class="bi bi-gear-fill"></i>
                     <span>{{ $vehicle['transmission']['name'] }}</span>
                 @endif
-
                 @if (isset($vehicle['fuel_type']['name']))
                     <i class="bi bi-fuel-pump-fill"></i>
                     <span>{{ $vehicle['fuel_type']['name'] }}</span>
                 @endif
-
                 @if (isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
                     <i class="bi bi-suitcase-fill"></i>
                     <span>{{ $vehicle['hand_luggages'] }}</span>
                 @endif
             </div>
         </div>
+    </div>
+
+    <!-- Vehicle Info -->
+    <div class="vehicle-card-content">
+        <!-- Vehicle Name -->
+        <h5 class="vehicle-name">{{ $vehicle['name'] ?? 'Unknown Vehicle' }}</h5>
 
         <!-- Enhanced Pricing Section -->
         <div class="vehicle-card-price-slot">
@@ -356,7 +352,7 @@
         
         <!-- Vehicle Amenities & Additional Info -->
         <div class="vehicle-card-amenities-slot">
-        @if (isset($vehicle['refundable_deposit']))
+        @if ($showPublicPrice && isset($vehicle['refundable_deposit']))
             <div class="vehicle-amenities">
                 @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                     <span class="amenity-badge">
@@ -672,7 +668,7 @@
             .vehicle-card-content {
                 padding: 20px;
                 display: grid !important;
-                grid-template-rows: 38px 26px 84px 30px 34px 40px minmax(86px, auto);
+                grid-template-rows: 38px 92px 38px 34px 40px minmax(86px, auto);
                 flex-grow: 1;
             }
 
@@ -681,7 +677,6 @@
             .vehicle-card-details-slot,
             .vehicle-card-features-slot {
                 min-width: 0;
-                overflow: hidden;
             }
 
             .vehicle-card-price-slot {
@@ -715,6 +710,28 @@
                 color: var(--primary-color);
                 font-size: 16px;
                 flex-shrink: 0;
+            }
+
+            .vehicle-card .vehicle-image-container > .vehicle-specs {
+                position: absolute !important;
+                z-index: 4;
+                bottom: 12px;
+                left: 12px;
+                width: auto;
+                max-width: calc(100% - 24px);
+                margin: 0 !important;
+                padding: 7px 10px !important;
+                border: 1px solid rgba(255, 255, 255, 0.22) !important;
+                border-radius: 8px;
+                background: rgba(17, 24, 39, 0.74);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+
+            .vehicle-card .vehicle-image-container > .vehicle-specs .spec-item,
+            .vehicle-card .vehicle-image-container > .vehicle-specs .spec-item i,
+            .vehicle-card .vehicle-image-container > .vehicle-specs .spec-item span {
+                color: #fff !important;
             }
 
             /* Inclusions */
@@ -981,7 +998,7 @@
             @media (max-width: 767px) {
 
                 .vehicle-card-content {
-                    grid-template-rows: 42px 28px 92px 32px 38px 44px minmax(86px, auto);
+                    grid-template-rows: 42px 100px 40px 38px 44px minmax(86px, auto);
                 }
 
                 .recommended-badge {
@@ -1008,8 +1025,8 @@
                 display: flex;
                 flex-wrap: wrap;
                 gap: 6px;
-                margin-bottom: 12px;
-                padding-top: 12px;
+                margin: 0;
+                padding-top: 6px;
                 border-top: 1px solid #f0f0f0;
             }
 

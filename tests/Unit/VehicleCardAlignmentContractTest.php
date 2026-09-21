@@ -7,10 +7,13 @@ it('keeps shared vehicle card content in aligned slots for every theme', functio
 
     expect($card)
         ->toContain('$showPublicPrice = $hasPricing && !$showQuotationButton;')
+        ->toContain("@if (\$showPublicPrice && isset(\$vehicle['refundable_deposit']))")
         ->toContain('class="vehicle-card-price-slot"')
         ->toContain('class="vehicle-card-amenities-slot"')
         ->toContain('class="vehicle-card-details-slot"')
         ->toContain('class="vehicle-card-features-slot"')
+        ->toContain('.vehicle-card .vehicle-image-container > .vehicle-specs')
+        ->toContain('backdrop-filter: blur(10px);')
         ->toContain('display: grid !important;')
-        ->toContain('grid-template-rows: 38px 26px 84px 30px 34px 40px minmax(86px, auto);');
+        ->toContain('grid-template-rows: 38px 92px 38px 34px 40px minmax(86px, auto);');
 });
