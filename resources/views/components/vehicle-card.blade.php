@@ -166,6 +166,7 @@
         </div>
 
         <!-- Enhanced Pricing Section -->
+        <div class="vehicle-card-price-slot">
         @if ($showPublicPrice)
         <div class="price-display">
 
@@ -351,8 +352,10 @@
             @endif
         </div>
         @endif
+        </div>
         
         <!-- Vehicle Amenities & Additional Info -->
+        <div class="vehicle-card-amenities-slot">
         @if (isset($vehicle['refundable_deposit']))
             <div class="vehicle-amenities">
                 @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
@@ -363,6 +366,7 @@
                 @endif
             </div>
         @endif
+        </div>
 
         <!-- Distance/KM Details Row -->
         @php
@@ -408,6 +412,7 @@
             ]);
         @endphp
 
+        <div class="vehicle-card-details-slot">
         @if ($showDistanceDetails || $showDurationDetails)
             <div class="pricing-details">
                 {{-- Show free KM per day for daily rentals --}}
@@ -461,8 +466,10 @@
                 @endif --}}
             </div>
         @endif
+        </div>
 
         <!-- Service Features (if any) -->
+        <div class="vehicle-card-features-slot">
         @if (!empty($serviceFeatures))
             <div class="service-features mb-2">
                 @foreach (array_slice($serviceFeatures, 0, 3) as $feature)
@@ -472,6 +479,7 @@
                 @endforeach
             </div>
         @endif
+        </div>
 
         <!-- Action Buttons -->
         <div class="vehicle-actions mt-1">
@@ -663,9 +671,27 @@
             /* Vehicle Content */
             .vehicle-card-content {
                 padding: 20px;
-                display: flex;
-                flex-direction: column;
+                display: grid !important;
+                grid-template-rows: 48px 32px 140px 42px 60px 54px minmax(92px, auto);
                 flex-grow: 1;
+            }
+
+            .vehicle-card-price-slot,
+            .vehicle-card-amenities-slot,
+            .vehicle-card-details-slot,
+            .vehicle-card-features-slot {
+                min-width: 0;
+                overflow: hidden;
+            }
+
+            .vehicle-card-price-slot {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .vehicle-card-price-slot .price-display {
+                width: 100%;
             }
 
             .vehicle-name {
@@ -778,6 +804,7 @@
             /* Action Buttons */
             .vehicle-actions {
                 margin-top: auto !important;
+                align-self: end;
             }
 
             .vehicle-actions .btn {
@@ -952,6 +979,10 @@
 
             /* Better mobile experience for service features */
             @media (max-width: 767px) {
+
+                .vehicle-card-content {
+                    grid-template-rows: 48px 32px 140px 42px 64px 60px minmax(92px, auto);
+                }
 
                 .recommended-badge {
                     font-size: 10px;
