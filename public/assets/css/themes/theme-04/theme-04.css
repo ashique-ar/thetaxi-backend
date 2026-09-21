@@ -562,7 +562,7 @@ body.theme-theme-04.theme-page-home .t4-booking-panel+:where(
 }
 
 body.theme-theme-04 .t4-booking-panel__card {
-    /* width: min(500px, 42%); */
+    width: min(500px, 42%);
     min-height: 0;
     padding: 14px;
     border: 1px solid rgb(227 228 231 / 86%);
