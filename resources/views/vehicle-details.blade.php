@@ -518,7 +518,7 @@
 
         .spec-item i {
             color: var(--vehicle-primary);
-            font-size: 18px;
+            font-size: 12px;
         }
 
         .booking-form-card {

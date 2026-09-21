@@ -763,7 +763,7 @@
 
         .spec-item i {
             color: var(--primary-color);
-            font-size: 16px;
+            font-size: 12px;
             flex-shrink: 0;
         }
 
