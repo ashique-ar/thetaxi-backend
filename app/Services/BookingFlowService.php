@@ -4383,7 +4383,6 @@ class BookingFlowService
                 $calculationInputs['package_included_hours'] = (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
                     + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
                 $calculationInputs['package_has_hour_limit'] = $calculationInputs['package_included_hours'] > 0 ? 1 : 0;
-                dump(collect($calculationInputs)->only(['service_package_id', 'slab_definition_id', 'vehicle_group_id', 'owner_type', 'owner_id'])->all());
                 $this->assertSelectedPackagePricingConfigured($calculationInputs, $serviceTypeId);
             }
 
@@ -4717,8 +4716,8 @@ class BookingFlowService
             $inputs['district_id'] = $params['district_id'];
         }
 
-        if (isset($params['package_id'])) {
-            $inputs['package_id'] = $params['package_id'];
+        if (isset($params['package_id']) || isset($params['service_package_id'])) {
+            $inputs['package_id'] = $params['package_id'] ?? $params['service_package_id'];
         }
         if (isset($params['slab_definition_id'])) {
             $inputs['slab_definition_id'] = $params['slab_definition_id'];
