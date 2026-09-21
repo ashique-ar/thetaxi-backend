@@ -4353,6 +4353,18 @@ class BookingFlowService
                 ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
                     'package_included_km', 'package_included_hours', 'package_has_hour_limit',
                 ], true)));
+            if ($usesPackagePricing
+                && empty($calculationInputs['package_id'])
+                && empty($calculationInputs['slab_definition_id'])
+                && !empty($calculationInputs['vehicle_group_id'])) {
+                $calculationInputs['slab_definition_id'] = app(VehiclePricingSlabConfigurationService::class)
+                    ->resolveOnlyPricedPackageSlab(
+                        (string) $serviceTypeId,
+                        (string) $calculationInputs['vehicle_group_id'],
+                        $ownerType,
+                        $ownerId,
+                    )?->id;
+            }
             if ($usesPackagePricing || !empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
                 $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                     (string) $serviceTypeId,
@@ -8847,6 +8859,70 @@ class BookingFlowService
         ];
     }
 
+    public function getOperationsNotes(string $bookingId, string $bookingItemId): array
+    {
+        $item = BookingItem::query()
+            ->where('booking_id', $bookingId)
+            ->findOrFail($bookingItemId);
+
+        return [
+            'notes' => $item->notes,
+            'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
+        ];
+    }
+
+    public function updateOperationsNotes(string $bookingId, string $bookingItemId, ?string $notes, ?User $user): array
+    {
+        $item = BookingItem::query()
+            ->where('booking_id', $bookingId)
+            ->findOrFail($bookingItemId);
+        $previous = $item->notes;
+
+        if ($previous !== $notes) {
+            $item->update(['notes' => $notes]);
+
+            activity()
+                ->performedOn($item->booking)
+                ->causedBy($user)
+                ->event('operations_note_updated')
+                ->withProperties([
+                    'booking_item_id' => (string) $item->id,
+                    'previous_note' => $previous,
+                    'note' => $notes,
+                ])
+                ->log('Operations note updated');
+        }
+
+        return [
+            'notes' => $item->notes,
+            'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
+        ];
+    }
+
+    private function operationsNoteHistory(string $bookingId, string $bookingItemId): array
+    {
+        if (!class_exists(\Spatie\Activitylog\Models\Activity::class)) {
+            return [];
+        }
+
+        return \Spatie\Activitylog\Models\Activity::query()
+            ->with('causer')
+            ->where('subject_type', Booking::class)
+            ->where('subject_id', $bookingId)
+            ->where('event', 'operations_note_updated')
+            ->where('properties->booking_item_id', $bookingItemId)
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn($activity) => [
+                'id' => (string) $activity->id,
+                'note' => $activity->properties['note'] ?? null,
+                'user_name' => $activity->causer?->full_name ?? 'System',
+                'created_at' => optional($activity->created_at)->toISOString(),
+            ])
+            ->all();
+    }
+
     private function applyOperationsQueueFilter($query, ?string $queue): void
     {
         if (empty($queue)) {
@@ -9288,6 +9364,10 @@ class BookingFlowService
                     'name' => $itemVehicleGroup->name,
                 ] : null,
             ] : null,
+            'vehicle_group' => $itemVehicleGroup ? [
+                'id' => (string) $itemVehicleGroup->id,
+                'name' => $itemVehicleGroup->name,
+            ] : null,
             'driver' => $itemDriver ? [
                 'id' => (string) $itemDriver->id,
                 'code' => $itemDriver->code,
@@ -9302,6 +9382,7 @@ class BookingFlowService
             ] : null,
             'vehicle_assignments' => $vehicleAssignmentRows,
             'driver_assignments' => $driverAssignmentRows,
+            'notes' => $item->notes,
             'pickup_location' => $this->mapBookingListLocation(
                 $item->pickup_location ?? ($booking?->pickup_location ?? null),
                 $item->pickup_latitude ?? ($booking?->pickup_latitude ?? null),

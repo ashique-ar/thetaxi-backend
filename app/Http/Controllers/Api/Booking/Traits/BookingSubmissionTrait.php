@@ -633,6 +633,32 @@ trait BookingSubmissionTrait
         }
     }
 
+    public function getOperationsNotes(string $bookingId, string $bookingItemId): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->bookingFlowService->getOperationsNotes($bookingId, $bookingItemId),
+        ]);
+    }
+
+    public function updateOperationsNotes(Request $request, string $bookingId, string $bookingItemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->bookingFlowService->updateOperationsNotes(
+                $bookingId,
+                $bookingItemId,
+                trim((string) ($validated['notes'] ?? '')) ?: null,
+                $request->user()
+            ),
+            'message' => 'Operations notes updated successfully',
+        ]);
+    }
+
     public function getBookingDetails(string $bookingId): JsonResponse
     {
         try {

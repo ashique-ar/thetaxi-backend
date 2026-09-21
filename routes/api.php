@@ -1357,6 +1357,10 @@ Route::middleware(['auth:api'])->group(function () {
             // Advanced booking list with filtering
             Route::get('bookings', [BookingFlowController::class, 'getBookingsList'])
                 ->middleware('permission:bookings.view');
+            Route::get('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'getOperationsNotes'])
+                ->middleware('permission:bookings.view');
+            Route::put('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'updateOperationsNotes'])
+                ->middleware('permission:bookings.update');
             Route::get('bookings/{bookingId}', [BookingFlowController::class, 'getBookingDetails'])
                 ->middleware('permission:bookings.view');
             Route::post('bookings/{bookingId}/recurring/cancel', [BookingFlowController::class, 'cancelRecurringBooking'])
