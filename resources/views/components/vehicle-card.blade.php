@@ -726,7 +726,7 @@
                 margin: 0 !important;
                 padding: 7px 10px !important;
                 border: 1px solid rgba(255, 255, 255, 0.22) !important;
-                border-radius: 8px;
+                border-radius: 20px;
                 background: rgba(17, 24, 39, 0.74);
                 backdrop-filter: blur(10px);
                 -webkit-backdrop-filter: blur(10px);
