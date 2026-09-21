@@ -55,6 +55,20 @@ it('saves make and model IDs only when the model belongs to the make', function 
         ->assertJsonPath('data.payload.vehicle.model_id', $model->id);
 });
 
+it('accepts other make and model names for staff classification', function (): void {
+    DriverOnboardingApplication::create([
+        'mobile' => '+94771234567', 'access_token_hash' => hash('sha256', 'onboarding-token'),
+        'mobile_verified_at' => now(), 'status' => 'draft', 'payload' => [],
+    ]);
+    $vehicle = ['other_make' => 'New Make', 'other_model' => 'New Model', 'model_year' => 2024,
+        'color' => 'White', 'registration_year' => 2024, 'license_plate' => 'CAB-1234', 'is_owner' => true];
+
+    $this->withToken('onboarding-token')->patchJson('/api/driver/onboarding/steps/4', $vehicle)->assertOk()
+        ->assertJsonPath('data.payload.vehicle.other_make', 'New Make')
+        ->assertJsonPath('data.payload.vehicle.other_model', 'New Model')
+        ->assertJsonMissingPath('data.payload.vehicle.make_id');
+});
+
 it('verifies mobile otp prefills an existing user and protects the draft with an onboarding token', function (): void {
     $user = User::create([
         'first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'nimal@example.com',

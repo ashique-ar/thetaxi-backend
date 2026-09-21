@@ -742,7 +742,7 @@
                                 "4"
                             ]
                         },
-                        "description": "Send make_id from List Vehicle Makes and model_id from List Models by Make. The model must belong to the selected make. Approval classifies the vehicle group.",
+                        "description": "Send existing make_id/model_id, or other_make/other_model when an option is missing. Staff assign the canonical make and model before approval.",
                         "body": {
                             "mode": "raw",
                             "raw": "{\n    \"make_id\": \"make-uuid\",\n    \"model_id\": \"model-uuid\",\n    \"model_year\": 2024,\n    \"color\": \"White\",\n    \"registration_year\": 2024,\n    \"license_plate\": \"CAB-1234\",\n    \"is_owner\": true\n}",

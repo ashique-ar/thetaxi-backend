@@ -69,8 +69,10 @@ class OnboardingController extends Controller
                 'postal_code' => ['nullable', 'string', 'max:20'],
             ],
             4 => [
-                'make_id' => ['required', 'uuid', 'exists:vehicle_makes,id'],
-                'model_id' => ['required', 'uuid', Rule::exists('vehicle_models', 'id')->where('make_id', $request->input('make_id'))],
+                'make_id' => ['nullable', 'required_without:other_make', 'uuid', 'exists:vehicle_makes,id'],
+                'other_make' => ['nullable', 'required_without:make_id', 'string', 'max:255'],
+                'model_id' => ['nullable', 'required_without:other_model', 'uuid', Rule::exists('vehicle_models', 'id')->where('make_id', $request->input('make_id'))],
+                'other_model' => ['nullable', 'required_without:model_id', 'string', 'max:255'],
                 'model_year' => ['required', 'integer', 'min:1950', 'max:'.(now()->year + 1)],
                 'color' => ['required', 'string', 'max:50'], 'registration_year' => ['required', 'integer', 'min:1950', 'max:'.(now()->year + 1)],
                 'license_plate' => ['required', 'string', 'max:30'], 'is_owner' => ['required', 'boolean'],
@@ -147,19 +149,33 @@ class OnboardingController extends Controller
     public function review(Request $request, DriverOnboardingApplication $application): JsonResponse
     {
         abort_unless($application->status === 'submitted', 409, 'Only submitted applications can be reviewed.');
+        if ($request->input('decision') === 'approve') {
+            $request->merge([
+                'make_id' => $request->input('make_id', data_get($application->payload, 'vehicle.make_id')),
+                'model_id' => $request->input('model_id', data_get($application->payload, 'vehicle.model_id')),
+            ]);
+        }
         $editableFields = [
             'identity.first_name', 'identity.last_name', 'identity.email', 'identity.nic',
             'address.address', 'address.country_id', 'address.state_id', 'address.city', 'address.postal_code',
-            'vehicle.make_id', 'vehicle.model_id', 'vehicle.model_year', 'vehicle.color', 'vehicle.registration_year',
+            'vehicle.make_id', 'vehicle.other_make', 'vehicle.model_id', 'vehicle.other_model', 'vehicle.model_year', 'vehicle.color', 'vehicle.registration_year',
             'vehicle.license_plate', 'vehicle.is_owner', ...array_map(fn ($type) => "documents.{$type}", self::DOCUMENT_TYPES),
         ];
         $data = $request->validate([
             'decision' => ['required', Rule::in(['approve', 'request_changes', 'reject'])],
+            'make_id' => ['required_if:decision,approve', 'nullable', 'uuid', 'exists:vehicle_makes,id'],
+            'model_id' => ['required_if:decision,approve', 'nullable', 'uuid', Rule::exists('vehicle_models', 'id')->where('make_id', $request->input('make_id'))],
             'message' => ['nullable', 'string', 'max:2000'],
             'issues' => ['required_if:decision,request_changes', 'array'],
             'issues.*.field' => ['required', Rule::in($editableFields)], 'issues.*.message' => ['required', 'string', 'max:500'],
         ]);
-        if ($data['decision'] === 'approve') $this->approve($application, $request->user()->id);
+        if ($data['decision'] === 'approve') {
+            $payload = $application->payload;
+            $payload['vehicle']['make_id'] = $data['make_id'];
+            $payload['vehicle']['model_id'] = $data['model_id'];
+            $application->update(['payload' => $payload]);
+            $this->approve($application->fresh(), $request->user()->id);
+        }
         else $application->update([
             'status' => $data['decision'] === 'reject' ? 'rejected' : 'changes_requested',
             'review_issues' => $data['issues'] ?? null, 'review_message' => $data['message'] ?? null,

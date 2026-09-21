@@ -13806,7 +13806,7 @@
                     "Driver Onboarding"
                 ],
                 "summary": "Save identity, address, or vehicle onboarding step",
-                "description": "Payload must match the selected step: 1 identity, 3 address, 4 vehicle. Address country_id and state_id are backend UUIDs returned by the lookup endpoints, and the state must belong to the selected country.",
+                "description": "Payload must match the selected step: 1 identity, 3 address, 4 vehicle. Vehicle make/model may use existing IDs or other_make/other_model for staff classification.",
                 "security": [
                     {
                         "bearerAuth": []
@@ -13900,24 +13900,66 @@
                                         "type": "object",
                                         "additionalProperties": false,
                                         "required": [
-                                            "make_id",
-                                            "model_id",
                                             "model_year",
                                             "color",
                                             "registration_year",
                                             "license_plate",
                                             "is_owner"
                                         ],
+                                        "allOf": [
+                                            {
+                                                "anyOf": [
+                                                    {
+                                                        "required": [
+                                                            "make_id"
+                                                        ]
+                                                    },
+                                                    {
+                                                        "required": [
+                                                            "other_make"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "anyOf": [
+                                                    {
+                                                        "required": [
+                                                            "model_id"
+                                                        ]
+                                                    },
+                                                    {
+                                                        "required": [
+                                                            "other_model"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ],
                                         "properties": {
                                             "make_id": {
                                                 "type": "string",
                                                 "format": "uuid",
-                                                "description": "ID from GET /api/driver/onboarding/makes."
+                                                "nullable": true,
+                                                "description": "Existing make ID; required unless other_make is sent."
+                                            },
+                                            "other_make": {
+                                                "type": "string",
+                                                "maxLength": 255,
+                                                "nullable": true,
+                                                "description": "Driver-entered make when it is not listed."
                                             },
                                             "model_id": {
                                                 "type": "string",
                                                 "format": "uuid",
-                                                "description": "ID from GET /api/driver/onboarding/makes/{make_id}/models; must belong to make_id."
+                                                "nullable": true,
+                                                "description": "Existing model ID belonging to make_id; required unless other_model is sent."
+                                            },
+                                            "other_model": {
+                                                "type": "string",
+                                                "maxLength": 255,
+                                                "nullable": true,
+                                                "description": "Driver-entered model when it is not listed."
                                             },
                                             "model_year": {
                                                 "type": "integer",
@@ -13964,6 +14006,17 @@
                                     "value": {
                                         "make_id": "make-uuid",
                                         "model_id": "model-uuid",
+                                        "model_year": 2024,
+                                        "color": "White",
+                                        "registration_year": 2024,
+                                        "license_plate": "CAB-1234",
+                                        "is_owner": true
+                                    }
+                                },
+                                "otherVehicle": {
+                                    "value": {
+                                        "other_make": "New Make",
+                                        "other_model": "New Model",
                                         "model_year": 2024,
                                         "color": "White",
                                         "registration_year": 2024,

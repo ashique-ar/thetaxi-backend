@@ -60,6 +60,8 @@ it('documents vehicle lookups and make model IDs for onboarding', function (): v
     expect(data_get($docs, 'paths./api/driver/onboarding/makes.get.responses.200'))->toBeArray()
         ->and(data_get($docs, 'paths./api/driver/onboarding/makes/{make_id}/models.get.parameters.0.name'))->toBe('make_id')
         ->and(data_get($docs, 'paths./api/driver/onboarding/steps/{step}.patch.requestBody.content.application/json.schema.oneOf.2.required'))
-            ->toContain('make_id', 'model_id')
+            ->not->toContain('make_id', 'model_id')
+        ->and(data_get($docs, 'paths./api/driver/onboarding/steps/{step}.patch.requestBody.content.application/json.schema.oneOf.2.properties.other_make'))->toBeArray()
+        ->and(data_get($docs, 'paths./api/driver/onboarding/steps/{step}.patch.requestBody.content.application/json.schema.oneOf.2.properties.other_model'))->toBeArray()
         ->and($names)->toContain('List Vehicle Makes', 'List Models by Make', 'Save Vehicle Step');
 });
