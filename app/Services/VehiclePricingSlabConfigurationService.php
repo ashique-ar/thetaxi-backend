@@ -22,35 +22,6 @@ class VehiclePricingSlabConfigurationService
         'per_day' => 1440,
     ];
 
-    public function resolveOnlyPricedPackageSlab(
-        string $serviceTypeId,
-        string $vehicleGroupId,
-        ?string $ownerType,
-        ?string $ownerId
-    ): ?VehiclePricingSlabDefinition {
-        $slabs = VehiclePricingSlabDefinition::query()
-            ->where('service_type_id', $serviceTypeId)
-            ->whereNotNull('service_package_id')
-            ->where('is_active', true)
-            ->whereHas('vehicleGroupPricing', function (Builder $query) use ($vehicleGroupId, $ownerType, $ownerId) {
-                $query->where('vehicle_group_id', $vehicleGroupId)
-                    ->where('is_active', true)
-                    ->where('rate', '>', 0)
-                    ->when($ownerType && $ownerId, fn (Builder $query) => $query->where(function (Builder $scope) use ($ownerType, $ownerId) {
-                        $scope->where(fn (Builder $exact) => $exact
-                            ->where('owner_type', $ownerType)
-                            ->where('owner_id', $ownerId))
-                            ->orWhere(fn (Builder $global) => $global
-                                ->whereNull('owner_type')
-                                ->whereNull('owner_id'));
-                    }), fn (Builder $query) => $query->whereNull('owner_type')->whereNull('owner_id'));
-            })
-            ->limit(2)
-            ->get();
-
-        return $slabs->count() === 1 ? $slabs->first() : null;
-    }
-
     /** @return array{package: ?ServicePackage, slab: ?VehiclePricingSlabDefinition} */
     public function resolvePackageSlab(
         string $serviceTypeId,

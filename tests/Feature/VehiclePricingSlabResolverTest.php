@@ -144,51 +144,6 @@ it('allows one flat-rate slab for each separately selected service package', fun
         ->and(collect($health['issues'])->pluck('code'))->not->toContain('duplicate_duration_independent_fallback');
 });
 
-it('resolves the only package priced for the corporate vehicle group', function () {
-    Schema::create('vehicle_group_pricing', function (Blueprint $table) {
-        $table->uuid('id')->primary();
-        $table->uuid('slab_definition_id');
-        $table->uuid('vehicle_group_id');
-        $table->decimal('rate', 12, 2);
-        $table->boolean('is_active')->default(true);
-        $table->string('owner_type')->nullable();
-        $table->uuid('owner_id')->nullable();
-        $table->timestamps();
-        $table->softDeletes();
-    });
-
-    $serviceId = insertSlabTestService();
-    $vehicleGroupId = (string) Str::uuid();
-    $corporateId = (string) Str::uuid();
-    $otherCorporateId = (string) Str::uuid();
-    $otherSlabId = insertLegacySlab($serviceId, 'Other corporate package', 'flat_rate', null, null);
-    $corporateSlabId = insertLegacySlab($serviceId, 'Corporate package', 'flat_rate', null, null);
-    DB::table('vehicle_pricing_slab_definitions')->whereIn('id', [$otherSlabId, $corporateSlabId])
-        ->update(['service_package_id' => DB::raw('id')]);
-    foreach ([[$otherSlabId, $otherCorporateId], [$corporateSlabId, $corporateId]] as [$slabId, $ownerId]) {
-        DB::table('vehicle_group_pricing')->insert([
-            'id' => (string) Str::uuid(),
-            'slab_definition_id' => $slabId,
-            'vehicle_group_id' => $vehicleGroupId,
-            'rate' => 100,
-            'is_active' => true,
-            'owner_type' => 'corporate',
-            'owner_id' => $ownerId,
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
-
-    $slab = app(VehiclePricingSlabConfigurationService::class)->resolveOnlyPricedPackageSlab(
-        $serviceId,
-        $vehicleGroupId,
-        'corporate',
-        $corporateId,
-    );
-
-    expect($slab?->id)->toBe($corporateSlabId);
-});
-
 it('blocks activating overlapping legacy hour packages', function () {
     $serviceId = insertSlabTestService();
     insertLegacySlab($serviceId, 'Primary package', 'per_km', 1, 6);

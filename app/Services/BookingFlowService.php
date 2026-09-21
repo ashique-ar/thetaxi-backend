@@ -4353,18 +4353,6 @@ class BookingFlowService
                 ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
                     'package_included_km', 'package_included_hours', 'package_has_hour_limit',
                 ], true)));
-            if ($usesPackagePricing
-                && empty($calculationInputs['package_id'])
-                && empty($calculationInputs['slab_definition_id'])
-                && !empty($calculationInputs['vehicle_group_id'])) {
-                $calculationInputs['slab_definition_id'] = app(VehiclePricingSlabConfigurationService::class)
-                    ->resolveOnlyPricedPackageSlab(
-                        (string) $serviceTypeId,
-                        (string) $calculationInputs['vehicle_group_id'],
-                        $ownerType,
-                        $ownerId,
-                    )?->id;
-            }
             if ($usesPackagePricing || !empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
                 $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                     (string) $serviceTypeId,
