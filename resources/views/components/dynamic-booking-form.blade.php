@@ -40,6 +40,9 @@
         return sprintf('%06d-%06d', $row, $order);
     })->all();
     $hasSearchContext = (bool) ($hasSearchContext ?? false);
+    $hasRentalDropoffField = collect($sortedFields)->contains(static function ($field, $name) {
+        return str_contains((string) $name, 'dropoff') && ($field['type'] ?? '') === 'location';
+    });
     $clientFieldDefaults = [];
     foreach ($sortedFields as $defaultFieldName => $defaultFieldConfig) {
         $defaultSubmitAs = $defaultFieldConfig['submit_as'] ?? $defaultFieldName;
@@ -246,7 +249,8 @@
 
                 if ($isPickupField) {
                     $locAddr = $pickupLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $hasSearchContext ? ($locAddr ?: $fieldDefault) : '');
+                    $useConfiguredLocationDefault = $locationMode === 'predefined_or_custom';
+                    $currentValue = $safeOldOr($submitAs, ($hasSearchContext || $useConfiguredLocationDefault) ? ($locAddr ?: $fieldDefault) : '');
                     $locLat = $pickupLoc['lat'] ?? '';
                     $locLng = $pickupLoc['lng'] ?? '';
                     $currentLat = $safeOldOr($submitAs . '_lat', $hasSearchContext ? ($locLat ?: ($field['default_lat'] ?? '')) : '');
@@ -342,6 +346,35 @@
                 'servicePackages' => $servicePackages,
                 'transferType' => $airportTransferType ?? null,
             ])
+
+            @if(in_array($serviceCode, ['self_drive', 'with_driver'], true)
+                && !$hasRentalDropoffField
+                && $fieldType === 'location'
+                && $locationMode === 'predefined_or_custom'
+                && ($submitAs === 'pickup' || str_contains($fieldName, 'pickup')))
+                <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
+                     id="{{ $prefix }}_dropoff_wrapper" style="display: none;">
+                    <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
+                    <div class="single-search-box location-search-box">
+                        @include('components.partials.location-icon')
+                        <div class="custom-select-dropdown">
+                            <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
+                               placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your drop-off location' }}"
+                               class="location-search @error('dropoff') is-invalid @enderror"
+                               value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}" disabled>
+                            <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
+                                   value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
+                            <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
+                                   value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
+                        </div>
+                    </div>
+                    @error('dropoff')<span class="text-danger small">{{ $message }}</span>@enderror
+                </div>
+                <input type="hidden" name="dropoff" id="{{ $prefix }}_dropoff_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_predefined" id="{{ $prefix }}_dropoff_predefined" value="" disabled>
+            @endif
         </div>
 
         {{-- For predefined_or_custom location with sync_from: add dropoff sync fields --}}
@@ -440,52 +473,6 @@
                 </div>
             </div>
         </div>
-    @endif
-
-    {{-- Dropoff sync fields for self_drive/with_driver --}}
-    @if(in_array($serviceCode, ['self_drive', 'with_driver']))
-        @php
-            $hasPickupPredefined = false;
-            $hasDropoffField = false;
-            foreach ($sortedFields as $fn => $f) {
-                if (($f['submit_as'] ?? $fn) === 'pickup' && ($f['location_mode'] ?? '') === 'predefined_or_custom') {
-                    $hasPickupPredefined = true;
-                }
-                if (str_contains($fn, 'dropoff') && ($f['type'] ?? '') === 'location') {
-                    $hasDropoffField = true;
-                }
-            }
-        @endphp
-        @if($hasPickupPredefined && !$hasDropoffField)
-            {{-- Dropoff wrapper for doorstep (custom) selection --}}
-            <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
-                 id="{{ $prefix }}_dropoff_wrapper"
-                 style="display: none;">
-                <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Dropoff Location' }}</label>
-                <div class="single-search-box location-search-box">
-                    @include('components.partials.location-icon')
-                    <div class="custom-select-dropdown">
-                        <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
-                           placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your dropoff location' }}"
-                           class="location-search @error('dropoff') is-invalid @enderror"
-                           value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}"
-                           disabled>
-                        <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
-                               value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
-                        <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
-                               value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
-                    </div>
-                </div>
-                @error('dropoff')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-            {{-- Hidden dropoff fields for predefined location sync --}}
-            <input type="hidden" name="dropoff" id="{{ $prefix }}_dropoff_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_predefined" id="{{ $prefix }}_dropoff_predefined" value="" disabled>
-        @endif
     @endif
 
     @if ($isInquiry)

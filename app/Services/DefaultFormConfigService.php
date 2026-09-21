@@ -207,7 +207,8 @@ class DefaultFormConfigService
         return [
             'pickup_location' => [
                 'type' => 'location',
-                'label' => 'Pickup Location',
+                'label' => 'Pickup and Drop-off Location',
+                'custom_label' => 'Pickup Location',
                 'required' => true,
                 'order' => 1,
                 'submit_as' => 'pickup',

@@ -828,6 +828,7 @@ class ServiceFormConfigController extends Controller
                 'form_config' => 'nullable|array',
                 'form_config.*.type' => 'sometimes|required|string',
                 'form_config.*.label' => 'sometimes|required|string',
+                'form_config.*.custom_label' => 'nullable|string|max:255',
                 'form_config.*.required' => 'boolean',
                 'form_config.*.order' => 'integer',
                 'form_config.*.width' => 'nullable|in:full,half,third,auto',

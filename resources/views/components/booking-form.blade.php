@@ -478,7 +478,7 @@
                 if (!selectedOption) return;
                 var selType = selectedOption.dataset.type;
                 var selValue = selectedOption.dataset.value;
-                if (selType === 'predefined' && selValue) {
+                if ((selType === 'predefined' || selType === 'configured') && selValue) {
                     applyPredefined(selectedOption.dataset.address || '', selectedOption.dataset.lat || '', selectedOption.dataset.lng || '', selValue);
                 } else if (selType === 'custom') {
                     applyCustom();

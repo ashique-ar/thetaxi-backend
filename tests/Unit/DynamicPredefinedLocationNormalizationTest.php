@@ -115,6 +115,22 @@ class DynamicPredefinedLocationNormalizationTest extends TestCase
             array_column($defaults['pickup_location']['options'], 'value')
         );
         $this->assertFileExists(database_path('seeders/RentalServiceFormLocationOptionsSeeder.php'));
+        $this->assertFileExists(database_path('seeders/CasonsHeadOfficeRentalDefaultsSeeder.php'));
+        $this->assertSame('Pickup and Drop-off Location', $defaults['pickup_location']['label']);
+        $this->assertSame('Pickup Location', $defaults['pickup_location']['custom_label']);
+    }
+
+    public function test_doorstep_dropoff_is_rendered_next_to_the_dynamic_pickup_field(): void
+    {
+        $renderer = file_get_contents(resource_path('views/components/dynamic-booking-form.blade.php'));
+        $pickupField = strpos($renderer, "@include('components.dynamic-form-field'");
+        $dropoffField = strpos($renderer, 'id="{{ $prefix }}_dropoff_wrapper"');
+        $fieldLoopEnd = strpos($renderer, '@endforeach', $pickupField);
+
+        $this->assertNotFalse($pickupField);
+        $this->assertGreaterThan($pickupField, $dropoffField);
+        $this->assertLessThan($fieldLoopEnd, $dropoffField);
+        $this->assertStringContainsString("\$useConfiguredLocationDefault = \$locationMode === 'predefined_or_custom'", $renderer);
     }
 
     private function configuredLocationRequest(array $input): BookingSearchRequest

@@ -46,6 +46,7 @@ $selectedLocationCode = '';
 $selectedLocationName = '';
 $selectedLocationAction = '';
 $isCustom = true;
+$customLabel = $customLabel ?? $label;
 
 if ($currentValue) {
     foreach ($locationOptions as $location) {
@@ -131,7 +132,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
 <div class="booking-field custom-location-box"
      id="{{ $customInputId }}_wrapper"
      style="display: {{ $isCustom && $currentValue ? 'block' : 'none' }};">
-    <label class="input-label">Enter {{ $label }}</label>
+    <label class="input-label">{{ $customLabel }}</label>
     <div class="single-search-box location-search-box">
         <svg width="15" height="15" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
             <g>
@@ -141,7 +142,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
         </svg>
         <div class="custom-select-dropdown">
             <input type="text" name="{{ $name }}" id="{{ $customInputId }}"
-               placeholder="Enter your {{ strtolower($label) }}"
+               placeholder="Enter your {{ strtolower($customLabel) }}"
                class="location-search @error($name) is-invalid @enderror"
                value="{{ $isCustom ? $currentValue : '' }}"
                {{ $isCustom && $currentValue && $required ? 'required' : '' }}>

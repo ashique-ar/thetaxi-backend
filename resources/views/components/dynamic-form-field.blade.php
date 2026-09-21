@@ -62,6 +62,7 @@
                     'currentLng' => $currentLng ?? '',
                     'predefinedLocations' => $predefinedLocations ?? collect(),
                     'configuredOptions' => $options,
+                    'customLabel' => $field['custom_label'] ?? $label,
                 ])
                 @break
 
