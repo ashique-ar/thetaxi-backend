@@ -166,14 +166,6 @@ class ComprehensivePricingSeeder extends Seeder
                 // Waiting charges
                 ['name' => 'Waiting Charge Per Hour', 'code' => 'waiting_charge_per_hour', 'common_rate_type' => 'per_hour', 'rate' => 1000.00, 'sort_order' => 5],
             ],
-            'wedding_hire' => [
-                // Decoration charges for wedding vehicles
-                ['name' => 'Decoration Charge', 'code' => 'decoration_charge', 'common_rate_type' => 'flat_rate', 'rate' => 5000.00, 'sort_order' => 1],
-                // Extra KM beyond package limit
-                ['name' => 'Extra KM Rate', 'code' => 'extra_km_rate', 'common_rate_type' => 'per_km', 'rate' => 100.00, 'sort_order' => 2],
-                // Extra hours beyond package
-                ['name' => 'Extra Hour Rate', 'code' => 'extra_hour_rate', 'common_rate_type' => 'per_hour', 'rate' => 2000.00, 'sort_order' => 3],
-            ],
             'corporate' => [
                 // Vehicle delivery and pickup rates
                 ['name' => 'Vehicle Delivery Rate Per KM', 'code' => 'vehicle_delivery_rate_per_km', 'common_rate_type' => 'per_km', 'rate' => 40.00, 'sort_order' => 1],
@@ -426,10 +418,9 @@ class ComprehensivePricingSeeder extends Seeder
             [
                 'service_code' => 'wedding_hire',
                 'name' => 'Wedding Hire Calculation',
-                'description' => 'Flat rate wedding packages with decoration charges, extra KM and extra hours',
-                // Formula: flat slab rate + decoration + extra km + extra hours
-                'formula' => 'slab_rate + decoration_charge + (extra_km * extra_km_rate) + (extra_hours * extra_hour_rate)',
-                'variable_names' => ['slab_rate', 'decoration_charge', 'extra_km', 'extra_hours', 'extra_km_rate', 'extra_hour_rate'],
+                'description' => 'Wedding package price from the managed vehicle group rate and selected package multiplier',
+                'formula' => 'slab_rate',
+                'variable_names' => ['slab_rate'],
                 'conditions' => []
             ],
             [

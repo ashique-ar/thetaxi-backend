@@ -96,6 +96,18 @@ it('activates one range-less per-km fallback and resolves it for every duration'
         ->and($resolver->resolve(clone $query, 100000)?->id)->toBe($fallbackId);
 });
 
+it('uses one managed wedding base rate for both four and eight hour packages', function () {
+    $serviceId = insertSlabTestService();
+    $baseRateId = insertLegacySlab($serviceId, '8 Hour Wedding Rate', 'flat_rate', 4, 8);
+    $resolver = app(VehiclePricingSlabConfigurationService::class);
+    $query = VehiclePricingSlabDefinition::query()->where('service_type_id', $serviceId);
+
+    expect($resolver->resolve(clone $query, 4 * 60)?->id)->toBe($baseRateId)
+        ->and($resolver->resolve(clone $query, 8 * 60)?->id)->toBe($baseRateId)
+        ->and(10000 * 0.75)->toBe(7500.0)
+        ->and(10000 * 1.00)->toBe(10000.0);
+});
+
 it('blocks activating a second range-less legacy fallback', function () {
     $serviceId = insertSlabTestService();
     insertLegacySlab($serviceId, 'Primary fallback', 'per_km', null, null);

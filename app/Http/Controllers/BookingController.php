@@ -509,18 +509,20 @@ class BookingController extends Controller
 
             case 'wedding_hire':
                 $selectedWeddingPackage = $requestData['package_id'] ?? $requestData['service_package_id'] ?? null;
-                $weddingHours = $selectedWeddingPackage
-                    ? ServicePackage::query()->where('service_type_id', $serviceType->id)->find($selectedWeddingPackage)?->default_duration_hours
-                    : ($requestData['package_hours'] ?? null);
+                $weddingHours = ServicePackage::query()
+                    ->where('service_type_id', $serviceType->id)
+                    ->where('is_active', true)
+                    ->find($selectedWeddingPackage)?->default_duration_hours;
+                abort_if(!$weddingHours, 422, 'Select an active Wedding package with a configured duration.');
                 $weddingStart = Carbon::parse($requestData['date'] . ' ' . ($requestData['time'] ?? '09:00'));
-                $weddingEnd = $weddingStart->copy()->addHours((int) ($weddingHours ?: 8));
+                $weddingEnd = $weddingStart->copy()->addHours((int) $weddingHours);
                 $params['from_date'] = $weddingStart->format('Y-m-d');
                 $params['to_date'] = $weddingEnd->format('Y-m-d');
                 $params['from_time'] = $weddingStart->format('H:i');
                 $params['to_time'] = $weddingEnd->format('H:i');
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
-                $params['package_hours'] = (int) ($weddingHours ?: 8);
+                $params['package_hours'] = (int) $weddingHours;
                 break;
 
             case 'corporate':

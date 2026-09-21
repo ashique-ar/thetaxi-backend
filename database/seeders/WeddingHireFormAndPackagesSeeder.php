@@ -4,6 +4,10 @@ namespace Database\Seeders;
 
 use App\Models\Service\ServicePackage;
 use App\Models\Service\ServiceType;
+use App\Models\Vehicle\VehiclePricing\VehicleGroupCommonRatePricing;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
 use App\Services\DefaultFormConfigService;
 use Illuminate\Database\Seeder;
 
@@ -38,7 +42,7 @@ class WeddingHireFormAndPackagesSeeder extends Seeder
         $service->save();
 
         foreach ([4 => 0.75, 8 => 1.00] as $hours => $multiplier) {
-            ServicePackage::query()->updateOrCreate(
+            ServicePackage::query()->firstOrCreate(
                 ['service_type_id' => $service->id, 'code' => "wedding_{$hours}h"],
                 [
                     'name' => "{$hours} Hours",
@@ -51,5 +55,49 @@ class WeddingHireFormAndPackagesSeeder extends Seeder
                 ]
             );
         }
+
+        $slabs = VehiclePricingSlabDefinition::query()->where('service_type_id', $service->id)->get();
+        $baseRateSlab = $slabs->firstWhere('name', '8 Hour Wedding Rate')
+            ?? $slabs->first(fn ($slab) => (int) $slab->min_hours === 8 && (int) $slab->max_hours === 8)
+            ?? new VehiclePricingSlabDefinition(['service_type_id' => $service->id]);
+        $baseRateSlab->fill([
+            'service_package_id' => null,
+            'name' => '8 Hour Wedding Rate',
+            'type' => 'flat_rate',
+            'min_hours' => 4,
+            'max_hours' => 8,
+            'min_days' => null,
+            'max_days' => null,
+            'sort_order' => 1,
+            'is_active' => true,
+        ])->save();
+        VehiclePricingSlabDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->whereKeyNot($baseRateSlab->id)
+            ->update(['is_active' => false]);
+
+        $commonRateIds = VehiclePricingCommonRateDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->pluck('id');
+        VehicleGroupCommonRatePricing::withTrashed()
+            ->whereIn('common_rate_definition_id', $commonRateIds)
+            ->forceDelete();
+        VehiclePricingCommonRateDefinition::query()
+            ->whereIn('id', $commonRateIds)
+            ->delete();
+
+        VehiclePricingCalculationDefinition::query()
+            ->where('service_type_id', $service->id)
+            ->update([
+                'description' => 'Wedding package price from the managed vehicle group rate and selected package multiplier',
+                'formula' => 'slab_rate',
+                'variables' => [[
+                    'name' => 'slab_rate',
+                    'type' => 'slab_rate',
+                    'description' => 'Managed vehicle group rate adjusted by the selected package multiplier',
+                    'is_required' => true,
+                    'category' => 'base',
+                ]],
+            ]);
     }
 }
