@@ -672,7 +672,7 @@
             .vehicle-card-content {
                 padding: 20px;
                 display: grid !important;
-                grid-template-rows: 48px 32px 140px 42px 60px 54px minmax(92px, auto);
+                grid-template-rows: 38px 26px 84px 30px 34px 40px minmax(86px, auto);
                 flex-grow: 1;
             }
 
@@ -981,7 +981,7 @@
             @media (max-width: 767px) {
 
                 .vehicle-card-content {
-                    grid-template-rows: 48px 32px 140px 42px 64px 60px minmax(92px, auto);
+                    grid-template-rows: 42px 28px 92px 32px 38px 44px minmax(86px, auto);
                 }
 
                 .recommended-badge {
