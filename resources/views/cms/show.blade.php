@@ -377,6 +377,36 @@
             margin-top: 155px !important;
         }
 
+        @if (is_theme('theme-04'))
+            .cms-article-page {
+                padding-top: 32px;
+            }
+
+            .article-sidebar {
+                position: static;
+                top: auto;
+            }
+
+            .t4-booking-panel--embedded {
+                width: 100%;
+                min-height: 0;
+                margin: 0 0 24px;
+                padding: 0;
+                background: transparent;
+            }
+
+            .t4-booking-panel--embedded > .t4-booking-panel__inner,
+            .t4-booking-panel--embedded .t4-booking-panel__card {
+                width: 100%;
+                max-width: none;
+                padding-inline: 0;
+            }
+
+            .t4-booking-panel--embedded .t4-booking-panel__card {
+                padding: 14px;
+            }
+        @endif
+
     </style>
 @endpush
 
