@@ -108,7 +108,7 @@
 @endphp
 
 <!-- Vehicle Card -->
-<div class="vehicle-card modern-card h-100 {{ $isRecommended ? 'recommended-vehicle' : '' }} {{ is_theme('theme-02') ? 't2-vehicle-card' : theme_class('vehicle-card') }}"
+<div class="vehicle-card modern-card h-100 {{ $showQuotationButton ? 'vehicle-card--quotation' : '' }} {{ $isRecommended ? 'recommended-vehicle' : '' }} {{ is_theme('theme-02') ? 't2-vehicle-card' : theme_class('vehicle-card') }}"
     data-vehicle-group="{{ $vehicle['id'] }}" data-price="{{ $hasPricing ? ($pricing['base_amount'] ?? 0) : '' }}"
     data-name="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}">
 

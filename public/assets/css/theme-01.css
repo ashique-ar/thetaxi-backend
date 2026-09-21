@@ -44,6 +44,48 @@
     line-height: 1.25;
 }
 
+/* Keep search and homepage fleet cards compact while retaining aligned rows. */
+.theme-default .vehicle-card .vehicle-card-content {
+    padding: 14px !important;
+    grid-template-rows: 34px 82px 32px 28px 34px minmax(82px, auto) !important;
+}
+
+.theme-default .vehicle-card .vehicle-card-price-slot,
+.theme-default .vehicle-card .vehicle-card-amenities-slot,
+.theme-default .vehicle-card .vehicle-card-details-slot,
+.theme-default .vehicle-card .vehicle-card-features-slot {
+    align-self: stretch;
+}
+
+.theme-default .vehicle-card--quotation .vehicle-card-content {
+    grid-template-rows: 34px minmax(34px, 1fr) minmax(72px, auto) !important;
+}
+
+.theme-default .vehicle-card--quotation :is(
+    .vehicle-card-price-slot,
+    .vehicle-card-amenities-slot,
+    .vehicle-card-details-slot
+) {
+    display: none;
+}
+
+.theme-default .vehicle-card .vehicle-image-container > .vehicle-specs {
+    bottom: 10px;
+    left: 10px;
+    padding: 5px 8px !important;
+    border-radius: 7px;
+}
+
+.theme-default .vehicle-card .vehicle-image-container > .vehicle-specs .spec-item {
+    gap: 5px;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.theme-default .vehicle-card .vehicle-image-container > .vehicle-specs .spec-item i {
+    font-size: 12px;
+}
+
 .theme-default .featured-vehicles-btn,
 .theme-default .primary-btn1,
 .theme-default .btn-primary {
@@ -99,6 +141,15 @@
 
     .theme-default .section-title {
         margin-bottom: 28px !important;
+    }
+
+    .theme-default .vehicle-card .vehicle-card-content {
+        padding: 12px !important;
+        grid-template-rows: 38px 88px 34px 32px 38px minmax(82px, auto) !important;
+    }
+
+    .theme-default .vehicle-card--quotation .vehicle-card-content {
+        grid-template-rows: 38px minmax(38px, 1fr) minmax(72px, auto) !important;
     }
 
     .theme-default .search-summary-card,
