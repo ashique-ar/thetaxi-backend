@@ -21,6 +21,20 @@ use Illuminate\Support\Collection;
 
 uses(Tests\TestCase::class);
 
+it('fills SMS identity tokens from business settings', function (): void {
+    $websiteSettings = Mockery::mock(\App\Services\WebsiteSettingsService::class);
+    $websiteSettings->shouldReceive('get')->with('company_name', config('app.name'))->andReturn('Casons');
+    $websiteSettings->shouldReceive('get')->with('company_phone', '')->andReturn('+94 11 123 4567');
+    $websiteSettings->shouldReceive('get')->with('company_website', config('app.url'))->andReturn('https://example.com');
+    app()->instance(\App\Services\WebsiteSettingsService::class, $websiteSettings);
+
+    $service = new SmsAutomationService(Mockery::mock(SmsSettingsService::class), Mockery::mock(SmsService::class));
+    $render = new ReflectionMethod($service, 'render');
+
+    expect($render->invoke($service, '{company_name}: {company_phone} {company_website}', []))
+        ->toBe('Casons: +94 11 123 4567 https://example.com');
+});
+
 it('previews the admin summary with example data without queueing an SMS', function (): void {
     $settings = Mockery::mock(SmsSettingsService::class);
     $sms = Mockery::mock(SmsService::class);

@@ -734,6 +734,14 @@ class SmsAutomationService
 
     private function render(string $template, array $variables): string
     {
+        if (str_contains($template, '{company_')) {
+            $websiteSettings = app(\App\Services\WebsiteSettingsService::class);
+            $variables += [
+                'company_name' => $websiteSettings->get('company_name', config('app.name')),
+                'company_phone' => $websiteSettings->get('company_phone', ''),
+                'company_website' => $websiteSettings->get('company_website', config('app.url')),
+            ];
+        }
         $replacements = [];
         foreach ($variables as $key => $value) {
             $replacements['{' . $key . '}'] = (string) $value;

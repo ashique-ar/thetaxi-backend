@@ -481,8 +481,9 @@
 
 <body>
     @php
-        $brandName = $settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company';
-        $brandLogo = $settings['brand_logo_primary'] ?? $settings['logo_header'] ?? 'assets/img/header-logo.png';
+        $brandName = \App\Models\BusinessSetting::getSetting('company_name') ?: ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company');
+        $brandLogo = \App\Models\BusinessSetting::getSetting('company_logo_path') ?: ($settings['company_logo_path'] ?? $settings['brand_logo_primary'] ?? $settings['logo_header'] ?? null);
+        $brandLogoUrl = $brandLogo ? (str_starts_with($brandLogo, 'media/') ? route('resources.assets', ['path' => $brandLogo]) : s3_asset($brandLogo)) : null;
         $brandEmail = $settings['company_email'] ?? config('mail.from.address');
         $brandPhone = $settings['company_phone'] ?? null;
         $brandWebsite = $settings['company_website'] ?? config('app.url');
@@ -494,10 +495,11 @@
                     <div class="email-container">
                         <!-- Header -->
                         <div class="email-header">
-                            <div class="logo-container">
-                                <img src="{{ s3_asset($brandLogo) }}"
-                                    alt="{{ $brandName }}">
-                            </div>
+                            @if($brandLogoUrl)
+                                <div class="logo-container"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}"></div>
+                            @else
+                                <strong>{{ $brandName }}</strong>
+                            @endif
                             <h1>@yield('header_title', 'Welcome')</h1>
                             @hasSection('header_subtitle')
                                 <p class="subtitle">@yield('header_subtitle')</p>
@@ -511,10 +513,9 @@
 
                         <!-- Footer -->
                         <div class="email-footer">
-                            <div class="footer-brand">
-                                <img src="{{ s3_asset($brandLogo) }}"
-                                    alt="{{ $brandName }}">
-                            </div>
+                            @if($brandLogoUrl)
+                                <div class="footer-brand"><img src="{{ $brandLogoUrl }}" alt="{{ $brandName }}"></div>
+                            @endif
 
                             <p class="footer-text">
                                 Best regards,<br>

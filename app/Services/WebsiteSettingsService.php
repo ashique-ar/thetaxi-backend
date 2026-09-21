@@ -18,6 +18,7 @@ class WebsiteSettingsService
         'site_name',
         'site_tagline',
         'company_name',
+        'company_logo_path',
         'company_email',
         'company_phone',
         'company_whatsapp',
@@ -551,6 +552,7 @@ class WebsiteSettingsService
             // General company info
             'company_name',
             'company_phone',
+            'company_logo_path',
             'company_email',
             'company_address',
             'company_website',
@@ -793,6 +795,7 @@ class WebsiteSettingsService
             'site_tagline',
             'company_name',
             'company_phone',
+            'company_logo_path',
             'company_whatsapp',
             'company_email',
             'company_address',

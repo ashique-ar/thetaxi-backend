@@ -11,6 +11,19 @@ use Tests\TestCase;
 
 class Theme04FooterSettingsTest extends TestCase
 {
+    public function test_backend_footer_category_exposes_banner_settings(): void
+    {
+        $service = Mockery::mock(WebsiteSettingsService::class)->makePartial();
+        $service->shouldReceive('getMultiple')->once()->andReturnUsing(function (array $keys) {
+            foreach (['footer_cta_enabled', 'footer_cta_image', 'footer_cta_heading', 'footer_cta_book_url'] as $key) {
+                $this->assertContains($key, $keys);
+            }
+            return ['footer_cta_image' => 'media/footer/banner.webp'];
+        });
+
+        $this->assertSame('media/footer/banner.webp', $service->getFooterSettings()['footer_cta_image']);
+    }
+
     public function test_uploaded_banner_and_content_settings_reach_public_views(): void
     {
         Cache::forget('global_settings_flattened_footer-test');

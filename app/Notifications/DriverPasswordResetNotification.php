@@ -24,7 +24,7 @@ class DriverPasswordResetNotification extends Notification implements ShouldQueu
     public function toMail(object $notifiable): MailMessage
     {
         return (new MailMessage)
-            ->subject('Reset your TheTaxi Driver password')
+            ->subject('Reset your ' . (\App\Models\BusinessSetting::getSetting('company_name') ?: \App\Models\Website\WebsiteSetting::getValue('company_name', config('app.name'))) . ' Driver password')
             ->greeting('Hello!')
             ->line('A password reset was requested for your driver account.')
             ->line('Your one-time password is: '.$this->otp)

@@ -508,13 +508,19 @@ class BookingController extends Controller
                 break;
 
             case 'wedding_hire':
-                $params['from_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
-                $params['to_date'] = Carbon::parse($requestData['date'])->format('Y-m-d');
-                $params['from_time'] = $requestData['time'] ?? '00:00';
-                $params['to_time'] = $requestData['time'] ?? '23:59';
+                $selectedWeddingPackage = $requestData['package_id'] ?? $requestData['service_package_id'] ?? null;
+                $weddingHours = $selectedWeddingPackage
+                    ? ServicePackage::query()->where('service_type_id', $serviceType->id)->find($selectedWeddingPackage)?->default_duration_hours
+                    : ($requestData['package_hours'] ?? null);
+                $weddingStart = Carbon::parse($requestData['date'] . ' ' . ($requestData['time'] ?? '09:00'));
+                $weddingEnd = $weddingStart->copy()->addHours((int) ($weddingHours ?: 8));
+                $params['from_date'] = $weddingStart->format('Y-m-d');
+                $params['to_date'] = $weddingEnd->format('Y-m-d');
+                $params['from_time'] = $weddingStart->format('H:i');
+                $params['to_time'] = $weddingEnd->format('H:i');
                 $params['pickup_location'] = $this->formatLocation($requestData, 'pickup');
                 $params['dropoff_location'] = $this->formatLocation($requestData, 'dropoff');
-                $params['package_hours'] = $requestData['package_hours'] ?? 6;
+                $params['package_hours'] = (int) ($weddingHours ?: 8);
                 break;
 
             case 'corporate':

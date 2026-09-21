@@ -87,19 +87,19 @@ class SmsSettingsService
             ),
             'booking_confirmation_template' => trim((string) (
                 $settings['sms_booking_confirmation_template']
-                    ?? 'Your booking with TheTaxi is confirmed. Booking #: {booking_number}. Pickup date: {pickup_date}. Pickup time: {pickup_time}. For assistance: 011 286 1111.'
+                    ?? 'Your booking with {company_name} is confirmed. Booking #: {booking_number}. Pickup date: {pickup_date}. Pickup time: {pickup_time}. For assistance: {company_phone}.'
             )),
             'quotation_requested_template' => trim((string) (
                 $settings['sms_quotation_requested_template']
-                    ?? 'Thank you for requesting a quotation from TheTaxi. Reference: {booking_number}. Our team will contact you shortly. Assistance: 011 286 1111.'
+                    ?? 'Thank you for requesting a quotation from {company_name}. Reference: {booking_number}. Our team will contact you shortly. Assistance: {company_phone}.'
             )),
             'inquiry_received_template' => trim((string) (
                 $settings['sms_inquiry_received_template']
-                    ?? 'Thank you for contacting TheTaxi. Inquiry reference: {inquiry_number}. We have received your inquiry and will contact you shortly. Assistance: 011 286 1111.'
+                    ?? 'Thank you for contacting {company_name}. Inquiry reference: {inquiry_number}. We have received your inquiry and will contact you shortly. Assistance: {company_phone}.'
             )),
             'driver_dispatched_template' => trim((string) (
                 $settings['sms_driver_dispatched_template']
-                    ?? "Your Taxi is on the way. Booking #: {booking_number}. Pickup: {pickup_date} {pickup_time}. Driver: {driver_name}. Mobile: {driver_mobile}. Vehicle: {vehicle_description}. Vehicle No: {vehicle_number}. TheTaxi: 011 286 1111."
+                    ?? "Your Taxi is on the way. Booking #: {booking_number}. Pickup: {pickup_date} {pickup_time}. Driver: {driver_name}. Mobile: {driver_mobile}. Vehicle: {vehicle_description}. Vehicle No: {vehicle_number}. {company_name}: {company_phone}."
             )),
             'driver_arrived_template' => trim((string) (
                 $settings['sms_driver_arrived_template']
@@ -107,15 +107,15 @@ class SmsSettingsService
             )),
             'trip_completion_template' => trim((string) (
                 $settings['sms_trip_completion_template']
-                    ?? "Thank you for travelling with TheTaxi.\n\nBooking #: {booking_number}\nYour trip has been completed.\n\nWe hope you had a pleasant journey.\n\nwww.thetaxi.lk"
+                    ?? "Thank you for travelling with {company_name}.\n\nBooking #: {booking_number}\nYour trip has been completed.\n\nWe hope you had a pleasant journey.\n\n{company_website}"
             )),
             'payment_confirmation_template' => trim((string) (
                 $settings['sms_payment_confirmation_template']
-                    ?? "Payment received for your TheTaxi booking.\n\nBooking #: {booking_number}\nAmount: {currency} {amount}\nReference: {payment_reference}\n\nThank you."
+                    ?? "Payment received for your {company_name} booking.\n\nBooking #: {booking_number}\nAmount: {currency} {amount}\nReference: {payment_reference}\n\nThank you."
             )),
             'driver_assignment_fallback_template' => trim((string) (
                 $settings['sms_driver_assignment_fallback_template']
-                    ?? "New booking assigned.\n\nBooking #: {booking_number}\nPickup date: {pickup_date}\nPickup time: {pickup_time}\nCustomer: {customer_name}\n\nPlease check TheTaxi Driver App."
+                    ?? "New booking assigned.\n\nBooking #: {booking_number}\nPickup date: {pickup_date}\nPickup time: {pickup_time}\nCustomer: {customer_name}\n\nPlease check {company_name} Driver App."
             )),
             'admin_booking_summary_template' => trim((string) (
                 $settings['sms_admin_booking_summary_template']

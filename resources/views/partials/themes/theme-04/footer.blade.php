@@ -22,6 +22,10 @@
     $theme04Brand = $settings['site_name'] ?? $settings['brand_name'] ?? 'Company';
     $theme04CtaEnabled = filter_var($settings['footer_cta_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
     $theme04NewsletterEnabled = filter_var($settings['footer_newsletter_enabled'] ?? true, FILTER_VALIDATE_BOOLEAN);
+    $theme04FooterImage = $settings['footer_cta_image'] ?? null;
+    $theme04FooterImageUrl = is_string($theme04FooterImage) && str_starts_with($theme04FooterImage, 'media/')
+        ? route('resources.assets', ['path' => $theme04FooterImage])
+        : s3_asset($theme04FooterImage);
     $theme04QuickLinks = $theme04RoutesLinks ?: ($theme04SupportLinks ?: [
         ['text' => 'Home', 'url' => route('home')],
         ['text' => 'Our Fleet', 'url' => route('vehicles')],
@@ -33,7 +37,7 @@
 
 <footer class="t4-footer">
     @if ($theme04CtaEnabled)
-        <section class="t4-footer__cta" @if (!empty($settings['footer_cta_image'])) style="--t4-footer-image: url('{{ s3_asset($settings['footer_cta_image']) }}')" @endif>
+        <section class="t4-footer__cta" @if ($theme04FooterImageUrl) style="--t4-footer-image: url('{{ $theme04FooterImageUrl }}')" @endif>
             <div class="t4-footer__cta-inner">
                 <div>
                     <span class="t4-footer__eyebrow">{{ $settings['footer_cta_eyebrow'] ?? 'Explore Sri Lanka' }}</span>

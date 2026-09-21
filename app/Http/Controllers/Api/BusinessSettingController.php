@@ -21,6 +21,7 @@ class BusinessSettingController extends Controller
             'site_name',
             'site_tagline',
             'company_name',
+            'company_logo_path',
             'company_email',
             'company_phone',
             'company_whatsapp',
