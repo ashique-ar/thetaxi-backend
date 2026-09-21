@@ -862,6 +862,10 @@ body.theme-theme-04 .t4-booking-panel .package-button:has(input:checked) {
     background: var(--t4-accent-soft) !important;
 }
 
+body.theme-theme-04 .t4-booking-panel .package-button:has(input:checked) :where(.package-name, .package-detail) {
+    color: var(--t4-accent-strong) !important;
+}
+
 body.theme-theme-04 .t4-booking-panel :where(.alert-danger, .alert-success, .alert-warning) {
     border-radius: 6px !important;
     box-shadow: none !important;

@@ -32,6 +32,7 @@ class WeddingHireFormAndPackagesSeeder extends Seeder
         $fields['service_package_id'] = [
             'type' => 'package_select', 'label' => 'Wedding Package',
             'required' => true, 'order' => 4, 'submit_as' => 'package_id',
+            'width' => 'full', 'tablet_width' => 'full', 'mobile_width' => 'full',
         ];
         $service->form_config = $wrapped ? array_merge($config, ['fields' => $fields]) : $fields;
         $service->save();

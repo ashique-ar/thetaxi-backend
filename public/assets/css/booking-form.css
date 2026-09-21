@@ -558,6 +558,16 @@ input[type="time"]::-webkit-calendar-picker-indicator {
     width: 100% !important;
 }
 
+.package-selector-field {
+    display: block !important;
+}
+
+.package-selector-field > .input-label {
+    width: 100% !important;
+    word-break: normal !important;
+    overflow-wrap: normal !important;
+}
+
 /* ==================== CORPORATE FORM ==================== */
 .inquiry-spam-protection {
     grid-column: 1 / -1 !important;
