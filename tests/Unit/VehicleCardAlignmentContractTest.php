@@ -6,6 +6,7 @@ it('keeps shared vehicle card content in aligned slots for every theme', functio
     $card = file_get_contents(resource_path('views/components/vehicle-card.blade.php'));
 
     expect($card)
+        ->toContain('$showPublicPrice = $hasPricing && !$showQuotationButton;')
         ->toContain('class="vehicle-card-price-slot"')
         ->toContain('class="vehicle-card-amenities-slot"')
         ->toContain('class="vehicle-card-details-slot"')

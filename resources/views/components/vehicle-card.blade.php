@@ -45,7 +45,7 @@
     $showQuotationButton =
         $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry ||
         ($availabilityEnforced && !$hasAvailableVehicles);
-    $showPublicPrice = $hasPricing && !$isInquiryOnly && !$serviceRequiresInquiry;
+    $showPublicPrice = $hasPricing && !$showQuotationButton;
 
     // Can add to cart/book only if all conditions are met
     $canAddToCart =
