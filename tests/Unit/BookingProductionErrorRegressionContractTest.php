@@ -40,7 +40,12 @@ it('uses authoritative vehicle enforcement consistently in group and specific av
     $groupAnalysis = Str::between(
         $source,
         'private function analyzeVehicleAvailability(',
-        'private function getVehicleConflictsDetailed('
+        'private function canOverrideBooking('
+    );
+    $groupVehicles = Str::between(
+        $source,
+        'public function getAvailableVehiclesInGroup(',
+        'public function getAvailableDrivers('
     );
     $specificSearch = Str::between(
         $source,
@@ -53,6 +58,9 @@ it('uses authoritative vehicle enforcement consistently in group and specific av
         ->toContain("\$vehicleGroup->vehicles->where('status', 'active')")
         ->not->toContain('getVehicleConflictsDetailed(')
         ->toContain("['enforcement']['blocking_reasons']")
+        ->and($groupVehicles)
+        ->toContain("\$conflicts = \$enhancedAvailability['conflicts'];")
+        ->not->toContain('getVehicleConflictsDetailed(')
         ->and($specificSearch)
         ->toContain("->where('status', 'active')")
         ->toContain("'blocking_reasons' => \$availability['enforcement']['blocking_reasons'] ?? []")

@@ -1554,8 +1554,7 @@ class BookingFlowService
                 $excludeBookingId
             );
 
-            // Legacy conflict detection for backward compatibility
-            $conflicts = $this->getVehicleConflictsDetailed($vehicle, $fromDate, $toDate, $excludeBookingId);
+            $conflicts = $enhancedAvailability['conflicts'];
             $availabilityStatus = $enhancedAvailability['availability_status'];
             $requiresConfirmation = $availabilityStatus !== 'available';
 
