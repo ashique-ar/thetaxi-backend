@@ -4359,7 +4359,7 @@ class BookingFlowService
             if ($usesPackagePricing || !empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
                 $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                     (string) $serviceTypeId,
-                    $calculationInputs['package_id'] ?? null,
+                    $calculationInputs['package_id'] ?? $calculationInputs['service_package_id'] ?? null,
                     $calculationInputs['slab_definition_id'] ?? null,
                     (float) ($calculationInputs['duration_minutes'] ?? 0),
                     isset($calculationInputs['duration_days']) ? (float) $calculationInputs['duration_days'] : null
@@ -4383,9 +4383,7 @@ class BookingFlowService
                 $calculationInputs['package_included_hours'] = (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
                     + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
                 $calculationInputs['package_has_hour_limit'] = $calculationInputs['package_included_hours'] > 0 ? 1 : 0;
-                if (app()->runningInConsole() && env('APP_ENV') === 'local') {
-                    dump(collect($calculationInputs)->only(['service_package_id', 'slab_definition_id', 'vehicle_group_id', 'owner_type', 'owner_id'])->all());
-                }
+                dump(collect($calculationInputs)->only(['service_package_id', 'slab_definition_id', 'vehicle_group_id', 'owner_type', 'owner_id'])->all());
                 $this->assertSelectedPackagePricingConfigured($calculationInputs, $serviceTypeId);
             }
 
@@ -5601,10 +5599,6 @@ class BookingFlowService
                 // Use item-specific addons
                 'selected_addons' => $itemAddons,
             ]);
-
-            if (app()->runningInConsole() && env('APP_ENV') === 'local') {
-                dump(collect($itemParams)->only(['service_package_id', 'slab_definition_id', 'vehicle_group_id', 'corporate_account_id', 'is_corporate_booking', 'pricing_context'])->all());
-            }
 
             $groupResult = $this->calculateSingleGroupPricing($itemParams, $duration, $baseCurrency, $targetCurrency);
 
