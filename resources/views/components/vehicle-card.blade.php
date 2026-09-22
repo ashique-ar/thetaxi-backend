@@ -45,7 +45,7 @@
     $showQuotationButton =
         $isQuotationOnly || !$hasPricing || !$isGroupActive || $isInquiryOnly || $serviceRequiresInquiry ||
         ($availabilityEnforced && !$hasAvailableVehicles);
-    $showPublicPrice = $hasPricing && !$isInquiryOnly && !$serviceRequiresInquiry;
+    $showPublicPrice = $hasPricing && !$showQuotationButton;
 
     // Can add to cart/book only if all conditions are met
     $canAddToCart =
@@ -108,13 +108,14 @@
 @endphp
 
 <!-- Vehicle Card -->
-<div class="vehicle-card modern-card h-100 {{ $isRecommended ? 'recommended-vehicle' : '' }} {{ is_theme('theme-02') ? 't2-vehicle-card' : theme_class('vehicle-card') }}"
+<div class="vehicle-card modern-card h-100 {{ $showQuotationButton ? 'vehicle-card--quotation' : '' }} {{ $isRecommended ? 'recommended-vehicle' : '' }} {{ is_theme('theme-02') ? 't2-vehicle-card' : theme_class('vehicle-card') }}"
     data-vehicle-group="{{ $vehicle['id'] }}" data-price="{{ $hasPricing ? ($pricing['base_amount'] ?? 0) : '' }}"
     data-name="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}">
 
     <!-- Vehicle Image -->
     <div class="vehicle-image-container">
-        <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img" loading="lazy">
+        <img src="{{ $mainImage }}" alt="{{ $vehicle['name'] ?? 'Unknown Vehicle' }}" class="vehicle-img"
+            loading="lazy">
 
         @if ($showPublicPrice && $hasDiscount && $discountPercentage > 0)
             <span class="discount-badge">
@@ -125,6 +126,50 @@
         @if (isset($vehicle['category']['name']['name']))
             <span class="category-badge">{{ $vehicle['category']['name']['name'] }}</span>
         @endif
+
+        <!-- Capacity details stay readable without consuming card-body space. -->
+        @if (
+                !empty($vehicle['passengers_count']) ||
+                !empty($vehicle['seating_capacity']) ||
+                !empty($vehicle['no_of_doors']) ||
+                !empty($vehicle['transmission']['name']) ||
+                !empty($vehicle['fuel_type']['name']) ||
+                !empty($vehicle['hand_luggages'])
+            )
+            <div class="vehicle-specs">
+                <div class="spec-item">
+
+                    @if (!empty($vehicle['passengers_count']))
+                        <i class="bi bi-people-fill"></i>
+                        <span>{{ $vehicle['passengers_count'] }}</span>
+                    @elseif (!empty($vehicle['seating_capacity']))
+                        <i class="bi bi-people-fill"></i>
+                        <span>{{ $vehicle['seating_capacity'] }} Seats</span>
+                    @endif
+
+                    @if (!empty($vehicle['no_of_doors']))
+                        <i class="bi bi-door-open-fill"></i>
+                        <span>{{ $vehicle['no_of_doors'] }} Doors</span>
+                    @endif
+
+                    @if (!empty($vehicle['transmission']['name']))
+                        <i class="bi bi-gear-fill"></i>
+                        <span>{{ $vehicle['transmission']['name'] }}</span>
+                    @endif
+
+                    @if (!empty($vehicle['fuel_type']['name']))
+                        <i class="bi bi-fuel-pump-fill"></i>
+                        <span>{{ $vehicle['fuel_type']['name'] }}</span>
+                    @endif
+
+                    @if (!empty($vehicle['hand_luggages']))
+                        <i class="bi bi-suitcase-fill"></i>
+                        <span>{{ $vehicle['hand_luggages'] }}</span>
+                    @endif
+
+                </div>
+            </div>
+        @endif
     </div>
 
     <!-- Vehicle Info -->
@@ -132,237 +177,201 @@
         <!-- Vehicle Name -->
         <h5 class="vehicle-name">{{ $vehicle['name'] ?? 'Unknown Vehicle' }}</h5>
 
-
-        <!-- Vehicle Specs Grid -->
-        <div class="vehicle-specs">
-            <div class="spec-item">
-                @if (isset($vehicle['passengers_count']) && $vehicle['passengers_count'])
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['passengers_count'] }}</span>
-                @elseif(isset($vehicle['seating_capacity']))
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['seating_capacity'] }} Seats</span>
-                @endif
-                @if (isset($vehicle['no_of_doors']) && $vehicle['no_of_doors'])
-                    <i class="bi bi-people-fill"></i>
-                    <span>{{ $vehicle['no_of_doors'] }} Doors</span>
-                @endif
-
-                @if (isset($vehicle['transmission']['name']))
-                    <i class="bi bi-gear-fill"></i>
-                    <span>{{ $vehicle['transmission']['name'] }}</span>
-                @endif
-
-                @if (isset($vehicle['fuel_type']['name']))
-                    <i class="bi bi-fuel-pump-fill"></i>
-                    <span>{{ $vehicle['fuel_type']['name'] }}</span>
-                @endif
-
-                @if (isset($vehicle['hand_luggages']) && $vehicle['hand_luggages'])
-                    <i class="bi bi-suitcase-fill"></i>
-                    <span>{{ $vehicle['hand_luggages'] }}</span>
-                @endif
-            </div>
-        </div>
-
         <!-- Enhanced Pricing Section -->
-        @if ($showPublicPrice)
-        <div class="price-display">
+        <div class="vehicle-card-price-slot">
+            @if ($showPublicPrice)
+                <div class="price-display">
 
 
 
-            @if ($isWeddingPackage)
-                <!-- Wedding Package Pricing - Use total amount directly -->
-                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                    <div class="original-price-display">
-                        <del class="original-price-strike">{{ $currencySymbol }}
-                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                    </div>
-                @endif
-                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
-                    data-package-hours="{{ $packageHours }}" data-service-type="{{ $serviceType }}"
-                    data-currency="{{ $selectedCurrency }}" data-is-package="true"
-                    data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                    <small class="currency-code">{{ $currencySymbol }} </small>
-                    <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                    <span class="price-unit">/ {{ $packageHours }}h package</span>
-                </h4>
-            @elseif($isPackageService)
-                <!-- Airport Transfer Package Pricing - Use total amount directly -->
-                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                    <div class="original-price-display">
-                        <del class="original-price-strike">{{ $currencySymbol }}
-                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                    </div>
-                @endif
-                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
-                    data-service-type="{{ $serviceType }}" data-currency="{{ $selectedCurrency }}"
-                    data-is-package="true" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                    <small class="currency-code">{{ $currencySymbol }}</small>
-                    <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                    <span class="price-unit">/ transfer</span>
-                </h4>
-            @elseif($isOneDay)
-                <!-- One Day Pricing - Use total amount directly -->
-                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                    <div class="original-price-display">
-                        <del class="original-price-strike">{{ $currencySymbol }}
-                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                    </div>
-                @endif
-                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
-                    data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                    data-is-package="false" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                    <small class="currency-code">{{ $currencySymbol }}</small>
-                    <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                </h4>
-                @if (!$isRideNow)
-                    <div class="total-price-info mt-1 text-muted small">
-                        <span class="duration-label">{{ getServiceDurationLabel($serviceType, 1) }}</span>
-                    </div>
-                @endif
-            @else
-                <!-- Multi-day Pricing -->
-                @if ($isRideNow)
-                    <!-- Ride Now: display total price with return trip breakdown if applicable -->
-                    @if ($isReturnTrip && $returnTripDetails)
-                        <!-- Return Trip Pricing Breakdown -->
-                        <div class="return-trip-pricing">
-                            <div class="trip-breakdown">
-                                <div class="trip-item outbound">
-                                    <span class="trip-label"><i class="bi bi-arrow-right-circle"></i>
-                                        Outbound</span>
-                                    <span class="trip-amount">{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $oneWayAmountConverted)), 0) }}</span>
-                                </div>
-                                <div class="trip-item return">
-                                    <span class="trip-label">
-                                        <i class="bi bi-arrow-left-circle"></i> Return
-                                        @if ($returnDiscountPercentage > 0)
-                                            <span class="text-success fw-semibold">{{ $returnDiscountPercentage }}%
-                                                off</span>
-                                        @endif
-                                    </span>
-                                    <span class="trip-amount">{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $returnAmountConverted)), 0) }}</span>
-                                </div>
+                    @if ($isWeddingPackage)
+                        <!-- Wedding Package Pricing - Use total amount directly -->
+                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                            <div class="original-price-display">
+                                <del class="original-price-strike">{{ $currencySymbol }}
+                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
                             </div>
-                            <div class="total-combined-price">
-                                {{-- <span class="total-label">Total:</span> --}}
-                                <h4 class="price-amount discounted-price"
-                                    data-base-price-lkr="{{ $totalAmountLKR }}"
-                                    data-one-way-lkr="{{ $oneWayAmountLKR }}"
-                                    data-return-lkr="{{ $returnAmountLKR }}" data-is-return-trip="true"
-                                    data-return-discount="{{ $returnDiscountPercentage }}"
-                                    data-currency="{{ $selectedCurrency }}">
+                        @endif
+                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                            data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                            data-package-hours="{{ $packageHours }}" data-service-type="{{ $serviceType }}"
+                            data-currency="{{ $selectedCurrency }}" data-is-package="true"
+                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                            <small class="currency-code">{{ $currencySymbol }} </small>
+                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                            <span class="price-unit">/ {{ $packageHours }}h package</span>
+                        </h4>
+                    @elseif($isPackageService)
+                        <!-- Airport Transfer Package Pricing - Use total amount directly -->
+                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                            <div class="original-price-display">
+                                <del class="original-price-strike">{{ $currencySymbol }}
+                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
+                            </div>
+                        @endif
+                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                            data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                            data-service-type="{{ $serviceType }}" data-currency="{{ $selectedCurrency }}"
+                            data-is-package="true" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                            <small class="currency-code">{{ $currencySymbol }}</small>
+                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                            <span class="price-unit">/ transfer</span>
+                        </h4>
+                    @elseif($isOneDay)
+                        <!-- One Day Pricing - Use total amount directly -->
+                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                            <div class="original-price-display">
+                                <del class="original-price-strike">{{ $currencySymbol }}
+                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
+                            </div>
+                        @endif
+                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                            data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                            data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                            <small class="currency-code">{{ $currencySymbol }}</small>
+                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                        </h4>
+                        @if (!$isRideNow)
+                            <div class="total-price-info mt-1 text-muted small">
+                                <span class="duration-label">{{ getServiceDurationLabel($serviceType, 1) }}</span>
+                            </div>
+                        @endif
+                    @else
+                        <!-- Multi-day Pricing -->
+                        @if ($isRideNow)
+                            <!-- Ride Now: display total price with return trip breakdown if applicable -->
+                            @if ($isReturnTrip && $returnTripDetails)
+                                <!-- Return Trip Pricing Breakdown -->
+                                <div class="return-trip-pricing">
+                                    <div class="trip-breakdown">
+                                        <div class="trip-item outbound">
+                                            <span class="trip-label"><i class="bi bi-arrow-right-circle"></i>
+                                                Outbound</span>
+                                            <span class="trip-amount">{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $oneWayAmountConverted)), 0) }}</span>
+                                        </div>
+                                        <div class="trip-item return">
+                                            <span class="trip-label">
+                                                <i class="bi bi-arrow-left-circle"></i> Return
+                                                @if ($returnDiscountPercentage > 0)
+                                                    <span class="text-success fw-semibold">{{ $returnDiscountPercentage }}%
+                                                        off</span>
+                                                @endif
+                                            </span>
+                                            <span class="trip-amount">{{ $currencySymbol }}
+                                                {{ number_format(floor(max(0, $returnAmountConverted)), 0) }}</span>
+                                        </div>
+                                    </div>
+                                    <div class="total-combined-price">
+                                        {{-- <span class="total-label">Total:</span> --}}
+                                        <h4 class="price-amount discounted-price" data-base-price-lkr="{{ $totalAmountLKR }}"
+                                            data-one-way-lkr="{{ $oneWayAmountLKR }}" data-return-lkr="{{ $returnAmountLKR }}"
+                                            data-is-return-trip="true" data-return-discount="{{ $returnDiscountPercentage }}"
+                                            data-currency="{{ $selectedCurrency }}">
+                                            <small class="currency-code">{{ $currencySymbol }}</small>
+                                            <span
+                                                class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                                        </h4>
+                                    </div>
+                                    @if ($returnDiscountAmountLKR > 0)
+                                        <small class="text-success fw-semibold return-savings">
+                                            <i class="bi bi-tag-fill"></i> You save {{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $returnDiscountAmountConverted)), 0) }} on return!
+                                        </small>
+                                    @endif
+                                </div>
+                            @else
+                                <!-- Standard Ride Now: display total price only -->
+                                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                                    <div class="original-price-display">
+                                        <del class="original-price-strike">{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
+                                    </div>
+                                @endif
+                                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                                    data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                    data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
                                     <small class="currency-code">{{ $currencySymbol }}</small>
                                     <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
                                 </h4>
-                            </div>
-                            @if ($returnDiscountAmountLKR > 0)
-                                <small class="text-success fw-semibold return-savings">
-                                    <i class="bi bi-tag-fill"></i> You save {{ $currencySymbol }}
-                                    {{ number_format(floor(max(0, $returnDiscountAmountConverted)), 0) }} on return!
-                                </small>
                             @endif
-                        </div>
-                    @else
-                        <!-- Standard Ride Now: display total price only -->
-                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                            <div class="original-price-display">
-                                <del class="original-price-strike">{{ $currencySymbol }}
-                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                            </div>
+                        @else
+                            @php
+                                $isFixedRateService = isServiceFixedRate($serviceType);
+                            @endphp
+                            @if ($isFixedRateService)
+                                <!-- Fixed-rate service (trip-based) - show total only -->
+                                @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
+                                    <div class="original-price-display">
+                                        <del class="original-price-strike">{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
+                                    </div>
+                                @endif
+                                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                                    data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                    data-service-type="{{ $serviceType }}" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                                    <small class="currency-code">{{ $currencySymbol }}</small>
+                                    <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                                </h4>
+                                <div class="total-price-info mt-1 text-muted small">
+                                    <span class="duration-label">{{ getServiceDurationLabel($serviceType, $durationDays) }}</span>
+                                </div>
+                            @else
+                                <!-- Show calculated per-day rate for multi-day rentals -->
+                                @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
+                                    <div class="original-price-display">
+                                        <del class="original-total-strike me-1">{{ $currencySymbol }}
+                                            {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
+                                        {{-- <del class="original-price-strike">{{ $currencySymbol }} {{ number_format(floor(max(0,
+                                            $originalPerDayConverted)), 0) }}/day</del> --}}
+                                    </div>
+                                @endif
+                                <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
+                                    data-base-price-lkr="{{ $totalAmountLKR }}" data-original-price-lkr="{{ $originalAmountLKR }}"
+                                    data-per-day-lkr="{{ round($perDayRateLKR, 2) }}" data-duration="{{ $durationDays }}"
+                                    data-currency="{{ $selectedCurrency }}" data-is-package="false"
+                                    data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
+                                    <small class="currency-code">{{ $currencySymbol }}</small>
+                                    <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
+                                    <span class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
+                                </h4>
+                            @endif
                         @endif
-                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                            data-base-price-lkr="{{ $totalAmountLKR }}"
-                            data-original-price-lkr="{{ $originalAmountLKR }}" data-duration="{{ $durationDays }}"
-                            data-currency="{{ $selectedCurrency }}" data-is-package="false"
-                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                            <small class="currency-code">{{ $currencySymbol }}</small>
-                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                        </h4>
                     @endif
-                @else
-                    @php
-                        $isFixedRateService = isServiceFixedRate($serviceType);
-                    @endphp
-                    @if ($isFixedRateService)
-                        <!-- Fixed-rate service (trip-based) - show total only -->
-                        @if ($hasDiscount && $originalAmountLKR > $totalAmountLKR)
-                            <div class="original-price-display">
-                                <del class="original-price-strike">{{ $currencySymbol }}
-                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                            </div>
-                        @endif
-                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                            data-base-price-lkr="{{ $totalAmountLKR }}"
-                            data-original-price-lkr="{{ $originalAmountLKR }}"
-                            data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                            data-is-package="false" data-service-type="{{ $serviceType }}"
-                            data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                            <small class="currency-code">{{ $currencySymbol }}</small>
-                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                        </h4>
-                        <div class="total-price-info mt-1 text-muted small">
-                            <span
-                                class="duration-label">{{ getServiceDurationLabel($serviceType, $durationDays) }}</span>
-                        </div>
-                    @else
-                        <!-- Show calculated per-day rate for multi-day rentals -->
-                        @if ($hasDiscount && $originalPerDayRateLKR > $perDayRateLKR)
-                            <div class="original-price-display">
-                                <del class="original-total-strike me-1">{{ $currencySymbol }}
-                                    {{ number_format(floor(max(0, $originalAmountConverted)), 0) }}</del>
-                                {{-- <del
-                                    class="original-price-strike">{{ $currencySymbol }} {{ number_format(floor(max(0, $originalPerDayConverted)), 0) }}/day</del> --}}
-                            </div>
-                        @endif
-                        <h4 class="price-amount{{ $hasDiscount ? ' discounted-price' : '' }}"
-                            data-base-price-lkr="{{ $totalAmountLKR }}"
-                            data-original-price-lkr="{{ $originalAmountLKR }}"
-                            data-per-day-lkr="{{ round($perDayRateLKR, 2) }}"
-                            data-duration="{{ $durationDays }}" data-currency="{{ $selectedCurrency }}"
-                            data-is-package="false" data-has-discount="{{ $hasDiscount ? 'true' : 'false' }}">
-                            <small class="currency-code">{{ $currencySymbol }}</small>
-                            <span class="price-value">{{ number_format(floor(max(0, $totalAmountConverted)), 0) }}</span>
-                            <span
-                                class="price-unit">({{ getServiceDurationLabel($serviceType, $durationDays) }})</span>
-                        </h4>
+
+                    {{-- Show savings info only for actual discounts --}}
+                    @if ($hasDiscount && $discountAmountLKR > 0)
+                        <small class="text-success fw-semibold">
+                            <i class="bi bi-tag-fill"></i> You save
+                            {{ $currencySymbol }} {{ number_format(floor(max(0, $discountAmountConverted)), 0) }}
+                        </small>
                     @endif
-                @endif
-            @endif
 
-            {{-- Show savings info only for actual discounts --}}
-            @if ($hasDiscount && $discountAmountLKR > 0)
-                <small class="text-success fw-semibold">
-                    <i class="bi bi-tag-fill"></i> You save
-                    {{ $currencySymbol }} {{ number_format(floor(max(0, $discountAmountConverted)), 0) }}
-                </small>
-            @endif
-
-            @if (isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']) && !$hasDiscount)
-                <small class="text-success">
-                    <i class="bi bi-tag-fill"></i> Save {{ $enhancedPricing['savings']['amount'] ?? '0' }}
-                </small>
+                    @if (isset($enhancedPricing['savings']) && !empty($enhancedPricing['savings']) && !$hasDiscount)
+                        <small class="text-success">
+                            <i class="bi bi-tag-fill"></i> Save {{ $enhancedPricing['savings']['amount'] ?? '0' }}
+                        </small>
+                    @endif
+                </div>
             @endif
         </div>
-        @endif
-        
+
         <!-- Vehicle Amenities & Additional Info -->
-        @if (isset($vehicle['refundable_deposit']))
-            <div class="vehicle-amenities">
-                @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
-                    <span class="amenity-badge">
-                        <i class="bi bi-shield-check"></i> Deposit:
-                        {{ getCurrencySymbol() }} {{ number_format($vehicle['refundable_deposit'], 0) }}
-                    </span>
-                @endif
-            </div>
-        @endif
+        <div class="vehicle-card-amenities-slot">
+            @if ($showPublicPrice && isset($vehicle['refundable_deposit']))
+                <div class="vehicle-amenities">
+                    @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
+                        <span class="amenity-badge">
+                            <i class="bi bi-shield-check"></i> Deposit:
+                            {{ getCurrencySymbol() }} {{ number_format($vehicle['refundable_deposit'], 0) }}
+                        </span>
+                    @endif
+                </div>
+            @endif
+        </div>
 
         <!-- Distance/KM Details Row -->
         @php
@@ -408,81 +417,83 @@
             ]);
         @endphp
 
-        @if ($showDistanceDetails || $showDurationDetails)
-            <div class="pricing-details">
-                {{-- Show free KM per day for daily rentals --}}
-                @if ($perDayKm && !$hasFreeKmPerPackage)
-                    <small class="pricing-detail-item">
-                        <i class="bi bi-speedometer2"></i>
-                        {{ number_format($perDayKm, 0) }} km/day
-                        @if ($durationDays > 1 && $hasAllowedKm)
-                            <span class="text-muted">({{ number_format($distanceDetails['allowed_total_km'], 0) }} km
-                                total)</span>
-                        @endif
-                    </small>
-                @elseif ($hasFreeKmPerPackage)
-                    {{-- Show free KM per package for package-based services --}}
-                    <small class="pricing-detail-item">
-                        <i class="bi bi-speedometer2"></i>
-                        {{ number_format($distanceDetails['free_km_per_package'], 0) }} km included
-                    </small>
-                @endif
+        <div class="vehicle-card-details-slot">
+            @if ($showDistanceDetails || $showDurationDetails)
+                <div class="pricing-details">
+                    {{-- Show free KM per day for daily rentals --}}
+                    @if ($perDayKm && !$hasFreeKmPerPackage)
+                        <small class="pricing-detail-item">
+                            <i class="bi bi-speedometer2"></i>
+                            {{ number_format($perDayKm, 0) }} km/day
+                            @if ($durationDays > 1 && $hasAllowedKm)
+                                <span class="text-muted">({{ number_format($distanceDetails['allowed_total_km'], 0) }} km
+                                    total)</span>
+                            @endif
+                        </small>
+                    @elseif ($hasFreeKmPerPackage)
+                        {{-- Show free KM per package for package-based services --}}
+                        <small class="pricing-detail-item">
+                            <i class="bi bi-speedometer2"></i>
+                            {{ number_format($distanceDetails['free_km_per_package'], 0) }} km included
+                        </small>
+                    @endif
 
-                {{-- Explicit included/allowed total KM (show when available) --}}
-                @if ($hasAllowedKm)
-                    <small class="pricing-detail-item">
-                        <i class="bi bi-check2-circle"></i>
-                        <strong>Included:</strong> {{ number_format($distanceDetails['allowed_total_km'], 0) }} km
-                    </small>
-                @endif
+                    {{-- Explicit included/allowed total KM (show when available) --}}
+                    @if ($hasAllowedKm && !$hasFreeKmPerDay && !$hasFreeKmPerPackage)
+                        <small class="pricing-detail-item">
+                            <i class="bi bi-check2-circle"></i>
+                            <strong>Included:</strong> {{ number_format($distanceDetails['allowed_total_km'], 0) }} km
+                        </small>
+                    @endif
 
-                @if ($hasExtraKmPrice)
-                    <small class="pricing-detail-item">
-                        <i class="bi bi-lightning-fill"></i> Extra:
-                        <small class="currency-code">{{ getCurrencySymbol() }}</small>
-                        {{ number_format(floor(max(0, $distanceDetails['extra_km_price'])), 0) }}/km
-                    </small>
-                @endif
+                    @if ($hasExtraKmPrice)
+                        <small class="pricing-detail-item">
+                            <i class="bi bi-lightning-fill"></i> Extra:
+                            <small class="currency-code">{{ getCurrencySymbol() }}</small>
+                            {{ number_format(floor(max(0, $distanceDetails['extra_km_price'])), 0) }}/km
+                        </small>
+                    @endif
 
-                @if ($hasExtraHourPrice)
-                    <small class="pricing-detail-item">
-                        <i class="bi bi-clock-fill"></i> {{ $extraHourLabel }}:
-                        <small class="currency-code">{{ getCurrencySymbol() }}</small>
-                        {{ number_format(floor(max(0, $distanceDetails['extra_hour_price'])), 0) }}/hour
-                    </small>
-                @endif
+                    @if ($hasExtraHourPrice)
+                        <small class="pricing-detail-item">
+                            <i class="bi bi-clock-fill"></i> {{ $extraHourLabel }}:
+                            <small class="currency-code">{{ getCurrencySymbol() }}</small>
+                            {{ number_format(floor(max(0, $distanceDetails['extra_hour_price'])), 0) }}/hour
+                        </small>
+                    @endif
 
-                {{-- Show journey duration --}}
-                {{-- @if ($showDurationDetails)
+                    {{-- Show journey duration --}}
+                    {{-- @if ($showDurationDetails)
                     <small class="pricing-detail-item">
                         <i class="bi bi-clock"></i>
                         {{ gmdate('H:i', $journeyDurationSeconds) }} estimated
                     </small>
-                @endif --}}
-            </div>
-        @endif
+                    @endif --}}
+                </div>
+            @endif
+        </div>
 
         <!-- Service Features (if any) -->
-        @if (!empty($serviceFeatures))
-            <div class="service-features mb-2">
-                @foreach (array_slice($serviceFeatures, 0, 3) as $feature)
-                    <span class="feature-badge">
-                        <i class="bi bi-check-circle"></i> {{ $feature }}
-                    </span>
-                @endforeach
-            </div>
-        @endif
+        <div class="vehicle-card-features-slot">
+            @if (!empty($serviceFeatures))
+                <div class="service-features mb-2">
+                    @foreach (array_slice($serviceFeatures, 0, 3) as $feature)
+                        <span class="feature-badge">
+                            <i class="bi bi-check-circle"></i> {{ $feature }}
+                        </span>
+                    @endforeach
+                </div>
+            @endif
+        </div>
 
         <!-- Action Buttons -->
         <div class="vehicle-actions mt-1">
             @if ($canAddToCart)
                 @if ($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
-                    <button type="button" class="btn btn-primary w-100 mb-2 book-now-btn"
-                        data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}"
-                        data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
-                        data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                    <button type="button" class="btn btn-primary w-100 mb-2 book-now-btn" data-group-id="{{ $vehicle['id'] }}"
+                        data-search-id="{{ $searchId }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
                         <i class="bi bi-calendar-check"></i> Book Now
                     </button>
@@ -491,8 +502,7 @@
                     <button type="button" class="btn btn-outline-primary w-100 add-to-cart-btn"
                         data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}"
                         data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
-                        data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
                         <i class="bi bi-cart-plus"></i> Add to Cart
                     </button>
@@ -501,8 +511,7 @@
                     <button type="button" class="btn btn-primary w-100 mb-2 add-to-cart-btn"
                         data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}"
                         data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}"
-                        data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
+                        data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
                         <i class="bi bi-cart-plus"></i> Add to Cart
                     </button>
@@ -518,8 +527,7 @@
                 <!-- Request Quotation Button - when booking is not allowed -->
                 <button type="button" class="btn btn-warning w-100 mb-2 request-quotation-btn"
                     data-group-id="{{ $vehicle['id'] }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                    data-search-id="{{ $searchId }}" data-bs-toggle="modal"
-                    data-bs-target="#requestQuotationModal">
+                    data-search-id="{{ $searchId }}" data-bs-toggle="modal" data-bs-target="#requestQuotationModal">
                     <i class="bi bi-calculator"></i> Request Quotation
                 </button>
                 <p class="text-muted small mb-0 text-center">
@@ -663,9 +671,26 @@
             /* Vehicle Content */
             .vehicle-card-content {
                 padding: 20px;
-                display: flex;
-                flex-direction: column;
+                display: grid !important;
+                grid-template-rows: 38px 92px 38px 34px 40px minmax(86px, auto);
                 flex-grow: 1;
+            }
+
+            .vehicle-card-price-slot,
+            .vehicle-card-amenities-slot,
+            .vehicle-card-details-slot,
+            .vehicle-card-features-slot {
+                min-width: 0;
+            }
+
+            .vehicle-card-price-slot {
+                display: flex;
+                align-items: center;
+                justify-content: center;
+            }
+
+            .vehicle-card-price-slot .price-display {
+                width: 100%;
             }
 
             .vehicle-name {
@@ -687,8 +712,30 @@
 
             .spec-item i {
                 color: var(--primary-color);
-                font-size: 16px;
+                font-size: 12px;
                 flex-shrink: 0;
+            }
+
+            .vehicle-card .vehicle-image-container>.vehicle-specs {
+                position: absolute !important;
+                z-index: 4;
+                bottom: 12px;
+                left: 12px;
+                width: auto;
+                max-width: calc(100% - 24px);
+                margin: 0 !important;
+                padding: 7px 10px !important;
+                border: 1px solid rgba(255, 255, 255, 0.22) !important;
+                border-radius: 20px;
+                background: rgba(17, 24, 39, 0.74);
+                backdrop-filter: blur(10px);
+                -webkit-backdrop-filter: blur(10px);
+            }
+
+            .vehicle-card .vehicle-image-container>.vehicle-specs .spec-item,
+            .vehicle-card .vehicle-image-container>.vehicle-specs .spec-item i,
+            .vehicle-card .vehicle-image-container>.vehicle-specs .spec-item span {
+                color: #fff !important;
             }
 
             /* Inclusions */
@@ -776,6 +823,11 @@
             }
 
             /* Action Buttons */
+            .vehicle-actions {
+                margin-top: auto !important;
+                align-self: end;
+            }
+
             .vehicle-actions .btn {
                 font-weight: 600;
                 padding: 10px 16px;
@@ -949,6 +1001,10 @@
             /* Better mobile experience for service features */
             @media (max-width: 767px) {
 
+                .vehicle-card-content {
+                    grid-template-rows: 42px 100px 40px 38px 44px minmax(86px, auto);
+                }
+
                 .recommended-badge {
                     font-size: 10px;
                     padding: 6px 12px;
@@ -973,8 +1029,8 @@
                 display: flex;
                 flex-wrap: wrap;
                 gap: 6px;
-                margin-bottom: 12px;
-                padding-top: 12px;
+                margin: 0;
+                padding-top: 6px;
                 border-top: 1px solid #f0f0f0;
             }
 

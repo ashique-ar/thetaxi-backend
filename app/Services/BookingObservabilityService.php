@@ -178,12 +178,20 @@ class BookingObservabilityService
                 'driver.user:id,first_name,last_name',
             ])
             ->where('status', 'active')
+            ->where('trip_phase', 'in_progress')
+            ->whereHas('bookingItem', function ($query) {
+                $query->whereNull('completed_at')
+                    ->whereNotIn('status', ['completed', 'cancelled', 'rejected'])
+                    ->whereRaw("(booking_items.to_date + COALESCE(booking_items.to_time, '23:59:59')::time) >= ?", [now()]);
+            })
+            ->whereHas('booking', function ($query) {
+                $query->where(function ($paymentQuery) {
+                    $paymentQuery->where('payment_status', 'paid')
+                        ->orWhereIn('payment_collection_status', ['driver_collected', 'online_paid', 'paid']);
+                });
+            })
             ->when($dashboardScope === 'standard', function ($query) {
                 $query->whereHas('booking', fn($bookingQuery) => $bookingQuery->whereNull('corporate_account_id'));
-            })
-            ->where(function ($query) {
-                $query->whereNull('trip_phase')
-                    ->orWhereNotIn('trip_phase', ['completed', 'declined']);
             })
             ->latest('updated_at')
             ->limit(max(1, min($limit, 200)))
@@ -291,9 +299,10 @@ class BookingObservabilityService
 
     private function assignmentForItem(Booking $booking, string $bookingItemId): ?DriverAssignment
     {
-        return DriverAssignment::with('driver')->where('booking_id', $booking->id)
+        return DriverAssignment::with('driver')->withCount('routePoints')->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
             ->orderByRaw("CASE WHEN status = 'active' AND (trip_phase IS NULL OR trip_phase NOT IN ('completed', 'declined')) THEN 0 ELSE 1 END")
+            ->orderByDesc('route_points_count')
             ->latest('updated_at')
             ->first();
     }
@@ -372,7 +381,7 @@ class BookingObservabilityService
         $previousAssignmentId = $previousPoint ? $this->pointAssignmentId($previousPoint, $sessionAssignmentIds) : null;
         $quality = [
             'scope' => 'returned_page',
-            'gap_threshold_seconds' => 300,
+            'gap_threshold_seconds' => RouteEvidenceService::GAP_THRESHOLD_SECONDS,
             'gap_count' => 0,
             'invalid_coordinate_count' => 0,
             'inaccurate_point_count' => 0,
@@ -403,6 +412,26 @@ class BookingObservabilityService
                 $flags[] = 'implausible_speed';
                 $quality['implausible_speed_count']++;
             }
+            $previousCoordinateValid = $previousPoint
+                && (float) $previousPoint->latitude >= -90 && (float) $previousPoint->latitude <= 90
+                && (float) $previousPoint->longitude >= -180 && (float) $previousPoint->longitude <= 180;
+            $segmentDistance = $previousCoordinateValid && $validCoordinate
+                ? $this->haversineKm(
+                    (float) $previousPoint->latitude,
+                    (float) $previousPoint->longitude,
+                    $latitude,
+                    $longitude
+                )
+                : 0.0;
+            $implausibleMovement = $gapSeconds > 0
+                && $gapSeconds <= $quality['gap_threshold_seconds']
+                && (($segmentDistance / $gapSeconds) * 3600) > RouteEvidenceService::MAX_PLAUSIBLE_SPEED_KPH;
+            if ($implausibleMovement) {
+                if (!in_array('implausible_speed', $flags, true)) {
+                    $quality['implausible_speed_count']++;
+                }
+                $flags[] = 'implausible_movement';
+            }
             if ($gapSeconds > $quality['gap_threshold_seconds']) {
                 $flags[] = 'gap_before';
                 $quality['gap_count']++;
@@ -422,7 +451,7 @@ class BookingObservabilityService
 
             $assignmentChanged = $previousPoint && $previousAssignmentId !== $assignmentId;
             $startsSegment = !$current || $current['phase'] !== $phase || $assignmentChanged
-                || $gapSeconds > $quality['gap_threshold_seconds'];
+                || $gapSeconds > $quality['gap_threshold_seconds'] || $implausibleMovement;
             if ($startsSegment) {
                 if ($current)
                     $segments->push($current);
@@ -442,14 +471,10 @@ class BookingObservabilityService
                 ];
             }
 
-            if ($previousPoint && !$assignmentChanged && $validCoordinate && $gapSeconds <= $quality['gap_threshold_seconds']) {
-                $previousLatitude = (float) $previousPoint->latitude;
-                $previousLongitude = (float) $previousPoint->longitude;
-                if ($previousLatitude >= -90 && $previousLatitude <= 90 && $previousLongitude >= -180 && $previousLongitude <= 180) {
-                    $distance = $this->haversineKm($previousLatitude, $previousLongitude, $latitude, $longitude);
-                    $current['distance_km'] += $distance;
-                    $quality['operational_distance_km'] += $distance;
-                }
+            if ($previousPoint && !$assignmentChanged && $previousCoordinateValid && $validCoordinate
+                && $gapSeconds <= $quality['gap_threshold_seconds'] && !$implausibleMovement) {
+                $current['distance_km'] += $segmentDistance;
+                $quality['operational_distance_km'] += $segmentDistance;
             }
             $current['ended_at'] = $mappedPoint['recorded_at'];
             $current['quality_flags'] = array_values(array_unique([...$current['quality_flags'], ...$flags]));
@@ -653,7 +678,23 @@ class BookingObservabilityService
                         'to_status' => $type,
                         'severity' => $type === 'trip_completed' ? 'success' : 'info',
                         'correlation_id' => implode(':', ['assignment', $assignment->id, $type]),
-                        'metadata' => ['assignment_status' => (string) $assignment->status],
+                        'metadata' => array_filter([
+                            'assignment_status' => (string) $assignment->status,
+                            'latitude' => match ($type) {
+                                'assignment_confirmed' => $assignment->accept_latitude,
+                                'pickup_arrived' => $assignment->pickup_arrival_latitude,
+                                'trip_started' => $assignment->trip_start_latitude,
+                                'trip_completed' => $assignment->final_latitude,
+                                default => null,
+                            },
+                            'longitude' => match ($type) {
+                                'assignment_confirmed' => $assignment->accept_longitude,
+                                'pickup_arrived' => $assignment->pickup_arrival_longitude,
+                                'trip_started' => $assignment->trip_start_longitude,
+                                'trip_completed' => $assignment->final_longitude,
+                                default => null,
+                            },
+                        ], fn ($value) => $value !== null),
                         'evidence' => ['section' => 'tracking', 'label' => 'View trip tracking'],
                         'actor_display_snapshot' => $actorSnapshot,
                     ];

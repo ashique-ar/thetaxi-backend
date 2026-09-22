@@ -12,6 +12,7 @@ use App\Services\AuthService;
 use App\Services\UserService;
 use App\Services\UserContextService;
 use App\Services\PermissionAssignmentService;
+use App\Services\BusinessCodeGenerator;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -63,6 +64,37 @@ class UserController extends Controller
         return UserResource::collection($users);
     }
 
+    public function lookupByMobile(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'mobile' => ['required', 'string', 'max:30'],
+            'context' => ['required', Rule::in(['customer', 'staff', 'driver'])],
+        ]);
+
+        $digits = preg_replace('/\D+/', '', $data['mobile']);
+        abort_if(strlen($digits) < 7, 422, 'Enter a valid mobile number.');
+        $users = User::query()
+            ->select(['id', 'first_name', 'last_name', 'email', 'phone', 'is_active'])
+            ->withExists(['contexts as has_context' => fn ($query) => $query
+                ->where('context_type', $data['context'])
+                ->where('is_active', true)])
+            ->whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') = ?", [$digits])
+            ->limit(10)
+            ->get();
+
+        return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
+    public function reserveBusinessCode(string $entity, BusinessCodeGenerator $generator): JsonResponse
+    {
+        abort_unless(in_array($entity, ['customer', 'staff', 'driver'], true), 404);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['code' => $generator->generate($entity)],
+        ]);
+    }
+
     /**
      * Get dynamic filter options for the user list.
      */
@@ -79,7 +111,8 @@ class UserController extends Controller
         $filters = $request->validate([
             'search' => ['nullable', 'string', 'max:255'], 'role' => ['nullable', 'string'],
             'status' => ['nullable', 'in:active,inactive'], 'context' => ['nullable', 'string'],
-            'agent_id' => ['nullable', 'uuid'], 'verified' => ['nullable', 'in:email,phone'],
+            'agent_id' => ['nullable', 'uuid'], 'verified' => ['nullable', 'in:email,phone,email_unverified,phone_unverified'],
+            'created_from' => ['nullable', 'date_format:Y-m-d'], 'created_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:created_from'],
             'sort_by' => ['nullable', 'in:first_name,last_name,email,created_at,last_login_at'],
             'sort_order' => ['nullable', 'in:asc,desc'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -107,7 +140,7 @@ class UserController extends Controller
 
     public function export(Request $request)
     {
-        $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'sort_by', 'sort_order']);
+        $filters = $request->only(['search', 'role', 'status', 'context', 'agent_id', 'verified', 'created_from', 'created_to', 'sort_by', 'sort_order']);
         $users = $this->userService->getAllUsers([...$filters, 'per_page' => 100000])->getCollection();
         $header = ['id', 'first_name', 'last_name', 'email', 'phone', 'is_active', 'roles', 'created_at'];
         $lines = [$header];

@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingVariableCustomization;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
@@ -49,6 +50,7 @@ use App\Services\Pricing\PricingHolidayCalendarService;
 use App\Services\Pricing\PricingContextPolicyService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Auth\Access\AuthorizationException;
 
 
 class BookingFlowService
@@ -376,7 +378,7 @@ class BookingFlowService
         );
 
         if ($tripMode === null) {
-            $packageRequired = isset($fields['service_package_id']) && (bool) ($fields['service_package_id']['required'] ?? false);
+            $packageRequired = (bool) ($fields['package_id']['required'] ?? $fields['service_package_id']['required'] ?? false);
             $tripMode = ($pickupRequired && !$dropoffRequired && $packageRequired) ? 'open_package' : 'fixed_route';
         }
 
@@ -969,6 +971,11 @@ class BookingFlowService
         $hasRequiredPricingLocations =
             (!(bool) ($calculationRequirements['pickup_location_required'] ?? true) || $hasUsablePickup)
             && (!(bool) ($calculationRequirements['dropoff_location_required'] ?? true) || $hasUsableDropoff);
+        $packageSelectionRequired = (bool) data_get($selectedServiceTypeModel?->form_config, 'package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'service_package_id.required', false)
+            || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.service_package_id.required', false);
+        $hasSelectedPackage = !empty($params['service_package_id']) || !empty($params['package_id']);
 
         $availability = [];
 
@@ -1007,7 +1014,7 @@ class BookingFlowService
                 // Calculate duration
                 $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
 
-                if ($serviceTypeModel && $hasRequiredPricingLocations) {
+                if ($serviceTypeModel && $hasRequiredPricingLocations && (!$packageSelectionRequired || $hasSelectedPackage)) {
                     // Check if service type uses dropoff time
                     $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
 
@@ -1056,29 +1063,11 @@ class BookingFlowService
                     ];
 
                     // Debug logging for pricing params
-                    Log::debug('BookingFlowService: About to calculate pricing (using comprehensive method)', [
-                        'vehicle_group_id' => $group->id,
-                        'vehicle_group_name' => $group->name,
-                        'service_type_id' => $serviceTypeModel->id,
-                        'service_type_code' => $serviceTypeModel->code,
-                        'uses_dropoff_time' => $usesDropoffTime,
-                        'from_date' => $fromDate->format('Y-m-d'),
-                        'to_date' => $effectiveToDate->format('Y-m-d'),
-                        'service_package_id' => $pricingParams['service_package_id'],
-                        'pricing_params' => $pricingParams,
-                    ]);
 
                     // Use the same calculatePricing method as the final pricing API
                     $pricingResult = $this->calculatePricing($pricingParams);
 
                     // Debug logging for pricing result
-                    Log::debug('BookingFlowService: Pricing calculation result (comprehensive)', [
-                        'vehicle_group_id' => $group->id,
-                        'vehicle_group_name' => $group->name,
-                        'pricing_result' => $pricingResult,
-                        'has_summary' => isset($pricingResult['summary']),
-                        'summary_total' => $pricingResult['summary']['total'] ?? 0,
-                    ]);
 
                     if ($pricingResult && isset($pricingResult['summary']['total']) && $pricingResult['summary']['total'] > 0) {
                         $isPricingConfigured = true;
@@ -1108,17 +1097,10 @@ class BookingFlowService
                         ];
 
                         // Log for debugging
-                        Log::debug('GetAvailableVehicleGroups - Pricing info built (comprehensive)', [
-                            'vehicle_group_id' => $group->id,
-                            'base_amount' => $pricingInfo['base_amount'],
-                            'subtotal' => $pricingInfo['subtotal'],
-                            'addons_total' => $pricingInfo['addons_total'],
-                            'has_distance_details' => isset($basePricingData['distance_details']),
-                            'has_adjustment_details' => isset($adjustmentDetails),
-                            'has_discount' => $adjustmentDetails['has_discount'] ?? false,
-                        ]);
                     }
                 }
+            } catch (\DomainException $e) {
+                $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
             } catch (\Exception $e) {
                 $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
                 Log::warning("Pricing calculation failed for vehicle group {$group->id}: " . $e->getMessage());
@@ -1164,25 +1146,6 @@ class BookingFlowService
             // Website flags do not restrict portal bookings, even with website pricing.
             $isInquiryOnly = $isPublic && (($group->is_inquiry_only ?? false) || ($servicePricingSetting?->is_inquiry_only ?? false));
 
-            // Debug logging to trace inquiry flag issue (after all variables are defined)
-            if ($serviceTypeModel) {
-                Log::debug('BookingFlowService: Service type inquiry check', [
-                    'vehicle_group_id' => $group->id,
-                    'vehicle_group_name' => $group->name,
-                    'service_type_id' => $serviceTypeModel->id,
-                    'service_type_code' => $serviceTypeModel->code,
-                    'service_type_name' => $serviceTypeModel->name,
-                    'is_inquiry' => $serviceTypeModel->is_inquiry,
-                    'service_requires_inquiry' => $serviceTypeRequiresInquiry,
-                    'is_group_active' => $isGroupActive,
-                    'is_inquiry_only' => $isInquiryOnly,
-                    'has_pricing' => $hasPricing,
-                    'pricing_amount' => $pricingInfo['base_amount'] ?? 0,
-                    'has_available_vehicles' => $hasAvailableVehicles,
-                    'available_count' => $availableCount,
-                ]);
-            }
-
             // Determine if this vehicle group should show Request Quotation instead of Add to Cart/Book Now
             // Conditions for quotation-only mode:
             // 1. Price is 0 or not configured
@@ -1220,22 +1183,6 @@ class BookingFlowService
 
             $isQuotationOnly = !empty($quotationOnlyReasons);
 
-            // Debug logging for quotation decision
-            if ($isQuotationOnly) {
-                Log::info('BookingFlowService: Vehicle marked as quotation-only', [
-                    'vehicle_group_id' => $group->id,
-                    'vehicle_group_name' => $group->name,
-                    'reasons' => $quotationOnlyReasons,
-                    'has_pricing' => $hasPricing,
-                    'pricing_amount' => $pricingInfo['base_amount'] ?? 0,
-                    'is_group_active' => $isGroupActive,
-                    'has_available_vehicles' => $hasAvailableVehicles,
-                    'available_count' => $availableCount,
-                    'is_inquiry_only' => $isInquiryOnly,
-                    'service_requires_inquiry' => $serviceTypeRequiresInquiry,
-                    'service_type_code' => $serviceTypeModel->code ?? 'unknown',
-                ]);
-            }
             $allowRequestQuotation = $isQuotationOnly;
 
             // Determine if booking/cart is allowed (opposite of quotation-only)
@@ -1333,13 +1280,6 @@ class BookingFlowService
                 $totalJourneyDistance = $outboundDistanceKm + ($returnDistanceKm ?? 0);
                 $totalJourneyDuration = $outboundDurationSeconds + ($returnDurationSeconds ?? 0);
 
-                Log::info('Return trip distance calculated', [
-                    'outbound_km' => $outboundDistanceKm,
-                    'return_km' => $returnDistanceKm,
-                    'total_km' => $totalJourneyDistance,
-                    'outbound_duration' => $outboundDurationSeconds,
-                    'return_duration' => $returnDurationSeconds,
-                ]);
             } else {
                 // One-way trip
                 $totalJourneyDistance = $outboundDistanceKm;
@@ -1367,13 +1307,6 @@ class BookingFlowService
                         $totalJourneyDistance = $minimumKm;
                         $minimumKmApplied = true;
 
-                        Log::info('Minimum KM rule applied in getAvailableVehicleGroups', [
-                            'actual_distance' => $actualDistanceKm,
-                            'minimum_km' => $minimumKm,
-                            'charged_distance' => $totalJourneyDistance,
-                            'service_type_id' => $serviceTypeModel->id,
-                            'service_type_code' => $serviceTypeModel->code,
-                        ]);
                     }
                 }
             }
@@ -1545,8 +1478,16 @@ class BookingFlowService
                 ?? ($item['return_date'] ?? ($item['dropoff_date'] ?? ($item['from_date'] ?? ($item['pickup_date'] ?? null)))),
             'to_time' => $item['to_time']
                 ?? ($item['return_time'] ?? ($item['dropoff_time'] ?? ($item['from_time'] ?? ($item['pickup_time'] ?? '10:00')))),
-            'pickup_location' => $item['pickup_location'] ?? null,
-            'dropoff_location' => $item['dropoff_location'] ?? null,
+            'pickup_location' => [
+                'address' => $item['pickup_location'] ?? null,
+                'latitude' => $item['pickup_latitude'] ?? ($item['pickup_lat'] ?? null),
+                'longitude' => $item['pickup_longitude'] ?? ($item['pickup_lng'] ?? null),
+            ],
+            'dropoff_location' => [
+                'address' => $item['dropoff_location'] ?? null,
+                'latitude' => $item['dropoff_latitude'] ?? ($item['dropoff_lat'] ?? null),
+                'longitude' => $item['dropoff_longitude'] ?? ($item['dropoff_lng'] ?? null),
+            ],
             'package_id' => $item['service_package_id'] ?? null,
             'service_type_context' => 'public',
         ];
@@ -1620,8 +1561,7 @@ class BookingFlowService
                 $excludeBookingId
             );
 
-            // Legacy conflict detection for backward compatibility
-            $conflicts = $this->getVehicleConflictsDetailed($vehicle, $fromDate, $toDate, $excludeBookingId);
+            $conflicts = $enhancedAvailability['conflicts'];
             $availabilityStatus = $enhancedAvailability['availability_status'];
             $requiresConfirmation = $availabilityStatus !== 'available';
 
@@ -1781,14 +1721,13 @@ class BookingFlowService
                 fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
             )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
+            ->where(fn($query) => $this->whereBookingItemOverlaps(
+                $query,
+                $fromDate,
+                $fromTime,
+                $toDate,
+                $toTime
+            ))
             ->with('booking.customer')
             ->select('booking_items.*')
             ->get()
@@ -1861,14 +1800,13 @@ class BookingFlowService
                 fn($query, $bookingId) => $query->where('booking_items.booking_id', '!=', $bookingId)
             )
             ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
+            ->where(fn($query) => $this->whereBookingItemOverlaps(
+                $query,
+                $fromDate,
+                $fromTime,
+                $toDate,
+                $toTime
+            ))
             ->with('booking.customer', 'booking.vehicle')
             ->select('booking_items.*')
             ->get()
@@ -1907,6 +1845,28 @@ class BookingFlowService
             'driver_status' => $driver->status,
             'recommendations' => $this->generateDriverConflictRecommendations($conflicts, $driverId, $params),
         ];
+    }
+
+    private function whereBookingItemOverlaps($query, Carbon $fromDate, string $fromTime, Carbon $toDate, string $toTime): void
+    {
+        $fromDate = $fromDate->toDateString();
+        $toDate = $toDate->toDateString();
+
+        $query
+            ->where(function ($start) use ($toDate, $toTime) {
+                $start->where('booking_items.from_date', '<', $toDate)
+                    ->orWhere(function ($sameDay) use ($toDate, $toTime) {
+                        $sameDay->whereDate('booking_items.from_date', $toDate)
+                            ->where('booking_items.from_time', '<=', $toTime);
+                    });
+            })
+            ->where(function ($end) use ($fromDate, $fromTime) {
+                $end->where('booking_items.to_date', '>', $fromDate)
+                    ->orWhere(function ($sameDay) use ($fromDate, $fromTime) {
+                        $sameDay->whereDate('booking_items.to_date', $fromDate)
+                            ->where('booking_items.to_time', '>=', $fromTime);
+                    });
+            });
     }
 
     /**
@@ -2025,6 +1985,7 @@ class BookingFlowService
 
     public function submitBookingForApproval(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
@@ -2230,6 +2191,8 @@ class BookingFlowService
         $slab = VehiclePricingSlabDefinition::query()
             ->where('service_type_id', $serviceTypeId)
             ->where('service_package_id', $packageId)
+            ->when($inputs['slab_definition_id'] ?? null,
+                fn ($query, $slabId) => $query->whereKey($slabId))
             ->where('is_active', true)
             ->first();
         if (!$slab) {
@@ -2254,7 +2217,7 @@ class BookingFlowService
             ->where('vehicle_group_id', $vehicleGroupId)
             ->where('slab_definition_id', $slab->id)
             ->where('is_active', true))
-            ->whereNotNull('rate')
+            ->where('rate', '>', 0)
             ->exists();
 
         $requiredCodes = ['extra_km_rate'];
@@ -2362,12 +2325,6 @@ class BookingFlowService
 
         if (!$rule) {
             $result['message'] = 'No return discount available';
-            Log::debug('Return trip pricing - no matching rule', [
-                'package_id' => $packageId,
-                'day_offset' => $dayOffset,
-                'vehicle_group_id' => $vehicleGroupId,
-                'kilometers' => $kilometers,
-            ]);
             return $result;
         }
 
@@ -2395,18 +2352,6 @@ class BookingFlowService
                 : "{$rule->day_range_description}: {$rule->discount_percentage}% off return trip",
         ];
 
-        Log::info('Return trip pricing calculated', [
-            'package_id' => $packageId,
-            'day_offset' => $dayOffset,
-            'kilometers' => $kilometers,
-            'rule_id' => $rule->id,
-            'rule_label' => $rule->label,
-            'km_range' => $rule->km_range_description,
-            'charge_percentage' => $rule->charge_percentage,
-            'one_way_fare' => $oneWayFare,
-            'return_fare' => $returnFare,
-            'total_fare' => $result['total_fare'],
-        ]);
 
         return $result;
     }
@@ -2524,11 +2469,6 @@ class BookingFlowService
             );
 
             if ($colomboAdjustment && $colomboAdjustment['percentage'] != 0) {
-                Log::info("Falling back to Colombo district pricing", [
-                    'original_district' => $districtId,
-                    'fallback_district' => $colomboDistrictId,
-                    'percentage_change' => $colomboAdjustment['percentage']
-                ]);
 
                 return [
                     'district_id' => $colomboDistrictId,
@@ -2546,6 +2486,7 @@ class BookingFlowService
 
     public function confirmBooking(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
@@ -2587,6 +2528,7 @@ class BookingFlowService
             $booking->confirmed_at = now();
             $booking->requires_approval = false;
             $booking->approval_status = 'not_required';
+            $booking->notification_sms = filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL);
             // Internal confirmation is email-silent by default. Opting in enables the
             // booking's customer email lifecycle, including this confirmation email.
             $booking->skip_all_emails = !filter_var(
@@ -2663,6 +2605,8 @@ class BookingFlowService
                 // Handle vehicle and driver assignments for confirmed booking
                 $this->createBookingAssignments($booking, $params, 'active');
             }
+
+            $this->syncBookingTotalsFromItems($booking);
 
             if (!$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
                 $notifyInternalTeam = filter_var($params['notify_internal_team'] ?? true, FILTER_VALIDATE_BOOL);
@@ -2884,6 +2828,8 @@ class BookingFlowService
             $dropoffLandmark = $dropoffLocation['landmark'] ?? $dropoffLocation['name'] ?? null;
         }
 
+        $calculatedTotal = (float) ($pricing['total_amount'] ?? $booking->total_estimated ?? 0);
+        $overrideAttributes = $this->resolveItemPriceOverride($params, $calculatedTotal, $bookingItem);
         $itemAttributes = [
             'booking_id' => $booking->id,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -2891,8 +2837,8 @@ class BookingFlowService
             'vehicle_id' => $params['vehicle_id'] ?? null,
             'driver_id' => $params['driver_id'] ?? null,
             'quantity' => 1,
-            'unit_price' => $pricing['total_amount'] ?? $booking->base_amount ?? 0,
-            'total_price' => $pricing['total_amount'] ?? $booking->total_estimated ?? 0,
+            'unit_price' => $overrideAttributes['effective_price'],
+            'total_price' => $overrideAttributes['effective_price'],
             'from_date' => $params['from_date'] ?? null,
             'to_date' => $params['to_date'] ?? null,
             'from_time' => $params['from_time'] ?? null,
@@ -2928,6 +2874,8 @@ class BookingFlowService
             ]),
         ];
 
+        $previousPrice = $bookingItem ? (float) $bookingItem->total_price : $calculatedTotal;
+        $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
         if ($bookingItem) {
             if ($bookingItem->trashed()) {
                 $bookingItem->restore();
@@ -2937,7 +2885,126 @@ class BookingFlowService
             $bookingItem = BookingItem::create($itemAttributes);
         }
 
+        $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+
         return $bookingItem;
+    }
+
+    private function assertCanOverrideTripPrices(array $params): void
+    {
+        $bookingId = $params['booking_id'] ?? null;
+        $hasPriceOverride = collect($params['booking_items'] ?? [])->contains(function ($item) use ($bookingId): bool {
+            if (!is_array($item) || !array_key_exists('final_price', $item) || $item['final_price'] === null || $item['final_price'] === '') {
+                return false;
+            }
+
+            if ($bookingId && !empty($item['id'])) {
+                $existing = BookingItem::query()
+                    ->where('booking_id', $bookingId)
+                    ->whereKey($item['id'])
+                    ->first();
+                if ($existing && abs((float) $existing->total_price - (float) $item['final_price']) < 0.01) {
+                    return false;
+                }
+            }
+
+            return true;
+        });
+
+        if ($hasPriceOverride && !Auth::user()?->can('bookings.price_override')) {
+            throw new AuthorizationException('You do not have permission to change trip prices.');
+        }
+    }
+
+    private function withoutOriginalPriceFields(array $values): array
+    {
+        foreach ($values as $key => $value) {
+            if (preg_match('/(^original_|_original_|price_before_|calculated_(price|base))/', (string) $key)) {
+                unset($values[$key]);
+            } elseif (is_array($value)) {
+                $values[$key] = $this->withoutOriginalPriceFields($value);
+            }
+        }
+
+        return $values;
+    }
+
+    private function resolveItemPriceOverride(array $itemData, float $calculatedPrice, ?BookingItem $existing = null): array
+    {
+        $hasSubmittedPrice = array_key_exists('final_price', $itemData) && $itemData['final_price'] !== null && $itemData['final_price'] !== '';
+        if ($hasSubmittedPrice && (!is_scalar($itemData['final_price']) || !is_numeric($itemData['final_price']))) {
+            throw ValidationException::withMessages(['booking_items' => 'Every trip final price must be a valid number.']);
+        }
+        $effectivePrice = $hasSubmittedPrice
+            ? round((float) $itemData['final_price'], 2)
+            : ($existing?->price_override_amount !== null ? (float) $existing->price_override_amount : round($calculatedPrice, 2));
+
+        if ($effectivePrice < 0) {
+            throw ValidationException::withMessages(['booking_items' => 'Trip final prices cannot be negative.']);
+        }
+
+        $isOverride = abs($effectivePrice - round($calculatedPrice, 2)) >= 0.01;
+        $reason = trim((string) ($itemData['price_adjustment_reason'] ?? ($existing?->price_override_reason ?? '')));
+        if (mb_strlen($reason) > 500) {
+            throw ValidationException::withMessages(['booking_items' => 'Trip price change reasons cannot exceed 500 characters.']);
+        }
+        if ($isOverride && $reason === '') {
+            throw ValidationException::withMessages(['booking_items' => 'A reason is required for every changed trip price.']);
+        }
+
+        return [
+            'effective_price' => $effectivePrice,
+            'calculated_price' => round($calculatedPrice, 2),
+            'reason' => $isOverride ? $reason : null,
+            'changed' => $isOverride && $hasSubmittedPrice && (!$existing || abs((float) $existing->total_price - $effectivePrice) >= 0.01),
+            'columns' => [
+                'price_override_amount' => $isOverride ? $effectivePrice : null,
+                'price_override_reason' => $isOverride ? $reason : null,
+                'price_overridden_by' => $isOverride ? Auth::id() : null,
+                'price_overridden_at' => $isOverride ? now() : null,
+            ],
+        ];
+    }
+
+    private function recordItemPriceOverride(BookingItem $item, float $previousPrice, array $override): void
+    {
+        if (!$override['changed']) {
+            return;
+        }
+
+        BookingActivity::create([
+            'booking_id' => $item->booking_id,
+            'booking_item_id' => $item->id,
+            'event_key' => 'trip_price_changed',
+            'channel' => 'system',
+            'result_status' => 'completed',
+            'source' => 'portal',
+            'title' => 'Trip price changed',
+            'detail' => $override['reason'],
+            'idempotency_key' => 'trip-price-'.Str::uuid(),
+            'meta' => [
+                'previous_price' => round($previousPrice, 2),
+                'calculated_price' => $override['calculated_price'],
+                'final_price' => $override['effective_price'],
+                'changed_by' => Auth::id(),
+                'changed_by_name' => trim((string) (Auth::user()?->full_name ?: Auth::user()?->email)),
+                'currency' => $item->currency ?: config('booking.base_currency', 'LKR'),
+            ],
+            'event_at' => now(),
+        ]);
+    }
+
+    private function syncBookingTotalsFromItems(Booking $booking): void
+    {
+        $total = (float) $booking->bookingItems()
+            ->whereNotIn('status', ['cancelled', 'rejected'])
+            ->sum('total_price');
+
+        $booking->forceFill([
+            'base_amount' => $total,
+            'total_estimated' => $total,
+            'total_actual' => $total,
+        ])->save();
     }
 
     /**
@@ -2950,12 +3017,6 @@ class BookingFlowService
 
         // For now, we'll use the existing assignment logic but scoped to the booking item
         if (!empty($assignmentData['vehicle_id']) || !empty($assignmentData['driver_id'])) {
-            Log::info('Creating booking item assignments', [
-                'booking_item_id' => $bookingItem->id,
-                'booking_id' => $bookingItem->booking_id,
-                'vehicle_id' => $assignmentData['vehicle_id'] ?? null,
-                'driver_id' => $assignmentData['driver_id'] ?? null
-            ]);
 
             // Future implementation: Create specific assignment records for booking items
             // This might involve a new table like booking_item_assignments or extending 
@@ -2965,6 +3026,7 @@ class BookingFlowService
 
     public function updateBooking(string $bookingId, array $params, array $changeAnalytics): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         return DB::transaction(function () use ($bookingId, $params) {
 
             $booking = Booking::with(['bookingItems', 'bookingAddons', 'variableCustomizations'])->findOrFail($bookingId);
@@ -3014,10 +3076,6 @@ class BookingFlowService
 
                 // Create new booking items with their addons
                 foreach ($params['booking_items'] as $itemData) {
-                    Log::info('Processing booking item for update', [
-                        'item_vehicle_group_id' => $itemData['vehicle_group_id'] ?? 'NOT SET',
-                        'item_vehicle_id' => $itemData['vehicle_id'] ?? 'NOT SET',
-                    ]);
 
                     // IMPORTANT: When a specific vehicle is selected, we should use the vehicle_group_id
                     // that was originally selected in the UI, NOT the vehicle's actual vehicle_group_id.
@@ -3030,17 +3088,9 @@ class BookingFlowService
                         $vehicle = \App\Models\Vehicle\Vehicle::find($itemData['vehicle_id']);
                         if ($vehicle && $vehicle->vehicle_group_id) {
                             $vehicleGroupId = $vehicle->vehicle_group_id;
-                            Log::info('Resolved missing vehicle_group_id from vehicle_id', [
-                                'vehicle_id' => $itemData['vehicle_id'],
-                                'resolved_group_id' => $vehicleGroupId
-                            ]);
                         }
                     } else if (!empty($itemData['vehicle_id'])) {
                         // Log when we're keeping the original vehicle_group_id despite having a vehicle_id
-                        Log::info('Keeping original vehicle_group_id for pricing (vehicle selected for assignment only)', [
-                            'vehicle_id' => $itemData['vehicle_id'],
-                            'vehicle_group_id' => $vehicleGroupId
-                        ]);
                     }
 
                     // Calculate pricing for this item - USE THE SELECTED vehicle_group_id
@@ -3055,28 +3105,26 @@ class BookingFlowService
                         'to_time' => $itemData['to_time'] ?? null,
                         'pickup_location' => $itemData['pickup_location'] ?? null,
                         'dropoff_location' => $itemData['dropoff_location'] ?? null,
+                        'corporate_account_id' => $params['corporate_account_id'] ?? null,
+                        'is_corporate_booking' => $params['is_corporate_booking'] ?? false,
+                        'pricing_context' => $params['pricing_context'] ?? null,
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
                         'selected_addons' => $itemData['addons'] ?? [],
                         'service_package_id' => $itemData['service_package_id']
                             ?? $itemData['package_id']
-                            ?? data_get($itemData, 'metadata.service_package_id'),
+                            ?? data_get($itemData, 'metadata.service_package_id')
+                            ?? data_get($itemData, 'metadata.package_id'),
+                        'slab_definition_id' => $itemData['slab_definition_id']
+                            ?? data_get($itemData, 'metadata.slab_definition_id'),
                         'booking_id' => $bookingId,
                         'preserve_custom_pricing' => $params['preserve_custom_pricing'] ?? false,
                         'variable_customizations' => $params['variable_customizations'] ?? [],
                     ];
 
-                    Log::info('Calculating pricing for booking item', [
-                        'pricing_params' => $itemPricingParams,
-                        'vehicle_group_id_for_pricing' => $vehicleGroupId
-                    ]);
 
                     $itemPricing = $this->calculatePricing($itemPricingParams);
                     $itemTotals = $this->extractTotalsFromPricing($itemPricing);
 
-                    Log::info('Item pricing calculated', [
-                        'item_totals' => $itemTotals,
-                        'item_pricing' => $itemPricing
-                    ]);
 
                     // Extract location data
                     $pickupLocation = $itemData['pickup_location'] ?? null;
@@ -3102,12 +3150,6 @@ class BookingFlowService
                     }
 
                     // Log what we're about to save
-                    Log::info('Creating booking item with dates', [
-                        'from_date' => $itemData['from_date'],
-                        'to_date' => $itemData['to_date'],
-                        'from_time' => $itemData['from_time'] ?? null,
-                        'to_time' => $itemData['to_time'] ?? null,
-                    ]);
 
                     $itemAttributes = [
                         'booking_id' => $booking->id,
@@ -3142,7 +3184,9 @@ class BookingFlowService
                         'metadata' => array_merge(
                             is_array($itemData['metadata'] ?? null) ? $itemData['metadata'] : [],
                             [
-                                'service_package_id' => $itemPricingParams['service_package_id'] ?? null,
+                                'service_package_id' => $itemPricingParams['service_package_id']
+                                    ?? data_get($itemPricing, 'calculation_metadata.runtime_context.package_id'),
+                                'slab_definition_id' => data_get($itemPricing, 'calculation_metadata.runtime_context.slab_definition_id'),
                                 'package_info' => $itemPricing['package_info'] ?? null,
                             ]
                         ),
@@ -3154,6 +3198,18 @@ class BookingFlowService
                     $bookingItem = $submittedItemId
                         ? $existingBookingItems->get($submittedItemId)
                         : null;
+
+                    $overrideAttributes = $this->resolveItemPriceOverride(
+                        $itemData,
+                        (float) $itemTotals['total_estimated'],
+                        $bookingItem
+                    );
+                    $previousPrice = $bookingItem
+                        ? (float) $bookingItem->total_price
+                        : (float) $itemTotals['total_estimated'];
+                    $itemAttributes['unit_price'] = $overrideAttributes['effective_price'];
+                    $itemAttributes['total_price'] = $overrideAttributes['effective_price'];
+                    $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
 
                     if ($bookingItem && ($bookingItem->approved_at || $bookingItem->dispatch()->exists())) {
                         $lockedPackageId = data_get($bookingItem->metadata, 'service_package_id')
@@ -3173,13 +3229,15 @@ class BookingFlowService
                         $bookingItem = BookingItem::create($itemAttributes);
                     }
 
+                    $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+
                     $retainedBookingItemIds[] = (string) $bookingItem->id;
 
                     // Accumulate totals
-                    $totalBaseAmount += $itemTotals['base_amount'];
+                    $totalBaseAmount += $overrideAttributes['effective_price'];
                     $totalAddonsCost += $itemTotals['addons_cost'];
                     $totalDiscountAmount += $itemTotals['discount_amount'];
-                    $totalEstimated += $itemTotals['total_estimated'];
+                    $totalEstimated += $overrideAttributes['effective_price'];
                 }
 
                 $booking->bookingItems()
@@ -4256,13 +4314,6 @@ class BookingFlowService
             $mode = $params['mode'] ?? 'full_calculation';
             $appliedCustomizations = $params['applied_customizations'] ?? [];
 
-            Log::debug('calculateDynamicPricing: START', [
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
-                'mode' => $mode,
-                'pickup_location' => $params['pickup_location'] ?? null,
-                'dropoff_location' => $params['dropoff_location'] ?? null,
-            ]);
 
             if (!$serviceTypeId) {
                 Log::warning("No service type ID provided for dynamic pricing calculation");
@@ -4303,6 +4354,25 @@ class BookingFlowService
             if (!isset($params['duration_seconds'])) {
                 $params['duration_seconds'] =
                     $params['journey_duration_seconds'] ?? ($calculationInputs['journey_duration_seconds'] ?? null);
+            }
+
+            // Package and slab are two references to the same managed price.
+            $usesPackagePricing = $calculationDefinitions->contains(fn ($definition) => collect($definition->variables ?? [])
+                ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
+                    'package_included_km', 'package_included_hours', 'package_has_hour_limit',
+                ], true)));
+            if ($usesPackagePricing || !empty($calculationInputs['package_id']) || !empty($calculationInputs['slab_definition_id'])) {
+                $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
+                    (string) $serviceTypeId,
+                    $calculationInputs['package_id'] ?? $calculationInputs['service_package_id'] ?? null,
+                    $calculationInputs['slab_definition_id'] ?? null,
+                    (float) ($calculationInputs['duration_minutes'] ?? 0),
+                    isset($calculationInputs['duration_days']) ? (float) $calculationInputs['duration_days'] : null
+                );
+                $calculationInputs['slab_definition_id'] = $selection['slab']?->id;
+                if ($selection['package']) {
+                    $calculationInputs['package_id'] = $selection['package']->id;
+                }
             }
 
             // Resolve Service Package information
@@ -4347,21 +4417,7 @@ class BookingFlowService
                 );
             }
 
-            Log::debug('calculateDynamicPricing: Matched calculation definition', [
-                'definition_id' => $calculationDefinition->id,
-                'definition_name' => $calculationDefinition->name,
-                'formula' => $calculationDefinition->formula,
-                'conditions' => $calculationDefinition->conditions,
-            ]);
 
-            Log::info("Dynamic pricing calculation executed", [
-                'params' => $params,
-                'definition_id' => $calculationDefinition->id,
-                'inputs' => $calculationInputs,
-                'service_package_info' => $servicePackageInfo,
-                'result' => $calculationResult
-
-            ]);
             // Transform result to standard pricing structure
             if (isset($calculationInputs['distance_policy'])) {
                 $params['contractual_distance_calculation'] = $calculationInputs;
@@ -4399,6 +4455,7 @@ class BookingFlowService
                     'is_self_driven',
                     'booking_type',
                     'package_id',
+                    'slab_definition_id',
                     'package_included_km',
                     'additional_stops',
                     'stops',
@@ -4495,6 +4552,9 @@ class BookingFlowService
             'extra_minutes',
             'waiting_hours',
             'waiting_minutes',
+            'pickup_waiting_minutes',
+            'hire_waiting_minutes',
+            'total_waiting_minutes',
             'recovery_hours',
             'recovery_minutes',
             'overtime_hours',
@@ -4589,11 +4649,6 @@ class BookingFlowService
                 $inputs['minimum_km'] = $minimumKm;
                 $inputs['minimum_km_source'] = 'service_type';
 
-                Log::debug('prepareCalculationInputs: Minimum KM configured', [
-                    'service_type_id' => $serviceType->id,
-                    'service_type_code' => $serviceType->code,
-                    'minimum_km' => $minimumKm,
-                ]);
             }
         }
 
@@ -4653,8 +4708,11 @@ class BookingFlowService
             $inputs['district_id'] = $params['district_id'];
         }
 
-        if (isset($params['package_id'])) {
-            $inputs['package_id'] = $params['package_id'];
+        if (isset($params['package_id']) || isset($params['service_package_id'])) {
+            $inputs['package_id'] = $params['package_id'] ?? $params['service_package_id'];
+        }
+        if (isset($params['slab_definition_id'])) {
+            $inputs['slab_definition_id'] = $params['slab_definition_id'];
         }
 
         if (isset($params['package_included_km']) && is_numeric($params['package_included_km'])) {
@@ -4674,12 +4732,6 @@ class BookingFlowService
             $inputs['pickup_is_airport'] = $pickupIsAirport;
             $inputs['dropoff_is_airport'] = $dropoffIsAirport;
 
-            Log::debug('prepareCalculationInputs: Airport detection', [
-                'pickup_location' => $pickupLocation,
-                'dropoff_location' => $dropoffLocation,
-                'pickup_is_airport' => $pickupIsAirport,
-                'dropoff_is_airport' => $dropoffIsAirport,
-            ]);
 
             $corporatePolicyServiceTypeId = isset($serviceType) && $serviceType instanceof ServiceType
                 ? (string) $serviceType->id
@@ -4729,15 +4781,6 @@ class BookingFlowService
                         $distanceCalculations['total_distance'] = round($minimumKm + $pickupDistance + $deliveryDistance, 2);
                     }
 
-                    Log::info('Minimum KM rule applied in prepareCalculationInputs', [
-                        'actual_distance' => $actualDistance,
-                        'minimum_km' => $minimumKm,
-                        'charged_distance' => $minimumKm,
-                        'include_garage_distance' => $includeGarageDistance,
-                        'total_distance_updated' => $distanceCalculations['total_distance'],
-                        'service_type_id' => $serviceType->id ?? $serviceTypeId,
-                        'service_type_code' => $serviceType->code ?? null,
-                    ]);
                 } else {
                     $distanceCalculations['minimum_km_applied'] = false;
                     $distanceCalculations['minimum_km'] = $minimumKm;
@@ -4748,14 +4791,6 @@ class BookingFlowService
             $inputs = array_merge($inputs, $distanceCalculations);
 
             // Log distance calculation mode for debugging
-            Log::info('Distance calculation for pricing', [
-                'include_garage_distance' => $distanceCalculations['include_garage_distance'] ?? null,
-                'journey_distance' => $distanceCalculations['journey_distance'] ?? null,
-                'pickup_distance' => $distanceCalculations['pickup_distance'] ?? null,
-                'delivery_distance' => $distanceCalculations['delivery_distance'] ?? null,
-                'total_distance' => $distanceCalculations['total_distance'] ?? null,
-                'service_type' => $serviceType,
-            ]);
         }
 
         // Add customer-specific inputs
@@ -4787,20 +4822,8 @@ class BookingFlowService
             $inputs['minimum_km_applied'] = true;
             $inputs['distance_source'] = ($inputs['minimum_km_source'] ?? 'service_type') . '_minimum';
 
-            Log::info('prepareCalculationInputs: Using minimum_km as fallback for total_distance', [
-                'minimum_km' => $inputs['minimum_km'],
-                'minimum_km_source' => $inputs['minimum_km_source'] ?? null,
-                'reason' => 'location_free_preview',
-            ]);
         }
 
-        Log::debug('prepareCalculationInputs: Final inputs prepared', [
-            'inputs' => $inputs,
-            'has_journey_distance' => isset($inputs['journey_distance']),
-            'journey_distance' => $inputs['journey_distance'] ?? null,
-            'has_total_distance' => isset($inputs['total_distance']),
-            'total_distance' => $inputs['total_distance'] ?? null,
-        ]);
 
         return $inputs;
     }
@@ -4903,39 +4926,6 @@ class BookingFlowService
             ];
         }
 
-        Log::debug('TransformCalculationResult - Distance Details Built', [
-            'km_calculations' => $kmCalculations,
-            'slab_info' => $slabInfo ? [
-                'type' => $slabInfo['type'] ?? null,
-                'max_km_per_day' => $slabInfo['max_km_per_day'] ?? null,
-                'max_km_per_package' => $slabInfo['max_km_per_package'] ?? null,
-            ] : null,
-            'service_package_info' => $servicePackageInfo ? [
-                'id' => $servicePackageInfo['id'] ?? null,
-                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
-                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
-            ] : null,
-            'distance_details' => $distanceDetails,
-            'adjustment_details' => $adjustmentDetails,
-            'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
-            'package_info' => $servicePackageInfo ? [
-                'id' => (string) $servicePackageInfo['id'],
-                'name' => $servicePackageInfo['name'] ?? null,
-                'code' => $servicePackageInfo['code'] ?? null,
-                'description' => data_get($servicePackageInfo, 'service_package.description'),
-                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
-                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
-                'default_duration_hours' => $servicePackageInfo['default_duration_hours'] ?? 0,
-                'default_duration_minutes' => $servicePackageInfo['default_duration_minutes'] ?? 0,
-                'rate_type' => $servicePackageInfo['rate_type'] ?? null,
-                'snapshotted_at' => now()->toIso8601String(),
-            ] : null,
-            'distance_policy' => $contractual['distance_policy'] ?? null,
-            'contractual_route' => $contractual['contractual_route'] ?? null,
-            'contractual_movement_charge' => $movementCharge ?: null,
-            'service_type_id' => $params['service_type_id'] ?? null,
-            'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
-        ]);
 
         // Build standard pricing structure
         $result = [
@@ -5107,12 +5097,6 @@ class BookingFlowService
                 $distanceDetails['extra_hour_label'] = $extraHourRate['name'] ?: 'Extra Hour Rate';
             }
 
-            Log::debug('BuildDistanceDetails - Extra KM Rate Lookup', [
-                'service_type_id' => $serviceTypeId,
-                'vehicle_group_id' => $vehicleGroupId,
-                'extra_km_rate' => $extraKmRate,
-                'extra_hour_rate' => $extraHourRate['value'] ?? null,
-            ]);
         }
 
         return $distanceDetails;
@@ -5163,11 +5147,6 @@ class BookingFlowService
                 ->first();
 
             if ($commonRatePricing && $commonRatePricing->value !== null) {
-                Log::debug('Extra KM Rate found for vehicle group', [
-                    'vehicle_group_id' => $vehicleGroupId,
-                    'service_type_id' => $serviceTypeId,
-                    'rate' => $commonRatePricing->value,
-                ]);
                 return (float) $commonRatePricing->value;
             }
 
@@ -5405,16 +5384,7 @@ class BookingFlowService
                 $vehicle = \App\Models\Vehicle\Vehicle::find($params['vehicle_id']);
                 if ($vehicle) {
                     $params['vehicle_group_id'] = $vehicle->vehicle_group_id;
-                    Log::info('Resolved vehicle_group_id from vehicle_id in calculatePricing (vehicle_group_id was missing)', [
-                        'vehicle_id' => $params['vehicle_id'],
-                        'resolved_group_id' => $params['vehicle_group_id']
-                    ]);
                 }
-            } else if (!empty($params['vehicle_group_id']) && !empty($params['vehicle_id'])) {
-                Log::info('Using provided vehicle_group_id for pricing (not resolving from vehicle_id)', [
-                    'vehicle_id' => $params['vehicle_id'],
-                    'vehicle_group_id' => $params['vehicle_group_id']
-                ]);
             }
 
             // Also check 'vehicles' array (multi-select format but with only one item)
@@ -5444,6 +5414,13 @@ class BookingFlowService
             }
         } catch (\InvalidArgumentException $e) {
             Log::notice('Pricing calculation rejected invalid input', [
+                'error' => $e->getMessage(),
+                'params' => $params
+            ]);
+
+            throw $e;
+        } catch (\DomainException $e) {
+            Log::notice('Pricing configuration is incomplete', [
                 'error' => $e->getMessage(),
                 'params' => $params
             ]);
@@ -5617,6 +5594,14 @@ class BookingFlowService
                     ?? $itemMetadata['multi_route_stop_order']
                     ?? $params['ordered_additional_stops']
                     ?? [],
+                'service_package_id' => $item['service_package_id']
+                    ?? $item['package_id']
+                    ?? $itemMetadata['service_package_id']
+                    ?? $itemMetadata['package_id']
+                    ?? null,
+                'slab_definition_id' => $item['slab_definition_id']
+                    ?? $itemMetadata['slab_definition_id']
+                    ?? null,
                 // Use item-specific addons
                 'selected_addons' => $itemAddons,
             ]);
@@ -5712,10 +5697,6 @@ class BookingFlowService
             if (!empty($existingCustomizations)) {
                 $appliedCustomizations = $this->applyVariableCustomizations($existingCustomizations, $params);
             }
-        } else if (!empty($sessionId)) {
-            Log::info('🔄 Session-scoped mode - no session persistence implemented', [
-                'session_id' => $sessionId
-            ]);
         }
 
         // Calculate base pricing with duration and variable customizations
@@ -6217,30 +6198,11 @@ class BookingFlowService
         // address fallback keeps legacy managed defaults equivalent to a Places
         // selection while new configuration records store coordinates as well.
         if ((!$fromHasCoordinates && !$fromHasAddress) || (!$toHasCoordinates && !$toHasAddress)) {
-            Log::info('Calculating distance between coordinates', [
-                'from' => [
-                    'latitude' => $this->extractLatitude($from),
-                    'longitude' => $this->extractLongitude($from),
-                ],
-                'to' => [
-                    'address' => $to['address'] ?? 'Unknown',
-                    'latitude' => $this->extractLatitude($to),
-                    'longitude' => $this->extractLongitude($to),
-                ],
-                'from_valid' => $this->isValidLocationArray($from),
-                'to_valid' => $this->isValidLocationArray($to)
-            ]);
 
             // No usable coordinates or address: calculation is genuinely impossible.
             return null;
         }
 
-        if (!$fromHasCoordinates || !$toHasCoordinates) {
-            Log::info('Calculating distance from managed location address fallback', [
-                'from_has_coordinates' => $fromHasCoordinates,
-                'to_has_coordinates' => $toHasCoordinates,
-            ]);
-        }
 
         try {
             $result = app(GoogleMapsService::class)->distanceAndDuration($from, $to);
@@ -6308,12 +6270,6 @@ class BookingFlowService
         if ($isPreviewMode) {
             // Always use default company for preview calculations to ensure consistent pricing
             $company = \App\Models\Company::getDefaultCompany();
-            Log::info('calculateCompanyDistances: Using default company for preview pricing', [
-                'is_preview' => $isPreviewMode,
-                'vehicle_id_provided' => $specificVehicleId,
-                'company_id' => $company->id ?? null,
-                'company_name' => $company->name ?? null,
-            ]);
         } else {
             // For confirmed bookings, try to use vehicle-specific company
             // If vehicle has no company or vehicle_id is not provided, fallback to default company
@@ -6324,14 +6280,6 @@ class BookingFlowService
             // This ensures consistent garage distance calculations for pricing
             $company = $vehicleCompany ?? \App\Models\Company::getDefaultCompany();
 
-            Log::info('calculateCompanyDistances: Using vehicle-specific company for confirmed booking', [
-                'is_preview' => $isPreviewMode,
-                'vehicle_id' => $specificVehicleId,
-                'vehicle_has_company' => $vehicleCompany !== null,
-                'using_default_fallback' => $vehicleCompany === null,
-                'company_id' => $company->id ?? null,
-                'company_name' => $company->name ?? null,
-            ]);
         }
 
         // Get booking settings to check if garage distance should be included
@@ -7847,9 +7795,41 @@ class BookingFlowService
         // fallback currency
         $currency = $summary['currency'] ?? 'LKR';
 
-        // Transform booking items for multi-trip support
-        $bookingItems = $booking->bookingItems->map(function ($item) {
-            return [
+        // Transform booking items for multi-trip support. Price-change metadata is internal-only.
+        $canViewPriceAudit = Auth::user()?->can('bookings.price_override') === true;
+        $bookingItems = $booking->bookingItems->map(function ($item) use ($canViewPriceAudit, $pricingSnapshot) {
+            $metadata = is_array($item->metadata) ? $item->metadata : [];
+            $servicePackageId = $metadata['service_package_id']
+                ?? $metadata['package_id']
+                ?? data_get($metadata, 'package_info.id')
+                ?? data_get($metadata, 'service_package_info.id')
+                ?? data_get($item->pricing_breakdown, 'package_info.id')
+                ?? data_get($item->pricing_breakdown, 'service_package_info.id')
+                ?? data_get($item->pricing_breakdown, 'base_pricing.package_info.id')
+                ?? data_get($item->pricing_breakdown, 'base_pricing.service_package_info.id')
+                ?? data_get($item->pricing_breakdown, 'calculation_metadata.runtime_context.package_id')
+                ?? data_get($pricingSnapshot, 'package_info.id')
+                ?? data_get($pricingSnapshot, 'service_package_info.id')
+                ?? data_get($pricingSnapshot, 'base_pricing.package_info.id')
+                ?? data_get($pricingSnapshot, 'base_pricing.service_package_info.id')
+                ?? data_get($pricingSnapshot, 'calculation_metadata.runtime_context.package_id')
+                ?? data_get($pricingSnapshot, 'pricing_scope.requested_service_package_id')
+                ?? data_get($pricingSnapshot, 'pricing_scope.pricing_service_package_id');
+            if ($servicePackageId) {
+                $metadata['service_package_id'] = (string) $servicePackageId;
+            }
+            $serviceFormConfig = is_array($item->serviceType?->form_config)
+                ? $item->serviceType->form_config
+                : [];
+            $metadata['service_package_required'] = (bool) (
+                data_get($serviceFormConfig, 'package_id.required')
+                ?? data_get($serviceFormConfig, 'fields.package_id.required')
+                ?? data_get($serviceFormConfig, 'service_package_id.required')
+                ?? data_get($serviceFormConfig, 'fields.service_package_id.required')
+                ?? false
+            );
+
+            $data = [
                 'id' => (string) $item->id,
                 'booking_id' => (string) $item->booking_id,
                 'service_type_id' => $item->service_type_id ? (string) $item->service_type_id : null,
@@ -7879,7 +7859,7 @@ class BookingFlowService
                 'quantity' => (int) ($item->quantity ?? 1),
                 'unit_price' => (float) ($item->unit_price ?? 0),
                 'total_price' => (float) ($item->total_price ?? 0),
-                'pricing_breakdown' => $item->pricing_breakdown ?? null,
+                'pricing_breakdown' => $canViewPriceAudit ? ($item->pricing_breakdown ?? null) : null,
                 'addons' => $item->addons ?? [],
                 'customizations' => $item->customizations ?? [],
                 'discounts' => $item->discounts ?? [],
@@ -7915,9 +7895,26 @@ class BookingFlowService
                 'requires_approval' => (bool) ($item->requires_approval ?? false),
                 'item_type' => $item->item_type ?? null,
                 'notes' => $item->notes ?? null,
-                'metadata' => $item->metadata ?? null,
+                'metadata' => $metadata,
+                'service_package_id' => $metadata['service_package_id'] ?? null,
             ];
+
+            if ($canViewPriceAudit) {
+                $data['price_override_amount'] = $item->price_override_amount !== null
+                    ? (float) $item->price_override_amount
+                    : null;
+                $data['price_override_reason'] = $item->price_override_reason;
+                $data['calculated_price'] = (float) (BookingActivity::query()
+                    ->where('booking_item_id', $item->id)
+                    ->where('event_key', 'trip_price_changed')
+                    ->latest('event_at')
+                    ->value('meta->calculated_price') ?? $item->total_price ?? 0);
+            }
+
+            return $data;
         })->toArray();
+
+        $priceAdjustmentAudit = [];
 
         // Normalize addons (prefer snapshot → fallback to relation)
         $addons = [];
@@ -8066,12 +8063,13 @@ class BookingFlowService
 
             // Multi-trip booking items (primary data source for edit form)
             'booking_items' => $bookingItems,
+            'price_adjustment_audit' => $priceAdjustmentAudit,
 
             // Addons data
             'addons' => [
                 'selected_addons' => $booking->bookingAddons->pluck('addon_id')->toArray(),
-                'addon_list' => $addons,
-                'addon_data' => $booking->bookingAddons->mapWithKeys(function ($bookingAddon) {
+                'addon_list' => $canViewPriceAudit ? $addons : $this->withoutOriginalPriceFields($addons),
+                'addon_data' => $booking->bookingAddons->mapWithKeys(function ($bookingAddon) use ($canViewPriceAudit) {
                     $orig = (float) ($bookingAddon->addon->amount ?? 0);
                     $rate = (float) ($bookingAddon->rate ?? $orig);
                     return [
@@ -8079,7 +8077,7 @@ class BookingFlowService
                             'quantity' => (int) ($bookingAddon->qty ?? 1),
                             'custom_price' => $rate !== $orig ? $rate : null,
                             'total_price' => (float) ($bookingAddon->amount ?? 0),
-                            'original_price' => $orig,
+                            'original_price' => $canViewPriceAudit ? $orig : null,
                             'is_customized' => $rate !== $orig,
                         ]
                     ];
@@ -8095,20 +8093,20 @@ class BookingFlowService
                 'total_amount' => (float) ($booking->total_estimated ?? 0),
                 'currency' => $currency,
                 'exchange_rate' => (float) ($summary['exchange_rate'] ?? 1),
-                'base_price_override' => $booking->base_price_override ? (float) $booking->base_price_override : null,
-                'base_price_override_reason' => $booking->base_price_override_reason ?? null,
+                'base_price_override' => $canViewPriceAudit && $booking->base_price_override ? (float) $booking->base_price_override : null,
+                'base_price_override_reason' => $canViewPriceAudit ? ($booking->base_price_override_reason ?? null) : null,
                 'has_custom_base_price' => !is_null($booking->base_price_override),
                 'is_pricing_locked' => !is_null($booking->base_price_override) || $booking->bookingAddons->whereNotNull('rate')->count() > 0,
                 'breakdown' => [
-                    'base_pricing' => (array) ($pricingSnapshot['base_pricing']['breakdown'] ?? []),
-                    'addons' => $addons,
+                    'base_pricing' => $canViewPriceAudit ? (array) ($pricingSnapshot['base_pricing']['breakdown'] ?? []) : [],
+                    'addons' => $canViewPriceAudit ? $addons : $this->withoutOriginalPriceFields($addons),
                     'subtotal' => (float) ($summary['subtotal'] ?? $booking->base_amount ?? 0),
                     'addons_total' => (float) ($summary['addons_total'] ?? $booking->addons_cost ?? 0),
                     'discount_total' => (float) ($discountSummary['total_discount_amount'] ?? $booking->discount_amount ?? 0),
                     'tax_amount' => (float) ($booking->tax_amount ?? 0),
                     'total' => (float) ($booking->total_estimated ?? 0),
                 ],
-                'detailed_breakdown' => $detailed,
+                'detailed_breakdown' => $canViewPriceAudit ? $detailed : [],
                 'discount_summary' => $discountSummary,
                 'duration' => $duration,
                 'calculation_params' => [
@@ -8125,7 +8123,9 @@ class BookingFlowService
                         'longitude' => $booking->dropoff_longitude,
                     ],
                 ],
-                'variable_customizations' => $variableCustomizations,
+                'variable_customizations' => $canViewPriceAudit
+                    ? $variableCustomizations
+                    : $this->withoutOriginalPriceFields($variableCustomizations),
             ],
 
             // State and status
@@ -8279,7 +8279,6 @@ class BookingFlowService
      */
     public function trackAnalytics(string $event, array $data): void
     {
-        Log::info("Booking Analytics: {$event}", $data);
 
         // Here you could also send to analytics service, database table, etc.
         // For now, just logging for comprehensive tracking
@@ -8867,6 +8866,70 @@ class BookingFlowService
         ];
     }
 
+    public function getOperationsNotes(string $bookingId, string $bookingItemId): array
+    {
+        $item = BookingItem::query()
+            ->where('booking_id', $bookingId)
+            ->findOrFail($bookingItemId);
+
+        return [
+            'notes' => $item->notes,
+            'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
+        ];
+    }
+
+    public function updateOperationsNotes(string $bookingId, string $bookingItemId, ?string $notes, ?User $user): array
+    {
+        $item = BookingItem::query()
+            ->where('booking_id', $bookingId)
+            ->findOrFail($bookingItemId);
+        $previous = $item->notes;
+
+        if ($previous !== $notes) {
+            $item->update(['notes' => $notes]);
+
+            activity()
+                ->performedOn($item->booking)
+                ->causedBy($user)
+                ->event('operations_note_updated')
+                ->withProperties([
+                    'booking_item_id' => (string) $item->id,
+                    'previous_note' => $previous,
+                    'note' => $notes,
+                ])
+                ->log('Operations note updated');
+        }
+
+        return [
+            'notes' => $item->notes,
+            'history' => $this->operationsNoteHistory($bookingId, $bookingItemId),
+        ];
+    }
+
+    private function operationsNoteHistory(string $bookingId, string $bookingItemId): array
+    {
+        if (!class_exists(\Spatie\Activitylog\Models\Activity::class)) {
+            return [];
+        }
+
+        return \Spatie\Activitylog\Models\Activity::query()
+            ->with('causer')
+            ->where('subject_type', Booking::class)
+            ->where('subject_id', $bookingId)
+            ->where('event', 'operations_note_updated')
+            ->where('properties->booking_item_id', $bookingItemId)
+            ->latest()
+            ->limit(20)
+            ->get()
+            ->map(fn($activity) => [
+                'id' => (string) $activity->id,
+                'note' => $activity->properties['note'] ?? null,
+                'user_name' => $activity->causer?->full_name ?? 'System',
+                'created_at' => optional($activity->created_at)->toISOString(),
+            ])
+            ->all();
+    }
+
     private function applyOperationsQueueFilter($query, ?string $queue): void
     {
         if (empty($queue)) {
@@ -8914,17 +8977,15 @@ class BookingFlowService
             'active' => $query
                 ->whereNull('booking_items.completed_at')
                 ->whereNotIn('booking_items.status', ['completed', 'cancelled', 'rejected'])
+                ->whereRaw("(booking_items.to_date + COALESCE(booking_items.to_time, '23:59:59')::time) >= ?", [now()])
                 ->whereHas('booking', function ($bookingQuery) {
-                        $bookingQuery->whereHas('driverAssignments', function ($assignmentQuery) {
+                        $bookingQuery->where(function ($paymentQuery) {
+                            $paymentQuery->where('payment_status', 'paid')
+                                ->orWhereIn('payment_collection_status', ['driver_collected', 'online_paid', 'paid']);
+                        })->whereHas('driverAssignments', function ($assignmentQuery) {
                             $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
-                            ->whereIn('trip_phase', ['accepted', 'pickup_arrived', 'in_progress']);
-                        })->orWhereHas('dispatches', function ($dispatchQuery) {
-                            $dispatchQuery->whereColumn('booking_dispatches.booking_item_id', 'booking_items.id')
-                            ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
-                            ->whereDoesntHave('booking.driverAssignments', function ($assignmentQuery) {
-                                $assignmentQuery->whereColumn('driver_assignments.booking_item_id', 'booking_items.id')
-                                ->where('trip_phase', 'completed');
-                            });
+                            ->where('status', 'active')
+                            ->where('trip_phase', 'in_progress');
                         });
                     }),
             'return_due' => $query->whereHas('booking', function ($bookingQuery) {
@@ -9310,6 +9371,10 @@ class BookingFlowService
                     'name' => $itemVehicleGroup->name,
                 ] : null,
             ] : null,
+            'vehicle_group' => $itemVehicleGroup ? [
+                'id' => (string) $itemVehicleGroup->id,
+                'name' => $itemVehicleGroup->name,
+            ] : null,
             'driver' => $itemDriver ? [
                 'id' => (string) $itemDriver->id,
                 'code' => $itemDriver->code,
@@ -9324,6 +9389,7 @@ class BookingFlowService
             ] : null,
             'vehicle_assignments' => $vehicleAssignmentRows,
             'driver_assignments' => $driverAssignmentRows,
+            'notes' => $item->notes,
             'pickup_location' => $this->mapBookingListLocation(
                 $item->pickup_location ?? ($booking?->pickup_location ?? null),
                 $item->pickup_latitude ?? ($booking?->pickup_latitude ?? null),
@@ -11036,7 +11102,7 @@ class BookingFlowService
      */
     private function analyzeVehicleAvailability($vehicleGroup, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
     {
-        $allVehicles = $vehicleGroup->vehicles()->where('status', 'active')->get();
+        $allVehicles = $vehicleGroup->vehicles->where('status', 'active');
         $totalCount = $allVehicles->count();
         $availableCount = 0;
         $bookedCount = 0;
@@ -11046,7 +11112,6 @@ class BookingFlowService
         $vehicleDetails = [];
 
         foreach ($allVehicles as $vehicle) {
-            $conflicts = $this->getVehicleConflictsDetailed($vehicle, $fromDate, $toDate, $excludeBookingId);
             // Use the same authoritative checks as the specific-vehicle endpoint.
             // This keeps group counts aligned with maintenance, insurance and
             // assignment enforcement shown in the Add Trip vehicle cards.
@@ -11056,6 +11121,7 @@ class BookingFlowService
                 $toDate,
                 $excludeBookingId
             );
+            $conflicts = $enhancedAvailability['conflicts'];
             $availabilityStatus = $enhancedAvailability['availability_status'];
 
             if (in_array($availabilityStatus, ['available', 'available_concurrent'], true)) {
@@ -11098,60 +11164,6 @@ class BookingFlowService
             'override_available' => $overrideAvailable,
             'vehicle_details' => $vehicleDetails,
         ];
-    }
-
-    /**
-     * Get detailed vehicle conflicts with booking information
-     */
-    private function getVehicleConflictsDetailed($vehicle, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
-    {
-        $conflicts = [];
-
-        // Query through booking_items which contains the date fields
-        $bookingItems = BookingItem::where('booking_items.vehicle_id', $vehicle->id)
-            ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-            // Keep the join aligned with Booking's SoftDeletes and active global
-            // scopes. Otherwise the joined row exists but the eager-loaded booking
-            // is null, and conflict formatting dereferences a missing relation.
-            ->whereNull('bookings.deleted_at')
-            ->where('bookings.is_active', true)
-            ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-            ->when($excludeBookingId, function ($q) use ($excludeBookingId) {
-                $q->where('bookings.id', '!=', $excludeBookingId);
-            })
-            ->where(function ($q) use ($fromDate, $toDate) {
-                $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                    ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                    ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                        $inner->where('booking_items.from_date', '<=', $fromDate)
-                            ->where('booking_items.to_date', '>=', $toDate);
-                    });
-            })
-            ->select('booking_items.*', 'bookings.id as booking_id', 'bookings.status', 'bookings.customer_id')
-            ->with(['booking.customer'])
-            ->get();
-
-        foreach ($bookingItems as $item) {
-            $booking = $item->booking;
-            $customerName = trim((string) ($booking->customer?->first_name ?? '') . ' ' . (string) ($booking->customer?->last_name ?? ''));
-            $overlapType = $this->determineOverlapType($fromDate, $toDate, $item->from_date, $item->to_date);
-            $canOverride = $this->canOverrideBooking($booking);
-
-            $conflicts[] = [
-                'booking_id' => $booking->id,
-                'customer_name' => $customerName !== '' ? $customerName : 'Unknown',
-                'from' => is_string($item->from_date) ? $item->from_date : $item->from_date->format('Y-m-d H:i'),
-                'to' => is_string($item->to_date) ? $item->to_date : $item->to_date->format('Y-m-d H:i'),
-                'status' => $booking->status,
-                'type' => $item->service_type_id,
-                'overlap_type' => $overlapType,
-                'can_override' => $canOverride,
-                'priority' => $this->getBookingPriority($booking),
-                'reason' => $canOverride ? 'Override possible with approval' : 'Firm booking conflict',
-            ];
-        }
-
-        return $conflicts;
     }
 
     /**
@@ -11764,8 +11776,13 @@ class BookingFlowService
                     'status' => $status,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Failed to create vehicle assignment for booking {$booking->id}: " . $e->getMessage());
-                Log::error("Vehicle assignment params: ", $vehicleAssignmentParams ?? []);
+                Log::error('Vehicle assignment creation failed', [
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $bookingItem->id ?? null,
+                    'vehicle_id' => $vehicleAssignmentParams['vehicle_id'] ?? null,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
                 // Re-throw so we can see the issue
                 throw $e;
             }
@@ -11803,8 +11820,13 @@ class BookingFlowService
                     'status' => $status,
                 ]);
             } catch (\Exception $e) {
-                Log::error("Failed to create driver assignment for booking {$booking->id}: " . $e->getMessage());
-                Log::error("Driver assignment params: ", $driverAssignmentParams ?? []);
+                Log::error('Driver assignment creation failed', [
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $bookingItem->id ?? null,
+                    'driver_id' => $driverAssignmentParams['driver_id'] ?? null,
+                    'exception' => $e::class,
+                    'error' => $e->getMessage(),
+                ]);
                 // Re-throw so we can see the issue
                 throw $e;
             }
@@ -12124,6 +12146,7 @@ class BookingFlowService
      */
     public function saveBookingDraft(array $params): Booking
     {
+        $this->assertCanOverrideTripPrices($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
         return DB::transaction(function () use ($params) {
@@ -12146,6 +12169,7 @@ class BookingFlowService
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
             $this->applyPortalBookingSource($booking);
+            $this->applyBookingPaymentFields($booking, $params);
 
             // An incomplete draft may be saved before any trip or vehicle
             // group is selected. That is valid and is not a pricing failure.

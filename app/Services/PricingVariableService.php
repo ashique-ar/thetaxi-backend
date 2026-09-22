@@ -192,11 +192,6 @@ class PricingVariableService
                 }
                 
             } else {
-                Log::debug('Session-only variable customization (preview mode)', [
-                    'session_id'       => $sessionId,
-                    'variable_name'    => $customization['variable_name'],
-                    'vehicle_group_id' => $customization['vehicle_group_id'] ?? null,
-                ]);
             }
 
             $record = BookingVariableCustomization::create($createData);

@@ -43,12 +43,6 @@ class UrlShortenerService
             ->first();
 
         if ($existing) {
-            Log::info('UrlShortenerService: Reusing existing short URL', [
-                'short_code' => $existing->short_code,
-                'original_url' => $originalUrl,
-                'source' => $source,
-                'campaign' => $campaign,
-            ]);
             return $existing;
         }
 
@@ -70,14 +64,6 @@ class UrlShortenerService
             'metadata' => $metadata,
         ]);
 
-        Log::info('UrlShortenerService: Created new short URL', [
-            'short_code' => $shortCode,
-            'original_url' => $originalUrl,
-            'expires_at' => $expiresAt?->toISOString(),
-            'source' => $source,
-            'campaign' => $campaign,
-            'medium' => $medium,
-        ]);
 
         return $shortenedUrl;
     }
@@ -121,11 +107,6 @@ class UrlShortenerService
         // Record the access
         $shortenedUrl->recordAccess();
 
-        Log::info('UrlShortenerService: Short URL accessed', [
-            'short_code' => $shortCode,
-            'original_url' => $shortenedUrl->original_url,
-            'access_count' => $shortenedUrl->access_count,
-        ]);
 
         return $shortenedUrl->original_url;
     }
@@ -139,12 +120,6 @@ class UrlShortenerService
     {
         $deleted = ShortenedUrl::where('expires_at', '<', Carbon::now())->delete();
         
-        if ($deleted > 0) {
-            Log::info('UrlShortenerService: Cleaned up expired short URLs', [
-                'deleted_count' => $deleted,
-            ]);
-        }
-
         return $deleted;
     }
 }

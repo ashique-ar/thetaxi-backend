@@ -27,8 +27,8 @@
         <img src="{{ $bannerUrl }}" alt="{{ $data['heading'] ?? 'Service' }}" loading="lazy">
     </div>
     <div class="banner-content-wrap">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>{{ $data['heading'] ?? $servicePage->name }}</h1>
                 @if (!empty($data['subheading']))
                     <p>{{ $data['subheading'] }}</p>

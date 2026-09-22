@@ -73,6 +73,11 @@ class InquiryForm extends BaseModel
         return null;
     }
 
+    public static function resolveSubmissionWorkflow(array $settings, ?string $fallback = null): string
+    {
+        return Arr::get($settings, 'submission_workflow') ?: ($fallback ?: 'general');
+    }
+
     /**
      * Build field rule parts from stored config.
      *

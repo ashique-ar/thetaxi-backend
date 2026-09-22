@@ -13,6 +13,7 @@ use App\Models\Vehicle\VehiclePricing\VehiclePricingCommonRateDefinition;
 use App\Models\Vehicle\VehicleGroup;
 use App\Services\Pricing\PricingCalculationDefinitionHealthService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
+use App\Services\VehiclePricingSlabConfigurationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -133,7 +134,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.name' => ['required', 'string', 'max:255', 'distinct', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
-            'variables.*.is_required' => 'nullable|boolean',
             'variables.*.description' => 'nullable|string',
             'conditions' => 'nullable|array',
             'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
@@ -179,6 +179,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             ], 422);
         }
 
+        $variables = $this->withoutVariableRequirements($request->input('variables', []));
         $status = (string) $request->get('status', 'draft');
         $candidateId = (string) Str::uuid();
         $activationHealth = null;
@@ -189,7 +190,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'description' => $request->description,
                 'service_type_id' => $request->service_type_id,
                 'formula' => $request->formula,
-                'variables' => $request->variables ?? [],
+                'variables' => $variables,
                 'conditions' => $request->conditions ?? [],
                 'status' => 'active',
                 'priority' => $request->input('priority', 0),
@@ -206,7 +207,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
             $definition->formula = $request->formula;
-            $definition->variables = $request->variables ?? [];
+            $definition->variables = $variables;
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $status;
             $definition->owner_type = null;
@@ -343,7 +344,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
             'variables.*.name' => ['required', 'string', 'max:255', 'distinct', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
             'variables.*.type' => ['required', Rule::in(array_keys(VehiclePricingCalculationDefinition::getSupportedVariableTypes()))],
             'variables.*.default_value' => 'nullable',
-            'variables.*.is_required' => 'nullable|boolean',
             'variables.*.description' => 'nullable|string',
             'conditions' => 'nullable|array',
             'conditions.*.field' => ['required', 'string', 'regex:/^[A-Za-z_][A-Za-z0-9_]*$/'],
@@ -391,6 +391,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
         try {
             $definition = VehiclePricingCalculationDefinition::findOrFail($id);
+            $variables = $this->withoutVariableRequirements($request->input('variables', []));
             $status = (string) $request->get('status', $definition->status);
             $activationHealth = null;
             if ($status === 'active') {
@@ -400,7 +401,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     'description' => $request->description,
                     'service_type_id' => $request->service_type_id,
                     'formula' => $request->formula,
-                    'variables' => $request->variables ?? [],
+                    'variables' => $variables,
                     'conditions' => $request->conditions ?? [],
                     'status' => 'active',
                     'priority' => $request->input('priority', $definition->priority ?? 0),
@@ -414,7 +415,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $definition->description = $request->description;
             $definition->service_type_id = $request->service_type_id;
             $definition->formula = $request->formula;
-            $definition->variables = $request->variables ?? [];
+            $definition->variables = $variables;
             $definition->conditions = $request->conditions ?? [];
             $definition->status = $status;
             $definition->owner_type = null;
@@ -458,6 +459,17 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    private function withoutVariableRequirements(array $variables): array
+    {
+        return array_map(function ($variable) {
+            if (is_array($variable)) {
+                unset($variable['is_required']);
+            }
+
+            return $variable;
+        }, $variables);
     }
 
     /**
@@ -698,6 +710,41 @@ class VehiclePricingCalculationDefinitionController extends Controller
         ?string $ownerId
     ): array {
         $inputs = $this->normalizeDurationInputs($inputs);
+        $usesPackage = collect($definitions)->contains(fn ($definition) => collect($definition->variables ?? [])
+            ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
+                'package_included_km', 'package_included_hours', 'package_has_hour_limit',
+            ], true)));
+        if ($usesPackage || !empty($inputs['slab_definition_id']) || !empty($inputs['service_package_id']) || !empty($inputs['package_id'])) {
+            $packageId = $inputs['service_package_id'] ?? $inputs['package_id'] ?? null;
+            $slabId = $inputs['slab_definition_id'] ?? null;
+            if (!$serviceTypeId || !$vehicleGroupId || ($usesPackage && !$packageId && !$slabId)) {
+                throw new \InvalidArgumentException('Select a service package or pricing slab and vehicle group before testing package pricing.');
+            }
+            $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
+                $serviceTypeId, $packageId, $slabId,
+                (float) ($inputs['duration_minutes'] ?? 0),
+                isset($inputs['duration_days']) ? (float) $inputs['duration_days'] : null);
+            $package = $selection['package'];
+            $slab = $selection['slab'];
+            if ($usesPackage && !$package) {
+                throw new \InvalidArgumentException('The selected slab is not linked to a service package.');
+            }
+            if ($slab && !VehicleGroupPricing::query()->where('vehicle_group_id', $vehicleGroupId)
+                ->where('slab_definition_id', $slab->id)->where('is_active', true)
+                ->where('rate', '>', 0)->forOwner($ownerType, $ownerId)->exists()) {
+                throw new \InvalidArgumentException('No active slab price is configured for this package and vehicle group.');
+            }
+            if ($slab) {
+                $inputs['slab_definition_id'] = (string) $slab->id;
+            }
+            if ($package) {
+                $inputs['package_id'] = $inputs['service_package_id'] = (string) $package->id;
+                $inputs['package_included_km'] = (float) ($package->max_km_per_package ?? $package->max_km_per_day ?? 0);
+                $inputs['package_included_hours'] = (float) $package->default_duration_hours
+                    + (float) $package->default_duration_minutes / 60;
+                $inputs['package_has_hour_limit'] = $inputs['package_included_hours'] > 0 ? 1 : 0;
+            }
+        }
         $inputs['owner_type'] = $ownerType;
         $inputs['owner_id'] = $ownerType && $ownerId ? $ownerId : null;
         if ($serviceTypeId) {
@@ -992,6 +1039,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ],
             ]);
 
+        } catch (\InvalidArgumentException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->getMessage(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Definition calculation test error: ' . $e->getMessage());
             
@@ -1420,8 +1472,6 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 ->unique('code')
                 ->values();
 
-                Log::info('Common Rates Found: ', ['count' => $commonRates->count()]);
-                Log::info('Common Rates Details: ', $commonRates->toArray());
             $commonRateVariables = $commonRates->map(function ($rate) {
                 return [
                     'name' => $rate->code,

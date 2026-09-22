@@ -18,6 +18,7 @@ class WebsiteSettingsService
         'site_name',
         'site_tagline',
         'company_name',
+        'company_logo_path',
         'company_email',
         'company_phone',
         'company_whatsapp',
@@ -94,6 +95,7 @@ class WebsiteSettingsService
         'payment' => 'getPaymentSettings',
         'booking' => 'getBookingSettings',
         'pricing' => 'getPricingSettings',
+        'numbering' => 'getNumberingSettings',
         'driverMobile' => 'getDriverMobileSettings',
         'driver-mobile' => 'getDriverMobileSettings',
         'security' => 'getSecuritySettings',
@@ -208,6 +210,9 @@ class WebsiteSettingsService
             'banner_video',
             'banner_image',
             'hero_slides',
+            'hero_booking_note',
+            'homepage_vehicle_sections',
+            'homepage_cms_sections',
             'theme_02_slider_images',
             'banner_background',
             'homepage_breadcrumb_image',
@@ -547,6 +552,7 @@ class WebsiteSettingsService
             // General company info
             'company_name',
             'company_phone',
+            'company_logo_path',
             'company_email',
             'company_address',
             'company_website',
@@ -789,6 +795,7 @@ class WebsiteSettingsService
             'site_tagline',
             'company_name',
             'company_phone',
+            'company_logo_path',
             'company_whatsapp',
             'company_email',
             'company_address',
@@ -1081,6 +1088,15 @@ class WebsiteSettingsService
         ]);
     }
 
+    public function getNumberingSettings(): array
+    {
+        return $this->getMultiple([
+            'customer_code_prefix', 'customer_code_suffix', 'customer_code_digits', 'customer_code_start_number',
+            'staff_code_prefix', 'staff_code_suffix', 'staff_code_digits', 'staff_code_start_number',
+            'driver_code_prefix', 'driver_code_suffix', 'driver_code_digits', 'driver_code_start_number',
+        ]);
+    }
+
     /**
      * Get all driver mobile app settings.
      */
@@ -1158,6 +1174,22 @@ class WebsiteSettingsService
             'footer_support_title',
             'footer_copyright_text',
             'footer_description',
+            'footer_cta_enabled',
+            'footer_cta_image',
+            'footer_cta_eyebrow',
+            'footer_cta_heading',
+            'footer_cta_description',
+            'footer_cta_location',
+            'footer_cta_book_label',
+            'footer_cta_book_url',
+            'footer_cta_chat_label',
+            'footer_quick_title',
+            'footer_privacy_url',
+            'footer_terms_url',
+            'footer_newsletter_enabled',
+            'footer_newsletter_heading',
+            'footer_newsletter_subheading',
+            'footer_newsletter_placeholder',
             // Services Links
             'footer_services_link_1_text',
             'footer_services_link_1_url',

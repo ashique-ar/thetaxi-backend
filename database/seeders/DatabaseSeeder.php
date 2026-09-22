@@ -40,6 +40,9 @@ class DatabaseSeeder extends Seeder
             // calendars/shifts/policies/rosters once a default company with an
             // active Staff user exists.
             SriLankaAttendanceDefaultsSeeder::class,
+            CustomerCodeSettingsSeeder::class,
+            StaffCodeSettingsSeeder::class,
+            DriverCodeSettingsSeeder::class,
 
                 // Basic/core seeders (uncomment as needed)
                 // CorporatePermissionsSeeder::class,

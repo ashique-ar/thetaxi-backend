@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Booking\Traits;
 
 use App\Http\Resources\Booking\BookingFlowResource;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingActivity;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -250,6 +251,12 @@ trait BookingSubmissionTrait
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
             $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($params);
             $bookingForEdit = Booking::findOrFail($bookingId);
+            if (!Gate::allows('update', $bookingForEdit)) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Unauthorized to edit this booking',
+                ], 403);
+            }
             $structureEditable = in_array(
                 (string) $bookingForEdit->status,
                 ['draft', 'pending', 'pending_approval', 'approved', 'confirmed'],
@@ -677,6 +684,32 @@ trait BookingSubmissionTrait
         return response()->json(['status' => 'success', 'data' => $options]);
     }
 
+    public function getOperationsNotes(string $bookingId, string $bookingItemId): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->bookingFlowService->getOperationsNotes($bookingId, $bookingItemId),
+        ]);
+    }
+
+    public function updateOperationsNotes(Request $request, string $bookingId, string $bookingItemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->bookingFlowService->updateOperationsNotes(
+                $bookingId,
+                $bookingItemId,
+                trim((string) ($validated['notes'] ?? '')) ?: null,
+                $request->user()
+            ),
+            'message' => 'Operations notes updated successfully',
+        ]);
+    }
+
     public function getBookingDetails(string $bookingId): JsonResponse
     {
         try {
@@ -860,6 +893,93 @@ trait BookingSubmissionTrait
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function getTripPriceHistory(string $bookingId, string $bookingItemId): JsonResponse
+    {
+        $booking = Booking::findOrFail($bookingId);
+        abort_unless(Gate::allows('update', $booking) && Auth::user()?->can('bookings.price_override'), 403);
+        abort_unless($booking->bookingItems()->whereKey($bookingItemId)->exists(), 404);
+
+        $history = BookingActivity::query()
+            ->where('booking_id', $bookingId)
+            ->where('booking_item_id', $bookingItemId)
+            ->where('event_key', 'trip_price_changed')
+            ->latest('event_at')
+            ->get()
+            ->map(fn (BookingActivity $activity) => [
+                'booking_item_id' => (string) $activity->booking_item_id,
+                'previous_price' => (float) data_get($activity->meta, 'previous_price', 0),
+                'calculated_price' => (float) data_get($activity->meta, 'calculated_price', 0),
+                'final_price' => (float) data_get($activity->meta, 'final_price', 0),
+                'reason' => $activity->detail,
+                'changed_by' => data_get($activity->meta, 'changed_by_name'),
+                'currency' => data_get($activity->meta, 'currency', config('booking.base_currency', 'LKR')),
+                'changed_at' => $activity->event_at?->toIso8601String(),
+            ])->values();
+
+        return response()->json(['status' => 'success', 'data' => $history]);
+    }
+
+    public function updateTripPrice(Request $request, string $bookingId, string $bookingItemId): JsonResponse
+    {
+        $validated = $request->validate([
+            'final_price' => ['required', 'numeric', 'min:0', 'decimal:0,2'],
+            'reason' => ['required', 'string', 'max:500'],
+        ]);
+        $booking = Booking::findOrFail($bookingId);
+        abort_unless(Gate::allows('update', $booking) && Auth::user()?->can('bookings.price_override'), 403);
+        $item = $booking->bookingItems()->whereKey($bookingItemId)->firstOrFail();
+        $previousPrice = (float) $item->total_price;
+        $finalPrice = round((float) $validated['final_price'], 2);
+        $calculatedPrice = (float) (BookingActivity::query()
+            ->where('booking_item_id', $item->id)
+            ->where('event_key', 'trip_price_changed')
+            ->latest('event_at')
+            ->value('meta->calculated_price') ?? $previousPrice);
+
+        $item->forceFill([
+            'unit_price' => $finalPrice,
+            'total_price' => $finalPrice,
+            'price_override_amount' => abs($finalPrice - $calculatedPrice) >= 0.01 ? $finalPrice : null,
+            'price_override_reason' => abs($finalPrice - $calculatedPrice) >= 0.01 ? trim($validated['reason']) : null,
+            'price_overridden_by' => abs($finalPrice - $calculatedPrice) >= 0.01 ? Auth::id() : null,
+            'price_overridden_at' => abs($finalPrice - $calculatedPrice) >= 0.01 ? now() : null,
+        ])->save();
+
+        BookingActivity::create([
+            'booking_id' => $booking->id,
+            'booking_item_id' => $item->id,
+            'event_key' => 'trip_price_changed',
+            'channel' => 'system',
+            'result_status' => 'completed',
+            'source' => 'portal',
+            'title' => 'Trip price changed',
+            'detail' => trim($validated['reason']),
+            'idempotency_key' => 'trip-price-'.\Illuminate\Support\Str::uuid(),
+            'meta' => [
+                'previous_price' => round($previousPrice, 2),
+                'calculated_price' => round($calculatedPrice, 2),
+                'final_price' => $finalPrice,
+                'changed_by' => Auth::id(),
+                'changed_by_name' => trim((string) (Auth::user()?->full_name ?: Auth::user()?->email)),
+                'currency' => $item->currency ?: config('booking.base_currency', 'LKR'),
+            ],
+            'event_at' => now(),
+        ]);
+
+        $total = (float) $booking->bookingItems()->whereNotIn('status', ['cancelled', 'rejected'])->sum('total_price');
+        $totals = ['base_amount' => $total, 'total_estimated' => $total];
+        if ($booking->total_actual !== null) {
+            $totals['total_actual'] = max(0, (float) $booking->total_actual + $finalPrice - $previousPrice);
+        }
+        $booking->forceFill($totals)->save();
+
+        return response()->json(['status' => 'success', 'data' => [
+            'booking_item_id' => (string) $item->id,
+            'final_price' => $finalPrice,
+            'booking_total' => $total,
+        ]]);
     }
 
     public function cloneBooking(string $bookingId): JsonResponse

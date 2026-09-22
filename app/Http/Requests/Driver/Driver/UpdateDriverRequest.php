@@ -12,12 +12,12 @@ class UpdateDriverRequest extends FormRequest
     {
         $driverId = $this->route('driver')->id;
         return [
-            'user_id' => ['sometimes', 'required', 'exists:users,id'],
-            'first_name' => ['sometimes', 'required', 'string', 'max:255'],
+            'user_id' => ['sometimes', 'nullable', 'exists:users,id'],
+            'first_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'email' => [
                 'sometimes',
-                'required',
+                'nullable',
                 'email',
                 'max:255',
                 function ($attribute, $value, $fail) use ($driverId) {
@@ -40,6 +40,8 @@ class UpdateDriverRequest extends FormRequest
             'nic' => ['sometimes', 'nullable', 'string', 'max:20'],
             'license_no' => ['sometimes', 'nullable', 'string', 'max:100'],
             'license_expiry' => ['sometimes', 'nullable', 'date'],
+            'license_issued_at' => ['sometimes', 'nullable', 'date', 'before_or_equal:license_expiry'],
+            'license_reminder_days' => ['sometimes', 'integer', 'min:1', 'max:365'],
             'license_type' => ['sometimes', 'nullable', 'string', 'max:50'],
             'dob' => ['sometimes', 'nullable', 'date'],
             'address' => ['sometimes', 'nullable', 'string'],

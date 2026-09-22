@@ -32,6 +32,35 @@ Public endpoints:
 - `POST /api/driver/auth/forgot-password`
 - `POST /api/driver/auth/reset-password`
 - `POST /api/driver/auth/change-password`
+- `POST /api/driver/auth/request-otp`
+- `POST /api/driver/auth/verify-otp`
+
+## Mobile Authentication
+
+The mobile app must present **Mobile + OTP** as the default authentication option and **Email + Password** as the secondary login option. Registration never accepts an email/password credential: an unregistered mobile must complete OTP verification and continue through onboarding.
+
+After OTP verification, branch on `data.flow`:
+
+- `login`: the mobile already belongs to an approved driver. Save `data.token`, `data.driver`, and `data.device`, then enter the authenticated app.
+- `registration`: save `data.onboarding_token` separately from the normal access token and open/resume the registration stepper.
+
+## Driver Registration Stepper
+
+Onboarding begins only when mobile OTP authentication returns `data.flow=registration`.
+
+1. Save the returned `onboarding_token`. Use it for every onboarding call; it is not a normal driver access token.
+2. Save step 1 identity, upload `driver_photo` for step 2, save step 3 address, save step 4 vehicle, then upload every step 5 document. Mobile sends only the NIC, never DOB; DOB is system-only.
+   Load `GET /api/driver/onboarding/countries`, then load `GET /api/driver/onboarding/countries/{country_id}/states` after the country is selected. Submit those returned IDs as `country_id` and `state_id` in step 3.
+3. Required document types are `driver_photo`, `driver_license_front`, `driver_license_back`, `nic_front`, `nic_back`, `vehicle_insurance`, `vehicle_revenue_license`, and `vehicle_registration`.
+4. Submit the application. While status is `submitted`, the app must show the review screen and must not allow operational navigation.
+5. If status becomes `changes_requested`, display each `review_issues[].message`. Enable only fields returned in `editable_fields`; upload of any other document receives HTTP 403.
+6. Resubmit after corrections. Status `approved` includes the created driver and vehicle IDs; only then proceed to normal driver login. Status `rejected` is terminal.
+
+Licence, insurance, and revenue-licence expiry dates are mandatory on their primary uploads. Replacement uploads supersede the prior row, preserving renewal history. The server sends configured reminders from the same generic document records.
+
+Driver-licence and vehicle revenue-licence histories are both stored in the generic `documents` resource. Renewals create a new document with `replaces_document_id`; the previous document becomes `superseded`. There are no separate renewal or revenue-licence tables.
+
+Vehicle make and model classify the `vehicle_group`; they are never stored on the individual vehicle. On approval, the backend reuses or creates the make/model group using the latest configured vehicle grade, then stores only `vehicle_group_id` on the approved vehicle.
 
 ## Quick Start
 
@@ -39,7 +68,7 @@ Public endpoints:
 2. Select **Company Driver API - Development** environment.
 3. Set `base_url`, `driver_email`, `driver_password`, and device variables.
 4. Run **App Settings > Version Check**.
-5. Run **Authentication > Login**. The collection saves `access_token`, `refresh_token`, `driver_id`, `user_id`, `device_uuid`, and `assignment_id` where present.
+5. Run **Mobile OTP Authentication > Request Mobile OTP**, then **Verify Mobile OTP**. Use **Authentication > Login** only for the secondary email/password option.
 6. Run authenticated requests.
 
 ## Environment Variables
@@ -116,13 +145,24 @@ Notifications:
 
 | Method | Endpoint | Auth | Purpose |
 |---|---|---:|---|
-| POST | `/api/driver/auth/login` | No | Login and register/update device |
-| POST | `/api/driver/auth/forgot-password` | No | Request an enumeration-safe reset email |
-| POST | `/api/driver/auth/reset-password` | No | Reset a driver password using the one-time link |
+| POST | `/api/driver/auth/login` | No | Secondary email + password login and device registration |
+| POST | `/api/driver/auth/request-otp` | No | Default sign-in/sign-up: send a mobile OTP |
+| POST | `/api/driver/auth/verify-otp` | No | Return driver tokens (`flow=login`) or an onboarding token (`flow=registration`) |
+| POST | `/api/driver/auth/forgot-password` | No | Request an enumeration-safe six-digit OTP email |
+| POST | `/api/driver/auth/reset-password` | No | Reset a driver password using the OTP |
 | POST | `/api/driver/auth/change-password` | Yes | Change password and revoke all sessions |
 | GET | `/api/driver/auth/profile` | Yes | Current driver profile and assignment stats |
 | POST | `/api/driver/auth/refresh` | Yes | Refresh access token |
 | POST | `/api/driver/auth/logout` | Yes | Revoke current token/session |
+
+### Onboarding Reference Data
+
+| Method | Endpoint | Auth | Purpose |
+|---|---|---:|---|
+| GET | `/api/driver/onboarding/countries` | No | Countries for the address country selector |
+| GET | `/api/driver/onboarding/countries/{country_id}/states` | No | States for the selected country |
+
+Both endpoints return records from the backend `countries` and `states` tables. Use each item's UUID `id` as the saved value and `name` as the label; never send the name as the ID. Reload and clear the state selection whenever the country changes. Step 3 rejects a `state_id` that does not belong to the submitted `country_id`.
 
 ### Status, Session, and Location
 

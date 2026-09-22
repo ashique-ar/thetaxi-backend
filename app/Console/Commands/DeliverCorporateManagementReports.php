@@ -16,7 +16,10 @@ class DeliverCorporateManagementReports extends Command
     public function handle(CorporateManagementAnalyticsService $analytics): int
     {
         $date = $this->option('date') ? now()->parse($this->option('date')) : now();
-        CorporateReportSchedule::where('is_active', true)->where('delivery_day', $date->day)->each(function ($schedule) use ($analytics, $date) {
+        CorporateReportSchedule::where('is_active', true)
+            ->where(fn ($query) => $query->where('delivery_day', '<=', $date->day)
+                ->when($date->isLastOfMonth(), fn ($query) => $query->orWhere('delivery_day', '>', $date->day)))
+            ->each(function ($schedule) use ($analytics, $date) {
             if ($schedule->last_delivered_at?->isSameMonth($date)) {
                 return;
             }
@@ -28,6 +31,13 @@ class DeliverCorporateManagementReports extends Command
                     fputcsv($stream, ['Month', 'Bookings', 'Trips', 'Estimated value', 'Finalized charges']);
                     foreach ($payload['monthly_trends'] as $row) {
                         fputcsv($stream, [$row['month'], $row['bookings'], $row['trips'], $row['estimated_value'], $row['finalized_charges']]);
+                    }
+                    if (isset($payload['financial_period']['summary'])) {
+                        fputcsv($stream, []);
+                        fputcsv($stream, ['Financial basis', 'Selected travel period']);
+                        foreach ($payload['financial_period']['summary'] as $key => $value) {
+                            fputcsv($stream, [str_replace('_', ' ', $key), $value]);
+                        }
                     }
                     rewind($stream);
                     $bytes = stream_get_contents($stream);

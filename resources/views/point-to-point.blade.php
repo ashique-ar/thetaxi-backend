@@ -13,8 +13,8 @@
             <video autoplay loop muted playsinline src="{{ asset('assets/video/home4-banner-video.mp4') }}"></video>
         </div>
         <div class="banner-content-wrap">
-            <div class="container">
-                <div class="banner-content">
+            <div class="container banner-content">
+            <div class="">
                     <h1>Point-to-Point Transfers</h1>
                     <p>Reliable door-to-door transportation service for your convenience</p>
 
@@ -30,15 +30,6 @@
                                             <li>{{ $error }}</li>
                                         @endforeach
                                     </ul>
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                        aria-label="Close"></button>
-                                </div>
-                            @endif
-
-                            <!-- Success Message Display -->
-                            @if (session('success'))
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    {{ session('success') }}
                                     <button type="button" class="btn-close" data-bs-dismiss="alert"
                                         aria-label="Close"></button>
                                 </div>

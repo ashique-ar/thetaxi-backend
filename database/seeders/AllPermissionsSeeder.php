@@ -67,6 +67,7 @@ class AllPermissionsSeeder extends Seeder
         'driving-licenses',
         'email-templates',
         'exports',
+        'financial-settlements',
         'faq-categories',
         'faqs',
         'footer-links',
@@ -171,6 +172,7 @@ class AllPermissionsSeeder extends Seeder
         'bookings.approve',
         'bookings.complete',
         'bookings.complete_repairs',
+        'bookings.price_override',
         'bookings.dispatch',
         'bookings.export',
         'bookings.process_return',
@@ -194,6 +196,14 @@ class AllPermissionsSeeder extends Seeder
         'invoices.generate',
         'invoices.send',
         'invoices.void',
+        'financial-settlements.adjust',
+        'financial-settlements.allocate',
+        'financial-settlements.dispute',
+        'financial-settlements.follow-up',
+        'financial-settlements.issue',
+        'financial-settlements.manage',
+        'financial-settlements.receive',
+        'financial-settlements.view',
         'loyalty.redeem',
         'manage_departments',
         'manage_divisions',
@@ -214,6 +224,7 @@ class AllPermissionsSeeder extends Seeder
         'payments.refund',
         'payments.transactions',
         'reports.generate',
+        'schedule_reports',
         'staff-transport.generate',
         'staff-transport.override',
         'staff-sensitive-documents.view',
@@ -964,7 +975,7 @@ class AllPermissionsSeeder extends Seeder
                 ['reports.view', 'analytics.view']
             ))),
             'accountant' => array_values(array_unique(array_merge(
-                $this->matchingPermissions($allPermissions, '/^(payments|invoices|collection-commissions)\./'),
+                $this->matchingPermissions($allPermissions, '/^(payments|invoices|collection-commissions|financial-settlements)\./'),
                 [
                     'vehicle-leases.view',
                     'vehicle-leases.payments',
@@ -1509,7 +1520,7 @@ class AllPermissionsSeeder extends Seeder
     {
         $permissions = collect($permissionNames)
             ->unique()
-            ->map(fn (string $name) => $permissionModels[$name] ?? null)
+            ->map(fn(string $name) => $permissionModels[$name] ?? null)
             ->filter()
             ->values();
 
@@ -1526,7 +1537,7 @@ class AllPermissionsSeeder extends Seeder
     {
         return array_values(array_filter(
             $permissions,
-            fn (string $permission) => preg_match($pattern, $permission) === 1
+            fn(string $permission) => preg_match($pattern, $permission) === 1
         ));
     }
 

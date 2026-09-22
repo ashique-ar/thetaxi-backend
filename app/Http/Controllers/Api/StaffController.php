@@ -4,6 +4,8 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Support\SriLankanNic;
+
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Staff\CreateStaffRequest;
 use App\Http\Requests\Staff\UpdateStaffRequest;
@@ -20,7 +22,9 @@ use App\Services\Hr\Recruitment\RecruitmentConversionService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use App\Services\PaymentMethodSyncService;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class StaffController extends Controller
 {
@@ -164,31 +168,42 @@ class StaffController extends Controller
     public function store(CreateStaffRequest $request): JsonResponse
     {
         $data = $this->defaultCompany->apply($request->validated());
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
-        abort_unless(
-            $data['user_id'] === $request->user()->id || $request->user()->can('staff.create-all'),
-            403,
-            'Creating Staff for another User requires Staff create-all permission.'
-        );
-        $data = $this->restrictSensitivePersonalFields($data, $data['user_id'], $request->user());
-        $user = User::query()->findOrFail($data['user_id']);
-
-        $staff = DB::transaction(function () use ($user, $data) {
-            $contextData = array_intersect_key($data, array_flip((new Staff())->getFillable()));
-            $context = $this->contextService->switchContext(
-                $user,
-                'staff',
-                $contextData,
-                $data['created_user_id'],
+        $paymentMethods = $data['payment_methods'] ?? null;
+        unset($data['payment_methods']);
+        $staff = DB::transaction(function () use ($request, $data): Staff {
+            $user = ! empty($data['user_id'])
+                ? User::query()->findOrFail($data['user_id'])
+                : User::query()->create([
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                    'email' => ! empty($data['email']) ? strtolower(trim($data['email'])) : null,
+                    'phone' => $data['phone'],
+                    'password' => bcrypt(Str::random(12)),
+                    'email_verified_at' => ! empty($data['email']) ? now() : null,
+                    'is_active' => ($data['status'] ?? 'active') === 'active',
+                ]);
+            abort_unless(
+                $user->id === $request->user()->id || $request->user()->can('staff.create-all'),
+                403,
+                'Creating Staff for another User requires Staff create-all permission.'
             );
-
+            $contextData = $this->restrictSensitivePersonalFields($data, $user->id, $request->user());
+            $contextData = array_intersect_key($contextData, array_flip((new Staff())->getFillable()));
+            $context = $this->contextService->switchContext($user, 'staff', $contextData, $data['created_user_id']);
             $staff = Staff::query()->findOrFail($context->context_id);
             $staff = $this->peopleCore->initializeStaff($staff, $data, $data['created_user_id']);
             $this->recruitmentConversion->complete($data['recruitment_application_id'] ?? null, $staff, $data['created_user_id']);
+
             return $staff;
         });
 
-        $staff->load(['user', 'company', 'country', 'state']);
+        if ($paymentMethods !== null) {
+            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
+        }
+
+        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status' => 'success',
@@ -220,44 +235,25 @@ class StaffController extends Controller
     {
         $this->accessService->authorize($request->user(), $staff, 'edit');
         $data = $this->defaultCompany->apply($request->validated());
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data = $this->restrictSensitivePersonalFields($data, $staff->user_id, $request->user());
         $data['updated_user_id'] = $request->user()->id;
-        $staff = DB::transaction(function () use ($staff, $data): Staff {
+        $paymentMethods = $data['payment_methods'] ?? null;
+        unset($data['payment_methods']);
+        $userData = collect($data)->only(['first_name', 'last_name', 'email', 'phone'])->all();
+        if (array_key_exists('status', $data)) $userData['is_active'] = $data['status'] === 'active';
+        unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status'], $data['user_id']);
+        $staff = DB::transaction(function () use ($staff, $data, $userData): Staff {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
-            if (array_key_exists('company_id', $data)
-                && (string) ($data['company_id'] ?? '') !== (string) ($staff->company_id ?? '')) {
-                $hasOpenSalesProfile = SalesProfile::query()
-                    ->withTrashed()
-                    ->where('staff_id', $staff->id)
-                    ->where(fn ($profile) => $profile
-                        ->whereNull('effective_until')
-                        ->orWhere('effective_until', '>', now()))
-                    ->lockForUpdate()
-                    ->exists();
-                abort_if(
-                    $hasOpenSalesProfile,
-                    422,
-                    'End or transfer every current/future Sales Profile before changing the Staff legal entity.',
-                );
-            }
-            if (array_key_exists('staff_type', $data)
-                && mb_strtolower(trim((string) $data['staff_type'])) !== mb_strtolower(trim((string) $staff->staff_type))) {
-                $hasOpenSalesProfile = SalesProfile::query()
-                    ->withTrashed()
-                    ->where('staff_id', $staff->id)
-                    ->where(fn ($profile) => $profile
-                        ->whereNull('effective_until')
-                        ->orWhere('effective_until', '>', now()))
-                    ->lockForUpdate()
-                    ->exists();
-                abort_if($hasOpenSalesProfile, 422,
-                    'End the current/future Sales Profile before changing this Staff category.');
-            }
+            if ($userData !== []) $staff->user()->update($userData);
             $staff->update($data);
 
             return $staff;
         });
-        $staff->load(['user', 'company', 'country', 'state']);
+        if ($paymentMethods !== null) {
+            app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
+        }
+        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
             'status' => 'success',

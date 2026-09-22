@@ -288,8 +288,8 @@
                     if (response.success) {
                         cart = response.items || [];
                         cartTotals = response.totals || {};
-                        cartCurrency = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency : '{{ getSelectedCurrency() }}';
-                        cartCurrencySymbol = Object.keys(cart).length > 0 ? Object.values(cart)[0].currency_symbol : '{{ getCurrencySymbol() }}';
+                        cartCurrency = response.currency || cartTotals.currency || '{{ getSelectedCurrency() }}';
+                        cartCurrencySymbol = response.currency_symbol || cartTotals.currency_symbol || '{{ getCurrencySymbol() }}';
                         updateCartDisplay();
                         if (Object.keys(cart).length > 0) {
                             showCartFloat();
@@ -312,6 +312,7 @@
             const $cartTotal = $('#cartTotalPrice');
 
             $cartItems.empty();
+            $('#cartSummaryFloat .currency-symbol').text(cartCurrencySymbol);
 
             // Helper function to get pricing label based on service type (Requirement 5.3)
             function getPricingLabel(serviceType) {
@@ -507,7 +508,7 @@
                 </div>
             `);
             $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 4000);
+            setTimeout(() => alert.remove(), 4000);
         }
 
         /**
@@ -523,7 +524,7 @@
                 </div>
             `);
             $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 5000);
+            setTimeout(() => alert.remove(), 5000);
         }
     }
 

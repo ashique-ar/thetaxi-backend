@@ -268,6 +268,9 @@
             }
         }
     </style>
+    @if (is_theme('theme-04'))
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/ui-ux.css') }}">
+    @endif
 </head>
 
 <?php
@@ -493,6 +496,8 @@
             if (!notification) {
                 notification = document.createElement('div');
                 notification.id = 'cart-notification';
+                notification.setAttribute('role', 'status');
+                notification.setAttribute('aria-live', 'polite');
                 notification.style.cssText = `
                     position: fixed;
                     top: 20px;
@@ -512,10 +517,17 @@
             notification.textContent = message;
             notification.style.transform = 'translateX(0)';
 
-            setTimeout(() => {
+            clearTimeout(notification.hideTimer);
+            clearTimeout(notification.removeTimer);
+            notification.hideTimer = setTimeout(() => {
                 notification.style.transform = 'translateX(400px)';
+                notification.removeTimer = setTimeout(() => notification.remove(), 300);
             }, duration);
         };
+
+        @if (session('success'))
+            window.showSuccessNotification(@json(session('success')), 5000);
+        @endif
     </script>
 
     <!-- AOS Animation JS -->

@@ -42,10 +42,6 @@ class BookingLinkHelper
                     'booking_code' => $booking->booking_number ?? null,
                 ]);
             } else {
-                \Illuminate\Support\Facades\Log::info('BookingLinkHelper: Payment link generated', [
-                    'booking_id' => $booking->id ?? null,
-                    'url' => $url,
-                ]);
             }
 
             return $url;
@@ -101,11 +97,6 @@ class BookingLinkHelper
 
             $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
 
-            \Illuminate\Support\Facades\Log::info('BookingLinkHelper: Quotation checkout link generated', [
-                'booking_id' => $booking->id ?? null,
-                'original_url' => $originalUrl,
-                'short_url' => $shortUrl,
-            ]);
 
             return $shortUrl;
         } catch (\Exception $e) {
@@ -186,11 +177,6 @@ class BookingLinkHelper
 
             $shortUrl = UrlShortenerService::getShortUrl($shortenedUrl);
 
-            \Illuminate\Support\Facades\Log::info('BookingLinkHelper: Quotation payment link generated', [
-                'booking_id' => $quotationBooking->id ?? null,
-                'original_url' => $originalUrl,
-                'short_url' => $shortUrl,
-            ]);
 
             return $shortUrl;
         } catch (\Exception $e) {

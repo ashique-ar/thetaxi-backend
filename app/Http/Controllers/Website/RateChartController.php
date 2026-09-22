@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\VehiclePricing\VehicleGroupServicePricingSetting;
+use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Services\BookingFlowService;
 use App\Services\CurrencyService;
 use Carbon\Carbon;
@@ -46,11 +47,15 @@ class RateChartController extends Controller
 
             $selectedCurrency = $this->currencyService->getSelectedCurrency();
             $cacheDate = Carbon::today()->format('Ymd');
-            $vehicleGroupCacheToken = md5(json_encode([
+            $rateChartCacheToken = md5(json_encode([
                 VehicleGroup::withTrashed()->max('updated_at'),
                 VehicleGroup::withTrashed()->max('deleted_at'),
+                // Calculation edits must also invalidate cached quotation-only results.
+                VehiclePricingCalculationDefinition::where('service_type_id', $dayRentalService->id)
+                    ->orderBy('id')
+                    ->get(),
             ]));
-            $cacheKey = "rate_chart:day_rental:v6:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}:{$vehicleGroupCacheToken}";
+            $cacheKey = "rate_chart:day_rental:v7:{$dayRentalService->id}:{$selectedCurrency}:{$cacheDate}:{$rateChartCacheToken}";
 
             $cachedRateChart = Cache::store('file')->remember($cacheKey, now()->addHours(4), function () use ($dayRentalService, $selectedCurrency) {
                 // Get all active vehicle groups with relationships
@@ -220,14 +225,6 @@ class RateChartController extends Controller
                 'mode' => 'preview'
             ];
 
-            Log::debug("Rate chart: Calculating rate", [
-                'vehicle_group' => $group->name,
-                'requested_days' => $days,
-                'from_date' => $fromDate->format('Y-m-d'),
-                'to_date' => $toDate->format('Y-m-d'),
-                'diff_in_days' => $fromDate->diffInDays($toDate),
-                'calculated_days' => $fromDate->diffInDays($toDate) + 1,
-            ]);
 
             $pricingResult = $this->bookingFlowService->calculatePricing([
                 'service_type' => $serviceType->id,

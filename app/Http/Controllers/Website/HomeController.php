@@ -13,10 +13,25 @@ class HomeController extends Controller
     /**
      * ULTRA-SIMPLIFIED homepage - minimize all database calls
      */
-    public function index(): View
+    public function index(\App\Services\HomepageVehicleSections $vehicleSections, \App\Services\HomepageCmsSections $cmsSections): View
     {
         // CRITICAL: Cache everything with LONG expiry to avoid repeated database hits
         $homeData = $this->getCompleteHomeData();
+        try {
+            $homeData['vehicleSections'] = $vehicleSections->visible();
+        } catch (\Throwable $e) {
+            Log::error('Homepage vehicle sections failed to load', ['error' => $e->getMessage()]);
+            $homeData['vehicleSections'] = [];
+        }
+        $homeData['search']->service_type = request()->query('service_type');
+        $homeData['search']->duration_days = max(1, min(60, (int) request()->query('duration_days', 1)));
+        $homeData['search']->package_id = request()->query('package_id');
+        try {
+            $homeData['cmsSections'] = $cmsSections->load();
+        } catch (\Throwable $e) {
+            Log::error('Homepage CMS sections failed to load', ['error' => $e->getMessage()]);
+            $homeData['cmsSections'] = ['managed' => false, 'sections' => []];
+        }
         // $homeData = Cache::remember('homepage_complete_data', 86400, function() {
         //     return $this->getCompleteHomeData();
         // });
@@ -94,7 +109,6 @@ class HomeController extends Controller
                 'testimonials' => $testimonials,
                 'faqs' => $faqs,
                 'search' => (object) [
-                    'service_type' => 'airport_transfers',
                     'from_date' => null,
                     'to_date' => null,
                     'from_time' => null,
@@ -127,7 +141,7 @@ class HomeController extends Controller
             'testimonials' => collect(),
             'faqs' => collect(),
             // No settings here - ViewComposer handles all settings
-            'search' => (object) ['service_type' => 'airport_transfers', 'passengers' => 1],
+            'search' => (object) ['passengers' => 1],
         ];
     }
 }

@@ -50,9 +50,10 @@ class SmsAutomationService
         ]);
     }
 
-    public function queueBookingConfirmation(Booking $booking, bool $sendCustomerSms = true): void
+    public function queueBookingConfirmation(Booking $booking, ?bool $sendCustomerSms = null): void
     {
         $booking = $this->resolveBooking($booking);
+        $sendCustomerSms = $sendCustomerSms ?? filter_var($booking->notification_sms ?? true, FILTER_VALIDATE_BOOL);
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled']) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::BookingConfirmed, 'disabled', 'Global SMS setting is disabled.');
@@ -733,6 +734,14 @@ class SmsAutomationService
 
     private function render(string $template, array $variables): string
     {
+        if (str_contains($template, '{company_')) {
+            $websiteSettings = app(\App\Services\WebsiteSettingsService::class);
+            $variables += [
+                'company_name' => $websiteSettings->get('company_name', config('app.name')),
+                'company_phone' => $websiteSettings->get('company_phone', ''),
+                'company_website' => $websiteSettings->get('company_website', config('app.url')),
+            ];
+        }
         $replacements = [];
         foreach ($variables as $key => $value) {
             $replacements['{' . $key . '}'] = (string) $value;

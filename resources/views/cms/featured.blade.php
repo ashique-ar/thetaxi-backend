@@ -11,8 +11,8 @@
     <!-- Breadcrumb section Start-->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url(assets/img/innerpages/breadcrumb-bg.jpg);">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>Featured Content</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
@@ -24,8 +24,7 @@
     <!-- Breadcrumb section End-->
 
     <!-- Featured Content Page Start-->
-    <div class="travel-inspiration-page pt-100 mb-100">
-        <div class="container">
+    <div class="travel-inspiration-page pt-2 mb-100">
             <div class="row justify-content-center mb-50 wow animate fadeInDown" data-wow-delay="200ms"
                 data-wow-duration="1500ms">
                 <div class="col-xl-8 col-lg-10">
@@ -40,7 +39,7 @@
                 @forelse($featuredContent as $content)
                     <div class="col-lg-4 col-md-6 wow animate fadeInDown"
                         data-wow-delay="{{ ($loop->index % 3) * 200 + 200 }}ms" data-wow-duration="1500ms">
-                        <div class="blog-card2 two">
+                        <div class="blog-card2 two cms-listing-card">
                             <div class="blog-img-wrap">
                                 <a href="{{ route('cms.show', [$content->contentType->slug, $content->slug]) }}"
                                     class="blog-img">
@@ -126,7 +125,6 @@
                     </div>
                 </div>
             @endif
-        </div>
     </div>
     <!--Featured Content Page End-->
 @endsection

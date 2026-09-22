@@ -77,12 +77,6 @@ class CheckScheduledMaintenance extends Command
                     ]);
             }
 
-            Log::info('Maintenance schedule marked due by scheduler', [
-                'schedule_id' => $schedule->id,
-                'vehicle_id'  => $schedule->vehicle_id,
-                'type'        => $schedule->type,
-                'due_date'    => $schedule->{$scheduleDateColumn},
-            ]);
         }
 
         $this->table(

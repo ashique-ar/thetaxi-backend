@@ -17,8 +17,6 @@ use App\Traits\UUID;
  * @property string|null $class_id Foreign key to vehicle_classes table (optional)
  * @property string|null $contract_type_id Foreign key to vehicle_contract_types table (optional)
  * @property string|null $category_id Foreign key to vehicle_categories table (optional)
- * @property string|null $model_id Foreign key to vehicle_models table (optional)
- * @property string|null $make_id Foreign key to vehicle_makes table (optional)
  * @property string|null $owner_id Foreign key to vehicle_owners table (optional)
  * @property string|null $grade_id Foreign key to vehicle_grades table (optional)
  * @property string|null $vehicle_group_id Foreign key to vehicle_groups table (optional)
@@ -253,19 +251,22 @@ class Vehicle extends BaseModel
 
     public function revenueLicenses()
     {
-        return $this->hasMany(VehicleRevenueLicense::class);
+        return $this->morphMany(Document::class, 'documentable')
+            ->where('document_type', 'vehicle_revenue_license')
+            ->latest('expiry_date');
     }
 
     public function activeInsurance()
     {
         return $this->hasOne(VehicleInsurance::class)
-            ->where('status', 'active')
+            ->whereIn('status', ['active', 'verified'])
             ->latest('end_date');
     }
 
     public function activeRevenueLicense()
     {
-        return $this->hasOne(VehicleRevenueLicense::class)
+        return $this->morphOne(Document::class, 'documentable')
+            ->where('document_type', 'vehicle_revenue_license')
             ->where('status', 'active')
             ->latest('expiry_date');
     }

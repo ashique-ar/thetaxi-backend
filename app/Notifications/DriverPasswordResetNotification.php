@@ -11,7 +11,10 @@ class DriverPasswordResetNotification extends Notification implements ShouldQueu
 {
     use Queueable;
 
-    public function __construct(private readonly string $token) {}
+    public function __construct(
+        private readonly string $otp,
+        private readonly int $expiresInMinutes
+    ) {}
 
     public function via(object $notifiable): array
     {
@@ -20,15 +23,12 @@ class DriverPasswordResetNotification extends Notification implements ShouldQueu
 
     public function toMail(object $notifiable): MailMessage
     {
-        $url = 'thetaxidriver://reset-password?token='.rawurlencode($this->token)
-            .'&email='.rawurlencode($notifiable->getEmailForPasswordReset());
-
         return (new MailMessage)
-            ->subject('Reset your TheTaxi Driver password')
+            ->subject('Reset your ' . (\App\Models\BusinessSetting::getSetting('company_name') ?: \App\Models\Website\WebsiteSetting::getValue('company_name', config('app.name'))) . ' Driver password')
             ->greeting('Hello!')
             ->line('A password reset was requested for your driver account.')
-            ->action('Reset Driver Password', $url)
-            ->line('This link expires in '.config('auth.passwords.users.expire').' minutes and can only be used once.')
+            ->line('Your one-time password is: '.$this->otp)
+            ->line('This OTP expires in '.$this->expiresInMinutes.' minutes and can only be used once.')
             ->line('If you did not request this change, you can ignore this email.');
     }
 

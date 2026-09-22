@@ -2,6 +2,8 @@
 // app/Http/Controllers/Api/CustomerController.php
 namespace App\Http\Controllers\Api;
 
+use App\Support\SriLankanNic;
+
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
@@ -170,11 +172,14 @@ class CustomerController extends Controller
     public function store(CreateCustomerRequest $request): JsonResponse
     {
         $data = $request->validated();
+        if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
 
         try {
             return DB::transaction(function () use ($data) {
-                $existingUser = User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first();
+                $existingUser = !empty($data['user_id'])
+                    ? User::lockForUpdate()->findOrFail($data['user_id'])
+                    : (!empty($data['email']) ? User::whereRaw('LOWER(email) = ?', [strtolower(trim($data['email']))])->lockForUpdate()->first() : null);
             
                 if ($existingUser) {
                     $existingContext = \App\Models\UserContext::where('user_id', $existingUser->id)
@@ -194,7 +199,7 @@ class CustomerController extends Controller
 
                 $contextData = [
                     'code' => $data['code'] ?? null,
-                    'type' => $data['type'],
+                    'type' => $data['type'] ?? null,
                     'sub_type' => $data['sub_type'] ?? null,
                     'category' => $data['category'] ?? null,
                     'nic' => $data['nic'] ?? null,
@@ -230,19 +235,19 @@ class CustomerController extends Controller
             } else {
                 // Create new user
                 $user = User::create([
-                    'first_name' => $data['first_name'],
-                    'last_name' => $data['last_name'],
-                    'email' => $data['email'],
+                    'first_name' => $data['first_name'] ?? null,
+                    'last_name' => $data['last_name'] ?? null,
+                    'email' => $data['email'] ?? null,
                     'password' => bcrypt($data['password'] ?? Str::random(12)),
-                    'phone' => $data['phone'],
-                    'email_verified_at' => now(), // Auto-verify for customers created by admin
+                    'phone' => $data['phone'] ?? null,
+                    'email_verified_at' => !empty($data['email']) ? now() : null,
                     'is_active' => true,
                 ]);
 
                 // Create customer context
                 $contextData = [
                     'code' => $data['code'] ?? null,
-                    'type' => $data['type'],
+                    'type' => $data['type'] ?? null,
                     'sub_type' => $data['sub_type'] ?? null,
                     'category' => $data['category'] ?? null,
                     'nic' => $data['nic'] ?? null,
@@ -299,6 +304,7 @@ class CustomerController extends Controller
     {
         try {
             $data = $request->validated();
+            if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
             $data['updated_user_id'] = $request->user()->id;
 
             $userData = array_intersect_key($data, array_flip([
@@ -336,17 +342,25 @@ class CustomerController extends Controller
 
     public function destroy(Customer $customer): JsonResponse
     {
-        $user = User::find($customer->user_id);
-        \App\Models\UserContext::where('user_id', $customer->user_id)
-            ->where('context_type', 'customer')
-            ->where('context_id', $customer->id)
-            ->update(['is_active' => false]);
+        DB::transaction(function () use ($customer) {
+            \App\Models\Activity::create([
+                'log_name' => 'Customer', 'description' => 'deleted', 'event' => 'deleted',
+                'subject_type' => Customer::class, 'subject_id' => $customer->id,
+                'causer_type' => User::class, 'causer_id' => request()->user()->id,
+                'properties' => ['old' => $customer->getAttributes()],
+            ]);
+            $customer->disableLogging();
+            $user = User::find($customer->user_id);
+            \App\Models\UserContext::where('user_id', $customer->user_id)
+                ->where('context_type', 'customer')
+                ->where('context_id', $customer->id)
+                ->update(['is_active' => false, 'updated_user_id' => request()->user()->id]);
+            $customer->delete();
 
-        $customer->delete();
-
-        if ($user && !$user->contexts()->where('is_active', true)->exists()) {
-            $user->delete();
-        }
+            if ($user && !$user->contexts()->where('is_active', true)->exists()) {
+                $user->delete();
+            }
+        });
 
         return response()->json([
             'status' => 'success',

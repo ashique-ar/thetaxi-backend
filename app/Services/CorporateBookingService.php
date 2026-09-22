@@ -40,8 +40,10 @@ class CorporateBookingService
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
 
-        return DB::transaction(function () use ($employee, $corporate, $data) {
-            $needsApproval = $corporate->approval_required;
+        $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
+
+        return DB::transaction(function () use ($employee, $corporate, $data, $creditApprovalRequired) {
+            $needsApproval = $corporate->approval_required || $creditApprovalRequired;
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($employee),
@@ -75,6 +77,7 @@ class CorporateBookingService
                 'corporate_id' => $corporate->id,
                 'employee_id' => $employee->user_id,
                 'needs_approval' => $needsApproval,
+                'credit_limit_approval_required' => $creditApprovalRequired,
             ]);
 
             if ($needsApproval) {
@@ -93,8 +96,11 @@ class CorporateBookingService
         $corporate = $requester->corporate;
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
 
-        return DB::transaction(function () use ($requester, $corporate, $data) {
-            $needsApproval = $corporate->approval_required && ! $corporate->exempt_coordinator_from_approval;
+        $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
+
+        return DB::transaction(function () use ($requester, $corporate, $data, $creditApprovalRequired) {
+            $needsApproval = ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
+                || $creditApprovalRequired;
             $params = array_merge($data, [
                 'customer_id' => null,
                 'is_corporate_booking' => true,
@@ -123,6 +129,7 @@ class CorporateBookingService
                 'corporate_id' => $corporate->id,
                 'coordinator_id' => $requester->user_id,
                 'needs_approval' => $needsApproval,
+                'credit_limit_approval_required' => $creditApprovalRequired,
                 'passenger' => data_get($data, 'corporate_contact.name'),
             ]);
 
@@ -152,13 +159,11 @@ class CorporateBookingService
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
 
-        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data) {
-            $needsApproval = $corporate->approval_required;
+        $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
-            // If corporate exempts coordinators from approval, skip it
-            if ($corporate->exempt_coordinator_from_approval) {
-                $needsApproval = false;
-            }
+        return DB::transaction(function () use ($coordinator, $targetEmployee, $corporate, $data, $creditApprovalRequired) {
+            $needsApproval = ($corporate->approval_required && ! $corporate->exempt_coordinator_from_approval)
+                || $creditApprovalRequired;
 
             $params = array_merge($data, [
                 'customer_id' => $this->resolveCustomerIdForEmployee($targetEmployee),
@@ -193,6 +198,7 @@ class CorporateBookingService
                 'coordinator_id' => $coordinator->user_id,
                 'target_employee_id' => $targetEmployee->user_id,
                 'needs_approval' => $needsApproval,
+                'credit_limit_approval_required' => $creditApprovalRequired,
                 'coordinator_exempt' => $corporate->exempt_coordinator_from_approval,
             ]);
 
@@ -220,6 +226,40 @@ class CorporateBookingService
         if (!$assigned) {
             abort(422, 'The selected vehicle group is not assigned to your corporate.');
         }
+    }
+
+    public function createStaffTransportBooking(Corporate $corporate, array $data): Booking
+    {
+        $contactEmployee = $corporate->employees()->where('is_active', true)->findOrFail($data['contact_employee_id']);
+        unset($data['contact_employee_id']);
+        $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        // Program activation authorizes its recurring journeys; pricing and dispatch
+        // still use the same booking flow as other corporate work.
+        return $this->bookingFlowService->confirmBooking(array_merge($data, [
+            'customer_id' => $this->resolveCustomerIdForEmployee($contactEmployee),
+            'employee_id' => null,
+            'is_corporate_booking' => true,
+            'corporate_account_id' => $corporate->id,
+            'created_by_user_id' => Auth::id(),
+        ]));
+    }
+
+    public function previewStaffTransportPricing(Corporate $corporate, array $data): array
+    {
+        unset($data['contact_employee_id']);
+        return $this->bookingFlowService->calculatePricing($this->prepareCorporateBookingPayload($corporate, $data) + [
+            'is_corporate_booking' => true, 'corporate_account_id' => $corporate->id,
+        ]);
+    }
+
+    public function amendStaffTransportBooking(Booking $booking, array $data): Booking
+    {
+        unset($data['contact_employee_id']);
+        $data = $this->prepareCorporateBookingPayload($booking->corporateAccount, $data);
+        return $this->bookingFlowService->updateBooking($booking->id, $data + [
+            'is_corporate_booking' => true,
+            'corporate_account_id' => $booking->corporate_account_id,
+        ], []);
     }
 
     private function prepareCorporateBookingPayload(Corporate $corporate, array $data): array
@@ -268,6 +308,12 @@ class CorporateBookingService
         );
 
         return $data;
+    }
+
+    private function requiresCreditApproval(Corporate $corporate, array $data): bool
+    {
+        return ($data['payment_collection_method'] ?? null) === 'monthly_invoice'
+            && ($this->financialProjection->accountSummary($corporate->id)['summary']['credit_limit_exceeded'] ?? false);
     }
 
     private function validateServicePackage(?string $serviceTypeId, ?string $packageId): void
@@ -999,6 +1045,7 @@ class CorporateBookingService
         $tripQuery->setEagerLoads([]);
         $this->applyBookingItemFilters($tripQuery, $filters);
         $tripCount = (clone $tripQuery)->count('booking_items.id');
+        $matchingBookingItemIds = (clone $tripQuery)->pluck('booking_items.id');
 
         $byStatus = (clone $query)
             ->select('status')
@@ -1018,7 +1065,8 @@ class CorporateBookingService
         $financial = [];
         if (($filters['can_view_payments'] ?? false) === true) {
             $financial = ['financial_metrics_visible' => true, ...$this->financialProjection->summarizeBookings(
-                (clone $query)->get(['bookings.id', 'bookings.total_actual'])
+                (clone $query)->get(['bookings.id', 'bookings.total_actual']),
+                $matchingBookingItemIds,
             )];
         } else {
             $financial = ['financial_metrics_visible' => false];

@@ -1066,6 +1066,5 @@ class DynamicServiceConfigurationService
             Cache::forget("service_form_config_public_v5_{$code}");
         }
 
-        Log::info('Dynamic service configuration cache cleared');
     }
 }

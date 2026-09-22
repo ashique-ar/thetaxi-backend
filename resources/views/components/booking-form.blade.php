@@ -358,13 +358,6 @@
             </div>
         @endif
 
-        @if (session('success'))
-            <div class="alert alert-success alert-dismissible fade show" role="alert">
-                {{ session('success') }}
-                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-            </div>
-        @endif
-
         {{-- All forms rendered dynamically from form_config --}}
         @foreach($bookingTabs as $tab)
             @php
@@ -485,7 +478,7 @@
                 if (!selectedOption) return;
                 var selType = selectedOption.dataset.type;
                 var selValue = selectedOption.dataset.value;
-                if (selType === 'predefined' && selValue) {
+                if ((selType === 'predefined' || selType === 'configured') && selValue) {
                     applyPredefined(selectedOption.dataset.address || '', selectedOption.dataset.lat || '', selectedOption.dataset.lng || '', selValue);
                 } else if (selType === 'custom') {
                     applyCustom();

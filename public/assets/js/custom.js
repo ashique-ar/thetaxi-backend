@@ -383,6 +383,8 @@
     slider.dataset.heroReady = "true";
     var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var pagination = slider.querySelector(".shared-hero-pagination");
+    var previous = slider.querySelector(".t4-hero__prev");
+    var next = slider.querySelector(".t4-hero__next");
     var instance = new Swiper(slider, {
       slidesPerView: 1,
       speed: reduceMotion ? 0 : 900,
@@ -395,6 +397,7 @@
       },
       fadeEffect: { crossFade: true },
       pagination: pagination ? { el: pagination, clickable: true } : undefined,
+      navigation: previous && next ? { prevEl: previous, nextEl: next } : undefined,
       on: {
         init: function () { syncHeroVideo(this); },
         slideChangeTransitionStart: function () { syncHeroVideo(this); },

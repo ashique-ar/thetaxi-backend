@@ -532,9 +532,13 @@ class VehiclePricingCalculationDefinition extends Model
         $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
             ->where('is_active', true)
             ->when(
-                $servicePackageId,
-                fn ($query) => $query->where('service_package_id', $servicePackageId),
-                fn ($query) => $query->whereNull('service_package_id')
+                $inputs['slab_definition_id'] ?? null,
+                fn ($query, $slabId) => $query->whereKey($slabId),
+                fn ($query) => $query->when(
+                    $servicePackageId,
+                    fn ($query) => $query->where('service_package_id', $servicePackageId),
+                    fn ($query) => $query->whereNull('service_package_id')
+                )
             )
             ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
             ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));
@@ -611,13 +615,6 @@ class VehiclePricingCalculationDefinition extends Model
             return $result;
         }
 
-        Log::debug('Calculating KM overages - Initial', [
-            'journey_distance' => $result['journey_distance'],
-            'result' => $result,
-            'slab_info' => $slabInfo,
-            'service_package_info' => $servicePackageInfo,
-            'inputs' => $inputs
-        ]);
 
         // Package allowances belong to the selected service package, not to a
         // duration slab. Resolve them before the slab guard so fixed/common
@@ -659,12 +656,6 @@ class VehiclePricingCalculationDefinition extends Model
             return $result;
         }
 
-        Log::debug('Calculating KM overages', [
-            'journey_distance' => $result['journey_distance'],
-            'slab_info' => $slabInfo,
-            'service_package_info' => $servicePackageInfo,
-            'inputs' => $inputs
-        ]);
         $actualKm = $journeyDistance;
 
         // Enhanced daily calculation for calendar days
@@ -711,7 +702,6 @@ class VehiclePricingCalculationDefinition extends Model
             // mileage is unavailable. There is no boundary to exceed.
             $result['extra_km'] = 0.0;
         }
-        Log::debug('KM overages calculated', $result);
         return $result;
     }
 
@@ -824,8 +814,6 @@ class VehiclePricingCalculationDefinition extends Model
     private function resolveAllVariables(array $inputs, ?array $slabInfo, array $kmCalculations, ?array $appliedCustomizations, ?array $servicePackageInfo = null, ?array $districtInfo = null): array
     {
         $resolvedVariables = [];
-        $missingVariables = [];
-
         foreach ($this->variables ?? [] as $variable) {
 
             $varName = $variable['name'];
@@ -836,7 +824,6 @@ class VehiclePricingCalculationDefinition extends Model
                 continue;
             }
             $varType = $variable['type'] ?? 'number';
-            $isRequired = $variable['is_required'] ?? true;
             $defaultValue = $variable['default_value'] ?? null;
             // Definition-driven variables only
 
@@ -844,55 +831,33 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = array_key_exists('extra_km', $kmCalculations)
                     ? $kmCalculations['extra_km']
                     : null;
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'allowed_km') {
                 $value = array_key_exists('allowed_km', $kmCalculations)
                     ? $kmCalculations['allowed_km']
                     : null;
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'journey_distance') {
                 // journey_distance comes from kmCalculations first, then inputs
                 $value = $kmCalculations['journey_distance'] ?? ($inputs['journey_distance'] ?? null);
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } elseif ($varName === 'total_distance') {
                 // total_distance should come from inputs (includes pickup+journey+delivery), NOT kmCalculations
                 $value = $inputs['total_distance'] ?? ($kmCalculations['total_distance'] ?? null);
-                if ($value === null && !$isRequired) {
+                if ($value === null) {
                     $value = $defaultValue;
                 }
             } else {
-                $runtimeDefault = $isRequired && in_array($varType, ['duration', 'distance'], true)
-                    ? null
-                    : $defaultValue;
-                $value = $this->resolveVariable($varName, $varType, $inputs, $runtimeDefault, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
-            }
-
-            $isPricingRate = in_array($varType, ['slab_rate', 'common_rate'], true);
-            if ($value === null && $isPricingRate) {
-                // Price rows are configured after the reusable calculation
-                // definition. Missing slab/common-rate values therefore
-                // contribute zero; configuration health reports the warning.
-                $value = 0;
-            }
-
-            if ($value === null && $isRequired) {
-                $missingVariables[] = $varName;
-                continue;
+                $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
             $resolvedVariables[$varName] = $value ?? 0;
-        }
-
-        if (!empty($missingVariables)) {
-            throw new \InvalidArgumentException(
-                "Missing required variables: " . implode(', ', $missingVariables)
-            );
         }
         return $resolvedVariables;
     }
@@ -1088,6 +1053,8 @@ class VehiclePricingCalculationDefinition extends Model
                 $ownerId = $inputs['owner_id'] ?? null;
                 $slabDefinition = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
                     ->where('is_active', true)
+                    ->when($inputs['slab_definition_id'] ?? null,
+                        fn ($query, $slabId) => $query->whereKey($slabId))
                     ->forOwner($ownerType, $ownerId)
                     ->where(function ($query) use ($durationHours, $durationDaysForFallback) {
                         $query->when($durationDaysForFallback > 0, function ($q) use ($durationDaysForFallback) {
@@ -1354,7 +1321,6 @@ class VehiclePricingCalculationDefinition extends Model
             };
 
             if (!$conditionMet) {
-                Log::debug("Condition not met: {$field} {$operator} " . json_encode($expectedValue) . " (actual: " . json_encode($actualValue) . ")");
                 return false;
             }
         }
@@ -1576,15 +1542,6 @@ class VehiclePricingCalculationDefinition extends Model
                     $currentAmount += $adjustmentAmount;
                 }
 
-                if (!empty($kmRangeResult['rules_applied'])) {
-                    Log::info('KM range pricing applied to distance leg', [
-                        'vehicle_group_id' => $vehicleGroupId,
-                        'distance_type' => $distanceType,
-                        'distance' => $distance,
-                        'leg_adjustment' => $kmRangeResult['total_adjustment'] ?? 0,
-                        'current_amount' => $currentAmount,
-                    ]);
-                }
             }
         }
 

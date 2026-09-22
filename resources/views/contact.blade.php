@@ -11,8 +11,8 @@
     <!-- Start Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ s3_asset($settings['contact_breadcrumb_image'] ?? 'assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>{{ $settings['contact_hero_heading'] ?? 'Inquiry' }}</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
@@ -70,18 +70,9 @@
                                 </div>
                             @endif
 
-                            @if (session('success'))
-                                <div class="alert alert-success alert-dismissible fade show" role="alert">
-                                    {{ session('success') }}
-                                    <button type="button" class="btn-close" data-bs-dismiss="alert"
-                                        aria-label="Close"></button>
-                                </div>
-                            @endif
-
                             <form action="{{ route('contact.store') }}" method="POST">
                                 @csrf
                                 <input type="hidden" name="inquiry_type" value="general">
-                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'contact-company-website'])
                                 <div class="row g-4 mb-60">
                                     <div class="col-md-6">
                                         <div class="form-inner">
@@ -208,6 +199,7 @@
                                         </div>
                                     </div>
                                 </div>
+                                @include('inquiry.partials.spam-protection', ['honeypotId' => 'contact-company-website'])
                                 <button type="submit" class="primary-btn1">
                                     <span>
                                         {{ $settings['contact_form_submit_text'] ?? 'Submit Now' }}

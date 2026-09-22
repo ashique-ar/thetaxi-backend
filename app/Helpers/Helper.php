@@ -84,6 +84,11 @@ if (!function_exists('s3_asset')) {
 
         $path = trim($path);
 
+        // Masked media URLs stay domain-independent and are served by resources.assets.
+        if (str_starts_with($path, '/resources/')) {
+            return $path;
+        }
+
         // If already a full URL, return as-is
         if (preg_match('/^https?:\/\//', $path)) {
             return $path;

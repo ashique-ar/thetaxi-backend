@@ -40,6 +40,9 @@
         return sprintf('%06d-%06d', $row, $order);
     })->all();
     $hasSearchContext = (bool) ($hasSearchContext ?? false);
+    $hasRentalDropoffField = collect($sortedFields)->contains(static function ($field, $name) {
+        return str_contains((string) $name, 'dropoff') && ($field['type'] ?? '') === 'location';
+    });
     $clientFieldDefaults = [];
     foreach ($sortedFields as $defaultFieldName => $defaultFieldConfig) {
         $defaultSubmitAs = $defaultFieldConfig['submit_as'] ?? $defaultFieldName;
@@ -76,6 +79,8 @@
     };
     $startDateField = $resolveConfiguredControlName($dateMappings['from_date'] ?? '', $sortedFields);
     $startTimeField = $resolveConfiguredControlName($dateMappings['from_time'] ?? '', $sortedFields);
+    $endDateField = $resolveConfiguredControlName($dateMappings['to_date'] ?? '', $sortedFields);
+    $endTimeField = $resolveConfiguredControlName($dateMappings['to_time'] ?? '', $sortedFields);
     foreach ($sortedFields as $key => $fieldConfig) {
         $candidateName = (string) ($fieldConfig['submit_as'] ?? $key);
         $candidateType = (string) ($fieldConfig['type'] ?? '');
@@ -88,6 +93,12 @@
         }
         if (!$isReturnControl && $startTimeField === '' && $candidateType === 'time') {
             $startTimeField = $candidateName;
+        }
+        if ($isReturnControl && $endDateField === '' && in_array($candidateType, ['date', 'datetime'], true)) {
+            $endDateField = $candidateName;
+        }
+        if ($isReturnControl && $endTimeField === '' && $candidateType === 'time') {
+            $endTimeField = $candidateName;
         }
     }
 
@@ -183,13 +194,15 @@
       data-site-now-epoch="{{ ($bookingSiteNow ?? now())->getTimestampMs() }}"
       data-start-date-field="{{ $startDateField }}"
       data-start-time-field="{{ $startTimeField }}"
+      data-end-date-field="{{ $endDateField }}"
+      data-end-time-field="{{ $endTimeField }}"
+      data-minimum-duration-minutes="{{ ($serviceTypeModel?->uses_dropoff_time ?? true) ? \App\Http\Requests\BookingSearchRequest::MINIMUM_DURATION_MINUTES : 0 }}"
       action="{{ $actionRoute }}"
       method="{{ $isInquiry ? 'POST' : 'GET' }}"
       novalidate>
 
     @if ($isInquiry)
         @csrf
-        @include('inquiry.partials.spam-protection', ['honeypotId' => $formId . '-company-website'])
     @endif
     <input type="hidden" name="service_type" value="{{ $serviceCode }}">
 
@@ -236,7 +249,8 @@
 
                 if ($isPickupField) {
                     $locAddr = $pickupLoc['address'] ?? '';
-                    $currentValue = $safeOldOr($submitAs, $hasSearchContext ? ($locAddr ?: $fieldDefault) : '');
+                    $useConfiguredLocationDefault = $locationMode === 'predefined_or_custom';
+                    $currentValue = $safeOldOr($submitAs, ($hasSearchContext || $useConfiguredLocationDefault) ? ($locAddr ?: $fieldDefault) : '');
                     $locLat = $pickupLoc['lat'] ?? '';
                     $locLng = $pickupLoc['lng'] ?? '';
                     $currentLat = $safeOldOr($submitAs . '_lat', $hasSearchContext ? ($locLat ?: ($field['default_lat'] ?? '')) : '');
@@ -254,7 +268,10 @@
             } elseif ($fieldType === 'date') {
                 $isPickupDate = str_contains($fieldName, 'pickup') || $submitAs === 'date';
                 $rawDate = $isPickupDate ? $pickupDate : $dropoffDate;
-                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : ($hasSearchContext ? $fieldDefault : '');
+                $formattedDefault = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $fieldDefault)
+                    ? date('d/m/Y', strtotime($fieldDefault))
+                    : $fieldDefault;
+                $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : $formattedDefault;
                 $currentValue = old($submitAs, $formatted);
             } elseif ($fieldType === 'time') {
                 $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time';
@@ -329,6 +346,35 @@
                 'servicePackages' => $servicePackages,
                 'transferType' => $airportTransferType ?? null,
             ])
+
+            @if(in_array($serviceCode, ['self_drive', 'with_driver'], true)
+                && !$hasRentalDropoffField
+                && $fieldType === 'location'
+                && $locationMode === 'predefined_or_custom'
+                && ($submitAs === 'pickup' || str_contains($fieldName, 'pickup')))
+                <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
+                     id="{{ $prefix }}_dropoff_wrapper" style="display: none;">
+                    <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Drop-off Location' }}</label>
+                    <div class="single-search-box location-search-box">
+                        @include('components.partials.location-icon')
+                        <div class="custom-select-dropdown">
+                            <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
+                               placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your drop-off location' }}"
+                               class="location-search @error('dropoff') is-invalid @enderror"
+                               value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}" disabled>
+                            <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
+                                   value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
+                            <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
+                                   value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
+                        </div>
+                    </div>
+                    @error('dropoff')<span class="text-danger small">{{ $message }}</span>@enderror
+                </div>
+                <input type="hidden" name="dropoff" id="{{ $prefix }}_dropoff_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng_hidden" value="" disabled>
+                <input type="hidden" name="dropoff_predefined" id="{{ $prefix }}_dropoff_predefined" value="" disabled>
+            @endif
         </div>
 
         {{-- For predefined_or_custom location with sync_from: add dropoff sync fields --}}
@@ -429,52 +475,9 @@
         </div>
     @endif
 
-    {{-- Dropoff sync fields for self_drive/with_driver --}}
-    @if(in_array($serviceCode, ['self_drive', 'with_driver']))
-        @php
-            $hasPickupPredefined = false;
-            $hasDropoffField = false;
-            foreach ($sortedFields as $fn => $f) {
-                if (($f['submit_as'] ?? $fn) === 'pickup' && ($f['location_mode'] ?? '') === 'predefined_or_custom') {
-                    $hasPickupPredefined = true;
-                }
-                if (str_contains($fn, 'dropoff') && ($f['type'] ?? '') === 'location') {
-                    $hasDropoffField = true;
-                }
-            }
-        @endphp
-        @if($hasPickupPredefined && !$hasDropoffField)
-            {{-- Dropoff wrapper for doorstep (custom) selection --}}
-            <div class="booking-field custom-location-box {{ $prefix }}-dropoff-box"
-                 id="{{ $prefix }}_dropoff_wrapper"
-                 style="display: none;">
-                <label class="input-label">{{ $settings['booking_dropoff_label'] ?? 'Dropoff Location' }}</label>
-                <div class="single-search-box location-search-box">
-                    @include('components.partials.location-icon')
-                    <div class="custom-select-dropdown">
-                        <input type="text" name="dropoff" id="{{ $prefix }}_dropoff_input"
-                           placeholder="{{ $settings['booking_dropoff_placeholder'] ?? 'Enter your dropoff location' }}"
-                           class="location-search @error('dropoff') is-invalid @enderror"
-                           value="{{ $safeOldOr('dropoff', $dropoffLoc['address'] ?? '') }}"
-                           disabled>
-                        <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat" class="location-lat"
-                               value="{{ $safeOldOr('dropoff_lat', $dropoffLoc['lat'] ?? '') }}">
-                        <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng" class="location-lng"
-                               value="{{ $safeOldOr('dropoff_lng', $dropoffLoc['lng'] ?? '') }}">
-                    </div>
-                </div>
-                @error('dropoff')
-                    <span class="text-danger small">{{ $message }}</span>
-                @enderror
-            </div>
-            {{-- Hidden dropoff fields for predefined location sync --}}
-            <input type="hidden" name="dropoff" id="{{ $prefix }}_dropoff_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_lat" id="{{ $prefix }}_dropoff_lat_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_lng" id="{{ $prefix }}_dropoff_lng_hidden" value="" disabled>
-            <input type="hidden" name="dropoff_predefined" id="{{ $prefix }}_dropoff_predefined" value="" disabled>
-        @endif
+    @if ($isInquiry)
+        @include('inquiry.partials.spam-protection', ['honeypotId' => $formId . '-company-website'])
     @endif
-
     <button type="submit" class="primary-btn1 booking-search-submit">
         <span>{{ $submitLabel }}</span>
     </button>

@@ -9,8 +9,8 @@
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>Checkout</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
@@ -21,13 +21,13 @@
     </div>
     <!-- End Breadcrumb section -->
 
-    <!-- Booking Form Section -->
-    <div class="filter-wrapper text-center hotel mb-5">
-        <div class="container">
-            @include('components.booking-form')
+    @unless (is_theme('theme-04'))
+        <div class="filter-wrapper text-center hotel mb-5">
+            <div class="container">
+                @include('components.booking-form')
+            </div>
         </div>
-    </div>
-    <!-- End Booking Form Section -->
+    @endunless
 
     @php
         // Cart data is passed from controller
@@ -101,11 +101,20 @@
                     <a href="{{ route('search') }}" class="primary-btn1 mt-3">Browse Vehicles</a>
                 </div>
             @else
-                <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
-                    @csrf
-
-                    <div class="row g-lg-4 gy-5">
+                <div class="row g-lg-4 gy-5">
                         <div class="col-lg-7">
+                            <form id="checkout-form" method="POST" action="{{ route('checkout.process') }}">
+                                @csrf
+                            @if ($errors->any() || session('error'))
+                                <div class="alert alert-danger" role="alert">
+                                    @if (session('error'))
+                                        <div>{{ session('error') }}</div>
+                                    @endif
+                                    @foreach ($errors->all() as $message)
+                                        <div>{{ $message }}</div>
+                                    @endforeach
+                                </div>
+                            @endif
                             <div class="checkout-form-wrapper">
                                 <div class="checkout-form-title">
                                     <h4>Billing Information</h4>
@@ -401,9 +410,15 @@
                                     </div>
                                 </div>
                             </div>
+                            </form>
                         </div>
 
                         <div class="col-lg-5">
+                            @if (is_theme('theme-04'))
+                                <aside class="t4-checkout-booking" aria-label="Update journey search">
+                                    @include('partials.themes.theme-04.booking-form', ['embedded' => true])
+                                </aside>
+                            @endif
                             <div class="checkout-sidebar-stack">
                                 @include('checkout.partials.cart-summary')
                                             <!-- Payment Type Selection Section -->
@@ -420,6 +435,7 @@
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
                                                                         value="full" id="payment_full"
+                                                                        form="checkout-form"
                                                                         {{ $paymentType === 'full' ? 'checked' : '' }}
                                                                         class="payment-radio">
                                                                     <label for="payment_full" class="payment-label">
@@ -440,6 +456,7 @@
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="advance" id="payment_advance"
+                                                                            form="checkout-form"
                                                                             {{ $paymentType === 'advance' ? 'checked' : '' }}
                                                                             class="payment-radio">
                                                                         <label for="payment_advance"
@@ -464,6 +481,7 @@
                                                                     <div class="payment-option">
                                                                         <input type="radio" name="payment_type"
                                                                             value="checkin" id="payment_checkin"
+                                                                            form="checkout-form"
                                                                             {{ $paymentType === 'checkin' ? 'checked' : '' }}
                                                                             class="payment-radio">
                                                                         <label for="payment_checkin"
@@ -485,6 +503,7 @@
                                                                 <div class="payment-option">
                                                                     <input type="radio" name="payment_type"
                                                                         value="quotation" id="payment_quotation"
+                                                                        form="checkout-form"
                                                                         {{ $paymentType === 'quotation' ? 'checked' : '' }}
                                                                         class="payment-radio">
                                                                     <label for="payment_quotation" class="payment-label">
@@ -536,9 +555,10 @@
 
                                             <!-- Hidden payment method field - set automatically based on payment type -->
                                             <input type="hidden" name="payment_method" id="payment_method_field"
-                                                value="">
+                                                value="" form="checkout-form">
 
-                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn">
+                                            <button type="submit" class="primary-btn1 w-100" id="checkout-submit-btn"
+                                                form="checkout-form">
                                                 <span>
                                                     @if ($paymentType === 'quotation')
                                                         Submit Quotation Request
@@ -564,7 +584,6 @@
                             </div>
                         </div>
                     </div>
-                </form>
             @endif
         </div>
     </div>
@@ -1839,6 +1858,7 @@
 
             // Form submission - disable submit button to prevent double submission
             $('#checkout-form').on('submit', function(e) {
+                syncAcceptedTerms();
                 const $termsPanel = $('#termsAcceptancePanel');
                 const $acceptTerms = $('#accept_all_terms');
                 if ($acceptTerms.length && !$acceptTerms.is(':checked')) {
@@ -2714,6 +2734,13 @@
                     return false;
                 }
 
+                if (!window.intlTelInputUtils) {
+                    phoneErrorDiv.textContent = 'Phone validation is loading. Please try again.';
+                    phoneErrorDiv.style.display = 'block';
+                    phoneValidDiv.style.display = 'none';
+                    return false;
+                }
+
                 // Check if number is valid
                 if (iti.isValidNumber()) {
                     const countryData = iti.getSelectedCountryData();
@@ -2770,6 +2797,14 @@
                 validatePhoneNumber();
             });
 
+            document.querySelector('#checkout-form').addEventListener('submit', function(e) {
+                if (!validatePhoneNumber()) {
+                    e.preventDefault();
+                    e.stopImmediatePropagation();
+                    phoneInput.focus();
+                }
+            }, true);
+
             // Set default country from select
             const defaultCountry = $(phoneCountrySelect).val();
             if (defaultCountry && countryCodeMap[defaultCountry]) {
@@ -2778,11 +2813,9 @@
             }
 
             // Restore phone value if it exists (for form re-submission)
-            if (phoneInput.value) {
-                setTimeout(() => {
-                    validatePhoneNumber();
-                }, 200);
-            }
+            iti.promise.then(() => {
+                if (phoneInput.value) validatePhoneNumber();
+            });
         });
     </script>
 

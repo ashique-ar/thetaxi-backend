@@ -10,7 +10,7 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
-        $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : '$';
+        $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : getCurrencySymbol();
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
             config('booking.advance_payment.percentage', 50),
@@ -38,8 +38,8 @@
     <!-- Breadcrumb section -->
     <div class="breadcrumb-section"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 @if ($isQuotation)
                     {{-- <div class="success-icon quotation">
                         <i class="bi bi-file-text-fill"></i>

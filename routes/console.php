@@ -32,7 +32,23 @@ Schedule::command('bookings:process-payment-schedules')
     ->dailyAt('07:00')
     ->withoutOverlapping();
 
-Schedule::command('corporate:deliver-management-reports')->dailyAt('06:00')->withoutOverlapping();
+//until we go for production will comment this out if not corporates will aget mails
+// Schedule::command('corporate:generate-monthly-billing --months=12 --issue')
+//     ->dailyAt('05:30')
+//     ->withoutOverlapping();
+
+// Schedule::command('corporate:deliver-management-reports')
+//     ->dailyAt('06:00')
+//     ->withoutOverlapping();
+
+// Schedule::command('corporate:process-collection-follow-ups')
+//     ->hourly()
+//     ->withoutOverlapping();
+
+Schedule::call(fn() => app(\App\Services\FinancialAccountSettlementService::class)->markOverdueSettlements())
+    ->dailyAt('00:05')
+    ->name('mark-overdue-account-settlements')
+    ->withoutOverlapping();
 Schedule::command('sales:process-tasks')
     ->everyFiveMinutes()
     ->withoutOverlapping();
@@ -85,6 +101,14 @@ Schedule::command('hr:hikvision-maintenance')->everyMinute()->withoutOverlapping
 
 Schedule::command('vehicles:process-lease-schedules')
     ->dailyAt('07:15')
+    ->withoutOverlapping();
+
+Schedule::command('drivers:send-license-reminders')
+    ->dailyAt('07:30')
+    ->withoutOverlapping();
+
+Schedule::command('documents:send-expiry-reminders')
+    ->dailyAt('07:40')
     ->withoutOverlapping();
 
 Schedule::command('corporate-transport:generate-bookings')

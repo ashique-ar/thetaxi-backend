@@ -24,8 +24,8 @@ class CmsContentTypeController extends Controller
     public function index(Request $request): AnonymousResourceCollection
     {
         $q = CmsContentType::withInactive()
-            ->with(['createdBy'])
-            ->withCount('contents');
+            ->with(['createdBy', 'parent'])
+            ->withCount(['contents', 'children']);
             
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
@@ -38,6 +38,12 @@ class CmsContentTypeController extends Controller
         // Only apply is_active filter if explicitly set to true or false
         if ($request->filled('is_active') && $request->is_active !== '' && $request->is_active !== 'all') {
             $q->where('is_active', $request->boolean('is_active'));
+        }
+
+        if ($request->boolean('roots_only')) {
+            $q->whereNull('parent_id');
+        } elseif ($request->filled('parent_id')) {
+            $request->parent_id === 'root' ? $q->whereNull('parent_id') : $q->where('parent_id', $request->parent_id);
         }
         
         $q->orderBy('display_order', 'asc')
@@ -63,7 +69,7 @@ class CmsContentTypeController extends Controller
 
     public function show(CmsContentType $cms_content_type): JsonResponse
     {
-        $cms_content_type->load(['createdBy', 'updatedBy']);
+        $cms_content_type->load(['createdBy', 'updatedBy', 'parent', 'children'])->loadCount(['contents', 'children']);
         
         return response()->json([
             'status' => 'success',
@@ -74,6 +80,9 @@ class CmsContentTypeController extends Controller
     public function update(UpdateCmsContentTypeRequest $request, CmsContentType $cms_content_type): JsonResponse
     {
         $data = $request->validated();
+        if (!empty($data['parent_id']) && $cms_content_type->children()->exists()) {
+            return response()->json(['message' => 'A content type with children cannot become a child.'], 422);
+        }
         $data['updated_user_id'] = $request->user()->id;
         $cms_content_type->update($data);
 
@@ -86,6 +95,9 @@ class CmsContentTypeController extends Controller
 
     public function destroy(CmsContentType $cms_content_type): JsonResponse
     {
+        if ($cms_content_type->children()->exists()) {
+            return response()->json(['message' => 'Move or delete child content types before deleting this parent.'], 422);
+        }
         $cms_content_type->delete();
 
         return response()->json([

@@ -15,14 +15,17 @@ class CreateDriverRequest extends FormRequest
     public function rules()
     {
         return [
-            'first_name' => ['required', 'string', 'max:255'],
+            'user_id' => ['nullable', 'exists:users,id'],
+            'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255'],
-            'phone' => ['nullable', 'string', 'max:20'],
+            'email' => ['nullable', 'string', 'email', 'max:255'],
+            'phone' => ['required', 'string', 'max:20'],
             'code' => ['nullable', 'string', 'max:50', 'unique:drivers,code'],
             'nic' => ['nullable', 'string', 'max:20'],
             'license_no' => ['nullable', 'string', 'max:100'],
             'license_expiry' => ['nullable', 'date'],
+            'license_issued_at' => ['nullable', 'date', 'before_or_equal:license_expiry'],
+            'license_reminder_days' => ['nullable', 'integer', 'min:1', 'max:365'],
             'license_type' => ['nullable', 'string', 'max:50'],
             'dob' => ['nullable', 'date'],
             'address' => ['nullable', 'string'],

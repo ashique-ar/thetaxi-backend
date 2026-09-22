@@ -10,6 +10,7 @@ class CmsContentTypeResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'parent_id' => $this->parent_id,
             'title' => $this->title,
             'slug' => $this->slug,
             'description' => $this->description,
@@ -19,6 +20,13 @@ class CmsContentTypeResource extends JsonResource
             'display_order' => $this->display_order,
             'url_prefix' => $this->url_prefix,
             'contents_count' => $this->contents_count,
+            'children_count' => $this->children_count,
+            'parent' => $this->whenLoaded('parent', fn () => $this->parent ? [
+                'id' => $this->parent->id,
+                'title' => $this->parent->title,
+                'slug' => $this->parent->slug,
+            ] : null),
+            'children' => CmsContentTypeResource::collection($this->whenLoaded('children')),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'created_by' => $this->whenLoaded('createdBy', function () {

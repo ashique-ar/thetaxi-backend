@@ -105,6 +105,26 @@
                 min-height: 48px;
                 padding-inline: 22px;
             }
+
+            @media (max-width: 575px) {
+                .cms-content-section .container {
+                    padding-inline: 16px;
+                }
+
+                .cms-content-section .section-title h2 {
+                    font-size: clamp(1.75rem, 9vw, 2.35rem);
+                    overflow-wrap: anywhere;
+                }
+
+                .cms-content-section .section-title p {
+                    font-size: 0.95rem;
+                    line-height: 1.55;
+                }
+
+                .cms-content-section :where(.mb-50, .mb-40) {
+                    margin-bottom: 28px;
+                }
+            }
         </style>
     @endpush
 @endonce

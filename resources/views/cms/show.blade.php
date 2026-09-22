@@ -5,6 +5,19 @@
 
 @php
     $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
+    $hasContentBookingLocations = !empty($content->pickup_location) || !empty($content->dropoff_location);
+
+    if (!isset($search) && $hasContentBookingLocations) {
+        $search = (object) [
+            'service_type' => $content->service_type,
+            'pickup_location' => ['address' => $content->pickup_location, 'lat' => $content->pickup_lat, 'lng' => $content->pickup_lng],
+            'dropoff_location' => ['address' => $content->dropoff_location, 'lat' => $content->dropoff_lat, 'lng' => $content->dropoff_lng],
+            'pickup_date' => now()->format('Y-m-d'),
+            'dropoff_date' => now()->addDays(max(0, ((int) ($content->min_days ?? 1)) - 1))->format('Y-m-d'),
+            'pickup_time' => null,
+            'dropoff_time' => null,
+        ];
+    }
 @endphp
 
 @push('meta')
@@ -54,7 +67,7 @@
             max-width: 880px;
             margin: 0 0 12px;
             color: #111827;
-            font-size: clamp(2rem, 3vw, 3.15rem);
+            font-size: clamp(1.65rem, 2.2vw, 2.25rem);
             line-height: 1.08;
             font-weight: 800;
             letter-spacing: 0;
@@ -222,7 +235,7 @@
         }
 
         .content-body h1 {
-            font-size: clamp(1.75rem, 2.4vw, 2.45rem);
+            font-size: clamp(1.5rem, 2vw, 1.9rem);
         }
 
         .content-body>h1:first-child {
@@ -232,7 +245,7 @@
         .content-body h2 {
             position: relative;
             padding-top: 8px;
-            font-size: clamp(1.45rem, 2vw, 1.9rem);
+            font-size: clamp(1.25rem, 1.6vw, 1.55rem);
         }
 
         .content-body h2::before {
@@ -246,7 +259,7 @@
         }
 
         .content-body h3 {
-            font-size: 1.22rem;
+            font-size: 1.1rem;
         }
 
         .content-body p {
@@ -280,6 +293,25 @@
             margin: 24px 0;
             border-radius: 12px;
         }
+
+        @if ($contentType->slug === 'about')
+            .article-image img {
+                width: auto;
+                max-width: min(100%, 520px);
+                max-height: 360px;
+                object-fit: contain;
+                margin-inline: auto;
+            }
+
+            .content-body img {
+                width: auto !important;
+                max-width: min(100%, 520px) !important;
+                max-height: 520px;
+                object-fit: contain;
+                margin-inline: auto;
+            }
+
+        @endif
 
         .cms-booking-section {
             margin-top: 58px;
@@ -340,6 +372,41 @@
                 font-size: 1rem;
             }
         }
+
+        .filter-wrapper.hotel {
+            margin-top: 155px !important;
+        }
+
+        @if (is_theme('theme-04'))
+            .cms-article-page {
+                padding-top: 32px;
+            }
+
+            .article-sidebar {
+                position: static;
+                top: auto;
+            }
+
+            body.theme-theme-04 .t4-booking-panel.t4-booking-panel--embedded {
+                width: 100%;
+                min-height: 0;
+                margin: 0 0 24px;
+                padding: 0;
+                background: transparent;
+            }
+
+            body.theme-theme-04 .t4-booking-panel--embedded > .t4-booking-panel__inner,
+            body.theme-theme-04 .t4-booking-panel--embedded .t4-booking-panel__card {
+                width: 100%;
+                max-width: none;
+                padding-inline: 0;
+            }
+
+            body.theme-theme-04 .t4-booking-panel--embedded .t4-booking-panel__card {
+                padding: 14px;
+            }
+        @endif
+
     </style>
 @endpush
 
@@ -418,6 +485,13 @@
 
                 <aside class="col-xl-4 col-lg-4">
                     <div class="article-sidebar">
+                        @if (is_theme('theme-04'))
+                            @include('partials.themes.theme-04.booking-form', [
+                                'search' => $search ?? null,
+                                'embedded' => true,
+                            ])
+                        @endif
+
                         <div class="sidebar-widget share-widget">
                             <h6 class="mb-3">Share this article</h6>
                             <div class="share-btns d-flex">
@@ -476,88 +550,34 @@
                 </aside>
             </div>
 
-            {{-- Booking Integration --}}
-            <div class="booking-section cms-booking-section mb-5" id="booking-section">
-
-                {{-- Prepare search object from content when location defaults are available --}}
-                @php
-                    $hasContentBookingLocations = !empty($content->pickup_location) || !empty($content->dropoff_location);
-
-                    if (!isset($search) && isset($content) && $hasContentBookingLocations) {
-                        $search = new \stdClass();
-                        $search->service_type = $content->service_type;
-
-                        $search->pickup_location = [
-                            'address' => $content->pickup_location,
-                            'lat' => $content->pickup_lat,
-                            'lng' => $content->pickup_lng,
-                        ];
-
-                        $search->dropoff_location = [
-                            'address' => $content->dropoff_location,
-                            'lat' => $content->dropoff_lat,
-                            'lng' => $content->dropoff_lng,
-                        ];
-
-                        $search->pickup_date = now()->format('Y-m-d');
-                        $minDays = $content->min_days ?? 1;
-                        if ((int) $minDays > 1) {
-                            $search->dropoff_date = now()
-                                ->addDays($minDays - 1)
-                                ->format('Y-m-d');
-                        } else {
-                            $search->dropoff_date = $search->pickup_date;
-                        }
-
-                        $search->pickup_time = null;
-                        $search->dropoff_time = null;
-                    }
-                @endphp
-
-                <div class="cms-booking-header">
-                    <h2>Book Your Ride</h2>
-                    <p>
-                        {{ $hasContentBookingLocations
-                            ? 'The form is prefilled from this page where location data is available.'
-                            : 'Use the standard booking form with the same default values used on the home page.' }}
-                    </p>
-                </div>
-
-                <div class="filter-wrapper text-center hotel mb-5">
-                    @include('components.booking-form', ['search' => $search ?? null])
-                </div>
-
-                {{-- Suggested Vehicles --}}
-                @if ($hasContentBookingLocations && isset($suggestedVehicles) && count($suggestedVehicles) > 0)
-                    <div class="suggested-vehicles mt-5">
-                        <h4 class="mb-4">Recommended Vehicles for Your Journey</h4>
-                        <div class="row g-4">
-                            @foreach ($suggestedVehicles as $index => $vehicleData)
-                                <div class="col-lg-3 col-md-4 col-sm-6">
-                                    <x-vehicle-card :vehicle="$vehicleData" :pricing="$vehicleData['pricing_info'] ?? ($vehicleData['pricing'] ?? [])" :enhancedPricing="$vehicleData['enhanced_pricing'] ?? []"
-                                        :serviceFeatures="$vehicleData['service_features'] ?? []" :availability="[
-                                            'available' =>
-                                                $vehicleData['available_count'] ??
-                                                ($vehicleData['availability']['available'] ?? 0),
-                                            'total' =>
-                                                $vehicleData['total_count'] ??
-                                                ($vehicleData['availability']['total'] ?? 0),
-                                        ]" :searchId="session('current_search_id')" :showBookNow="true"
-                                        :showViewDetails="false" />
-                                </div>
-                            @endforeach
-                        </div>
+            @unless (is_theme('theme-04'))
+                <div class="mb-5" id="booking-section">
+                    <div class="filter-wrapper text-center hotel mb-5">
+                        @include('components.booking-form', ['search' => $search ?? null])
                     </div>
-                @elseif($hasContentBookingLocations && isset($search) && !empty($search->from_date))
-                    <div class="suggested-vehicles mt-5">
-                        <div class="alert alert-info">
-                            <i class="bi bi-info-circle me-2"></i>
-                            No vehicles found matching the criteria from this content. Please adjust the search
-                            above.
-                        </div>
+                </div>
+            @endunless
+
+            @if ($hasContentBookingLocations && isset($suggestedVehicles) && count($suggestedVehicles) > 0)
+                <div class="suggested-vehicles mt-5">
+                    <h4 class="mb-4">Recommended Vehicles for Your Journey</h4>
+                    <div class="row g-4">
+                        @foreach ($suggestedVehicles as $vehicleData)
+                            <div class="col-lg-3 col-md-4 col-sm-6">
+                                <x-vehicle-card :vehicle="$vehicleData" :pricing="$vehicleData['pricing_info'] ?? ($vehicleData['pricing'] ?? [])" :enhancedPricing="$vehicleData['enhanced_pricing'] ?? []"
+                                    :serviceFeatures="$vehicleData['service_features'] ?? []" :availability="[
+                                        'available' => $vehicleData['available_count'] ?? ($vehicleData['availability']['available'] ?? 0),
+                                        'total' => $vehicleData['total_count'] ?? ($vehicleData['availability']['total'] ?? 0),
+                                    ]" :searchId="session('current_search_id')" :showBookNow="true" :showViewDetails="false" />
+                            </div>
+                        @endforeach
                     </div>
-                @endif
-            </div>
+                </div>
+            @elseif($hasContentBookingLocations && isset($search) && !empty($search->from_date))
+                <div class="suggested-vehicles mt-5">
+                    <div class="alert alert-info"><i class="bi bi-info-circle me-2"></i>No vehicles found matching the criteria from this content. Please adjust the search above.</div>
+                </div>
+            @endif
         </div>
     </section>
 

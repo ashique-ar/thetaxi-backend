@@ -146,7 +146,7 @@
                 </div>
             `);
             $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 4000);
+            setTimeout(() => alert.remove(), 4000);
         };
 
         /**
@@ -172,7 +172,7 @@
                 </div>
             `);
             $('body').append(alert);
-            setTimeout(() => alert.alert('close'), 5000);
+            setTimeout(() => alert.remove(), 5000);
         };
 
         /**

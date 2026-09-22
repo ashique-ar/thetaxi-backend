@@ -33,6 +33,11 @@ class Document extends BaseModel
         'verified_by',
         'created_user_id',
         'updated_user_id',
+        'reminder_days',
+        'last_reminded_on',
+        'replaces_document_id',
+        'onboarding_application_id',
+        'metadata',
     ];
 
     protected $casts = [
@@ -42,6 +47,8 @@ class Document extends BaseModel
         'version' => 'integer',
         'retention_until' => 'datetime',
         'legal_hold' => 'boolean',
+        'last_reminded_on' => 'date',
+        'metadata' => 'array',
     ];
 
     public function documentable(): MorphTo
@@ -57,7 +64,7 @@ class Document extends BaseModel
     protected static function booted(): void
     {
         static::forceDeleted(function (Document $document): void {
-            Storage::disk($document->disk)->delete($document->path);
+            if ($document->path) Storage::disk($document->disk)->delete($document->path);
         });
     }
 }

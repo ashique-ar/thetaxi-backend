@@ -86,6 +86,8 @@ it('prefers the active replacement assignment and narrowly correlates session-ga
     expect($service)
         ->toContain("CASE WHEN status = 'active'")
         ->toContain("trip_phase NOT IN ('completed', 'declined')")
+        ->toContain("withCount('routePoints')")
+        ->toContain("orderByDesc('route_points_count')")
         ->toContain("where('assignment_id', \$assignment->id)")
         ->toContain("whereNull('assignment_id')")
         ->toContain("whereIn('session_id', \$sessionIds)")
@@ -176,7 +178,8 @@ it('segments replay chronologically at lifecycle and telemetry gaps with page-sc
 
     expect($service)
         ->toContain('private function segmentRoutePoints(')
-        ->toContain("'gap_threshold_seconds' => 300")
+        ->toContain("'gap_threshold_seconds' => RouteEvidenceService::GAP_THRESHOLD_SECONDS")
+        ->toContain("'implausible_movement'")
         ->toContain("'invalid_coordinate_count'")
         ->toContain("'inaccurate_point_count'")
         ->toContain("'implausible_speed_count'")

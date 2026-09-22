@@ -2,6 +2,10 @@
 @push('meta')
 @include('partials.seo')
 @endpush
+@push('styles')
+<link rel="stylesheet" href="{{ assetVersion('assets/css/homepage-vehicle-sections.css') }}">
+<link rel="stylesheet" href="{{ assetVersion('assets/css/homepage-cms-sections.css') }}">
+@endpush
 
 @section('content')
 <!-- Popup Page Identifier for Popup Display Engine -->
@@ -16,15 +20,16 @@
 @elseif (is_theme('theme-04'))
     @include('partials.themes.theme-04.booking-form')
 @else
-    <div class="home-booking-form-section mb-5">
+    <div class="home-booking-form-section mb-5" id="home-booking">
         <div class="container">
             @include('components.booking-form')
         </div>
     </div>
 @endif
 <!-- End Booking Form Section -->
+@php($managedCmsLayouts = collect($cmsSections['sections'] ?? [])->pluck('layout'))
 
-@if (isset($partners) && $partners->count() > 0)
+@if (isset($partners) && $partners->count() > 0 && !$managedCmsLayouts->contains('logos'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.partner-register')
 @elseif (is_theme('theme-04'))
@@ -55,100 +60,13 @@
 @endif
 <!-- home4 partner area Section End-->
 
-<!-- Featured Vehicles Section Start -->
-@if (isset($featuredVehicles) && count($featuredVehicles['data']) > 0)
-@if (is_theme('theme-03'))
-    @include('partials.themes.theme-03.featured-vehicles')
-@elseif (is_theme('theme-04'))
-    @include('partials.themes.theme-04.featured-vehicles')
+@if ($cmsSections['managed'])
+    @foreach ($cmsSections['sections'] as $section)
+        @if ($section['placement'] === 'before_fleet')
+            @include('partials.homepage-cms-section', ['section' => $section, 'sectionIndex' => 'before-' . $loop->index])
+        @endif
+    @endforeach
 @else
-<div class="featured-vehicles-section home4-offer-slider-section mb-100">
-    <div class="container">
-        <div class="row">
-            <div class="col-lg-12">
-                <div class="section-title text-center mb-60 wow animate fadeInDown" data-wow-delay="200ms"
-                    data-wow-duration="1500ms">
-                    <h2>{{ $settings['featured_vehicles_title'] ?? 'Featured Rental Vehicles' }}</h2>
-                    <p>{{ $settings['featured_vehicles_description'] ?? 'Choose from our premium selection of vehicles for your rental needs. All vehicles come with flexible rental options and competitive pricing.' }}
-                    </p>
-                </div>
-            </div>
-        </div>
-
-        <!-- Vehicle Carousel -->
-        <div class="row mb-40">
-            <div class="col-lg-12">
-                <div class="swiper featured-vehicles-slider">
-                    <div class="swiper-wrapper">
-                        @php
-                        $chunks = array_chunk($featuredVehicles['data'], 4); // 4 vehicles per slide
-                        @endphp
-
-                        @foreach ($chunks as $vehicleChunk)
-                        <div class="swiper-slide">
-                            <div class="row g-4">
-                                @foreach ($vehicleChunk as $vehicle)
-                                @php
-                                $pricing = $vehicle['pricing_info'] ?? [
-                                'base_amount' => 0,
-                                'currency' => 'LKR',
-                                ];
-                                $enhancedPricing = $vehicle['enhanced_pricing'] ?? [];
-                                $serviceFeatures = $vehicle['service_features'] ?? [];
-                                $availability = [
-                                'available' => $vehicle['available_count'] ?? 0,
-                                'total' => $vehicle['total_count'] ?? 0,
-                                ];
-                                $isRecommended = $vehicle['recommended'] ?? false;
-                                @endphp
-
-                                <div class="col-lg-3 col-md-6 col-sm-6">
-                                    <x-vehicle-card :vehicle="$vehicle" :pricing="$pricing" :enhancedPricing="$enhancedPricing"
-                                        :serviceFeatures="$serviceFeatures" :availability="$availability" :searchId="$featuredVehicleSearch['id']"
-                                        :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
-                                </div>
-                                @endforeach
-                            </div>
-                        </div>
-                        @endforeach
-                    </div>
-
-                    <!-- Navigation arrows -->
-                    <div class="featured-vehicles-prev featured-vehicles-nav">
-                        <i class="bi bi-chevron-left"></i>
-                    </div>
-                    <div class="featured-vehicles-next featured-vehicles-nav">
-                        <i class="bi bi-chevron-right"></i>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Navigation and Pagination -->
-        <div class="row">
-            <div class="col-lg-12 d-flex justify-content-center">
-                <div class="featured-vehicles-pagination swiper-pagination2 paginations"></div>
-            </div>
-        </div>
-
-        <!-- View All Button -->
-        <div class="text-center mt-40 wow animate fadeInUp" data-wow-delay="400ms" data-wow-duration="1500ms">
-            <a href="{{ route('cms.index', ['contentType' => 'ride_now']) }}"
-                class="btn btn-primary featured-vehicles-btn">
-                <i class="bi bi-car-front-fill me-2"></i>
-                {{ $settings['vehicles_view_all_text'] ?? 'View All Rental Vehicles' }}
-                <svg width="10" height="10" viewBox="0 0 10 10" xmlns="http://www.w3.org/2000/svg">
-                    <path d="M1 9L9 1M9 1C7.22222 1.33333 3.33333 2 1 1M9 1C8.66667 2.66667 8 6.33333 9 9"
-                        stroke-width="1.5" stroke-linecap="round"></path>
-                </svg>
-            </a>
-        </div>
-    </div>
-</div>
-@endif
-@endif
-<!-- Featured Vehicles Section End -->
-
 @if ($inspirations->count() > 0)
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.services')
@@ -186,6 +104,36 @@
     :showDuration="true" :showRating="true" viewAllText="View All Activities" sectionId="things-to-do-section"
     :limit="6" />
 @endif
+@endif
+
+@endif
+
+@foreach ($vehicleSections as $section)
+    @include('partials.homepage-vehicle-section', ['section' => $section, 'sectionIndex' => $loop->index])
+@endforeach
+@if ($cmsSections['managed'])
+    @foreach ($cmsSections['sections'] as $section)
+        @if ($section['placement'] === 'after_fleet')
+            @include('partials.homepage-cms-section', ['section' => $section, 'sectionIndex' => 'after-' . $loop->index])
+        @endif
+    @endforeach
+@endif
+@if (count($vehicleSections))
+<script>
+document.addEventListener('click', function (event) {
+    const button = event.target.closest('[data-vehicle-category]');
+    if (!button) return;
+    const section = button.closest('[data-vehicle-section]');
+    section.querySelectorAll('[data-vehicle-category]').forEach(function (filter) {
+        const active = filter === button;
+        filter.classList.toggle('is-active', active);
+        filter.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+    section.querySelectorAll('[data-category]').forEach(function (card) {
+        card.hidden = !!button.dataset.vehicleCategory && card.dataset.category !== button.dataset.vehicleCategory;
+    });
+});
+</script>
 @endif
 
 @if ($settings['offer_slider_img_1'])
@@ -227,7 +175,7 @@
 
 <!-- home4 Offer Slider Section End-->
 
-@if ($settings['why_video_image'])
+@if ($settings['why_video_image'] && !$managedCmsLayouts->contains('features'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.why-choose-us')
 @elseif (is_theme('theme-04'))
@@ -345,7 +293,7 @@
 @endif
 @endif
 <!-- home4 Testimonial Section Start-->
-@if ($testimonials && $testimonials->count() > 0)
+@if ($testimonials && $testimonials->count() > 0 && !$managedCmsLayouts->contains('testimonials'))
 @if (is_theme('theme-03'))
     @include('partials.themes.theme-03.testimonials')
 @elseif (is_theme('theme-04'))
@@ -894,6 +842,7 @@
 <script>
     // Cart management for featured vehicles
     let cart = [];
+    let cartCurrencySymbol = '{{ getCurrencySymbol() }}';
 
     $(document).ready(function() {
         // Load existing cart
@@ -1169,6 +1118,7 @@
             success: function(response) {
                 if (response.success) {
                     cart = response.items || [];
+                    cartCurrencySymbol = response.currency_symbol || (response.totals && response.totals.currency_symbol) || '{{ getCurrencySymbol() }}';
                     updateCartDisplay();
                     if (cart.length > 0) {
                         showCartFloat();
@@ -1243,6 +1193,7 @@
         }
 
         $('#cartFloatItems').empty();
+        $('#cartSummaryFloat .currency-symbol').text(cartCurrencySymbol);
 
         // Helper function to get pricing label based on service type
         function getPricingLabel(serviceType) {
@@ -1284,7 +1235,7 @@
             const pricingLabel = getPricingLabel(serviceType);
             const durationLabel = getDurationLabel(serviceType, days);
             const fixedRate = isFixedRate(serviceType);
-            const currencySymbol = item.currency_symbol || '{{ getCurrencySymbol() }}';
+            const currencySymbol = cartCurrencySymbol;
 
             // Build pricing display based on service type
             let pricingHtml = '';

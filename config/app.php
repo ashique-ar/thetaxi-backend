@@ -2,6 +2,10 @@
 
 return [
 
+    'project_slug' => env('PROJECT_SLUG', 'thetaxi'),
+    'project_display_name' => env('PROJECT_DISPLAY_NAME', 'TheTaxi'),
+    'version' => env('APP_VERSION'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Name
@@ -137,4 +141,3 @@ return [
     'seo_indexable' => env('SEO_INDEXABLE', true),
 
 ];
-

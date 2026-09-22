@@ -24,6 +24,10 @@ use App\Services\StaffAccessService;
 
 class DocumentController extends Controller
 {
+    private const RENEWABLE_TYPES = [
+        'driver_license', 'driver_license_front', 'driver_license_back',
+        'vehicle_insurance', 'vehicle_revenue_license', 'vehicle_registration',
+    ];
     private const OWNER_TYPES = [
         'agreement' => Agreement::class,
         'customer' => Customer::class,
@@ -303,12 +307,17 @@ class DocumentController extends Controller
             );
         }
         $path = $file->store("documents/{$ownerType}/{$owner->getKey()}", $disk);
+        $previous = in_array($data['document_type'], self::RENEWABLE_TYPES, true)
+            ? $owner->documents()->where('document_type', $data['document_type'])
+                ->whereIn('status', ['pending', 'verified', 'active'])->latest()->first()
+            : null;
 
+        $replacement = $superseded ?? $previous;
         try {
-            $document = DB::transaction(function () use ($request, $owner, $ownerType, $data, $checksum, $file, $disk, $path, $superseded): Document {
+            $document = DB::transaction(function () use ($request, $owner, $ownerType, $data, $checksum, $file, $disk, $path, $replacement): Document {
                 $lockedOwner = $owner::query()->lockForUpdate()->findOrFail($owner->getKey());
                 $document = $lockedOwner->documents()->create([
-                    'employment_spell_id' => $data['employment_spell_id'] ?? $superseded?->employment_spell_id,
+                    'employment_spell_id' => $data['employment_spell_id'] ?? $replacement?->employment_spell_id,
                     'document_type' => $data['document_type'],
                     'document_number' => $data['document_number'] ?? (string) Str::uuid(),
                     'upload_idempotency_key' => $data['idempotency_key'],
@@ -321,11 +330,13 @@ class DocumentController extends Controller
                     'file_type' => $file->getMimeType(),
                     'status' => 'pending',
                     'classification' => $ownerType === 'staff' ? 'hr_confidential' : 'operational',
-                    'version' => $superseded ? $superseded->version + 1 : 1,
-                    'supersedes_id' => $superseded?->id,
+                    'version' => $replacement ? $replacement->version + 1 : 1,
+                    'supersedes_id' => $replacement?->id,
+                    'replaces_document_id' => $replacement?->id,
                     'retention_until' => $data['retention_until'] ?? null,
                     'created_user_id' => $request->user()?->id,
                 ]);
+                $replacement?->update(['status' => 'superseded']);
                 $this->audit($request, $document, 'document_uploaded');
 
                 return $document;
@@ -349,7 +360,6 @@ class DocumentController extends Controller
             Storage::disk($disk)->delete($path);
             throw $exception;
         }
-
         return response()->json([
             'status' => 'success',
             'message' => 'Document uploaded successfully',
@@ -482,6 +492,8 @@ class DocumentController extends Controller
             'file_size' => $document->file_size,
             'file_type' => $document->file_type,
             'status' => $document->status,
+            'replaces_document_id' => $document->replaces_document_id,
+            'metadata' => $document->metadata,
             'verification_notes' => $document->verification_notes,
             'classification' => $document->classification,
             'version' => $document->version,

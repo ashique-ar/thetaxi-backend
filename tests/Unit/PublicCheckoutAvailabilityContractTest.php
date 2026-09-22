@@ -20,6 +20,12 @@ class PublicCheckoutAvailabilityContractTest extends TestCase
                 'service_type_data' => ['id' => 'service-a'],
                 'pickup_date' => '2026-08-01',
                 'pickup_time' => '09:00',
+                'pickup_location' => 'Colombo',
+                'pickup_lat' => 6.9271,
+                'pickup_lng' => 79.8612,
+                'dropoff_location' => 'Kandy',
+                'dropoff_lat' => 7.2906,
+                'dropoff_lng' => 80.6337,
             ],
             'cart-b' => [
                 'vehicle_group_id' => 'group-b',
@@ -33,6 +39,8 @@ class PublicCheckoutAvailabilityContractTest extends TestCase
         $this->assertSame([], $state['failures']);
         $this->assertSame('service-a', $service->lookups[0]['service_type']);
         $this->assertSame('2026-08-01', $service->lookups[0]['to_date']);
+        $this->assertSame(['address' => 'Colombo', 'latitude' => 6.9271, 'longitude' => 79.8612], $service->lookups[0]['pickup_location']);
+        $this->assertSame(['address' => 'Kandy', 'latitude' => 7.2906, 'longitude' => 80.6337], $service->lookups[0]['dropoff_location']);
         $this->assertSame('service-b', $service->lookups[1]['service_type']);
     }
 

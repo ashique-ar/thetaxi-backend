@@ -531,7 +531,6 @@ class AvailabilityEnforcementService
     {
         $email = WebsiteSetting::getValue('maintenance_team_email');
         if (empty($email)) {
-            Log::debug('Maintenance team email not configured — skipping notification');
             return;
         }
 

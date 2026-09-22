@@ -63,10 +63,6 @@ class NotificationTriggerService
         SendDriverAssignmentFallbackSmsJob::dispatch($tracking->id)
             ->delay($tracking->fallback_due_at);
 
-        Log::info('Triggered assignment notification (instant + queued fallback)', [
-            'assignment_id' => $assignment->id,
-            'notification_id' => $tracking->id,
-        ]);
 
         return (string) $tracking->id;
     }
@@ -115,13 +111,20 @@ class NotificationTriggerService
         }
 
         if (!empty($channels)) {
-            $this->recordDelivery($assignment, implode('+', array_unique($channels)), Carbon::now());
+            $channel = implode('+', array_unique($channels));
+            $this->recordDelivery($assignment, $channel, Carbon::now());
             if (!empty($payload['notification_id'])) {
                 DriverAssignmentNotification::query()->whereKey($payload['notification_id'])->update([
                     'delivered_at' => now(),
-                    'delivery_channel' => implode('+', array_unique($channels)),
+                    'delivery_channel' => $channel,
                 ]);
             }
+            Log::info('Driver assignment notification delivered', [
+                'assignment_id' => $assignment->id,
+                'driver_id' => $assignment->driver_id,
+                'channel' => $channel,
+                'attempt' => $attempt,
+            ]);
             return;
         }
 
@@ -227,7 +230,6 @@ class NotificationTriggerService
 
             broadcast(new AssignmentCreated($channelName, $payload));
 
-            Log::info('WebSocket notification sent to driver ' . $driver->id);
 
             return 'websocket';
         } catch (\Exception $e) {
@@ -284,10 +286,6 @@ class NotificationTriggerService
             ->onQueue(config('services.firebase.queue', 'driver-notifications'))
             ->delay(now()->addSeconds(SendAssignmentNotificationJob::RETRY_DELAY_SECONDS));
 
-        Log::info('Queued notification retry for assignment ' . $assignment->id, [
-            'attempt' => $attempt,
-            'delay_seconds' => SendAssignmentNotificationJob::RETRY_DELAY_SECONDS,
-        ]);
     }
 
     /**
@@ -308,12 +306,12 @@ class NotificationTriggerService
                 'trigger_delivery_channel' => $channel,
             ]);
 
-            Log::info('Recorded notification delivery for assignment ' . $assignment->id, [
-                'channel' => $channel,
-                'dispatch_id' => $dispatch->id,
-            ]);
         } else {
-            Log::info('No BookingDispatch found for booking ' . $assignment->booking_id . ', skipping delivery record');
+            Log::warning('Driver notification delivered without a booking dispatch record', [
+                'assignment_id' => $assignment->id,
+                'booking_id' => $assignment->booking_id,
+                'channel' => $channel,
+            ]);
         }
     }
 
@@ -507,11 +505,6 @@ class NotificationTriggerService
             $driver->loadMissing('activeSession');
 
             if (!$driver->is_online || !$driver->activeSession) {
-                Log::info('Skipping push delivery because driver has no active mobile session', [
-                    'driver_id' => $driver->id,
-                    'is_online' => $driver->is_online,
-                    'current_device_uuid' => $driver->current_device_uuid,
-                ]);
 
                 return [
                     'success' => false,
@@ -550,11 +543,6 @@ class NotificationTriggerService
 
             $eligibleDevices = $devices->count();
             if ($eligibleDevices === 0) {
-                Log::info('No push-capable device for the current active driver session', [
-                    'driver_id' => $driver->id,
-                    'target_device_uuid' => $targetDeviceUuid,
-                    'session_device_uuid' => $sessionDeviceUuid,
-                ]);
                 return [
                     'success' => false,
                     'eligible_devices' => 0,
@@ -567,11 +555,6 @@ class NotificationTriggerService
 
             foreach ($devices as $device) {
                 if (!in_array($device->push_provider, [null, '', 'fcm'], true)) {
-                    Log::info('Skipping non-FCM push token', [
-                        'driver_id' => $driver->id,
-                        'device_uuid' => $device->device_uuid,
-                        'push_provider' => $device->push_provider,
-                    ]);
                     continue;
                 }
 

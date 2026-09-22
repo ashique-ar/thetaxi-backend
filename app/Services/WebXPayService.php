@@ -145,12 +145,6 @@ class WebXPayService
                 'amount'       => $amountFormatted,
             ]);
 
-            Log::debug('WebXPay customer data', $customerData);
-            Log::debug('WebXPay custom fields', [
-                'custom_fields_plaintext' => $customFields,
-                'custom_fields_encrypted' => $encryptedCustomFields,
-                'encryptedPayment' => $encryptedPayment
-            ]);
             // Step 5: Return all data for form submission
             return [
                 'success' => true,

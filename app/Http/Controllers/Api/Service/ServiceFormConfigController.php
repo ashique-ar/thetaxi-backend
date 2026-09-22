@@ -7,6 +7,7 @@ use App\Models\Service\ServiceType;
 use App\Models\Airport;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Validation\ValidationException;
 use App\Services\Pricing\PricingContextPolicyService;
 
 class ServiceFormConfigController extends Controller
@@ -61,7 +62,6 @@ class ServiceFormConfigController extends Controller
     public function getFormConfig(string $serviceTypeId): JsonResponse
     {
         try {
-            \Log::info('Loading form config for service type: ' . $serviceTypeId);
             
             $serviceType = ServiceType::find($serviceTypeId);
 
@@ -79,9 +79,7 @@ class ServiceFormConfigController extends Controller
                     $query->where('is_active', true)->orderBy('sort_order');
                 }]);
 
-            \Log::info('Building form config for: ' . $serviceType->name);
             $config = $this->buildFormConfig($serviceType);
-            \Log::info('Form config built successfully');
 
             return response()->json([
                 'status' => 'success',
@@ -146,6 +144,8 @@ class ServiceFormConfigController extends Controller
             is_array($storedConfig['field_mappings'] ?? null) ? $storedConfig['field_mappings'] : [],
             $serviceType
         );
+        $packages = $this->getPackagesConfig($serviceType);
+        $fields = self::withPackageFieldOptions($fields, $packages);
 
         $config = [
             'service_type' => [
@@ -166,7 +166,7 @@ class ServiceFormConfigController extends Controller
             ],
             'fields' => $fields,
             'field_mappings' => $resolvedFieldMappings,
-            'packages' => $this->getPackagesConfig($serviceType),
+            'packages' => $packages,
             'location_restrictions' => $this->getLocationRestrictions($serviceType),
             'validation_rules' => $this->getValidationRules($serviceType),
         ];
@@ -182,6 +182,25 @@ class ServiceFormConfigController extends Controller
         return $config;
     }
 
+    private static function withPackageFieldOptions(array $fields, array $packages): array
+    {
+        $options = array_map(fn (array $package) => [
+            'id' => $package['id'],
+            'value' => $package['id'],
+            'label' => $package['name'],
+            'name' => $package['name'],
+            'description' => $package['description'] ?? null,
+        ], $packages);
+
+        foreach (['package_id', 'service_package_id'] as $field) {
+            if (isset($fields[$field])) {
+                $fields[$field]['options'] = $options;
+            }
+        }
+
+        return $fields;
+    }
+
     private function resolveTripMode(ServiceType $serviceType, array $storedConfig, array $fields): string
     {
         $mode = $storedConfig['trip_mode']
@@ -193,8 +212,8 @@ class ServiceFormConfigController extends Controller
             return trim($mode);
         }
 
-        $hasRequiredPackage = isset($fields['service_package_id'])
-            && (bool) ($fields['service_package_id']['required'] ?? false);
+        $hasRequiredPackage = collect(['package_id', 'service_package_id'])
+            ->contains(fn (string $field) => (bool) ($fields[$field]['required'] ?? false));
         $hasRequiredPickup = isset($fields['pickup_location'])
             && (bool) ($fields['pickup_location']['required'] ?? false);
         $dropoffMissingOrOptional = !isset($fields['dropoff_location'])
@@ -830,6 +849,7 @@ class ServiceFormConfigController extends Controller
                 'form_config' => 'nullable|array',
                 'form_config.*.type' => 'sometimes|required|string',
                 'form_config.*.label' => 'sometimes|required|string',
+                'form_config.*.custom_label' => 'nullable|string|max:255',
                 'form_config.*.required' => 'boolean',
                 'form_config.*.order' => 'integer',
                 'form_config.*.width' => 'nullable|in:full,half,third,auto',
@@ -857,6 +877,10 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options' => 'nullable|array',
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
+                'form_config.*.options.*.action' => 'nullable|in:fixed_location,google_search',
+                'form_config.*.options.*.address' => 'nullable|string|max:500',
+                'form_config.*.options.*.latitude' => 'nullable|numeric|between:-90,90',
+                'form_config.*.options.*.longitude' => 'nullable|numeric|between:-180,180',
                 'field_mappings' => 'nullable|array',
                 'field_mappings.dates' => 'nullable|array',
                 'field_mappings.dates.from_date' => 'nullable|string',
@@ -872,6 +896,19 @@ class ServiceFormConfigController extends Controller
             $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
 
             $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
+
+            foreach ($formConfig as $fieldName => $fieldConfig) {
+                foreach ($fieldConfig['options'] ?? [] as $optionIndex => $option) {
+                    if (($option['action'] ?? null) !== 'fixed_location') {
+                        continue;
+                    }
+                    if (empty($option['address']) || !isset($option['latitude'], $option['longitude'])) {
+                        throw ValidationException::withMessages([
+                            "form_config.{$fieldName}.options.{$optionIndex}.address" => 'Select this fixed location from Google search.',
+                        ]);
+                    }
+                }
+            }
 
             // Clean up user-entered mapping values before saving.
             foreach ($formConfig as $fieldName => $fieldConfig) {

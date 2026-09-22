@@ -22,6 +22,16 @@ it('loads the selected vehicle and supports single-ended assignment windows', fu
         ->toContain("\$params['to_time'] ?? \$fromTime");
 });
 
+it('checks assignment overlap by date and time instead of treating the whole day as occupied', function () {
+    $service = file_get_contents(app_path('Services/BookingFlowService.php'));
+
+    expect(substr_count($service, 'whereBookingItemOverlaps('))
+        ->toBe(3)
+        ->and($service)
+        ->toContain("where('booking_items.from_time', '<=', \$toTime)")
+        ->toContain("where('booking_items.to_time', '>=', \$fromTime)");
+});
+
 it('allows both booking creators and editors to recheck assignments', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 

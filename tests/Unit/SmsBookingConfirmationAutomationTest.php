@@ -20,6 +20,20 @@ use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
 
+it('fills SMS identity tokens from business settings', function (): void {
+    $websiteSettings = Mockery::mock(\App\Services\WebsiteSettingsService::class);
+    $websiteSettings->shouldReceive('get')->with('company_name', config('app.name'))->andReturn('Casons');
+    $websiteSettings->shouldReceive('get')->with('company_phone', '')->andReturn('+94 11 123 4567');
+    $websiteSettings->shouldReceive('get')->with('company_website', config('app.url'))->andReturn('https://example.com');
+    app()->instance(\App\Services\WebsiteSettingsService::class, $websiteSettings);
+
+    $service = new SmsAutomationService(Mockery::mock(SmsSettingsService::class), Mockery::mock(SmsService::class));
+    $render = new ReflectionMethod($service, 'render');
+
+    expect($render->invoke($service, '{company_name}: {company_phone} {company_website}', []))
+        ->toBe('Casons: +94 11 123 4567 https://example.com');
+});
+
 it('previews the admin summary with example data without queueing an SMS', function (): void {
     $settings = Mockery::mock(SmsSettingsService::class);
     $sms = Mockery::mock(SmsService::class);
@@ -170,6 +184,29 @@ it('honours the internal confirmation choice without suppressing configured admi
     expect($payload['event_key'])->toBe('admin.booking_confirmed_summary')
         ->and($payload['recipient'])->toBe('94771234567')
         ->and($payload['message'])->toBe('ADMIN BK-CHOICE');
+});
+
+it('keeps customer confirmation SMS off after an unticked booking is confirmed through another path', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'enabled' => true,
+        'booking_confirmation_enabled' => true,
+        'admin_booking_summary_enabled' => false,
+        'booking_confirmation_template' => 'Confirmed {booking_number}',
+    ]);
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $user = new User();
+    $user->setRawAttributes(['phone' => '0770000000']);
+    $customer = new Customer();
+    $customer->setRelation('user', $user);
+    $booking = new Booking();
+    $booking->setRawAttributes(['id' => 'booking-unticked', 'booking_number' => 'BK-UNTICKED', 'notification_sms' => false]);
+    $booking->setRelation('customer', $customer);
+    $booking->setRelation('bookingItems', new Collection());
+
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking);
 });
 
 it('renders booking schedule times from the dedicated time columns', function (): void {
@@ -399,11 +436,14 @@ it('records skipped automation decisions for the communication timeline', functi
 it('keeps non-queued provider execution outside the lifecycle transaction', function (): void {
     $source = file_get_contents(app_path('Services/Sms/SmsService.php'));
     $migration = file_get_contents(database_path('migrations/2026_08_11_000002_create_booking_activities_table.php'));
+    $auditMigration = file_get_contents(database_path('migrations/2026_09_12_000004_add_audit_fields_to_booking_activities_table.php'));
 
     expect($source)->toContain('DB::afterCommit(function () use ($message)')
         ->and($migration)->toContain("Schema::create('booking_activities'")
         ->and($migration)->toContain("\$table->string('result_status')->index()")
-        ->and($migration)->toContain("\$table->string('idempotency_key')->unique()");
+        ->and($migration)->toContain("\$table->string('idempotency_key')->unique()")
+        ->and($auditMigration)->toContain("\$table->uuid('created_user_id')->nullable()->index()")
+        ->and($auditMigration)->toContain("\$table->uuid('updated_user_id')->nullable()->index()");
 });
 
 it('records trip start without SMS and queues optional aggregate completion once', function (): void {

@@ -30,9 +30,6 @@ class CustomerNotificationService
         $customer = $booking->customer;
 
         if (!$customer || !$customer->user) {
-            Log::info('Skipping rider driver-assigned notification: booking has no linked customer user', [
-                'booking_id' => $booking->id,
-            ]);
             return;
         }
 
@@ -110,7 +107,6 @@ class CustomerNotificationService
 
             $eligibleDevices = $devices->count();
             if ($eligibleDevices === 0) {
-                Log::info('No push-capable device for customer', ['customer_id' => $customerId]);
                 return ['success' => false, 'eligible_devices' => 0, 'delivered_devices' => 0];
             }
 

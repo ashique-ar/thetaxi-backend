@@ -932,17 +932,10 @@ class BookingLifecycleService
                             if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
                                 $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
                             }
-                            $triggered = $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
+                            $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
                                 $vehicleForMaintenance,
                                 $mileageIn
                             );
-                            if (!empty($triggered)) {
-                                Log::info('Post-trip maintenance triggered', [
-                                    'vehicle_id' => $vehicleId,
-                                    'mileage'    => $mileageIn,
-                                    'triggered'  => array_column($triggered, 'schedule_id'),
-                                ]);
-                            }
                         }
                     } catch (\Throwable $e) {
                         Log::error('Post-trip maintenance check failed', [
@@ -1544,10 +1537,6 @@ class BookingLifecycleService
 
             // Generate and email invoice on completion
             if ((bool) ($completionData['suppress_completion_emails'] ?? false)) {
-                Log::info('Completion invoice email suppressed', [
-                    'booking_id' => $bookingId,
-                    'source' => $completionData['activity_source'] ?? 'booking_completion',
-                ]);
             } elseif ($this->isPricingPendingReview($completionData['final_pricing'] ?? null)) {
                 Log::warning('Invoice deferred: final pricing pending manual review', [
                     'booking_id' => $bookingId,
@@ -2056,6 +2045,20 @@ class BookingLifecycleService
     // HELPER METHODS
     // ========================
 
+    private function finalPricingDriverAssignment(Booking $booking, BookingItem $item): ?DriverAssignment
+    {
+        return DriverAssignment::query()
+            ->where('booking_id', $booking->id)
+            ->where('booking_item_id', $item->id)
+            // PostgreSQL sorts nulls first for DESC. Prefer completed telemetry,
+            // then the started trip over a duplicate closed during cleanup.
+            ->orderByRaw('CASE WHEN trip_completed_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('trip_completed_at')
+            ->orderByRaw('CASE WHEN trip_started_at IS NULL THEN 1 ELSE 0 END')
+            ->orderByDesc('updated_at')
+            ->first();
+    }
+
     /**
      * Re-run the configured pricing graph with measured operational data before
      * an invoice can be generated. Driver mobile telemetry wins for chauffeur
@@ -2086,15 +2089,7 @@ class BookingLifecycleService
             ->firstOrFail();
 
         $isSelfDriven = (bool) ($context['is_self_driven'] ?? $bookingItem->is_self_driven);
-        $assignment = null;
-        if (!$isSelfDriven) {
-            $assignment = DriverAssignment::query()
-                ->where('booking_id', $booking->id)
-                ->when($bookingItem->id, fn ($query) => $query->where('booking_item_id', $bookingItem->id))
-                ->orderByDesc('trip_completed_at')
-                ->orderByDesc('updated_at')
-                ->first();
-        }
+        $assignment = $isSelfDriven ? null : $this->finalPricingDriverAssignment($booking, $bookingItem);
 
         $hasDriverTelemetry = $assignment && (
             $assignment->trip_started_at
@@ -2305,6 +2300,8 @@ class BookingLifecycleService
         $extraMinutes = max(0, $durationMinutes - $includedMinutes);
 
         $packageId = $metadata['service_package_id'] ?? $metadata['package_id'] ?? null;
+        $slabId = $metadata['slab_definition_id']
+            ?? data_get($bookingItem->pricing_breakdown, 'calculation_metadata.runtime_context.slab_definition_id');
         $additionalStops = $this->resolveBookedAdditionalStops($metadata);
         $packageIncludedKm = $this->resolvePackageIncludedKilometres(
             $metadata,
@@ -2348,6 +2345,7 @@ class BookingLifecycleService
             'pricing_context' => $bookingPricingContext,
             'service_type_context' => $bookingPricingContext,
             'package_id' => $packageId,
+            'slab_definition_id' => $slabId,
             'customer_id' => $booking->customer_id,
             'from_date' => $bookingItem->from_date ?? $booking->from_date,
             'to_date' => $bookingItem->to_date ?? $booking->to_date,
@@ -2516,7 +2514,22 @@ class BookingLifecycleService
                     'candidate_failures' => $candidateFailures,
                 ]);
 
-                $this->alertOpsPricingResolutionFailed($booking, $bookingItem, $audit);
+                AuditLog::create([
+                    'user_id' => Auth::id(),
+                    'action' => 'final_pricing_pending_manual_review',
+                    'entity' => 'BookingItem',
+                    'entity_id' => $bookingItem->id,
+                    'timestamp' => Carbon::now('UTC'),
+                    'details' => [
+                        'booking_id' => $booking->id,
+                        'booking_number' => $booking->booking_number,
+                        'booking_item_id' => $bookingItem->id,
+                        'service_type_id' => $bookingItem->service_type_id,
+                        'vehicle_group_id' => $bookingItem->vehicle_group_id,
+                        'reason' => $audit['reason'],
+                        'candidate_failures' => $candidateFailures,
+                    ],
+                ]);
 
                 return $audit;
             }
@@ -2589,6 +2602,11 @@ class BookingLifecycleService
             $finalCalculationCurrencyAmount * $currencyContext['exchange_rate'],
             2
         );
+        if ($bookingItem->price_override_amount !== null) {
+            $audit['calculated_completion_price'] = $finalBase;
+            $finalBase = (float) $bookingItem->price_override_amount;
+            $audit['manual_price_preserved'] = true;
+        }
         $audit += [
             'calculated_base' => $calculatedBase,
             'calculated_base_converted' => round(
@@ -2735,40 +2753,6 @@ class BookingLifecycleService
             ->contains(fn (BookingItem $item) => $this->isPricingPendingReview(
                 data_get($item->metadata, 'final_pricing_audit')
             ));
-    }
-
-    /**
-     * Best-effort ops notification the moment pricing resolution fails.
-     * Failure to send must never affect trip/booking completion.
-     */
-    private function alertOpsPricingResolutionFailed(Booking $booking, BookingItem $bookingItem, array $audit): void
-    {
-        $opsEmail = $this->websiteSettingsService->get(
-            'pricing_alert_email',
-            $this->websiteSettingsService->get('company_email')
-        );
-        if (empty($opsEmail)) {
-            return;
-        }
-
-        try {
-            \Illuminate\Support\Facades\Mail::to($opsEmail)->queue(new \App\Mail\PricingResolutionFailedMail([
-                'booking_id' => (string) $booking->id,
-                'booking_number' => $booking->booking_number,
-                'booking_item_id' => (string) $bookingItem->id,
-                'service_type_id' => (string) $bookingItem->service_type_id,
-                'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
-                'reason' => $audit['reason'] ?? 'no_matching_calculation_definition',
-                'candidate_failures' => $audit['candidate_failures'] ?? [],
-                'detected_at' => Carbon::now('UTC')->toIso8601String(),
-            ]));
-        } catch (\Throwable $e) {
-            Log::error('Failed to send ops alert for pending final pricing', [
-                'booking_id' => (string) $booking->id,
-                'booking_item_id' => (string) $bookingItem->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
     }
 
     /**
@@ -3195,9 +3179,6 @@ class BookingLifecycleService
     private function runAggregateCompletionEffects(Booking $booking, bool $suppressCompletionEmails = false): void
     {
         if ($suppressCompletionEmails) {
-            Log::info('Aggregate completion invoice email suppressed', [
-                'booking_id' => $booking->id,
-            ]);
         } elseif ($this->bookingHasPendingPricingReview($booking)) {
             Log::warning('Aggregate invoice deferred: one or more items have final pricing pending manual review', [
                 'booking_id' => $booking->id,
@@ -4574,12 +4555,6 @@ class BookingLifecycleService
             }
 
             // Log availability update
-            Log::info('Availability pool updated', [
-                'booking_id' => $bookingId,
-                'vehicle_id' => $vehicle->id,
-                'new_status' => $vehicle->availability_status,
-                'qc_passed' => !$qc->repair_required,
-            ]);
 
             return [
                 'vehicle_id' => $vehicle->id,

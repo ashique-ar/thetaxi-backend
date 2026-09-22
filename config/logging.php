@@ -2,6 +2,7 @@
 
 use Monolog\Handler\NullHandler;
 use Monolog\Handler\StreamHandler;
+use App\Logging\CreateLokiLogger;
 use Monolog\Handler\SyslogUdpHandler;
 use Monolog\Processor\PsrLogMessageProcessor;
 
@@ -54,18 +55,14 @@ return [
 
         'stack' => [
             'driver' => 'stack',
-            'channels' => explode(',', env('LOG_STACK', 'single')),
+            'channels' => explode(',', env('LOG_STACK', 'loki_backend')),
             'ignore_exceptions' => false,
-        ],
-
-        'sentry_logs' => [
-            'driver' => 'sentry_logs',
-            'level' => env('SENTRY_LOG_LEVEL', env('LOG_LEVEL', 'warning')),
         ],
 
         'single' => [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
+            'permission' => 0660,
             'level' => env('LOG_LEVEL', 'debug'),
             'replace_placeholders' => true,
         ],
@@ -73,6 +70,7 @@ return [
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),
+            'permission' => 0660,
             'level' => env('LOG_LEVEL', 'debug'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
@@ -81,9 +79,46 @@ return [
         'error_daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel-error.log'),
+            'permission' => 0660,
             'level' => env('LOG_ERROR_LEVEL', 'error'),
             'days' => env('LOG_DAILY_DAYS', 14),
             'replace_placeholders' => true,
+        ],
+
+        'loki_backend' => [
+            'driver' => 'custom',
+            'via' => CreateLokiLogger::class,
+            'level' => env('OBSERVABILITY_LOG_LEVEL', 'debug'),
+            'url' => env('LOKI_URL'),
+            'username' => env('LOKI_USERNAME'),
+            'password' => env('LOKI_PASSWORD'),
+            'timeout' => (float) env('LOKI_TIMEOUT_SECONDS', 1),
+            'labels' => [
+                'project' => env('PROJECT_SLUG'),
+                'component' => 'backend',
+                'environment' => env('APP_ENV', 'production'),
+                'server' => env('SERVER_ID'),
+                'service_name' => env('PROJECT_SLUG').'-backend',
+                'source' => 'laravel',
+            ],
+        ],
+
+        'loki_frontend' => [
+            'driver' => 'custom',
+            'via' => CreateLokiLogger::class,
+            'level' => env('OBSERVABILITY_LOG_LEVEL', 'info'),
+            'url' => env('LOKI_URL'),
+            'username' => env('LOKI_USERNAME'),
+            'password' => env('LOKI_PASSWORD'),
+            'timeout' => (float) env('LOKI_TIMEOUT_SECONDS', 1),
+            'labels' => [
+                'project' => env('PROJECT_SLUG'),
+                'component' => 'frontend',
+                'environment' => env('APP_ENV', 'production'),
+                'server' => env('SERVER_ID'),
+                'service_name' => env('PROJECT_SLUG').'-frontend',
+                'source' => 'angular-browser',
+            ],
         ],
 
         'slack' => [

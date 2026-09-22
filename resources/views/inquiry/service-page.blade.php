@@ -102,23 +102,6 @@ $type = $section['type'] ?? '';
         margin-bottom: 1rem;
     }
 
-    .inquiry-full-width textarea {
-        width: 100%;
-        padding: 15px;
-        border: 1px solid #ddd;
-        border-radius: 5px;
-        font-family: inherit;
-        font-size: 14px;
-        resize: vertical;
-        min-height: 120px;
-    }
-
-    .inquiry-full-width textarea:focus {
-        outline: none;
-        border-color: var(--primary-color1);
-        box-shadow: 0 0 0 2px rgba(191, 38, 41, 0.1);
-    }
-
     .inquiry-submit-btn {
         width: 100%;
         margin-top: 1rem;
@@ -182,39 +165,6 @@ $type = $section['type'] ?? '';
     .inquiry-form-copy {
         /* width: min(100%, 680px); */
         margin-top: -180px;
-    }
-
-    .inquiry-form-card .filter-input-wrap .filter-input.show {
-        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    }
-
-    .inquiry-form-card .inquiry-field-wrap {
-        min-width: 0;
-    }
-
-    .inquiry-form-card .single-search-box {
-        align-content: center;
-    }
-
-    .inquiry-form-card .single-search-box > input,
-    .inquiry-form-card .single-search-box > select,
-    .inquiry-form-card .single-search-box > textarea,
-    .inquiry-form-card .single-search-box > .nice-select,
-    .inquiry-form-card .single-search-box > .custom-select-dropdown,
-    .inquiry-form-card .single-search-box > .iti {
-        flex: 1 1 calc(100% - 30px);
-        width: auto;
-    }
-
-    .inquiry-form-card .inquiry-help-text,
-    .inquiry-form-card .inquiry-field-wrap > .text-danger {
-        padding: 0 12px;
-    }
-
-    .inquiry-form-card .inquiry-full-width .single-search-box textarea {
-        border: 0;
-        padding: 8px 0;
-        box-shadow: none;
     }
 
     .inquiry-form-intro {
@@ -373,6 +323,10 @@ $type = $section['type'] ?? '';
         .inquiry-form-card .inquiry-field-wrap > .text-danger {
             padding: 0 6px;
         }
+
+        .inquiry-form-card .inquiry-help-text {
+            min-height: 0;
+        }
     }
 
     @media (max-width: 576px) {
@@ -422,13 +376,6 @@ $type = $section['type'] ?? '';
                     btnText.textContent = originalText;
                 }
             }, 30000);
-        });
-
-        form.querySelectorAll('textarea').forEach((textarea) => {
-            textarea.addEventListener('input', function() {
-                this.style.height = 'auto';
-                this.style.height = this.scrollHeight + 'px';
-            });
         });
 
         const conditionalFields = Array.from(form.querySelectorAll('[data-conditional]'));

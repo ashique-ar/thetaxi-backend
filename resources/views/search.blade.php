@@ -11,8 +11,8 @@
     <!-- Breadcrumb section Start-->
     <div class="breadcrumb-section three"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container">
-            <div class="banner-content">
+        <div class="container banner-content">
+            <div class="">
                 <h1>Available Vehicles</h1>
                 <ul class="breadcrumb-list">
                     <li><a href="{{ route('home') }}">Home</a></li>
@@ -72,10 +72,17 @@
         }
     @endphp
 
+    <div class="search-page-layout">
     <!-- Booking Form Section -->
-    <div class="search-booking-section mb-5" id="searchBookingSection">
-        <div class="search-booking-panel" id="searchBookingFormPanel">
-            <div class="container">
+    <div class="search-booking-section mb-5 {{ is_theme('theme-04') ? 't4-booking-panel' : '' }}" id="searchBookingSection">
+        <div class="container">
+            <div class="search-booking-panel {{ is_theme('theme-04') ? 't4-booking-panel__card' : '' }}" id="searchBookingFormPanel">
+                @if (is_theme('theme-04'))
+                    <header>
+                        <span class="t4-kicker">Book Your Ride</span>
+                        {{-- <strong>Book Your Ride</strong> --}}
+                    </header>
+                @endif
                 @include('components.booking-form', ['search' => $search])
             </div>
         </div>
@@ -94,7 +101,7 @@
 
     <!-- Vehicle Results Section -->
     <div class="package-standard-wrapper {{ theme_class('discovery-results') }}" id="vehicleResultsSection">
-        <div class="container">
+        <div class="{{!is_theme('theme-04') ? 'container' : ''}}">
             <!-- Search Summary & Duration Display -->
             <div class="row mb-4">
                 <div class="col-12">
@@ -300,7 +307,7 @@
                             $isRecommended = $result['recommended'] ?? false;
                         @endphp
 
-                        <div class="col-lg-3 col-md-4 col-sm-6 col-6 vehicle-card-wrapper"
+                        <div class="{{!is_theme('theme-04') ? 'col-lg-3' : ''}} col-md-4 col-sm-6 col-6 vehicle-card-wrapper"
                             data-vehicle-group="{{ $result['id'] }}" data-price="{{ $pricing['base_amount'] ?? 0 }}"
                             data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
                             <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
@@ -756,7 +763,7 @@
 
         .spec-item i {
             color: var(--primary-color);
-            font-size: 16px;
+            font-size: 12px;
             flex-shrink: 0;
         }
 

@@ -965,7 +965,7 @@
                 </div>
             `);
             $('body').append(alert);
-            setTimeout(() => alert.alert('close'), type === 'success' ? 4000 : 5000);
+            setTimeout(() => alert.remove(), type === 'success' ? 4000 : 5000);
         }
 
         $(document).on('click', '.request-quotation-btn', function () {

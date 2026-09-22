@@ -39,6 +39,10 @@ use Spatie\Activitylog\Support\LogOptions;
  */
 class Staff extends BaseModel
 {
+    protected static function booted(): void
+    {
+        static::creating(fn (Staff $staff) => $staff->code ??= app(\App\Services\BusinessCodeGenerator::class)->generate('staff'));
+    }
     
 
     /**
@@ -61,9 +65,6 @@ class Staff extends BaseModel
         'country_id',
         'state_id',
         'city',
-        'employment_ended_at',
-        'termination_reason',
-        'terminated_by',
         'created_user_id',
         'updated_user_id'
     ];
@@ -78,51 +79,7 @@ class Staff extends BaseModel
         'license_expiry' => EncryptedStaffDateValue::class,
         'collection_commission_enabled' => 'boolean',
         'collection_commission_rate' => 'decimal:2',
-        'employment_ended_at' => 'datetime',
-        'nic' => EncryptedStaffIdentityValue::class,
-        'license_no' => EncryptedStaffIdentityValue::class,
-        'address' => EncryptedStaffIdentityValue::class,
     ];
-
-    /**
-     * @var array<int, string>
-     */
-    protected $hidden = [
-        'nic',
-        'nic_fingerprint',
-        'dob',
-        'license_no',
-        'license_no_fingerprint',
-        'license_expiry',
-        'address',
-    ];
-
-    protected static function booted(): void
-    {
-        static::saving(function (Staff $staff): void {
-            $staff->nic_fingerprint = $staff->nic !== null && $staff->nic !== ''
-                ? hash('sha256', mb_strtolower(trim($staff->nic)))
-                : null;
-            $staff->license_no_fingerprint = $staff->license_no !== null && $staff->license_no !== ''
-                ? hash('sha256', mb_strtolower(trim($staff->license_no)))
-                : null;
-        });
-    }
-
-    public function getActivitylogOptions(): LogOptions
-    {
-        return LogOptions::defaults()
-            ->logOnly(array_values(array_diff($this->getFillable(), [
-                'nic',
-                'dob',
-                'license_no',
-                'license_expiry',
-                'address',
-            ])))
-            ->logOnlyDirty()
-            ->dontLogEmptyChanges()
-            ->useLogName('Staff');
-    }
 
     // Relations
 

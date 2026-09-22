@@ -72,14 +72,6 @@ class ClickAnalyticsService
         $responseTimeMs = round(($endTime - $startTime) * 1000);
         $click->update(['response_time_ms' => $responseTimeMs]);
 
-        Log::info('ClickAnalyticsService: Click tracked', [
-            'short_code' => $shortenedUrl->short_code,
-            'ip_address' => $request->ip(),
-            'device_type' => $deviceType,
-            'browser' => $agent->browser(),
-            'country' => $country,
-            'utm_params' => $utmParams,
-        ]);
 
         return $click;
     }

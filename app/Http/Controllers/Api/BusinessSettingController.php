@@ -21,6 +21,7 @@ class BusinessSettingController extends Controller
             'site_name',
             'site_tagline',
             'company_name',
+            'company_logo_path',
             'company_email',
             'company_phone',
             'company_whatsapp',
@@ -68,6 +69,11 @@ class BusinessSettingController extends Controller
         ],
         'pricing' => [
             'internal_pricing_mode',
+        ],
+        'numbering' => [
+            'customer_code_prefix', 'customer_code_suffix', 'customer_code_digits', 'customer_code_start_number',
+            'staff_code_prefix', 'staff_code_suffix', 'staff_code_digits', 'staff_code_start_number',
+            'driver_code_prefix', 'driver_code_suffix', 'driver_code_digits', 'driver_code_start_number',
         ],
         'driverMobile' => [
             'driver_mobile_latest_version',
@@ -147,6 +153,20 @@ class BusinessSettingController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        if ($category === 'numbering') {
+            $numberingRules = [];
+            foreach (['customer', 'staff', 'driver'] as $entity) {
+                $numberingRules["{$entity}_code_prefix"] = ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]*$/'];
+                $numberingRules["{$entity}_code_suffix"] = ['nullable', 'string', 'max:20', 'regex:/^[A-Za-z0-9_-]*$/'];
+                $numberingRules["{$entity}_code_digits"] = ['required', 'integer', 'min:1', 'max:12'];
+                $numberingRules["{$entity}_code_start_number"] = ['required', 'integer', 'min:1'];
+            }
+            $numberingValidator = Validator::make($request->input('settings', []), $numberingRules);
+            if ($numberingValidator->fails()) {
+                return response()->json(['status' => 'error', 'message' => 'Invalid numbering settings.', 'errors' => $numberingValidator->errors()], 422);
+            }
         }
 
         $validKeys = self::CATEGORY_KEYS[$category] ?? null;

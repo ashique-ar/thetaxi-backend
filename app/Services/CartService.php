@@ -212,13 +212,6 @@ class CartService
         // Recalculate totals with the discount
         $this->updateTotals($cart);
 
-        Log::info('Promo code applied to cart', [
-            'cart_id' => $cart->id,
-            'promo_code' => $promoCode->code,
-            'discount' => $discount,
-            'subtotal' => $subtotal,
-            'customer_id' => $customerId,
-        ]);
 
         return [
             'success' => true,
@@ -262,11 +255,6 @@ class CartService
         // Recalculate totals without the discount
         $this->updateTotals($cart);
 
-        Log::info('Promo code removed from cart', [
-            'cart_id' => $cart->id,
-            'removed_code' => $removedCode,
-            'removed_discount' => $removedDiscount,
-        ]);
 
         return [
             'success' => true,
@@ -421,17 +409,6 @@ class CartService
             'total' => round($total, 2)
         ];
 
-        \Illuminate\Support\Facades\Log::info('CartService: Totals calculated', [
-            'cart_id' => $cart->id,
-            'items_count' => $items->count(),
-            'subtotal_raw' => $subtotal,
-            'service_fee_raw' => $serviceFee,
-            'tax_raw' => $tax,
-            'vat_raw' => $vat,
-            'price_adjustment_discount' => $priceAdjustmentDiscount,
-            'total_raw' => $total,
-            'calculated_totals' => $totalsArray
-        ]);
 
         $cart->setTotals($totalsArray);
 
@@ -1033,16 +1010,6 @@ class CartService
             'total' => round($total, 2)
         ];
 
-        \Illuminate\Support\Facades\Log::info('CartService: Totals with addons calculated', [
-            'cart_id' => $cart->id,
-            'items_count' => $items->count(),
-            'subtotal' => $subtotal,
-            'addon_charges' => $addonCharges,
-            'service_fee' => $serviceFee,
-            'tax' => $tax,
-            'vat' => $vat,
-            'total' => $total
-        ]);
 
         $cart->setTotals($totalsArray);
         $cart->save();
@@ -1319,13 +1286,6 @@ class CartService
                     ->first();
 
                 if ($vehicleGroupRate && $vehicleGroupRate->value > 0) {
-                    \Illuminate\Support\Facades\Log::debug('Extra KM rate found for vehicle group', [
-                        'vehicle_group_id' => $vehicleGroupId,
-                        'service_type_id' => $serviceTypeId,
-                        'matched_definition_service_type_id' => $extraKmDefinition->service_type_id,
-                        'rate' => $vehicleGroupRate->value,
-                        'definition_id' => $extraKmDefinition->id,
-                    ]);
 
                     return [
                         'rate' => (float) $vehicleGroupRate->value,

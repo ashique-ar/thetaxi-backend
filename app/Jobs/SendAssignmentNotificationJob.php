@@ -46,9 +46,6 @@ class SendAssignmentNotificationJob implements ShouldQueue
         if (!$this->assignment->exists) {
             $assignment = DriverAssignment::query()->find($this->assignment->id);
             if (!$assignment) {
-                \Illuminate\Support\Facades\Log::info('SendAssignmentNotificationJob skipped: DriverAssignment no longer exists', [
-                    'assignment_id' => $this->assignment->id ?? null,
-                ]);
                 return;
             }
             $this->assignment = $assignment;

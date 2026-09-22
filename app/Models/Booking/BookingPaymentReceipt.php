@@ -15,11 +15,11 @@ class BookingPaymentReceipt extends BaseModel
         'payer_id', 'driver_id', 'idempotency_key', 'company_id', 'source_amount',
         'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at', 'fx_source',
         'initial_finality_status', 'provider_event_id', 'provider_payload_checksum',
-        'request_payload_checksum',
+        'request_payload_checksum', 'corporate_remittance_id',
     ];
     protected $fillable = [
         'booking_id', 'amount', 'refunded_amount', 'payment_method', 'payment_stage', 'payment_purpose', 'reference', 'idempotency_key',
-        'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'payer_type', 'payer_id',
+        'received_at', 'received_by', 'notes', 'metadata', 'received_via', 'payer_type', 'payer_id', 'corporate_remittance_id',
         'driver_id', 'allocated_amount', 'driver_company_settled_amount', 'allocation_status', 'driver_company_settlement_status', 'driver_company_settled_at',
         'company_id', 'source_amount', 'source_currency', 'lkr_amount', 'fx_rate_to_lkr', 'fx_rate_at',
         'fx_source', 'initial_finality_status', 'finality_status', 'finalized_at', 'provider_event_id', 'provider_payload_checksum',

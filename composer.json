@@ -25,7 +25,6 @@
         "league/flysystem-aws-s3-v3": "^3.30",
         "phpdocumentor/shim": "^3.8",
         "qcod/laravel-gamify": "^1.0",
-        "sentry/sentry-laravel": "^4.26",
         "spatie/laravel-activitylog": "^5.0",
         "spatie/laravel-permission": "^6.20"
     },

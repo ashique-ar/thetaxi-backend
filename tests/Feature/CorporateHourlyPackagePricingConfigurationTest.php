@@ -66,3 +66,23 @@ it('keeps hourly package money in four slabs and two shared common rates', funct
     $formula = DB::table('vehicle_pricing_calculation_definitions')->where('name', 'Hourly Package')->value('formula');
     expect($formula)->toContain('slab_rate')->toContain('extra_km_rate')->toContain('extra_hour_rate');
 });
+
+it('adds the nine hour package and linked slab without changing existing pricing', function (): void {
+    (require base_path('database/migrations/2026_09_09_000003_configure_corporate_hourly_package_pricing.php'))->up();
+    $existingPackages = DB::table('service_packages')->orderBy('code')->get()->toJson();
+    $existingSlabs = DB::table('vehicle_pricing_slab_definitions')->orderBy('id')->get()->toJson();
+    $migration = require base_path('database/migrations/2026_09_18_000001_add_nine_hour_corporate_hourly_package.php');
+    $migration->up();
+    $migration->up();
+
+    $package = DB::table('service_packages')->where('code', 'hourly_9h_100km')->first();
+    $slab = DB::table('vehicle_pricing_slab_definitions')->where('service_package_id', $package->id)->first();
+    expect(DB::table('service_packages')->count())->toBe(5)
+        ->and(DB::table('vehicle_pricing_slab_definitions')->count())->toBe(5)
+        ->and((int) $package->default_duration_hours)->toBe(9)
+        ->and((float) $package->max_km_per_package)->toBe(100.0)
+        ->and($slab->type)->toBe('flat_rate')
+        ->and((float) $slab->max_km_per_package)->toBe(100.0)
+        ->and(DB::table('service_packages')->where('id', '!=', $package->id)->orderBy('code')->get()->toJson())->toBe($existingPackages)
+        ->and(DB::table('vehicle_pricing_slab_definitions')->where('id', '!=', $slab->id)->orderBy('id')->get()->toJson())->toBe($existingSlabs);
+});

@@ -37,6 +37,8 @@ class DriverAssignment extends BaseModel
         'confirmed_by',
         'confirmed_by_name_snapshot',
         'confirmed_at',
+        'accept_latitude',
+        'accept_longitude',
         'confirmation_method',
         'confirmation_notes',
         'assigned_by',
@@ -69,6 +71,8 @@ class DriverAssignment extends BaseModel
 
     protected $casts = [
         'trip_phase' => TripPhase::class,
+        'accept_latitude' => 'decimal:8',
+        'accept_longitude' => 'decimal:8',
         'trip_started_at' => 'datetime',
         'trip_start_latitude' => 'decimal:8',
         'trip_start_longitude' => 'decimal:8',

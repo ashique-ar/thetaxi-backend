@@ -27,6 +27,7 @@ class UserService
         if (!empty($filters['search'])) {
             $search = trim((string) $filters['search']);
             $query->where(function ($q) use ($search) {
+                $digits = preg_replace('/\D+/', '', $search);
                 $q->whereLikeInsensitive('id', $search)
                   ->orWhereLikeInsensitive('first_name', $search)
                   ->orWhereLikeInsensitive('last_name', $search)
@@ -43,6 +44,10 @@ class UserService
                           ->orWhereLikeInsensitive('context_type', $search)
                           ->orWhereLikeInsensitive('context_id', $search);
                   });
+                if (strlen($digits) >= 4) {
+                    $phoneSearch = strlen($digits) >= 9 ? substr($digits, -9) : $digits;
+                    $q->orWhereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') LIKE ?", ['%' . $phoneSearch . '%']);
+                }
             });
         }
 
@@ -85,7 +90,18 @@ class UserService
                 $query->whereNotNull('email_verified_at');
             } elseif ($filters['verified'] === 'phone') {
                 $query->whereNotNull('phone_verified_at');
+            } elseif ($filters['verified'] === 'email_unverified') {
+                $query->whereNull('email_verified_at');
+            } elseif ($filters['verified'] === 'phone_unverified') {
+                $query->whereNull('phone_verified_at');
             }
+        }
+
+        if (!empty($filters['created_from'])) {
+            $query->whereDate('created_at', '>=', $filters['created_from']);
+        }
+        if (!empty($filters['created_to'])) {
+            $query->whereDate('created_at', '<=', $filters['created_to']);
         }
 
         // Apply sorting

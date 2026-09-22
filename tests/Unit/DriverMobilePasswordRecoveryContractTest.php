@@ -1,5 +1,7 @@
 <?php
 
+uses(Tests\TestCase::class);
+
 it('exposes driver scoped password recovery routes', function () {
     $routes = file_get_contents(base_path('routes/api_driver.php'));
 
@@ -7,6 +9,18 @@ it('exposes driver scoped password recovery routes', function () {
         ->toContain("Route::post('forgot-password'")
         ->toContain("Route::post('reset-password'")
         ->toContain("Route::post('change-password'");
+});
+
+it('includes the password reset token storage migration', function () {
+    $migration = file_get_contents(base_path(
+        'database/migrations/2026_09_10_000002_create_password_reset_tokens_table.php'
+    ));
+
+    expect($migration)
+        ->toContain("Schema::create('password_reset_tokens'")
+        ->toContain("\$table->string('email')->primary()")
+        ->toContain("\$table->string('token')")
+        ->toContain("\$table->timestamp('created_at')->nullable()");
 });
 
 it('keeps recovery enumeration safe and driver scoped', function () {
@@ -19,10 +33,13 @@ it('keeps recovery enumeration safe and driver scoped', function () {
         ->not->toContain("'email' => ['required', 'string', 'email', 'max:255', 'exists:users,email']");
     expect($service)
         ->toContain('! $this->isDriver($user)')
+        ->toContain('random_int(100000, 999999)')
+        ->toContain("Hash::make(\$otp)")
+        ->toContain('PASSWORD_OTP_EXPIRES_MINUTES = 10')
         ->toContain("'login_attempts' => 0")
         ->toContain('$this->revokeAllTokens($user)')
         ->toContain('$this->deviceService->deactivateOtherDevices($driver)');
     expect($notification)
-        ->toContain('thetaxidriver://reset-password')
-        ->not->toContain("'token' => \$this->token");
+        ->toContain('Your one-time password is: ')
+        ->not->toContain('thetaxidriver://reset-password');
 });

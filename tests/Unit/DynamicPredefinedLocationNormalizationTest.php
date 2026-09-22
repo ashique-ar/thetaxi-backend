@@ -102,9 +102,35 @@ class DynamicPredefinedLocationNormalizationTest extends TestCase
         $publicSelector = file_get_contents(
             resource_path('views/components/predefined-location-selector.blade.php')
         );
+        $defaults = \App\Services\DefaultFormConfigService::getDefaults('self_drive');
 
         $this->assertStringContainsString("value: 'predefined_or_custom'", $portalEditor);
+        $this->assertStringContainsString("'fixed_location' | 'google_search'", $portalEditor);
+        $this->assertStringContainsString('onOptionLocationSelected', $portalEditor);
+        $this->assertStringContainsString('window.setTimeout(() => toast.dismiss(), 3000)', $portalEditor);
+        $this->assertStringContainsString("'action' => \$isCustom ? 'custom' : 'configured'", $publicSelector);
         $this->assertStringContainsString('name="{{ $name }}_predefined"', $publicSelector);
+        $this->assertSame(
+            ['CASONS_HQ', 'MATTALA_AIRPORT', 'BIA_AIRPORT', 'JAFFNA_AIRPORT', 'custom'],
+            array_column($defaults['pickup_location']['options'], 'value')
+        );
+        $this->assertFileExists(database_path('seeders/RentalServiceFormLocationOptionsSeeder.php'));
+        $this->assertFileExists(database_path('seeders/CasonsHeadOfficeRentalDefaultsSeeder.php'));
+        $this->assertSame('Pickup and Drop-off Location', $defaults['pickup_location']['label']);
+        $this->assertSame('Pickup Location', $defaults['pickup_location']['custom_label']);
+    }
+
+    public function test_doorstep_dropoff_is_rendered_next_to_the_dynamic_pickup_field(): void
+    {
+        $renderer = file_get_contents(resource_path('views/components/dynamic-booking-form.blade.php'));
+        $pickupField = strpos($renderer, "@include('components.dynamic-form-field'");
+        $dropoffField = strpos($renderer, 'id="{{ $prefix }}_dropoff_wrapper"');
+        $fieldLoopEnd = strpos($renderer, '@endforeach', $pickupField);
+
+        $this->assertNotFalse($pickupField);
+        $this->assertGreaterThan($pickupField, $dropoffField);
+        $this->assertLessThan($fieldLoopEnd, $dropoffField);
+        $this->assertStringContainsString("\$useConfiguredLocationDefault = \$locationMode === 'predefined_or_custom'", $renderer);
     }
 
     private function configuredLocationRequest(array $input): BookingSearchRequest

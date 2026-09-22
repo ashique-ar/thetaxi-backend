@@ -50,7 +50,7 @@ class VehicleService
             'class',
             'vehicles' => function ($query) use ($fromDate, $toDate) {
                 $query->where('is_active', true)
-                    ->where('status', 'available')
+                    ->where('status', 'active')
                     ->whereNotExists(function ($subQuery) use ($fromDate, $toDate) {
                         $subQuery->selectRaw('1')
                             ->from('booking_items')
@@ -89,9 +89,14 @@ class VehicleService
             'service_type' => $serviceType,
             'from_date' => $fromDate->format('Y-m-d'),
             'to_date' => $toDate->format('Y-m-d'),
-            'from_time' => '09:00',
-            'to_time' => '18:00',
+            'from_time' => $params['from_time'] ?? '09:00',
+            'to_time' => $params['to_time'] ?? '18:00',
             'duration_days' => $durationDays,
+            'package_id' => $params['package_id'] ?? null,
+            'package_hours' => $params['package_hours'] ?? null,
+            'duration_hours' => $params['package_hours'] ?? null,
+            'estimated_distance_km' => $params['estimated_distance_km'] ?? null,
+            'journey_distance' => $params['estimated_distance_km'] ?? null,
             'pickup_location' => null,
             'dropoff_location' => null
         ];
@@ -114,6 +119,7 @@ class VehicleService
                     'description' => $group->description,
                     'specs' => $group->specs,
                     'images' => $group->images,
+                    'thumbnail' => $group->thumbnail,
                     'is_featured' => $group->is_featured,
                     'available_count' => $availableCount,
                     'total_count' => $vehicleCounts[$group->id] ?? $availableCount,
@@ -184,6 +190,11 @@ class VehicleService
                 'from_time' => $params['from_time'],
                 'to_time' => $params['to_time'],
                 'duration_days' => $params['duration_days'],
+                'package_id' => $params['package_id'] ?? null,
+                'package_hours' => $params['package_hours'] ?? null,
+                'duration_hours' => $params['duration_hours'] ?? null,
+                'estimated_distance_km' => $params['estimated_distance_km'] ?? null,
+                'journey_distance' => $params['journey_distance'] ?? null,
                 'pickup_location' => $params['pickup_location'],
                 'dropoff_location' => $params['dropoff_location']
             ];
@@ -193,19 +204,22 @@ class VehicleService
             return [
                 'base_amount' => $pricing['base_amount'] ?? $pricing['summary']['subtotal'] ?? 0,
                 'currency' => $pricing['currency'] ?? 'LKR',
+                'service_type' => $params['service_type'],
+                'duration_info' => ['days' => $params['duration_days']],
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),
                 'total_amount' => $pricing['summary']['total'] ?? $pricing['total_amount'] ?? $pricing['base_amount'] ?? 0,
                 'breakdown' => $pricing['breakdown'] ?? $pricing['base_pricing']['breakdown'] ?? []
             ];
         } catch (\Exception $e) {
-            // Fallback pricing if service fails
+            // Do not advertise a made-up fare when no pricing rule applies.
             return [
-                'base_amount' => 15000,
+                'base_amount' => 0,
                 'currency' => config('booking.base_currency', 'LKR'),
+                'service_type' => $params['service_type'],
                 'includes_driver' => $this->includesDriver($params['service_type']),
                 'includes_fuel' => $this->includesFuel($params['service_type']),
-                'total_amount' => 15000,
+                'total_amount' => 0,
                 'breakdown' => []
             ];
         }
@@ -216,8 +230,11 @@ class VehicleService
      */
     protected function getServiceTypeId(string $serviceTypeSlug): ?string
     {
-        $serviceType = ServiceType::where('slug', $serviceTypeSlug)
-            ->orWhere('name', $serviceTypeSlug)
+        $serviceType = ServiceType::publicContext()->where(function ($query) use ($serviceTypeSlug) {
+            $query->where('code', $serviceTypeSlug)
+                ->orWhere('slug', $serviceTypeSlug)
+                ->orWhere('name', $serviceTypeSlug);
+        })
             ->first();
 
         return $serviceType?->id;

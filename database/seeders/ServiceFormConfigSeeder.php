@@ -277,4 +277,5 @@ class ServiceFormConfigSeeder extends Seeder
             ],
         ];
     }
+
 }

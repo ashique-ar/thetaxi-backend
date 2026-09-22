@@ -500,6 +500,7 @@ class BookingPaymentLedgerService
                 'received_via' => $data['received_via'] ?? 'company',
                 'payer_type' => (bool) $booking->is_corporate_booking ? 'corporate' : 'customer',
                 'payer_id' => (bool) $booking->is_corporate_booking ? $booking->corporate_account_id : $booking->customer_id,
+                'corporate_remittance_id' => $data['corporate_remittance_id'] ?? null,
                 'driver_id' => $data['driver_id'] ?? null,
                 'driver_company_settlement_status' => ($data['received_via'] ?? 'company') === 'driver' ? 'unsettled' : 'not_applicable',
                 ...$this->canonicalReceiptFields($booking, $data + ['amount' => $amount]),

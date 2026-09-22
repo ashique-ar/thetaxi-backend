@@ -258,7 +258,7 @@ class VehicleGroupPricingController extends Controller
                     $q->forOwner($ownerType, $ownerId);
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
                 ->when(!$includeInactive, fn($q) => $q->where('is_active', true))
-                ->select(['id', 'service_type_id', 'name', 'min_hours', 'max_hours', 'type', 'is_active', 'sort_order', 'owner_type', 'owner_id', 'priority'])
+                ->select(['id', 'service_type_id', 'service_package_id', 'name', 'min_hours', 'max_hours', 'max_km_per_package', 'type', 'is_active', 'sort_order', 'owner_type', 'owner_id', 'priority'])
                 ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
                 ->orderBy('service_type_id')
@@ -284,6 +284,7 @@ class VehicleGroupPricingController extends Controller
                 ->select([
                     'id',
                     'service_type_id',
+                    'code',
                     'name',
                     'description',
                     'common_rate_type',
@@ -310,6 +311,7 @@ class VehicleGroupPricingController extends Controller
                 ->when($ownerType && $ownerId, function ($q) use ($ownerType, $ownerId) {
                     $q->forOwner($ownerType, $ownerId);
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
+                ->when(!$includeInactive, fn ($q) => $q->where('is_active', true))
                 ->select(['id', 'vehicle_group_id', 'slab_definition_id', 'rate', 'rate_type', 'minimum_charge', 'includes_fuel', 'includes_driver', 'is_active', 'owner_type', 'owner_id', 'priority'])
                 ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
@@ -330,6 +332,7 @@ class VehicleGroupPricingController extends Controller
                         })->orWhereNull('owner_type');
                     });
                 }, fn ($q) => $q->whereNull('owner_type')->whereNull('owner_id'))
+                ->when(!$includeInactive, fn ($q) => $q->where('is_active', true))
                 ->select(['id', 'vehicle_group_id', 'common_rate_definition_id', 'value', 'is_active', 'owner_type', 'owner_id', 'priority'])
                 ->tap(fn ($q) => $this->applyOwnerPriorityOrder($q, $ownerType, $ownerId))
                 ->orderByDesc('priority')
@@ -376,7 +379,7 @@ class VehicleGroupPricingController extends Controller
                             return [
                                 'definition' => $slab,
                                 'pricing' => $pricing,
-                                'has_pricing' => $pricing !== null
+                                'has_pricing' => $pricing !== null && (float) $pricing->rate > 0
                             ];
                         }),
                         'common_rate_definitions' => $commonRateDefinitions->map(function ($commonRate) use ($group, $allCommonRatePricing) {
@@ -523,11 +526,6 @@ class VehicleGroupPricingController extends Controller
         }
 
         if ($validator->fails()) {
-            Log::info('Vehicle group pricing validation failed', [
-                'errors' => $validator->errors()->toArray(),
-                'request' => $request->all(),
-                'vehicle_group_id' => $vehicleGroupId
-            ]);
 
             return response()->json([
                 'success' => false,
@@ -659,10 +657,11 @@ class VehicleGroupPricingController extends Controller
                     if ($existingCommonRate) {
                         $oldValue = $existingCommonRate->value;
                         $newValue = $data['value'];
+                        $oldData = $existingCommonRate->toArray();
+                        $existingCommonRate->fill($data);
 
-                        if ($oldValue != $newValue) {
-                            $oldData = $existingCommonRate->toArray();
-                            $existingCommonRate->update($data);
+                        if ($existingCommonRate->isDirty()) {
+                            $existingCommonRate->save();
                             $newData = $existingCommonRate->fresh()->toArray();
 
                             // Create history record for common rate change
@@ -777,7 +776,7 @@ class VehicleGroupPricingController extends Controller
         $completedSlabs = 0;
         foreach ($slabDefinitions as $slab) {
             $key = $vehicleGroupId . '_' . $slab->id;
-            if ($allSlabPricing->has($key)) {
+            if ((float) ($allSlabPricing->get($key)?->first()?->rate ?? 0) > 0) {
                 $completedSlabs++;
             }
         }
@@ -1164,11 +1163,11 @@ class VehicleGroupPricingController extends Controller
                     if ($existingCommonRate) {
                         $oldValue = $existingCommonRate->value ?? 0;
                         $newValue = $commonRateData['value'] ?? 0;
+                        $oldData = $existingCommonRate->toArray();
+                        $existingCommonRate->fill($commonRateData);
 
-                        // Only update if value has changed
-                        if ($oldValue != $newValue) {
-                            $oldData = $existingCommonRate->toArray();
-                            $existingCommonRate->update($commonRateData);
+                        if ($existingCommonRate->isDirty()) {
+                            $existingCommonRate->save();
                             $newData = $existingCommonRate->fresh()->toArray();
 
                             // Get common rate definition for service type

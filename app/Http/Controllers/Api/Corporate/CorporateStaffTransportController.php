@@ -16,18 +16,19 @@ class CorporateStaffTransportController extends Controller
         protected CorporateBookingService $bookingService,
     ) {
         $this->middleware(function (Request $request, $next) {
-            if (!$request->corporate_id && $request->route('corporate')) {
+            if ($request->route('corporate')) {
                 $corporate = $request->route('corporate');
                 $request->merge([
                     'corporate_id' => is_object($corporate) ? $corporate->id : (string) $corporate,
                 ]);
             }
 
+            $request->route()->forgetParameter('corporate');
             return $next($request);
         });
 
-        $this->middleware('permission:staff-transport.view')->only(['programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking']);
-        $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster']);
+        $this->middleware('permission:staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
+        $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster', 'storeLocation']);
         $this->middleware('permission:staff-transport.override')->only(['setParticipation']);
         $this->middleware('permission:staff-transport.generate')->only(['generate']);
     }
@@ -139,11 +140,12 @@ class CorporateStaffTransportController extends Controller
         $validated = $request->validate([
             'date' => ['required', 'date'],
             'program_id' => ['nullable', 'uuid'],
+            'days' => ['sometimes', 'integer', 'min:1', 'max:31'],
         ]);
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->transportService->buildRoster($request->corporate_id, $validated['date'], $validated['program_id'] ?? null),
+            'data' => $this->transportService->buildCalendar($request->corporate_id, $validated['date'], (int) ($validated['days'] ?? 14), $validated['program_id'] ?? null),
         ]);
     }
 
@@ -153,13 +155,35 @@ class CorporateStaffTransportController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => ['roster' => $roster['items'], 'date' => $roster['date']],
+            'data' => ['roster' => $roster['items'], 'date' => $roster['date'], 'summary' => $roster['summary']],
         ]);
+    }
+
+    public function exportRoster(Request $request): \Symfony\Component\HttpFoundation\StreamedResponse
+    {
+        $data = $request->validate(['date' => ['required', 'date_format:Y-m-d']]);
+        $corporateId = $request->corporate_id;
+        return response()->streamDownload(function () use ($corporateId, $data) {
+            $stream = fopen('php://output', 'w');
+            fputcsv($stream, ['Date', 'Employee', 'Route', 'Shift', 'Participation', 'Trip status', 'Attendance', 'Attendance time', 'Reason'], ',', '"', '');
+            $page = 1;
+            do {
+                $rows = $this->transportService->roster($corporateId, ['date' => $data['date'], 'page' => $page, 'per_page' => 200])['items'];
+                foreach ($rows as $row) {
+                    $values = [$row['service_date'], trim(($row['employee']['user']['first_name'] ?? '').' '.($row['employee']['user']['last_name'] ?? '')),
+                        $row['route']['name'] ?? '', $row['shift']['name'] ?? '', $row['status'], $row['trip_status'], $row['attendance_status'], $row['attendance_at'], $row['attendance_reason'] ?? $row['reason']];
+                    $values = array_map(fn ($value) => preg_match('/^[=+@\\t\\r-]/', (string) $value) ? "'".$value : $value, $values);
+                    fputcsv($stream, $values, ',', '"', '');
+                }
+            } while ($page++ < $rows->lastPage());
+            fclose($stream);
+        }, 'staff-transport-'.$data['date'].'.csv', ['Content-Type' => 'text/csv']);
     }
 
     public function myCalendar(Request $request): JsonResponse
     {
         $employee = $request->attributes->get('corporate_employee');
+        abort_unless($employee, 403, 'Select an employee corporate context to use My Transport.');
 
         return response()->json([
             'status' => 'success',
@@ -182,6 +206,7 @@ class CorporateStaffTransportController extends Controller
                 CorporateTransportParticipation::STATUS_COORDINATOR_INCLUDED,
                 CorporateTransportParticipation::STATUS_COORDINATOR_EXCLUDED,
                 CorporateTransportParticipation::STATUS_NO_SHOW,
+                'reject_request',
             ])],
             'reason' => ['nullable', 'string', 'max:500'],
         ]);
@@ -202,6 +227,7 @@ class CorporateStaffTransportController extends Controller
 
     public function setMyParticipation(Request $request, string $participation): JsonResponse
     {
+        abort_unless($request->attributes->get('corporate_employee'), 403, 'Select an employee corporate context to use My Transport.');
         $validated = $request->validate([
             'status' => ['required', 'string', 'in:' . implode(',', [
                 CorporateTransportParticipation::STATUS_INCLUDED,
@@ -233,7 +259,7 @@ class CorporateStaffTransportController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->transportService->generateForDate($validated['date'], $request->corporate_id, (bool) ($validated['dry_run'] ?? false), true),
+            'data' => $this->transportService->generateForDate($validated['date'], $request->corporate_id, (bool) ($validated['dry_run'] ?? false), false),
         ]);
     }
 
@@ -257,18 +283,38 @@ class CorporateStaffTransportController extends Controller
         ]);
     }
 
+    public function locations(Request $request): JsonResponse
+    {
+        $employee = \App\Models\Corporate\CorporateEmployee::where('corporate_id', $request->corporate_id)->findOrFail($request->query('employee_id'));
+        return response()->json(['status' => 'success', 'data' => ['locations' => $employee->locations()->where('is_active', true)->get()]]);
+    }
+
+    public function storeLocation(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'corporate_employee_id' => ['required', 'uuid'], 'label' => ['required', 'string', 'max:120'],
+            'address' => ['required', 'string', 'max:1000'], 'latitude' => ['required', 'numeric', 'between:-90,90'],
+            'longitude' => ['required', 'numeric', 'between:-180,180'],
+        ]);
+        $employee = \App\Models\Corporate\CorporateEmployee::where('corporate_id', $request->corporate_id)->where('is_active', true)->findOrFail($data['corporate_employee_id']);
+        $location = $employee->locations()->create($data + ['is_active' => true]);
+        return response()->json(['status' => 'success', 'data' => ['location' => $location]], 201);
+    }
+
     private function validateProgram(Request $request, bool $partial = false): array
     {
         return $request->validate([
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:255'],
             'status' => ['sometimes', 'string', 'in:active,inactive,draft'],
-            'timezone' => ['sometimes', 'string', 'max:64'],
+            'timezone' => ['sometimes', 'timezone'],
             'default_opt_mode' => ['sometimes', 'string', 'in:opt_out,opt_in'],
             'cutoff_minutes_before' => ['sometimes', 'integer', 'min:0', 'max:10080'],
             'start_date' => ['nullable', 'date'],
-            'end_date' => ['nullable', 'date'],
+            'end_date' => ['nullable', 'date', 'after_or_equal:start_date'],
             'description' => ['nullable', 'string'],
-            'settings' => ['nullable', 'array'],
+            'settings' => ['nullable', 'array:excluded_dates'],
+            'settings.excluded_dates' => ['sometimes', 'array', 'max:366'],
+            'settings.excluded_dates.*' => ['date_format:Y-m-d'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
     }
@@ -280,7 +326,7 @@ class CorporateStaffTransportController extends Controller
             'pickup_time' => [$partial ? 'sometimes' : 'required', 'date_format:H:i'],
             'dropoff_time' => ['nullable', 'date_format:H:i'],
             'operating_days' => ['nullable', 'array'],
-            'operating_days.*' => ['string'],
+            'operating_days.*' => ['in:monday,tuesday,wednesday,thursday,friday,saturday,sunday'],
             'cutoff_minutes_before' => ['nullable', 'integer', 'min:0', 'max:10080'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
@@ -290,7 +336,7 @@ class CorporateStaffTransportController extends Controller
     {
         return $request->validate([
             'name' => [$partial ? 'sometimes' : 'required', 'string', 'max:150'],
-            'direction' => ['sometimes', 'string', 'in:pickup,dropoff,round_trip'],
+            'direction' => ['sometimes', 'string', 'in:pickup,dropoff'],
             'service_type_id' => ['nullable', 'uuid', 'exists:service_types,id'],
             'vehicle_group_id' => ['nullable', 'uuid', 'exists:vehicle_groups,id'],
             'origin_location' => ['nullable', 'array'],
@@ -309,7 +355,7 @@ class CorporateStaffTransportController extends Controller
             'dropoff_location_id' => ['nullable', 'uuid', 'exists:corporate_employee_locations,id'],
             'route_order' => ['sometimes', 'integer', 'min:1'],
             'effective_from' => ['nullable', 'date'],
-            'effective_to' => ['nullable', 'date'],
+            'effective_to' => ['nullable', 'date', 'after_or_equal:effective_from'],
             'is_active' => ['sometimes', 'boolean'],
         ]);
     }

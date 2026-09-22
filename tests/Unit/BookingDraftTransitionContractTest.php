@@ -11,6 +11,13 @@ it('reuses a canonical draft for approval and confirmation transitions', functio
         ->toContain("abort(409, 'Only an existing draft can be saved through the draft endpoint.')");
 });
 
+it('preserves the selected payment arrangement when saving a draft', function () {
+    $service = file_get_contents(app_path('Services/BookingFlowService.php'));
+    $draft = Str::between($service, 'public function saveBookingDraft(', 'private function hasDraftPricingInputs(');
+
+    expect($draft)->toContain('$this->applyBookingPaymentFields($booking, $params);');
+});
+
 it('does not recreate synchronized draft items during direct confirmation', function () {
     $service = file_get_contents(app_path('Services/BookingFlowService.php'));
 

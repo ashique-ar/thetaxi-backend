@@ -82,12 +82,6 @@ class DeviceService
                 ]));
             }
 
-            Log::info('Customer device registered/updated', [
-                'customer_id' => $customer->id,
-                'device_id' => $device->id,
-                'device_uuid' => $device->device_uuid,
-                'platform' => $device->platform,
-            ]);
 
             return $device;
         });

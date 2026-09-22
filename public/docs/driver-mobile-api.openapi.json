@@ -2,7 +2,7 @@
     "openapi": "3.0.3",
     "info": {
         "title": "TheTaxi Driver Mobile API",
-        "version": "2.5.0",
+        "version": "2.6.0",
         "description": "Complete canonical Driver Mobile API contract. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true."
     },
     "servers": [
@@ -190,6 +190,81 @@
                     "traveler_email": {
                         "type": "string",
                         "format": "email",
+                        "nullable": true
+                    }
+                }
+            },
+            "DriverOnboardingApplication": {
+                "type": "object",
+                "required": [
+                    "id",
+                    "mobile",
+                    "status",
+                    "current_step"
+                ],
+                "additionalProperties": true,
+                "properties": {
+                    "id": {
+                        "type": "string",
+                        "format": "uuid"
+                    },
+                    "mobile": {
+                        "type": "string"
+                    },
+                    "current_step": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 6
+                    },
+                    "status": {
+                        "type": "string",
+                        "enum": [
+                            "draft",
+                            "submitted",
+                            "changes_requested",
+                            "approved",
+                            "rejected"
+                        ]
+                    },
+                    "payload": {
+                        "type": "object",
+                        "additionalProperties": true
+                    },
+                    "documents": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "review_issues": {
+                        "type": "array",
+                        "nullable": true,
+                        "items": {
+                            "type": "object",
+                            "required": [
+                                "field",
+                                "message"
+                            ],
+                            "properties": {
+                                "field": {
+                                    "type": "string"
+                                },
+                                "message": {
+                                    "type": "string"
+                                }
+                            }
+                        }
+                    },
+                    "editable_fields": {
+                        "type": "array",
+                        "nullable": true,
+                        "items": {
+                            "type": "string"
+                        }
+                    },
+                    "review_message": {
+                        "type": "string",
                         "nullable": true
                     }
                 }
@@ -486,8 +561,8 @@
                 "tags": [
                     "Authentication"
                 ],
-                "summary": "Login",
-                "description": "Authenticate a driver and receive access and refresh tokens.\n\nResponse now includes `current_assignment` (active DriverAssignment with booking/booking_item details, or null) and `trip_phase` (current trip lifecycle phase: accepted, pickup_arrived, in_progress, or null).",
+                "summary": "Login with email and password",
+                "description": "Secondary login option for an existing driver. Registration is never performed through this endpoint. Mobile + OTP is the default authentication flow.\n\nResponse includes `current_assignment` and `trip_phase`.",
                 "operationId": "post_api_driver_auth_login_Login",
                 "security": [],
                 "requestBody": {
@@ -1016,7 +1091,7 @@
                     "Status Management"
                 ],
                 "summary": "Go Online",
-                "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` â€” an array of DriverAssignments in active/pending_approval status with booking and booking_item details.",
+                "description": "Set the driver's status to online and start a new session.\n\nResponse now includes `pending_assignments` ” an array of DriverAssignments in active/pending_approval status with booking and booking_item details.",
                 "operationId": "post_api_driver_status_online_Go_Online",
                 "security": [
                     {
@@ -12491,7 +12566,26 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Enumeration-safe acknowledgement"
+                        "description": "Enumeration-safe acknowledgement",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "If an eligible driver account exists, a password reset OTP has been sent."
+                                }
+                            }
+                        }
                     },
                     "422": {
                         "description": "Invalid email format",
@@ -12515,64 +12609,15 @@
                                             "additionalProperties": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "message": "Invalid email format"
                                 }
                             }
                         }
                     },
                     "429": {
-                        "description": "Rate limited"
-                    }
-                }
-            }
-        },
-        "/api/driver/auth/reset-password": {
-            "post": {
-                "tags": [
-                    "Authentication"
-                ],
-                "summary": "Reset driver password",
-                "security": [],
-                "requestBody": {
-                    "required": true,
-                    "content": {
-                        "application/json": {
-                            "schema": {
-                                "type": "object",
-                                "required": [
-                                    "email",
-                                    "token",
-                                    "password",
-                                    "password_confirmation"
-                                ],
-                                "properties": {
-                                    "email": {
-                                        "type": "string",
-                                        "format": "email"
-                                    },
-                                    "token": {
-                                        "type": "string"
-                                    },
-                                    "password": {
-                                        "type": "string",
-                                        "format": "password",
-                                        "minLength": 8
-                                    },
-                                    "password_confirmation": {
-                                        "type": "string",
-                                        "format": "password",
-                                        "minLength": 8
-                                    }
-                                }
-                            }
-                        }
-                    }
-                },
-                "responses": {
-                    "200": {
-                        "description": "Password reset; all sessions revoked"
-                    },
-                    "422": {
-                        "description": "Invalid or expired reset link",
+                        "description": "Rate limited",
                         "content": {
                             "application/json": {
                                 "schema": {
@@ -12593,12 +12638,140 @@
                                             "additionalProperties": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "message": "Rate limited"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/auth/reset-password": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Reset driver password",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "email",
+                                    "otp",
+                                    "password",
+                                    "password_confirmation"
+                                ],
+                                "properties": {
+                                    "email": {
+                                        "type": "string",
+                                        "format": "email"
+                                    },
+                                    "otp": {
+                                        "type": "string",
+                                        "pattern": "^\\d{6}$",
+                                        "example": "123456"
+                                    },
+                                    "password": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "minLength": 8
+                                    },
+                                    "password_confirmation": {
+                                        "type": "string",
+                                        "format": "password",
+                                        "minLength": 8
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Password reset; all sessions revoked",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "Password reset successfully. Please sign in again."
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid or expired OTP",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Invalid or expired OTP"
                                 }
                             }
                         }
                     },
                     "429": {
-                        "description": "Rate limited"
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Rate limited"
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -12628,8 +12801,7 @@
                                 "properties": {
                                     "current_password": {
                                         "type": "string",
-                                        "format": "password",
-                                        "minLength": 8
+                                        "format": "password"
                                     },
                                     "new_password": {
                                         "type": "string",
@@ -12648,7 +12820,37 @@
                 },
                 "responses": {
                     "200": {
-                        "description": "Password changed; reauthentication required"
+                        "description": "Password changed; reauthentication required",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "properties": {
+                                                "reauthentication_required": {
+                                                    "type": "boolean"
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "Password changed successfully. Please sign in again.",
+                                    "data": {
+                                        "reauthentication_required": true
+                                    }
+                                }
+                            }
+                        }
                     },
                     "401": {
                         "description": "Unauthenticated",
@@ -12672,6 +12874,9 @@
                                             "additionalProperties": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "message": "Unauthenticated"
                                 }
                             }
                         }
@@ -12698,12 +12903,1575 @@
                                             "additionalProperties": true
                                         }
                                     }
+                                },
+                                "example": {
+                                    "message": "Current password or validation failure"
                                 }
                             }
                         }
                     },
                     "429": {
-                        "description": "Rate limited"
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Rate limited"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/auth/request-otp": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Send mobile verification OTP",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "mobile"
+                                ],
+                                "properties": {
+                                    "mobile": {
+                                        "type": "string",
+                                        "maxLength": 30,
+                                        "example": "+94771234567"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "OTP queued",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "message",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "required": [
+                                                "expires_in"
+                                            ],
+                                            "properties": {
+                                                "expires_in": {
+                                                    "type": "integer",
+                                                    "example": 600
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "message": "OTP sent.",
+                                    "data": {
+                                        "expires_in": 600
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid mobile",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Invalid mobile"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Rate limited"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/auth/verify-otp": {
+            "post": {
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Verify OTP, then log in or start onboarding",
+                "description": "Existing drivers receive HTTP 200 with the normal authenticated login payload. New drivers receive HTTP 201 with an onboarding token.",
+                "security": [],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "mobile",
+                                    "otp"
+                                ],
+                                "properties": {
+                                    "mobile": {
+                                        "type": "string",
+                                        "maxLength": 30
+                                    },
+                                    "otp": {
+                                        "type": "string",
+                                        "pattern": "^\\d{6}$"
+                                    },
+                                    "device_uuid": {
+                                        "type": "string",
+                                        "maxLength": 255,
+                                        "nullable": true
+                                    },
+                                    "device_fingerprint": {
+                                        "type": "string",
+                                        "maxLength": 500,
+                                        "nullable": true
+                                    },
+                                    "device_name": {
+                                        "type": "string",
+                                        "maxLength": 255,
+                                        "nullable": true
+                                    },
+                                    "device_model": {
+                                        "type": "string",
+                                        "maxLength": 255,
+                                        "nullable": true
+                                    },
+                                    "device_manufacturer": {
+                                        "type": "string",
+                                        "maxLength": 255,
+                                        "nullable": true
+                                    },
+                                    "platform": {
+                                        "type": "string",
+                                        "enum": [
+                                            "ios",
+                                            "android"
+                                        ],
+                                        "nullable": true
+                                    },
+                                    "os_version": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    },
+                                    "app_version": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    },
+                                    "app_build": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    },
+                                    "push_token": {
+                                        "type": "string",
+                                        "maxLength": 500,
+                                        "nullable": true
+                                    },
+                                    "push_provider": {
+                                        "type": "string",
+                                        "enum": [
+                                            "fcm",
+                                            "apns"
+                                        ],
+                                        "nullable": true
+                                    },
+                                    "locale": {
+                                        "type": "string",
+                                        "maxLength": 10,
+                                        "nullable": true
+                                    },
+                                    "timezone": {
+                                        "type": "string",
+                                        "maxLength": 50,
+                                        "nullable": true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Existing driver login",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "required": [
+                                                "flow",
+                                                "user",
+                                                "driver",
+                                                "device",
+                                                "token"
+                                            ],
+                                            "properties": {
+                                                "flow": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "login"
+                                                    ]
+                                                },
+                                                "user": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "driver": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "device": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "token": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "current_assignment": {
+                                                    "type": "object",
+                                                    "nullable": true,
+                                                    "additionalProperties": true
+                                                },
+                                                "trip_phase": {
+                                                    "type": "string",
+                                                    "nullable": true
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "201": {
+                        "description": "New driver onboarding created",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "required": [
+                                                "flow",
+                                                "onboarding_token",
+                                                "application"
+                                            ],
+                                            "properties": {
+                                                "flow": {
+                                                    "type": "string",
+                                                    "enum": [
+                                                        "registration"
+                                                    ]
+                                                },
+                                                "onboarding_token": {
+                                                    "type": "string"
+                                                },
+                                                "application": {
+                                                    "$ref": "#/components/schemas/DriverOnboardingApplication"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Invalid or expired OTP",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Invalid or expired OTP"
+                                }
+                            }
+                        }
+                    },
+                    "429": {
+                        "description": "Rate limited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Rate limited"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "Resume onboarding",
+                "description": "Use onboarding_token as Bearer token, not the normal driver access token.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Onboarding application",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/DriverOnboardingApplication"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid onboarding token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Missing or invalid onboarding token"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Onboarding application not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Onboarding application not found"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Validation error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/documents": {
+            "post": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "Upload or replace one onboarding document",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "document_type",
+                                    "file"
+                                ],
+                                "properties": {
+                                    "document_type": {
+                                        "type": "string",
+                                        "enum": [
+                                            "driver_photo",
+                                            "driver_license_front",
+                                            "driver_license_back",
+                                            "nic_front",
+                                            "nic_back",
+                                            "vehicle_insurance",
+                                            "vehicle_revenue_license",
+                                            "vehicle_registration"
+                                        ]
+                                    },
+                                    "document_number": {
+                                        "type": "string",
+                                        "maxLength": 100,
+                                        "nullable": true
+                                    },
+                                    "expiry_date": {
+                                        "type": "string",
+                                        "format": "date",
+                                        "nullable": true,
+                                        "description": "Required for driver_license_front, vehicle_insurance, and vehicle_revenue_license."
+                                    },
+                                    "reminder_days": {
+                                        "type": "integer",
+                                        "minimum": 1,
+                                        "maximum": 365,
+                                        "nullable": true
+                                    },
+                                    "file": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "JPG, PNG, or PDF; maximum 10 MB."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "201": {
+                        "description": "Document uploaded",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid onboarding token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Missing or invalid onboarding token"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Field was not opened for correction",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Field was not opened for correction"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Application cannot be edited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Application cannot be edited"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Validation error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/submit": {
+            "post": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "Submit completed onboarding for review",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Onboarding application",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/DriverOnboardingApplication"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid onboarding token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Missing or invalid onboarding token"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Onboarding application not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Onboarding application not found"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Validation error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/steps/{step}": {
+            "patch": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "Save identity, address, or vehicle onboarding step",
+                "description": "Payload must match the selected step: 1 identity, 3 address, 4 vehicle. Vehicle make/model may use existing IDs or other_make/other_model for staff classification.",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "step",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "integer",
+                            "enum": [
+                                1,
+                                3,
+                                4
+                            ]
+                        }
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "oneOf": [
+                                    {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                            "first_name",
+                                            "last_name",
+                                            "email",
+                                            "nic"
+                                        ],
+                                        "properties": {
+                                            "first_name": {
+                                                "type": "string",
+                                                "maxLength": 100
+                                            },
+                                            "last_name": {
+                                                "type": "string",
+                                                "maxLength": 100
+                                            },
+                                            "email": {
+                                                "type": "string",
+                                                "format": "email",
+                                                "maxLength": 255
+                                            },
+                                            "nic": {
+                                                "type": "string",
+                                                "pattern": "^(?:\\d{9}[vVxX]|\\d{12})$",
+                                                "description": "Sri Lankan NIC. The server derives payload.identity.dob from this value."
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                            "address",
+                                            "country_id",
+                                            "state_id",
+                                            "city"
+                                        ],
+                                        "properties": {
+                                            "address": {
+                                                "type": "string",
+                                                "maxLength": 500
+                                            },
+                                            "country_id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "state_id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "city": {
+                                                "type": "string",
+                                                "maxLength": 100
+                                            },
+                                            "postal_code": {
+                                                "type": "string",
+                                                "maxLength": 20,
+                                                "nullable": true
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "type": "object",
+                                        "additionalProperties": false,
+                                        "required": [
+                                            "model_year",
+                                            "color",
+                                            "registration_year",
+                                            "license_plate",
+                                            "is_owner"
+                                        ],
+                                        "allOf": [
+                                            {
+                                                "anyOf": [
+                                                    {
+                                                        "required": [
+                                                            "make_id"
+                                                        ]
+                                                    },
+                                                    {
+                                                        "required": [
+                                                            "other_make"
+                                                        ]
+                                                    }
+                                                ]
+                                            },
+                                            {
+                                                "anyOf": [
+                                                    {
+                                                        "required": [
+                                                            "model_id"
+                                                        ]
+                                                    },
+                                                    {
+                                                        "required": [
+                                                            "other_model"
+                                                        ]
+                                                    }
+                                                ]
+                                            }
+                                        ],
+                                        "properties": {
+                                            "make_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "nullable": true,
+                                                "description": "Existing make ID; required unless other_make is sent."
+                                            },
+                                            "other_make": {
+                                                "type": "string",
+                                                "maxLength": 255,
+                                                "nullable": true,
+                                                "description": "Driver-entered make when it is not listed."
+                                            },
+                                            "model_id": {
+                                                "type": "string",
+                                                "format": "uuid",
+                                                "nullable": true,
+                                                "description": "Existing model ID belonging to make_id; required unless other_model is sent."
+                                            },
+                                            "other_model": {
+                                                "type": "string",
+                                                "maxLength": 255,
+                                                "nullable": true,
+                                                "description": "Driver-entered model when it is not listed."
+                                            },
+                                            "model_year": {
+                                                "type": "integer",
+                                                "minimum": 1950
+                                            },
+                                            "color": {
+                                                "type": "string",
+                                                "maxLength": 50
+                                            },
+                                            "registration_year": {
+                                                "type": "integer",
+                                                "minimum": 1950
+                                            },
+                                            "license_plate": {
+                                                "type": "string",
+                                                "maxLength": 30
+                                            },
+                                            "is_owner": {
+                                                "type": "boolean"
+                                            }
+                                        }
+                                    }
+                                ]
+                            },
+                            "examples": {
+                                "identity": {
+                                    "value": {
+                                        "first_name": "Nimal",
+                                        "last_name": "Perera",
+                                        "email": "nimal@example.com",
+                                        "nic": "901234567V"
+                                    }
+                                },
+                                "address": {
+                                    "value": {
+                                        "address": "10 Main Street",
+                                        "country_id": "country-uuid",
+                                        "state_id": "state-uuid",
+                                        "city": "Colombo",
+                                        "postal_code": "00100"
+                                    }
+                                },
+                                "vehicle": {
+                                    "value": {
+                                        "make_id": "make-uuid",
+                                        "model_id": "model-uuid",
+                                        "model_year": 2024,
+                                        "color": "White",
+                                        "registration_year": 2024,
+                                        "license_plate": "CAB-1234",
+                                        "is_owner": true
+                                    }
+                                },
+                                "otherVehicle": {
+                                    "value": {
+                                        "other_make": "New Make",
+                                        "other_model": "New Model",
+                                        "model_year": 2024,
+                                        "color": "White",
+                                        "registration_year": 2024,
+                                        "license_plate": "CAB-1234",
+                                        "is_owner": true
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Onboarding application",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "success"
+                                        },
+                                        "data": {
+                                            "$ref": "#/components/schemas/DriverOnboardingApplication"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid onboarding token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Missing or invalid onboarding token"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Only reviewer-listed fields may be changed",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Only reviewer-listed fields may be changed"
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Onboarding application not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Onboarding application not found"
+                                }
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Application cannot be edited",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Application cannot be edited"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Validation error"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/countries": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List countries for the address step",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Country list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "id",
+                                            "name"
+                                        ],
+                                        "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "name": {
+                                                "type": "string"
+                                            },
+                                            "code": {
+                                                "type": "string",
+                                                "nullable": true
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": [
+                                    {
+                                        "id": "country-uuid",
+                                        "name": "Sri Lanka",
+                                        "code": "LK"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/countries/{country_id}/states": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List states for the selected country",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "country_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "State list",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {
+                                        "type": "object",
+                                        "required": [
+                                            "id",
+                                            "country_id",
+                                            "name"
+                                        ],
+                                        "properties": {
+                                            "id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "country_id": {
+                                                "type": "string",
+                                                "format": "uuid"
+                                            },
+                                            "name": {
+                                                "type": "string"
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": [
+                                    {
+                                        "id": "state-uuid",
+                                        "country_id": "country-uuid",
+                                        "name": "Western Province"
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/makes": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List vehicle makes for registration",
+                "security": [],
+                "responses": {
+                    "200": {
+                        "description": "Vehicle makes",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success"
+                                            ]
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "id",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": [
+                                        {
+                                            "id": "make-uuid",
+                                            "name": "Toyota"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/onboarding/makes/{make_id}/models": {
+            "get": {
+                "tags": [
+                    "Driver Onboarding"
+                ],
+                "summary": "List vehicle models for the selected make",
+                "security": [],
+                "parameters": [
+                    {
+                        "name": "make_id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Vehicle models",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success"
+                                            ]
+                                        },
+                                        "data": {
+                                            "type": "array",
+                                            "items": {
+                                                "type": "object",
+                                                "required": [
+                                                    "id",
+                                                    "make_id",
+                                                    "name"
+                                                ],
+                                                "properties": {
+                                                    "id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "make_id": {
+                                                        "type": "string",
+                                                        "format": "uuid"
+                                                    },
+                                                    "name": {
+                                                        "type": "string"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "status": "success",
+                                    "data": [
+                                        {
+                                            "id": "model-uuid",
+                                            "make_id": "make-uuid",
+                                            "name": "Axio"
+                                        }
+                                    ]
+                                }
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Vehicle make not found",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Vehicle make not found"
+                                }
+                            }
+                        }
                     }
                 }
             }

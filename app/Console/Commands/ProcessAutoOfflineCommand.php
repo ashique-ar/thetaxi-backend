@@ -66,7 +66,6 @@ class ProcessAutoOfflineCommand extends Command
             if ($count > 0) {
                 $message = "Auto-offline processed: {$count} driver(s) marked offline due to inactivity.";
                 $this->info($message);
-                Log::info($message);
             } else {
                 $this->info('No inactive drivers found to process.');
             }

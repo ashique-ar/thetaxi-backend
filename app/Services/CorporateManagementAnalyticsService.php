@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\BookingItem;
+use App\Models\Booking\Booking;
 use Illuminate\Support\Collection;
 
 class CorporateManagementAnalyticsService
@@ -42,6 +43,13 @@ class CorporateManagementAnalyticsService
 
         if ($canViewFinance) {
             $payload['financial'] = $this->finance->accountSummary($corporateId);
+            $payload['financial_period'] = [
+                'basis' => 'travel_date',
+                'summary' => $this->finance->summarizeBookings(
+                    Booking::query()->whereIn('id', $items->pluck('booking_id')->unique())->get(),
+                    $items->pluck('booking_item_id')->unique(),
+                ),
+            ];
         }
 
         return $payload;
@@ -70,6 +78,7 @@ class CorporateManagementAnalyticsService
 
                 return collect([
                     'booking_id' => $item->booking_id,
+                    'booking_item_id' => $item->id,
                     'month' => optional($item->from_date)->format('Y-m'),
                     'department' => $item->booking?->corporateDepartment?->name ?: 'Unassigned',
                     'division' => $item->booking?->corporateDivision?->name ?: 'Unassigned',

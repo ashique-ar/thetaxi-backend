@@ -40,6 +40,7 @@ class CmsContentType extends BaseModel
      * @var array<int, string>
      */
     protected $fillable = [
+        'parent_id',
         'title',
         'slug',
         'description',
@@ -88,5 +89,15 @@ class CmsContentType extends BaseModel
     public function contents(): HasMany
     {
         return $this->hasMany(CmsContent::class, 'cms_content_type_id');
+    }
+
+    public function parent(): BelongsTo
+    {
+        return $this->belongsTo(self::class, 'parent_id');
+    }
+
+    public function children(): HasMany
+    {
+        return $this->hasMany(self::class, 'parent_id');
     }
 }

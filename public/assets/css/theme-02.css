@@ -594,7 +594,7 @@ header.style-3 .currency-selector .btn-link:hover {
 .vehicle-card--theme-02 .vehicle-specs .spec-item svg,
 .vehicle-card--theme-02 .vehicle-specs .spec-item i {
     color: var(--primary-color1);
-    font-size: 16px;
+    font-size: 12px;
 }
 
 /* Book button styling */

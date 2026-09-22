@@ -40,6 +40,15 @@
         charges: {{ number_format($payload['operational']['finalized_charges'], 2) }}</p>
     <p>Contractual distance: {{ number_format($payload['distance']['contractual_km'], 3) }} km (pricing) | Operational
         distance: {{ number_format($payload['distance']['operational_km'], 3) }} km (telemetry evidence)</p>
+    @if(isset($payload['financial_period']['summary']))
+        @php($finance = $payload['financial_period']['summary'])
+        <h2>Financial totals — selected travel period</h2>
+        <p>Invoiced: {{ number_format($finance['invoiced_value'], 2) }} |
+            Paid: {{ number_format($finance['paid_value'], 2) }} |
+            Outstanding: {{ number_format($finance['outstanding_value'], 2) }} |
+            Uninvoiced finalized: {{ number_format($finance['uninvoiced_finalized_value'], 2) }} |
+            Disputed: {{ number_format($finance['disputed_value'], 2) }}</p>
+    @endif
     <table>
         <thead>
             <tr>

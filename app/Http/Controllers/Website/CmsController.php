@@ -5,6 +5,8 @@ namespace App\Http\Controllers\Website;
 use App\Http\Controllers\Controller;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
+use App\Services\WebsiteSettingsService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\View\View;
@@ -14,30 +16,41 @@ class CmsController extends Controller
     protected \App\Services\BookingFlowService $bookingFlowService;
     protected \App\Services\CurrencyService $currencyService;
     protected \App\Services\DiscountService $discountService;
+    protected WebsiteSettingsService $websiteSettingsService;
 
     public function __construct(
         \App\Services\BookingFlowService $bookingFlowService,
         \App\Services\CurrencyService $currencyService,
-        \App\Services\DiscountService $discountService
+        \App\Services\DiscountService $discountService,
+        WebsiteSettingsService $websiteSettingsService
     ) {
         $this->bookingFlowService = $bookingFlowService;
         $this->currencyService = $currencyService;
         $this->discountService = $discountService;
+        $this->websiteSettingsService = $websiteSettingsService;
     }
 
     /**
      * Display a listing of content for a specific content type
      */
-    public function index(string $contentTypeSlug, Request $request): View
+    public function index(string $contentTypeSlug, Request $request): View|RedirectResponse
     {
-        Log::info("CMS Index: type={$contentTypeSlug}", $request->all());
+        if ($contentTypeSlug === 'about') {
+            $slug = $this->websiteSettingsService->get('about_page_slug');
+
+            if ($slug) {
+                return redirect()->route('cms.show', ['contentType' => 'about', 'content' => $slug]);
+            }
+        }
 
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
+            ->with(['children' => fn ($query) => $query->where('is_active', true)->orderBy('display_order')->orderBy('title')])
             ->firstOrFail();
 
         $query = CmsContent::published()
-            ->byType($contentTypeSlug)
+            ->whereIn('cms_content_type_id', $contentType->children->pluck('id')->prepend($contentType->id))
             ->with(['contentType']);
 
         // Search functionality
@@ -84,9 +97,9 @@ class CmsController extends Controller
      */
     public function show(string $contentTypeSlug, string $contentSlug): View
     {
-        Log::info("CMS Show: type={$contentTypeSlug}, slug={$contentSlug}");
         $contentType = CmsContentType::where('slug', $contentTypeSlug)
             ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
             ->firstOrFail();
 
         $content = CmsContent::published()
@@ -250,11 +263,6 @@ class CmsController extends Controller
                             ];
                         }, $suggestedVehicles ?: []);
 
-                        Log::debug('CMS Booking Suggestion Details', [
-                            'search_params' => $searchParams,
-                            'result_count' => count($suggestedVehicles),
-                            'groups' => $groupSummaries
-                        ]);
 
                         // If no suggestions or all groups are quotation-only, attempt a relaxed fallback
                         $allQuoted = true;
@@ -266,29 +274,22 @@ class CmsController extends Controller
                         }
 
                         if (count($suggestedVehicles) === 0 || $allQuoted) {
-                            Log::info('CMS Show: No suitable suggested vehicles or all quoted; attempting relaxed search without pickup/dropoff to broaden results');
                             $fallbackParams = $searchParams;
                             unset($fallbackParams['pickup_location'], $fallbackParams['dropoff_location']);
                             try {
                                 $fallbackAvailability = $this->bookingFlowService->getAvailableVehicleGroups($fallbackParams, true);
                                 $fallbackGroups = $fallbackAvailability['data'] ?? [];
-                                Log::debug('CMS Booking Suggestion Fallback Details', [
-                                    'fallback_result_count' => count($fallbackGroups),
-                                ]);
                                 if (count($fallbackGroups) > 0) {
                                     $suggestedVehicles = $fallbackGroups;
-                                    Log::info('CMS Show: Using fallback vehicle suggestions for display', ['count' => count($suggestedVehicles)]);
                                 }
                             } catch (\Exception $e) {
                                 Log::warning('CMS Show fallback availability failed: ' . $e->getMessage());
                             }
                         }
                     } catch (\Exception $e) {
-                        Log::debug('CMS Booking Suggestion - logging failed', ['error' => $e->getMessage()]);
                     }
                 } else {
                     // Helpful debug log for missing service type mapping
-                    Log::debug('CMS Show: service type not found for availability lookup', ['service_type_raw' => $serviceTypeRaw]);
                 }
             } catch (\Exception $e) {
                 Log::warning("CMS Booking Suggestion Failed: " . $e->getMessage());

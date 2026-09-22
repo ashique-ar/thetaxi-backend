@@ -4,6 +4,7 @@ beforeEach(function () {
     $projectRoot = dirname(__DIR__, 2);
 
     $this->home = file_get_contents($projectRoot . '/resources/views/home.blade.php');
+    $this->vehicleCard = file_get_contents($projectRoot . '/resources/views/components/vehicle-card.blade.php');
     $this->theme04 = file_get_contents($projectRoot . '/public/assets/css/themes/theme-04/theme-04.css');
     $this->sections = [
         'partners' => 't4-partners',
@@ -17,6 +18,17 @@ beforeEach(function () {
         'blogs' => 't4-stories',
         'faqs' => 't4-faq',
     ];
+});
+
+it('shows one shared kilometre allowance in every theme', function () {
+    expect($this->vehicleCard)
+        ->not->toContain("\$showKmAllowance = !is_theme('theme-04')")
+        ->toContain("\$hasFreeKmPerDay = isset(\$distanceDetails['free_km_per_day'])")
+        ->toContain('@if ($hasAllowedKm && !$hasFreeKmPerDay && !$hasFreeKmPerPackage)');
+});
+
+it('keeps shared vehicle card actions at the bottom in every theme', function () {
+    expect($this->vehicleCard)->toContain(".vehicle-actions {\n                margin-top: auto !important;");
 });
 
 it('covers all hidden and visible combinations and every possible surviving neighbor pair', function () {

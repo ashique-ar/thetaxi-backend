@@ -123,7 +123,6 @@ class InvoiceService
                 'email_sending_at' => null,
                 'email_last_error' => null,
             ]);
-            Log::info('Invoice email skipped — booking has emails suppressed', ['invoice_id' => $invoice->id]);
             return;
         }
 
@@ -190,10 +189,6 @@ class InvoiceService
                 'email_last_error' => null,
             ]);
 
-            Log::info('Invoice email sent', [
-                'invoice_id' => $invoice->id,
-                'to'         => $invoice->customer_email,
-            ]);
 
             if ($booking) {
                 $this->notifyInvoiceSent($booking, $invoice);
@@ -607,7 +602,7 @@ class InvoiceService
             'companyPhone'   => WebsiteSetting::getValue('company_phone', ''),
             'companyEmail'   => WebsiteSetting::getValue('company_email', config('mail.from.address', '')),
             'companyWeb'     => WebsiteSetting::getValue('company_website', config('app.url')),
-            'companyLogo'    => WebsiteSetting::getValue('company_logo_path', null),
+            'companyLogo'    => $this->invoiceLogo(),
             // Booking context
             'serviceType'    => $serviceType,
             'fromDate'       => $firstItem?->from_date?->format('d M Y H:i'),
@@ -616,6 +611,27 @@ class InvoiceService
             'driver'         => $driver ? trim(($driver->user?->first_name ?? '') . ' ' . ($driver->user?->last_name ?? '')) : null,
             'contractualDistanceBreakdowns' => $this->contractualDistanceBreakdowns($booking),
         ];
+    }
+
+    private function invoiceLogo(): ?string
+    {
+        $logo = \App\Models\BusinessSetting::getSetting('company_logo_path')
+            ?: WebsiteSetting::getValue('company_logo_path', null)
+            ?: WebsiteSetting::getValue('brand_logo_primary', null);
+
+        if (!$logo) {
+            return null;
+        }
+
+        if (str_starts_with($logo, 'media/')) {
+            $disk = Storage::disk(config('filesystems.default'));
+            if (!$disk->exists($logo)) {
+                return null;
+            }
+            return 'data:' . ($disk->mimeType($logo) ?: 'image/png') . ';base64,' . base64_encode($disk->get($logo));
+        }
+
+        return s3_asset($logo);
     }
 
     /** @return array<int, array<string, mixed>> */

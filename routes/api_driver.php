@@ -12,6 +12,8 @@ use App\Http\Controllers\Api\Driver\Mobile\TripController;
 use App\Http\Controllers\Api\Driver\Mobile\EarningsController;
 use App\Http\Controllers\Api\Driver\Mobile\NotificationController;
 use App\Http\Controllers\Api\Driver\Mobile\AppSettingsController;
+use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
+use App\Http\Controllers\Api\UtilityController;
 
 /*
 |--------------------------------------------------------------------------
@@ -29,8 +31,21 @@ Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'v
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
+    Route::post('request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:5,1');
+    Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
     Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
     Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
+});
+
+Route::prefix('onboarding')->middleware('throttle:20,1')->group(function () {
+    Route::get('countries', [UtilityController::class, 'countries']);
+    Route::get('countries/{country}/states', [UtilityController::class, 'states'])->whereUuid('country');
+    Route::get('makes', [OnboardingController::class, 'makes']);
+    Route::get('makes/{make}/models', [OnboardingController::class, 'models'])->whereUuid('make');
+    Route::get('', [OnboardingController::class, 'show']);
+    Route::patch('steps/{step}', [OnboardingController::class, 'updateStep']);
+    Route::post('documents', [OnboardingController::class, 'uploadDocument']);
+    Route::post('submit', [OnboardingController::class, 'submit']);
 });
 
 // Protected routes (Passport authentication required)

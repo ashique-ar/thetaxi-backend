@@ -11,6 +11,7 @@ class StaffResource extends JsonResource
     public function toArray($request)
     {
         $fullName = trim(($this->user?->first_name ?? '').' '.($this->user?->last_name ?? ''));
+        $staffType = $this->staff_type;
         $viewer = $request->user();
         $canViewSensitivePersonal = $viewer
             && ($viewer->id === $this->user_id || $viewer->can('staff-sensitive-personal.view'));
@@ -32,8 +33,16 @@ class StaffResource extends JsonResource
             'collection_commission_enabled' => (bool) $this->collection_commission_enabled,
             'collection_commission_rate' => (float) $this->collection_commission_rate,
             'code' => $this->code,
+            'employee_id' => $this->code,
+            'role_id' => $staffType,
+            'role' => $staffType ? [
+                'id' => $staffType,
+                'name' => $staffType,
+                'display_name' => $staffType,
+            ] : null,
             'nic' => $canViewSensitivePersonal ? $this->nic : null,
             'dob' => $canViewSensitivePersonal ? $this->dob : null,
+            'date_of_birth' => $canViewSensitivePersonal ? $this->dob : null,
             'license_no' => $canViewSensitivePersonal ? $this->license_no : null,
             'license_expiry' => $canViewSensitivePersonal ? $this->license_expiry : null,
             'address' => $canViewSensitivePersonal ? $this->address : null,
@@ -43,6 +52,16 @@ class StaffResource extends JsonResource
             'state_id' => $this->state_id,
             'state' => $this->state?->name,
             'city' => $this->city,
+            'gender' => $this->gender,
+            'postal_code' => $this->postal_code,
+            'department' => $this->department,
+            'position' => $this->position,
+            'joining_date' => $this->joining_date,
+            'reporting_to' => $this->reporting_to,
+            'emergency_contact' => $canViewSensitivePersonal ? $this->emergency_contact : null,
+            'payment_methods' => $canViewSensitivePersonal
+                ? PaymentMethodResource::collection($this->whenLoaded('paymentMethods'))
+                : [],
             'employment_ended_at' => $this->employment_ended_at,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,

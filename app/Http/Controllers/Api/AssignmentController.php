@@ -50,6 +50,7 @@ class AssignmentController extends Controller
 
             $booking = Booking::with([
                 'customer.user',
+                'corporateAccount',
                 'vehicle.vehicleGroup',
                 'driver.user',
                 'vehicleAssignments.vehicle',
@@ -206,6 +207,7 @@ class AssignmentController extends Controller
                     : (is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [])
             );
             $customerUser = $booking->customer?->user;
+            $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
 
             $result = [
                 'booking' => [
@@ -213,7 +215,16 @@ class AssignmentController extends Controller
                     'booking_number' => $booking->booking_number,
                     'reference_number' => $booking->confirmation_number ?? $booking->invoice_number ?? $booking->booking_number,
                     'booking_source' => $booking->booking_source ?? $booking->created_from,
+                    'is_corporate_booking' => (bool) $booking->is_corporate_booking,
                     'customer_name' => $customerName,
+                    'corporate_name' => $booking->corporateAccount?->name,
+                    'passenger_count' => $booking->passenger_count,
+                    'luggage_count' => $booking->luggage_count,
+                    'special_requirements' => $booking->special_requirements,
+                    'trip_notes' => $selectedBookingItem?->notes,
+                    'pickup_landmark' => $selectedBookingItem?->pickup_landmark,
+                    'dropoff_landmark' => $selectedBookingItem?->dropoff_landmark,
+                    'is_self_driven' => $selectedBookingItem?->is_self_driven,
                     'customer_email' => $booking->customer?->email ?? $customerUser?->email,
                     'customer_phone' => $booking->customer?->phone ?? $booking->customer?->mobile ?? $customerUser?->phone,
                     'service_type_id' => $selectedBookingItem?->service_type_id ?? $selectedServiceType?->id,
@@ -253,6 +264,10 @@ class AssignmentController extends Controller
                     'currency' => $pricingMetrics['currency'],
                     'created_at' => $booking->created_at?->toIso8601String(),
                     'updated_at' => $booking->updated_at?->toIso8601String(),
+                    ...($canManagePrice ? [
+                        'price_overridden' => $selectedBookingItem?->price_override_amount !== null,
+                        'price_override_reason' => $selectedBookingItem?->price_override_reason,
+                    ] : []),
                 ],
                 'selected_booking_item_id' => $selectedBookingItem?->id,
                 'selection_warning' => $selectionWarning,
@@ -574,6 +589,26 @@ class AssignmentController extends Controller
 
         return [
             'currency' => $bookingItem?->currency,
+            'actual_start_at' => $this->toUtcIsoTimestamp($assignment?->trip_started_at ?? $assignment?->actual_start ?? data_get($bookingItem?->lifecycle_data, 'actual_start_time')),
+            'actual_end_at' => $this->toUtcIsoTimestamp($assignment?->trip_completed_at ?? $assignment?->actual_end ?? $bookingItem?->returned_at ?? data_get($bookingItem?->lifecycle_data, 'actual_return_time')),
+            'actual_distance_km' => $this->firstNumeric([$assignment?->total_distance_km, $finalAuditInputs['distance_km'] ?? null]),
+            'actual_waiting_minutes' => $this->firstNumeric([
+                $waitingSeconds !== null ? (float) $waitingSeconds / 60 : null,
+                $finalAuditInputs['total_waiting_minutes'] ?? null,
+                $finalAuditInputs['waiting_minutes'] ?? null,
+            ]),
+            'total_waiting_seconds' => $waitingSeconds !== null
+                ? (int) $waitingSeconds
+                : (isset($finalAuditInputs['total_waiting_minutes'])
+                    ? (int) round((float) $finalAuditInputs['total_waiting_minutes'] * 60)
+                    : (isset($finalAuditInputs['waiting_minutes'])
+                        ? (int) round((float) $finalAuditInputs['waiting_minutes'] * 60)
+                        : null)),
+            'actual_duration_minutes' => $this->firstNumeric([
+                $assignment?->trip_started_at && $assignment?->trip_completed_at
+                    ? $assignment->trip_started_at->diffInSeconds($assignment->trip_completed_at) / 60 : null,
+                $finalAuditInputs['duration_minutes'] ?? null,
+            ]),
             'base_amount' => $this->firstNumeric([
                 $summary['base_total'] ?? null,
                 $basePricing['base_amount'] ?? null,
@@ -631,10 +666,16 @@ class AssignmentController extends Controller
                 $finalAuditInputs['pickup_waiting_minutes'] ?? null,
                 $assignment?->pickup_waiting_time_seconds !== null ? (int) $assignment->pickup_waiting_time_seconds / 60 : null,
             ]),
+            'pickup_waiting_seconds' => $assignment?->pickup_waiting_time_seconds !== null
+                ? (int) $assignment->pickup_waiting_time_seconds
+                : (isset($finalAuditInputs['pickup_waiting_minutes']) ? (int) round((float) $finalAuditInputs['pickup_waiting_minutes'] * 60) : null),
             'hire_waiting_minutes' => $this->firstNumeric([
                 $finalAuditInputs['hire_waiting_minutes'] ?? null,
                 $assignment?->hire_waiting_time_seconds !== null ? (int) $assignment->hire_waiting_time_seconds / 60 : null,
             ]),
+            'hire_waiting_seconds' => $assignment?->hire_waiting_time_seconds !== null
+                ? (int) $assignment->hire_waiting_time_seconds
+                : (isset($finalAuditInputs['hire_waiting_minutes']) ? (int) round((float) $finalAuditInputs['hire_waiting_minutes'] * 60) : null),
             'total_waiting_minutes' => $this->firstNumeric([
                 $finalAuditInputs['total_waiting_minutes'] ?? null,
                 $waitingMinutes,
@@ -998,9 +1039,39 @@ class AssignmentController extends Controller
                 $stopPoints = $this->extractStopPointsFromBookingItem($bookingItem);
             }
 
+            $tripCompleted = $tripAssignment->trip_completed_at
+                || $tripAssignment->actual_end
+                || in_array((string) $tripAssignment->status, ['completed', 'cancelled'], true);
+            if ($tripCompleted) {
+                $historicalLatitude = $tripAssignment->final_latitude ?? ($latestPoint['latitude'] ?? null);
+                $historicalLongitude = $tripAssignment->final_longitude ?? ($latestPoint['longitude'] ?? null);
+                $livePayload = [
+                    ...$livePayload,
+                    'is_online' => false,
+                    'last_active_at' => $this->toUtcIsoTimestamp(
+                        $tripAssignment->trip_completed_at ?? $tripAssignment->actual_end
+                    ) ?? ($latestPoint['recorded_at'] ?? null),
+                    'latitude' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude)
+                        ? (float) $historicalLatitude
+                        : null,
+                    'longitude' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude)
+                        ? (float) $historicalLongitude
+                        : null,
+                    'has_location' => $this->isValidCoordinate($historicalLatitude, $historicalLongitude),
+                ];
+            }
+
             $acceptPoint = null;
             if ($tripAssignment->confirmed_at) {
-                if ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
+                if ($this->isValidCoordinate($tripAssignment->accept_latitude, $tripAssignment->accept_longitude)) {
+                    $acceptPoint = [
+                        'label' => 'Driver Accepted',
+                        'latitude' => (float) $tripAssignment->accept_latitude,
+                        'longitude' => (float) $tripAssignment->accept_longitude,
+                        'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
+                        'source' => 'assignment_acceptance',
+                    ];
+                } elseif ($firstPoint && $this->isValidCoordinate($firstPoint['latitude'] ?? null, $firstPoint['longitude'] ?? null)) {
                     $acceptPoint = [
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $firstPoint['latitude'],
@@ -1008,7 +1079,7 @@ class AssignmentController extends Controller
                         'timestamp' => $this->toUtcIsoTimestamp($tripAssignment->confirmed_at),
                         'source' => 'route_point',
                     ];
-                } elseif ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
+                } elseif (!$tripCompleted && $this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
                     $acceptPoint = [
                         'label' => 'Driver Accepted',
                         'latitude' => (float) $livePayload['latitude'],
@@ -1022,11 +1093,13 @@ class AssignmentController extends Controller
             $currentDriverPoint = null;
             if ($this->isValidCoordinate($livePayload['latitude'], $livePayload['longitude'])) {
                 $currentDriverPoint = [
-                    'label' => $tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Live Location',
+                    'label' => $tripCompleted
+                        ? 'Trip Last Known Location'
+                        : ($tripAssignment->confirmed_at ? 'Driver Current Location' : 'Driver Live Location'),
                     'latitude' => (float) $livePayload['latitude'],
                     'longitude' => (float) $livePayload['longitude'],
                     'timestamp' => $livePayload['last_active_at'],
-                    'source' => 'driver_live_location',
+                    'source' => $tripCompleted ? 'trip_completion' : 'driver_live_location',
                 ];
             } elseif ($latestPoint && $this->isValidCoordinate($latestPoint['latitude'] ?? null, $latestPoint['longitude'] ?? null)) {
                 $currentDriverPoint = [
