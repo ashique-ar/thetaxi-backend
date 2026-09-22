@@ -58,13 +58,19 @@ class CorporateRoleController extends Controller
             return $this->forbiddenResponse();
         }
 
+        $prefix = $this->customRolePrefix($request->corporate_id);
         $roles = Role::where('guard_name', 'api')
-            ->where(function ($q) {
+            ->where(function ($q) use ($prefix) {
                 $q->whereIn('name', self::DEFAULT_CORPORATE_ROLES)
-                    ->orWhere('name', 'like', 'Corporate_%');
+                    ->orWhere('name', 'like', $prefix.'%');
             })
             ->with('permissions')
-            ->get();
+            ->get()
+            ->each(function (Role $role) use ($prefix): void {
+                $role->setAttribute('display_name', Str::startsWith($role->name, $prefix)
+                    ? Str::after($role->name, $prefix)
+                    : $role->name);
+            });
 
         return response()->json([
             'status' => 'success',
@@ -80,15 +86,14 @@ class CorporateRoleController extends Controller
         }
 
         $request->validate([
-            'name'          => ['required', 'string', 'max:255'],
+            'name'          => ['required', 'string', 'max:170'],
             'description'   => ['nullable', 'string', 'max:1000'],
             'permissions'   => ['present', 'array'],
             'permissions.*' => ['string', 'in:' . implode(',', self::CORPORATE_PERMISSIONS)],
         ]);
 
-        $roleName = Str::startsWith($request->name, 'Corporate_')
-            ? $request->name
-            : 'Corporate_' . Str::of($request->name)->trim()->replace(' ', '_');
+        $roleName = $this->customRolePrefix($request->corporate_id)
+            .Str::of($request->name)->trim()->replace([' ', '-'], '_');
 
         if (Role::where('name', $roleName)->where('guard_name', 'api')->exists()) {
             return response()->json([
@@ -118,23 +123,29 @@ class CorporateRoleController extends Controller
         }
 
         $request->validate([
-            'name'          => ['sometimes', 'string', 'max:255'],
+            'name'          => ['sometimes', 'string', 'max:170'],
             'description'   => ['nullable', 'string', 'max:1000'],
             'permissions'   => ['present', 'array'],
             'permissions.*' => ['string', 'in:' . implode(',', self::CORPORATE_PERMISSIONS)],
         ]);
 
         $role = Role::where('guard_name', 'api')
-            ->where(function ($q) {
-                $q->whereIn('name', self::DEFAULT_CORPORATE_ROLES)
-                  ->orWhere('name', 'like', 'Corporate_%');
-            })
+            ->where('name', 'like', $this->customRolePrefix($request->corporate_id).'%')
             ->findOrFail($id);
 
-        if ($request->filled('name') && ! in_array($role->name, self::DEFAULT_CORPORATE_ROLES, true)) {
-            $roleName = Str::startsWith($request->name, 'Corporate_')
-                ? $request->name
-                : 'Corporate_' . Str::of($request->name)->trim()->replace(' ', '_');
+        if ($this->isAssignedOutsideCorporate($role, $request->corporate_id)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This role is used by another corporate account and cannot be changed here.',
+            ], 409);
+        }
+
+        if ($request->filled('name')) {
+            $roleName = $this->customRolePrefix($request->corporate_id)
+                .Str::of($request->name)->trim()->replace([' ', '-'], '_');
+            if (Role::where('guard_name', 'api')->where('name', $roleName)->where('id', '!=', $role->id)->exists()) {
+                return response()->json(['status' => 'error', 'message' => 'A role with this name already exists.'], 422);
+            }
             $role->name = (string) $roleName;
             $role->save();
         }
@@ -155,14 +166,11 @@ class CorporateRoleController extends Controller
         }
 
         $role = Role::where('guard_name', 'api')
-            ->where(function ($q) {
-                $q->whereIn('name', self::DEFAULT_CORPORATE_ROLES)
-                  ->orWhere('name', 'like', 'Corporate_%');
-            })
+            ->where('name', 'like', $this->customRolePrefix($request->corporate_id).'%')
             ->findOrFail($id);
 
         // Guard deletion when employees are assigned to this role
-        $assignedCount = CorporateEmployee::where('corporate_id', $request->corporate_id)
+        $assignedCount = CorporateEmployee::query()
             ->whereHas('userContext', function ($q) use ($role) {
                 $q->whereHas('roles', function ($rq) use ($role) {
                     $rq->where('roles.id', $role->id);
@@ -183,6 +191,18 @@ class CorporateRoleController extends Controller
             'status'  => 'success',
             'message' => 'Role deleted successfully',
         ]);
+    }
+
+    private function isAssignedOutsideCorporate(Role $role, string $corporateId): bool
+    {
+        return CorporateEmployee::where('corporate_id', '!=', $corporateId)
+            ->whereHas('userContext.roles', fn ($query) => $query->where('roles.id', $role->id))
+            ->exists();
+    }
+
+    private function customRolePrefix(string $corporateId): string
+    {
+        return 'Corporate_'.$corporateId.'_';
     }
 
     public function permissions(): JsonResponse

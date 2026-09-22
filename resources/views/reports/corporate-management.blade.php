@@ -35,9 +35,12 @@
 <body>
     <h1>Corporate Management Report</h1>
     <p>Period: {{ $payload['period']['from'] ?: 'All time' }} to {{ $payload['period']['to'] ?: 'Present' }}</p>
-    <p>Bookings: {{ $payload['operational']['booking_count'] }} | Trips: {{ $payload['operational']['trip_count'] }} |
-        Estimated booking value: {{ number_format($payload['operational']['estimated_booking_value'], 2) }} | Finalized
-        charges: {{ number_format($payload['operational']['finalized_charges'], 2) }}</p>
+    <p>Bookings: {{ $payload['operational']['booking_count'] }} | Trips: {{ $payload['operational']['trip_count'] }}
+        @if($payload['financial_metrics_visible'])
+            | Estimated booking value: {{ number_format($payload['operational']['estimated_booking_value'], 2) }}
+            | Finalized charges: {{ number_format($payload['operational']['finalized_charges'], 2) }}
+        @endif
+    </p>
     <p>Contractual distance: {{ number_format($payload['distance']['contractual_km'], 3) }} km (pricing) | Operational
         distance: {{ number_format($payload['distance']['operational_km'], 3) }} km (telemetry evidence)</p>
     @if(isset($payload['financial_period']['summary']))
@@ -56,8 +59,10 @@
                 <th>Label</th>
                 <th>Bookings</th>
                 <th>Trips</th>
-                <th>Estimated</th>
-                <th>Finalized</th>
+                @if($payload['financial_metrics_visible'])
+                    <th>Estimated</th>
+                    <th>Finalized</th>
+                @endif
             </tr>
         </thead>
         <tbody>

@@ -57,6 +57,7 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
+    'portal_url' => env('PORTAL_URL', env('APP_URL', 'http://localhost')),
 
     /*
     |--------------------------------------------------------------------------

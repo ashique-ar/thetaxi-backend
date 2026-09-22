@@ -3,13 +3,16 @@
 namespace App\Models\Website;
 
 use App\Models\BaseModel;
-use App\Traits\UUID;
+use App\Models\Inquiry;
+use App\Models\InquiryForm;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * CMS content model.
- * 
+ *
  * @property string $id
  * @property string $cms_content_type_id
  * @property string|null $title
@@ -17,7 +20,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $author
  * @property string|null $thumbnail
  * @property string|null $body
- * @property \Carbon\Carbon|null $published_at
+ * @property Carbon|null $published_at
  * @property string $status
  * @property string|null $excerpt
  * @property array|null $custom_fields
@@ -34,10 +37,9 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property string|null $url
  * @property string|null $created_user_id
  * @property string|null $updated_user_id
- * @property \Carbon\Carbon|null $created_at
- * @property \Carbon\Carbon|null $updated_at
- * @property \Carbon\Carbon|null $deleted_at
- * 
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
  * @property-read CmsContentType $contentType
  * @property-read User|null $createdBy
  * @property-read User|null $updatedBy
@@ -77,7 +79,6 @@ class CmsContent extends BaseModel
         return (bool) preg_match('/<\/?[a-z][a-z0-9-]*(\s[^>]*)?>/i', $value);
     }
 
-
     /**
      * The attributes that are mass assignable.
      *
@@ -85,6 +86,7 @@ class CmsContent extends BaseModel
      */
     protected $fillable = [
         'cms_content_type_id',
+        'inquiry_form_id',
         'title',
         'slug',
         'author',
@@ -172,6 +174,16 @@ class CmsContent extends BaseModel
     public function contentType(): BelongsTo
     {
         return $this->belongsTo(CmsContentType::class, 'cms_content_type_id');
+    }
+
+    public function inquiryForm(): BelongsTo
+    {
+        return $this->belongsTo(InquiryForm::class, 'inquiry_form_id')->withoutGlobalScope('active');
+    }
+
+    public function inquiries(): HasMany
+    {
+        return $this->hasMany(Inquiry::class, 'cms_content_id');
     }
 
     /**
@@ -265,11 +277,11 @@ class CmsContent extends BaseModel
      */
     public function getFormattedPriceAttribute()
     {
-        if (!$this->price) {
+        if (! $this->price) {
             return null;
         }
 
-        return $this->price_currency . ' ' . number_format(floor(max(0, $this->price)), 0);
+        return $this->price_currency.' '.number_format(floor(max(0, $this->price)), 0);
     }
 
     /**
@@ -281,6 +293,7 @@ class CmsContent extends BaseModel
         for ($i = 1; $i <= 5; $i++) {
             $stars[] = $i <= $this->rating;
         }
+
         return $stars;
     }
 

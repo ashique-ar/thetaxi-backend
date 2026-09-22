@@ -37,9 +37,11 @@ Schedule::command('bookings:process-payment-schedules')
 //     ->dailyAt('05:30')
 //     ->withoutOverlapping();
 
-// Schedule::command('corporate:deliver-management-reports')
-//     ->dailyAt('06:00')
-//     ->withoutOverlapping();
+if (config('corporate_portal.scheduled_reports_enabled')) {
+    Schedule::command('corporate:deliver-management-reports')
+        ->dailyAt('06:00')
+        ->withoutOverlapping();
+}
 
 // Schedule::command('corporate:process-collection-follow-ups')
 //     ->hourly()

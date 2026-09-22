@@ -29,6 +29,9 @@ class CorporateService
             'view_all_bookings',
             'approve_bookings',
             'view_payments',
+            'view_reports',
+            'schedule_reports',
+            'view_audit_log',
             'corporate.view',
             'bookings.view',
             'bookings.create',
@@ -529,16 +532,11 @@ class CorporateService
 
     public function assignEmployeeRole(CorporateEmployee $employee, string $roleName): void
     {
-        $role = $this->resolveCorporateRole($roleName);
+        $role = $this->resolveCorporateRole($roleName, $employee->corporate_id);
 
         $userContext = $employee->userContext;
         if ($userContext) {
             $userContext->roles()->sync([$role->id]);
-        }
-
-        $user = $employee->user;
-        if ($user && !$user->hasRole($role)) {
-            $user->assignRole($role);
         }
 
         $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [
@@ -546,9 +544,16 @@ class CorporateService
         ]);
     }
 
-    private function resolveCorporateRole(string $roleName): Role
+    private function resolveCorporateRole(string $roleName, string $corporateId): Role
     {
-        $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api']);
+        if (! array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)
+            && ! Str::startsWith($roleName, 'Corporate_'.$corporateId.'_')) {
+            throw ValidationException::withMessages(['role' => 'The selected role is not available for this corporate account.']);
+        }
+
+        $role = array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)
+            ? Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api'])
+            : Role::where('name', $roleName)->where('guard_name', 'api')->firstOrFail();
 
         if (array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)) {
             $permissions = collect(self::CORPORATE_ROLE_PERMISSIONS[$roleName])

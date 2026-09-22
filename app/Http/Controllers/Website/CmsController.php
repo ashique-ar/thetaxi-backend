@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
 use App\Services\WebsiteSettingsService;
+use App\Services\Website\PublishedCmsContentResolver;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -95,18 +96,18 @@ class CmsController extends Controller
     /**
      * Display the specified content
      */
-    public function show(string $contentTypeSlug, string $contentSlug): View
+    public function show(string $contentTypeSlug, string $contentSlug, PublishedCmsContentResolver $resolver): View
     {
-        $contentType = CmsContentType::where('slug', $contentTypeSlug)
-            ->where('is_active', true)
-            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
-            ->firstOrFail();
+        $contentType = $resolver->contentType($contentTypeSlug);
+        $content = $resolver->find($contentTypeSlug, $contentSlug);
+        abort_unless($content, 404);
 
-        $content = CmsContent::published()
-            ->byType($contentTypeSlug)
-            ->where('slug', $contentSlug)
-            ->with(['contentType'])
-            ->firstOrFail();
+        return $this->renderContent($contentType, $content);
+    }
+
+    public function renderContent(CmsContentType $contentType, CmsContent $content): View
+    {
+        $contentTypeSlug = $contentType->slug;
 
         // Increment view count
         $content->incrementViews();
@@ -130,7 +131,9 @@ class CmsController extends Controller
         // 2. Merge with CMS content booking defaults
         // CMS content values take precedence for location, session takes precedence for dates
         // Note: content->service_type may be stored as a numeric ID or a code string. Resolve both.
-        $serviceTypeRaw = $content->service_type ?? ($sessionSearchParams['service_type'] ?? 'airport_transfers'); // Raw value from content/session
+        $serviceTypeRaw = $content->service_type ?? ($contentTypeSlug === 'services' && $content->inquiry_form_id
+            ? null
+            : ($sessionSearchParams['service_type'] ?? 'airport_transfers')); // Raw value from content/session
 
         // Resolve canonical service type code for the frontend (booking form expects a code like 'airport_transfers')
         $serviceTypeForView = $serviceTypeRaw;
@@ -139,7 +142,7 @@ class CmsController extends Controller
             $resolved = \App\Models\Service\ServiceType::where('code', $serviceTypeRaw)->first();
 
             // If not found by code and it looks like a UUID, try by ID
-            if (!$resolved && \Illuminate\Support\Str::isUuid($serviceTypeRaw)) {
+            if (!$resolved && $serviceTypeRaw && \Illuminate\Support\Str::isUuid($serviceTypeRaw)) {
                 $resolved = \App\Models\Service\ServiceType::find($serviceTypeRaw);
             }
 
@@ -344,12 +347,14 @@ class CmsController extends Controller
         ];
 
         // Ensure we have a persistent search id so the vehicle cards can show Book Now and send the correct search context
-        if (!session()->has('current_search_id')) {
+        if ($serviceTypeRaw && !session()->has('current_search_id')) {
             session(['current_search_id' => (string) \Illuminate\Support\Str::uuid()]);
         }
 
         // Persist current search params in session so cart and booking flows can use them
-        session(['current_search_params' => $searchParams]);
+        if ($serviceTypeRaw) {
+            session(['current_search_params' => $searchParams]);
+        }
 
         return view('cms.show', compact('contentType', 'content', 'relatedContents', 'search', 'suggestedVehicles'));
     }

@@ -1107,11 +1107,16 @@ class CorporateBookingService
 
         $filename = 'exports/corporate_bookings_' . $corporateId . '_' . now()->format('Ymd_His') . '.csv';
 
-        $csv = "booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status,payment_method,payment_collection_status,total_cost\n";
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
+        $csv = 'booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status';
+        if ($canViewPayments) {
+            $csv .= ',payment_method,payment_collection_status,total_cost';
+        }
+        $csv .= "\n";
 
         foreach ($items as $item) {
-            $row = $this->mapBookingItem($item, true);
-            $csv .= implode(',', [
+            $row = $this->mapBookingItem($item, $canViewPayments);
+            $cells = [
                 $this->csvEscape($row['booking_number'] ?? ''),
                 $this->csvEscape($row['item_code'] ?? ''),
                 $this->csvEscape($row['employee_name'] ?? ''),
@@ -1122,10 +1127,13 @@ class CorporateBookingService
                 $this->csvEscape($row['pickup_date'] ?? ''),
                 $this->csvEscape($row['dropoff_date'] ?? ''),
                 $this->csvEscape($row['status'] ?? ''),
-                $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? ''),
-                $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? ''),
-                $this->csvEscape($row['total_cost'] ?? '0'),
-            ]) . "\n";
+            ];
+            if ($canViewPayments) {
+                $cells[] = $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
+                $cells[] = $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
+                $cells[] = $this->csvEscape($row['total_cost'] ?? '0');
+            }
+            $csv .= implode(',', $cells) . "\n";
         }
 
         Storage::put($filename, $csv);

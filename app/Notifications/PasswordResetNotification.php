@@ -68,7 +68,9 @@ class PasswordResetNotification extends Notification implements ShouldQueue
             return call_user_func(static::$createUrlCallback, $notifiable, $this->token);
         }
 
-        return url(config('app.url') . '/reset-password/' . $this->token . '?email=' . $notifiable->getEmailForPasswordReset());
+        return rtrim((string) (config('app.portal_url') ?: config('app.url')), '/')
+            . '/auth/reset-password?token=' . rawurlencode($this->token)
+            . '&email=' . rawurlencode($notifiable->getEmailForPasswordReset());
     }
 
     /**

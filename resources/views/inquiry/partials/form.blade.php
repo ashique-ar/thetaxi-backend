@@ -5,7 +5,8 @@
     if (is_string($phonePreferredCountries)) {
         $phonePreferredCountries = array_filter(array_map('trim', explode(',', $phonePreferredCountries)));
     }
-    $formAction = ($servicePage->settings ?? [])['form_action'] ?? 'booking.enquiry';
+    $isCmsService = $servicePage instanceof \App\Models\Website\CmsContent;
+    $formAction = $isCmsService ? 'booking.enquiry' : (($servicePage->settings ?? [])['form_action'] ?? 'booking.enquiry');
     $showIntro = $showIntro ?? true;
 @endphp
 
@@ -24,14 +25,23 @@
 <form class="filter-input show" data-inquiry-form
     data-phone-initial-country="{{ $phoneInitialCountry }}"
     data-phone-preferred-countries="{{ implode(',', $phonePreferredCountries) }}"
-    action="{{ route($formAction) }}" method="POST">
+    action="{{ route($formAction) }}" method="POST" enctype="multipart/form-data">
     @csrf
-    <input type="hidden" name="inquiry_service_page_id" value="{{ $servicePage->id }}">
-    <input type="hidden" name="service_slug" value="{{ $servicePage->slug }}">
-    @if (!empty($servicePage->inquiry_type))
-        <input type="hidden" name="inquiry_type" value="{{ $servicePage->inquiry_type }}">
+    @if ($isCmsService)
+        <input type="hidden" name="cms_content_id" value="{{ $servicePage->id }}">
+        <input type="hidden" name="cms_form_context" value="{{ \Illuminate\Support\Facades\Crypt::encryptString(json_encode(['content_id' => $servicePage->id, 'form_id' => $form->id])) }}">
+        <input type="hidden" name="referrer" value="{{ request()->headers->get('referer') }}">
+        @foreach (['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'] as $utmField)
+            <input type="hidden" name="{{ $utmField }}" value="{{ request()->query($utmField) }}">
+        @endforeach
+    @else
+        <input type="hidden" name="inquiry_service_page_id" value="{{ $servicePage->id }}">
+        <input type="hidden" name="service_slug" value="{{ $servicePage->slug }}">
+        @if (!empty($servicePage->inquiry_type))
+            <input type="hidden" name="inquiry_type" value="{{ $servicePage->inquiry_type }}">
+        @endif
+        <input type="hidden" name="service_type" value="{{ $servicePage->code }}">
     @endif
-    <input type="hidden" name="service_type" value="{{ $servicePage->code }}">
 
     @if ($showIntro && (!empty($form->name) || !empty($form->description)))
         <div class="inquiry-form-intro">
@@ -125,12 +135,12 @@
                         class="@error($field->name) is-invalid @enderror"
                         rows="4"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
-                        @if ($field->is_required) required @endif>{{ old($field->name, $field->default_value) }}</textarea>
+                        @if ($field->is_required && $shouldShow) required @endif>{{ old($field->name, $field->default_value) }}</textarea>
                 @elseif ($isSelect)
                     <select id="{{ $inputId }}" name="{{ $field->name }}"
                         class="form-select @error($field->name) is-invalid @enderror"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
-                        @if ($field->is_required) required @endif>
+                        @if ($field->is_required && $shouldShow) required @endif>
                         <option value="">Select {{ $field->label }}</option>
                         @foreach ($field->options ?? [] as $option)
                             @php
@@ -156,18 +166,40 @@
                                     value="{{ $optionValue }}"
                                     data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
                                     @if (old($field->name, $field->default_value) == $optionValue) checked @endif
-                                    @if ($field->is_required) required @endif>
+                                    @if ($field->is_required && $shouldShow) required @endif>
                                 <span>{{ $optionLabel }}</span>
                             </label>
                         @endforeach
                     </div>
+                @elseif ($field->type === 'checkbox')
+                    <div class="inquiry-radio-group" role="group" aria-labelledby="{{ $inputId }}-label">
+                        @foreach ($field->options ?? [] as $index => $option)
+                            @php
+                                $optionValue = is_array($option) ? ($option['value'] ?? '') : $option;
+                                $optionLabel = is_array($option) ? ($option['label'] ?? $optionValue) : $option;
+                                $selected = old($field->name, $field->default_value ?? []);
+                                $selected = is_array($selected) ? $selected : [$selected];
+                            @endphp
+                            <label class="inquiry-radio-option" for="{{ $inputId }}-{{ $index }}">
+                                <input id="{{ $inputId }}-{{ $index }}" type="checkbox" name="{{ $field->name }}[]"
+                                    value="{{ $optionValue }}" data-required="false"
+                                    @checked(in_array($optionValue, $selected))>
+                                <span>{{ $optionLabel }}</span>
+                            </label>
+                        @endforeach
+                    </div>
+                @elseif ($field->type === 'file')
+                    <input id="{{ $inputId }}" type="file" name="{{ $field->name }}"
+                        class="@error($field->name) is-invalid @enderror"
+                        data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
+                        @if ($field->is_required && $shouldShow) required @endif>
                 @else
                     <input id="{{ $inputId }}" type="{{ $field->type }}" name="{{ $field->name }}"
                         placeholder="{{ $field->placeholder ?? $field->label }}"
                         class="@error($field->name) is-invalid @enderror"
                         value="{{ old($field->name, $field->default_value) }}"
                         data-required="{{ $isConditionalRequired ? 'true' : 'false' }}"
-                        @if ($field->is_required) required @endif autocomplete="off">
+                        @if ($field->is_required && $shouldShow) required @endif autocomplete="off">
                 @endif
             </div>
 

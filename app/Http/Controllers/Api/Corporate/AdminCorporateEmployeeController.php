@@ -7,6 +7,7 @@ use App\Http\Requests\Corporate\StoreEmployeeRequest;
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateService;
+use App\Services\CorporateAccessLinkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -18,6 +19,14 @@ class AdminCorporateEmployeeController extends Controller
     {
         $this->corporateService = $corporateService;
         $this->middleware('permission:corporates.manage');
+    }
+
+    public function sendAccessLink(Corporate $corporate, string $id, CorporateAccessLinkService $access): JsonResponse
+    {
+        $employee = CorporateEmployee::where('corporate_id', $corporate->id)->findOrFail($id);
+        $access->send($employee);
+
+        return response()->json(['status' => 'success', 'message' => 'Password setup link queued for delivery.']);
     }
 
     public function index(Request $request, Corporate $corporate): JsonResponse

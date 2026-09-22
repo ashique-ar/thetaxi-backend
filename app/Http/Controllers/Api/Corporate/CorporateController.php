@@ -8,6 +8,8 @@ use App\Http\Requests\Corporate\UpdateCorporateRequest;
 use App\Models\Corporate\Corporate;
 use App\Models\Service\ServiceType;
 use App\Services\CorporateService;
+use App\Services\AuthService;
+use App\Models\User;
 use App\Http\Resources\ServiceTypeResource;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -228,6 +230,14 @@ class CorporateController extends Controller
             'department_id' => ['required', 'uuid', 'exists:corporate_departments,id'],
         ]);
 
+        $existingUser = User::where('email', $request->email)->exists();
+        if ($existingUser && $request->filled('password')) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This user already has a password. Leave the field empty and ask them to use their existing login or password reset.',
+            ], 422);
+        }
+
         $employee = $this->corporateService->addEmployee($corporate, [
             'email'         => $request->email,
             'first_name'    => $request->first_name,
@@ -238,10 +248,24 @@ class CorporateController extends Controller
             'role'          => 'Corporate_Master_Admin',
         ]);
 
+        $onboardingEmailSent = false;
+        if (! $existingUser && ! $request->filled('password')) {
+            try {
+                app(AuthService::class)->sendPasswordResetEmail($request->email);
+                $onboardingEmailSent = true;
+            } catch (\Throwable $exception) {
+                report($exception);
+            }
+        }
+
         return response()->json([
             'status'  => 'success',
             'message' => 'Initial admin created successfully',
-            'data'    => ['employee' => $employee->load(['user', 'department'])],
+            'data'    => [
+                'employee' => $employee->load(['user', 'department']),
+                'onboarding_email_sent' => $onboardingEmailSent,
+                'existing_user' => $existingUser,
+            ],
         ], 201);
     }
 }

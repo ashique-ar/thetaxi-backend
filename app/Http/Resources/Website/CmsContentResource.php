@@ -1,5 +1,7 @@
 <?php
+
 // app/Http/Resources/Website/CmsContentResource.php
+
 namespace App\Http\Resources\Website;
 
 use Carbon\CarbonInterface;
@@ -12,6 +14,7 @@ class CmsContentResource extends JsonResource
         return [
             'id' => $this->id,
             'cms_content_type_id' => $this->cms_content_type_id,
+            'inquiry_form_id' => $this->inquiry_form_id,
             'title' => $this->title,
             'slug' => $this->slug,
             'author' => $this->author,
@@ -47,18 +50,31 @@ class CmsContentResource extends JsonResource
             'content_type' => $this->whenLoaded('contentType', function () {
                 return new CmsContentTypeResource($this->contentType);
             }),
+            'inquiry_form' => $this->whenLoaded('inquiryForm', function () {
+                if (! $this->inquiryForm) {
+                    return null;
+                }
+
+                return [
+                    'id' => $this->inquiryForm->id,
+                    'name' => $this->inquiryForm->name,
+                    'slug' => $this->inquiryForm->slug,
+                    'is_active' => $this->inquiryForm->is_active,
+                    'updated_at' => $this->inquiryForm->updated_at,
+                ];
+            }),
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
             'created_by' => $this->whenLoaded('createdBy', function () {
                 return [
                     'id' => $this->createdBy->id,
-                    'name' => $this->createdBy->first_name . ' ' . $this->createdBy->last_name,
+                    'name' => $this->createdBy->first_name.' '.$this->createdBy->last_name,
                 ];
             }),
             'updated_by' => $this->whenLoaded('updatedBy', function () {
                 return [
                     'id' => $this->updatedBy->id,
-                    'name' => $this->updatedBy->first_name . ' ' . $this->updatedBy->last_name,
+                    'name' => $this->updatedBy->first_name.' '.$this->updatedBy->last_name,
                 ];
             }),
         ];
@@ -66,7 +82,7 @@ class CmsContentResource extends JsonResource
 
     private function publicUrl(): ?string
     {
-        if (!$this->resource->relationLoaded('contentType')) {
+        if (! $this->resource->relationLoaded('contentType')) {
             return null;
         }
 
@@ -78,9 +94,9 @@ class CmsContentResource extends JsonResource
             && $publishedAt->isPast();
 
         if (
-            !$isPublished
-            || !$contentType
-            || !$contentType->is_active
+            ! $isPublished
+            || ! $contentType
+            || ! $contentType->is_active
         ) {
             return null;
         }

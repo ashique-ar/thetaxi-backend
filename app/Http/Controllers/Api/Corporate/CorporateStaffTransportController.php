@@ -366,7 +366,7 @@ class CorporateStaffTransportController extends Controller
         $employee = $request->attributes->get('corporate_employee');
         $corporate = $employee?->corporate;
 
-        return $user->can('view_payments')
-            || ($user->can('create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
+        return \App\Services\CorporatePortalPermission::allows($request, 'view_payments')
+            || (\App\Services\CorporatePortalPermission::allows($request, 'create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
     }
 }

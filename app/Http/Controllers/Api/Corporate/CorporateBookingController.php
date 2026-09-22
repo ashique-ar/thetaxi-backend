@@ -12,6 +12,7 @@ use App\Models\Corporate\CorporateDivision;
 use App\Models\AuditLog;
 use App\Models\DriverAssignment;
 use App\Services\CorporateBookingService;
+use App\Services\CorporatePortalPermission;
 use App\Services\BookingObservabilityService;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
@@ -66,7 +67,7 @@ class CorporateBookingController extends Controller
         $partyMode = $request->validated('booking_party_mode');
         $selectedEmployeeId = $request->validated('employee_id');
 
-        if ($partyMode === 'general' && !$request->user()->can('create_bookings_for_others')) {
+        if ($partyMode === 'general' && !CorporatePortalPermission::allows($request, 'create_bookings_for_others')) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Creating a booking for a general corporate passenger requires permission to book for others.',
@@ -76,7 +77,7 @@ class CorporateBookingController extends Controller
         if (
             $selectedEmployeeId
             && $selectedEmployeeId !== $employee->id
-            && !$request->user()->can('create_bookings_for_others')
+            && !CorporatePortalPermission::allows($request, 'create_bookings_for_others')
         ) {
             return response()->json([
                 'status' => 'error',
@@ -130,7 +131,7 @@ class CorporateBookingController extends Controller
         $employee = $request->attributes->get('corporate_employee');
         $user = $request->user();
 
-        if (!$user->can('view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
+        if (!CorporatePortalPermission::allows($request, 'view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'You do not have permission to view this booking.',
@@ -359,7 +360,7 @@ class CorporateBookingController extends Controller
     {
         $booking = Booking::where('corporate_account_id', $request->corporate_id)->findOrFail($id);
         $employee = $request->attributes->get('corporate_employee');
-        if (! $request->user()->can('view_all_bookings') && ! $this->isOwnedByActor($booking, $employee?->user_id)) {
+        if (! CorporatePortalPermission::allows($request, 'view_all_bookings') && ! $this->isOwnedByActor($booking, $employee?->user_id)) {
             abort(403, 'You do not have permission to view this booking.');
         }
         return $booking;
@@ -386,7 +387,7 @@ class CorporateBookingController extends Controller
         $employee = $request->attributes->get('corporate_employee');
         $user = $request->user();
 
-        if (!$user->can('view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
+        if (!CorporatePortalPermission::allows($request, 'view_all_bookings') && !$this->isOwnedByActor($booking, $employee?->user_id)) {
             return response()->json([
                 'status'  => 'error',
                 'message' => 'You do not have permission to cancel this booking.',
@@ -436,6 +437,7 @@ class CorporateBookingController extends Controller
     public function export(CorporateReportFiltersRequest $request): StreamedResponse
     {
         $filters = $request->safe()->except(['page', 'per_page']);
+        $filters['can_view_payments'] = $this->canViewPayments($request);
 
         $filePath = $this->bookingService->exportBookings(
             $request->corporate_id,
@@ -465,17 +467,16 @@ class CorporateBookingController extends Controller
 
     private function canViewPayments(Request $request): bool
     {
-        $user = $request->user();
         $employee = $request->attributes->get('corporate_employee');
         $corporate = $employee?->corporate;
 
-        return $user->can('view_payments')
-            || ($user->can('create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
+        return CorporatePortalPermission::allows($request, 'view_payments')
+            || (CorporatePortalPermission::allows($request, 'create_bookings_for_others') && (bool) $corporate?->coordinator_can_view_payments);
     }
 
     private function bookingScope(Request $request): string
     {
-        return $request->user()->can('view_all_bookings') ? 'company' : 'employee';
+        return CorporatePortalPermission::allows($request, 'view_all_bookings') ? 'company' : 'employee';
     }
 
     private function validateCorporateFilters(Request $request, array $filters): void

@@ -359,7 +359,7 @@ it('validates report departments and divisions against the authenticated corpora
         ->and($owned->validated('division_id'))->toBe('60000000-0000-4000-8000-000000000001');
 });
 
-it('keeps self-only and company-wide scope decisions on the server permission boundary', function () {
+it('does not grant company-wide scope from a global user permission without the selected corporate context', function () {
     $controller = app(CorporateBookingController::class);
     $method = new ReflectionMethod($controller, 'bookingScope');
     $request = Request::create('/api/corporate/bookings', 'GET');
@@ -372,10 +372,10 @@ it('keeps self-only and company-wide scope decisions on the server permission bo
     $coordinator = Mockery::mock();
     $coordinator->shouldReceive('can')->with('view_all_bookings')->andReturnTrue();
     $request->setUserResolver(fn () => $coordinator);
-    expect($method->invoke($controller, $request))->toBe('company');
+    expect($method->invoke($controller, $request))->toBe('employee');
 });
 
-it('resolves pricing visibility from finance or configured coordinator permissions only', function () {
+it('does not grant pricing visibility from global permissions without the selected corporate context', function () {
     $controller = app(CorporateBookingController::class);
     $method = new ReflectionMethod($controller, 'canViewPayments');
     $request = Request::create('/api/corporate/bookings/booking-a', 'GET');
@@ -386,7 +386,7 @@ it('resolves pricing visibility from finance or configured coordinator permissio
     $request->attributes->set('corporate_employee', (object) ['corporate' => (object) [
         'coordinator_can_view_payments' => false,
     ]]);
-    expect($method->invoke($controller, $request))->toBeTrue();
+    expect($method->invoke($controller, $request))->toBeFalse();
 
     $coordinator = Mockery::mock();
     $coordinator->shouldReceive('can')->with('view_payments')->andReturnFalse();
@@ -395,7 +395,7 @@ it('resolves pricing visibility from finance or configured coordinator permissio
     $request->attributes->set('corporate_employee', (object) ['corporate' => (object) [
         'coordinator_can_view_payments' => true,
     ]]);
-    expect($method->invoke($controller, $request))->toBeTrue();
+    expect($method->invoke($controller, $request))->toBeFalse();
 
     $employee = Mockery::mock();
     $employee->shouldReceive('can')->with('view_payments')->andReturnFalse();

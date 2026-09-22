@@ -1096,17 +1096,20 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    // Inquiry routes use their own view/create/edit/delete permissions in the controller.
+    Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
+    Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
+    Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
+    Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
+    Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
+    Route::apiResource('inquiries', InquiryController::class);
+
     Route::middleware(['permission:system.view'])->group(function () {
         Route::get('galleries/stats', [ImageGalleryController::class, 'stats']);
         Route::get('galleries/search', [ImageGalleryController::class, 'search']);
         Route::get('galleries/categories', [ImageGalleryController::class, 'categories']);
         Route::apiResource('galleries', ImageGalleryController::class)->parameters(['galleries' => 'imageGallery']);
         Route::apiResource('image-galleries', ImageGalleryController::class);
-        Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
-        Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
-        Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
-        Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
-        Route::apiResource('inquiries', InquiryController::class);
         Route::post('notifications/send-bulk', [NotificationLogController::class, 'sendBulk']);
         Route::apiResource('notification-logs', NotificationLogController::class);
         Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);
@@ -1796,6 +1799,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
         Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
         Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
+        Route::post('employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'sendAccessLink'])->middleware('permission:manage_employees|throttle:5,1');
 
         // Role Management
         Route::get('roles', [\App\Http\Controllers\Api\Corporate\CorporateRoleController::class, 'index']);
@@ -1976,6 +1980,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'activate']);
         Route::post('{corporate}/employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'deactivate']);
         Route::post('{corporate}/employees/{id}/role', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'assignRole']);
+        Route::post('{corporate}/employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'sendAccessLink'])->middleware('throttle:5,1');
         Route::delete('{corporate}/employees/{id}', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'destroy']);
 
         Route::post('{corporate}/bookings/for-employee', [\App\Http\Controllers\Api\Corporate\AdminCorporateBookingController::class, 'storeForEmployee']);

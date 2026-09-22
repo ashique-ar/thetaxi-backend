@@ -25,7 +25,9 @@ class PermissionEvaluator
 
     public function userHasAnyForRequest(User $user, array $permissions, ?string $contextType, ?string $contextId): bool
     {
-        if ($this->userHasAny($user, $permissions)) {
+        // Corporate permissions belong to the selected employee context. A user
+        // may be an admin in one company and an ordinary employee in another.
+        if ($contextType !== 'corporate' && $this->userHasAny($user, $permissions)) {
             return true;
         }
 

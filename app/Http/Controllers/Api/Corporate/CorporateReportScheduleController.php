@@ -17,11 +17,16 @@ class CorporateReportScheduleController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        return response()->json(['status' => 'success', 'data' => CorporateReportSchedule::where('corporate_id', $request->corporate_id)->orderBy('name')->get()]);
+        return response()->json([
+            'status' => 'success',
+            'data' => CorporateReportSchedule::where('corporate_id', $request->corporate_id)->orderBy('name')->get(),
+            'delivery_enabled' => config('corporate_portal.scheduled_reports_enabled'),
+        ]);
     }
 
     public function store(Request $request): JsonResponse
     {
+        abort_unless(config('corporate_portal.scheduled_reports_enabled'), 503, 'Scheduled report delivery is not enabled.');
         $data = $this->validated($request);
         $schedule = CorporateReportSchedule::create($data + ['corporate_id' => $request->corporate_id, 'created_by' => $request->user()->id]);
         return response()->json(['status' => 'success', 'data' => $schedule], 201);

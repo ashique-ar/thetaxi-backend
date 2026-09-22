@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Corporate;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Services\CorporateManagementAnalyticsService;
+use App\Services\CorporatePortalPermission;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\JsonResponse;
 use Symfony\Component\HttpFoundation\Response;
@@ -52,7 +53,11 @@ class CorporateManagementReportController extends Controller
                 }
                 fputcsv($output, []);
             }
-            fputcsv($output, ['Dimension', 'Label', 'Bookings', 'Trips', 'Estimated value', 'Finalized charges']);
+            $headers = ['Dimension', 'Label', 'Bookings', 'Trips'];
+            if ($payload['financial_metrics_visible']) {
+                array_push($headers, 'Estimated value', 'Finalized charges');
+            }
+            fputcsv($output, $headers);
             foreach ($rows as $row) {
                 fputcsv($output, $row);
             }
@@ -62,13 +67,17 @@ class CorporateManagementReportController extends Controller
 
     private function payload(CorporateReportFiltersRequest $request): array
     {
-        return $this->analytics->report($request->corporate_id, $request->validated(), $request->user()->can('view_payments'));
+        return $this->analytics->report($request->corporate_id, $request->validated(), CorporatePortalPermission::allows($request, 'view_payments'));
     }
 
     private function rows(array $payload): array
     {
-        return collect($payload['dimensions'])->flatMap(fn (array $values, string $dimension) => collect($values)->map(fn (array $row) => [
-            $dimension, $row['label'], $row['booking_count'], $row['trip_count'], $row['estimated_value'], $row['finalized_charges'],
-        ]))->values()->all();
+        return collect($payload['dimensions'])->flatMap(fn (array $values, string $dimension) => collect($values)->map(function (array $row) use ($dimension, $payload) {
+            $cells = [$dimension, $row['label'], $row['booking_count'], $row['trip_count']];
+            if ($payload['financial_metrics_visible']) {
+                array_push($cells, $row['estimated_value'], $row['finalized_charges']);
+            }
+            return $cells;
+        }))->values()->all();
     }
 }
