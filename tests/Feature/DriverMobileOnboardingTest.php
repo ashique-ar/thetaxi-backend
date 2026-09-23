@@ -5,8 +5,6 @@ use App\Models\Country;
 use App\Models\State;
 use App\Models\Driver\DriverOnboardingApplication;
 use App\Models\Driver\Driver;
-use App\Models\Vehicle\VehicleGrade;
-use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use App\Models\Vehicle\Vehicle;
@@ -131,7 +129,7 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
     ])->assertOk();
 });
 
-it('classifies an approved vehicle through a make model and latest grade vehicle group', function (): void {
+it('creates an approved vehicle without automatically assigning a vehicle group', function (): void {
     $reviewer = User::create(['first_name' => 'Admin', 'last_name' => 'User', 'email' => 'admin@example.com',
         'phone' => '+94770000001', 'password' => bcrypt('Password1!'), 'is_active' => true]);
     $driverUser = User::create(['first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'driver@example.com',
@@ -140,9 +138,6 @@ it('classifies an approved vehicle through a make model and latest grade vehicle
     $model = VehicleModel::create(['make_id' => $make->id, 'name' => 'Axio']);
     $country = Country::create(['name' => 'Sri Lanka', 'code' => 'LK']);
     $state = State::create(['country_id' => $country->id, 'name' => 'Western Province']);
-    VehicleGrade::create(['name' => 'Economy']);
-    $latestGrade = VehicleGrade::create(['name' => 'Standard']);
-    $latestGrade->forceFill(['created_at' => now()->addSecond()])->saveQuietly();
     $application = DriverOnboardingApplication::create([
         'user_id' => $driverUser->id, 'mobile' => $driverUser->phone, 'access_token_hash' => hash('sha256', 'token'),
         'mobile_verified_at' => now(), 'status' => 'submitted', 'payload' => [
@@ -159,10 +154,7 @@ it('classifies an approved vehicle through a make model and latest grade vehicle
     $application->refresh();
     $vehicle = Vehicle::withoutGlobalScopes()->findOrFail($application->vehicle_id);
     $driver = Driver::withoutGlobalScopes()->findOrFail($application->driver_id);
-    $group = VehicleGroup::findOrFail($vehicle->vehicle_group_id);
-    expect($group->make_id)->toBe($make->id)
-        ->and($group->model_id)->toBe($model->id)
-        ->and($group->grade_id)->toBe($latestGrade->id)
+    expect($vehicle->vehicle_group_id)->toBeNull()
         ->and($vehicle->getAttributes())->not->toHaveKeys(['make_id', 'model_id'])
         ->and($driver->country_id)->toBe($country->id)
         ->and($driver->state_id)->toBe($state->id);

@@ -9,8 +9,6 @@ use App\Models\Driver\DriverOnboardingApplication;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Models\Vehicle\Vehicle;
-use App\Models\Vehicle\VehicleGrade;
-use App\Models\Vehicle\VehicleGroup;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use App\Support\SriLankanNic;
@@ -146,7 +144,8 @@ class OnboardingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $applications = DriverOnboardingApplication::with(['user', 'documents'])->latest()->paginate($request->integer('per_page', 15));
+        $applications = DriverOnboardingApplication::with(['user', 'documents', 'vehicle:id,vehicle_group_id'])
+            ->latest()->paginate($request->integer('per_page', 15));
         return response()->json(['status' => 'success', 'data' => $applications]);
     }
 
@@ -197,18 +196,13 @@ class OnboardingController extends Controller
                 'password' => bcrypt(Str::random(24)), 'is_active' => true,
             ]);
             $user->update(array_merge($p['identity'], ['phone' => $application->mobile, 'phone_verified_at' => now()]));
-            $grade = VehicleGrade::latest('created_at')->latest('id')->firstOrFail();
             $make = VehicleMake::findOrFail($p['vehicle']['make_id']);
             $model = VehicleModel::where('make_id', $make->id)->findOrFail($p['vehicle']['model_id']);
-            $group = VehicleGroup::firstOrCreate([
-                'make_id' => $make->id, 'model_id' => $model->id, 'grade_id' => $grade->id,
-            ], [
-                'name' => trim("{$make->name} {$model->name} {$grade->name}"),
-                'is_active' => true, 'created_user_id' => $reviewerId,
-            ]);
-            $vehicleData = collect($p['vehicle'])->except(['make_id', 'model_id', 'registration_year', 'is_owner'])->all();
+            $vehicleData = collect($p['vehicle'])->except([
+                'make_id', 'other_make', 'model_id', 'other_model', 'registration_year', 'is_owner',
+            ])->all();
             $vehicle = Vehicle::create([
-                ...$vehicleData, 'vehicle_group_id' => $group->id,
+                ...$vehicleData, 'vehicle_group_id' => null,
                 'title' => trim($p['vehicle']['license_plate'].' '.$p['vehicle']['model_year']),
                 'registration_no' => $p['vehicle']['license_plate'], 'year' => $p['vehicle']['registration_year'],
                 'ownership_type' => $p['vehicle']['is_owner'] ? 'driver_owned' : 'third_party',
