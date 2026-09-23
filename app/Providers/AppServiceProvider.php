@@ -236,7 +236,10 @@ class AppServiceProvider extends ServiceProvider
                 'description' => 'Authentication, onboarding, profile, availability, tracking, devices, notifications, assignments, trips, and earnings for the driver mobile application.',
             ],
             'ui' => ['title' => 'TheTaxi Driver Mobile API'],
-            'middleware' => config('scramble.middleware'),
+            'middleware' => [
+                'web',
+                \App\Http\Middleware\DriverApiDocsAccess::class,
+            ],
         ])
             ->withDocumentTransformers(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi): void {
                 $openApi->info->title = 'TheTaxi Driver Mobile API';
