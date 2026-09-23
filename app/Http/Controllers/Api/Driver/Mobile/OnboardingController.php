@@ -54,6 +54,10 @@ class OnboardingController extends Controller
         $application = $this->application($request);
         abort_if(in_array($application->status, ['submitted', 'approved', 'rejected'], true), 409, 'This application cannot be edited.');
 
+        if ($step === 4) {
+            $this->normalizeOtherVehicleSelection($request);
+        }
+
         $rules = match ($step) {
             1 => [
                 'first_name' => ['required', 'string', 'max:100'], 'last_name' => ['required', 'string', 'max:100'],
@@ -255,6 +259,23 @@ class OnboardingController extends Controller
         $allowed = collect($application->review_issues)->pluck('field');
         abort_unless(collect($fields)->every(fn ($field) => $allowed->contains($field) || $allowed->contains("{$section}.{$field}")), 403,
             'Only fields identified by the reviewer can be changed.');
+    }
+
+    private function normalizeOtherVehicleSelection(Request $request): void
+    {
+        foreach (['make', 'model'] as $field) {
+            $idField = "{$field}_id";
+            $otherField = "other_{$field}";
+
+            if (strcasecmp(trim((string) $request->input($idField)), 'other') === 0) {
+                $request->merge([
+                    $idField => null,
+                    $otherField => $request->filled($otherField) ? $request->input($otherField) : 'Other',
+                ]);
+            } elseif ($request->filled($idField)) {
+                $request->merge([$otherField => null]);
+            }
+        }
     }
 
 }
