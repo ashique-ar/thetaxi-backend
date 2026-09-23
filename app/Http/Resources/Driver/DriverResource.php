@@ -50,6 +50,11 @@ class DriverResource extends JsonResource
             'license_renewals' => $this->whenLoaded('licenseRenewals'),
             'license_type' => $this->license_type,
             'default_vehicle_id' => $this->default_vehicle_id,
+            // Keep the explicit image aliases in the mobile contract. Older
+            // clients use profile_photo_* while account screens commonly use
+            // profile_image_*.
+            'profile_image_url' => $profilePhoto ? $this->documentResourceUrl($profilePhoto) : null,
+            'profile_image' => $profilePhoto ? $this->documentPayload($profilePhoto) : null,
             'profile_photo_url' => $profilePhoto ? $this->documentResourceUrl($profilePhoto) : null,
             'profile_photo' => $profilePhoto ? $this->documentPayload($profilePhoto) : null,
             'documents' => $driverDocuments->map(fn ($document) => $this->documentPayload($document))->values(),
@@ -142,7 +147,7 @@ class DriverResource extends JsonResource
         ];
     }
 
-    private function documentResourceUrl($document): string
+    private function documentResourceUrl($document): ?string
     {
         return $document->resourceUrl();
     }

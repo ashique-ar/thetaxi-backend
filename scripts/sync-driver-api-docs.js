@@ -174,8 +174,69 @@ for (const folder of collection.item) {
     }
 }
 
-openapi.info.version = '2.6.0';
-openapi.info.description = 'Complete canonical Driver Mobile API contract. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
+openapi.info.version = '2.7.0';
+openapi.info.description = 'Complete canonical Driver Mobile API contract. Authentication and account/profile responses include the driver profile image, assigned vehicle, vehicle images, and driver/vehicle documents. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
+
+const nullableString = (format) => ({ type: 'string', nullable: true, ...(format ? { format } : {}) });
+openapi.components.schemas.DriverMobileDocument = {
+    type: 'object',
+    required: ['id', 'type', 'url', 'resource_url'],
+    properties: {
+        id: { type: 'string', format: 'uuid' },
+        type: nullableString(), file_name: nullableString(), mime_type: nullableString(),
+        file_size: { type: 'integer', nullable: true }, status: nullableString(),
+        expiry_date: nullableString('date'), url: nullableString('uri'), resource_url: nullableString('uri'),
+        updated_at: nullableString('date-time'),
+    },
+};
+openapi.components.schemas.DriverVehicleImage = {
+    type: 'object',
+    description: 'Vehicle image metadata saved by vehicle management. Use url when present; path is the persisted fallback.',
+    properties: {
+        path: nullableString(), url: nullableString('uri'), name: nullableString(),
+        size: { type: 'number', nullable: true }, type: nullableString(),
+        isImage: { type: 'boolean', nullable: true }, is_primary: { type: 'boolean', nullable: true },
+        uploaded_at: nullableString('date-time'),
+    },
+    additionalProperties: true,
+};
+openapi.components.schemas.DriverVehicle = {
+    type: 'object',
+    description: 'The vehicle currently assigned as the driver default vehicle.',
+    required: ['id', 'is_active', 'images', 'documents'],
+    properties: {
+        id: { type: 'string', format: 'uuid' }, title: nullableString(), registration_no: nullableString(),
+        license_plate: nullableString(), model_year: { type: 'integer', nullable: true },
+        registration_year: { type: 'integer', nullable: true }, color: nullableString(), ownership_type: nullableString(),
+        is_active: { type: 'boolean' }, availability_status: nullableString(), vehicle_group_id: nullableString('uuid'),
+        vehicle_group: { type: 'object', nullable: true, properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } },
+        make: { type: 'object', nullable: true, properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } },
+        model: { type: 'object', nullable: true, properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } },
+        thumbnail: { oneOf: [{ $ref: '#/components/schemas/DriverVehicleImage' }, { type: 'array', items: { $ref: '#/components/schemas/DriverVehicleImage' } }], nullable: true },
+        images: { type: 'array', items: { $ref: '#/components/schemas/DriverVehicleImage' } },
+        documents: { type: 'array', items: { $ref: '#/components/schemas/DriverMobileDocument' } },
+    },
+};
+openapi.components.schemas.DriverMobileAccount = {
+    type: 'object',
+    description: 'Canonical driver account returned by password login, OTP login, and GET /auth/profile.',
+    required: ['id', 'user_id', 'full_name', 'profile_image_url', 'profile_image', 'profile_photo_url', 'profile_photo', 'documents', 'assigned_vehicle', 'vehicle'],
+    properties: {
+        id: { type: 'string', format: 'uuid' }, user_id: { type: 'string', format: 'uuid' }, code: nullableString(),
+        employee_id: nullableString(), first_name: nullableString(), last_name: nullableString(), full_name: { type: 'string' },
+        email: nullableString('email'), phone: nullableString(), nic: nullableString(), license_no: nullableString(),
+        license_number: nullableString(), license_expiry: nullableString('date'), license_status: { type: 'string', enum: ['missing', 'expired', 'expiring', 'valid'] },
+        default_vehicle_id: nullableString('uuid'),
+        profile_image_url: nullableString('uri'), profile_image: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        profile_photo_url: nullableString('uri'), profile_photo: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        documents: { type: 'array', items: { $ref: '#/components/schemas/DriverMobileDocument' } },
+        is_active: { type: 'boolean' }, is_online: { type: 'boolean' }, availability_status: nullableString(),
+        current_booking_id: nullableString('uuid'), current_booking_number: nullableString(), rating: { type: 'number', format: 'float' }, total_trips: { type: 'integer' },
+        assigned_vehicle: { allOf: [{ $ref: '#/components/schemas/DriverVehicle' }], nullable: true },
+        vehicle: { allOf: [{ $ref: '#/components/schemas/DriverVehicle' }], nullable: true },
+    },
+    additionalProperties: true,
+};
 
 openapi.components.schemas.DriverBookingParty = {
     type: 'object',
