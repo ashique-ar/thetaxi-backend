@@ -51,6 +51,7 @@ use App\Services\Pricing\PricingContextPolicyService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 
 
 class BookingFlowService
@@ -2488,6 +2489,11 @@ class BookingFlowService
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
+        // Pricing reads these settings. Warm database-backed cache entries
+        // before opening the booking transaction so cache misses never write
+        // to the cache table while booking rows are locked.
+        app(WebsiteSettingsService::class)->getBookingSettings();
+
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
             $deferConfirmation = filter_var($params['defer_confirmation'] ?? false, FILTER_VALIDATE_BOOL);
@@ -2625,7 +2631,7 @@ class BookingFlowService
             $this->createFutureRecurringBookings($booking, $params);
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'bookingItems']);
-        });
+        }, 3);
     }
 
     /**
@@ -4503,6 +4509,11 @@ class BookingFlowService
             throw ValidationException::withMessages([
                 'distance_policy' => $e->getMessage(),
             ]);
+        } catch (QueryException $e) {
+            // A PostgreSQL transaction cannot continue after a failed query.
+            // Let the outer transaction roll back (and retry deadlocks) rather
+            // than returning fallback pricing from an aborted transaction.
+            throw $e;
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
                 'params' => $params,
