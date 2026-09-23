@@ -127,6 +127,13 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
     $this->withToken($token)->patchJson('/api/driver/onboarding/steps/1', [
         'first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'nimal@example.com', 'nic' => '200012345678',
     ])->assertOk();
+
+    Cache::put('driver_auth_otp:'.sha1('+94771234567'), Hash::make('654321'), now()->addMinutes(10));
+    $this->postJson('/api/driver/auth/verify-otp', ['mobile' => '+94771234567', 'otp' => '654321'])
+        ->assertCreated()
+        ->assertJsonPath('data.application.id', DriverOnboardingApplication::first()->id)
+        ->assertJsonPath('data.application.status', 'changes_requested');
+    expect(DriverOnboardingApplication::where('mobile', '+94771234567')->count())->toBe(1);
 });
 
 it('creates an approved vehicle without automatically assigning a vehicle group', function (): void {

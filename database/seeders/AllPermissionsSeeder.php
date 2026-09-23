@@ -188,6 +188,7 @@ class AllPermissionsSeeder extends Seeder
         'customers.export',
         'customers.feedback',
         'customers.loyalty',
+        'drivers.onboarding-drafts.view',
         'gamification.bulk-give-points',
         'gamification.give-points',
         'gamification.reset-points',

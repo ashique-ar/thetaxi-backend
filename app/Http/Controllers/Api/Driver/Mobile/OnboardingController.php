@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Driver\Mobile;
 
 use App\Http\Controllers\Controller;
 use App\Models\Document;
+use App\Models\Country;
+use App\Models\State;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverOnboardingApplication;
 use App\Models\User;
@@ -144,8 +146,44 @@ class OnboardingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
+        $status = $request->string('status', 'submitted')->toString();
+        abort_unless(in_array($status, ['submitted', 'draft', 'changes_requested', 'approved', 'rejected'], true), 422, 'Invalid application status.');
+        if ($status === 'draft') {
+            abort_unless($request->user()->can('drivers.onboarding-drafts.view'), 403, 'You do not have permission to view onboarding drafts.');
+        }
+
         $applications = DriverOnboardingApplication::with(['user', 'documents', 'vehicle:id,vehicle_group_id'])
-            ->latest()->paginate($request->integer('per_page', 15));
+            ->where('status', $status)
+            ->when($status === 'draft', fn ($query) => $query->whereNotExists(function ($newer): void {
+                $newer->selectRaw('1')
+                    ->from('driver_onboarding_applications as newer_applications')
+                    ->whereColumn('newer_applications.mobile', 'driver_onboarding_applications.mobile')
+                    ->where('newer_applications.status', 'draft')
+                    ->whereNull('newer_applications.deleted_at')
+                    ->whereColumn('newer_applications.updated_at', '>', 'driver_onboarding_applications.updated_at');
+            }))
+            ->latest('updated_at')->paginate($request->integer('per_page', 15));
+
+        $countryNames = Country::query()->whereIn('id', $applications->getCollection()->pluck('payload.address.country_id')->filter())
+            ->pluck('name', 'id');
+        $stateNames = State::query()->whereIn('id', $applications->getCollection()->pluck('payload.address.state_id')->filter())
+            ->pluck('name', 'id');
+        $makeNames = VehicleMake::query()->whereIn('id', $applications->getCollection()->pluck('payload.vehicle.make_id')->filter())
+            ->pluck('name', 'id');
+        $modelNames = VehicleModel::query()->whereIn('id', $applications->getCollection()->pluck('payload.vehicle.model_id')->filter())
+            ->pluck('name', 'id');
+
+        $applications->setCollection($applications->getCollection()->map(function (DriverOnboardingApplication $application) use ($countryNames, $stateNames, $makeNames, $modelNames) {
+            $data = $application->toArray();
+            $data['display'] = [
+                'country' => $countryNames[data_get($application->payload, 'address.country_id')] ?? null,
+                'state' => $stateNames[data_get($application->payload, 'address.state_id')] ?? null,
+                'make' => $makeNames[data_get($application->payload, 'vehicle.make_id')] ?? data_get($application->payload, 'vehicle.other_make'),
+                'model' => $modelNames[data_get($application->payload, 'vehicle.model_id')] ?? data_get($application->payload, 'vehicle.other_model'),
+            ];
+
+            return $data;
+        })->unique('mobile')->values());
         return response()->json(['status' => 'success', 'data' => $applications]);
     }
 
