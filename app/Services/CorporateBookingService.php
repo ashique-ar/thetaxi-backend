@@ -25,6 +25,7 @@ class CorporateBookingService
         protected ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         protected CorporateSubmittedResponseProjector $submittedResponseProjector,
         protected CorporateFinancialProjectionService $financialProjection,
+        protected CorporateBookingNotificationService $corporateBookingNotifications,
     )
     {
     }
@@ -39,6 +40,7 @@ class CorporateBookingService
         $corporate = $employee->corporate;
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -84,6 +86,8 @@ class CorporateBookingService
                 $this->notifyApprovalRequested($booking, $employee);
             }
 
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+
             return $booking->fresh();
         });
     }
@@ -95,6 +99,7 @@ class CorporateBookingService
     {
         $corporate = $requester->corporate;
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -137,6 +142,8 @@ class CorporateBookingService
                 $this->notifyApprovalRequested($booking, $requester);
             }
 
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+
             return $booking->fresh();
         });
     }
@@ -158,6 +165,7 @@ class CorporateBookingService
         $corporate = $coordinator->corporate;
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -205,6 +213,8 @@ class CorporateBookingService
             if ($needsApproval) {
                 $this->notifyApprovalRequested($booking, $targetEmployee);
             }
+
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
 
             return $booking->fresh();
         });

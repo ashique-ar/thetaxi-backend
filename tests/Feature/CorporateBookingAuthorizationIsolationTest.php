@@ -118,9 +118,12 @@ it('validates general and employee booking parties inside the authenticated corp
     $general = $validate([
         'booking_party_mode' => 'general',
         'corporate_contact' => ['name' => 'Visitor A', 'phone' => '+94770000001'],
+        'vehicle_id' => '70000000-0000-4000-8000-000000000001',
+        'driver_id' => '80000000-0000-4000-8000-000000000001',
     ]);
     expect($general->validated('booking_party_mode'))->toBe('general')
-        ->and($general->validated('corporate_contact.name'))->toBe('Visitor A');
+        ->and($general->validated('corporate_contact.name'))->toBe('Visitor A')
+        ->and($general->validated())->not->toHaveKeys(['vehicle_id', 'driver_id']);
 
     expect(fn () => $validate([
         'booking_party_mode' => 'general',
