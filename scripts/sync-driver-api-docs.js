@@ -474,6 +474,52 @@ const lookupEnvelope = (items) => ({ type: 'object', required: ['status', 'data'
 openapi.paths['/api/driver/onboarding/makes'] = { get: { tags: ['Driver Onboarding'], summary: 'List vehicle makes for registration', security: [], responses: { 200: jsonResponse('Vehicle makes', lookupEnvelope(makeSchema), { status: 'success', data: [{ id: 'make-uuid', name: 'Toyota' }] }) } } };
 openapi.paths['/api/driver/onboarding/makes/{make_id}/models'] = { get: { tags: ['Driver Onboarding'], summary: 'List vehicle models for the selected make', security: [], parameters: [{ name: 'make_id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { 200: jsonResponse('Vehicle models', lookupEnvelope(modelSchema), { status: 'success', data: [{ id: 'model-uuid', make_id: 'make-uuid', name: 'Axio' }] }), 404: errorResponse('Vehicle make not found') } } };
 
+const userAccountSchema = {
+    type: 'object',
+    required: ['id', 'first_name', 'last_name', 'full_name', 'profile_image', 'avatar_url'],
+    properties: {
+        id: { type: 'string', format: 'uuid' }, email: nullableString('email'), first_name: nullableString(),
+        last_name: nullableString(), full_name: nullableString(), phone: nullableString(),
+        profile_image: nullableString('uri'), avatar_url: nullableString('uri'), is_active: { type: 'boolean' },
+    },
+    additionalProperties: true,
+};
+const deviceSchema = { type: 'object', additionalProperties: true, properties: { id: { type: 'string', format: 'uuid' }, device_uuid: { type: 'string' }, platform: nullableString(), app_version: nullableString(), is_active: { type: 'boolean' } } };
+const tokenSchema = { type: 'object', required: ['access_token', 'token_type', 'refresh_token'], properties: { access_token: { type: 'string' }, token_type: { type: 'string', enum: ['Bearer'] }, expires_at: nullableString('date-time'), refresh_token: { type: 'string' }, scope: nullableString() } };
+const authDataProperties = {
+    user: userAccountSchema,
+    driver: { $ref: '#/components/schemas/DriverMobileAccount' },
+    device: deviceSchema,
+    token: tokenSchema,
+    current_assignment: { type: 'object', nullable: true, additionalProperties: true },
+    trip_phase: nullableString(),
+};
+const authEnvelope = (includeFlow = false) => ({
+    type: 'object', required: ['status', 'data'], properties: {
+        status: { type: 'string', enum: ['success'] }, message: { type: 'string' },
+        data: { type: 'object', required: [...(includeFlow ? ['flow'] : []), 'user', 'driver', 'device', 'token'], properties: { ...(includeFlow ? { flow: { type: 'string', enum: ['login'] } } : {}), ...authDataProperties } },
+    },
+});
+const profileEnvelope = {
+    type: 'object', required: ['status', 'data'], properties: {
+        status: { type: 'string', enum: ['success'] },
+        data: { type: 'object', required: ['user', 'driver', 'assignment_statistics'], properties: {
+            user: userAccountSchema, driver: { $ref: '#/components/schemas/DriverMobileAccount' },
+            assignment_statistics: { type: 'object', required: ['total_assignments', 'active_assignments', 'completed_assignments'], properties: {
+                total_assignments: { type: 'integer' }, active_assignments: { type: 'integer' }, completed_assignments: { type: 'integer' },
+            } },
+        } },
+    },
+};
+
+openapi.paths['/api/driver/auth/login'].post.description = 'Secondary email/password login for an existing driver. The response includes the complete account projection: profile image, driver documents, assigned vehicle, vehicle images, and vehicle documents.';
+openapi.paths['/api/driver/auth/login'].post.responses['200'].content['application/json'].schema = authEnvelope();
+openapi.paths['/api/driver/auth/verify-otp'].post.description = 'Verifies the default mobile OTP flow. Existing approved drivers receive the same complete account projection as password login; new drivers receive an onboarding token.';
+openapi.paths['/api/driver/auth/verify-otp'].post.responses['200'].content['application/json'].schema = authEnvelope(true);
+openapi.paths['/api/driver/auth/profile'].get.summary = 'Get current driver account';
+openapi.paths['/api/driver/auth/profile'].get.description = 'Returns the current account, including profile image aliases, driver documents, assigned vehicle details/images/documents, and assignment statistics.';
+openapi.paths['/api/driver/auth/profile'].get.responses['200'].content['application/json'].schema = profileEnvelope;
+
 for (const stalePath of ['/api/driver/onboarding/steps/1', '/api/driver/onboarding/steps/3', '/api/driver/onboarding/steps/4']) delete openapi.paths[stalePath];
 
 write(collectionPath, collection);

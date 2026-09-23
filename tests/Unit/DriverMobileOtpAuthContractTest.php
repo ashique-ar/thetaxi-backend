@@ -65,3 +65,28 @@ it('documents vehicle lookups and make model IDs for onboarding', function (): v
         ->and(data_get($docs, 'paths./api/driver/onboarding/steps/{step}.patch.requestBody.content.application/json.schema.oneOf.2.properties.other_model'))->toBeArray()
         ->and($names)->toContain('List Vehicle Makes', 'List Models by Make', 'Save Vehicle Step');
 });
+
+it('documents the complete driver account projection on every authentication response', function (): void {
+    $root = dirname(__DIR__, 2);
+    $resource = file_get_contents($root.'/app/Http/Resources/Driver/DriverResource.php');
+    $controller = file_get_contents($root.'/app/Http/Controllers/Api/Driver/Mobile/AuthController.php');
+    $service = file_get_contents($root.'/app/Services/Driver/DriverAuthService.php');
+    $docs = json_decode(file_get_contents($root.'/public/docs/driver-mobile-api.openapi.json'), true, flags: JSON_THROW_ON_ERROR);
+
+    expect($resource)
+        ->toContain("'profile_image_url'")
+        ->toContain("'profile_image'")
+        ->toContain("'assigned_vehicle'")
+        ->toContain("'vehicle'")
+        ->and(substr_count($controller, 'new DriverResource('))->toBe(3)
+        ->and($service)->toContain("'defaultVehicle.make'")
+        ->toContain("'defaultVehicle.model'")
+        ->toContain("'defaultVehicle.documents'")
+        ->and(data_get($docs, 'components.schemas.DriverMobileAccount.properties.profile_image_url'))->toBeArray()
+        ->and(data_get($docs, 'components.schemas.DriverMobileAccount.properties.profile_image'))->toBeArray()
+        ->and(data_get($docs, 'components.schemas.DriverMobileAccount.properties.vehicle.allOf.0.$ref'))->toBe('#/components/schemas/DriverVehicle')
+        ->and(data_get($docs, 'components.schemas.DriverVehicle.properties.documents.items.$ref'))->toBe('#/components/schemas/DriverMobileDocument')
+        ->and(data_get($docs, 'paths./api/driver/auth/login.post.responses.200.content.application/json.schema.properties.data.properties.driver.$ref'))->toBe('#/components/schemas/DriverMobileAccount')
+        ->and(data_get($docs, 'paths./api/driver/auth/verify-otp.post.responses.200.content.application/json.schema.properties.data.properties.driver.$ref'))->toBe('#/components/schemas/DriverMobileAccount')
+        ->and(data_get($docs, 'paths./api/driver/auth/profile.get.responses.200.content.application/json.schema.properties.data.properties.driver.$ref'))->toBe('#/components/schemas/DriverMobileAccount');
+});

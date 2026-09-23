@@ -196,6 +196,8 @@ it('creates an approved vehicle without automatically assigning a vehicle group'
         ->and($driverContext->is_active)->toBeTrue()
         ->and($driverContext->roles()->where('name', 'driver')->exists())->toBeTrue()
         ->and($driverUser->fresh()->hasRole('driver'))->toBeTrue()
+        ->and($mobilePayload['profile_image_url'])->toBe($mobilePayload['profile_photo_url'])
+        ->and($mobilePayload['profile_image'])->toBe($mobilePayload['profile_photo'])
         ->and($mobilePayload['profile_photo_url'])->not->toBeNull()
         ->and($mobilePayload['profile_photo']['mime_type'])->toBe('image/jpeg')
         ->and($mobilePayload['vehicle']['license_plate'])->toBe('CAB-1234')

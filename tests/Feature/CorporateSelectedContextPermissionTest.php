@@ -15,6 +15,10 @@ it('uses only the selected corporate context when a user belongs to two companie
         $table->boolean('is_active');
         $table->softDeletes();
     });
+    DB::statement(
+        'CREATE UNIQUE INDEX user_contexts_user_type_context_unique '
+        . 'ON user_contexts (user_id, context_type, context_id) WHERE deleted_at IS NULL'
+    );
     Schema::create('roles', function (Blueprint $table) {
         $table->bigIncrements('id');
         $table->string('name');
