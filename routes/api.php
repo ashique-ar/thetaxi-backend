@@ -1825,6 +1825,8 @@ Route::middleware(['auth:api'])->group(function () {
                         'approval_required' => $corporate->approval_required,
                         'exempt_coordinator_from_approval' => $corporate->exempt_coordinator_from_approval,
                         'coordinator_can_view_payments' => $corporate->coordinator_can_view_payments,
+                        'portal_setup_complete' => $corporate->departments()->exists()
+                            && $corporate->employees()->where('is_active', true)->exists(),
                     ],
                 ],
             ]);

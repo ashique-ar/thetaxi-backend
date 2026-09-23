@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\ProcessApprovalRequest;
 use App\Services\CorporateApprovalService;
 use App\Services\CorporateBookingService;
+use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -26,6 +27,7 @@ class CorporateApprovalController extends Controller
     public function index(Request $request): JsonResponse
     {
         $filters = $request->only(['date_from', 'date_to', 'page', 'per_page']);
+        $filters['can_view_payments'] = CorporatePortalPermission::allows($request, 'view_payments');
 
         $queue = $this->bookingService->getApprovalQueue(
             $request->corporate_id,

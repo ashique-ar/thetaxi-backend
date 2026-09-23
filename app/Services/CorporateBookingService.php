@@ -659,7 +659,7 @@ class CorporateBookingService
             ])->values(),
         ];
         $payload['visibility'] = [
-            'can_view_payments' => true,
+            'can_view_payments' => $canViewPayments || $this->isCashBooking($booking),
             'booking_scope' => $bookingScope,
             'corporate_id' => $booking->corporate_account_id,
             'department_id' => $booking->corporate_department_id,
@@ -733,7 +733,7 @@ class CorporateBookingService
 
     private function transformBookingPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = true;
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(Booking $booking) => $this->mapBooking($booking, $canViewPayments))
         );
@@ -770,7 +770,7 @@ class CorporateBookingService
 
     private function transformBookingItemPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = true;
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
         );

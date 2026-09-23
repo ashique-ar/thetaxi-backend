@@ -443,3 +443,27 @@ it('omits payment and contractual pricing fields from non-pricing corporate proj
             'metadata',
         ]);
 });
+
+it('applies payment visibility when transforming corporate booking item lists', function () {
+    $item = (new ReflectionClass(BookingItem::class))->newInstanceWithoutConstructor();
+    $item->setRawAttributes([
+        'id' => 'item-list',
+        'status' => 'confirmed',
+        'total_price' => 5000,
+        'currency' => 'LKR',
+    ]);
+    foreach (['booking', 'serviceType', 'vehicleGroup', 'vehicle', 'driver'] as $relation) {
+        $item->setRelation($relation, null);
+    }
+
+    $service = app(CorporateBookingService::class);
+    $method = new ReflectionMethod($service, 'transformBookingItemPaginator');
+    $restricted = new \Illuminate\Pagination\LengthAwarePaginator(collect([$item]), 1, 25);
+    $visible = new \Illuminate\Pagination\LengthAwarePaginator(collect([$item]), 1, 25);
+
+    $method->invoke($service, $restricted, ['can_view_payments' => false]);
+    $method->invoke($service, $visible, ['can_view_payments' => true]);
+
+    expect($restricted->items()[0])->not->toHaveKeys(['total_cost', 'currency', 'payment_status'])
+        ->and($visible->items()[0])->toHaveKeys(['total_cost', 'currency']);
+});
