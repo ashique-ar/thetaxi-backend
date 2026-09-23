@@ -50,6 +50,14 @@ class Document extends BaseModel
         return $this->belongsTo(User::class, 'verified_by');
     }
 
+    /** Domain-backed file URL; storage paths remain the persisted source of truth. */
+    public function resourceUrl(): ?string
+    {
+        return $this->path
+            ? route('resources.assets', ['path' => ltrim($this->path, '/')])
+            : null;
+    }
+
     protected static function booted(): void
     {
         static::deleting(function (Document $document): void {

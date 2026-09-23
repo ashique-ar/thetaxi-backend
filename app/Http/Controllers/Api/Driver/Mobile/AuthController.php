@@ -127,6 +127,11 @@ class AuthController extends Controller
             ]);
         });
         $applicationData = $application->load('documents')->toArray();
+        $applicationData['documents'] = $application->documents->map(fn ($document) => [
+            ...$document->toArray(),
+            'url' => $document->resourceUrl(),
+            'resource_url' => $document->resourceUrl(),
+        ])->values()->all();
         unset($applicationData['payload']['identity']['dob']);
 
         return response()->json(['status' => 'success', 'data' => [

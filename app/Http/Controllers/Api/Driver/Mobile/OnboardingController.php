@@ -160,7 +160,7 @@ class OnboardingController extends Controller
         $old?->update(['status' => 'superseded']);
         $application->update(['current_step' => max($application->current_step, 5)]);
 
-        return response()->json(['status' => 'success', 'data' => $document], 201);
+        return response()->json(['status' => 'success', 'data' => $this->documentData($document)], 201);
     }
 
     public function submit(Request $request): JsonResponse
@@ -420,12 +420,25 @@ class OnboardingController extends Controller
     {
         $application->loadMissing('documents');
         $data = $application->toArray();
+        $data['documents'] = $application->documents
+            ->map(fn (Document $document) => $this->documentData($document))
+            ->values()
+            ->all();
         unset($data['payload']['identity']['dob']);
 
         return [
             ...$data,
             'editable_fields' => $application->status === 'changes_requested'
                 ? collect($application->review_issues)->pluck('field')->values()->all() : null
+        ];
+    }
+
+    private function documentData(Document $document): array
+    {
+        return [
+            ...$document->toArray(),
+            'url' => $document->resourceUrl(),
+            'resource_url' => $document->resourceUrl(),
         ];
     }
 

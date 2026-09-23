@@ -144,6 +144,6 @@ class DriverResource extends JsonResource
 
     private function documentResourceUrl($document): string
     {
-        return route('resources.assets', ['path' => ltrim($document->path, '/')]);
+        return $document->resourceUrl();
     }
 }

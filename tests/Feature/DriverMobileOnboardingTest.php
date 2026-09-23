@@ -225,3 +225,22 @@ it('records the staff user who updates an onboarding application', function (): 
 
     expect($application->fresh()->updated_user_id)->toBe($reviewer->id);
 });
+
+it('returns a backend resource url for uploaded onboarding documents', function (): void {
+    $application = DriverOnboardingApplication::create([
+        'mobile' => '+94771234567', 'access_token_hash' => hash('sha256', 'document-token'),
+        'mobile_verified_at' => now(), 'status' => 'draft', 'payload' => [],
+    ]);
+    $application->documents()->create([
+        'documentable_type' => DriverOnboardingApplication::class,
+        'documentable_id' => $application->id,
+        'document_type' => 'driver_photo', 'document_number' => 'PHOTO-1',
+        'disk' => 's3', 'path' => "driver-onboarding/{$application->id}/photo.jpg",
+        'file_name' => 'photo.jpg', 'file_size' => 100, 'file_type' => 'image/jpeg', 'status' => 'pending',
+    ]);
+
+    $this->withToken('document-token')->getJson('/api/driver/onboarding')
+        ->assertOk()
+        ->assertJsonPath('data.documents.0.url', url("/resources/driver-onboarding/{$application->id}/photo.jpg"))
+        ->assertJsonPath('data.documents.0.resource_url', url("/resources/driver-onboarding/{$application->id}/photo.jpg"));
+});
