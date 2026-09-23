@@ -117,13 +117,15 @@ class OnboardingController extends Controller
         $this->assertIssueEditable($application, [$data['document_type']], 'documents');
         $old = $application->documents()->where('document_type', $data['document_type'])->whereIn('status', ['pending', 'changes_requested'])->latest()->first();
         $file = $data['file'];
-        $path = $file->store("driver-onboarding/{$application->id}", 'public');
+        $disk = config('filesystems.default', 's3');
+        $path = $file->store("driver-onboarding/{$application->id}", $disk);
+        abort_unless($path, 500, 'The document could not be stored. Please try again.');
         $document = $application->documents()->create([
             'documentable_type' => DriverOnboardingApplication::class, 'documentable_id' => $application->id,
             'document_type' => $data['document_type'],
             'document_number' => $data['document_number'] ?? data_get($application->payload, 'identity.nic', 'pending'),
             'expiry_date' => $data['expiry_date'] ?? null, 'reminder_days' => $data['reminder_days'] ?? 30,
-            'disk' => 'public', 'path' => $path, 'file_name' => $file->getClientOriginalName(),
+            'disk' => $disk, 'path' => $path, 'file_name' => $file->getClientOriginalName(),
             'file_size' => $file->getSize(), 'file_type' => $file->getMimeType(), 'status' => 'pending',
             'replaces_document_id' => $old?->id,
         ]);
