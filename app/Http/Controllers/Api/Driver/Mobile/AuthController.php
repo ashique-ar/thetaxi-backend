@@ -321,7 +321,7 @@ class AuthController extends Controller
             }
 
             // Load relationships for the driver
-            $driver->load(['user', 'country', 'state', 'licenseType']);
+            $driver->load($this->authService->mobileProfileRelations());
 
             // Compute assignment statistics
             $assignmentStats = [

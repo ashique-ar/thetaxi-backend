@@ -9,9 +9,11 @@ use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
 use App\Models\Vehicle\Vehicle;
 use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
+use App\Http\Resources\Driver\DriverResource;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -139,6 +141,8 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
 
 it('creates an approved vehicle without automatically assigning a vehicle group', function (): void {
     Role::create(['name' => 'driver', 'guard_name' => 'api']);
+    Storage::fake('s3');
+    config(['filesystems.default' => 's3']);
     $reviewer = User::create(['first_name' => 'Admin', 'last_name' => 'User', 'email' => 'admin@example.com',
         'phone' => '+94770000001', 'password' => bcrypt('Password1!'), 'is_active' => true]);
     $driverUser = User::create(['first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'driver@example.com',
@@ -156,6 +160,19 @@ it('creates an approved vehicle without automatically assigning a vehicle group'
                 'registration_year' => 2024, 'license_plate' => 'CAB-1234', 'is_owner' => true],
         ],
     ]);
+    foreach (['driver_photo' => 'photo.jpg', 'vehicle_registration' => 'registration.pdf'] as $type => $fileName) {
+        $path = "driver-onboarding/{$application->id}/{$fileName}";
+        Storage::disk('s3')->put($path, 'test-file');
+        $application->documents()->create([
+            'documentable_type' => DriverOnboardingApplication::class,
+            'documentable_id' => $application->id,
+            'document_type' => $type,
+            'document_number' => 'TEST-1',
+            'disk' => 's3', 'path' => $path, 'file_name' => $fileName,
+            'file_size' => 9, 'file_type' => $type === 'driver_photo' ? 'image/jpeg' : 'application/pdf',
+            'status' => 'pending',
+        ]);
+    }
 
     $method = new ReflectionMethod(OnboardingController::class, 'approve');
     $method->invoke(app(OnboardingController::class), $application, $reviewer->id);
@@ -164,14 +181,33 @@ it('creates an approved vehicle without automatically assigning a vehicle group'
     $vehicle = Vehicle::withoutGlobalScopes()->findOrFail($application->vehicle_id);
     $driver = Driver::withoutGlobalScopes()->findOrFail($application->driver_id);
     $driverContext = $driverUser->contexts()->where('context_type', 'driver')->firstOrFail();
+    $mobilePayload = (new DriverResource($driver->load([
+        'user', 'documents', 'profilePhotoDocument', 'defaultVehicle.make', 'defaultVehicle.model',
+        'defaultVehicle.group.make', 'defaultVehicle.group.model', 'defaultVehicle.documents',
+    ])))->toArray(request());
+    $photoDocument = $driver->documents->firstWhere('document_type', 'driver_photo');
+    $registrationDocument = $driver->defaultVehicle->documents->firstWhere('document_type', 'vehicle_registration');
     expect($vehicle->vehicle_group_id)->toBeNull()
-        ->and($vehicle->getAttributes())->not->toHaveKeys(['make_id', 'model_id'])
+        ->and($vehicle->make_id)->toBe($make->id)
+        ->and($vehicle->model_id)->toBe($model->id)
         ->and($driver->country_id)->toBe($country->id)
         ->and($driver->state_id)->toBe($state->id)
         ->and($driverContext->context_id)->toBe($driver->id)
         ->and($driverContext->is_active)->toBeTrue()
         ->and($driverContext->roles()->where('name', 'driver')->exists())->toBeTrue()
-        ->and($driverUser->fresh()->hasRole('driver'))->toBeTrue();
+        ->and($driverUser->fresh()->hasRole('driver'))->toBeTrue()
+        ->and($mobilePayload['profile_photo_url'])->not->toBeNull()
+        ->and($mobilePayload['profile_photo']['mime_type'])->toBe('image/jpeg')
+        ->and($mobilePayload['vehicle']['license_plate'])->toBe('CAB-1234')
+        ->and($mobilePayload['vehicle']['make']['name'])->toBe('Toyota')
+        ->and($mobilePayload['vehicle']['model']['name'])->toBe('Axio')
+        ->and($mobilePayload['vehicle']['documents'])->toHaveCount(1)
+        ->and($mobilePayload['profile_photo']['resource_url'])->toContain("/resources/drivers/{$driver->id}/documents/driver_photo/")
+        ->and($mobilePayload['vehicle']['documents'][0]['resource_url'])->toContain("/resources/vehicles/{$vehicle->id}/documents/vehicle_registration/")
+        ->and($photoDocument->path)->toStartWith("drivers/{$driver->id}/documents/driver_photo/")
+        ->and($registrationDocument->path)->toStartWith("vehicles/{$vehicle->id}/documents/vehicle_registration/")
+        ->and(Storage::disk('s3')->exists($photoDocument->path))->toBeTrue()
+        ->and(Storage::disk('s3')->exists($registrationDocument->path))->toBeTrue();
 });
 
 it('records the staff user who updates an onboarding application', function (): void {

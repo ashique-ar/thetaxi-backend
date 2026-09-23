@@ -25,6 +25,10 @@ class DriverResource extends JsonResource
             })
             ->latest('assigned_from')
             ->first();
+        $driverDocuments = $this->relationLoaded('documents') ? $this->documents : collect();
+        $profilePhoto = $this->relationLoaded('profilePhotoDocument') ? $this->profilePhotoDocument : null;
+        $vehicle = $this->relationLoaded('defaultVehicle') ? $this->defaultVehicle : null;
+        $vehicleGroup = $vehicle?->relationLoaded('group') ? $vehicle->group : null;
 
         return [
             'id' => $this->id,
@@ -46,6 +50,9 @@ class DriverResource extends JsonResource
             'license_renewals' => $this->whenLoaded('licenseRenewals'),
             'license_type' => $this->license_type,
             'default_vehicle_id' => $this->default_vehicle_id,
+            'profile_photo_url' => $profilePhoto ? $this->documentResourceUrl($profilePhoto) : null,
+            'profile_photo' => $profilePhoto ? $this->documentPayload($profilePhoto) : null,
+            'documents' => $driverDocuments->map(fn ($document) => $this->documentPayload($document))->values(),
             'dob' => $this->dob,
             'address' => $this->address,
             'country_id' => $this->country_id,
@@ -81,11 +88,8 @@ class DriverResource extends JsonResource
             'current_booking_number' => $activeAssignment?->booking?->booking_number,
             'rating' => (float) ($this->average_rating ?? 0),
             'total_trips' => (int) ($this->total_trips ?? 0),
-            'assigned_vehicle' => $this->whenLoaded('defaultVehicle', fn () => $this->defaultVehicle ? [
-                'id' => $this->defaultVehicle->id,
-                'plate_number' => $this->defaultVehicle->license_plate ?? $this->defaultVehicle->registration_no,
-                'model' => $this->defaultVehicle->title,
-            ] : null),
+            'assigned_vehicle' => $vehicle ? $this->vehiclePayload($vehicle, $vehicleGroup) : null,
+            'vehicle' => $vehicle ? $this->vehiclePayload($vehicle, $vehicleGroup) : null,
             'payment_method' => new PaymentMethodResource($this->whenLoaded('paymentMethod')),
             // Relations
             'licenseType' => new DrivingLicenseTypeResource($this->whenLoaded('licenseType')),
@@ -93,5 +97,53 @@ class DriverResource extends JsonResource
             'country' => new CountryResource($this->whenLoaded('country')),
             'user' => new UserResource($this->whenLoaded('user')),
         ];
+    }
+
+    private function vehiclePayload($vehicle, $group): array
+    {
+        $documents = $vehicle->relationLoaded('documents') ? $vehicle->documents : collect();
+        $make = $vehicle->relationLoaded('make') ? $vehicle->make : $group?->make;
+        $model = $vehicle->relationLoaded('model') ? $vehicle->model : $group?->model;
+
+        return [
+            'id' => $vehicle->id,
+            'title' => $vehicle->title,
+            'registration_no' => $vehicle->registration_no ?? $vehicle->license_plate,
+            'license_plate' => $vehicle->license_plate ?? $vehicle->registration_no,
+            'model_year' => $vehicle->model_year,
+            'registration_year' => $vehicle->year,
+            'color' => $vehicle->color,
+            'ownership_type' => $vehicle->ownership_type,
+            'is_active' => (bool) $vehicle->is_active,
+            'availability_status' => $vehicle->availability_status,
+            'vehicle_group_id' => $vehicle->vehicle_group_id,
+            'vehicle_group' => $group ? ['id' => $group->id, 'name' => $group->name] : null,
+            'make' => $make ? ['id' => $make->id, 'name' => $make->name] : null,
+            'model' => $model ? ['id' => $model->id, 'name' => $model->name] : null,
+            'thumbnail' => $vehicle->thumbnail,
+            'images' => $vehicle->actual_vehicle_images ?? [],
+            'documents' => $documents->map(fn ($document) => $this->documentPayload($document))->values(),
+        ];
+    }
+
+    private function documentPayload($document): array
+    {
+        return [
+            'id' => $document->id,
+            'type' => $document->document_type,
+            'file_name' => $document->file_name,
+            'mime_type' => $document->file_type,
+            'file_size' => $document->file_size,
+            'status' => $document->status,
+            'expiry_date' => $document->expiry_date?->toDateString(),
+            'url' => $this->documentResourceUrl($document),
+            'resource_url' => $this->documentResourceUrl($document),
+            'updated_at' => $document->updated_at?->toISOString(),
+        ];
+    }
+
+    private function documentResourceUrl($document): string
+    {
+        return route('resources.assets', ['path' => ltrim($document->path, '/')]);
     }
 }
