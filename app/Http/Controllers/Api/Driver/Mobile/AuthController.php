@@ -44,6 +44,7 @@ class AuthController extends Controller
         private MobileAssignmentService $assignmentService
     ) {}
 
+    /** Send a six-digit OTP to a driver's international mobile number. */
     public function requestOtp(Request $request, SmsService $sms): JsonResponse
     {
         $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
@@ -65,6 +66,7 @@ class AuthController extends Controller
         return response()->json(['status' => 'success', 'message' => 'OTP sent.', 'data' => ['expires_in' => 600]]);
     }
 
+    /** Verify an OTP and either log in an approved driver or resume onboarding. */
     public function verifyOtp(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -211,6 +213,7 @@ class AuthController extends Controller
         }
     }
 
+    /** Request a password-reset OTP for an eligible driver account. */
     public function forgotPassword(Request $request): JsonResponse
     {
         $data = $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
@@ -222,6 +225,7 @@ class AuthController extends Controller
         ]);
     }
 
+    /** Reset a driver password using the emailed OTP. */
     public function resetPassword(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -243,6 +247,7 @@ class AuthController extends Controller
         }
     }
 
+    /** Change the authenticated driver's password and require a new login. */
     public function changePassword(Request $request): JsonResponse
     {
         $data = $request->validate([

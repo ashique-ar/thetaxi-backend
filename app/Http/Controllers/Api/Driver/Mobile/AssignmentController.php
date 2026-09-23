@@ -235,6 +235,7 @@ class AssignmentController extends Controller
         }
     }
 
+    /** Acknowledge receipt of an assignment notification. */
     public function acknowledge(Request $request, string $id): JsonResponse
     {
         $driver = $this->authService->getDriver($request->user());

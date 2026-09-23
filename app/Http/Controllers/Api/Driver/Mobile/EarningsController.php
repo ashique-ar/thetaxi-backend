@@ -15,6 +15,7 @@ class EarningsController extends Controller
         private MobileAssignmentService $assignmentService
     ) {}
 
+    /** Get the authenticated driver's earnings summary. */
     public function summary(Request $request): JsonResponse
     {
         try {
@@ -41,6 +42,7 @@ class EarningsController extends Controller
         }
     }
 
+    /** Get driver earnings for one calendar date. */
     public function daily(Request $request): JsonResponse
     {
         $request->validate([
@@ -71,6 +73,7 @@ class EarningsController extends Controller
         }
     }
 
+    /** Get driver earnings for an inclusive date range. */
     public function range(Request $request): JsonResponse
     {
         $request->validate([

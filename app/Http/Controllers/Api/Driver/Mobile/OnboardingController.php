@@ -36,6 +36,7 @@ class OnboardingController extends Controller
         'vehicle_registration',
     ];
 
+    /** List vehicle makes available during onboarding. */
     public function makes(): JsonResponse
     {
         return response()->json([
@@ -45,6 +46,7 @@ class OnboardingController extends Controller
         ]);
     }
 
+    /** List vehicle models belonging to a selected make. */
     public function models(string $make): JsonResponse
     {
         VehicleMake::query()->findOrFail($make);
@@ -56,11 +58,13 @@ class OnboardingController extends Controller
         ]);
     }
 
+    /** Get the current onboarding application, including uploaded document resource URLs. */
     public function show(Request $request): JsonResponse
     {
         return response()->json(['status' => 'success', 'data' => $this->applicationData($this->application($request))]);
     }
 
+    /** Save an editable onboarding step (identity, address, or vehicle). */
     public function updateStep(Request $request, int $step): JsonResponse
     {
         abort_unless(in_array($step, [1, 3, 4], true), 404);
@@ -119,6 +123,7 @@ class OnboardingController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->applicationData($application->fresh())]);
     }
 
+    /** Upload or replace an onboarding image/PDF and return its backend resource URL. */
     public function uploadDocument(Request $request): JsonResponse
     {
         $application = $this->application($request);
@@ -163,6 +168,7 @@ class OnboardingController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->documentData($document)], 201);
     }
 
+    /** Submit a complete onboarding application for staff review. */
     public function submit(Request $request): JsonResponse
     {
         $application = $this->application($request);
