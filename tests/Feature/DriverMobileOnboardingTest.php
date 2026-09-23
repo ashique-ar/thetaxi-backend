@@ -166,3 +166,19 @@ it('creates an approved vehicle without automatically assigning a vehicle group'
         ->and($driver->country_id)->toBe($country->id)
         ->and($driver->state_id)->toBe($state->id);
 });
+
+it('records the staff user who updates an onboarding application', function (): void {
+    $reviewer = User::create([
+        'first_name' => 'Review', 'last_name' => 'Officer', 'email' => 'reviewer@example.com',
+        'phone' => '+94770000009', 'password' => bcrypt('Password1!'), 'is_active' => true,
+    ]);
+    $application = DriverOnboardingApplication::create([
+        'mobile' => '+94771234567', 'access_token_hash' => hash('sha256', 'audit-token'),
+        'mobile_verified_at' => now(), 'status' => 'submitted', 'payload' => ['identity' => ['first_name' => 'Nimal']],
+    ]);
+
+    $this->actingAs($reviewer, 'api');
+    $application->update(['payload' => ['identity' => ['first_name' => 'Kamal']]]);
+
+    expect($application->fresh()->updated_user_id)->toBe($reviewer->id);
+});
