@@ -66,4 +66,12 @@ it('uses only the selected corporate context when a user belongs to two companie
 
     expect($evaluator->userHasAnyForRequest($user, ['view_payments'], 'corporate', $financeContext))->toBeTrue()
         ->and($evaluator->userHasAnyForRequest($user, ['view_payments'], 'corporate', $employeeContext))->toBeFalse();
+
+    expect(fn () => DB::table('user_contexts')->insert([
+        'id' => '20000000-0000-4000-8000-000000000003',
+        'user_id' => $userId,
+        'context_type' => 'corporate',
+        'context_id' => '30000000-0000-4000-8000-000000000001',
+        'is_active' => true,
+    ]))->toThrow(\Illuminate\Database\QueryException::class);
 });

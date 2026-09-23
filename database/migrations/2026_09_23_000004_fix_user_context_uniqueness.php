@@ -28,13 +28,13 @@ return new class extends Migration
     public function down(): void
     {
         DB::statement(sprintf(
-            'DROP INDEX IF EXISTS %s',
-            self::CONTEXT_UNIQUE_INDEX
+            'ALTER TABLE user_contexts ADD CONSTRAINT %s UNIQUE (user_id, context_type, is_active)',
+            self::LEGACY_CONSTRAINT
         ));
 
         DB::statement(sprintf(
-            'ALTER TABLE user_contexts ADD CONSTRAINT %s UNIQUE (user_id, context_type, is_active)',
-            self::LEGACY_CONSTRAINT
+            'DROP INDEX IF EXISTS %s',
+            self::CONTEXT_UNIQUE_INDEX
         ));
     }
 };
