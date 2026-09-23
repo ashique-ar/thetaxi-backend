@@ -13,6 +13,7 @@ use App\Models\UserContext;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleMake;
 use App\Models\Vehicle\VehicleModel;
+use App\Services\UserContextService;
 use App\Support\SriLankanNic;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -254,8 +255,14 @@ class OnboardingController extends Controller
                 'license_expiry' => optional($application->documents()->where('document_type', 'driver_license_front')->latest()->first())->expiry_date,
                 'default_vehicle_id' => $vehicle->id, 'availability_status' => 'offline', 'created_user_id' => $reviewerId,
             ]);
-            UserContext::create(['user_id' => $user->id, 'context_type' => 'driver', 'context_id' => $driver->id,
-                'is_active' => true, 'created_user_id' => $reviewerId]);
+            $driverContext = UserContext::updateOrCreate(
+                ['user_id' => $user->id, 'context_type' => 'driver'],
+                ['context_id' => $driver->id, 'is_active' => true, 'updated_user_id' => $reviewerId]
+            );
+            if (! $driverContext->created_user_id) {
+                $driverContext->forceFill(['created_user_id' => $reviewerId])->save();
+            }
+            app(UserContextService::class)->assignRolesToContext($user, $driverContext, ['driver']);
             $vehicleTypes = ['vehicle_insurance', 'vehicle_revenue_license', 'vehicle_registration'];
             $application->documents->each(fn (Document $document) => $document->update([
                 'documentable_type' => in_array($document->document_type, $vehicleTypes, true) ? $vehicle->getMorphClass() : $driver->getMorphClass(),

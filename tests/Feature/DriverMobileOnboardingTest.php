@@ -13,6 +13,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
+use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
 
@@ -137,6 +138,7 @@ it('verifies mobile otp prefills an existing user and protects the draft with an
 });
 
 it('creates an approved vehicle without automatically assigning a vehicle group', function (): void {
+    Role::create(['name' => 'driver', 'guard_name' => 'api']);
     $reviewer = User::create(['first_name' => 'Admin', 'last_name' => 'User', 'email' => 'admin@example.com',
         'phone' => '+94770000001', 'password' => bcrypt('Password1!'), 'is_active' => true]);
     $driverUser = User::create(['first_name' => 'Nimal', 'last_name' => 'Perera', 'email' => 'driver@example.com',
@@ -161,10 +163,15 @@ it('creates an approved vehicle without automatically assigning a vehicle group'
     $application->refresh();
     $vehicle = Vehicle::withoutGlobalScopes()->findOrFail($application->vehicle_id);
     $driver = Driver::withoutGlobalScopes()->findOrFail($application->driver_id);
+    $driverContext = $driverUser->contexts()->where('context_type', 'driver')->firstOrFail();
     expect($vehicle->vehicle_group_id)->toBeNull()
         ->and($vehicle->getAttributes())->not->toHaveKeys(['make_id', 'model_id'])
         ->and($driver->country_id)->toBe($country->id)
-        ->and($driver->state_id)->toBe($state->id);
+        ->and($driver->state_id)->toBe($state->id)
+        ->and($driverContext->context_id)->toBe($driver->id)
+        ->and($driverContext->is_active)->toBeTrue()
+        ->and($driverContext->roles()->where('name', 'driver')->exists())->toBeTrue()
+        ->and($driverUser->fresh()->hasRole('driver'))->toBeTrue();
 });
 
 it('records the staff user who updates an onboarding application', function (): void {
