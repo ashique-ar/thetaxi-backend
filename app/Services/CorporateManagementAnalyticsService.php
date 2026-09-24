@@ -75,10 +75,20 @@ class CorporateManagementAnalyticsService
                 $query->where('corporate_account_id', $corporateId)
                     ->when($filters['department_id'] ?? null, fn ($q, $id) => $q->where('corporate_department_id', $id))
                     ->when($filters['division_id'] ?? null, fn ($q, $id) => $q->where('corporate_division_id', $id))
-                    ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status));
+                    ->when($filters['status'] ?? null, function ($q, $status): void {
+                        if ($status === 'pending_approval') {
+                            $q->whereIn('status', ['pending', 'pending_approval']);
+                        } elseif ($status === 'approved') {
+                            $q->whereIn('status', ['approved', 'confirmed']);
+                        } elseif ($status === 'in_progress') {
+                            $q->whereIn('status', ['assigned', 'allocated', 'in_progress']);
+                        } else {
+                            $q->where('status', $status);
+                        }
+                    });
             })
             ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '>=', $date))
-            ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->whereDate('to_date', '<=', $date))
+            ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '<=', $date))
             ->with(['booking.corporateDepartment', 'booking.corporateDivision', 'booking.employee.user', 'serviceType', 'vehicleGroup'])
             ->get()
             ->map(function (BookingItem $item) {

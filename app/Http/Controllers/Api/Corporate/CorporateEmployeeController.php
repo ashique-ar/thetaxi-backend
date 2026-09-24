@@ -151,8 +151,7 @@ class CorporateEmployeeController extends Controller
                 continue;
             }
             $roleName = Str::of($row['role'])->trim()->replace([' ', '-'], '_')->toString();
-            $role = Role::where('guard_name', 'api')->whereRaw('LOWER(name) = ?', [Str::lower($roleName)])
-                ->where(fn($q) => $q->whereIn('name', ['Corporate_Master_Admin', 'Transport_Coordinator', 'Approval_Manager', 'Corporate_Employee'])->orWhere('name', 'like', 'Corporate_%'))->first();
+            $role = app(\App\Services\CorporateRoleStarterService::class)->resolve($corporate, $roleName);
             if (!$role) {
                 $errors[] = ['row' => $rowNumber, 'email' => $email, 'message' => 'Role was not found in the corporate role list.'];
                 continue;

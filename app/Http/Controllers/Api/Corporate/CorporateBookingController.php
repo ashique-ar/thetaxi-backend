@@ -451,6 +451,10 @@ class CorporateBookingController extends Controller
 
     public function stats(Request $request): JsonResponse
     {
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ]);
         $filters = $request->only(['date_from', 'date_to']);
         $filters['can_view_payments'] = $this->canViewPayments($request);
 
