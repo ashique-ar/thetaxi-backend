@@ -207,7 +207,44 @@ it('keeps customer confirmation SMS off after an unticked booking is confirmed t
     $booking->setRelation('customer', $customer);
     $booking->setRelation('bookingItems', new Collection());
 
-    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking);
+    (new SmsAutomationService($settings, $sms))->queueBookingConfirmation($booking, true);
+});
+
+it('keeps customer and driver SMS off throughout an unticked booking lifecycle', function (): void {
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $sms = Mockery::mock(SmsService::class);
+    $settings->shouldNotReceive('getSettings');
+    $sms->shouldNotReceive('queueSingleMessage');
+
+    $booking = new Booking();
+    $booking->setRawAttributes([
+        'id' => 'booking-lifecycle-opt-out',
+        'booking_number' => 'BK-NO-SMS',
+        'notification_sms' => false,
+        'status' => 'completed',
+    ]);
+    $booking->setRelation('customer', null);
+    $booking->setRelation('bookingItems', new Collection());
+
+    $dispatch = new BookingDispatch();
+    $dispatch->setRawAttributes(['id' => 'dispatch-no-sms', 'booking_item_id' => 'item-no-sms']);
+
+    $assignment = new DriverAssignment();
+    $assignment->setRawAttributes([
+        'id' => 'assignment-no-sms',
+        'booking_item_id' => 'item-no-sms',
+        'driver_id' => 'driver-no-sms',
+    ]);
+
+    $automation = new SmsAutomationService($settings, $sms);
+    $automation->queueBookingStatusUpdate($booking, 'confirmed');
+    $automation->queueWebsiteQuotationRequested($booking);
+    $automation->queueDriverAssignment($booking, 'Driver Name');
+    $automation->queueDriverDispatched($booking, $dispatch);
+    $automation->queueDriverArrived($booking, $assignment);
+    expect($automation->queueDriverAssignmentFallback($booking, $assignment, '0771111111'))->toBeNull();
+    $automation->queueTripCompleted($booking, $assignment);
+    $automation->queuePaymentConfirmation($booking, 2500, 'LKR', 'PAY-NO-SMS');
 });
 
 it('renders booking schedule times from the dedicated time columns', function (): void {

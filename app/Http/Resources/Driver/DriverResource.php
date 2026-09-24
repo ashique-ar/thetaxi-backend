@@ -29,6 +29,10 @@ class DriverResource extends JsonResource
         $profilePhoto = $this->relationLoaded('profilePhotoDocument') ? $this->profilePhotoDocument : null;
         $vehicle = $this->relationLoaded('defaultVehicle') ? $this->defaultVehicle : null;
         $vehicleGroup = $vehicle?->relationLoaded('group') ? $vehicle->group : null;
+        $currentDevice = $this->relationLoaded('devices')
+            ? ($this->devices->firstWhere('device_uuid', $this->current_device_uuid)
+                ?? $this->devices->sortByDesc('last_active_at')->first())
+            : null;
 
         return [
             'id' => $this->id,
@@ -78,6 +82,7 @@ class DriverResource extends JsonResource
             'current_latitude' => $this->current_latitude,
             'current_longitude' => $this->current_longitude,
             'current_device_uuid' => $this->current_device_uuid,
+            'current_device' => $currentDevice ? new DriverDeviceResource($currentDevice) : null,
             // Availability status
             'availability_status' => $this->availability_status,
             'current_status' => [

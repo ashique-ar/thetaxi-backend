@@ -50,6 +50,22 @@ class SessionService
 
             // Create new session
             $deviceUuid = $data['device_uuid'] ?? $driver->current_device_uuid;
+            $deviceDetails = $this->extractDeviceDetailsFromSessionData($data);
+            $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
+            $deviceSnapshot = array_intersect_key($deviceDetails, array_flip([
+                'device_name',
+                'device_model',
+                'device_manufacturer',
+                'platform',
+                'os_version',
+                'app_version',
+                'app_build',
+                'locale',
+                'timezone',
+            ]));
+            if (!empty($deviceSnapshot)) {
+                $metadata['device_snapshot'] = $deviceSnapshot;
+            }
             $session = DriverSession::create([
                 'driver_id' => $driver->id,
                 'device_uuid' => $deviceUuid,
@@ -57,7 +73,7 @@ class SessionService
                 'start_time' => $now,
                 'start_latitude' => $data['latitude'] ?? null,
                 'start_longitude' => $data['longitude'] ?? null,
-                'metadata' => $data['metadata'] ?? null,
+                'metadata' => $metadata ?: null,
             ]);
 
             // Update driver state
@@ -96,21 +112,13 @@ class SessionService
     private function extractDeviceDetailsFromSessionData(array $data): array
     {
         $metadata = is_array($data['metadata'] ?? null) ? $data['metadata'] : [];
-        $nestedDevice = $this->firstArrayValue($metadata, [
-            'device',
-            'device_info',
-            'device_details',
-            'mobile',
-            'mobile_info',
-            'app',
-            'app_info',
-        ]);
-
-        $source = array_merge(
-            $metadata,
-            is_array($nestedDevice) ? $nestedDevice : [],
-            $data
-        );
+        $source = $metadata;
+        foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info'] as $key) {
+            if (is_array($metadata[$key] ?? null)) {
+                $source = array_merge($source, $metadata[$key]);
+            }
+        }
+        $source = array_merge($source, $data);
 
         return array_filter([
             'device_name' => $this->firstStringValue($source, ['device_name', 'name']),

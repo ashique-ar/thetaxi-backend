@@ -10,6 +10,7 @@ use App\Services\BookingPaymentLedgerService;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Driver\RoutePoint;
+use App\Models\Driver\DriverSession;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Http\Request;
@@ -186,6 +187,7 @@ class AssignmentController extends Controller
                 $driverAssignments,
                 $selectedBookingItem?->id
             );
+            $bookingDevice = $this->resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver);
             $trackingPayload = $this->buildTrackingPayload(
                 $tripAssignment,
                 $selectedDriver,
@@ -329,6 +331,7 @@ class AssignmentController extends Controller
                     'current_longitude' => $selectedDriver->current_longitude !== null
                         ? (float) $selectedDriver->current_longitude
                         : null,
+                    'device' => $bookingDevice,
                 ] : null,
                 'assignments' => [
                     'vehicle' => $booking->vehicleAssignments
@@ -726,6 +729,66 @@ class AssignmentController extends Controller
                     : 0;
             })
             ->first();
+    }
+
+    /**
+     * Resolve the immutable device/app information captured by the driver
+     * session that handled this trip. Never fall back to the driver's current
+     * device record because its app version changes after an update.
+     */
+    private function resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver): ?array
+    {
+        if (!$tripAssignment || !$selectedDriver) {
+            return null;
+        }
+
+        $session = DriverSession::query()
+            ->where('driver_id', $selectedDriver->id)
+            ->where(function ($query) use ($tripAssignment) {
+                $query->where('assignment_id', $tripAssignment->id)
+                    ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
+            })
+            ->orderByDesc('start_time')
+            ->first();
+
+        if (!$session) {
+            return null;
+        }
+
+        $metadata = is_array($session->metadata) ? $session->metadata : [];
+        $snapshot = $metadata;
+        foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info', 'device_snapshot'] as $key) {
+            if (is_array($metadata[$key] ?? null)) {
+                $snapshot = array_merge($snapshot, $metadata[$key]);
+            }
+        }
+        $value = static function (array $source, array $keys): ?string {
+            foreach ($keys as $key) {
+                $candidate = trim((string) ($source[$key] ?? ''));
+                if ($candidate !== '') {
+                    return $candidate;
+                }
+            }
+            return null;
+        };
+
+        $platform = $value($snapshot, ['platform', 'os', 'operating_system']);
+
+        return [
+            'device_uuid' => $session->device_uuid,
+            'device_name' => $value($snapshot, ['device_name', 'name']),
+            'device_model' => $value($snapshot, ['device_model', 'model', 'mobile_model', 'phone_model']),
+            'device_manufacturer' => $value($snapshot, ['device_manufacturer', 'manufacturer', 'brand']),
+            'platform' => $platform,
+            'platform_display' => $platform ? ucfirst($platform) : null,
+            'os_version' => $value($snapshot, ['os_version', 'android_version', 'ios_version', 'system_version']),
+            'app_version' => $value($snapshot, ['app_version', 'version']),
+            'app_build' => $value($snapshot, ['app_build', 'build', 'build_number']),
+            'is_active' => $session->status === 'active',
+            'last_active_at' => ($session->end_time ?? $session->start_time)?->toIso8601String(),
+            'recorded_at' => $session->start_time?->toIso8601String(),
+            'source' => 'driver_session',
+        ];
     }
 
     private function buildTrackingPayload(

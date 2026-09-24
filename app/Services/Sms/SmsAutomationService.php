@@ -20,6 +20,11 @@ class SmsAutomationService
 
     public function queueBookingStatusUpdate(Booking $booking, string $status, ?string $recipient = null): void
     {
+        $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            return;
+        }
+
         if (!$this->settingsService->getSettings()['booking_status_enabled']) {
             return;
         }
@@ -53,7 +58,7 @@ class SmsAutomationService
     public function queueBookingConfirmation(Booking $booking, ?bool $sendCustomerSms = null): void
     {
         $booking = $this->resolveBooking($booking);
-        $sendCustomerSms = $sendCustomerSms ?? filter_var($booking->notification_sms ?? true, FILTER_VALIDATE_BOOL);
+        $sendCustomerSms = ($sendCustomerSms ?? true) && $this->bookingAllowsSms($booking);
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled']) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::BookingConfirmed, 'disabled', 'Global SMS setting is disabled.');
@@ -173,6 +178,11 @@ class SmsAutomationService
     public function queueWebsiteQuotationRequested(Booking $booking): void
     {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::WebsiteQuotationRequested, 'disabled', 'SMS was not enabled for this booking.');
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled'] || empty($settings['quotation_requested_enabled'])) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::WebsiteQuotationRequested, 'disabled', 'Website quotation SMS is disabled.');
@@ -253,6 +263,11 @@ class SmsAutomationService
 
     public function queueDriverAssignment(Booking $booking, string $driverName, ?string $vehiclePlate = null): void
     {
+        $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (empty($settings['driver_assignment_enabled'])) {
             return;
@@ -283,6 +298,11 @@ class SmsAutomationService
     public function queueDriverDispatched(Booking $booking, BookingDispatch $dispatch): void
     {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverDispatched, 'disabled', 'SMS was not enabled for this booking.');
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled'] || empty($settings['driver_dispatched_enabled'])) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverDispatched, 'disabled', 'Driver-dispatched SMS is disabled.');
@@ -319,6 +339,11 @@ class SmsAutomationService
     public function queueDriverArrived(Booking $booking, DriverAssignment $assignment): void
     {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverArrived, 'disabled', 'SMS was not enabled for this booking.', $assignment->booking_item_id, $assignment->id);
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled'] || empty($settings['driver_arrived_enabled'])) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverArrived, 'disabled', 'Driver-arrived SMS is disabled.');
@@ -359,6 +384,11 @@ class SmsAutomationService
         string $driverPhone
     ): ?SmsMessage {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverAssignmentFallback, 'disabled', 'SMS was not enabled for this booking.', $assignment->booking_item_id, $assignment->id);
+            return null;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled'] || empty($settings['driver_assignment_fallback_enabled'])) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::DriverAssignmentFallback, 'disabled', 'Driver assignment fallback SMS is disabled.', $assignment->booking_item_id, $assignment->id);
@@ -418,6 +448,11 @@ class SmsAutomationService
     public function queueTripCompleted(Booking $booking, DriverAssignment $assignment): void
     {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::TripCompleted, 'disabled', 'SMS was not enabled for this booking.', $assignment->booking_item_id, $assignment->id);
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         $scope = $settings['trip_completion_scope'] ?? 'booking';
 
@@ -490,6 +525,11 @@ class SmsAutomationService
     ): void
     {
         $booking = $this->resolveBooking($booking);
+        if (!$this->bookingAllowsSms($booking)) {
+            $this->recordBookingDecision($booking, TransactionalSmsEvent::PaymentReceived, 'disabled', 'SMS was not enabled for this booking.');
+            return;
+        }
+
         $settings = $this->settingsService->getSettings();
         if (!$settings['enabled'] || empty($settings['payment_confirmation_enabled'])) {
             $this->recordBookingDecision($booking, TransactionalSmsEvent::PaymentReceived, 'disabled', 'Payment confirmation SMS is disabled.');
@@ -581,6 +621,11 @@ class SmsAutomationService
         }
 
         return tap($booking)->loadMissing(['customer.user', 'bookingItems']);
+    }
+
+    private function bookingAllowsSms(Booking $booking): bool
+    {
+        return filter_var($booking->notification_sms ?? true, FILTER_VALIDATE_BOOL);
     }
 
     private function recordBookingDecision(
