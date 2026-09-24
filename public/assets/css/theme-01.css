@@ -178,17 +178,29 @@
 /* Bring the booking form into the first mobile screen without removing the hero. */
 @media (max-width: 576px) {
     .theme-default .home4-banner-section {
-        margin-bottom: 175px !important;
+        margin-bottom: 110px !important;
     }
 
     .theme-default .home4-banner-section .banner-video-area,
     .theme-default .home4-banner-section .banner-video-area img {
-        min-height: 330px !important;
-        height: 330px !important;
+        min-height: 220px !important;
+        height: 220px !important;
+        object-fit: contain !important;
+        background: #d8d8d8;
     }
 
     .theme-default .home-booking-form-section {
-        margin-top: -150px;
+        margin-top: -100px;
+    }
+}
+@media (max-width: 576px) {
+    body.theme-default .home4-banner-section .banner-video-area {
+        overflow: hidden;
+        background: #d8d8d8;
+    }
+
+    body.theme-default .home4-banner-section .banner-video-area :is(img, video) {
+        object-fit: contain !important;
     }
 }
 body.theme-default .shared-hero-slider .shared-hero-swiper,
