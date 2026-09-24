@@ -71,7 +71,11 @@ class CorporateService
 
     public function createCorporate(array $data): Corporate
     {
-        $corporate = Corporate::create($data);
+        $corporate = DB::transaction(function () use ($data) {
+            $corporate = Corporate::create($data);
+            app(CorporateStaffTransportStarterService::class)->provision($corporate);
+            return $corporate;
+        });
 
         $this->logAudit('create', 'Corporate', $corporate->id, [
             'name' => $corporate->name,

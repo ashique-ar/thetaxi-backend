@@ -1845,6 +1845,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
+            Route::get('setup-status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setupStatus']);
             Route::get('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'locations']);
             Route::post('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeLocation']);
             Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);

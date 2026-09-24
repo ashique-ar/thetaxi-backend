@@ -4,6 +4,11 @@ namespace App\Http\Controllers\Api\Corporate;
 
 use App\Http\Controllers\Controller;
 use App\Models\Corporate\CorporateTransportParticipation;
+use App\Models\Corporate\CorporateEmployee;
+use App\Models\Corporate\CorporateTransportProgram;
+use App\Models\Corporate\CorporateTransportRoute;
+use App\Models\Corporate\CorporateTransportRouteMember;
+use App\Models\Corporate\CorporateTransportShift;
 use App\Services\CorporateBookingService;
 use App\Services\CorporateStaffTransportService;
 use Illuminate\Http\JsonResponse;
@@ -27,10 +32,59 @@ class CorporateStaffTransportController extends Controller
             return $next($request);
         });
 
-        $this->middleware('permission:staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
+        $this->middleware('permission:staff-transport.manage|staff-transport.override|staff-transport.generate|view_all_bookings')->only(['setupStatus', 'programs', 'shifts', 'routes', 'members', 'roster', 'logs', 'generatedBooking', 'locations', 'exportRoster']);
         $this->middleware('permission:staff-transport.manage')->only(['storeProgram', 'updateProgram', 'storeShift', 'updateShift', 'deleteShift', 'storeRoute', 'updateRoute', 'deleteRoute', 'storeMember', 'updateMember', 'deleteMember', 'buildRoster', 'storeLocation']);
         $this->middleware('permission:staff-transport.override')->only(['setParticipation']);
         $this->middleware('permission:staff-transport.generate')->only(['generate']);
+    }
+
+    public function setupStatus(Request $request): JsonResponse
+    {
+        $corporateId = $request->corporate_id;
+        $programIds = CorporateTransportProgram::where('corporate_id', $corporateId)->pluck('id');
+        $routes = CorporateTransportRoute::withInactive()->whereIn('program_id', $programIds)->get();
+        $routeIds = $routes->pluck('id');
+
+        $employeeCount = CorporateEmployee::where('corporate_id', $corporateId)->where('is_active', true)->count();
+        $employeesWithLocations = CorporateEmployee::where('corporate_id', $corporateId)
+            ->where('is_active', true)
+            ->whereHas('locations', fn ($query) => $query->where('is_active', true))
+            ->count();
+        $activeRoutes = $routes->where('is_active', true);
+        $configuredRoutes = $activeRoutes->filter(function (CorporateTransportRoute $route): bool {
+            $hasOffice = $route->direction === 'pickup'
+                ? !empty($route->destination_location)
+                : !empty($route->origin_location);
+
+            return $route->is_active && $route->service_type_id && $route->vehicle_group_id && $hasOffice;
+        })->count();
+        $memberCount = CorporateTransportRouteMember::whereIn('route_id', $routeIds)->where('is_active', true)->count();
+        $activePrograms = CorporateTransportProgram::where('corporate_id', $corporateId)
+            ->where('status', 'active')->where('is_active', true)->count();
+        $shiftCount = CorporateTransportShift::whereIn('program_id', $programIds)->where('is_active', true)->count();
+
+        $steps = [
+            ['key' => 'employees', 'complete' => $employeeCount > 0],
+            ['key' => 'locations', 'complete' => $employeesWithLocations > 0],
+            ['key' => 'routes', 'complete' => $configuredRoutes > 0],
+            ['key' => 'members', 'complete' => $memberCount > 0],
+            ['key' => 'activate', 'complete' => $activePrograms > 0],
+        ];
+
+        return response()->json(['status' => 'success', 'data' => [
+            'complete' => collect($steps)->every(fn (array $step) => $step['complete']),
+            'steps' => $steps,
+            'counts' => [
+                'employees' => $employeeCount,
+                'employees_with_locations' => $employeesWithLocations,
+                'programs' => $programIds->count(),
+                'active_programs' => $activePrograms,
+                'shifts' => $shiftCount,
+                'routes' => $activeRoutes->count(),
+                'configured_routes' => $configuredRoutes,
+                'members' => $memberCount,
+            ],
+        ]]);
     }
 
     public function programs(Request $request): JsonResponse
