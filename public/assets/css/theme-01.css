@@ -30,6 +30,22 @@
     }
 }
 
+@media (min-width: 992px) {
+    .theme-default .home4-banner-section .banner-video-area,
+    .theme-default .home4-banner-section .banner-video-area img {
+        min-height: clamp(540px, 46vw, 820px);
+        height: clamp(540px, 46vw, 820px);
+    }
+
+    .theme-default .home4-banner-section .banner-video-area img {
+        object-position: center 30%;
+    }
+
+    .theme-default .home-booking-form-section {
+        margin-top: clamp(-300px, -18vw, -150px);
+    }
+}
+
 .theme-default .section-title h2 {
     line-height: 1.15;
 }
