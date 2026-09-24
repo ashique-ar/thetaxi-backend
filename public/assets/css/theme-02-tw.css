@@ -1196,9 +1196,13 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
 }
 
 .theme-theme-02 .home-booking-form-section {
-    margin-top: -120px !important;
+    margin-top: -150px !important;
     position: relative !important;
     z-index: 20 !important;
+}
+
+.theme-theme-02 .t2-hero .banner-wrapper {
+    min-height: clamp(560px, 78vh, 820px) !important;
 }
 
 .theme-theme-02 .featured-vehicles-section {
@@ -1344,7 +1348,7 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
 
 @media (max-width: 991px) {
     .theme-theme-02 .home-booking-form-section {
-        margin-top: -90px !important;
+        margin-top: -130px !important;
     }
 }
 

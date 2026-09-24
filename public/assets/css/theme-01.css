@@ -18,6 +18,18 @@
     z-index: 3;
 }
 
+@media (min-width: 577px) {
+    .theme-default .home4-banner-section .banner-video-area,
+    .theme-default .home4-banner-section .banner-video-area img {
+        min-height: 570px;
+        height: 570px;
+    }
+
+    .theme-default .home-booking-form-section {
+        margin-top: -110px;
+    }
+}
+
 .theme-default .section-title h2 {
     line-height: 1.15;
 }
