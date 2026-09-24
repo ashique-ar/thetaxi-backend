@@ -1195,6 +1195,21 @@ class BookingController extends Controller
         $returnDate = $searchParams['return_date'] ?? null;
         $outboundDate = $searchParams['from_date'] ?? null;
         $packageId = $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null;
+        $returnDayOffset = ($isReturnTrip && $outboundDate && $returnDate)
+            ? Carbon::parse($outboundDate)->startOfDay()->diffInDays(Carbon::parse($returnDate)->startOfDay())
+            : null;
+        $returnRulesByGroup = collect();
+        if ($returnDayOffset !== null && $packageId) {
+            $returnRulesByGroup = \App\Models\Service\ServicePackageReturnRule::query()
+                ->where('service_package_id', $packageId)
+                ->active()
+                ->effectiveOn()
+                ->matchesDayOffset($returnDayOffset)
+                ->whereNull('vehicle_group_id')
+                ->orderByDesc('priority')
+                ->get()
+                ->values();
+        }
 
 
         foreach ($vehicleGroups as $index => $groupData) {
@@ -1262,15 +1277,13 @@ class BookingController extends Controller
                         $journeyDistance = (float) $distanceDetails['journey_distance'];
                     }
                     
-                    $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
-                        'package_id' => $packageId,
-                        'vehicle_group_id' => $groupData['id'],
-                        'outbound_date' => $outboundDate,
-                        'return_date' => $returnDate,
-                        'one_way_fare' => $oneWayFare,
-                        'kilometers' => $journeyDistance,
-                        'journey_distance' => $journeyDistance,
-                    ]);
+                    $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricingFromRules(
+                        $returnRulesByGroup,
+                        $returnDayOffset,
+                        $groupData['id'],
+                        $oneWayFare,
+                        $journeyDistance
+                    );
 
                     // Update total amount to include return trip
                     if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {

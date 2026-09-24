@@ -2355,6 +2355,62 @@ class BookingFlowService
         return $result;
     }
 
+    /** Apply a return rule already loaded for a batch of search result cards. */
+    public function calculateReturnTripPricingFromRules($rules, int $dayOffset, string $vehicleGroupId, float $oneWayFare, ?float $kilometers): array
+    {
+        $rule = $rules->first(function ($candidate) use ($kilometers) {
+            $minimumKm = $candidate->km_min;
+            $maximumKm = $candidate->km_max;
+            if ($minimumKm !== null && ($kilometers === null || $kilometers < (float) $minimumKm)) {
+                return false;
+            }
+            if ($maximumKm !== null && ($kilometers === null || $kilometers > (float) $maximumKm)) {
+                return false;
+            }
+            return true;
+        });
+
+        if (!$rule) {
+            $returnFare = round($oneWayFare, 2);
+            return [
+                'has_return_rule' => false,
+                'day_offset' => $dayOffset,
+                'kilometers' => $kilometers,
+                'charge_percentage' => 100,
+                'discount_percentage' => 0,
+                'one_way_fare' => $returnFare,
+                'return_fare' => $returnFare,
+                'total_fare' => round($oneWayFare * 2, 2),
+                'discount_amount' => 0,
+                'rule_label' => null,
+                'message' => 'No return discount available',
+            ];
+        }
+
+        $returnFare = $rule->calculateReturnFare($oneWayFare);
+        $discountAmount = $oneWayFare - $returnFare;
+
+        return [
+            'has_return_rule' => true,
+            'day_offset' => $dayOffset,
+            'kilometers' => $kilometers,
+            'charge_percentage' => $rule->charge_percentage,
+            'discount_percentage' => $rule->discount_percentage,
+            'one_way_fare' => round($oneWayFare, 2),
+            'return_fare' => round($returnFare, 2),
+            'total_fare' => round($oneWayFare + $returnFare, 2),
+            'discount_amount' => round($discountAmount, 2),
+            'rule_id' => $rule->id,
+            'rule_label' => $rule->label ?? $rule->day_range_description,
+            'km_range_description' => $rule->km_range_description,
+            'same_vehicle_required' => $rule->same_vehicle_required,
+            'same_driver_required' => $rule->same_driver_required,
+            'message' => $rule->label
+                ? "{$rule->label}: {$rule->discount_percentage}% off return trip"
+                : "{$rule->day_range_description}: {$rule->discount_percentage}% off return trip",
+        ];
+    }
+
     /**
      * Get available return rules for a service package.
      * Used for frontend to display return options to users.

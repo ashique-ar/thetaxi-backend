@@ -53,18 +53,18 @@ class GoogleMapsService
                 $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
                 if (!$resp->successful()) {
                     Log::error('Distance Matrix HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
-                    return ['distance_km' => 0.0, 'duration_seconds' => 0];
+                    return $this->cachedDirectionsFallback($o, $d, $mode);
                 }
 
                 $data = $resp->json();
                 if (($data['status'] ?? '') !== 'OK') {
                     Log::warning('Distance Matrix Google status not OK', ['status' => $data['status'] ?? 'UNKNOWN', 'error_message' => $data['error_message'] ?? null]);
-                    return $this->directionsFallbackWithDuration($o, $d, $mode);
+                    return $this->cachedDirectionsFallback($o, $d, $mode);
                 }
 
                 $element = $data['rows'][0]['elements'][0] ?? null;
                 if (!$element || ($element['status'] ?? '') !== 'OK') {
-                    return $this->directionsFallbackWithDuration($o, $d, $mode);
+                    return $this->cachedDirectionsFallback($o, $d, $mode);
                 }
 
                 $meters = $element['distance']['value'] ?? 0;
@@ -76,9 +76,16 @@ class GoogleMapsService
                 ];
             } catch (\Throwable $e) {
                 Log::error('Distance Matrix exception', ['error' => $e->getMessage()]);
-                return ['distance_km' => 0.0, 'duration_seconds' => 0];
+                return $this->cachedDirectionsFallback($o, $d, $mode);
             }
         });
+    }
+
+    private function cachedDirectionsFallback(string $origin, string $destination, string $mode): array
+    {
+        $key = 'gm:directions:withduration:' . md5(json_encode([$origin, $destination, $mode]));
+
+        return Cache::remember($key, $this->ttl, fn () => $this->directionsFallbackWithDuration($origin, $destination, $mode));
     }
 
     /** Optional fallback using Directions API */
@@ -93,7 +100,7 @@ class GoogleMapsService
                 'units' => 'metric',
             ];
 
-            $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
+            $resp = Http::connectTimeout(2)->timeout(5)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
             if (!$resp->successful()) {
                 Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
                 return 0.0;
