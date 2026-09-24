@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
+use Dedoc\Scramble\Scramble;
 use Illuminate\Support\Facades\Gate;
 use App\Models\Booking\Booking;
 use App\Models\Corporate\Corporate;
@@ -55,6 +56,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
+        $this->configureDriverApiDocumentation();
+
         EloquentBuilder::macro('whereLikeInsensitive', function (string $column, string $value, string $boolean = 'and') {
             $query = $this->getQuery();
             $driver = $query->getConnection()->getDriverName();
@@ -220,6 +223,69 @@ class AppServiceProvider extends ServiceProvider
         ) {
             \Dedoc\Scramble\Scramble::shouldGenerateDocs(fn () => !app()->isProduction());
         }
+    }
+
+    /**
+     * Register a focused OpenAPI document for the driver mobile application.
+     *
+     * Keeping this separate from the very large internal API makes the driver
+     * contract quick to generate and ensures newly added driver routes are not
+     * lost among unrelated portal endpoints.
+     */
+    private function configureDriverApiDocumentation(): void
+    {
+        if (! class_exists(Scramble::class)) {
+            return;
+        }
+
+        Scramble::registerApi('driver', [
+            'api_path' => 'api/driver',
+            'info' => [
+                'title' => 'TheTaxi Driver Mobile API',
+                'version' => env('APP_VERSION', '1.0.0'),
+                'description' => 'Authentication, onboarding, profile, availability, tracking, devices, notifications, assignments, trips, and earnings for the driver mobile application.',
+            ],
+            'ui' => ['title' => 'TheTaxi Driver Mobile API'],
+            'middleware' => [
+                'web',
+                \App\Http\Middleware\DriverApiDocsAccess::class,
+            ],
+        ])
+            ->withDocumentTransformers(function (\Dedoc\Scramble\Support\Generator\OpenApi $openApi): void {
+                $openApi->info->title = 'TheTaxi Driver Mobile API';
+
+                $scheme = \Dedoc\Scramble\Support\Generator\SecurityScheme::http('bearer', 'Passport access token or onboarding token')
+                    ->as('driverBearer')
+                    ->setDescription('Use the Passport access token after approval. During onboarding, use the onboarding_token returned by OTP verification; X-Onboarding-Token is also accepted by the API.');
+                $openApi->components->addSecurityScheme('driverBearer', $scheme);
+
+                $publicOperations = [
+                    'GET version-check',
+                    'POST version-check',
+                    'POST auth/login',
+                    'POST auth/request-otp',
+                    'POST auth/verify-otp',
+                    'POST auth/forgot-password',
+                    'POST auth/reset-password',
+                    'GET onboarding/countries',
+                    'GET onboarding/countries/{country}/states',
+                    'GET onboarding/makes',
+                    'GET onboarding/makes/{make}/models',
+                ];
+
+                foreach ($openApi->paths as $path) {
+                    foreach ($path->operations as $operation) {
+                        $key = strtoupper($operation->method).' '.ltrim($path->path, '/');
+                        if (! in_array($key, $publicOperations, true)) {
+                            $operation->addSecurity(new \Dedoc\Scramble\Support\Generator\SecurityRequirement('driverBearer'));
+                        }
+                    }
+                }
+            })
+            ->expose(
+                ui: 'docs/driver',
+                document: 'docs/driver/openapi.json',
+            );
     }
 
     /**

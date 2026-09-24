@@ -10,6 +10,7 @@ use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\User;
 use App\Services\CorporateService;
+use App\Services\CorporateAccessLinkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
@@ -288,5 +289,13 @@ class CorporateEmployeeController extends Controller
             'message' => 'Role assigned successfully',
             'data'    => ['employee' => $employee->load(['user', 'department', 'division', 'userContext.roles', 'locations'])],
         ]);
+    }
+
+    public function sendAccessLink(Request $request, string $id, CorporateAccessLinkService $access): JsonResponse
+    {
+        $employee = CorporateEmployee::where('corporate_id', $request->corporate_id)->findOrFail($id);
+        $access->send($employee);
+
+        return response()->json(['status' => 'success', 'message' => 'Password setup link queued for delivery.']);
     }
 }

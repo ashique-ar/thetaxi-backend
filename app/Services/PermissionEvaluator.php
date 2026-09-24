@@ -30,7 +30,9 @@ class PermissionEvaluator
             return $this->userHasAnyForInternalContext($user, $permissions);
         }
 
-        if ($this->userHasAny($user, $permissions)) {
+        // Corporate permissions belong to the selected employee context. A user
+        // may be an admin in one company and an ordinary employee in another.
+        if ($contextType !== 'corporate' && $this->userHasAny($user, $permissions)) {
             return true;
         }
 

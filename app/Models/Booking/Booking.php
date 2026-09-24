@@ -343,6 +343,7 @@ class Booking extends BaseModel
         'requires_approval' => 'boolean',
         'has_overrides' => 'boolean',
         'confirmed' => 'boolean',
+        'notification_sms' => 'boolean',
         'skip_all_emails' => 'boolean',
 
         // json

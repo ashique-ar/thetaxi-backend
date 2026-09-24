@@ -5,9 +5,11 @@ namespace App\Http\Controllers;
 use App\Mail\InquiryConfirmationMail;
 use App\Models\Inquiry;
 use App\Models\InquiryServicePage;
+use App\Models\Website\CmsContent;
 use App\Services\MailDispatchService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Crypt;
@@ -34,6 +36,15 @@ class InquiryController extends Controller
     {
         if ($this->rejectAutomatedInquiry($request)) {
             return back()->with('success', 'Thank you for your inquiry! Our team will get back to you soon.');
+        }
+
+        if ($request->exists('cms_content_id') || $request->exists('cms_form_context')) {
+            $service = $this->resolveCmsInquiryService($request);
+            if (! $service) {
+                return back()->withInput()->with('error', 'This inquiry form is not available at the moment.');
+            }
+
+            return $this->storeDynamicInquiry($request, $service);
         }
 
         $servicePage = $this->resolveInquiryServicePage($request);
@@ -165,6 +176,7 @@ class InquiryController extends Controller
             '_inquiry_form_token',
             '_inquiry_website',
             'cf-turnstile-response',
+            'cms_form_context',
         ]);
     }
 
@@ -229,6 +241,8 @@ class InquiryController extends Controller
     {
         $content = Arr::flatten($request->except([
             '_token', '_inquiry_form_token', '_inquiry_website', 'cf-turnstile-response',
+            'cms_content_id', 'cms_form_context', 'service_slug', 'inquiry_service_page_id',
+            'referrer', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
             'name', 'contact_person', 'full_name', 'email', 'phone',
         ]));
         $message = Str::lower(implode(' ', array_filter($content, 'is_scalar')));
@@ -305,18 +319,20 @@ class InquiryController extends Controller
     /**
      * Store a dynamic inquiry submission tied to a service page.
      */
-    protected function storeDynamicInquiry(Request $request, InquiryServicePage $servicePage)
+    protected function storeDynamicInquiry(Request $request, InquiryServicePage|CmsContent $servicePage)
     {
-        if (!$servicePage->is_active || $servicePage->status !== 'published') {
+        $isCms = $servicePage instanceof CmsContent;
+        if (!$servicePage->is_active || $servicePage->status !== 'published'
+            || ($isCms && (!$servicePage->published_at || $servicePage->published_at->isFuture()))) {
             return back()
                 ->withInput()
                 ->with('error', 'This inquiry form is not available at the moment.');
         }
 
-        $servicePage->loadMissing(['form.fields']);
-        $form = $servicePage->form;
+        $servicePage->loadMissing($isCms ? ['inquiryForm.fields'] : ['form.fields']);
+        $form = $isCms ? $servicePage->inquiryForm : $servicePage->form;
 
-        if (!$form) {
+        if (!$form || !$form->is_active) {
             return back()
                 ->withInput()
                 ->with('error', 'This inquiry form is not configured yet.');
@@ -325,11 +341,18 @@ class InquiryController extends Controller
 
         $inquiryType = $form->resolveSubmissionWorkflow(
             $form->settings ?? [],
-            $servicePage->inquiry_type
+            $isCms ? null : $servicePage->inquiry_type
         );
 
         $this->normalizeDynamicFormInput($request, $form);
-        $validated = $request->validate($form->buildValidationRules());
+        try {
+            $validated = $request->validate($form->buildValidationRules($request->all()));
+        } catch (ValidationException $exception) {
+            if ($isCms) {
+                throw $exception->redirectTo(url()->previous().'#service-inquiry');
+            }
+            throw $exception;
+        }
         $meta = $this->buildDynamicInquiryMeta($servicePage, $form, $validated);
 
         if (empty($meta['email'])) {
@@ -343,15 +366,41 @@ class InquiryController extends Controller
         }
 
         try {
+            $formInput = $isCms ? $validated : $this->sanitizedInquiryFormInput($request);
+            $attachments = [];
+            foreach ($form->fields as $field) {
+                if ($field->type !== 'file' || ! $request->hasFile($field->name)) {
+                    continue;
+                }
+                $upload = $request->file($field->name);
+                $path = $upload->store('inquiry-attachments', 'local');
+                $attachments[$field->name] = [
+                    'disk' => 'local',
+                    'path' => $path,
+                    'original_name' => $upload->getClientOriginalName(),
+                    'mime_type' => $upload->getMimeType(),
+                ];
+                $formInput[$field->name] = $attachments[$field->name];
+            }
+
             $payload = [
                 'type' => $inquiryType,
-                'service_page_id' => $servicePage->id,
-                'service_code' => $servicePage->code,
+                'service_page_id' => $isCms ? null : $servicePage->id,
+                'cms_content_id' => $isCms ? $servicePage->id : null,
+                'service_code' => $isCms ? $servicePage->service_type : $servicePage->code,
                 'form_id' => $form->id,
-                'form' => $this->sanitizedInquiryFormInput($request),
+                'form_name' => $form->name,
+                'form_updated_at' => $form->updated_at?->toIso8601String(),
+                'service_title' => $isCms ? $servicePage->title : $servicePage->name,
+                'service_slug' => $servicePage->slug,
+                'form' => $formInput,
+                'attachments' => $attachments,
                 'meta' => [
                     'ip_address' => $request->ip(),
                     'user_agent' => $request->userAgent(),
+                    'source_url' => $request->headers->get('referer'),
+                    'referrer' => $request->input('referrer'),
+                    'utm' => $request->only(['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content']),
                 ],
             ];
 
@@ -360,8 +409,9 @@ class InquiryController extends Controller
                 'email' => $meta['email'],
                 'phone' => $meta['phone'],
                 'inquiry_type' => $inquiryType,
-                'inquiry_service_page_id' => $servicePage->id,
-                'service_type' => $servicePage->code,
+                'inquiry_service_page_id' => $isCms ? null : $servicePage->id,
+                'cms_content_id' => $isCms ? $servicePage->id : null,
+                'service_type' => $isCms ? $servicePage->service_type : $servicePage->code,
                 'subject' => $meta['subject'],
                 'message' => $meta['message'],
                 'status' => 'open',
@@ -369,14 +419,24 @@ class InquiryController extends Controller
                 'payload' => $payload,
             ]);
 
-            $this->queueInquirySms($inquiry);
+            $payload['meta']['notification_results']['sms'] = $this->queueInquirySms($inquiry);
+            try {
+                $this->mailDispatchService->sendToCustomer(
+                    $meta['email'],
+                    new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
+                );
+                $payload['meta']['notification_results']['email'] = 'sent';
+            } catch (\Throwable $exception) {
+                $payload['meta']['notification_results']['email'] = 'failed';
+                Log::error('Inquiry confirmation email failed', [
+                    'inquiry_id' => $inquiry->id,
+                    'error' => $exception->getMessage(),
+                ]);
+            }
+            $inquiry->update(['payload' => $payload]);
 
-            $this->mailDispatchService->sendToCustomer(
-                $meta['email'],
-                new InquiryConfirmationMail($inquiry, $meta['label'], $meta['intro'])
-            );
-
-            return back()->with('success', $meta['success_message']);
+            return back()->withFragment($isCms ? 'service-inquiry' : '')->with('success', $meta['success_message'])
+                ->with('inquiry_reference', $inquiry->inquiry_number);
         } catch (\Exception $e) {
             Log::error('Dynamic inquiry submission failed', [
                 'service_page_id' => $servicePage->id,
@@ -390,15 +450,17 @@ class InquiryController extends Controller
         }
     }
 
-    private function queueInquirySms(Inquiry $inquiry): void
+    private function queueInquirySms(Inquiry $inquiry): string
     {
         try {
             $this->smsAutomationService->queueWebsiteInquiryReceived($inquiry);
+            return 'queued';
         } catch (\Throwable $exception) {
             Log::error('Website inquiry SMS could not be queued', [
                 'inquiry_id' => $inquiry->id,
                 'error' => $exception->getMessage(),
             ]);
+            return 'failed';
         }
     }
 
@@ -437,6 +499,34 @@ class InquiryController extends Controller
         }
 
         return null;
+    }
+
+    protected function resolveCmsInquiryService(Request $request): ?CmsContent
+    {
+        try {
+            $context = json_decode(Crypt::decryptString((string) $request->input('cms_form_context')), true, 512, JSON_THROW_ON_ERROR);
+        } catch (\Throwable) {
+            return null;
+        }
+
+        $contentId = $request->input('cms_content_id');
+        if (! is_string($contentId) || ! is_array($context)
+            || ! hash_equals((string) ($context['content_id'] ?? ''), $contentId)) {
+            return null;
+        }
+
+        $service = CmsContent::published()
+            ->byType('services')
+            ->whereHas('contentType', fn ($query) => $query->where('is_active', true))
+            ->with('inquiryForm.fields')
+            ->find($contentId);
+
+        if (! $service || ! $service->inquiryForm?->is_active
+            || ! hash_equals((string) ($context['form_id'] ?? ''), (string) $service->inquiry_form_id)) {
+            return null;
+        }
+
+        return $service;
     }
 
     /**
@@ -530,7 +620,7 @@ class InquiryController extends Controller
      * @return array<string, string|null>
      */
     protected function buildDynamicInquiryMeta(
-        InquiryServicePage $servicePage,
+        InquiryServicePage|CmsContent $servicePage,
         \App\Models\InquiryForm $form,
         array $data
     ): array {
@@ -543,7 +633,8 @@ class InquiryController extends Controller
         $email = $emailField ? ($data[$emailField] ?? null) : null;
         $phone = $phoneField ? ($data[$phoneField] ?? null) : null;
 
-        $label = Arr::get($settings, 'confirmation_label', $servicePage->name);
+        $serviceName = $servicePage instanceof CmsContent ? $servicePage->title : $servicePage->name;
+        $label = Arr::get($settings, 'confirmation_label', $serviceName);
         $intro = Arr::get(
             $settings,
             'confirmation_intro',
@@ -554,7 +645,7 @@ class InquiryController extends Controller
         $subjectTemplate = Arr::get($settings, 'subject_template', '{service} Inquiry - {name}');
         $subject = str_replace(
             ['{service}', '{name}'],
-            [$servicePage->name, $name ?: 'Customer'],
+            [$serviceName, $name ?: 'Customer'],
             $subjectTemplate
         );
 
@@ -631,11 +722,11 @@ class InquiryController extends Controller
      * Build a summary message for dynamic inquiry submissions.
      */
     protected function buildDynamicMessage(
-        InquiryServicePage $servicePage,
+        InquiryServicePage|CmsContent $servicePage,
         \App\Models\InquiryForm $form,
         array $data
     ): string {
-        $lines = [$servicePage->name . ' inquiry'];
+        $lines = [($servicePage instanceof CmsContent ? $servicePage->title : $servicePage->name) . ' inquiry'];
 
         foreach ($form->fields as $field) {
             $value = $data[$field->name] ?? null;
@@ -645,6 +736,10 @@ class InquiryController extends Controller
 
             if (is_array($value)) {
                 $value = implode(', ', array_filter($value));
+            }
+
+            if ($value instanceof \Illuminate\Http\UploadedFile) {
+                $value = $value->getClientOriginalName();
             }
 
             if (!empty($field->options)) {

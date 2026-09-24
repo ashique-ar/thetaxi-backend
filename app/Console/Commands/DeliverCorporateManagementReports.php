@@ -3,7 +3,9 @@
 namespace App\Console\Commands;
 
 use App\Models\Corporate\CorporateReportSchedule;
+use App\Models\Corporate\CorporateEmployee;
 use App\Services\CorporateManagementAnalyticsService;
+use App\Services\CorporatePortalPermission;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\Mail;
@@ -23,14 +25,33 @@ class DeliverCorporateManagementReports extends Command
             if ($schedule->last_delivered_at?->isSameMonth($date)) {
                 return;
             }
+            $creator = CorporateEmployee::where('corporate_id', $schedule->corporate_id)
+                ->where('user_id', $schedule->created_by)
+                ->first();
+            if (! $creator || ! CorporatePortalPermission::employeeAllows($creator, 'schedule_reports')) {
+                $schedule->update([
+                    'is_active' => false,
+                    'last_error' => 'Delivery stopped because the schedule owner no longer has corporate report scheduling access.',
+                ]);
+                return;
+            }
             try {
                 $filters = array_merge($schedule->filters ?? [], ['date_from' => $date->copy()->subMonthNoOverflow()->startOfMonth()->toDateString(), 'date_to' => $date->copy()->subMonthNoOverflow()->endOfMonth()->toDateString()]);
-                $payload = $analytics->report($schedule->corporate_id, $filters, true);
+                $canViewFinance = CorporatePortalPermission::employeeAllows($creator, 'view_payments');
+                $payload = $analytics->report($schedule->corporate_id, $filters, $canViewFinance);
                 if ($schedule->format === 'csv') {
                     $stream = fopen('php://temp', 'w+b');
-                    fputcsv($stream, ['Month', 'Bookings', 'Trips', 'Estimated value', 'Finalized charges']);
+                    $headers = ['Month', 'Bookings', 'Trips'];
+                    if ($canViewFinance) {
+                        array_push($headers, 'Estimated value', 'Finalized charges');
+                    }
+                    fputcsv($stream, $headers);
                     foreach ($payload['monthly_trends'] as $row) {
-                        fputcsv($stream, [$row['month'], $row['bookings'], $row['trips'], $row['estimated_value'], $row['finalized_charges']]);
+                        $cells = [$row['month'], $row['bookings'], $row['trips']];
+                        if ($canViewFinance) {
+                            array_push($cells, $row['estimated_value'], $row['finalized_charges']);
+                        }
+                        fputcsv($stream, $cells);
                     }
                     if (isset($payload['financial_period']['summary'])) {
                         fputcsv($stream, []);

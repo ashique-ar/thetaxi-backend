@@ -283,7 +283,7 @@ it('builds driver navigation stops only from booked passenger route fields', fun
         ->not->toContain('pricing_only');
 });
 
-it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.6', function () {
+it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.7', function () {
     $documentation = json_decode(
         file_get_contents(public_path('docs/driver-mobile-api.openapi.json')),
         true,
@@ -293,10 +293,11 @@ it('keeps supported driver app version and lifecycle endpoints compatible with O
     $driverRoutes = file_get_contents(base_path('routes/api_driver.php'));
     $publicRoutes = file_get_contents(base_path('routes/api_public.php'));
 
-    expect(data_get($documentation, 'info.version'))->toBe('2.6.0')
+    expect(data_get($documentation, 'info.version'))->toBe('2.7.0')
         ->and(data_get($documentation, 'paths./api/driver/version-check.post'))->toBeArray()
         ->and(data_get($documentation, 'paths./api/public/driver-mobile/version-check.post'))->toBeArray()
-        ->and($driverRoutes)->toContain("Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'versionCheck'])")
+        ->and($driverRoutes)->toContain("Route::get('version-check', [AppSettingsController::class, 'versionCheck'])")
+        ->and($driverRoutes)->toContain("Route::post('version-check', [AppSettingsController::class, 'versionCheck'])")
         ->and($publicRoutes)->toContain("Route::post('driver-mobile/version-check', [AppSettingsController::class, 'versionCheck'])")
         ->and($driverRoutes)->toContain("Route::get('', [AssignmentController::class, 'index'])")
         ->and($driverRoutes)->toContain("Route::get('current', [AssignmentController::class, 'current'])")

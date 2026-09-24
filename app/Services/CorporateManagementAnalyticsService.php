@@ -50,6 +50,19 @@ class CorporateManagementAnalyticsService
                     $items->pluck('booking_item_id')->unique(),
                 ),
             ];
+        } else {
+            unset($payload['operational']['estimated_booking_value'], $payload['operational']['finalized_charges']);
+            foreach ($payload['monthly_trends'] as &$month) {
+                unset($month['estimated_value'], $month['finalized_charges']);
+            }
+            unset($month);
+            foreach ($payload['dimensions'] as &$rows) {
+                foreach ($rows as &$row) {
+                    unset($row['estimated_value'], $row['finalized_charges']);
+                }
+                unset($row);
+            }
+            unset($rows);
         }
 
         return $payload;

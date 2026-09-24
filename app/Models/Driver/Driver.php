@@ -92,6 +92,7 @@ class Driver extends BaseModel
         'remarks',
         'postal_code',
         'default_vehicle_id',
+        'profile_photo_document_id',
         'license_reminder_days',
         'license_last_reminded_on',
         'is_online',
@@ -225,6 +226,11 @@ class Driver extends BaseModel
         return $this->morphMany(Document::class, 'documentable');
     }
 
+    public function profilePhotoDocument()
+    {
+        return $this->belongsTo(Document::class, 'profile_photo_document_id');
+    }
+
     /**
      * Get the current active session.
      */
@@ -245,7 +251,9 @@ class Driver extends BaseModel
 
     public function defaultVehicle()
     {
-        return $this->belongsTo(Vehicle::class, 'default_vehicle_id');
+        // A newly approved onboarding vehicle remains inactive until staff
+        // assigns its vehicle group, but it must still be visible to its driver.
+        return $this->belongsTo(Vehicle::class, 'default_vehicle_id')->withoutGlobalScopes();
     }
 
     public function licenseRenewals()

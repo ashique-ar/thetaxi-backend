@@ -13,11 +13,18 @@ class CreateInquiryRequest extends FormRequest
     {
         return [
             'customer_id' => ['nullable', 'exists:customers,id'],
+            'name' => ['required', 'string', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'phone' => ['nullable', 'string', 'max:30'],
+            'inquiry_type' => ['required', 'string', 'max:50'],
+            'source' => ['nullable', 'string', 'max:50'],
+            'assigned_to' => ['nullable', 'uuid', 'exists:users,id'],
             'subject' => ['nullable', 'string', 'max:255'],
             'message' => ['nullable', 'string'],
-            'status' => ['nullable', 'string', 'max:50'],
+            'status' => ['nullable', 'in:open,in_progress,closed,archived'],
             'priority' => ['nullable', 'string', 'max:50'],
             'response' => ['nullable', 'string'],
+            'notes' => ['nullable', 'string'],
             'responded_at' => ['nullable', 'date'],
         ];
     }

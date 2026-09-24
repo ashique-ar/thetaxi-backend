@@ -27,7 +27,8 @@ use App\Http\Controllers\Api\UtilityController;
 */
 
 // Public authentication routes (no auth required)
-Route::match(['get', 'post'], 'version-check', [AppSettingsController::class, 'versionCheck']);
+Route::get('version-check', [AppSettingsController::class, 'versionCheck']);
+Route::post('version-check', [AppSettingsController::class, 'versionCheck']);
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);

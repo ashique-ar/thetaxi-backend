@@ -9,6 +9,7 @@ use App\Models\InquiryFormField;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -25,12 +26,12 @@ class InquiryFormController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $query = InquiryForm::withInactive();
+        $query = InquiryForm::withInactive()->withCount('cmsServices');
 
         if ($request->filled('search')) {
             $query->where(function ($q) use ($request) {
-                $q->where('name', 'like', '%' . $request->search . '%')
-                    ->orWhere('slug', 'like', '%' . $request->search . '%');
+                $q->where('name', 'like', '%'.$request->search.'%')
+                    ->orWhere('slug', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -46,7 +47,7 @@ class InquiryFormController extends Controller
 
     public function show(InquiryForm $inquiry_form): JsonResponse
     {
-        $inquiry_form->load(['fields']);
+        $inquiry_form->load(['fields', 'cmsServices.contentType']);
 
         return response()->json([
             'status' => 'success',
@@ -70,9 +71,11 @@ class InquiryFormController extends Controller
             $data['created_user_id'] = $request->user()?->id;
             $form = InquiryForm::create($data);
 
-            if (!empty($fields)) {
+            if (! empty($fields)) {
                 $this->syncFields($form, $fields);
             }
+
+            $this->clearServiceCaches();
 
             return response()->json([
                 'status' => 'success',
@@ -102,6 +105,8 @@ class InquiryFormController extends Controller
                 $this->syncFields($inquiry_form, $fields);
             }
 
+            $this->clearServiceCaches();
+
             return response()->json([
                 'status' => 'success',
                 'message' => 'Inquiry form updated',
@@ -114,7 +119,18 @@ class InquiryFormController extends Controller
 
     public function destroy(InquiryForm $inquiry_form): JsonResponse
     {
+        if ($inquiry_form->cmsServices()->withTrashed()->exists()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'This inquiry form is attached to one or more CMS services. Detach it before deleting.',
+                'data' => [
+                    'services' => $inquiry_form->cmsServices()->withTrashed()->get(['id', 'title', 'slug', 'status']),
+                ],
+            ], 422);
+        }
+
         $inquiry_form->delete();
+        $this->clearServiceCaches();
 
         return response()->json([
             'status' => 'success',
@@ -163,7 +179,7 @@ class InquiryFormController extends Controller
     /**
      * Sync fields for a form from payload.
      *
-     * @param array<int, array<string, mixed>> $fields
+     * @param  array<int, array<string, mixed>>  $fields
      */
     protected function syncFields(InquiryForm $form, array $fields): void
     {
@@ -210,5 +226,12 @@ class InquiryFormController extends Controller
             'conditional_logic' => $field['conditional_logic'] ?? null,
             'is_active' => $field['is_active'] ?? true,
         ];
+    }
+
+    private function clearServiceCaches(): void
+    {
+        Cache::forget('header_services');
+        Cache::forget('sitemap');
+        Cache::forget('service_pages');
     }
 }

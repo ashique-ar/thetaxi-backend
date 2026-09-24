@@ -4,7 +4,7 @@ namespace App\Http\Controllers\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\InquiryServicePage;
-use App\Models\Website\CmsContent;
+use App\Services\Website\PublishedCmsContentResolver;
 use Illuminate\Support\Facades\Log;
 
 class InquiryServicePageController extends Controller
@@ -12,20 +12,17 @@ class InquiryServicePageController extends Controller
     /**
      * Render a dynamic inquiry service page by slug.
      */
-    public function show(string $slug)
+    public function show(string $slug, PublishedCmsContentResolver $resolver, CmsController $cmsController)
     {
         try {
             // Services created through CMS Types are the canonical public owner.
             // Keep the legacy inquiry page lookup below as a compatibility fallback
             // for existing installations while their records are migrated to CMS.
-            $hasCmsService = CmsContent::published()
-                ->byType('services')
-                ->where('slug', $slug)
-                ->whereHas('contentType', fn ($query) => $query->where('is_active', true))
-                ->exists();
+            $cmsService = $resolver->find('services', $slug);
 
-            if ($hasCmsService) {
-                return app(CmsController::class)->show('services', $slug);
+            if ($cmsService && $cmsService->contentType?->is_active) {
+                $contentType = $resolver->contentType('services');
+                return $cmsController->renderContent($contentType, $cmsService);
             }
 
             $page = InquiryServicePage::withInactive()
@@ -35,6 +32,11 @@ class InquiryServicePageController extends Controller
             if (!$page->is_active || $page->status !== 'published') {
                 abort(404);
             }
+
+            Log::info('service_page.legacy_fallback', [
+                'slug' => $slug,
+                'legacy_page_id' => $page->id,
+            ]);
 
             // Load both form fields and sections if available
             $cacheKey = 'inquiry_service_page:' . $page->slug;
@@ -69,6 +71,7 @@ class InquiryServicePageController extends Controller
                 'sections' => $sections,
             ]);
         } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            Log::notice('service_page.not_found', ['slug' => $slug]);
             abort(404);
         } catch (\Symfony\Component\HttpKernel\Exception\HttpException $e) {
             throw $e;

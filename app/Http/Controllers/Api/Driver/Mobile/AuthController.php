@@ -18,6 +18,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -43,6 +44,7 @@ class AuthController extends Controller
         private MobileAssignmentService $assignmentService
     ) {}
 
+    /** Send a six-digit OTP to a driver's international mobile number. */
     public function requestOtp(Request $request, SmsService $sms): JsonResponse
     {
         $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
@@ -64,6 +66,7 @@ class AuthController extends Controller
         return response()->json(['status' => 'success', 'message' => 'OTP sent.', 'data' => ['expires_in' => 600]]);
     }
 
+    /** Verify an OTP and either log in an approved driver or resume onboarding. */
     public function verifyOtp(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -97,13 +100,40 @@ class AuthController extends Controller
         }
 
         $token = Str::random(64);
-        $application = DriverOnboardingApplication::create([
-            'user_id' => $user?->id, 'mobile' => $mobile, 'access_token_hash' => hash('sha256', $token),
-            'mobile_verified_at' => now(), 'payload' => ['identity' => array_filter([
-                'first_name' => $user?->first_name, 'last_name' => $user?->last_name, 'email' => $user?->email,
-            ])],
-        ]);
+        $application = DB::transaction(function () use ($user, $mobile, $token): DriverOnboardingApplication {
+            // A repeated OTP request is a continuation of the same registration,
+            // not a new application. Lock matching rows so simultaneous requests
+            // cannot create duplicate drafts for the same mobile number.
+            $application = DriverOnboardingApplication::query()
+                ->where('mobile', $mobile)
+                ->whereIn('status', ['draft', 'submitted', 'changes_requested'])
+                ->latest('updated_at')
+                ->lockForUpdate()
+                ->first();
+
+            if ($application) {
+                $application->update([
+                    'access_token_hash' => hash('sha256', $token),
+                    'mobile_verified_at' => now(),
+                    'user_id' => $application->user_id ?: $user?->id,
+                ]);
+
+                return $application->fresh();
+            }
+
+            return DriverOnboardingApplication::create([
+                'user_id' => $user?->id, 'mobile' => $mobile, 'access_token_hash' => hash('sha256', $token),
+                'mobile_verified_at' => now(), 'payload' => ['identity' => array_filter([
+                    'first_name' => $user?->first_name, 'last_name' => $user?->last_name, 'email' => $user?->email,
+                ])],
+            ]);
+        });
         $applicationData = $application->load('documents')->toArray();
+        $applicationData['documents'] = $application->documents->map(fn ($document) => [
+            ...$document->toArray(),
+            'url' => $document->resourceUrl(),
+            'resource_url' => $document->resourceUrl(),
+        ])->values()->all();
         unset($applicationData['payload']['identity']['dob']);
 
         return response()->json(['status' => 'success', 'data' => [
@@ -183,6 +213,7 @@ class AuthController extends Controller
         }
     }
 
+    /** Request a password-reset OTP for an eligible driver account. */
     public function forgotPassword(Request $request): JsonResponse
     {
         $data = $request->validate(['email' => ['required', 'string', 'email', 'max:255']]);
@@ -194,6 +225,7 @@ class AuthController extends Controller
         ]);
     }
 
+    /** Reset a driver password using the emailed OTP. */
     public function resetPassword(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -215,6 +247,7 @@ class AuthController extends Controller
         }
     }
 
+    /** Change the authenticated driver's password and require a new login. */
     public function changePassword(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -298,7 +331,7 @@ class AuthController extends Controller
             }
 
             // Load relationships for the driver
-            $driver->load(['user', 'country', 'state', 'licenseType']);
+            $driver->load($this->authService->mobileProfileRelations());
 
             // Compute assignment statistics
             $assignmentStats = [

@@ -5,7 +5,10 @@ namespace App\Services;
 use App\Models\Website\WebsiteSetting;
 use App\Models\BusinessSetting;
 use App\Models\Company;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class WebsiteSettingsService
 {
@@ -182,7 +185,23 @@ class WebsiteSettingsService
                 $result[$type] = $value;
             }
 
-            Cache::putMany($valuesToCache, self::CACHE_DURATION);
+            if (DB::transactionLevel() === 0) {
+                // Database-backed cache stores acquire a row/index lock per key.
+                // Different callers can request overlapping setting subsets in a
+                // different order, which can deadlock PostgreSQL. A single stable
+                // key order makes every concurrent writer acquire locks alike.
+                ksort($valuesToCache, SORT_STRING);
+                try {
+                    retry(3, fn () => Cache::putMany($valuesToCache, self::CACHE_DURATION), 50);
+                } catch (QueryException $e) {
+                    // Cache population is optional. Outside a transaction it is
+                    // safe to continue with the values already read from source.
+                    Log::warning('Website settings cache population failed', [
+                        'sql_state' => $e->errorInfo[0] ?? null,
+                        'setting_count' => count($valuesToCache),
+                    ]);
+                }
+            }
         }
 
         $businessValues = BusinessSetting::query()

@@ -1,18 +1,21 @@
 <?php
+
 // app/Http/Controllers/Api/Website/CmsContentController.php
+
 namespace App\Http\Controllers\Api\Website;
 
 use App\Http\Controllers\Controller;
-use App\Models\Website\CmsContent;
 use App\Http\Requests\Website\CmsContent\CreateCmsContentRequest;
 use App\Http\Requests\Website\CmsContent\UpdateCmsContentRequest;
 use App\Http\Resources\Website\CmsContentResource;
 use App\Models\User;
+use App\Models\Website\CmsContent;
 use App\Models\Website\CmsContentType;
-use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Validation\ValidationException;
 
 class CmsContentController extends Controller
 {
@@ -26,15 +29,15 @@ class CmsContentController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = CmsContent::withInactive()->with(['contentType', 'createdBy', 'updatedBy']);
+        $q = CmsContent::withInactive()->with(['contentType', 'inquiryForm', 'createdBy', 'updatedBy']);
         $contentTable = $q->getModel()->getTable();
 
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
-                $query->where('title', 'like', '%' . $request->search . '%')
-                    ->orWhere('slug', 'like', '%' . $request->search . '%')
-                    ->orWhere('author', 'like', '%' . $request->search . '%')
-                    ->orWhere('excerpt', 'like', '%' . $request->search . '%');
+                $query->where('title', 'like', '%'.$request->search.'%')
+                    ->orWhere('slug', 'like', '%'.$request->search.'%')
+                    ->orWhere('author', 'like', '%'.$request->search.'%')
+                    ->orWhere('excerpt', 'like', '%'.$request->search.'%');
             });
         }
 
@@ -129,17 +132,17 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content created',
-            'data' => ['content' => new CmsContentResource($content)]
+            'data' => ['content' => new CmsContentResource($content->load(['contentType', 'inquiryForm']))],
         ], 201);
     }
 
     public function show(CmsContent $cms_content): JsonResponse
     {
-        $cms_content->load(['contentType', 'createdBy', 'updatedBy']);
+        $cms_content->load(['contentType', 'inquiryForm', 'createdBy', 'updatedBy']);
 
         return response()->json([
             'status' => 'success',
-            'data' => ['content' => new CmsContentResource($cms_content)]
+            'data' => ['content' => new CmsContentResource($cms_content)],
         ]);
     }
 
@@ -153,7 +156,7 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content updated',
-            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))]
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'inquiryForm', 'createdBy', 'updatedBy']))],
         ]);
     }
 
@@ -164,7 +167,7 @@ class CmsContentController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'message' => 'Content deleted'
+            'message' => 'Content deleted',
         ]);
     }
 
@@ -180,6 +183,16 @@ class CmsContentController extends Controller
 
     public function publish(Request $request, CmsContent $cms_content): JsonResponse
     {
+        $cms_content->loadMissing(['contentType', 'inquiryForm']);
+        $ctaEnabled = (bool) data_get($cms_content->custom_fields, 'inquiry_cta.enabled', false);
+        if ($cms_content->contentType?->slug === 'services'
+            && $ctaEnabled
+            && (! $cms_content->inquiryForm || ! $cms_content->inquiryForm->is_active)) {
+            throw ValidationException::withMessages([
+                'inquiry_form_id' => 'A published service with an enabled inquiry CTA must use an active inquiry form.',
+            ]);
+        }
+
         $cms_content->update([
             'status' => 'published',
             'published_at' => $cms_content->published_at ?? now(),
@@ -191,7 +204,7 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content published',
-            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))],
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'inquiryForm', 'createdBy', 'updatedBy']))],
         ]);
     }
 
@@ -206,7 +219,7 @@ class CmsContentController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Content unpublished',
-            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'createdBy', 'updatedBy']))],
+            'data' => ['content' => new CmsContentResource($cms_content->fresh(['contentType', 'inquiryForm', 'createdBy', 'updatedBy']))],
         ]);
     }
 
@@ -238,7 +251,7 @@ class CmsContentController extends Controller
             ->map(function (User $user) {
                 return [
                     'id' => $user->id,
-                    'name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
+                    'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
                 ];
             })
             ->values();
@@ -252,7 +265,7 @@ class CmsContentController extends Controller
             ->map(function (User $user) {
                 return [
                     'id' => $user->id,
-                    'name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
+                    'name' => trim(($user->first_name ?? '').' '.($user->last_name ?? '')) ?: ($user->email ?? 'Unknown'),
                 ];
             })
             ->values();
@@ -270,6 +283,7 @@ class CmsContentController extends Controller
     {
         Cache::forget('header_services');
         Cache::forget('sitemap');
+        Cache::forget('service_pages');
     }
 
     /**
@@ -312,7 +326,7 @@ class CmsContentController extends Controller
 
         return response()->json([
             'status' => 'success',
-            'data' => ['content' => new CmsContentResource($content)]
+            'data' => ['content' => new CmsContentResource($content)],
         ]);
     }
 
@@ -337,25 +351,25 @@ class CmsContentController extends Controller
             $data['body'] = CmsContent::normalizeBodyHtml($data['body']);
         }
 
-        if (!empty($data['read_time'])) {
+        if (! empty($data['read_time'])) {
             $customFields['read_time'] = $data['read_time'];
-        } elseif (!empty($data['body'])) {
+        } elseif (! empty($data['body'])) {
             $customFields['read_time'] = $this->calculateReadTime($data['body']);
         }
 
-        if (!empty($customFields)) {
+        if (! empty($customFields)) {
             $data['custom_fields'] = $customFields;
         }
 
         // Default availability
-        if (!isset($data['availability_status']) && $existing?->availability_status) {
+        if (! isset($data['availability_status']) && $existing?->availability_status) {
             $data['availability_status'] = $existing->availability_status;
-        } elseif (!isset($data['availability_status'])) {
+        } elseif (! isset($data['availability_status'])) {
             $data['availability_status'] = 'available';
         }
 
         // Ensure min_days has a sensible default (1)
-        if (!isset($data['min_days'])) {
+        if (! isset($data['min_days'])) {
             $data['min_days'] = $existing?->min_days ?? 1;
         }
 
@@ -370,6 +384,7 @@ class CmsContentController extends Controller
         $text = strip_tags($body);
         $wordCount = str_word_count($text);
         $minutes = max(1, (int) ceil($wordCount / 200));
+
         return "{$minutes} min read";
     }
 }

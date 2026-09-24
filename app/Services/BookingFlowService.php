@@ -51,6 +51,7 @@ use App\Services\Pricing\PricingContextPolicyService;
 use App\Notifications\BookingLifecycleNotification;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Auth\Access\AuthorizationException;
+use Illuminate\Database\QueryException;
 
 
 class BookingFlowService
@@ -2490,8 +2491,14 @@ class BookingFlowService
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
 
+        // Pricing reads these settings. Warm database-backed cache entries
+        // before opening the booking transaction so cache misses never write
+        // to the cache table while booking rows are locked.
+        app(WebsiteSettingsService::class)->getBookingSettings();
+
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
+            $deferConfirmation = filter_var($params['defer_confirmation'] ?? false, FILTER_VALIDATE_BOOL);
 
             // 1) Calculate pricing
             $pricing = $this->calculatePricing($params);
@@ -2523,9 +2530,9 @@ class BookingFlowService
             $booking->distance_metrics = $totals['distance_metrics'] ?? null;
             $booking->discounts = $params['applied_discounts'] ?? [];
 
-            $booking->status = 'confirmed';
-            $booking->confirmed = true;
-            $booking->confirmed_at = now();
+            $booking->status = $deferConfirmation ? 'pending' : 'confirmed';
+            $booking->confirmed = !$deferConfirmation;
+            $booking->confirmed_at = $deferConfirmation ? null : now();
             $booking->requires_approval = false;
             $booking->approval_status = 'not_required';
             $booking->notification_sms = filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL);
@@ -2535,18 +2542,21 @@ class BookingFlowService
                 $params['send_confirmation_emails'] ?? false,
                 FILTER_VALIDATE_BOOL
             );
+            if ($deferConfirmation) {
+                $booking->skip_all_emails = false;
+            }
 
-            if (method_exists(Booking::class, 'generateConfirmationNumber')) {
+            if (!$deferConfirmation && method_exists(Booking::class, 'generateConfirmationNumber')) {
                 $booking->confirmation_number = Booking::generateConfirmationNumber();
             }
 
             // Determine if multi-group booking
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
 
-            $booking->workflow_step = 'confirmed';
+            $booking->workflow_step = $deferConfirmation ? 'pending_internal_confirmation' : 'confirmed';
             $booking->workflow_data = [
-                'confirmed_at' => now()->toISOString(),
-                'confirmed_by' => Auth::id(),
+                ($deferConfirmation ? 'submitted_at' : 'confirmed_at') => now()->toISOString(),
+                ($deferConfirmation ? 'submitted_by' : 'confirmed_by') => Auth::id(),
                 'frontend_data' => $params,
                 'is_multi_group' => $isMultiGroup,
             ];
@@ -2571,7 +2581,7 @@ class BookingFlowService
                 if (!empty($params['variable_customizations'])) {
                     $this->storeVariableCustomizations($params['variable_customizations'], $booking->id, $params['session_id'] ?? null);
                 }
-                $this->createBookingAssignments($booking, $params, 'active');
+                $this->createBookingAssignments($booking, $params, $deferConfirmation ? 'pending' : 'active');
             } elseif (!empty($params['booking_items']) && is_array($params['booking_items'])) {
                 // Angular submits every trip through the canonical booking_items
                 // contract. Persist those exact selections even when confirmation
@@ -2587,7 +2597,7 @@ class BookingFlowService
                 if (!empty($params['variable_customizations'])) {
                     $this->storeVariableCustomizations($params['variable_customizations'], $booking->id, $params['session_id'] ?? null);
                 }
-                $this->createBookingAssignments($booking, $params, 'active');
+                $this->createBookingAssignments($booking, $params, $deferConfirmation ? 'pending' : 'active');
             } elseif ($isMultiGroup) {
                 $this->createMultiGroupBookingItems($booking, $params, $pricing);
             } else {
@@ -2603,25 +2613,27 @@ class BookingFlowService
                 }
 
                 // Handle vehicle and driver assignments for confirmed booking
-                $this->createBookingAssignments($booking, $params, 'active');
+                $this->createBookingAssignments($booking, $params, $deferConfirmation ? 'pending' : 'active');
             }
 
             $this->syncBookingTotalsFromItems($booking);
 
-            if (!$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
+            if (!$deferConfirmation && !$booking->skip_all_emails && method_exists($this, 'sendBookingConfirmation')) {
                 $notifyInternalTeam = filter_var($params['notify_internal_team'] ?? true, FILTER_VALIDATE_BOOL);
                 $this->sendBookingConfirmation($booking, $notifyInternalTeam);
             }
 
-            $this->smsAutomationService->queueBookingConfirmation(
-                $booking,
-                filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL)
-            );
+            if (!$deferConfirmation) {
+                $this->smsAutomationService->queueBookingConfirmation(
+                    $booking,
+                    filter_var($params['send_confirmation_sms'] ?? false, FILTER_VALIDATE_BOOL)
+                );
+            }
 
             $this->createFutureRecurringBookings($booking, $params);
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'bookingItems']);
-        });
+        }, 3);
     }
 
     /**
@@ -4486,6 +4498,11 @@ class BookingFlowService
             throw ValidationException::withMessages([
                 'distance_policy' => $e->getMessage(),
             ]);
+        } catch (QueryException $e) {
+            // A PostgreSQL transaction cannot continue after a failed query.
+            // Let the outer transaction roll back (and retry deadlocks) rather
+            // than returning fallback pricing from an aborted transaction.
+            throw $e;
         } catch (\Exception $e) {
             Log::error("Dynamic pricing calculation failed: " . $e->getMessage(), [
                 'params' => $params,
@@ -10380,12 +10397,27 @@ class BookingFlowService
             }
             $this->cancelBookingRecord($booking, $userId, $reason ?: 'Cancelled by user');
         } else {
-            $booking->update(['status' => $status]);
+            $changes = ['status' => $status];
+            if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+                $changes['confirmed'] = true;
+                $changes['confirmed_at'] = now();
+                $changes['workflow_step'] = 'confirmed';
+                if (!$booking->confirmation_number && method_exists(Booking::class, 'generateConfirmationNumber')) {
+                    $changes['confirmation_number'] = Booking::generateConfirmationNumber();
+                }
+            }
+            $booking->update($changes);
+            if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+                $booking->bookingItems()->whereNotIn('status', ['cancelled', 'completed'])->update(['status' => 'confirmed']);
+            }
         }
 
         $booking->refresh();
 
         if ($status === 'confirmed' && $previousStatus !== 'confirmed') {
+            if (!$booking->skip_all_emails) {
+                $this->sendBookingConfirmation($booking, false);
+            }
             $this->smsAutomationService->queueBookingConfirmation($booking);
         }
 

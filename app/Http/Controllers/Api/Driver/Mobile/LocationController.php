@@ -316,6 +316,7 @@ class LocationController extends Controller
         }
     }
 
+    /** Report mobile GPS health and synchronization diagnostics. */
     public function health(Request $request): JsonResponse
     {
         $driver = $this->authService->getDriver($request->user());

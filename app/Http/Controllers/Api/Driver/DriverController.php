@@ -252,7 +252,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -444,7 +444,9 @@ class DriverController extends Controller
      */
     public function status(Driver $driver): JsonResponse
     {
-        $driver->load('activeSession');
+        $driver->load(['activeSession', 'devices']);
+        $currentDevice = $driver->devices->firstWhere('device_uuid', $driver->current_device_uuid)
+            ?? $driver->devices->sortByDesc('last_active_at')->first();
         
         return response()->json([
             'status' => 'success',
@@ -455,6 +457,9 @@ class DriverController extends Controller
                 'current_latitude' => $driver->current_latitude ? (float) $driver->current_latitude : null,
                 'current_longitude' => $driver->current_longitude ? (float) $driver->current_longitude : null,
                 'current_device_uuid' => $driver->current_device_uuid,
+                'current_device' => $currentDevice
+                    ? new \App\Http\Resources\Driver\DriverDeviceResource($currentDevice)
+                    : null,
                 'current_session' => $driver->activeSession 
                     ? new DriverSessionResource($driver->activeSession) 
                     : null,

@@ -72,6 +72,8 @@ class Vehicle extends BaseModel
         'contract_type_id',
         'owner_id',
         'vehicle_group_id',
+        'make_id',
+        'model_id',
         'company_id',
         'ownership_type',
         'usage_type',
@@ -169,6 +171,16 @@ class Vehicle extends BaseModel
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function make()
+    {
+        return $this->belongsTo(VehicleMake::class, 'make_id');
+    }
+
+    public function model()
+    {
+        return $this->belongsTo(VehicleModel::class, 'model_id');
     }
 
     public function leases()

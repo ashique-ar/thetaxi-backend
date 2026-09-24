@@ -13,6 +13,7 @@ class AppSettingsController extends Controller
     {
     }
 
+    /** Check whether the installed driver app version is supported or requires an update. */
     public function versionCheck(Request $request): JsonResponse
     {
         $validated = $request->validate([

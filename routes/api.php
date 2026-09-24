@@ -1974,17 +1974,20 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
+    // Inquiry routes use their own view/create/edit/delete permissions in the controller.
+    Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
+    Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
+    Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
+    Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
+    Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
+    Route::apiResource('inquiries', InquiryController::class);
+
     Route::middleware(['permission:system.view'])->group(function () {
         Route::get('galleries/stats', [ImageGalleryController::class, 'stats']);
         Route::get('galleries/search', [ImageGalleryController::class, 'search']);
         Route::get('galleries/categories', [ImageGalleryController::class, 'categories']);
         Route::apiResource('galleries', ImageGalleryController::class)->parameters(['galleries' => 'imageGallery']);
         Route::apiResource('image-galleries', ImageGalleryController::class);
-        Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
-        Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
-        Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
-        Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
-        Route::apiResource('inquiries', InquiryController::class);
         Route::post('notifications/send-bulk', [NotificationLogController::class, 'sendBulk']);
         Route::apiResource('notification-logs', NotificationLogController::class);
         Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);
@@ -2663,6 +2666,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('employees/{id}/activate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'activate']);
         Route::post('employees/{id}/deactivate', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'deactivate']);
         Route::post('employees/{id}/role', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'assignRole']);
+        Route::post('employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\CorporateEmployeeController::class, 'sendAccessLink'])->middleware('permission:manage_employees|throttle:5,1');
 
         // Role Management
         Route::get('roles', [CorporateRoleController::class, 'index']);
@@ -2688,6 +2692,8 @@ Route::middleware(['auth:api'])->group(function () {
                         'approval_required' => $corporate->approval_required,
                         'exempt_coordinator_from_approval' => $corporate->exempt_coordinator_from_approval,
                         'coordinator_can_view_payments' => $corporate->coordinator_can_view_payments,
+                        'portal_setup_complete' => $corporate->departments()->exists()
+                            && $corporate->employees()->where('is_active', true)->exists(),
                     ],
                 ],
             ]);
@@ -2706,6 +2712,9 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Staff Transport
         Route::prefix('staff-transport')->group(function () {
+            Route::get('setup-status', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'setupStatus']);
+            Route::get('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'locations']);
+            Route::post('locations', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeLocation']);
             Route::get('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'programs']);
             Route::post('programs', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'storeProgram']);
             Route::put('programs/{program}', [\App\Http\Controllers\Api\Corporate\CorporateStaffTransportController::class, 'updateProgram']);
@@ -2841,6 +2850,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('{corporate}/employees/{id}/deactivate', [AdminCorporateEmployeeController::class, 'deactivate']);
         Route::post('{corporate}/employees/{id}/role', [AdminCorporateEmployeeController::class, 'assignRole']);
         Route::delete('{corporate}/employees/{id}', [AdminCorporateEmployeeController::class, 'destroy']);
+        Route::post('{corporate}/employees/{id}/access-link', [\App\Http\Controllers\Api\Corporate\AdminCorporateEmployeeController::class, 'sendAccessLink'])->middleware('throttle:5,1');
 
         Route::post('{corporate}/bookings/for-employee', [AdminCorporateBookingController::class, 'storeForEmployee']);
 

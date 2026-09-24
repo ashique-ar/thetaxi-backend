@@ -159,6 +159,8 @@ class DriverAuthService
             'current_device_uuid' => $device->device_uuid
         ]);
 
+        $driver->load($this->mobileProfileRelations());
+
         // Deactivate other devices for single-session enforcement AFTER registration
         $this->deviceService->deactivateOtherDevices($driver, $device->device_uuid);
 
@@ -173,6 +175,16 @@ class DriverAuthService
                 'refresh_token' => $token->id, // Use token ID as refresh identifier
                 'scope' => 'driver'
             ]
+        ];
+    }
+
+    /** Relationships required by every mobile login/profile response. */
+    public function mobileProfileRelations(): array
+    {
+        return [
+            'user', 'country', 'state', 'licenseType', 'documents', 'profilePhotoDocument',
+            'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group.make',
+            'defaultVehicle.group.model', 'defaultVehicle.documents',
         ];
     }
 

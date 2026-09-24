@@ -1,18 +1,20 @@
 <?php
+
 // app/Http/Requests/Website/CmsContent/UpdateCmsContentRequest.php
+
 namespace App\Http\Requests\Website\CmsContent;
 
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateCmsContentRequest extends FormRequest
 {
-
+    use ValidatesServiceInquiryConfiguration;
 
     public function rules()
     {
         $id = $this->route('cms_content')->id;
 
-        return [
+        return array_merge([
             'cms_content_type_id' => ['sometimes', 'required', 'exists:cms_content_types,id'],
             'title' => ['sometimes', 'required', 'string', 'max:255'],
             'slug' => ['sometimes', 'required', 'string', 'max:255', "unique:cms_contents,slug,{$id}"],
@@ -46,6 +48,6 @@ class UpdateCmsContentRequest extends FormRequest
             'pickup_lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
             'dropoff_lat' => ['sometimes', 'nullable', 'numeric', 'between:-90,90'],
             'dropoff_lng' => ['sometimes', 'nullable', 'numeric', 'between:-180,180'],
-        ];
+        ], $this->serviceInquiryRules(true));
     }
 }

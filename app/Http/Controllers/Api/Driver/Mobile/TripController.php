@@ -90,6 +90,7 @@ class TripController extends Controller
         return $this->endTripByAssignment($request, $id);
     }
 
+    /** Record payment collection for a completed assignment. */
     public function collectPaymentForAssignment(Request $request, string $id): JsonResponse
     {
         $validated = $request->validate([
@@ -141,6 +142,7 @@ class TripController extends Controller
         }
     }
 
+    /** Mark the driver as arrived at an assignment stop. */
     public function stopArrivedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([
@@ -156,6 +158,7 @@ class TripController extends Controller
         }, 'Stop arrival confirmed');
     }
 
+    /** Mark pickup as completed at an assignment stop. */
     public function pickupStopCompletedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([
@@ -169,6 +172,7 @@ class TripController extends Controller
         }, 'Pickup stop completed');
     }
 
+    /** Mark drop-off as completed at an assignment stop. */
     public function dropoffStopCompletedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([
@@ -182,6 +186,7 @@ class TripController extends Controller
         }, 'Drop-off stop completed');
     }
 
+    /** Skip an assignment stop with an optional reason and location evidence. */
     public function stopSkippedForAssignment(Request $request, string $id, string $stopId): JsonResponse
     {
         $validated = $request->validate([

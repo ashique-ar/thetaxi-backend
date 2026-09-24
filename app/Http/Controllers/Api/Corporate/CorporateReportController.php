@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Corporate;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use App\Services\CorporateBookingService;
+use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -22,6 +23,7 @@ class CorporateReportController extends Controller
     public function bookingHistory(CorporateReportFiltersRequest $request): JsonResponse
     {
         $filters = $request->validated();
+        $filters['can_view_payments'] = CorporatePortalPermission::allows($request, 'view_payments');
 
         $bookings = $this->bookingService->getBookingsForCorporate(
             $request->corporate_id,
@@ -43,12 +45,16 @@ class CorporateReportController extends Controller
     public function summaryStats(CorporateReportFiltersRequest $request): JsonResponse
     {
         $filters = $request->validated();
-        $filters['can_view_payments'] = $request->user()->can('view_payments');
+        $filters['can_view_payments'] = CorporatePortalPermission::allows($request, 'view_payments');
 
         $stats = $this->bookingService->getBookingSummaryStats(
             $request->corporate_id,
             $filters
         );
+
+        if (! $filters['can_view_payments']) {
+            unset($stats['total_cost'], $stats['estimated_value'], $stats['finalized_value']);
+        }
 
         return response()->json([
             'status' => 'success',
@@ -59,6 +65,7 @@ class CorporateReportController extends Controller
     public function exportCsv(CorporateReportFiltersRequest $request): StreamedResponse
     {
         $filters = $request->safe()->except(['page', 'per_page']);
+        $filters['can_view_payments'] = CorporatePortalPermission::allows($request, 'view_payments');
 
         $filePath = $this->bookingService->exportBookings(
             $request->corporate_id,

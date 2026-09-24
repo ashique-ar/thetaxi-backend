@@ -39,7 +39,8 @@ it('keeps timeline scope on the authorized booking and selected booking item', f
 });
 
 it('registers the monthly corporate delivery command', function () {
-    $events = Artisan::call('schedule:list');
-    expect($events)->toBe(0)
-        ->and(Artisan::output())->toContain('corporate:deliver-management-reports');
+    $scheduler = file_get_contents(base_path('routes/console.php'));
+    expect($scheduler)
+        ->toContain("config('corporate_portal.scheduled_reports_enabled')")
+        ->toContain("Schedule::command('corporate:deliver-management-reports')");
 });

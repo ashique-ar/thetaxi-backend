@@ -90,6 +90,7 @@ beforeEach(function () {
         $table->uuid('id')->primary();
         $table->uuid('booking_id');
         $table->uuid('vehicle_id')->nullable();
+        $table->uuid('driver_id')->nullable();
         $table->uuid('vehicle_group_id')->nullable();
         $table->json('metadata')->nullable();
         $table->json('pricing_breakdown')->nullable();
@@ -199,6 +200,7 @@ beforeEach(function () {
         $table->timestamp('assigned_to')->nullable();
         $table->string('status')->default('active');
         $table->string('trip_phase')->default('active');
+        $table->text('decline_reason')->nullable();
         $table->timestamp('pickup_arrived_at')->nullable();
         $table->decimal('pickup_arrival_latitude', 10, 8)->nullable();
         $table->decimal('pickup_arrival_longitude', 11, 8)->nullable();
@@ -741,6 +743,33 @@ it('rejects accept and decline mutations for an assignment owned by another driv
 
     expect($assignment->fresh()->status)->toBe('active')
         ->and($assignment->fresh()->trip_phase)->toBe(TripPhase::ACTIVE);
+});
+
+it('records the mobile decline reason and releases the booking item for reassignment', function () {
+    $booking = Booking::create(['status' => 'confirmed']);
+    $driver = Driver::create(['code' => 'DECLINING-DRIVER']);
+    $item = BookingItem::create([
+        'booking_id' => $booking->id,
+        'driver_id' => $driver->id,
+    ]);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $item->id,
+        'trip_phase' => TripPhase::ACTIVE,
+        'status' => 'active',
+    ]);
+
+    $declined = $this->assignmentService->declineAssignment(
+        $driver,
+        $assignment,
+        '  Vehicle issue  '
+    );
+
+    expect($declined->status)->toBe('declined')
+        ->and($declined->trip_phase)->toBe(TripPhase::DECLINED)
+        ->and($declined->decline_reason)->toBe('Vehicle issue')
+        ->and($item->fresh()->driver_id)->toBeNull();
 });
 
 it('persists pickup arrival coordinates once and tolerates a mobile retry', function () {

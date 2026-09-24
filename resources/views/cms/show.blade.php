@@ -6,6 +6,9 @@
 @php
     $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);
     $hasContentBookingLocations = !empty($content->pickup_location) || !empty($content->dropoff_location);
+    $serviceInquiryForm = $contentType->slug === 'services' && $content->inquiryForm?->is_active
+        ? $content->inquiryForm : null;
+    $inquiryCta = $content->custom_fields['inquiry_cta'] ?? [];
 
     if (!isset($search) && $hasContentBookingLocations) {
         $search = (object) [
@@ -420,6 +423,9 @@
                 <main class="col-xl-8 col-lg-8">
                     <article class="cms-article-main mb-4" data-aos="fade-up">
                         <h1 class="cms-article-title">{{ $content->title }}</h1>
+                        @if ($serviceInquiryForm && ($inquiryCta['enabled'] ?? false))
+                            <a class="primary-btn1 mt-3" href="#service-inquiry">{{ $inquiryCta['label'] ?? 'Enquire now' }}</a>
+                        @endif
                         <div class="article-meta mt-2">
                             <small>
                             <i class="bi bi-calendar3"></i>
@@ -481,11 +487,29 @@
 
                     </article>
 
+                    @if ($serviceInquiryForm)
+                        <section id="service-inquiry" class="cms-article-main mb-4" aria-labelledby="service-inquiry-title" tabindex="-1">
+                            <h2 id="service-inquiry-title">{{ $serviceInquiryForm->name }}</h2>
+                            @if (session('success'))
+                                <div class="alert alert-success" role="status">
+                                    {{ session('success') }}
+                                    @if (session('inquiry_reference'))
+                                        <strong>Reference: {{ session('inquiry_reference') }}</strong>
+                                    @endif
+                                </div>
+                            @endif
+                            @if (session('error'))
+                                <div class="alert alert-danger" role="alert">{{ session('error') }}</div>
+                            @endif
+                            @include('inquiry.partials.form', ['form' => $serviceInquiryForm, 'servicePage' => $content, 'showIntro' => false])
+                        </section>
+                    @endif
+
                 </main>
 
                 <aside class="col-xl-4 col-lg-4">
                     <div class="article-sidebar">
-                        @if (is_theme('theme-04'))
+                        @if (is_theme('theme-04') && $content->service_type)
                             @include('partials.themes.theme-04.booking-form', [
                                 'search' => $search ?? null,
                                 'embedded' => true,
@@ -550,13 +574,13 @@
                 </aside>
             </div>
 
-            @unless (is_theme('theme-04'))
+            @if (!is_theme('theme-04') && ($contentType->slug !== 'services' || $content->service_type))
                 <div class="mb-5" id="booking-section">
                     <div class="filter-wrapper text-center hotel mb-5">
                         @include('components.booking-form', ['search' => $search ?? null])
                     </div>
                 </div>
-            @endunless
+            @endif
 
             @if ($hasContentBookingLocations && isset($suggestedVehicles) && count($suggestedVehicles) > 0)
                 <div class="suggested-vehicles mt-5">
@@ -651,6 +675,9 @@
 
 @push('scripts')
     <script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
+    @if ($serviceInquiryForm)
+        @include('inquiry.partials.cms-form-script')
+    @endif
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
     <script>
         (function() {

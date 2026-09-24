@@ -8,6 +8,12 @@ Interactive browser docs:
 
 The browser docs are generated from the full driver Postman collection, so the mobile developer can read and try all driver mobile requests there.
 
+The published contract is currently **v2.7.0**. Rebuild the checked-in OpenAPI file after changing a driver route or response with:
+
+```bash
+npm run docs:driver-api
+```
+
 Files:
 - `Driver-API.postman_collection.json`
 - `Driver-API.postman_environment.json`
@@ -154,6 +160,18 @@ Notifications:
 | GET | `/api/driver/auth/profile` | Yes | Current driver profile and assignment stats |
 | POST | `/api/driver/auth/refresh` | Yes | Refresh access token |
 | POST | `/api/driver/auth/logout` | Yes | Revoke current token/session |
+
+#### Account payload shared by authentication and profile
+
+Successful password login, successful OTP login (`data.flow=login`), and `GET /api/driver/auth/profile` return the same canonical object in `data.driver`. This is the source for the mobile account screen.
+
+- `profile_image_url` and `profile_image` are the preferred profile-image fields.
+- `profile_photo_url` and `profile_photo` remain identical compatibility aliases.
+- `vehicle` and `assigned_vehicle` contain the assigned/default vehicle, or `null` when none is assigned.
+- Vehicle data includes registration, plate, make, model, group, year, color, availability, thumbnail, `images`, and `documents`.
+- Driver `documents` and vehicle `documents` include backend `resource_url` values; the mobile client must not construct storage URLs.
+
+The `data.user.profile_image` field is the general user avatar and is separate from the driver's verified `data.driver.profile_image` document.
 
 ### Onboarding Reference Data
 

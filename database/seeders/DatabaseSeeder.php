@@ -43,6 +43,10 @@ class DatabaseSeeder extends Seeder
             CustomerCodeSettingsSeeder::class,
             StaffCodeSettingsSeeder::class,
             DriverCodeSettingsSeeder::class,
+            CorporateStaffTransportStarterSeeder::class,
+
+            // CustomerCodeSettingsSeeder::class,
+            // StaffCodeSettingsSeeder::class,
 
                 // Basic/core seeders (uncomment as needed)
                 // CorporatePermissionsSeeder::class,

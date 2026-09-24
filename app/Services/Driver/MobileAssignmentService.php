@@ -7,6 +7,7 @@ use App\Events\AssignmentStatusChanged;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverSession;
 use App\Models\DriverAssignment;
+use App\Models\Booking\BookingItem;
 use App\Services\BookingPaymentPolicy;
 use Carbon\Carbon;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
@@ -354,19 +355,32 @@ class MobileAssignmentService
      */
     public function declineAssignment(Driver $driver, DriverAssignment $assignment, string $reason): DriverAssignment
     {
-        $this->assertAssignmentOwnership($driver, $assignment);
+        $updated = DB::transaction(function () use ($driver, $assignment, $reason): DriverAssignment {
+            $locked = DriverAssignment::query()->lockForUpdate()->findOrFail($assignment->id);
+            $this->assertAssignmentOwnership($driver, $locked);
 
-        if (!in_array($assignment->status, ['active', 'pending_approval'])) {
-            throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
-        }
+            if (!in_array($locked->status, ['active', 'pending_approval'], true)) {
+                throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
+            }
 
-        $assignment->update([
-            'status' => 'declined',
-            'trip_phase' => TripPhase::DECLINED,
-            'decline_reason' => $reason,
-        ]);
+            $locked->update([
+                'status' => 'declined',
+                'trip_phase' => TripPhase::DECLINED,
+                'decline_reason' => trim($reason),
+            ]);
 
-        $updated = $assignment->fresh();
+            // The booking item owns the operational driver selection. Clear it
+            // only when it still points at the declining driver so a concurrent
+            // staff reassignment can never be overwritten by this response.
+            if ($locked->booking_item_id) {
+                BookingItem::query()
+                    ->whereKey($locked->booking_item_id)
+                    ->where('driver_id', $driver->id)
+                    ->update(['driver_id' => null]);
+            }
+
+            return $locked->fresh(['booking', 'bookingItem', 'driver.user']);
+        });
 
         // Broadcast status change to admin panel for real-time sync
         $this->broadcastStatusChange($updated, 'declined', $driver);
@@ -446,6 +460,7 @@ class MobileAssignmentService
                 'action' => $action,
                 'status' => $assignment->status,
                 'trip_phase' => $assignment->trip_phase?->value,
+                'decline_reason' => $assignment->decline_reason,
                 'updated_at' => $assignment->updated_at?->toIso8601String(),
             ]));
         } catch (\Exception $e) {

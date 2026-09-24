@@ -118,9 +118,12 @@ it('validates general and employee booking parties inside the authenticated corp
     $general = $validate([
         'booking_party_mode' => 'general',
         'corporate_contact' => ['name' => 'Visitor A', 'phone' => '+94770000001'],
+        'vehicle_id' => '70000000-0000-4000-8000-000000000001',
+        'driver_id' => '80000000-0000-4000-8000-000000000001',
     ]);
     expect($general->validated('booking_party_mode'))->toBe('general')
-        ->and($general->validated('corporate_contact.name'))->toBe('Visitor A');
+        ->and($general->validated('corporate_contact.name'))->toBe('Visitor A')
+        ->and($general->validated())->not->toHaveKeys(['vehicle_id', 'driver_id']);
 
     expect(fn () => $validate([
         'booking_party_mode' => 'general',
@@ -359,7 +362,7 @@ it('validates report departments and divisions against the authenticated corpora
         ->and($owned->validated('division_id'))->toBe('60000000-0000-4000-8000-000000000001');
 });
 
-it('keeps self-only and company-wide scope decisions on the server permission boundary', function () {
+it('does not grant company-wide scope from a global user permission without the selected corporate context', function () {
     $controller = app(CorporateBookingController::class);
     $method = new ReflectionMethod($controller, 'bookingScope');
     $request = Request::create('/api/corporate/bookings', 'GET');
@@ -372,10 +375,10 @@ it('keeps self-only and company-wide scope decisions on the server permission bo
     $coordinator = Mockery::mock();
     $coordinator->shouldReceive('can')->with('view_all_bookings')->andReturnTrue();
     $request->setUserResolver(fn () => $coordinator);
-    expect($method->invoke($controller, $request))->toBe('company');
+    expect($method->invoke($controller, $request))->toBe('employee');
 });
 
-it('resolves pricing visibility from finance or configured coordinator permissions only', function () {
+it('does not grant pricing visibility from global permissions without the selected corporate context', function () {
     $controller = app(CorporateBookingController::class);
     $method = new ReflectionMethod($controller, 'canViewPayments');
     $request = Request::create('/api/corporate/bookings/booking-a', 'GET');
@@ -386,7 +389,7 @@ it('resolves pricing visibility from finance or configured coordinator permissio
     $request->attributes->set('corporate_employee', (object) ['corporate' => (object) [
         'coordinator_can_view_payments' => false,
     ]]);
-    expect($method->invoke($controller, $request))->toBeTrue();
+    expect($method->invoke($controller, $request))->toBeFalse();
 
     $coordinator = Mockery::mock();
     $coordinator->shouldReceive('can')->with('view_payments')->andReturnFalse();
@@ -395,7 +398,7 @@ it('resolves pricing visibility from finance or configured coordinator permissio
     $request->attributes->set('corporate_employee', (object) ['corporate' => (object) [
         'coordinator_can_view_payments' => true,
     ]]);
-    expect($method->invoke($controller, $request))->toBeTrue();
+    expect($method->invoke($controller, $request))->toBeFalse();
 
     $employee = Mockery::mock();
     $employee->shouldReceive('can')->with('view_payments')->andReturnFalse();
@@ -442,4 +445,28 @@ it('omits payment and contractual pricing fields from non-pricing corporate proj
             'pricing_breakdown',
             'metadata',
         ]);
+});
+
+it('applies payment visibility when transforming corporate booking item lists', function () {
+    $item = (new ReflectionClass(BookingItem::class))->newInstanceWithoutConstructor();
+    $item->setRawAttributes([
+        'id' => 'item-list',
+        'status' => 'confirmed',
+        'total_price' => 5000,
+        'currency' => 'LKR',
+    ]);
+    foreach (['booking', 'serviceType', 'vehicleGroup', 'vehicle', 'driver'] as $relation) {
+        $item->setRelation($relation, null);
+    }
+
+    $service = app(CorporateBookingService::class);
+    $method = new ReflectionMethod($service, 'transformBookingItemPaginator');
+    $restricted = new \Illuminate\Pagination\LengthAwarePaginator(collect([$item]), 1, 25);
+    $visible = new \Illuminate\Pagination\LengthAwarePaginator(collect([$item]), 1, 25);
+
+    $method->invoke($service, $restricted, ['can_view_payments' => false]);
+    $method->invoke($service, $visible, ['can_view_payments' => true]);
+
+    expect($restricted->items()[0])->not->toHaveKeys(['total_cost', 'currency', 'payment_status'])
+        ->and($visible->items()[0])->toHaveKeys(['total_cost', 'currency']);
 });

@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
-use App\Models\BaseModel;
+use App\Models\Website\CmsContent;
 use App\Traits\UUID;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Carbon;
 
 /**
  * App\Models\Inquiry
@@ -16,21 +18,18 @@ use Illuminate\Database\QueryException;
  * @property string|null $status Inquiry status (optional)
  * @property string|null $priority Inquiry priority (optional)
  * @property string|null $response Response to inquiry (optional)
- * @property \Illuminate\Support\Carbon|null $responded_at Response date (optional)
+ * @property Carbon|null $responded_at Response date (optional)
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
- * @property \Illuminate\Support\Carbon|null $created_at
- * @property \Illuminate\Support\Carbon|null $updated_at
- * @property \Illuminate\Support\Carbon|null $deleted_at
- *
- * @property-read \App\Models\Customer|null $customer Customer who made the inquiry
- * @property-read \App\Models\User|null $createdBy User who created this record
- * @property-read \App\Models\User|null $updatedBy User who last updated this record
+ * @property Carbon|null $created_at
+ * @property Carbon|null $updated_at
+ * @property Carbon|null $deleted_at
+ * @property-read Customer|null $customer Customer who made the inquiry
+ * @property-read User|null $createdBy User who created this record
+ * @property-read User|null $updatedBy User who last updated this record
  */
 class Inquiry extends BaseModel
 {
-
-
     /**
      * The attributes that are mass assignable.
      *
@@ -48,6 +47,7 @@ class Inquiry extends BaseModel
         'status',
         'priority',
         'response',
+        'notes',
         'responded_at',
         'source',
         'payload',
@@ -58,13 +58,14 @@ class Inquiry extends BaseModel
         // Additional fields for quotation requests
         'inquiry_type',
         'inquiry_service_page_id',
+        'cms_content_id',
         'vehicle_group_id',
         'service_type',
         'company_name',
         'search_context',
         'form_data',
         'ip_address',
-        'user_agent'
+        'user_agent',
     ];
 
     /**
@@ -84,7 +85,7 @@ class Inquiry extends BaseModel
     /**
      * Get the customer who made this inquiry.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function customer()
     {
@@ -96,13 +97,18 @@ class Inquiry extends BaseModel
      */
     public function inquiryServicePage()
     {
-        return $this->belongsTo(InquiryServicePage::class, 'inquiry_service_page_id');
+        return $this->belongsTo(InquiryServicePage::class, 'inquiry_service_page_id')->withInactive()->withTrashed();
+    }
+
+    public function cmsContent()
+    {
+        return $this->belongsTo(CmsContent::class, 'cms_content_id')->withInactive()->withTrashed();
     }
 
     /**
      * Get the user who created this record.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function createdBy()
     {
@@ -112,7 +118,7 @@ class Inquiry extends BaseModel
     /**
      * Get the user who last updated this record.
      *
-     * @return \Illuminate\Database\Eloquent\Relations\BelongsTo
+     * @return BelongsTo
      */
     public function updatedBy()
     {
@@ -127,7 +133,7 @@ class Inquiry extends BaseModel
         $prefix = 'INQ';
 
         $max = static::withTrashed()
-            ->where('inquiry_number', 'like', $prefix . '%')
+            ->where('inquiry_number', 'like', $prefix.'%')
             ->pluck('inquiry_number')
             ->reduce(function (int $carry, ?string $number) {
                 if ($number && preg_match('/(\d{1,})$/', $number, $matches)) {
@@ -139,7 +145,7 @@ class Inquiry extends BaseModel
 
         $next = $max + 1;
 
-        return $prefix . str_pad($next, 6, '0', STR_PAD_LEFT);
+        return $prefix.str_pad($next, 6, '0', STR_PAD_LEFT);
     }
 
     /**

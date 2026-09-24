@@ -25,6 +25,7 @@ class CorporateBookingService
         protected ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         protected CorporateSubmittedResponseProjector $submittedResponseProjector,
         protected CorporateFinancialProjectionService $financialProjection,
+        protected CorporateBookingNotificationService $corporateBookingNotifications,
     )
     {
     }
@@ -39,6 +40,7 @@ class CorporateBookingService
         $corporate = $employee->corporate;
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -84,6 +86,8 @@ class CorporateBookingService
                 $this->notifyApprovalRequested($booking, $employee);
             }
 
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+
             return $booking->fresh();
         });
     }
@@ -95,6 +99,7 @@ class CorporateBookingService
     {
         $corporate = $requester->corporate;
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -137,6 +142,8 @@ class CorporateBookingService
                 $this->notifyApprovalRequested($booking, $requester);
             }
 
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
+
             return $booking->fresh();
         });
     }
@@ -158,6 +165,7 @@ class CorporateBookingService
         $corporate = $coordinator->corporate;
 
         $data = $this->prepareCorporateBookingPayload($corporate, $data);
+        $data['defer_confirmation'] = true;
 
         $creditApprovalRequired = $this->requiresCreditApproval($corporate, $data);
 
@@ -205,6 +213,8 @@ class CorporateBookingService
             if ($needsApproval) {
                 $this->notifyApprovalRequested($booking, $targetEmployee);
             }
+
+            $this->corporateBookingNotifications->notifyInternalTeam($booking);
 
             return $booking->fresh();
         });
@@ -659,7 +669,7 @@ class CorporateBookingService
             ])->values(),
         ];
         $payload['visibility'] = [
-            'can_view_payments' => true,
+            'can_view_payments' => $canViewPayments || $this->isCashBooking($booking),
             'booking_scope' => $bookingScope,
             'corporate_id' => $booking->corporate_account_id,
             'department_id' => $booking->corporate_department_id,
@@ -733,7 +743,7 @@ class CorporateBookingService
 
     private function transformBookingPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = true;
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(Booking $booking) => $this->mapBooking($booking, $canViewPayments))
         );
@@ -770,7 +780,7 @@ class CorporateBookingService
 
     private function transformBookingItemPaginator(LengthAwarePaginator $paginator, array $filters = []): LengthAwarePaginator
     {
-        $canViewPayments = true;
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $paginator->setCollection(
             $paginator->getCollection()->map(fn(BookingItem $item) => $this->mapBookingItem($item, $canViewPayments))
         );
@@ -1107,11 +1117,16 @@ class CorporateBookingService
 
         $filename = 'exports/corporate_bookings_' . $corporateId . '_' . now()->format('Ymd_His') . '.csv';
 
-        $csv = "booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status,payment_method,payment_collection_status,total_cost\n";
+        $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
+        $csv = 'booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status';
+        if ($canViewPayments) {
+            $csv .= ',payment_method,payment_collection_status,total_cost';
+        }
+        $csv .= "\n";
 
         foreach ($items as $item) {
-            $row = $this->mapBookingItem($item, true);
-            $csv .= implode(',', [
+            $row = $this->mapBookingItem($item, $canViewPayments);
+            $cells = [
                 $this->csvEscape($row['booking_number'] ?? ''),
                 $this->csvEscape($row['item_code'] ?? ''),
                 $this->csvEscape($row['employee_name'] ?? ''),
@@ -1122,10 +1137,13 @@ class CorporateBookingService
                 $this->csvEscape($row['pickup_date'] ?? ''),
                 $this->csvEscape($row['dropoff_date'] ?? ''),
                 $this->csvEscape($row['status'] ?? ''),
-                $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? ''),
-                $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? ''),
-                $this->csvEscape($row['total_cost'] ?? '0'),
-            ]) . "\n";
+            ];
+            if ($canViewPayments) {
+                $cells[] = $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
+                $cells[] = $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
+                $cells[] = $this->csvEscape($row['total_cost'] ?? '0');
+            }
+            $csv .= implode(',', $cells) . "\n";
         }
 
         Storage::put($filename, $csv);
