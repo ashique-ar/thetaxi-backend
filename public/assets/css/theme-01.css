@@ -162,6 +162,23 @@
         border-radius: 12px !important;
     }
 }
+
+/* Bring the booking form into the first mobile screen without removing the hero. */
+@media (max-width: 576px) {
+    .theme-default .home4-banner-section {
+        margin-bottom: 175px !important;
+    }
+
+    .theme-default .home4-banner-section .banner-video-area,
+    .theme-default .home4-banner-section .banner-video-area img {
+        min-height: 330px !important;
+        height: 330px !important;
+    }
+
+    .theme-default .home-booking-form-section {
+        margin-top: -150px;
+    }
+}
 body.theme-default .shared-hero-slider .shared-hero-swiper,
 body.theme-default .shared-hero-slider .swiper-wrapper,
 body.theme-default .shared-hero-slider .swiper-slide,

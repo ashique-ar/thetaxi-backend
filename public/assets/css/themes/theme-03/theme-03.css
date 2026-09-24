@@ -5060,9 +5060,9 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .t3-hero__frame {
-        gap: 42px;
-        padding-top: 62px;
-        padding-bottom: 92px;
+        gap: 24px;
+        padding-top: 42px;
+        padding-bottom: 112px;
     }
 
     body.theme-theme-03 .t3-hero__copy h1 {
@@ -5080,7 +5080,7 @@ body.theme-theme-03 .t3-error-page__content p {
 
     body.theme-theme-03 .t3-hero__visual {
         width: 100%;
-        aspect-ratio: 4 / 3;
+        aspect-ratio: 16 / 10;
     }
 
     body.theme-theme-03 .t3-hero__visual::before {
@@ -5098,7 +5098,7 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .home-booking-form-section {
-        margin-top: -42px;
+        margin-top: -82px;
     }
 
     body.theme-theme-03 .t3-journey-desk__masthead {

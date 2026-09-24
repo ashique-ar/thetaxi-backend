@@ -222,14 +222,7 @@
                                                 @enderror
                                             </div>
                                         </div>
-                                        <div class="col-md-12">
-                                            <div class="form-inner two mb-25">
-                                                <label>Special Requirements</label>
-                                                <textarea name="special_notes" placeholder="Any special requests or requirements...">{{ old('special_notes') }}</textarea>
-                                            </div>
-                                        </div>
-
-                                        <!-- Flight Details Section -->
+                                        @if ($hasAirportTransfer)
                                         <div class="col-md-12">
                                             <div class="form-section-divider">
                                                 <h6>Flight Details (Optional)</h6>
@@ -266,10 +259,11 @@
                                                     value="{{ old('flight_arrival_time') }}">
                                             </div>
                                         </div>
+                                        @endif
                                         <div class="col-md-12">
                                             <div class="form-inner two mb-25">
-                                                <label>Additional Notes</label>
-                                                <textarea name="additional_notes" placeholder="Any other information you'd like to share...">{{ old('additional_notes') }}</textarea>
+                                                <label for="checkoutAdditionalNotes">Anything else we should know? <span class="text-muted">(optional)</span></label>
+                                                <textarea id="checkoutAdditionalNotes" name="additional_notes" maxlength="1000" placeholder="Anything you'd like us to know about your booking...">{{ old('additional_notes', old('special_notes')) }}</textarea>
                                             </div>
                                         </div>
 
@@ -379,8 +373,9 @@
 
                                         @endif
 
-                                        <div class="col-md-12">
+                                        <div class="col-md-12 mt-3 pt-3 border-top">
                                             <div class="form-inner2">
+                                                <p class="text-muted small mb-2">Optional preferences</p>
                                                 <div class="form-check">
                                                     <input class="form-check-input" type="checkbox" name="save_info"
                                                         value="1" id="saveInfo"

@@ -1364,7 +1364,11 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
 
 @media (max-width: 575px) {
     .theme-theme-02 .home-booking-form-section {
-        margin-top: -72px !important;
+        margin-top: -118px !important;
+    }
+
+    .theme-theme-02 .t2-hero .banner-wrapper {
+        min-height: 420px !important;
     }
 }
 body.theme-theme-02 .shared-hero-slider .shared-hero-swiper,
