@@ -18,7 +18,7 @@ class CreateInquiryRequest extends FormRequest
             'phone' => ['nullable', 'string', 'max:30'],
             'inquiry_type' => ['required', 'string', 'max:50'],
             'source' => ['nullable', 'string', 'max:50'],
-            'assigned_to' => ['nullable', 'uuid', 'exists:users,id'],
+            'assigned_to' => ['prohibited'],
             'subject' => ['nullable', 'string', 'max:255'],
             'message' => ['nullable', 'string'],
             'status' => ['nullable', 'in:open,in_progress,closed,archived'],

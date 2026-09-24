@@ -9,3 +9,13 @@ it('applies only a checksum bound scoped historical attribution preview',functio
   ->toContain("'remaining_confirmed_without_attribution'")->toContain("'idempotent_replay'=>true")
   ->toContain('Historical attribution batch key was reused with different evidence.');
 });
+
+it('uses only the sole default company for a booking without company evidence and shows review labels', function () {
+ $attribution=file_get_contents(app_path('Services/Sales/BookingAttributionService.php'));
+ $page=file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-attribution-operations/sales-attribution-operations.component.html'));
+
+ expect($attribution)->toContain("app(SingleCompanyScope::class)->defaultCompany()?->id")
+  ->toContain("'booking_label' => \$booking->booking_number")
+  ->and($page)->toContain('row.booking_label', 'Check each suggested salesperson')
+  ->not->toContain('<h3>{{ row.booking_id }}</h3>');
+});

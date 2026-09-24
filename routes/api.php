@@ -1976,6 +1976,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Inquiry routes use their own view/create/edit/delete permissions in the controller.
     Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
+    Route::get('inquiries/assignee-options', [InquiryController::class, 'assigneeOptions']);
     Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
     Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
     Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);

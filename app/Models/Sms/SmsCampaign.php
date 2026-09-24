@@ -10,6 +10,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 class SmsCampaign extends BaseModel
 {
     protected $fillable = [
+        'company_id',
         'name',
         'message',
         'provider',

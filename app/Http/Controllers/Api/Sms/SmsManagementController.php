@@ -4,6 +4,8 @@ namespace App\Http\Controllers\Api\Sms;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\Company;
+use App\Models\Staff;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
@@ -11,6 +13,7 @@ use App\Services\Sms\SmsProviderManager;
 use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -214,8 +217,6 @@ class SmsManagementController extends Controller
             'recipient' => ['nullable', 'string'],
             'recipients' => ['nullable', 'array'],
             'recipients.*' => ['string'],
-            'context_type' => ['nullable', 'string'],
-            'context_id' => ['nullable', 'string'],
             'template_key' => ['nullable', 'string'],
             'scheduled_at' => ['nullable', 'date'],
         ]);
@@ -397,7 +398,8 @@ class SmsManagementController extends Controller
 
     public function campaigns(Request $request): JsonResponse
     {
-        $campaigns = $this->smsService->getCampaigns($request->all());
+        $company = $this->campaignCompany($request);
+        $campaigns = $this->smsService->getCampaigns($request->all(), $company->id);
 
         return response()->json([
             'status' => 'success',
@@ -407,24 +409,27 @@ class SmsManagementController extends Controller
                 'last_page' => $campaigns->lastPage(),
                 'per_page' => $campaigns->perPage(),
                 'total' => $campaigns->total(),
+                'company_name' => $company->name,
             ],
         ]);
     }
 
     public function createCampaign(Request $request): JsonResponse
     {
+        $company = $this->campaignCompany($request);
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
             'message' => ['required', 'string'],
             'sender_mask' => ['nullable', 'string', 'max:50'],
             'audience_type' => ['required', 'string', 'in:manual,customers'],
-            'audience_filters' => ['nullable', 'array'],
+            'audience_filters' => ['prohibited'],
             'recipients' => ['nullable', 'array'],
             'recipients.*' => ['string'],
             'scheduled_at' => ['nullable', 'date'],
             'launch_now' => ['nullable', 'boolean'],
             'consent_confirmed' => ['required_if:audience_type,manual', 'accepted'],
         ]);
+        $data['company_id'] = $company->id;
 
         return response()->json([
             'status' => 'success',
@@ -435,8 +440,9 @@ class SmsManagementController extends Controller
         ], 201);
     }
 
-    public function showCampaign(SmsCampaign $smsCampaign): JsonResponse
+    public function showCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
+        abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
         $smsCampaign->load('messages');
 
         return response()->json([
@@ -445,8 +451,10 @@ class SmsManagementController extends Controller
         ]);
     }
 
-    public function launchCampaign(SmsCampaign $smsCampaign): JsonResponse
+    public function launchCampaign(Request $request, SmsCampaign $smsCampaign): JsonResponse
     {
+        abort_unless($smsCampaign->company_id === $this->campaignCompany($request)->id, 404);
+
         $this->smsService->scheduleCampaignLaunch($smsCampaign);
 
         return response()->json([
@@ -562,6 +570,18 @@ class SmsManagementController extends Controller
     {
         return (bool) ($request->user()?->can('communication.manage')
             || $request->user()?->can('sms.messages.manage'));
+    }
+
+    private function campaignCompany(Request $request): Company
+    {
+        $company = app(SingleCompanyScope::class)->defaultCompany();
+        abort_unless($company, 409, 'Set one active default company before managing SMS campaigns.');
+        abort_unless(
+            Staff::query()->where('user_id', $request->user()->id)->where('company_id', $company->id)->exists(),
+            403
+        );
+
+        return $company;
     }
 
     private function messagePayload(SmsMessage $message, bool $canManage): array

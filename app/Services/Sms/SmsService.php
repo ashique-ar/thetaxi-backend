@@ -8,6 +8,7 @@ use App\Jobs\SendSmsMessageJob;
 use App\Models\Customer;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
+use App\Services\SingleCompanyScope;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
@@ -22,7 +23,9 @@ class SmsService
         private SmsProviderManager $providerManager,
         private SmsSettingsService $settingsService,
         private SmsSegmentCalculator $segmentCalculator = new SmsSegmentCalculator()
-    ) {}
+    )
+    {
+    }
 
     public function getOverview(): array
     {
@@ -135,8 +138,6 @@ class SmsService
             'provider' => $this->settingsService->getActiveProvider(),
             'channel' => $payload['channel'] ?? 'single',
             'source' => $payload['source'] ?? 'manual',
-            'context_type' => $payload['context_type'] ?? null,
-            'context_id' => $payload['context_id'] ?? null,
             'booking_id' => $payload['booking_id'] ?? null,
             'booking_item_id' => $payload['booking_item_id'] ?? null,
             'driver_assignment_id' => $payload['driver_assignment_id'] ?? null,
@@ -217,6 +218,16 @@ class SmsService
     public function createCampaign(array $payload): SmsCampaign
     {
         $audienceType = $payload['audience_type'] ?? 'manual';
+        $company = app(SingleCompanyScope::class)->defaultCompany();
+        if (! $company || ($payload['company_id'] ?? null) !== $company->id) {
+            throw new RuntimeException('Select the sole active default company before creating a campaign.');
+        }
+        if (! in_array($audienceType, ['manual', 'customers'], true)) {
+            throw new RuntimeException('Unsupported campaign audience.');
+        }
+        if ($audienceType === 'customers' && ! empty($payload['audience_filters'])) {
+            throw new RuntimeException('Customer ID filters are unavailable for the default-company audience.');
+        }
         $recipients = $this->resolveAudienceRecipients(
             $audienceType,
             $payload['audience_filters'] ?? [],
@@ -224,6 +235,7 @@ class SmsService
         );
 
         $campaign = SmsCampaign::create([
+            'company_id' => $company->id,
             'name' => trim((string) ($payload['name'] ?? 'Untitled campaign')),
             'message' => trim((string) ($payload['message'] ?? '')),
             'provider' => $this->settingsService->getActiveProvider(),
@@ -253,6 +265,11 @@ class SmsService
 
     public function scheduleCampaignLaunch(SmsCampaign $campaign): void
     {
+        $company = app(SingleCompanyScope::class)->defaultCompany();
+        if (! $company || $campaign->company_id !== $company->id) {
+            throw new RuntimeException('This campaign has no current default-company ownership.');
+        }
+
         $campaign->update([
             'status' => $campaign->scheduled_at ? 'scheduled' : 'processing',
         ]);
@@ -269,12 +286,22 @@ class SmsService
             return $campaign;
         }
 
+        $company = app(SingleCompanyScope::class)->defaultCompany();
+        if (! $company || $campaign->company_id !== $company->id) {
+            $campaign->update([
+                'status' => 'failed',
+                'completed_at' => now(),
+                'meta' => array_merge($campaign->meta ?? [], [
+                    'error' => 'Campaign default-company ownership is unavailable.',
+                ]),
+            ]);
+
+            return $campaign->fresh();
+        }
+
         $recipients = $this->normalizeRecipients($campaign->recipient_snapshot ?? []);
         if ($campaign->audience_type === 'customers') {
-            $currentlyConsented = $this->resolveAudienceRecipients(
-                'customers',
-                $campaign->audience_filters ?? []
-            );
+            $currentlyConsented = $this->resolveAudienceRecipients('customers', $campaign->audience_filters ?? []);
             $recipients = array_values(array_intersect($recipients, $currentlyConsented));
         }
         if ($recipients === []) {
@@ -333,12 +360,12 @@ class SmsService
             ->whereKey($message->id)
             ->whereIn('status', ['queued', 'pending', 'failed'])
             ->update([
-            'status' => 'processing',
-            'provider_status' => 'processing',
-            'provider_status_at' => now(),
-            'processing_at' => now(),
-            'attempts' => (int) $message->attempts + 1,
-        ]);
+                'status' => 'processing',
+                'provider_status' => 'processing',
+                'provider_status_at' => now(),
+                'processing_at' => now(),
+                'attempts' => (int) $message->attempts + 1,
+            ]);
         if ($claimed !== 1) {
             return $message->fresh();
         }
@@ -425,8 +452,8 @@ class SmsService
         }
 
         $query = SmsMessage::query()
-            ->when($transactionId, fn ($q) => $q->where('provider_transaction_id', $transactionId))
-            ->when($messageId, fn ($q) => $q->where('provider_message_id', $messageId));
+            ->when($transactionId, fn($q) => $q->where('provider_transaction_id', $transactionId))
+            ->when($messageId, fn($q) => $q->where('provider_message_id', $messageId));
         if ((clone $query)->count() > 1) {
             throw new RuntimeException('Delivery callback matched more than one SMS message');
         }
@@ -525,8 +552,15 @@ class SmsService
             ->where('created_at', '>=', $since)
             ->whereNotNull('event_key')
             ->get([
-                'id', 'booking_id', 'event_key', 'idempotency_key', 'status',
-                'segments', 'total_cost', 'cost_currency', 'created_at',
+                'id',
+                'booking_id',
+                'event_key',
+                'idempotency_key',
+                'status',
+                'segments',
+                'total_cost',
+                'cost_currency',
+                'created_at',
             ]);
         $bookingMessages = $messages->whereNotNull('booking_id');
         $standard = $bookingMessages->whereIn('event_key', $standardEvents);
@@ -539,14 +573,14 @@ class SmsService
 
         foreach ($byBooking as $bookingRows) {
             $eventCounts = $bookingRows->countBy('event_key');
-            $hasAllThree = collect($standardEvents)->every(fn (string $event) => ($eventCounts[$event] ?? 0) === 1);
+            $hasAllThree = collect($standardEvents)->every(fn(string $event) => ($eventCounts[$event] ?? 0) === 1);
             if ($hasAllThree && $bookingRows->count() === 3) {
                 $compliant++;
             } else {
                 if ($eventCounts->count() < 3) {
                     $incomplete++;
                 }
-                $duplicates = $eventCounts->sum(fn (int $count) => max(0, $count - 1));
+                $duplicates = $eventCounts->sum(fn(int $count) => max(0, $count - 1));
                 $duplicateStandardEvents += $duplicates;
                 if ($bookingRows->count() > 3 || $duplicates > 0) {
                     $bookingsWithExtra++;
@@ -558,7 +592,7 @@ class SmsService
         $admin = $bookingMessages->where('event_key', $adminEvent);
         $optional = $messages->whereIn('event_key', $optionalEvents);
         $knownEvents = array_merge($standardEvents, $optionalEvents, [$adminEvent], $driverOnlyEvents);
-        $unexpected = $messages->reject(fn (SmsMessage $message) => in_array($message->event_key, $knownEvents, true));
+        $unexpected = $messages->reject(fn(SmsMessage $message) => in_array($message->event_key, $knownEvents, true));
         $settings = $this->settingsService->getSettings();
         $configuredAdminRecipients = !empty($settings['admin_booking_summary_enabled'])
             ? count($settings['admin_booking_summary_numbers'] ?? [])
@@ -579,8 +613,8 @@ class SmsService
                 'configured_recipients' => $configuredAdminRecipients,
                 'expected_messages_for_confirmations' => $confirmationBookings * $configuredAdminRecipients,
                 'recorded_messages' => $admin->count(),
-                'segments' => (int) $admin->sum(fn (SmsMessage $message) => (int) ($message->segments ?: 1)),
-                'estimated_cost' => round((float) $admin->sum(fn (SmsMessage $message) => (float) ($message->total_cost ?? 0)), 4),
+                'segments' => (int) $admin->sum(fn(SmsMessage $message) => (int) ($message->segments ?: 1)),
+                'estimated_cost' => round((float) $admin->sum(fn(SmsMessage $message) => (float) ($message->total_cost ?? 0)), 4),
                 'cost_currency' => (string) ($settings['cost_currency'] ?? 'LKR'),
             ],
             'optional_messages' => [
@@ -604,9 +638,10 @@ class SmsService
             : 'sms';
     }
 
-    public function getCampaigns(array $filters = []): LengthAwarePaginator
+    public function getCampaigns(array $filters, string $companyId): LengthAwarePaginator
     {
         return SmsCampaign::query()
+            ->where('company_id', $companyId)
             ->when(!empty($filters['status']), fn($query) => $query->where('status', $filters['status']))
             ->when(!empty($filters['search']), fn($query) => $query->where('name', 'like', '%' . $filters['search'] . '%'))
             ->latest()
@@ -721,16 +756,18 @@ class SmsService
         string $audienceType,
         array $filters = [],
         array $manualRecipients = []
-    ): array {
+    ): array
+    {
+        if ($audienceType === 'customers' && $filters !== []) {
+            return [];
+        }
+
         return match ($audienceType) {
-            'customers' => $this->normalizeRecipients(
-                Customer::query()
-                    ->where('marketing_consent', true)
-                    ->when(!empty($filters['ids']), fn($query) => $query->whereIn('id', $filters['ids']))
-                    ->pluck('phone')
-                    ->all()
-            ),
-            default => $this->normalizeRecipients($manualRecipients),
+            'customers' => app(SingleCompanyScope::class)->defaultCompany()
+                ? $this->normalizeRecipients(Customer::query()->where('marketing_consent', true)->pluck('phone')->all())
+                : [],
+            'manual' => $this->normalizeRecipients($manualRecipients),
+            default => [],
         };
     }
 

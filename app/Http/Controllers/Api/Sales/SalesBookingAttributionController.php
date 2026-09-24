@@ -372,6 +372,10 @@ class SalesBookingAttributionController extends Controller
             $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
         }
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+        $defaultCompany = app(\App\Services\SingleCompanyScope::class)->defaultCompany();
+        if ($defaultCompany && $companyIds !== null && ! in_array($defaultCompany->id, $companyIds, true)) {
+            $defaultCompany = null;
+        }
         $profiles = SalesProfile::query()
             ->with('staff.user:id,first_name,last_name')
             ->configured()
@@ -396,6 +400,7 @@ class SalesBookingAttributionController extends Controller
         return response()->json(['status' => 'success', 'data' => [
             'profiles' => $profiles,
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
+            'default_company_id' => $defaultCompany?->id,
         ]]);
     }
 

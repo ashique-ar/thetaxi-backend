@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
+use App\Services\SingleCompanyScope;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -134,6 +135,7 @@ class BookingAttributionService
 
         return [
             'booking_id' => $booking->id,
+            'booking_label' => $booking->booking_number ?: ($booking->log_code ?: ($booking->created_at ? 'Booking on ' . $booking->created_at->format('Y-m-d') : 'Booking')),
             'eligible' => $this->isConfirmed($booking),
             'root_attribution_id' => $root?->root_attribution_id ?? $root?->id,
             'company_id' => $companyId,
@@ -223,7 +225,9 @@ class BookingAttributionService
             'acquisition_profile' => $acquisitionProfile,
             'collection_profile_id' => $collectionProfile?->id,
             'collection_profile' => $collectionProfile,
-            'company_id' => $acquisitionProfile?->company_id ?? $staff?->company_id,
+            'company_id' => $acquisitionProfile?->company_id
+                ?? $staff?->company_id
+                ?? app(SingleCompanyScope::class)->defaultCompany()?->id,
         ];
     }
 
