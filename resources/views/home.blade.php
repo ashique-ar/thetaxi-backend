@@ -12,9 +12,6 @@
 <div data-popup-page="homepage"></div>
 
 {{-- Theme-aware Hero Section --}}
-@if (!is_theme('theme-04'))
-<div class="home-hero-booking">
-@endif
 @include(theme_partial('hero'))
 
 <!-- Booking Form Section (Separate from Hero) -->
@@ -30,9 +27,6 @@
     </div>
 @endif
 <!-- End Booking Form Section -->
-@if (!is_theme('theme-04'))
-</div>
-@endif
 @php($managedCmsLayouts = collect($cmsSections['sections'] ?? [])->pluck('layout'))
 
 @if (isset($partners) && $partners->count() > 0 && !$managedCmsLayouts->contains('logos'))
@@ -498,31 +492,28 @@ document.addEventListener('click', function (event) {
 @endsection
 
 @push('styles')
-@if (!is_theme('theme-04'))
 <style>
-    /* On compact screens, put the booking task before the decorative banner. */
     @media (max-width: 991px) {
-        body.theme-page-home .home-hero-booking {
-            display: flex;
-            flex-direction: column;
-            padding-top: 76px;
+        body.theme-default.theme-page-home .home4-banner-section {
+            height: calc(56.25vw + 60px) !important;
+            margin-bottom: 0 !important;
         }
 
-        body.theme-page-home .home-hero-booking > .home-booking-form-section {
-            order: 1;
-            margin-top: 0 !important;
-            margin-bottom: 20px !important;
-            padding-top: 16px;
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area,
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area .shared-hero-slide__media {
+            min-height: 0 !important;
+            height: 56.25vw !important;
         }
 
-        body.theme-page-home .home-hero-booking > :is(.home4-banner-section, .t2-hero, .t3-hero) {
-            order: 2;
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area .shared-hero-slide__media {
+            object-fit: contain !important;
+        }
+
+        body.theme-default.theme-page-home .home-booking-form-section {
             margin-top: 0 !important;
-            margin-bottom: 28px !important;
         }
     }
 </style>
-@endif
 @if (!is_theme('theme-03') && !is_theme('theme-04'))
 <style>
     /* Home Booking Form Section - Separate from Hero */

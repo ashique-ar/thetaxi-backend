@@ -58,6 +58,7 @@ Route::get('/robots.txt', function () {
 })->name('robots');
 
 // Search routes
+Route::get('/search/vehicles/page', [BookingController::class, 'loadMoreSearchResults'])->name('search.vehicles.page');
 Route::get('/search/{id?}', [BookingController::class, 'showResults'])->name('search');
 
 

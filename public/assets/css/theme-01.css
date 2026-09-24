@@ -191,48 +191,6 @@
     }
 }
 
-/* Bring the booking form into the first mobile screen without removing the hero. */
-@media (max-width: 576px) {
-    .theme-default .home4-banner-section {
-        margin-bottom: 110px !important;
-    }
-
-    .theme-default .home4-banner-section .banner-video-area,
-    .theme-default .home4-banner-section .banner-video-area img {
-        min-height: 0 !important;
-    }
-
-    .theme-default .home4-banner-section .banner-video-area img {
-        height: 100% !important;
-    }
-
-    .theme-default .home4-banner-section .banner-video-area {
-        height: 54vw !important;
-        max-height: 324px;
-        aspect-ratio: 16 / 9;
-        background: #d8d8d8;
-    }
-
-    .theme-default .home-booking-form-section {
-        margin-top: -100px;
-    }
-}
-@media (max-width: 576px) {
-    body.theme-default .home4-banner-section .banner-video-area {
-        overflow: hidden;
-        background: #d8d8d8;
-    }
-
-    body.theme-default .home4-banner-section .banner-video-area :is(img, video) {
-        object-fit: cover !important;
-        object-position: center;
-    }
-
-    body.theme-default .home4-banner-section .banner-video-area .shared-hero-slide__media {
-        width: 100% !important;
-        height: 100% !important;
-    }
-}
 body.theme-default .shared-hero-slider .shared-hero-swiper,
 body.theme-default .shared-hero-slider .swiper-wrapper,
 body.theme-default .shared-hero-slider .swiper-slide,
