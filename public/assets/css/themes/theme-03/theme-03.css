@@ -5080,15 +5080,16 @@ body.theme-theme-03 .t3-error-page__content p {
 
     body.theme-theme-03 .t3-hero__visual {
         width: 100%;
-        aspect-ratio: 16 / 10;
+        aspect-ratio: 16 / 9;
     }
 
     body.theme-theme-03 .t3-hero__image-frame {
-        background: #d8d8d8;
+        inset: 0;
     }
 
     body.theme-theme-03 .t3-hero__image-frame .shared-hero-slide__media {
-        object-fit: contain;
+        object-fit: cover;
+        object-position: center;
     }
 
     body.theme-theme-03 .t3-hero__visual::before {

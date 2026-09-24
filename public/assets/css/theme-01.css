@@ -183,9 +183,17 @@
 
     .theme-default .home4-banner-section .banner-video-area,
     .theme-default .home4-banner-section .banner-video-area img {
-        min-height: 220px !important;
-        height: 220px !important;
-        object-fit: contain !important;
+        min-height: 0 !important;
+    }
+
+    .theme-default .home4-banner-section .banner-video-area img {
+        height: 100% !important;
+    }
+
+    .theme-default .home4-banner-section .banner-video-area {
+        height: 54vw !important;
+        max-height: 324px;
+        aspect-ratio: 16 / 9;
         background: #d8d8d8;
     }
 
@@ -200,7 +208,13 @@
     }
 
     body.theme-default .home4-banner-section .banner-video-area :is(img, video) {
-        object-fit: contain !important;
+        object-fit: cover !important;
+        object-position: center;
+    }
+
+    body.theme-default .home4-banner-section .banner-video-area .shared-hero-slide__media {
+        width: 100% !important;
+        height: 100% !important;
     }
 }
 body.theme-default .shared-hero-slider .shared-hero-swiper,
