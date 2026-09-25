@@ -1304,9 +1304,11 @@
                             credentials: 'same-origin',
                             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
                         });
-                        if (!response.ok) throw new Error('Unable to load more vehicles');
-                        const payload = await response.json();
-                        const vehicles = payload.data || [];
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(payload.message || 'Unable to load more vehicles');
+                        }
+                        const vehicles = Array.isArray(payload.data) ? payload.data : [];
                         if (!vehicles.length) {
                             observer?.disconnect();
                             message.textContent = 'No more vehicles';
@@ -1317,6 +1319,7 @@
                             const template = document.createElement('template');
                             template.innerHTML = vehicle.html.trim();
                             const card = template.content.firstElementChild;
+                            if (!card) return;
                             grid.appendChild(card);
                             loadedVehicleCards = loadedVehicleCards.add(card);
                         });
@@ -1332,7 +1335,7 @@
                             message.textContent = 'You’ve reached the end of the vehicles';
                         }
                     } catch (error) {
-                        message.textContent = 'Could not load vehicles. Scroll to try again.';
+                        message.textContent = error.message || 'Could not load vehicles. Scroll to try again.';
                     } finally {
                         spinner.classList.add('d-none');
                         loading = false;
@@ -1342,7 +1345,7 @@
                 if ('IntersectionObserver' in window) {
                     observer = new IntersectionObserver(entries => {
                         if (entries.some(entry => entry.isIntersecting)) loadNextPage();
-                    }, { rootMargin: '500px 0px' });
+                    }, { rootMargin: '1000px 0px' });
                     observer.observe(loadMoreStatus);
                 } else {
                     loadMoreStatus.querySelector('.vehicle-load-more-message').innerHTML =

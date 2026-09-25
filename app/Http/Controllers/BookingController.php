@@ -1262,6 +1262,22 @@ class BookingController extends Controller
                 ->values();
         }
 
+        // Resolve once per result page. Looking up the same service type for
+        // every vehicle can trigger unnecessary queries and makes later pages
+        // fail if the service type is configured outside the public context.
+        $serviceType = null;
+        if (isset($searchParams['service_type'])) {
+            $serviceTypeValue = $searchParams['service_type'];
+            $serviceTypeModel = ServiceType::publicContext()
+                ->where(function ($query) use ($serviceTypeValue) {
+                    $query->where('id', $serviceTypeValue)
+                        ->orWhere('code', $serviceTypeValue)
+                        ->orWhere('name', $serviceTypeValue);
+                })
+                ->first();
+            $serviceType = $serviceTypeModel?->code ?? 'point_to_point';
+        }
+
 
         foreach ($vehicleGroups as $index => $groupData) {
             // Check if we have minimum required data
@@ -1273,14 +1289,6 @@ class BookingController extends Controller
             // Format pricing from the structure returned by BookingFlowService
             $pricingInfo = $groupData['pricing_info'] ?? [];
             $oneWayFare = $pricingInfo['base_amount'] ?? 0;
-
-            // Get service type information
-            $serviceType = null;
-            if (isset($searchParams['service_type'])) {
-                $serviceTypeId = $searchParams['service_type'];
-                $serviceTypeModel = ServiceType::publicContext()->find($serviceTypeId);
-                $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
-            }
 
             // Convert distance_details pricing to selected currency
             $distanceDetails = $pricingInfo['distance_details'] ?? null;
