@@ -13,19 +13,32 @@ class CorporateBookingNotificationService
     public function notifyInternalTeam(Booking $booking): void
     {
         try {
-            $recipients = User::permission('bookings.dispatch')
+            $booking->loadMissing('corporateAccount');
+            $notification = new NewCorporateBookingNotification($booking);
+
+            // Keep the in-app notification available to internal dispatch staff.
+            $dispatchUsers = User::permission('bookings.dispatch')
                 ->where('is_active', true)
                 ->get();
+            Notification::send($dispatchUsers, $notification);
+
+            $recipients = collect($booking->corporateAccount?->booking_notification_emails ?? [])
+                ->filter(fn ($email) => is_string($email) && filter_var($email, FILTER_VALIDATE_EMAIL))
+                ->map(fn ($email) => strtolower(trim($email)))
+                ->unique()
+                ->values();
 
             if ($recipients->isEmpty()) {
-                Log::warning('No active internal dispatch users available for corporate booking notification', [
+                Log::info('No configured corporate booking notification email recipients; in-app notifications were still sent', [
                     'booking_id' => $booking->id,
+                    'corporate_id' => $booking->corporate_account_id,
                 ]);
                 return;
             }
 
-            $booking->loadMissing('corporateAccount');
-            Notification::send($recipients, new NewCorporateBookingNotification($booking));
+            foreach ($recipients as $email) {
+                Notification::route('mail', $email)->notify($notification);
+            }
         } catch (\Throwable $exception) {
             Log::warning('Corporate booking internal notification could not be queued', [
                 'booking_id' => $booking->id,

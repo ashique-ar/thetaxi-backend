@@ -16,6 +16,7 @@ class Corporate extends BaseModel
     protected $fillable = [
         'name',
         'contact_email',
+        'booking_notification_emails',
         'contact_phone',
         'billing_address',
         'is_active',
@@ -32,6 +33,7 @@ class Corporate extends BaseModel
         'approval_required' => 'boolean',
         'exempt_coordinator_from_approval' => 'boolean',
         'coordinator_can_view_payments' => 'boolean',
+        'booking_notification_emails' => 'array',
     ];
 
     // Relationships

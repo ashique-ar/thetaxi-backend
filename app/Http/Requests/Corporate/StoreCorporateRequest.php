@@ -22,6 +22,8 @@ class StoreCorporateRequest extends FormRequest
                 Rule::unique('corporates', 'name')->whereNull('deleted_at'),
             ],
             'contact_email' => ['nullable', 'email', 'max:255'],
+            'booking_notification_emails' => ['sometimes', 'array', 'max:20'],
+            'booking_notification_emails.*' => ['required', 'email:rfc', 'max:255', 'distinct:ignore_case'],
             'contact_phone' => ['nullable', 'string', 'max:50'],
             'billing_address' => ['nullable', 'string'],
             'approval_required' => ['boolean'],
