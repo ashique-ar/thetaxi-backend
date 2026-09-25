@@ -956,7 +956,8 @@ class UserContextService
     {
         return match ($portalProfile) {
             'corporate' => '/corporate/dashboard',
-            'customer', 'driver', 'vehicle_owner', 'agent' => '/user',
+            'customer' => '/customer-portal',
+            'driver', 'vehicle_owner', 'agent' => '/user',
             default => '/admin/dashboard',
         };
     }

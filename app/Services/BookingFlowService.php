@@ -816,7 +816,9 @@ class BookingFlowService
                 'fuelType',
                 'category',
                 'class',
-                'vehicles' => $activeVehicleConstraint,
+                'vehicles' => fn ($vehicles) => $activeVehicleConstraint($vehicles)->with([
+                    'assignments.booking',
+                ]),
             ])->whereHas('vehicles', $activeVehicleConstraint);
         } else {
             $query->with([
@@ -998,7 +1000,7 @@ class BookingFlowService
                     'concurrent_possible' => false,
                     'override_available' => false,
                 ]
-                : $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId);
+                : $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId, $isPublic);
 
             $availableCount = $vehicleAnalysis['available_count'];
             $totalCount = $vehicleAnalysis['total_count'];
@@ -1110,20 +1112,18 @@ class BookingFlowService
             $hasLongTermAssignments = false;
 
             if ($sampleVehicle && !$bypassPublicAvailability) {
-                // Check for long-term assignments
-                $hasLongTermAssignments = $group->vehicles->filter(function ($vehicle) use ($fromDate, $toDate) {
-                    return BookingItem::where('booking_items.vehicle_id', $vehicle->id)
-                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-                        ->where(function ($q) use ($fromDate, $toDate) {
-                            $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                                ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                    $inner->where('booking_items.from_date', '<=', $fromDate)
-                                        ->where('booking_items.to_date', '>=', $toDate);
-                                });
-                        })->exists();
-                })->count() > 0;
+                $hasLongTermAssignments = BookingItem::query()
+                    ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                    ->whereIn('booking_items.vehicle_id', $group->vehicles->pluck('id'))
+                    ->whereNotIn('bookings.status', ['cancelled', 'completed'])
+                    ->where(function ($q) use ($fromDate, $toDate) {
+                        $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                            ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
+                            ->orWhere(function ($inner) use ($fromDate, $toDate) {
+                                $inner->where('booking_items.from_date', '<=', $fromDate)
+                                    ->where('booking_items.to_date', '>=', $toDate);
+                            });
+                    })->exists();
             }
 
             // Check if service type requires inquiry (is_inquiry flag)
@@ -2355,6 +2355,62 @@ class BookingFlowService
 
 
         return $result;
+    }
+
+    /** Apply a return rule already loaded for a batch of search result cards. */
+    public function calculateReturnTripPricingFromRules($rules, int $dayOffset, string $vehicleGroupId, float $oneWayFare, ?float $kilometers): array
+    {
+        $rule = $rules->first(function ($candidate) use ($kilometers) {
+            $minimumKm = $candidate->km_min;
+            $maximumKm = $candidate->km_max;
+            if ($minimumKm !== null && ($kilometers === null || $kilometers < (float) $minimumKm)) {
+                return false;
+            }
+            if ($maximumKm !== null && ($kilometers === null || $kilometers > (float) $maximumKm)) {
+                return false;
+            }
+            return true;
+        });
+
+        if (!$rule) {
+            $returnFare = round($oneWayFare, 2);
+            return [
+                'has_return_rule' => false,
+                'day_offset' => $dayOffset,
+                'kilometers' => $kilometers,
+                'charge_percentage' => 100,
+                'discount_percentage' => 0,
+                'one_way_fare' => $returnFare,
+                'return_fare' => $returnFare,
+                'total_fare' => round($oneWayFare * 2, 2),
+                'discount_amount' => 0,
+                'rule_label' => null,
+                'message' => 'No return discount available',
+            ];
+        }
+
+        $returnFare = $rule->calculateReturnFare($oneWayFare);
+        $discountAmount = $oneWayFare - $returnFare;
+
+        return [
+            'has_return_rule' => true,
+            'day_offset' => $dayOffset,
+            'kilometers' => $kilometers,
+            'charge_percentage' => $rule->charge_percentage,
+            'discount_percentage' => $rule->discount_percentage,
+            'one_way_fare' => round($oneWayFare, 2),
+            'return_fare' => round($returnFare, 2),
+            'total_fare' => round($oneWayFare + $returnFare, 2),
+            'discount_amount' => round($discountAmount, 2),
+            'rule_id' => $rule->id,
+            'rule_label' => $rule->label ?? $rule->day_range_description,
+            'km_range_description' => $rule->km_range_description,
+            'same_vehicle_required' => $rule->same_vehicle_required,
+            'same_driver_required' => $rule->same_driver_required,
+            'message' => $rule->label
+                ? "{$rule->label}: {$rule->discount_percentage}% off return trip"
+                : "{$rule->day_range_description}: {$rule->discount_percentage}% off return trip",
+        ];
     }
 
     /**
@@ -9277,7 +9333,7 @@ class BookingFlowService
         );
         $itemSequence = $itemSequenceIndex !== false ? ((int) $itemSequenceIndex + 1) : 1;
         $bookingNumber = $booking?->booking_number ?: (string) $item->booking_id;
-        $itemCode = sprintf('%s-I%02d', $bookingNumber, $itemSequence);
+        $itemCode = $item->item_code ?: sprintf('%s-I%02d', $bookingNumber, $itemSequence);
 
         $tripCount = max(
             1,
@@ -11132,7 +11188,7 @@ class BookingFlowService
     /**
      * Analyze vehicle availability in a group with enhanced conflict detection
      */
-    private function analyzeVehicleAvailability($vehicleGroup, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
+    private function analyzeVehicleAvailability($vehicleGroup, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null, bool $isPublic = false): array
     {
         $allVehicles = $vehicleGroup->vehicles->where('status', 'active');
         $totalCount = $allVehicles->count();
@@ -11142,19 +11198,37 @@ class BookingFlowService
         $concurrentPossible = false;
         $overrideAvailable = false;
         $vehicleDetails = [];
+        $publicBlockedIds = $isPublic
+            ? $this->getPublicBlockedVehicleIds($allVehicles->pluck('id')->all(), $fromDate, $toDate)
+            : [];
 
         foreach ($allVehicles as $vehicle) {
-            // Use the same authoritative checks as the specific-vehicle endpoint.
-            // This keeps group counts aligned with maintenance, insurance and
-            // assignment enforcement shown in the Add Trip vehicle cards.
-            $enhancedAvailability = $this->assignmentService->getEnhancedVehicleAvailability(
-                $vehicle->id,
-                $fromDate,
-                $toDate,
-                $excludeBookingId
-            );
-            $conflicts = $enhancedAvailability['conflicts'];
-            $availabilityStatus = $enhancedAvailability['availability_status'];
+            if ($isPublic) {
+                $conflicts = $vehicle->assignments
+                    ->filter(fn ($assignment) => !in_array($assignment->status, ['cancelled', 'completed'], true)
+                        && (!$excludeBookingId || (string) $assignment->booking_id !== (string) $excludeBookingId)
+                        && $assignment->assigned_from <= $toDate
+                        && $assignment->assigned_to >= $fromDate
+                        && $assignment->booking
+                        && !in_array($assignment->booking->status, ['cancelled', 'completed'], true))
+                    ->values();
+
+                $blocked = isset($publicBlockedIds[(string) $vehicle->id]);
+                $availabilityStatus = $blocked
+                    ? 'blocked'
+                    : (empty($conflicts) ? 'available' : ($vehicle->allowsConcurrentAssignments() ? 'available_concurrent' : 'booked'));
+                $publicConflictDetails = [];
+            } else {
+                $enhancedAvailability = $this->assignmentService->getEnhancedVehicleAvailability(
+                    $vehicle->id,
+                    $fromDate,
+                    $toDate,
+                    $excludeBookingId
+                );
+                $conflicts = $enhancedAvailability['conflicts'];
+                $availabilityStatus = $enhancedAvailability['availability_status'];
+                $publicConflictDetails = null;
+            }
 
             if (in_array($availabilityStatus, ['available', 'available_concurrent'], true)) {
                 $availableCount++;
@@ -11162,7 +11236,7 @@ class BookingFlowService
                 $bookedCount++;
             }
 
-            if (!empty($enhancedAvailability['conflicts'])) {
+            if (!empty($conflicts)) {
                 $conflictCount++;
             }
 
@@ -11172,6 +11246,10 @@ class BookingFlowService
 
             if ($this->isVehicleOverrideAllowed($vehicle, $conflicts)) {
                 $overrideAvailable = true;
+            }
+
+            if ($isPublic) {
+                continue;
             }
 
             $vehicleDetails[] = [
@@ -11196,6 +11274,61 @@ class BookingFlowService
             'override_available' => $overrideAvailable,
             'vehicle_details' => $vehicleDetails,
         ];
+    }
+
+    /** Apply public maintenance and insurance blockers in bulk for a vehicle group. */
+    private function getPublicBlockedVehicleIds(array $vehicleIds, Carbon $fromDate, Carbon $toDate): array
+    {
+        if (empty($vehicleIds)) {
+            return [];
+        }
+
+        static $schema = null;
+        $schema ??= [
+            'maintenance_completed' => Schema::hasColumn('vehicle_maintenance_records', 'completed_date'),
+            'maintenance_scheduled' => Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+                ? 'scheduled_date'
+                : 'next_due_date',
+            'maintenance_status' => Schema::hasColumn('vehicle_maintenance_schedules', 'status'),
+            'maintenance_completion' => Schema::hasColumn('vehicle_maintenance_schedules', 'estimated_completion_date'),
+            'insurance_expiry' => Schema::hasColumn('vehicle_insurances', 'expiry_date') ? 'expiry_date' : 'end_date',
+            'insurance_active' => Schema::hasColumn('vehicle_insurances', 'is_active'),
+        ];
+
+        $blocked = [];
+        DB::table('vehicle_maintenance_records')
+            ->whereIn('vehicle_id', $vehicleIds)
+            ->where('status', 'in_progress')
+            ->when($schema['maintenance_completed'], fn ($query) => $query->whereNull('completed_date'))
+            ->distinct()->pluck('vehicle_id')->each(fn ($id) => $blocked[(string) $id] = true);
+
+        $scheduleDate = $schema['maintenance_scheduled'];
+        DB::table('vehicle_maintenance_schedules')
+            ->whereIn('vehicle_id', $vehicleIds)
+            ->where($scheduleDate, '<=', $toDate->toDateString())
+            ->when($schema['maintenance_status'], fn ($query) => $query->where('status', 'scheduled'))
+            ->when($schema['maintenance_completion'], fn ($query) => $query->where(function ($inner) use ($fromDate) {
+                $inner->whereNull('estimated_completion_date')
+                    ->orWhere('estimated_completion_date', '>=', $fromDate->toDateString());
+            }), fn ($query) => $query->where($scheduleDate, '>=', $fromDate->toDateString()))
+            ->distinct()->pluck('vehicle_id')->each(fn ($id) => $blocked[(string) $id] = true);
+
+        $expiryColumn = $schema['insurance_expiry'];
+        $latestInsurance = DB::table('vehicle_insurances')
+            ->whereIn('vehicle_id', $vehicleIds)
+            ->when($schema['insurance_active'], fn ($query) => $query->where('is_active', true))
+            ->orderBy('vehicle_id')->orderByDesc($expiryColumn)
+            ->get(['vehicle_id', $expiryColumn])
+            ->unique('vehicle_id');
+
+        foreach ($latestInsurance as $insurance) {
+            if (!empty($insurance->{$expiryColumn})
+                && Carbon::parse($insurance->{$expiryColumn})->endOfDay()->lt($toDate)) {
+                $blocked[(string) $insurance->vehicle_id] = true;
+            }
+        }
+
+        return $blocked;
     }
 
     /**

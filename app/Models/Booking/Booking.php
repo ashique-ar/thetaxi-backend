@@ -1424,43 +1424,12 @@ class Booking extends BaseModel
      * Format: {PREFIX}{6-digit-sequence} e.g. BK000001 or QT000123
      * Accepts optional $prefix (default 'BK').
      */
-    public static function generateBookingNumber(): string
+    public static function generateBookingNumber(?string $corporateId = null): string
     {
-        // Default booking number generator (BKxxxxxx)
-        $prefix = 'BK';
-        $attempt = 0;
-        $maxAttempts = 100; // Prevent infinite loops
-
-        // Attempt to find the most recent booking with this prefix (including soft deleted)
-        $last = static::withTrashed()
-            ->where('booking_number', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->first();
-
-        $next = 1;
-
-        if ($last && preg_match('/(\d+)$/', $last->booking_number, $m)) {
-            $next = intval($m[1]) + 1;
-        } else {
-            $count = static::withTrashed()->where('booking_number', 'like', $prefix . '%')->count();
-            $next = $count + 1;
+        if ($corporateId) {
+            return app(\App\Services\CorporateReferenceNumberService::class)->next($corporateId, 'booking');
         }
-
-        // Add loop to ensure uniqueness
-        do {
-            $candidate = $prefix . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
-            
-            // Check existence including soft deleted records
-            if (!static::withTrashed()->where('booking_number', $candidate)->exists()) {
-                return $candidate;
-            }
-            
-            $next++;
-            $attempt++;
-        } while ($attempt < $maxAttempts);
-
-        // Fallback for extreme cases (should basically never happen)
-        return $prefix . now()->format('ymdHis');
+        return app(\App\Services\CorporateReferenceNumberService::class)->nextGlobal('BK', 'booking');
     }
 
     /**
@@ -1468,36 +1437,7 @@ class Booking extends BaseModel
      */
     public static function generateQuotationNumber(): string
     {
-        $prefix = 'QT';
-        $attempt = 0;
-        $maxAttempts = 100;
-
-        $last = static::withTrashed()
-            ->where('booking_number', 'like', $prefix . '%')
-            ->orderByDesc('id')
-            ->first();
-
-        $next = 1;
-
-        if ($last && preg_match('/(\d+)$/', $last->booking_number, $m)) {
-            $next = intval($m[1]) + 1;
-        } else {
-            $count = static::withTrashed()->where('booking_number', 'like', $prefix . '%')->count();
-            $next = $count + 1;
-        }
-
-        do {
-            $candidate = $prefix . str_pad((string)$next, 6, '0', STR_PAD_LEFT);
-            
-            if (!static::withTrashed()->where('booking_number', $candidate)->exists()) {
-                return $candidate;
-            }
-            
-            $next++;
-            $attempt++;
-        } while ($attempt < $maxAttempts);
-
-        return $prefix . now()->format('ymdHis');
+        return app(\App\Services\CorporateReferenceNumberService::class)->nextGlobal('QT', 'booking');
     }
 
     /**
@@ -1520,9 +1460,12 @@ class Booking extends BaseModel
         parent::boot();
 
         static::creating(function ($booking) {
+            $referenceNumbers = app(\App\Services\CorporateReferenceNumberService::class);
+            $corporateId = $booking->is_corporate_booking ? $booking->corporate_account_id : null;
             if (empty($booking->booking_number)) {
-                $booking->booking_number = static::generateBookingNumber();
+                $booking->booking_number = static::generateBookingNumber($corporateId);
             }
+            $referenceNumbers->reserveProvided((string) $booking->booking_number, 'booking', $corporateId, 'booking_number');
         });
 
         static::updating(function ($booking) {

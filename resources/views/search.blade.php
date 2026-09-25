@@ -183,7 +183,7 @@
                                 <div class="vehicle-count-info">
                                     <span class="vehicle-groups-label text-white-50">Vehicle Groups Available:</span>
                                     <strong class="vehicle-groups-count text-white ms-2"
-                                        id="vehicleGroupsCount">{{ count($results['data']) }}</strong>
+                                        id="vehicleGroupsCount">{{ $results['total'] ?? count($results['data']) }}</strong>
                                 </div>
                             </div>
                         </div>
@@ -296,25 +296,25 @@
                 <!-- Vehicle Grid - 4 cols (lg), 3 cols (md), 1 col (sm) -->
                 <div class="row g-4 vehicle-results-grid">
                     @foreach ($sortedResults as $result)
-                        @php
-                            $pricing = $result['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
-                            $enhancedPricing = $result['enhanced_pricing'] ?? [];
-                            $serviceFeatures = $result['service_features'] ?? [];
-                            $availability = [
+                        @include('components.search-vehicle-card', [
+                            'result' => $result,
+                            'pricing' => $result['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'],
+                            'availability' => [
                                 'available' => $result['available_count'] ?? 0,
                                 'total' => $result['total_count'] ?? 0,
-                            ];
-                            $isRecommended = $result['recommended'] ?? false;
-                        @endphp
-
-                        <div class="{{!is_theme('theme-04') ? 'col-lg-3' : ''}} col-md-4 col-sm-6 col-6 vehicle-card-wrapper"
-                            data-vehicle-group="{{ $result['id'] }}" data-price="{{ $pricing['base_amount'] ?? 0 }}"
-                            data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
-                            <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$enhancedPricing" :serviceFeatures="$serviceFeatures"
-                                :availability="$availability" :searchId="$search->id" :isRecommended="$isRecommended" :showBookNow="true" :showViewDetails="false" />
-                        </div>
+                            ],
+                            'searchId' => $search->id,
+                        ])
                     @endforeach
                 </div>
+                @if (($pagination['last_page'] ?? 1) > 1)
+                    <div id="vehicleLoadMoreStatus" class="py-4 text-center text-muted" role="status"
+                        data-next-page="2" data-last-page="{{ $pagination['last_page'] }}"
+                        data-url="{{ route('search.vehicles.page') }}">
+                        <span class="vehicle-load-more-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
+                        <span class="vehicle-load-more-message">Scroll to load more vehicles</span>
+                    </div>
+                @endif
             @else
                 <!-- No Results Found -->
                 <div class="no-results-card">
@@ -1277,6 +1277,79 @@
             const $vehicleCards = $('.vehicle-results-grid').find('.vehicle-card-wrapper');
             const $vehicleCountDisplay = $('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
+            let loadedVehicleCards = $vehicleCards;
+            const applyVehicleFilter = () => $searchInput.trigger('input');
+
+            const loadMoreStatus = document.getElementById('vehicleLoadMoreStatus');
+            if (loadMoreStatus) {
+                let loading = false;
+                const spinner = loadMoreStatus.querySelector('.vehicle-load-more-spinner');
+                const message = loadMoreStatus.querySelector('.vehicle-load-more-message');
+                const grid = document.querySelector('.vehicle-results-grid');
+                const loadNextPage = async () => {
+                    if (loading) return;
+                    const nextPage = Number(loadMoreStatus.dataset.nextPage);
+                    const lastPage = Number(loadMoreStatus.dataset.lastPage);
+                    if (nextPage > lastPage) {
+                        observer?.disconnect();
+                        message.textContent = 'You’ve reached the end of the vehicles';
+                        return;
+                    }
+
+                    loading = true;
+                    spinner.classList.remove('d-none');
+                    message.textContent = 'Loading more vehicles…';
+                    try {
+                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}`, {
+                            credentials: 'same-origin',
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                        });
+                        if (!response.ok) throw new Error('Unable to load more vehicles');
+                        const payload = await response.json();
+                        const vehicles = payload.data || [];
+                        if (!vehicles.length) {
+                            observer?.disconnect();
+                            message.textContent = 'No more vehicles';
+                            return;
+                        }
+
+                        vehicles.forEach(vehicle => {
+                            const template = document.createElement('template');
+                            template.innerHTML = vehicle.html.trim();
+                            const card = template.content.firstElementChild;
+                            grid.appendChild(card);
+                            loadedVehicleCards = loadedVehicleCards.add(card);
+                        });
+                        totalVehicles += vehicles.length;
+                        applyVehicleFilter();
+                        loadMoreStatus.dataset.nextPage = String(nextPage + 1);
+                        loadMoreStatus.dataset.lastPage = String(payload.pagination?.last_page || lastPage);
+                        message.textContent = nextPage >= Number(loadMoreStatus.dataset.lastPage)
+                            ? 'You’ve reached the end of the vehicles'
+                            : 'Scroll to load more vehicles';
+                        if (nextPage >= Number(loadMoreStatus.dataset.lastPage)) {
+                            observer?.disconnect();
+                            message.textContent = 'You’ve reached the end of the vehicles';
+                        }
+                    } catch (error) {
+                        message.textContent = 'Could not load vehicles. Scroll to try again.';
+                    } finally {
+                        spinner.classList.add('d-none');
+                        loading = false;
+                    }
+                };
+                let observer = null;
+                if ('IntersectionObserver' in window) {
+                    observer = new IntersectionObserver(entries => {
+                        if (entries.some(entry => entry.isIntersecting)) loadNextPage();
+                    }, { rootMargin: '500px 0px' });
+                    observer.observe(loadMoreStatus);
+                } else {
+                    loadMoreStatus.querySelector('.vehicle-load-more-message').innerHTML =
+                        '<button type="button" class="btn btn-outline-primary">Load more vehicles</button>';
+                    loadMoreStatus.addEventListener('click', loadNextPage);
+                }
+            }
 
             // Search functionality
             $searchInput.on('input', function() {
@@ -1285,12 +1358,12 @@
 
                 if (searchTerm === '') {
                     // Show all vehicles - remove Bootstrap d-none instead of jQuery show()
-                    $vehicleCards.removeClass('d-none');
+                    loadedVehicleCards.removeClass('d-none');
                     visibleCount = totalVehicles;
                     $clearButton.hide();
                 } else {
                     // Filter vehicles - toggle d-none on the column wrappers to keep grid classes intact
-                    $vehicleCards.each(function() {
+                    loadedVehicleCards.each(function() {
                         const vehicleName = $(this).data('name') ? $(this).data('name')
                             .toLowerCase() : '';
                         const vehicleCard = $(this).find('.vehicle-card');

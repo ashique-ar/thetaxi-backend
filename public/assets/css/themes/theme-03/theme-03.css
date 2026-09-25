@@ -404,7 +404,7 @@ body.theme-theme-03 .cart-badge.updated {
 body.theme-theme-03 .t3-hero {
     position: relative;
     isolation: isolate;
-    min-height: clamp(680px, calc(100svh - 92px), 920px);
+    min-height: clamp(620px, calc(84svh - 92px), 820px);
     overflow: hidden;
     background: var(--t3-paper);
 }
@@ -429,7 +429,7 @@ body.theme-theme-03 .t3-hero__frame {
     align-items: center;
     width: min(100%, 1600px);
     min-height: inherit;
-    padding: clamp(74px, 8vw, 126px) var(--t3-gutter) clamp(180px, 18vw, 270px);
+    padding: clamp(64px, 7vw, 108px) var(--t3-gutter) clamp(140px, 14vw, 210px);
     margin-inline: auto;
 }
 
@@ -4312,12 +4312,12 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .t3-hero {
-        min-height: 720px;
+        min-height: 640px;
     }
 
     body.theme-theme-03 .t3-hero__frame {
         grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
-        padding-bottom: 180px;
+        padding-bottom: 140px;
     }
 
     body.theme-theme-03 .t3-journey-desk .filter-wrapper {
@@ -4735,7 +4735,7 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .home-booking-form-section {
-        margin-top: -96px;
+        margin-top: -140px;
     }
 
     body.theme-theme-03 .t3-journey-desk .booking-field,
@@ -5060,14 +5060,14 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .t3-hero__frame {
-        gap: 42px;
-        padding-top: 62px;
-        padding-bottom: 92px;
+        gap: 18px;
+        padding-top: 28px;
+        padding-bottom: 96px;
     }
 
     body.theme-theme-03 .t3-hero__copy h1 {
-        margin-block: 14px 24px;
-        font-size: clamp(3.2rem, 17vw, 5.2rem);
+        margin-block: 10px 16px;
+        font-size: clamp(2.8rem, 14vw, 4.3rem);
     }
 
     body.theme-theme-03 .t3-hero__copy p {
@@ -5075,12 +5075,21 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .t3-hero__folio {
-        margin-top: 34px;
+        margin-top: 20px;
     }
 
     body.theme-theme-03 .t3-hero__visual {
         width: 100%;
-        aspect-ratio: 4 / 3;
+        aspect-ratio: 16 / 9;
+    }
+
+    body.theme-theme-03 .t3-hero__image-frame {
+        inset: 0;
+    }
+
+    body.theme-theme-03 .t3-hero__image-frame .shared-hero-slide__media {
+        object-fit: cover;
+        object-position: center;
     }
 
     body.theme-theme-03 .t3-hero__visual::before {
@@ -5098,7 +5107,7 @@ body.theme-theme-03 .t3-error-page__content p {
     }
 
     body.theme-theme-03 .home-booking-form-section {
-        margin-top: -42px;
+        margin-top: -72px;
     }
 
     body.theme-theme-03 .t3-journey-desk__masthead {
@@ -5233,5 +5242,6 @@ body.theme-theme-03 .shared-hero-slider .shared-hero-swiper,
 body.theme-theme-03 .shared-hero-slider .swiper-wrapper,
 body.theme-theme-03 .shared-hero-slider .swiper-slide,
 body.theme-theme-03 .shared-hero-slide__media { width: 100%; height: 100%; }
+body.theme-theme-03 .shared-hero-slider .swiper-slide > picture { display: block; width: 100%; height: 100%; }
 body.theme-theme-03 .shared-hero-slide__media { display: block; object-fit: cover; }
 body.theme-theme-03 .shared-hero-pagination { position: absolute; z-index: 4; right: 20px; bottom: 18px; left: auto; width: auto; }

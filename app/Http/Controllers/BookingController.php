@@ -1048,6 +1048,9 @@ class BookingController extends Controller
                     ->with('warning', 'Your search has expired. Please start a new search for updated prices.');
             }
 
+            $perPage = 8;
+            $searchParams['page'] = 1;
+            $searchParams['per_page'] = $perPage;
             $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
 
             // Extract data and pagination
@@ -1067,7 +1070,7 @@ class BookingController extends Controller
             // Wrap results in expected structure for blade template
             $results = [
                 'data' => $transformedData,
-                'total' => count($transformedData),
+                'total' => $pagination['total'] ?? count($transformedData),
                 'pagination' => $pagination
             ];
 
@@ -1179,6 +1182,54 @@ class BookingController extends Controller
         }
     }
 
+    /** Return the next batch of cards for the public search infinite scroll. */
+    public function loadMoreSearchResults(Request $request)
+    {
+        $validated = $request->validate([
+            'page' => 'required|integer|min:2|max:1000',
+        ]);
+
+        $searchParams = session()->get('current_search_params');
+        $searchTimestamp = session()->get('search_timestamp');
+        $pricingContext = session()->get('pricing_context');
+        $expiryHours = config('booking.search_expiry_hours', 0);
+
+        if (!$searchParams || ($expiryHours > 0 && $searchTimestamp
+            && Carbon::parse($searchTimestamp)->diffInHours(now()) > $expiryHours)) {
+            return response()->json(['message' => 'Search expired. Please search again.'], 410);
+        }
+
+        $searchParams['page'] = (int) $validated['page'];
+        $searchParams['per_page'] = 8;
+        $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
+        $groups = $availabilityData['data'] ?? $availabilityData;
+        $vehicles = $this->transformResultsForPublicView($groups ?? [], $searchParams, $pricingContext);
+        $cards = collect($vehicles)->map(function ($vehicle) {
+            $pricing = $vehicle['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
+            $availability = [
+                'available' => $vehicle['available_count'] ?? 0,
+                'total' => $vehicle['total_count'] ?? 0,
+            ];
+
+            return [
+                'id' => $vehicle['id'],
+                'name' => $vehicle['name'] ?? 'Unknown Vehicle',
+                'price' => $pricing['base_amount'] ?? 0,
+                'html' => view('components.search-vehicle-card', [
+                    'result' => $vehicle,
+                    'pricing' => $pricing,
+                    'availability' => $availability,
+                    'searchId' => session('session_id'),
+                ])->render(),
+            ];
+        });
+
+        return response()->json([
+            'data' => $cards,
+            'pagination' => $availabilityData['pagination'] ?? null,
+        ])->header('Cache-Control', 'private, no-store');
+    }
+
     /**
      * Transform BookingFlowService results for public view
      * Adds customer-facing enhancements and formatting
@@ -1195,6 +1246,21 @@ class BookingController extends Controller
         $returnDate = $searchParams['return_date'] ?? null;
         $outboundDate = $searchParams['from_date'] ?? null;
         $packageId = $searchParams['service_package_id'] ?? $searchParams['package_id'] ?? null;
+        $returnDayOffset = ($isReturnTrip && $outboundDate && $returnDate)
+            ? Carbon::parse($outboundDate)->startOfDay()->diffInDays(Carbon::parse($returnDate)->startOfDay())
+            : null;
+        $returnRulesByGroup = collect();
+        if ($returnDayOffset !== null && $packageId) {
+            $returnRulesByGroup = \App\Models\Service\ServicePackageReturnRule::query()
+                ->where('service_package_id', $packageId)
+                ->active()
+                ->effectiveOn()
+                ->matchesDayOffset($returnDayOffset)
+                ->whereNull('vehicle_group_id')
+                ->orderByDesc('priority')
+                ->get()
+                ->values();
+        }
 
 
         foreach ($vehicleGroups as $index => $groupData) {
@@ -1262,15 +1328,13 @@ class BookingController extends Controller
                         $journeyDistance = (float) $distanceDetails['journey_distance'];
                     }
                     
-                    $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricing([
-                        'package_id' => $packageId,
-                        'vehicle_group_id' => $groupData['id'],
-                        'outbound_date' => $outboundDate,
-                        'return_date' => $returnDate,
-                        'one_way_fare' => $oneWayFare,
-                        'kilometers' => $journeyDistance,
-                        'journey_distance' => $journeyDistance,
-                    ]);
+                    $returnTripPricing = $this->bookingFlowService->calculateReturnTripPricingFromRules(
+                        $returnRulesByGroup,
+                        $returnDayOffset,
+                        $groupData['id'],
+                        $oneWayFare,
+                        $journeyDistance
+                    );
 
                     // Update total amount to include return trip
                     if ($returnTripPricing && isset($returnTripPricing['total_fare'])) {

@@ -754,7 +754,9 @@ class CorporateBookingService
     private function corporateBookingItemQuery(string $corporateId)
     {
         return BookingItem::query()
-            ->whereHas('booking', fn($bookingQuery) => $bookingQuery->where('corporate_account_id', $corporateId))
+            ->whereHas('booking', fn($bookingQuery) => $bookingQuery
+                ->where('corporate_account_id', $corporateId)
+                ->where('is_corporate_booking', true))
             ->with($this->corporateBookingItemRelations());
     }
 
@@ -818,9 +820,7 @@ class CorporateBookingService
         $itemCount = max(1, $bookingItems->count());
         $itemIndex = $bookingItems->search(fn($candidate) => (string) $candidate->id === (string) $item->id);
         $sequence = $itemIndex === false ? 1 : $itemIndex + 1;
-        $itemCode = $itemCount > 1
-            ? sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence)
-            : null;
+        $itemCode = $item->item_code ?: sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence);
 
         $payload = [
             'id' => $item->id,
@@ -1033,8 +1033,15 @@ class CorporateBookingService
         $query = Booking::where('corporate_account_id', $corporateId);
 
         $bookingFilters = $filters;
-        unset($bookingFilters['date_from'], $bookingFilters['date_to']);
+        unset($bookingFilters['date_from'], $bookingFilters['date_to'], $bookingFilters['created_from'], $bookingFilters['created_to']);
         $this->applyBookingFilters($query, $bookingFilters);
+
+        if (!empty($filters['created_from'])) {
+            $query->whereDate('created_at', '>=', $filters['created_from']);
+        }
+        if (!empty($filters['created_to'])) {
+            $query->whereDate('created_at', '<=', $filters['created_to']);
+        }
 
         if (!empty($filters['date_from']) || !empty($filters['date_to'])) {
             $query->whereHas('bookingItems', function ($itemQuery) use ($filters) {
@@ -1042,7 +1049,7 @@ class CorporateBookingService
                     $itemQuery->whereDate('from_date', '>=', $filters['date_from']);
                 }
                 if (!empty($filters['date_to'])) {
-                    $itemQuery->whereDate('to_date', '<=', $filters['date_to']);
+                    $itemQuery->whereDate('from_date', '<=', $filters['date_to']);
                 }
             });
         }

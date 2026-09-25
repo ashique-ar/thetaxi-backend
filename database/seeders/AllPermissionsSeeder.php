@@ -1204,6 +1204,8 @@ class AllPermissionsSeeder extends Seeder
             ],
             'Corporate_Master_Admin' => [
                 'corporate.view',
+                'manage-roles',
+                'manage-permissions',
                 'manage_employees',
                 'manage_departments',
                 'manage_divisions',
@@ -1221,6 +1223,7 @@ class AllPermissionsSeeder extends Seeder
             ],
             'Transport_Coordinator' => [
                 'corporate.view',
+                'manage-roles',
                 'manage_employees',
                 'create_bookings',
                 'create_bookings_for_others',

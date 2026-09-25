@@ -7,6 +7,7 @@ use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Corporate\CorporateEmployee;
 use App\Models\Customer;
+use App\Services\CorporatePortalPermission;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -97,6 +98,12 @@ trait BookingCorporateTrait
             ->where('user_id', $user?->id)
             ->where('is_active', true)
             ->first();
+        $canCreateForOtherEmployees = $user?->can('create_bookings_for_others')
+            || ($ownCorporateEmployee
+                && CorporatePortalPermission::employeeAllows(
+                    $ownCorporateEmployee,
+                    'create_bookings_for_others'
+                ));
 
         $query = CorporateEmployee::query()
             ->where('corporate_id', $corporateId)
@@ -106,8 +113,8 @@ trait BookingCorporateTrait
 
         if (
             $ownCorporateEmployee
-            && !$user->can('create_bookings_for_others')
-            && !$user->can('corporates.manage')
+            && !$canCreateForOtherEmployees
+            && !$user?->can('corporates.manage')
         ) {
             $query->where('id', $ownCorporateEmployee->id);
         }

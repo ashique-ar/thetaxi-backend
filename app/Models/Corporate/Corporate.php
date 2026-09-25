@@ -9,6 +9,10 @@ use App\Models\Vehicle\VehicleGroup;
 
 class Corporate extends BaseModel
 {
+    protected $attributes = [
+        'booking_notification_emails' => '["info@thetaxi.lk"]',
+    ];
+
     protected $table = 'corporates';
 
     protected $logName = 'Corporate';
@@ -16,6 +20,7 @@ class Corporate extends BaseModel
     protected $fillable = [
         'name',
         'contact_email',
+        'booking_notification_emails',
         'contact_phone',
         'billing_address',
         'is_active',
@@ -23,6 +28,14 @@ class Corporate extends BaseModel
         'exempt_coordinator_from_approval',
         'coordinator_can_view_payments',
         'default_payment_arrangement',
+        'booking_number_prefix',
+        'booking_number_start',
+        'booking_number_increment',
+        'booking_number_digits',
+        'booking_item_number_prefix',
+        'booking_item_number_start',
+        'booking_item_number_increment',
+        'booking_item_number_digits',
         'created_user_id',
         'updated_user_id',
     ];
@@ -32,6 +45,18 @@ class Corporate extends BaseModel
         'approval_required' => 'boolean',
         'exempt_coordinator_from_approval' => 'boolean',
         'coordinator_can_view_payments' => 'boolean',
+        'booking_notification_emails' => 'array',
+        'booking_number_start' => 'integer',
+        'booking_number_increment' => 'integer',
+        'booking_number_digits' => 'integer',
+        'booking_item_number_start' => 'integer',
+        'booking_item_number_increment' => 'integer',
+        'booking_item_number_digits' => 'integer',
+        'reference_numbers_seeded_at' => 'datetime',
+    ];
+
+    protected $hidden = [
+        'reference_numbers_seeded_at',
     ];
 
     // Relationships

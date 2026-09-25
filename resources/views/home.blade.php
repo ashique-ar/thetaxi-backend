@@ -492,6 +492,28 @@ document.addEventListener('click', function (event) {
 @endsection
 
 @push('styles')
+<style>
+    @media (max-width: 991px) {
+        body.theme-default.theme-page-home .home4-banner-section {
+            height: calc(56.25vw + 60px) !important;
+            margin-bottom: 0 !important;
+        }
+
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area,
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area .shared-hero-slide__media {
+            min-height: 0 !important;
+            height: 56.25vw !important;
+        }
+
+        body.theme-default.theme-page-home .home4-banner-section .banner-video-area .shared-hero-slide__media {
+            object-fit: contain !important;
+        }
+
+        body.theme-default.theme-page-home .home-booking-form-section {
+            margin-top: 0 !important;
+        }
+    }
+</style>
 @if (!is_theme('theme-03') && !is_theme('theme-04'))
 <style>
     /* Home Booking Form Section - Separate from Hero */

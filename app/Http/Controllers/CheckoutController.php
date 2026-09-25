@@ -144,6 +144,29 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Error loading your cart.');
         }
 
+        // Resolve airport-transfer behavior from service configuration so every
+        // public website theme uses the same service metadata.
+        $serviceTypeIds = collect($cart)->map(fn ($item) => data_get($item, 'service_type_data.id'))->filter()->unique()->values();
+        $serviceTypeCodes = collect($cart)->map(fn ($item) => data_get($item, 'service_type'))->filter()->unique()->values();
+        $airportServiceTypes = ServiceType::publicContext()
+            ->where('category', 'airport')
+            ->where(function ($query) use ($serviceTypeIds, $serviceTypeCodes) {
+                if ($serviceTypeIds->isNotEmpty()) {
+                    $query->whereIn('id', $serviceTypeIds);
+                }
+                if ($serviceTypeCodes->isNotEmpty()) {
+                    $method = $serviceTypeIds->isNotEmpty() ? 'orWhereIn' : 'whereIn';
+                    $query->{$method}('code', $serviceTypeCodes);
+                }
+            })
+            ->get(['id', 'code']);
+        $airportServiceTypeIds = $airportServiceTypes->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $airportServiceTypeCodes = $airportServiceTypes->pluck('code')->all();
+        $hasAirportTransfer = collect($cart)->contains(fn ($item) =>
+            in_array((string) data_get($item, 'service_type_data.id', ''), $airportServiceTypeIds, true)
+            || in_array((string) data_get($item, 'service_type', ''), $airportServiceTypeCodes, true)
+        );
+
         $paymentSettings = $this->resolvePaymentSettings();
         $paymentType = $request->old('payment_type', $request->query('type', 'full'));
         $offlinePaymentEnabled = $this->normalizeBoolean($paymentSettings['payment_offline_enabled'] ?? null, false);
@@ -212,7 +235,8 @@ class CheckoutController extends Controller
             'advancePercentage',
             'advanceMinAmount',
             'offlinePaymentEnabled',
-            'countries'
+            'countries',
+            'hasAirportTransfer'
         ));
     }
 
@@ -468,7 +492,10 @@ class CheckoutController extends Controller
 
             // Prepare flight details
             $flightDetails = null;
-            if ($validated['flight_airline'] ?? null || $validated['flight_number'] ?? null) {
+            // Parenthesize each optional field: without grouping, PHP can
+            // evaluate the second array access outside its null-coalescing
+            // fallback when the airline field is absent.
+            if (($validated['flight_airline'] ?? null) || ($validated['flight_number'] ?? null)) {
                 $flightDetails = [
                     'airline' => $validated['flight_airline'] ?? null,
                     'flight_number' => $validated['flight_number'] ?? null,
@@ -520,7 +547,7 @@ class CheckoutController extends Controller
                 'payment_status' => 'pending',
                 'payment_type' => $validated['payment_type'],
                 'amount_to_pay' => $paymentAmount,
-                'special_requirements' => $validated['special_notes'] ?? null,
+                'special_requirements' => $validated['additional_notes'] ?? $validated['special_notes'] ?? null,
                 'contact_time' => $validated['contact_time'] ?? null,
                 'status' => config('booking.status.draft'),
                 'booking_source' => 'public',
@@ -530,7 +557,7 @@ class CheckoutController extends Controller
 
             // Store additional data in workflow_data
             $workflowData = [
-                'additional_notes' => $validated['additional_notes'] ?? null,
+                'additional_notes' => $validated['additional_notes'] ?? $validated['special_notes'] ?? null,
                 'budget_range' => $validated['budget_range'] ?? null,
                 'cart_items' => $cart,
                 'display_currency' => $bookingCurrency,

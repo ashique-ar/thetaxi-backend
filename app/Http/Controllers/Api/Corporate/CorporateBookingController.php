@@ -34,6 +34,7 @@ class CorporateBookingController extends Controller
 
         $this->middleware('permission:view_all_bookings')->only(['index', 'export']);
         $this->middleware('permission:create_bookings')->only(['store']);
+        $this->middleware('permission:create_bookings')->only(['storeForEmployee']);
         $this->middleware('permission:create_bookings_for_others')->only(['storeForEmployee']);
         $this->middleware('permission:view_reports')->only(['stats']);
     }
@@ -119,6 +120,50 @@ class CorporateBookingController extends Controller
             'message' => 'Booking created for employee successfully',
             'data'    => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
         ], 201);
+    }
+
+    public function bookingEmployees(Request $request): JsonResponse
+    {
+        $actor = $request->attributes->get('corporate_employee');
+        $user = $request->user();
+        $canCreate = $user?->can('create_bookings')
+            || CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreateForOthers = $user?->can('create_bookings_for_others')
+            || CorporatePortalPermission::allows($request, 'create_bookings_for_others');
+
+        if (!$actor || !$canCreate || !$canCreateForOthers) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are not authorized to book for another employee.',
+            ], 403);
+        }
+
+        $employees = CorporateEmployee::query()
+            ->where('corporate_id', $request->corporate_id)
+            ->where('is_active', true)
+            ->where('id', '!=', $actor->id)
+            ->with([
+                'user:id,first_name,last_name,email',
+                'department:id,name',
+                'division:id,name',
+            ])
+            ->orderBy('employee_code')
+            ->get()
+            ->map(fn (CorporateEmployee $employee) => [
+                'id' => (string) $employee->id,
+                'employee_code' => $employee->employee_code,
+                'first_name' => $employee->user?->first_name,
+                'last_name' => $employee->user?->last_name,
+                'email' => $employee->user?->email,
+                'department_name' => $employee->department?->name,
+                'division_name' => $employee->division?->name,
+            ])
+            ->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => ['employees' => $employees],
+        ]);
     }
 
     public function show(Request $request, string $id): JsonResponse
@@ -451,6 +496,10 @@ class CorporateBookingController extends Controller
 
     public function stats(Request $request): JsonResponse
     {
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ]);
         $filters = $request->only(['date_from', 'date_to']);
         $filters['can_view_payments'] = $this->canViewPayments($request);
 

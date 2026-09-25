@@ -21,6 +21,8 @@ class CorporateService
 {
     private const CORPORATE_ROLE_PERMISSIONS = [
         'Corporate_Master_Admin' => [
+            'manage-roles',
+            'manage-permissions',
             'manage_employees',
             'manage_departments',
             'manage_divisions',
@@ -42,6 +44,7 @@ class CorporateService
         ],
         'Transport_Coordinator' => [
             'corporate.view',
+            'manage-roles',
             'manage_employees',
             'create_bookings',
             'create_bookings_for_others',
@@ -73,6 +76,7 @@ class CorporateService
     {
         $corporate = DB::transaction(function () use ($data) {
             $corporate = Corporate::create($data);
+            app(CorporateRoleStarterService::class)->provision($corporate);
             app(CorporateStaffTransportStarterService::class)->provision($corporate);
             return $corporate;
         });
@@ -550,23 +554,12 @@ class CorporateService
 
     private function resolveCorporateRole(string $roleName, string $corporateId): Role
     {
-        if (! array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)
-            && ! Str::startsWith($roleName, 'Corporate_'.$corporateId.'_')) {
+        $corporate = Corporate::findOrFail($corporateId);
+        app(CorporateRoleStarterService::class)->provision($corporate);
+        $role = app(CorporateRoleStarterService::class)->resolve($corporate, $roleName);
+
+        if (! $role) {
             throw ValidationException::withMessages(['role' => 'The selected role is not available for this corporate account.']);
-        }
-
-        $role = array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)
-            ? Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api'])
-            : Role::where('name', $roleName)->where('guard_name', 'api')->firstOrFail();
-
-        if (array_key_exists($roleName, self::CORPORATE_ROLE_PERMISSIONS)) {
-            $permissions = collect(self::CORPORATE_ROLE_PERMISSIONS[$roleName])
-                ->map(fn (string $permission) => Permission::firstOrCreate([
-                    'name' => $permission,
-                    'guard_name' => 'api',
-                ]));
-
-            $role->syncPermissions($permissions);
         }
 
         return $role;

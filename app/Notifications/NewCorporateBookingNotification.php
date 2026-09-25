@@ -7,6 +7,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Notifications\AnonymousNotifiable;
 
 class NewCorporateBookingNotification extends Notification implements ShouldQueue
 {
@@ -19,7 +20,7 @@ class NewCorporateBookingNotification extends Notification implements ShouldQueu
 
     public function via(object $notifiable): array
     {
-        return empty($notifiable->email) ? ['database'] : ['database', 'mail'];
+        return $notifiable instanceof AnonymousNotifiable ? ['mail'] : ['database'];
     }
 
     public function toMail(object $notifiable): MailMessage

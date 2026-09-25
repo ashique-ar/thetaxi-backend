@@ -18,6 +18,34 @@
     z-index: 3;
 }
 
+@media (min-width: 577px) {
+    .theme-default .home4-banner-section .banner-video-area,
+    .theme-default .home4-banner-section .banner-video-area img {
+        min-height: 570px;
+        height: 570px;
+    }
+
+    .theme-default .home-booking-form-section {
+        margin-top: -110px;
+    }
+}
+
+@media (min-width: 992px) {
+    .theme-default .home4-banner-section .banner-video-area,
+    .theme-default .home4-banner-section .banner-video-area img {
+        min-height: clamp(540px, 46vw, 820px);
+        height: clamp(540px, 46vw, 820px);
+    }
+
+    .theme-default .home4-banner-section .banner-video-area img {
+        object-position: center 30%;
+    }
+
+    .theme-default .home-booking-form-section {
+        margin-top: clamp(-300px, -18vw, -150px);
+    }
+}
+
 .theme-default .section-title h2 {
     line-height: 1.15;
 }
@@ -162,10 +190,12 @@
         border-radius: 12px !important;
     }
 }
+
 body.theme-default .shared-hero-slider .shared-hero-swiper,
 body.theme-default .shared-hero-slider .swiper-wrapper,
 body.theme-default .shared-hero-slider .swiper-slide,
 body.theme-default .shared-hero-slide__media { width: 100%; height: 100%; }
+body.theme-default .shared-hero-slider .swiper-slide > picture { display: block; width: 100%; height: 100%; }
 body.theme-default .shared-hero-slide__media { display: block; object-fit: cover; }
 body.theme-default .shared-hero-pagination {
     position: absolute;

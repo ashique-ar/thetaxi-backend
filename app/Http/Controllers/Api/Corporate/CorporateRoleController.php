@@ -41,13 +41,6 @@ class CorporateRoleController extends Controller
     /**
      * Default corporate role name prefixes used to identify corporate roles.
      */
-    private const DEFAULT_CORPORATE_ROLES = [
-        'Corporate_Master_Admin',
-        'Transport_Coordinator',
-        'Approval_Manager',
-        'Corporate_Employee',
-    ];
-
     public function __construct()
     {
     }
@@ -59,11 +52,10 @@ class CorporateRoleController extends Controller
         }
 
         $prefix = $this->customRolePrefix($request->corporate_id);
+        app(\App\Services\CorporateRoleStarterService::class)
+            ->provision(\App\Models\Corporate\Corporate::findOrFail($request->corporate_id));
         $roles = Role::where('guard_name', 'api')
-            ->where(function ($q) use ($prefix) {
-                $q->whereIn('name', self::DEFAULT_CORPORATE_ROLES)
-                    ->orWhere('name', 'like', $prefix.'%');
-            })
+            ->where('name', 'like', $prefix.'%')
             ->with('permissions')
             ->get()
             ->each(function (Role $role) use ($prefix): void {
@@ -234,7 +226,7 @@ class CorporateRoleController extends Controller
 
         return $context->roles
             ->flatMap(fn (Role $role) => $role->permissions->pluck('name'))
-            ->contains('manage_employees');
+            ->contains('manage-roles');
     }
 
     private function forbiddenResponse(): JsonResponse
