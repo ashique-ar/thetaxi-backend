@@ -1284,9 +1284,13 @@
             const applyVehicleFilter = () => $searchInput.trigger('input');
 
             window.vehicleLoadMoreObserver?.disconnect();
+            window.vehicleLoadMoreAbortController?.abort();
+            window.vehicleLoadMoreAbortController = null;
             const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
             if (loadMoreStatus) {
                 let loading = false;
+                let observer = null;
+                const preloadDistance = 450;
                 const spinner = loadMoreStatus.querySelector('.vehicle-load-more-spinner');
                 const message = loadMoreStatus.querySelector('.vehicle-load-more-message');
                 const grid = $root.find('.vehicle-results-grid').get(0);
@@ -1303,10 +1307,14 @@
                     loading = true;
                     spinner.classList.remove('d-none');
                     message.textContent = 'Loading more vehicles…';
+                    const requestController = new AbortController();
+                    window.vehicleLoadMoreAbortController = requestController;
+                    let shouldPrefetchNextPage = false;
                     try {
                         const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}`, {
                             credentials: 'same-origin',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            signal: requestController.signal
                         });
                         const payload = await response.json().catch(() => ({}));
                         if (!response.ok) {
@@ -1331,6 +1339,7 @@
                         applyVehicleFilter();
                         loadMoreStatus.dataset.nextPage = String(nextPage + 1);
                         loadMoreStatus.dataset.lastPage = String(payload.pagination?.last_page || lastPage);
+                        shouldPrefetchNextPage = nextPage < Number(loadMoreStatus.dataset.lastPage);
                         message.textContent = nextPage >= Number(loadMoreStatus.dataset.lastPage)
                             ? 'You’ve reached the end of the vehicles'
                             : 'Scroll to load more vehicles';
@@ -1339,17 +1348,31 @@
                             message.textContent = 'You’ve reached the end of the vehicles';
                         }
                     } catch (error) {
-                        message.textContent = error.message || 'Could not load vehicles. Scroll to try again.';
+                        if (error.name !== 'AbortError') {
+                            message.textContent = error.message || 'Could not load vehicles. Scroll to try again.';
+                        }
                     } finally {
                         spinner.classList.add('d-none');
                         loading = false;
+                        if (window.vehicleLoadMoreAbortController === requestController) {
+                            window.vehicleLoadMoreAbortController = null;
+                        }
+                        if (shouldPrefetchNextPage) {
+                            requestAnimationFrame(() => {
+                                if (loadMoreStatus.isConnected &&
+                                    loadMoreStatus.getBoundingClientRect().top <= window.innerHeight + preloadDistance) {
+                                    loadNextPage();
+                                }
+                            });
+                        }
                     }
                 };
                 if ('IntersectionObserver' in window) {
-                    window.vehicleLoadMoreObserver = new IntersectionObserver(entries => {
+                    observer = new IntersectionObserver(entries => {
                         if (entries.some(entry => entry.isIntersecting)) loadNextPage();
-                    }, { rootMargin: '450px 0px' });
-                    window.vehicleLoadMoreObserver.observe(loadMoreStatus);
+                    }, { rootMargin: `${preloadDistance}px 0px` });
+                    window.vehicleLoadMoreObserver = observer;
+                    observer.observe(loadMoreStatus);
                 } else {
                     loadMoreStatus.querySelector('.vehicle-load-more-message').innerHTML =
                         '<button type="button" class="btn btn-outline-primary">Load more vehicles</button>';
