@@ -393,6 +393,9 @@
             const nextDistanceAlert = nextDocument.querySelector('#distanceCalculationAlert');
             if (nextDistanceAlert) currentResults.before(nextDistanceAlert);
             currentResults.replaceWith(nextResults);
+            document.dispatchEvent(new CustomEvent('booking:search-results-replaced', {
+                detail: { root: nextResults }
+            }));
             window.history.pushState({ bookingSearch: true }, '', payload.results_url);
             showValidationMessage(payload.message || 'Search completed successfully.', 'success');
             nextResults.scrollIntoView({ behavior: 'smooth', block: 'start' });

@@ -1218,7 +1218,7 @@
             });
 
             // Sort functionality
-            $('#sortResults').on('change', function() {
+            $(document).on('change', '#sortResults', function() {
                 sortVehicleResults($(this).val());
             });
 
@@ -1269,29 +1269,33 @@
             // For now, we'll keep the base prices
         }
 
-        // Vehicle Groups Search Functionality
-        $(document).ready(function() {
-            const $searchInput = $('#vehicleGroupSearch');
-            const $clearButton = $('#clearSearch');
+        // Vehicle Groups Search Functionality. AJAX searches replace this
+        // section without reloading the page, so expose an initializer for the
+        // replacement section as well as the initial server-rendered page.
+        window.initializeVehicleSearchResults = function(root = document) {
+            const $root = $(root);
+            const $searchInput = $root.find('#vehicleGroupSearch');
+            const $clearButton = $root.find('#clearSearch');
             // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
-            const $vehicleCards = $('.vehicle-results-grid').find('.vehicle-card-wrapper');
-            const $vehicleCountDisplay = $('#vehicleGroupsCount');
+            const $vehicleCards = $root.find('.vehicle-results-grid').find('.vehicle-card-wrapper');
+            const $vehicleCountDisplay = $root.find('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
             let loadedVehicleCards = $vehicleCards;
             const applyVehicleFilter = () => $searchInput.trigger('input');
 
-            const loadMoreStatus = document.getElementById('vehicleLoadMoreStatus');
+            window.vehicleLoadMoreObserver?.disconnect();
+            const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
             if (loadMoreStatus) {
                 let loading = false;
                 const spinner = loadMoreStatus.querySelector('.vehicle-load-more-spinner');
                 const message = loadMoreStatus.querySelector('.vehicle-load-more-message');
-                const grid = document.querySelector('.vehicle-results-grid');
+                const grid = $root.find('.vehicle-results-grid').get(0);
                 const loadNextPage = async () => {
                     if (loading) return;
                     const nextPage = Number(loadMoreStatus.dataset.nextPage);
                     const lastPage = Number(loadMoreStatus.dataset.lastPage);
                     if (nextPage > lastPage) {
-                        observer?.disconnect();
+                        window.vehicleLoadMoreObserver?.disconnect();
                         message.textContent = 'You’ve reached the end of the vehicles';
                         return;
                     }
@@ -1310,7 +1314,7 @@
                         }
                         const vehicles = Array.isArray(payload.data) ? payload.data : [];
                         if (!vehicles.length) {
-                            observer?.disconnect();
+                            window.vehicleLoadMoreObserver?.disconnect();
                             message.textContent = 'No more vehicles';
                             return;
                         }
@@ -1331,7 +1335,7 @@
                             ? 'You’ve reached the end of the vehicles'
                             : 'Scroll to load more vehicles';
                         if (nextPage >= Number(loadMoreStatus.dataset.lastPage)) {
-                            observer?.disconnect();
+                            window.vehicleLoadMoreObserver?.disconnect();
                             message.textContent = 'You’ve reached the end of the vehicles';
                         }
                     } catch (error) {
@@ -1341,12 +1345,11 @@
                         loading = false;
                     }
                 };
-                let observer = null;
                 if ('IntersectionObserver' in window) {
-                    observer = new IntersectionObserver(entries => {
+                    window.vehicleLoadMoreObserver = new IntersectionObserver(entries => {
                         if (entries.some(entry => entry.isIntersecting)) loadNextPage();
-                    }, { rootMargin: '1000px 0px' });
-                    observer.observe(loadMoreStatus);
+                    }, { rootMargin: '450px 0px' });
+                    window.vehicleLoadMoreObserver.observe(loadMoreStatus);
                 } else {
                     loadMoreStatus.querySelector('.vehicle-load-more-message').innerHTML =
                         '<button type="button" class="btn btn-outline-primary">Load more vehicles</button>';
@@ -1387,8 +1390,8 @@
 
                 // Show no results message if needed
                 if (visibleCount === 0 && searchTerm !== '') {
-                    if ($('.no-search-results').length === 0) {
-                        $('.vehicle-results-grid').after(`
+                    if ($root.find('.no-search-results').length === 0) {
+                        $root.find('.vehicle-results-grid').after(`
                                     <div class="no-search-results text-center py-5">
                                         <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
                                         <h5 class="mt-3 text-muted">No vehicles found</h5>
@@ -1397,7 +1400,7 @@
                                 `);
                     }
                 } else {
-                    $('.no-search-results').remove();
+                    $root.find('.no-search-results').remove();
                 }
             });
 
@@ -1413,7 +1416,12 @@
                     $(this).val('').trigger('input');
                 }
             });
+        };
+
+        document.addEventListener('booking:search-results-replaced', function(event) {
+            window.initializeVehicleSearchResults(event.detail?.root || document);
         });
+        window.initializeVehicleSearchResults(document);
 
         // New Search functionality
         $('#newSearchBtn').on('click', function() {
