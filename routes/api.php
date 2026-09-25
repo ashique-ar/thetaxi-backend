@@ -1890,7 +1890,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('bookings/{id}/timeline', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'timeline']);
         Route::post('bookings/{id}/contractual-distance-override', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'overrideContractualDistance'])
             ->middleware('permission:approve_bookings');
-        Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show']);
+        Route::get('bookings/{id}', [\App\Http\Controllers\Api\Corporate\CorporateBookingController::class, 'show'])->whereUuid('id');
 
         // Approval Management
         Route::get('approvals', [\App\Http\Controllers\Api\Corporate\CorporateApprovalController::class, 'index']);

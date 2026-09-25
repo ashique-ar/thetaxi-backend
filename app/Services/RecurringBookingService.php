@@ -216,7 +216,7 @@ class RecurringBookingService
 
             // Clone booking items with shifted dates
             foreach ($template->bookingItems as $item) {
-                $newItem = $item->replicate(['id', 'booking_id', 'from_date', 'to_date', 'created_at', 'updated_at']);
+                $newItem = $item->replicate(['id', 'booking_id', 'item_code', 'from_date', 'to_date', 'created_at', 'updated_at']);
                 $newItem->id         = (string) Str::uuid();
                 $newItem->booking_id = $occurrence->id;
                 $newItem->from_date  = $item->from_date ? Carbon::parse($item->from_date)->addDays($shift) : null;
