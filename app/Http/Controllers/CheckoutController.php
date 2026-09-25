@@ -491,7 +491,10 @@ class CheckoutController extends Controller
 
             // Prepare flight details
             $flightDetails = null;
-            if ($validated['flight_airline'] ?? null || $validated['flight_number'] ?? null) {
+            // Parenthesize each optional field: without grouping, PHP can
+            // evaluate the second array access outside its null-coalescing
+            // fallback when the airline field is absent.
+            if (($validated['flight_airline'] ?? null) || ($validated['flight_number'] ?? null)) {
                 $flightDetails = [
                     'airline' => $validated['flight_airline'] ?? null,
                     'flight_number' => $validated['flight_number'] ?? null,
