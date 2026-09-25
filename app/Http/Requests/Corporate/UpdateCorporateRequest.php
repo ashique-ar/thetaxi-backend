@@ -34,6 +34,14 @@ class UpdateCorporateRequest extends FormRequest
             'exempt_coordinator_from_approval' => ['boolean'],
             'coordinator_can_view_payments' => ['boolean'],
             'default_payment_arrangement' => ['sometimes', 'required', 'in:monthly_invoice,cash_to_driver,online,advance_then_balance,deposit_then_balance,pay_at_end,account_credit,bank_transfer,card,complimentary'],
+            'booking_number_prefix' => ['sometimes', 'required', 'string', 'alpha_num', 'max:12'],
+            'booking_number_start' => ['sometimes', 'required', 'integer', 'min:1', 'max:999999999999'],
+            'booking_number_increment' => ['sometimes', 'required', 'integer', 'min:1', 'max:1000000'],
+            'booking_number_digits' => ['sometimes', 'required', 'integer', 'min:1', 'max:12'],
+            'booking_item_number_prefix' => ['sometimes', 'required', 'string', 'alpha_num', 'max:12'],
+            'booking_item_number_start' => ['sometimes', 'required', 'integer', 'min:1', 'max:999999999999'],
+            'booking_item_number_increment' => ['sometimes', 'required', 'integer', 'min:1', 'max:1000000'],
+            'booking_item_number_digits' => ['sometimes', 'required', 'integer', 'min:1', 'max:12'],
         ];
     }
 }

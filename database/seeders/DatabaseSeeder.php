@@ -19,6 +19,7 @@ class DatabaseSeeder extends Seeder
             AllPermissionsSeeder::class,
             CorporateRoleStarterSeeder::class,
             CorporateStaffTransportStarterSeeder::class,
+            CorporateReferenceSequenceSeeder::class,
 
             // CustomerCodeSettingsSeeder::class,
             // StaffCodeSettingsSeeder::class,

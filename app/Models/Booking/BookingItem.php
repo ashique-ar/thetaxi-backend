@@ -21,6 +21,7 @@ class BookingItem extends BaseModel
 
     protected $fillable = [
         'booking_id',
+        'item_code',
         'vehicle_group_id',
         'service_type_id',
         'vehicle_id',
@@ -99,6 +100,26 @@ class BookingItem extends BaseModel
         'completed_at' => 'datetime',
         'lifecycle_data' => 'array',
     ];
+
+    protected static function boot()
+    {
+        parent::boot();
+
+        static::creating(function (BookingItem $item): void {
+            if (!empty($item->item_code) || empty($item->booking_id)) {
+                return;
+            }
+
+            $corporateId = Booking::query()->whereKey($item->booking_id)
+                ->where('is_corporate_booking', true)
+                ->value('corporate_account_id');
+
+            if ($corporateId) {
+                $item->item_code = app(\App\Services\CorporateReferenceNumberService::class)
+                    ->next((string) $corporateId, 'item');
+            }
+        });
+    }
 
     /**
      * Custom accessor for from_date to return as Carbon with user timezone conversion

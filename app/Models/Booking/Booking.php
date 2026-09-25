@@ -1418,8 +1418,11 @@ class Booking extends BaseModel
      * Format: {PREFIX}{6-digit-sequence} e.g. BK000001 or QT000123
      * Accepts optional $prefix (default 'BK').
      */
-    public static function generateBookingNumber(): string
+    public static function generateBookingNumber(?string $corporateId = null): string
     {
+        if ($corporateId) {
+            return app(\App\Services\CorporateReferenceNumberService::class)->next($corporateId, 'booking');
+        }
         // Default booking number generator (BKxxxxxx)
         $prefix = 'BK';
         $attempt = 0;
@@ -1515,7 +1518,9 @@ class Booking extends BaseModel
 
         static::creating(function ($booking) {
             if (empty($booking->booking_number)) {
-                $booking->booking_number = static::generateBookingNumber();
+                $booking->booking_number = static::generateBookingNumber(
+                    $booking->is_corporate_booking ? $booking->corporate_account_id : null
+                );
             }
         });
 

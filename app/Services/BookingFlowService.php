@@ -9330,7 +9330,7 @@ class BookingFlowService
         );
         $itemSequence = $itemSequenceIndex !== false ? ((int) $itemSequenceIndex + 1) : 1;
         $bookingNumber = $booking?->booking_number ?: (string) $item->booking_id;
-        $itemCode = sprintf('%s-I%02d', $bookingNumber, $itemSequence);
+        $itemCode = $item->item_code ?: sprintf('%s-I%02d', $bookingNumber, $itemSequence);
 
         $tripCount = max(
             1,

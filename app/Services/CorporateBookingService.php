@@ -818,9 +818,7 @@ class CorporateBookingService
         $itemCount = max(1, $bookingItems->count());
         $itemIndex = $bookingItems->search(fn($candidate) => (string) $candidate->id === (string) $item->id);
         $sequence = $itemIndex === false ? 1 : $itemIndex + 1;
-        $itemCode = $itemCount > 1
-            ? sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence)
-            : null;
+        $itemCode = $item->item_code ?: sprintf('%s-I%02d', $booking?->booking_number ?? $booking?->id ?? 'Booking', $sequence);
 
         $payload = [
             'id' => $item->id,
