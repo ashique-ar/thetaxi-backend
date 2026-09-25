@@ -142,7 +142,11 @@ class CorporateBookingController extends Controller
             ->where('corporate_id', $request->corporate_id)
             ->where('is_active', true)
             ->where('id', '!=', $actor->id)
-            ->with(['user:id,first_name,last_name'])
+            ->with([
+                'user:id,first_name,last_name,email',
+                'department:id,name',
+                'division:id,name',
+            ])
             ->orderBy('employee_code')
             ->get()
             ->map(fn (CorporateEmployee $employee) => [
@@ -150,6 +154,9 @@ class CorporateBookingController extends Controller
                 'employee_code' => $employee->employee_code,
                 'first_name' => $employee->user?->first_name,
                 'last_name' => $employee->user?->last_name,
+                'email' => $employee->user?->email,
+                'department_name' => $employee->department?->name,
+                'division_name' => $employee->division?->name,
             ])
             ->values();
 
