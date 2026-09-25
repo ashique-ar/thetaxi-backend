@@ -106,17 +106,20 @@ class BookingItem extends BaseModel
         parent::boot();
 
         static::creating(function (BookingItem $item): void {
-            if (!empty($item->item_code) || empty($item->booking_id)) {
+            if (empty($item->booking_id)) {
                 return;
             }
 
-            $corporateId = Booking::query()->whereKey($item->booking_id)
-                ->where('is_corporate_booking', true)
-                ->value('corporate_account_id');
+            $booking = Booking::query()->whereKey($item->booking_id)
+                ->first(['id', 'is_corporate_booking', 'corporate_account_id']);
+            $corporateId = $booking?->is_corporate_booking ? $booking->corporate_account_id : null;
+            $references = app(\App\Services\CorporateReferenceNumberService::class);
 
-            if ($corporateId) {
-                $item->item_code = app(\App\Services\CorporateReferenceNumberService::class)
-                    ->next((string) $corporateId, 'item');
+            if (empty($item->item_code) && $corporateId) {
+                $item->item_code = $references->next((string) $corporateId, 'item');
+            }
+            if (!empty($item->item_code)) {
+                $references->reserveProvided((string) $item->item_code, 'item', $corporateId ? (string) $corporateId : null, 'item_code');
             }
         });
     }

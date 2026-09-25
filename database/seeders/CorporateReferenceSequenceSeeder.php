@@ -14,6 +14,8 @@ class CorporateReferenceSequenceSeeder extends Seeder
 {
     public function run(): void
     {
+        $this->registerExistingReferences();
+
         Corporate::query()
             ->whereNull('reference_numbers_seeded_at')
             ->orderBy('id')
@@ -34,6 +36,45 @@ class CorporateReferenceSequenceSeeder extends Seeder
                     });
                 }
             });
+    }
+
+    /** Preserve every legacy code in the global reservation table without changing it. */
+    private function registerExistingReferences(): void
+    {
+        DB::table('bookings')
+            ->whereNotNull('booking_number')
+            ->select(['id', 'booking_number', 'corporate_account_id'])
+            ->orderBy('id')
+            ->chunkById(500, function ($bookings): void {
+                $now = now();
+                $rows = $bookings->map(fn ($booking) => [
+                    'reference_code' => (string) $booking->booking_number,
+                    'reference_type' => 'booking',
+                    'corporate_id' => $booking->corporate_account_id,
+                    'created_at' => $now,
+                ])->all();
+                DB::table('reference_number_registry')->insertOrIgnore($rows);
+            });
+
+        DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.item_code')
+            ->select([
+                'booking_items.id as id',
+                'booking_items.item_code',
+                'bookings.corporate_account_id',
+            ])
+            ->orderBy('booking_items.id')
+            ->chunkById(500, function ($items): void {
+                $now = now();
+                $rows = $items->map(fn ($item) => [
+                    'reference_code' => (string) $item->item_code,
+                    'reference_type' => 'item',
+                    'corporate_id' => $item->corporate_account_id,
+                    'created_at' => $now,
+                ])->all();
+                DB::table('reference_number_registry')->insertOrIgnore($rows);
+            }, 'booking_items.id', 'id');
     }
 
     private function initializeSequence(Corporate $corporate, string $type): void

@@ -17,7 +17,10 @@ class CorporateWorkspaceController extends Controller
         $can = fn (string $permission) => CorporatePortalPermission::allows($request, $permission);
         $all = $can('view_all_bookings');
         $base = Booking::query()->where('corporate_account_id', $request->corporate_id)
-            ->when(! $all, fn ($query) => $query->where('employee_id', $employee->user_id));
+            ->when(! $all, fn ($query) => $query->where(function ($scope) use ($employee) {
+                $scope->where('employee_id', $employee->user_id)
+                    ->orWhere('created_by_user_id', $employee->user_id);
+            }));
 
         $tasks = [];
         if ($can('approve_bookings')) {

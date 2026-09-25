@@ -754,7 +754,9 @@ class CorporateBookingService
     private function corporateBookingItemQuery(string $corporateId)
     {
         return BookingItem::query()
-            ->whereHas('booking', fn($bookingQuery) => $bookingQuery->where('corporate_account_id', $corporateId))
+            ->whereHas('booking', fn($bookingQuery) => $bookingQuery
+                ->where('corporate_account_id', $corporateId)
+                ->where('is_corporate_booking', true))
             ->with($this->corporateBookingItemRelations());
     }
 
