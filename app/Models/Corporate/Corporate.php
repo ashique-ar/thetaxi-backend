@@ -9,6 +9,10 @@ use App\Models\Vehicle\VehicleGroup;
 
 class Corporate extends BaseModel
 {
+    protected $attributes = [
+        'booking_notification_emails' => '["info@thetaxi.lk"]',
+    ];
+
     protected $table = 'corporates';
 
     protected $logName = 'Corporate';

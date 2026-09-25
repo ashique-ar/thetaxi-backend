@@ -10,6 +10,7 @@ return new class extends Migration {
         Schema::table('corporates', function (Blueprint $table) {
             $table->json('booking_notification_emails')->nullable()->after('contact_email');
         });
+
     }
 
     public function down(): void
