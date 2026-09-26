@@ -1057,6 +1057,8 @@ class BookingFlowService
                             FILTER_VALIDATE_BOOL
                         ),
                         'corporate_account_id' => $corporateAccountId,
+                        'owner_type' => !empty($corporateAccountId) ? 'corporate' : null,
+                        'owner_id' => $corporateAccountId,
                         'pricing_context' => !empty($corporateAccountId)
                             ? 'corporate'
                             : (($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : 'portal'),
