@@ -34,6 +34,7 @@ beforeEach(function () {
         'booking_qcs',
         'booking_dispatches',
         'booking_items',
+        'reference_number_registry',
         'vehicle_pricing_calculation_definitions',
         'business_settings',
         'vehicles',
@@ -65,6 +66,14 @@ beforeEach(function () {
         $table->json('distance_metrics')->nullable();
         $table->timestamps();
         $table->softDeletes();
+    });
+
+    Schema::create('reference_number_registry', function (Blueprint $table) {
+        $table->id();
+        $table->string('reference_code', 64)->unique();
+        $table->string('reference_type', 24);
+        $table->uuid('corporate_id')->nullable()->index();
+        $table->timestamp('created_at')->nullable();
     });
 
     Schema::create('vehicles', function (Blueprint $table) {

@@ -238,6 +238,10 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Customer requests are always owned by the authenticated customer's
     // active context; this route does not accept a client-selected owner.
+    Route::get('customer-portal/bookings', [CustomerPortalBookingController::class, 'index'])
+        ->middleware('throttle:60,1');
+    Route::get('customer-portal/bookings/{id}', [CustomerPortalBookingController::class, 'show'])
+        ->whereUuid('id')->middleware('throttle:60,1');
     Route::post('customer-portal/bookings', [CustomerPortalBookingController::class, 'store'])
         ->middleware('throttle:10,1');
 

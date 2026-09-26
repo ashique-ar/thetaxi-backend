@@ -473,7 +473,7 @@ trait BookingAvailabilityTrait
             'service_type' => 'required|string',
             'override_reasons' => 'nullable|array',
             'overlap_details' => 'nullable|array',
-            'overlap_type' => 'nullable|string|in:full,partial,concurrent',
+            'overlap_type' => 'nullable|string|in:full,partial,concurrent,override',
         ]);
 
         try {
