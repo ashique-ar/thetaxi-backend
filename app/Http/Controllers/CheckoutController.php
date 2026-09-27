@@ -9,6 +9,7 @@ use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
+use App\Models\Customer;
 use App\Models\Service\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
@@ -25,11 +26,14 @@ use App\Services\PaymentEventService;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CheckoutController extends Controller
 {
@@ -310,19 +314,77 @@ class CheckoutController extends Controller
                 ->with('error', 'No payment methods are currently available. Please try again later.');
         }
 
+        foreach ([
+            'first_name', 'last_name', 'phone', 'phone_country_code',
+            'phone_international', 'email', 'address', 'city', 'country',
+            'identification', 'flight_airline', 'flight_number',
+            'special_notes', 'additional_notes',
+            'flight_arrival_date', 'flight_arrival_time', 'contact_time', 'budget_range',
+        ] as $field) {
+            $value = $request->input($field);
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                $request->merge([$field => $trimmed === '' ? null : $trimmed]);
+            }
+        }
+        foreach ([
+            'identification', 'flight_airline', 'flight_number',
+            'special_notes', 'additional_notes', 'flight_arrival_date',
+            'flight_arrival_time', 'contact_time', 'budget_range',
+        ] as $field) {
+            $value = $request->input($field);
+            if (!is_string($value) || $value === '') {
+                continue;
+            }
+
+            $meaningfulCharacters = preg_match_all('/[\p{L}\p{N}]/u', $value);
+            if (Str::length($value) <= 1 || $meaningfulCharacters < 2) {
+                $request->merge([$field => null]);
+            }
+        }
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => strtolower($request->input('email'))]);
+        }
+        $request->merge([
+            'identification' => filled($request->input('identification'))
+                ? strtoupper(trim((string) $request->input('identification')))
+                : null,
+        ]);
+        $existingCustomerId = Customer::query()
+            ->whereHas('user', fn ($query) => $query->whereRaw(
+                'LOWER(email) = ?',
+                [strtolower(trim((string) $request->input('email')))]
+            ))
+            ->value('id');
+        if (!$existingCustomerId && Auth::check()) {
+            $existingCustomerId = Auth::user()?->customer?->id;
+        }
+        $uniqueIdentification = Rule::unique('customers', 'nic');
+        if ($existingCustomerId) {
+            $uniqueIdentification->ignore($existingCustomerId);
+        }
+
         // Define validation rules
         $rules = [
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'phone' => 'required|string|min:5|max:20',
+            'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
+            'last_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
+            'phone' => ['required', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
             'phone_country_code' => 'required|string|max:5',
             'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
             'email' => 'required|email|max:255',
-            'identification' => 'nullable|string|max:50',
-            'address' => 'required|string|max:500',
-            'city' => 'required|string|max:100',
-            'country' => 'required|string|max:100',
+            'identification' => [
+                'nullable', 'string', 'max:50',
+                function ($attribute, $value, $fail): void {
+                    if (preg_match_all('/[\p{L}\p{N}]/u', (string) $value) < 2) {
+                        $fail('Enter at least two letters or numbers. ID and passport formats from any country are accepted.');
+                    }
+                },
+                $uniqueIdentification,
+            ],
+            'address' => ['required', 'string', 'max:500', 'regex:/^(?=(?:.*[\p{L}\p{N}]){2})[\p{L}\p{M}\p{N}\s.,#\x27’()\/-]+$/u'],
+            'city' => ['required', 'string', 'max:100', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
+            'country' => ['required', 'string', 'max:100', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
             'special_notes' => 'nullable|string|max:1000',
             'flight_airline' => 'nullable|string|max:100',
             'flight_number' => 'nullable|string|max:20',
@@ -341,12 +403,19 @@ class CheckoutController extends Controller
             'last_name.required' => 'Please enter your last name.',
             'phone.required' => 'Please enter your phone number.',
             'phone.min' => 'Phone number is too short.',
+            'phone.regex' => 'Enter a valid phone number with at least five digits.',
             'phone_country_code.required' => 'Please select a valid country for your phone number.',
             'phone_international.required' => 'Please enter a valid international phone number.',
             'phone_international.regex' => 'Please enter a valid international phone number format with country code.',
             'email.required' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
+            'first_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
+            'last_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
             'identification.required' => 'Please enter your identification number.',
+            'identification.unique' => 'This identification number is already linked to another customer. Please check the number or use the email address on that customer account.',
+            'address.regex' => 'Enter an address with at least two letters or numbers.',
+            'city.regex' => 'Enter a city name containing at least one letter.',
+            'country.regex' => 'Enter a country name containing at least one letter.',
             'address.required' => 'Please enter your address.',
             'city.required' => 'Please enter your city.',
             'country.required' => 'Please enter your country.',
@@ -781,8 +850,26 @@ class CheckoutController extends Controller
                 default:
                     throw new \Exception('Invalid payment type');
             }
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            return redirect()->back()
+                ->withInput()
+                ->withErrors($e->errors());
         } catch (\Exception $e) {
             DB::rollback();
+            if ($e instanceof QueryException) {
+                $databaseMessage = strtolower($e->getMessage());
+                if (str_contains($databaseMessage, 'customers_nic') || str_contains($databaseMessage, 'customers.nic')) {
+                    return redirect()->back()->withInput()->withErrors([
+                        'identification' => 'This identification number is already linked to another customer. Please check the number or use the email address on that customer account.',
+                    ]);
+                }
+                if (str_contains($databaseMessage, 'users_email') || str_contains($databaseMessage, 'users.email')) {
+                    return redirect()->back()->withInput()->withErrors([
+                        'email' => 'This email address is already registered. Please use the email address on your existing customer account.',
+                    ]);
+                }
+            }
             Log::error('Checkout processing error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()

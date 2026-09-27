@@ -10,7 +10,9 @@ final class SriLankanNic
     {
         $nic = strtoupper(trim((string) $nic));
         if (preg_match('/^\d{9}[VX]$/', $nic)) {
-            $year = 1900 + (int) substr($nic, 0, 2);
+            $shortYear = (int) substr($nic, 0, 2);
+            $currentShortYear = (int) CarbonImmutable::now()->format('y');
+            $year = ($shortYear <= $currentShortYear ? 2000 : 1900) + $shortYear;
             $day = (int) substr($nic, 2, 3);
         } elseif (preg_match('/^\d{12}$/', $nic)) {
             $year = (int) substr($nic, 0, 4);
