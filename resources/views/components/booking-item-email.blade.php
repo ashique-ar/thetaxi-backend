@@ -42,7 +42,7 @@
     $vehicleGroupName = $item->vehicleGroup?->name ?? 'N/A';
     $serviceTypeName = $item->serviceType?->name ?? 'N/A';
     $servicePricingMode = $item->serviceType?->pricing_mode ?? 'transfer';
-    $durationDays = $item->duration_days ?? 0;
+    $durationDays = (int) ($item->duration_days ?? 0);
     $pickupAddress = $pickupLoc['address'] ?? 'N/A';
     $dropoffAddress = $dropoffLoc['address'] ?? 'N/A';
 
@@ -244,6 +244,9 @@
     $allowedTotalKm = $distanceDetails['allowed_total_km'] ?? null;
     $freeKmPerDay = $distanceDetails['free_km_per_day'] ?? null;
     $freeKmPerPackage = $distanceDetails['free_km_per_package'] ?? null;
+    $kmAllowanceDays = max(1, (int) ($distanceDetails['effective_days'] ?? ($durationDays ?: 1)));
+    $effectiveAllowedTotalKm = $allowedTotalKm
+        ?: ($freeKmPerDay ? (float) $freeKmPerDay * $kmAllowanceDays : null);
     $extraKmPrice = $distanceDetails['extra_km_price'] ?? null;
     $minimumKm = $distanceDetails['minimum_km'] ?? null;
     $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
@@ -261,8 +264,8 @@
     $isDayPackage = $servicePricingMode === 'day';
 
     $includedTotalKmForExtra = null;
-    if ($freeKmPerDay && $durationDays > 1) {
-        $includedTotalKmForExtra = (float) ($allowedTotalKm ?: ($freeKmPerDay * max(1, (int) $durationDays)));
+    if ($freeKmPerDay) {
+        $includedTotalKmForExtra = (float) ($effectiveAllowedTotalKm ?: $freeKmPerDay);
     } elseif ($freeKmPerPackage) {
         $includedTotalKmForExtra = (float) $freeKmPerPackage;
     } elseif ($allowedTotalKm) {
@@ -402,6 +405,16 @@
                 </div>
             </td>
         </tr>
+        @if (!$isReturnTrip && $item->to_date && $item->from_date && $item->to_date->toDateString() !== $item->from_date->toDateString())
+            <tr>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+                    End Date &amp; Time
+                </td>
+                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+                    {{ $formatDateTime($item->to_date, $toTime) }}
+                </td>
+            </tr>
+        @endif
         @if (!$isDayPackage)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
@@ -518,15 +531,15 @@
         @endif
         --}}
 
-        @if ($freeKmPerDay && $durationDays > 1)
+        @if ($freeKmPerDay)
             <tr>
                 <td>Free KM per Day</td>
                 <td><strong>{{ number_format($freeKmPerDay, 0) }} km</strong></td>
             </tr>
-            @if ($allowedTotalKm)
+            @if ($effectiveAllowedTotalKm)
                 <tr>
                     <td>Total Allowed KM</td>
-                    <td><strong>{{ number_format($allowedTotalKm, 0) }} km</strong> <small>({{ $durationDays }} days)</small></td>
+                    <td><strong>{{ number_format($effectiveAllowedTotalKm, 0) }} km</strong> <small>({{ $kmAllowanceDays }} days)</small></td>
                 </tr>
             @endif
         @elseif($freeKmPerPackage)
