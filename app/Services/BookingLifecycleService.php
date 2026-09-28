@@ -3654,6 +3654,17 @@ class BookingLifecycleService
             'stage_progress' => $this->getStageProgress($booking, $workflowSettings, $currentStatus),
             'timeline' => $this->getLifecycleTimeline($booking, $itemDispatch, $itemQc),
             'lifecycle_history' => $lifecycleHistory,
+            'return_details' => $itemDispatch ? [
+                'returned_at' => $itemDispatch->actual_return_at,
+                'return_condition_notes' => data_get($itemDispatch->vehicle_condition_in, 'notes'),
+                'evidence' => data_get($itemDispatch->vehicle_condition_in, 'evidence', []),
+                'return_fuel_level' => $itemDispatch->fuel_level_in,
+                'return_mileage' => $itemDispatch->mileage_in,
+                'return_notes' => $itemDispatch->return_notes,
+                'damages' => $itemDispatch->damages_reported,
+                'additional_charges' => $itemDispatch->additional_charges,
+                'late_return_fee' => $itemDispatch->late_return_fee,
+            ] : null,
             'workflow_settings' => $workflowSettings,
             'approval_context' => [
                 'requires_approval' => $requiresApproval,
@@ -4274,6 +4285,7 @@ class BookingLifecycleService
             'return_details' => [
                 'returned_at' => $dispatch->actual_return_at,
                 'return_condition_notes' => data_get($dispatch->vehicle_condition_in, 'notes'),
+                'evidence' => data_get($dispatch->vehicle_condition_in, 'evidence', []),
                 'return_fuel_level' => $dispatch->fuel_level_in,
                 'return_mileage' => $dispatch->mileage_in,
                 'return_notes' => $dispatch->return_notes,

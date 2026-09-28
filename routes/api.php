@@ -887,10 +887,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::delete('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'destroy']);
         Route::get('/vehicles/{id}/availability', [VehicleController::class, 'checkAvailability']);
         Route::get('/vehicles/{id}/maintenance/history', [VehicleController::class, 'getMaintenanceHistory']);
+        Route::get('/vehicles/{vehicle}/maintenance/schedules', [VehicleMaintenanceScheduleController::class, 'forVehicle'])
+            ->middleware('permission:vehicle-maintenance-schedules.view');
         Route::get('/vehicles/maintenance/upcoming', [VehicleController::class, 'getUpcomingMaintenance']);
         Route::post('/vehicles/maintenance/schedules/{id}/complete', [VehicleController::class, 'completeMaintenanceSchedule']);
         Route::post('/vehicles/{id}/block', [VehicleController::class, 'blockVehicle']);
-        Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability']);
+        Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability'])
+            ->middleware('permission:vehicles.edit');
         Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes'])
             ->middleware('pricing.context');
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);

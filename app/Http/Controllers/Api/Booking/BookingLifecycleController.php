@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Booking;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
+use App\Models\UserMedia;
 use App\Services\BookingLifecycleService;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -11,6 +12,7 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\Rule;
 
 class BookingLifecycleController extends Controller
 {
@@ -137,9 +139,12 @@ class BookingLifecycleController extends Controller
      */
     public function processReturn(Request $request): JsonResponse
     {
-        $request->validate([
+        $validated = $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
+            'return_evidence' => 'sometimes|array|max:10',
+            'return_evidence.*.media_id' => ['required_with:return_evidence', 'uuid', 'distinct', Rule::exists('user_media', 'id')->where('user_id', Auth::id())],
+            'return_evidence.*.caption' => 'nullable|string|max:255',
             'return_condition_notes' => 'nullable|string',
             'fuel_level' => 'nullable|numeric|min:0|max:100',
             'mileage' => 'nullable|integer|min:0',
@@ -161,6 +166,34 @@ class BookingLifecycleController extends Controller
             'charges.*.amount' => 'required_with:charges|numeric|min:0',
             'charges.*.description' => 'required_with:charges|string',
         ]);
+
+        $returnEvidence = [];
+        if (!empty($validated['return_evidence'])) {
+            if (empty($validated['booking_item_id'])) {
+                return response()->json(['status' => 'error', 'message' => 'Select the trip before attaching return evidence.'], 422);
+            }
+            $media = UserMedia::query()
+                ->where('user_id', Auth::id())
+                ->whereIn('id', collect($validated['return_evidence'])->pluck('media_id'))
+                ->get()
+                ->keyBy('id');
+            $expectedPath = 'media/booking-evidence/' . $validated['booking_id'] . '/' . $validated['booking_item_id'];
+            foreach ($validated['return_evidence'] as $evidence) {
+                $file = $media->get($evidence['media_id']);
+                if (!$file || (string) $file->file_path !== $expectedPath || !in_array((string) $file->mime_type, ['image/jpeg', 'image/png', 'image/gif'], true)) {
+                    return response()->json(['status' => 'error', 'message' => 'Return evidence must be uploaded by you for this selected trip.'], 422);
+                }
+                $returnEvidence[] = [
+                    'media_id' => (string) $file->id,
+                    'name' => $file->original_name,
+                    'path' => $file->full_path,
+                    'url' => $file->url,
+                    'mime_type' => $file->mime_type,
+                    'size' => $file->size,
+                    'caption' => $evidence['caption'] ?? null,
+                ];
+            }
+        }
 
         try {
             DB::beginTransaction();
@@ -184,8 +217,11 @@ class BookingLifecycleController extends Controller
                     'charges'
                 ]), [
                     'notes' => $request->input('return_notes'),
-                    'condition' => $request->filled('return_condition_notes')
-                        ? ['notes' => $request->input('return_condition_notes')]
+                    'condition' => ($request->filled('return_condition_notes') || $returnEvidence)
+                        ? array_filter([
+                            'notes' => $request->input('return_condition_notes'),
+                            'evidence' => $returnEvidence ?: null,
+                        ], static fn ($value) => $value !== null)
                         : null,
                     'booking_item_id' => $request->input('booking_item_id'),
                     'returned_by' => Auth::id()
