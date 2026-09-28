@@ -212,6 +212,7 @@ class AssignmentController extends Controller
             $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
             $canUpdateBooking = Auth::user()?->can('bookings.update') === true;
             $canDeleteBooking = Auth::user()?->can('bookings.delete') === true;
+            $isRecurringBooking = (bool) $booking->is_recurring || !empty($booking->recurring_series_id);
 
             $result = [
                 'booking' => [
@@ -252,6 +253,14 @@ class AssignmentController extends Controller
                     'can_cancel' => $canUpdateBooking && $booking->canBeCancelled(),
                     'cancellation_block_reason' => $canUpdateBooking ? $booking->cancellationBlockReason() : null,
                     'can_delete_draft' => $canDeleteBooking && (string) $booking->status === 'draft',
+                    'is_recurring' => $isRecurringBooking,
+                    'has_recurring_series' => !empty($booking->recurring_series_id),
+                    'recurring_series_id' => $booking->recurring_series_id,
+                    'recurring_occurrence_date' => $booking->recurring_occurrence_date,
+                    'recurrence_pattern' => $booking->recurrence_pattern,
+                    'recurrence_end_date' => $booking->recurrence_end_date,
+                    'recurring_sequence' => $booking->recurring_sequence,
+                    'can_cancel_recurring' => $canDeleteBooking && $isRecurringBooking && $booking->canBeCancelled(),
                     'approval_status' => $booking->approval_status,
                     'payment_status' => $booking->payment_status,
                     'payment_method' => $booking->payment_method,

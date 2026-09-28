@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 /**
@@ -491,8 +492,13 @@ class BookingLifecycleService
                 $dispatch->isReturned()
             ));
             $isRepeatDispatch = $hasPreviousDispatch;
-            $isReopeningCompletedHire = (bool) ($dispatch && !$dispatch->isActive());
             $allowRepeatDispatchForTesting = (bool) ($dispatchData['allow_repeat_dispatch_for_testing'] ?? false);
+
+            if ($allowRepeatDispatchForTesting && (!$dispatch || !$dispatch->isActive())) {
+                throw ValidationException::withMessages([
+                    'allow_repeat_dispatch_for_testing' => 'Test-only redispatch is only allowed while this trip is actively on hire.',
+                ]);
+            }
 
             if (!$vehicleId) {
                 throw new \Exception('Vehicle must be assigned before dispatch');
@@ -508,11 +514,6 @@ class BookingLifecycleService
 
             if ($isRepeatDispatch && !$allowRepeatDispatchForTesting) {
                 throw new \Exception('Repeat dispatch is blocked unless allow_repeat_dispatch_for_testing is true');
-            }
-
-            if ($isReopeningCompletedHire) {
-                $this->resetBookingAfterCompletedHireForRedispatch($booking);
-                $this->resetBookingItemAfterCompletedHireForRedispatch($context['booking_item']);
             }
 
             if (!$dispatch) {
@@ -582,41 +583,6 @@ class BookingLifecycleService
 
             return $dispatch;
         });
-    }
-
-    private function resetBookingAfterCompletedHireForRedispatch(Booking $booking): void
-    {
-        if ($booking->qc) {
-            $booking->qc->repairItems()->delete();
-            $booking->qc()->delete();
-            $booking->unsetRelation('qc');
-        }
-
-        if ((string) $booking->status === 'completed' || $booking->completed_at) {
-            $booking->update([
-                'status' => 'confirmed',
-                'completed_at' => null,
-                'updated_user_id' => Auth::id(),
-            ]);
-        }
-    }
-
-    private function resetBookingItemAfterCompletedHireForRedispatch(?BookingItem $bookingItem): void
-    {
-        if (!$bookingItem) {
-            return;
-        }
-
-        $bookingItem->update([
-            'returned_at' => null,
-            'final_priced_at' => null,
-            'completed_at' => null,
-            'status' => 'confirmed',
-            'lifecycle_data' => array_merge(
-                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
-                ['redispatched_at' => Carbon::now('UTC')->toIso8601String()]
-            ),
-        ]);
     }
 
     private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void

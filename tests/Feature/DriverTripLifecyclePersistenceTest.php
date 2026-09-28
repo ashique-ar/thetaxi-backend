@@ -33,6 +33,7 @@ use Illuminate\Support\Facades\DB;
 
 beforeEach(function () {
     activity()->disableLogging();
+    Schema::dropIfExists('reference_number_registry');
     Schema::dropIfExists('route_points');
     Schema::dropIfExists('driver_assignment_stops');
     Schema::dropIfExists('driver_assignments');
@@ -44,6 +45,14 @@ beforeEach(function () {
     Schema::dropIfExists('booking_approvals');
     Schema::dropIfExists('corporate_service_distance_policies');
     Schema::dropIfExists('corporate_distance_pricing_policies');
+
+    Schema::create('reference_number_registry', function (Blueprint $table) {
+        $table->id();
+        $table->string('reference_code', 64)->unique();
+        $table->string('reference_type', 24);
+        $table->uuid('corporate_id')->nullable();
+        $table->timestamp('created_at')->nullable();
+    });
 
     Schema::create('bookings', function (Blueprint $table) {
         $table->uuid('id')->primary();
@@ -192,6 +201,8 @@ beforeEach(function () {
         $table->uuid('booking_id')->nullable();
         $table->uuid('booking_item_id')->nullable();
         $table->uuid('confirmed_by')->nullable();
+        $table->decimal('accept_latitude', 10, 8)->nullable();
+        $table->decimal('accept_longitude', 11, 8)->nullable();
         $table->string('assigned_by_name_snapshot')->nullable();
         $table->string('confirmed_by_name_snapshot')->nullable();
         $table->string('driver_name_snapshot')->nullable();
@@ -316,6 +327,7 @@ it('persists single and buffered tracking without changing contractual pricing s
         ],
     ];
     $booking = Booking::create([
+        'booking_number' => 'TRACKING-BOUNDARY-BOOKING',
         'pricing_snapshot' => $contractualSnapshot,
         'total_estimated' => 5000,
     ]);
@@ -355,12 +367,18 @@ it('persists single and buffered tracking without changing contractual pricing s
         'longitude' => 79.83,
         'recorded_at' => now()->toIso8601String(),
     ]]);
+    $replay = app(\App\Services\BookingObservabilityService::class)
+        ->routeReplay($booking->fresh(), (string) $item->id);
 
     expect($single->session_id)->toBe($session->id)
         ->and($single->assignment_id)->toBe($assignment->id)
         ->and($bulk['saved_count'])->toBe(2)
         ->and(RoutePoint::where('session_id', $session->id)->count())->toBe(3)
         ->and(RoutePoint::where('session_id', $session->id)->where('assignment_id', $assignment->id)->count())->toBe(3)
+        ->and($replay['booking_item_id'])->toBe((string) $item->id)
+        ->and($replay['total_points'])->toBe(3)
+        ->and($replay['returned_points'])->toBe(3)
+        ->and(array_merge(...array_map(fn (array $segment) => array_column($segment['points'], 'latitude'), $replay['segments'])))->toEqual([6.91, 6.92, 6.93])
         ->and($booking->fresh()->pricing_snapshot)->toBe($contractualSnapshot)
         ->and($item->fresh()->pricing_breakdown)->toBe($contractualSnapshot)
         ->and((float) $booking->fresh()->total_estimated)->toBe(5000.0)

@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class BookingLifecycleController extends Controller
 {
@@ -118,6 +119,13 @@ class BookingLifecycleController extends Controller
                 'data' => $dispatch,
                 'message' => 'Vehicle dispatched successfully'
             ]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Dispatch request is not valid for the current trip state.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error dispatching vehicle', [
