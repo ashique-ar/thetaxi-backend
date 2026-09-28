@@ -117,6 +117,7 @@ Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('c
 // Email link routes for payment and quotation conversion
 Route::get('/checkout/payment-resume/{token}', [CheckoutController::class, 'resumePayment'])->name('checkout.payment-resume');
 Route::post('/checkout/payment-resume', [CheckoutController::class, 'processPaymentResume'])->name('checkout.process-payment-resume');
+Route::post('/checkout/payment-resume/{token}/vehicles', [CheckoutController::class, 'updatePaymentResumeVehicles'])->name('checkout.payment-resume.vehicles');
 Route::get('/checkout/quotation-convert/{token}', [CheckoutController::class, 'convertQuotationToBooking'])->name('checkout.quotation-convert');
 Route::get('/checkout/quotation-payment/{token}', [CheckoutController::class, 'quotationToPayment'])->name('checkout.quotation-payment');
 

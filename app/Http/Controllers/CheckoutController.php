@@ -1331,6 +1331,8 @@ class CheckoutController extends Controller
 
                     DB::commit();
 
+                    \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $booking->id);
+
                     // Clear session
                     session()->forget(['pending_booking_id', 'pending_payment_amount']);
 
@@ -1419,6 +1421,8 @@ class CheckoutController extends Controller
 
                 DB::commit();
 
+                \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $booking->id);
+
                 // Clear session
                 session()->forget('pending_booking_id');
 
@@ -1491,6 +1495,11 @@ class CheckoutController extends Controller
 
                         $emailBooking = $booking;
                     });
+
+                    $paidBookingId = Booking::where('booking_number', $bookingNumber)->value('id');
+                    if ($paidBookingId) {
+                        \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $paidBookingId);
+                    }
 
                     if ($emailBooking) {
                         try {
@@ -1893,6 +1902,68 @@ class CheckoutController extends Controller
         }
     }
 
+    /** Save a customer's vehicle selection as a revision while retaining the original quote snapshot. */
+    public function updatePaymentResumeVehicles(Request $request, string $token)
+    {
+        $link = \App\Models\Website\PendingPaymentLink::where('token', $token)
+            ->where('expires_at', '>', now())->whereNull('invalidated_at')->first();
+        if (!$link) {
+            return redirect()->route('home')->with('error', 'This payment link has expired or is invalid.');
+        }
+        $linkedBooking = $link->booking;
+        if (!$linkedBooking || $linkedBooking->payment_status === 'paid'
+            || $linkedBooking->status === config('booking.status.payment_processing')) {
+            return back()->with('error', 'This booking can no longer be changed through this payment link.');
+        }
+
+        $context = $link->booking_context ?? [];
+        $items = $context['booking_items'] ?? [];
+        $validIds = collect($items)->pluck('id')->filter()->map(fn ($id) => (string) $id)->all();
+        $selected = collect($request->input('item_ids', []))->map(fn ($id) => (string) $id)->unique()->values()->all();
+        if (!$selected || array_diff($selected, $validIds)) {
+            return back()->with('error', 'Keep at least one quoted vehicle in your booking.');
+        }
+
+        // BookingFlowService stores each vehicle's final calculated price in total_price.
+        // Summing those saved prices avoids accepting or inventing client-side prices.
+        $allLineTotal = collect($items)->sum(fn ($item) => (float) ($item['total_price'] ?? 0));
+        $selectedLineTotal = collect($items)->filter(fn ($item) => in_array((string) ($item['id'] ?? ''), $selected, true))
+            ->sum(fn ($item) => (float) ($item['total_price'] ?? 0));
+        if ($allLineTotal <= 0 || $selectedLineTotal <= 0) {
+            return back()->with('error', 'We could not recalculate this quotation. Please contact our team.');
+        }
+
+        $history = $link->revision_history ?? [];
+        $history[] = [
+            'updated_at' => now()->toIso8601String(),
+            'item_ids' => $selected,
+            'total' => round($selectedLineTotal, 2),
+            'amount_due' => max(0, round($selectedLineTotal - (float) ($context['pricing']['amount_paid'] ?? 0), 2)),
+            'booking_totals_before_edit' => [
+                'base_amount' => (float) ($linkedBooking->base_amount ?? 0),
+                'addons_cost' => (float) ($linkedBooking->addons_cost ?? 0),
+                'discount_amount' => (float) ($linkedBooking->discount_amount ?? 0),
+                'tax_amount' => (float) ($linkedBooking->tax_amount ?? 0),
+                'total_estimated' => (float) ($linkedBooking->total_estimated ?? 0),
+                'amount_to_pay' => (float) ($linkedBooking->amount_to_pay ?? 0),
+                'pricing_snapshot' => $linkedBooking->pricing_snapshot ?? [],
+            ],
+        ];
+        $isOriginalSelection = count($selected) === count($validIds);
+        $link->revision_item_ids = $selected;
+        $link->revision_total = $isOriginalSelection
+            ? (float) ($context['pricing']['total_estimated'] ?? $selectedLineTotal)
+            : round($selectedLineTotal, 2);
+        $link->revision_amount_due = $isOriginalSelection
+            ? (float) $link->amount_due
+            : max(0, round((float) $link->revision_total - (float) ($context['pricing']['amount_paid'] ?? 0), 2));
+        $link->revision_history = $history;
+        $link->save();
+        return redirect()->route('checkout.payment-resume', ['token' => $token])->with('success', $isOriginalSelection
+            ? 'Your original vehicle selection is restored.'
+            : 'Your revised vehicle selection has been saved.');
+    }
+
     /**
      * Process payment from the dedicated payment resume page
      */
@@ -1901,7 +1972,6 @@ class CheckoutController extends Controller
         try {
             $token = $request->input('payment_token');
             $bookingId = $request->input('booking_id');
-            $amount = $request->input('amount');
             $paymentMethod = $request->input('payment_method', 'webxpay');
 
             // Validate the payment link
@@ -1911,10 +1981,68 @@ class CheckoutController extends Controller
             }
 
             $booking = $paymentLinkData['booking'];
+            $amount = (float) $paymentLinkData['amount_due'];
+            if ($amount <= 0) {
+                return back()->with('success', 'No payment is due for this booking.');
+            }
 
             // Validate booking ID matches
             if ($booking->id !== $bookingId) {
                 return back()->with('error', 'Invalid payment request.');
+            }
+
+            // Apply the saved selection only when the customer commits to payment.
+            $link = \App\Models\Website\PendingPaymentLink::where('token', $token)->firstOrFail();
+            if ($link->revision_item_ids) {
+                $allIds = collect($paymentLinkData['context']['booking_items'] ?? [])->pluck('id')->filter()->all();
+                $keepIds = array_values(array_intersect($allIds, $link->revision_item_ids));
+                if (!$keepIds) {
+                    return back()->with('error', 'Keep at least one vehicle before continuing to payment.');
+                }
+                \Illuminate\Support\Facades\DB::transaction(function () use ($booking, $keepIds, $allIds, $amount, $link, $paymentLinkData) {
+                    $booking->bookingItems()->withTrashed()->whereIn('id', $keepIds)->restore();
+                    $booking->bookingItems()->whereNotIn('id', $keepIds)->delete();
+                    $isOriginalSelection = count($keepIds) === count($allIds);
+                    if ($isOriginalSelection) {
+                        $pricing = $paymentLinkData['context']['pricing'] ?? [];
+                        $originalTotals = data_get($link->revision_history, '0.booking_totals_before_edit', []);
+                        $booking->update([
+                            'base_amount' => (float) ($originalTotals['base_amount'] ?? $pricing['base_amount'] ?? $booking->base_amount),
+                            'addons_cost' => (float) ($originalTotals['addons_cost'] ?? $pricing['addon_charges'] ?? $booking->addons_cost),
+                            'discount_amount' => (float) ($originalTotals['discount_amount'] ?? $pricing['discount_amount'] ?? $booking->discount_amount),
+                            'tax_amount' => (float) ($originalTotals['tax_amount'] ?? $pricing['tax_amount'] ?? $booking->tax_amount),
+                            'total_estimated' => (float) ($originalTotals['total_estimated'] ?? $pricing['total_estimated'] ?? $link->revision_total),
+                            'amount_to_pay' => $amount,
+                            'pricing_snapshot' => $originalTotals['pricing_snapshot'] ?? $paymentLinkData['context']['pricing_snapshot'] ?? $booking->pricing_snapshot,
+                        ]);
+                        return;
+                    }
+                    $items = $booking->bookingItems()->whereIn('id', $keepIds)->get();
+                    $pricingBreakdowns = $items->map(fn ($item) => is_array($item->pricing_breakdown) ? $item->pricing_breakdown : []);
+                    $total = round((float) $items->sum('total_price'), 2);
+                    if (abs($total - (float) ($link->revision_total ?? 0)) > 0.02) {
+                        throw new \RuntimeException('Saved vehicle prices no longer match this quotation revision.');
+                    }
+                    $booking->update([
+                        'base_amount' => round((float) $items->sum('unit_price'), 2),
+                        'addons_cost' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'addons_pricing.addons_total', 0)), 2),
+                        'discount_amount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'discount_summary.total_discount_amount', 0)), 2),
+                        'tax_amount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) (data_get($p, 'tax_amount') ?? data_get($p, 'taxes.total') ?? 0)), 2),
+                        'total_estimated' => $total,
+                        'amount_to_pay' => $amount,
+                        'pricing_snapshot' => [
+                            'items_count' => $items->count(),
+                            'total_base' => round((float) $items->sum('unit_price'), 2),
+                            'total_addons' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'addons_pricing.addons_total', 0)), 2),
+                            'total_discount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'discount_summary.total_discount_amount', 0)), 2),
+                            'total' => $total,
+                            'revision_source' => 'payment_resume',
+                            'original_quote_total' => (float) data_get($link->booking_context, 'pricing.total_estimated', $link->amount_due),
+                            'removed_item_ids' => array_values(array_diff($allIds, $keepIds)),
+                            'revision_history' => $link->revision_history ?? [],
+                        ],
+                    ]);
+                });
             }
 
             // Store necessary data in session for payment processing

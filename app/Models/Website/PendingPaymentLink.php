@@ -14,6 +14,10 @@ class PendingPaymentLink extends BaseModel
         'token',
         'type',
         'booking_context',
+        'revision_item_ids',
+        'revision_amount_due',
+        'revision_total',
+        'revision_history',
         'amount_due',
         'expires_at',
         'accessed_at',
@@ -26,6 +30,10 @@ class PendingPaymentLink extends BaseModel
         'accessed_at' => 'datetime',
         'invalidated_at' => 'datetime',
         'booking_context' => 'array',
+        'revision_item_ids' => 'array',
+        'revision_amount_due' => 'decimal:2',
+        'revision_total' => 'decimal:2',
+        'revision_history' => 'array',
         'amount_due' => 'decimal:2',
     ];
 

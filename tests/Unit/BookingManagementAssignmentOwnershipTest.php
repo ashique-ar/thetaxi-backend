@@ -83,3 +83,14 @@ it('does not project a drivers later live position onto a completed trip', funct
         ->toContain("'is_online' => false")
         ->toContain("'source' => \$tripCompleted ? 'trip_completion' : 'driver_live_location'");
 });
+
+it('accepts the legacy conflict dialog override mode during assignment confirmation', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingAvailabilityTrait.php');
+    $confirmation = Str::between(
+        $source,
+        'public function processAssignmentConfirmation(',
+        'public function approveAssignments('
+    );
+
+    expect($confirmation)->toContain("'overlap_type' => 'nullable|string|in:full,partial,concurrent,override'");
+});
