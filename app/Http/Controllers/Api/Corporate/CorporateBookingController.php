@@ -183,9 +183,13 @@ class CorporateBookingController extends Controller
             ], 403);
         }
 
+        $details = $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request));
+        $details['can_cancel_recurring'] = CorporatePortalPermission::allows($request, 'view_all_bookings')
+            || $this->isOwnedByActor($booking, $employee?->user_id);
+
         return response()->json([
             'status' => 'success',
-            'data'   => $this->bookingService->getCorporateBookingDetails($booking, $this->canViewPayments($request), $this->bookingScope($request)),
+            'data'   => $details,
         ]);
     }
 

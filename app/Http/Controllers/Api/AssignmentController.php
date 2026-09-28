@@ -834,6 +834,7 @@ class AssignmentController extends Controller
                     : (string) $bookingDispatch->dispatch_status,
                 'dispatched_at' => $this->toUtcIsoTimestamp($bookingDispatch->dispatched_at),
                 'actual_return_at' => $this->toUtcIsoTimestamp($bookingDispatch->actual_return_at),
+                'return_evidence' => data_get($bookingDispatch->vehicle_condition_in, 'evidence', []),
                 'source' => 'booking_dispatch',
             ] : null,
             'assignment' => null,
