@@ -134,6 +134,12 @@ class DocumentController extends Controller
             'file' => ['required', 'file', 'max:20480'],
         ]);
 
+        if ($data['document_type'] === 'driver_photo') {
+            $request->validate([
+                'file' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
+            ]);
+        }
+
         $owner = $this->owner($data['owner_type'], $data['owner_id']);
         $file = $request->file('file');
         $disk = $this->storageDisk();
@@ -158,6 +164,13 @@ class DocumentController extends Controller
             'created_user_id' => $request->user()?->id,
         ]);
         $previous?->update(['status' => 'superseded']);
+
+        // The driver's profile photo is a document, but the driver resource
+        // resolves it through this explicit foreign key. Keep it in sync when
+        // the photo is uploaded from the staff portal as well as onboarding.
+        if ($owner instanceof Driver && $data['document_type'] === 'driver_photo') {
+            $owner->update(['profile_photo_document_id' => $document->id]);
+        }
 
         return response()->json([
             'status' => 'success',

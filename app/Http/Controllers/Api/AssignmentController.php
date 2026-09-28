@@ -210,6 +210,8 @@ class AssignmentController extends Controller
             );
             $customerUser = $booking->customer?->user;
             $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
+            $canUpdateBooking = Auth::user()?->can('bookings.update') === true;
+            $canDeleteBooking = Auth::user()?->can('bookings.delete') === true;
 
             $result = [
                 'booking' => [
@@ -247,6 +249,9 @@ class AssignmentController extends Controller
                     'dropoff_latitude' => $dropoffLatitude,
                     'dropoff_longitude' => $dropoffLongitude,
                     'status' => $booking->status,
+                    'can_cancel' => $canUpdateBooking && $booking->canBeCancelled(),
+                    'cancellation_block_reason' => $canUpdateBooking ? $booking->cancellationBlockReason() : null,
+                    'can_delete_draft' => $canDeleteBooking && (string) $booking->status === 'draft',
                     'approval_status' => $booking->approval_status,
                     'payment_status' => $booking->payment_status,
                     'payment_method' => $booking->payment_method,

@@ -47,7 +47,7 @@ class DriverController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+        $q = Driver::with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle', 'profilePhotoDocument'])
             ->withCount(['assignments as total_trips' => function ($query) {
                 $query->where('trip_phase', 'completed');
             }]);
@@ -182,7 +182,7 @@ class DriverController extends Controller
                 if ($driver && array_key_exists('payment_method', $data)) {
                     app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
                 }
-                $driver?->load(['user', 'licenseType', 'paymentMethod']);
+                $driver?->load(['user', 'licenseType', 'paymentMethod', 'profilePhotoDocument']);
 
                 return response()->json([
                     'status' => 'success',
@@ -252,7 +252,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'profilePhotoDocument']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -311,7 +311,7 @@ class DriverController extends Controller
             }
 
             // Reload the relationship to get updated data
-            $driver->load(['user', 'licenseType', 'paymentMethod', 'licenseRenewals']);
+            $driver->load(['user', 'licenseType', 'paymentMethod', 'licenseRenewals', 'profilePhotoDocument']);
 
             return response()->json([
                 'status' => 'success',
