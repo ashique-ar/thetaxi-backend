@@ -19,6 +19,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Rules\Password;
@@ -358,6 +359,70 @@ class AuthController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    /** Upload and set the authenticated driver's profile photo. */
+    public function updateProfilePhoto(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+        ]);
+
+        $driver = $this->authService->getDriver($request->user());
+        if (!$driver) {
+            return response()->json(['status' => 'error', 'message' => 'User is not registered as a driver', 'error_code' => 'AUTH_NOT_DRIVER'], 403);
+        }
+
+        $file = $data['photo'];
+        $disk = config('filesystems.default', 's3');
+        $path = $file->store("driver-profile/{$driver->id}", $disk);
+        if (!$path) {
+            return response()->json(['status' => 'error', 'message' => 'The profile photo could not be stored.'], 500);
+        }
+
+        try {
+            $photo = DB::transaction(function () use ($driver, $file, $disk, $path) {
+                $previousPhoto = $driver->profilePhotoDocument;
+                $document = $driver->documents()->create([
+                    'document_type' => 'driver_photo',
+                    'document_number' => $driver->nic ?: 'profile-photo',
+                    'disk' => $disk,
+                    'path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_size' => $file->getSize(),
+                    'file_type' => $file->getMimeType(),
+                    'status' => 'pending',
+                ]);
+                $driver->update(['profile_photo_document_id' => $document->id]);
+                $previousPhoto?->update(['status' => 'superseded']);
+
+                return $document;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk($disk)->delete($path);
+            throw $e;
+        }
+
+        $driver->load($this->authService->mobileProfileRelations());
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Profile photo updated successfully.',
+            'data' => [
+                'profile_image_url' => $photo->resourceUrl(),
+                'profile_photo_url' => $photo->resourceUrl(),
+                'profile_image' => [
+                    'id' => $photo->id,
+                    'type' => $photo->document_type,
+                    'file_name' => $photo->file_name,
+                    'mime_type' => $photo->file_type,
+                    'file_size' => $photo->file_size,
+                    'url' => $photo->resourceUrl(),
+                    'resource_url' => $photo->resourceUrl(),
+                ],
+                'driver' => new DriverResource($driver),
+            ],
+        ]);
     }
 
     /**

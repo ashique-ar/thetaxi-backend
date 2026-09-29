@@ -621,6 +621,24 @@ class MobileAssignmentService
             'name' => $serviceType?->name ?? $assignment->service_type,
             'type' => $serviceType?->type ?? 'with_driver',
         ];
+        $vehicle = $bookingItem?->vehicle;
+        $payload['vehicle'] = $vehicle ? [
+            'id' => $vehicle->id,
+            'title' => $vehicle->title,
+            'registration_no' => $vehicle->registration_no,
+            'license_plate' => $vehicle->license_plate,
+            'model_year' => $vehicle->model_year,
+            'color' => $vehicle->color,
+            'ac' => $vehicle->ac,
+            'seats' => $vehicle->seats,
+            'bags' => $vehicle->bags,
+            'thumbnail' => $vehicle->thumbnail,
+            'images' => $vehicle->actual_vehicle_images ?? [],
+            'group' => $vehicle->group ? [
+                'id' => $vehicle->group->id,
+                'name' => $vehicle->group->name,
+            ] : null,
+        ] : null;
         $payload['execution_capabilities'] = [
             'requires_driver' => $requiresDriver,
             'route_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',

@@ -57,6 +57,7 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::post('logout', [AuthController::class, 'logout']);
         Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
         Route::get('profile', [AuthController::class, 'profile']);
+        Route::post('profile/photo', [AuthController::class, 'updateProfilePhoto']);
         Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
     });
     

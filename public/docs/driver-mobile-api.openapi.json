@@ -572,7 +572,8 @@
                     "profile_image_url": {
                         "type": "string",
                         "nullable": true,
-                        "format": "uri"
+                        "format": "uri",
+                        "description": "URL for the current driver profile photo. This URL is generated from the stored photo document path. Read from GET /api/driver/auth/profile at data.driver.profile_image_url."
                     },
                     "profile_image": {
                         "allOf": [
@@ -585,7 +586,8 @@
                     "profile_photo_url": {
                         "type": "string",
                         "nullable": true,
-                        "format": "uri"
+                        "format": "uri",
+                        "description": "Alias of profile_image_url for clients using the profile_photo naming convention."
                     },
                     "profile_photo": {
                         "allOf": [
@@ -1216,7 +1218,7 @@
                     "Authentication"
                 ],
                 "summary": "Get current driver account",
-                "description": "Returns the current account, including profile image aliases, driver documents, assigned vehicle details/images/documents, and assignment statistics.",
+                "description": "Returns the current account. The driver profile photo URL is at `data.driver.profile_image_url` (also `data.driver.profile_photo_url`); these URL fields are generated from the stored photo document path. Also includes driver documents, assigned vehicle details/images/documents, and assignment statistics.",
                 "operationId": "get_api_driver_auth_profile_Get_Profile",
                 "security": [
                     {
@@ -4898,7 +4900,7 @@
                     "Booking Assignments"
                 ],
                 "summary": "Get Current Assignment",
-                "description": "Get current active assignment for the authenticated driver. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
+                "description": "Returns the current active assignment, including the assigned vehicle details when a vehicle is linked to the booking item. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.",
                 "operationId": "get_api_driver_assignments_current_Get_Current_Assignment",
                 "security": [
                     {
@@ -5066,6 +5068,75 @@
                                                 },
                                                 "execution_capabilities": {
                                                     "$ref": "#/components/schemas/DriverExecutionCapabilities"
+                                                },
+                                                "vehicle": {
+                                                    "type": "object",
+                                                    "nullable": true,
+                                                    "description": "Vehicle assigned to this booking item; null when no vehicle is linked.",
+                                                    "properties": {
+                                                        "id": {
+                                                            "type": "string",
+                                                            "format": "uuid"
+                                                        },
+                                                        "title": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "registration_no": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "license_plate": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "model_year": {
+                                                            "type": "integer",
+                                                            "nullable": true
+                                                        },
+                                                        "color": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "ac": {
+                                                            "type": "boolean",
+                                                            "nullable": true
+                                                        },
+                                                        "seats": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "bags": {
+                                                            "type": "string",
+                                                            "nullable": true
+                                                        },
+                                                        "thumbnail": {
+                                                            "type": "object",
+                                                            "nullable": true,
+                                                            "additionalProperties": true
+                                                        },
+                                                        "images": {
+                                                            "type": "array",
+                                                            "items": {
+                                                                "type": "object",
+                                                                "additionalProperties": true
+                                                            }
+                                                        },
+                                                        "group": {
+                                                            "type": "object",
+                                                            "nullable": true,
+                                                            "properties": {
+                                                                "id": {
+                                                                    "type": "string",
+                                                                    "format": "uuid"
+                                                                },
+                                                                "name": {
+                                                                    "type": "string",
+                                                                    "nullable": true
+                                                                }
+                                                            }
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }
@@ -15033,6 +15104,181 @@
                                 },
                                 "example": {
                                     "message": "Vehicle make not found"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/api/driver/auth/profile/photo": {
+            "post": {
+                "tags": [
+                    "Driver Authentication"
+                ],
+                "summary": "Update current driver profile photo",
+                "description": "Uploads a JPG, PNG, or WebP image and sets it as the authenticated driver profile photo. The response includes its generated resource URL.",
+                "operationId": "post_api_driver_auth_profile_photo_Update_Profile_Photo",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "requestBody": {
+                    "required": true,
+                    "content": {
+                        "multipart/form-data": {
+                            "schema": {
+                                "type": "object",
+                                "required": [
+                                    "photo"
+                                ],
+                                "properties": {
+                                    "photo": {
+                                        "type": "string",
+                                        "format": "binary",
+                                        "description": "JPG, PNG, or WebP image; maximum 10 MB."
+                                    }
+                                }
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Profile photo updated",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": [
+                                        "status",
+                                        "data"
+                                    ],
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "enum": [
+                                                "success"
+                                            ]
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "data": {
+                                            "type": "object",
+                                            "required": [
+                                                "profile_image_url",
+                                                "profile_photo_url",
+                                                "profile_image",
+                                                "driver"
+                                            ],
+                                            "properties": {
+                                                "profile_image_url": {
+                                                    "type": "string",
+                                                    "format": "uri"
+                                                },
+                                                "profile_photo_url": {
+                                                    "type": "string",
+                                                    "format": "uri"
+                                                },
+                                                "profile_image": {
+                                                    "type": "object",
+                                                    "additionalProperties": true
+                                                },
+                                                "driver": {
+                                                    "$ref": "#/components/schemas/DriverMobileAccount"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Missing or invalid access token",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Missing or invalid access token"
+                                }
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Account is not a driver",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Account is not a driver"
+                                }
+                            }
+                        }
+                    },
+                    "422": {
+                        "description": "Validation error",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "properties": {
+                                        "status": {
+                                            "type": "string",
+                                            "example": "error"
+                                        },
+                                        "message": {
+                                            "type": "string"
+                                        },
+                                        "error_code": {
+                                            "type": "string"
+                                        },
+                                        "errors": {
+                                            "type": "object",
+                                            "additionalProperties": true
+                                        }
+                                    }
+                                },
+                                "example": {
+                                    "message": "Validation error"
                                 }
                             }
                         }

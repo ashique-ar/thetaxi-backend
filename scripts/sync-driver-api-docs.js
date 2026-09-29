@@ -227,8 +227,8 @@ openapi.components.schemas.DriverMobileAccount = {
         email: nullableString('email'), phone: nullableString(), nic: nullableString(), license_no: nullableString(),
         license_number: nullableString(), license_expiry: nullableString('date'), license_status: { type: 'string', enum: ['missing', 'expired', 'expiring', 'valid'] },
         default_vehicle_id: nullableString('uuid'),
-        profile_image_url: nullableString('uri'), profile_image: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
-        profile_photo_url: nullableString('uri'), profile_photo: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        profile_image_url: { ...nullableString('uri'), description: 'URL for the current driver profile photo. This URL is generated from the stored photo document path. Read from GET /api/driver/auth/profile at data.driver.profile_image_url.' }, profile_image: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        profile_photo_url: { ...nullableString('uri'), description: 'Alias of profile_image_url for clients using the profile_photo naming convention.' }, profile_photo: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
         documents: { type: 'array', items: { $ref: '#/components/schemas/DriverMobileDocument' } },
         is_active: { type: 'boolean' }, is_online: { type: 'boolean' }, availability_status: nullableString(),
         current_booking_id: nullableString('uuid'), current_booking_number: nullableString(), rating: { type: 'number', format: 'float' }, total_trips: { type: 'integer' },
@@ -517,8 +517,37 @@ openapi.paths['/api/driver/auth/login'].post.responses['200'].content['applicati
 openapi.paths['/api/driver/auth/verify-otp'].post.description = 'Verifies the default mobile OTP flow. Existing approved drivers receive the same complete account projection as password login; new drivers receive an onboarding token.';
 openapi.paths['/api/driver/auth/verify-otp'].post.responses['200'].content['application/json'].schema = authEnvelope(true);
 openapi.paths['/api/driver/auth/profile'].get.summary = 'Get current driver account';
-openapi.paths['/api/driver/auth/profile'].get.description = 'Returns the current account, including profile image aliases, driver documents, assigned vehicle details/images/documents, and assignment statistics.';
+openapi.paths['/api/driver/auth/profile'].get.description = 'Returns the current account. The driver profile photo URL is at `data.driver.profile_image_url` (also `data.driver.profile_photo_url`); these URL fields are generated from the stored photo document path. Also includes driver documents, assigned vehicle details/images/documents, and assignment statistics.';
 openapi.paths['/api/driver/auth/profile'].get.responses['200'].content['application/json'].schema = profileEnvelope;
+openapi.paths['/api/driver/auth/profile/photo'] = { post: {
+    tags: ['Driver Authentication'], summary: 'Update current driver profile photo',
+    description: 'Uploads a JPG, PNG, or WebP image and sets it as the authenticated driver profile photo. The response includes its generated resource URL.',
+    operationId: 'post_api_driver_auth_profile_photo_Update_Profile_Photo', security: protectedSecurity,
+    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['photo'], properties: { photo: { type: 'string', format: 'binary', description: 'JPG, PNG, or WebP image; maximum 10 MB.' } } } } } },
+    responses: {
+        200: jsonResponse('Profile photo updated', { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string', enum: ['success'] }, message: { type: 'string' }, data: { type: 'object', required: ['profile_image_url', 'profile_photo_url', 'profile_image', 'driver'], properties: { profile_image_url: { type: 'string', format: 'uri' }, profile_photo_url: { type: 'string', format: 'uri' }, profile_image: { type: 'object', additionalProperties: true }, driver: { $ref: '#/components/schemas/DriverMobileAccount' } } } } }),
+        401: errorResponse('Missing or invalid access token'), 403: errorResponse('Account is not a driver'), 422: errorResponse('Validation error'),
+    },
+} };
+
+const currentAssignmentOperation = openapi.paths['/api/driver/assignments/current']?.get;
+if (currentAssignmentOperation) {
+    currentAssignmentOperation.description = 'Returns the current active assignment, including the assigned vehicle details when a vehicle is linked to the booking item. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.';
+    const dataSchema = currentAssignmentOperation.responses?.['200']?.content?.['application/json']?.schema?.properties?.data;
+    if (dataSchema?.properties) {
+        dataSchema.properties.vehicle = {
+            type: 'object', nullable: true, description: 'Vehicle assigned to this booking item; null when no vehicle is linked.',
+            properties: {
+                id: { type: 'string', format: 'uuid' }, title: nullableString(), registration_no: nullableString(),
+                license_plate: nullableString(), model_year: { type: 'integer', nullable: true }, color: nullableString(),
+                ac: { type: 'boolean', nullable: true }, seats: nullableString(), bags: nullableString(),
+                thumbnail: { type: 'object', nullable: true, additionalProperties: true },
+                images: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                group: { type: 'object', nullable: true, properties: { id: { type: 'string', format: 'uuid' }, name: nullableString() } },
+            },
+        };
+    }
+}
 
 for (const stalePath of ['/api/driver/onboarding/steps/1', '/api/driver/onboarding/steps/3', '/api/driver/onboarding/steps/4']) delete openapi.paths[stalePath];
 
