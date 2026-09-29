@@ -47,10 +47,37 @@ class DriverController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle', 'profilePhotoDocument'])
+        $q = $this->driverListQuery($request)
+            ->with([
+                'user',
+                'licenseType',
+                'paymentMethod',
+                'defaultVehicle',
+                'profilePhotoDocument',
+                'devices:id,driver_id,device_uuid,device_name,device_model,device_manufacturer,platform,os_version,app_version,app_build,push_token,push_provider,is_active,last_active_at,registered_at,locale,timezone,created_at,updated_at',
+            ])
             ->withCount(['assignments as total_trips' => function ($query) {
                 $query->where('trip_phase', 'completed');
             }]);
+        return DriverResource::collection($q->paginate($request->integer('per_page', 25)));
+    }
+
+    public function listSummary(Request $request): JsonResponse
+    {
+        $query = $this->driverListQuery($request);
+        $soon = now()->addDays(30)->toDateString();
+        return response()->json(['status' => 'success', 'data' => [
+            'total' => (clone $query)->count(),
+            'available' => (clone $query)->where(fn ($q) => $q->where('availability_status', 'available')->orWhere(fn ($fallback) => $fallback->whereNull('availability_status')->where('is_online', true)))->count(),
+            'online' => (clone $query)->where('is_online', true)->count(),
+            'active' => (clone $query)->whereHas('user', fn ($q) => $q->where('is_active', true))->count(),
+            'license_attention' => (clone $query)->where(fn ($q) => $q->whereNull('license_no')->orWhereNull('license_expiry')->orWhereDate('license_expiry', '<=', $soon))->count(),
+        ]]);
+    }
+
+    private function driverListQuery(Request $request)
+    {
+        $q = Driver::query();
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
@@ -72,6 +99,16 @@ class DriverController extends Controller
                     ->orWhereLikeInsensitive('availability_status', $search)
                     ->orWhereLikeInsensitive('current_latitude', $search)
                     ->orWhereLikeInsensitive('current_longitude', $search)
+                    ->orWhereHas('devices', function ($deviceQuery) use ($search) {
+                        $deviceQuery->whereLikeInsensitive('device_uuid', $search)
+                            ->orWhereLikeInsensitive('device_name', $search)
+                            ->orWhereLikeInsensitive('device_model', $search)
+                            ->orWhereLikeInsensitive('device_manufacturer', $search)
+                            ->orWhereLikeInsensitive('platform', $search)
+                            ->orWhereLikeInsensitive('os_version', $search)
+                            ->orWhereLikeInsensitive('app_version', $search)
+                            ->orWhereLikeInsensitive('app_build', $search);
+                    })
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->whereLikeInsensitive('id', $search)
                             ->orWhereLikeInsensitive('first_name', $search)
@@ -95,7 +132,36 @@ class DriverController extends Controller
         if ($request->filled('availability_status') || $request->filled('status')) {
             $q->where('availability_status', $request->get('availability_status', $request->get('status')));
         }
-        return DriverResource::collection($q->paginate($request->per_page ?? 15));
+        if ($request->filled('online')) $q->where('is_online', filter_var($request->online, FILTER_VALIDATE_BOOLEAN));
+        if ($request->filled('active')) $q->whereHas('user', fn ($user) => $user->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN)));
+        if ($request->filled('license_status')) {
+            match ($request->license_status) {
+                'missing' => $q->where(fn ($x) => $x->whereNull('license_no')->orWhereNull('license_expiry')),
+                'expired' => $q->whereNotNull('license_expiry')->whereDate('license_expiry', '<', now()->toDateString()),
+                'expiring' => $q->whereDate('license_expiry', '>=', now()->toDateString())->whereDate('license_expiry', '<=', now()->addDays(30)->toDateString()),
+                'valid' => $q->whereDate('license_expiry', '>', now()->addDays(30)->toDateString()),
+                default => null,
+            };
+        }
+        if ($request->filled('license_type')) $q->where('license_type', $request->license_type);
+        if ($request->filled('city')) $q->whereLikeInsensitive('city', trim($request->city));
+        if ($request->filled('hire_date_from')) $q->whereDate('hire_date', '>=', $request->hire_date_from);
+        if ($request->filled('hire_date_to')) $q->whereDate('hire_date', '<=', $request->hire_date_to);
+        if ($request->filled('has_device')) {
+            filter_var($request->has_device, FILTER_VALIDATE_BOOLEAN)
+                ? $q->whereHas('devices')
+                : $q->whereDoesntHave('devices');
+        }
+        if ($request->filled('device_active')) $q->whereHas('devices', fn ($device) => $device->where('is_active', filter_var($request->device_active, FILTER_VALIDATE_BOOLEAN)));
+        if ($request->filled('device_platform')) $q->whereHas('devices', fn ($device) => $device->where('platform', $request->device_platform));
+        if ($request->filled('app_version')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('app_version', trim($request->app_version)));
+        if ($request->filled('device_model')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('device_model', trim($request->device_model)));
+        if ($request->filled('push_enabled')) {
+            filter_var($request->push_enabled, FILTER_VALIDATE_BOOLEAN)
+                ? $q->whereHas('devices', fn ($device) => $device->whereNotNull('push_token')->where('push_token', '!=', ''))
+                : $q->whereDoesntHave('devices', fn ($device) => $device->whereNotNull('push_token')->where('push_token', '!=', ''));
+        }
+        return $q;
     }
 
     public function store(CreateDriverRequest $request): JsonResponse

@@ -1057,6 +1057,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
         Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
+        Route::get('drivers/list-summary', [DriverController::class, 'listSummary']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
