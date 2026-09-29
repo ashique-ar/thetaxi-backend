@@ -547,9 +547,105 @@ if (currentAssignmentOperation) {
             },
         };
     }
+    const currentResponse = currentAssignmentOperation.responses?.['200']?.content?.['application/json'];
+    const vehicleExample = {
+        id: 'vehicle-uuid', title: 'Toyota Prius', registration_no: 'ABC-1234', license_plate: 'ABC-1234',
+        model_year: 2024, color: 'White', ac: true, seats: '4', bags: '2', thumbnail: null, images: [],
+        group: { id: 'vehicle-group-uuid', name: 'Sedan' },
+    };
+    const responseExamples = currentResponse?.examples;
+    if (responseExamples) {
+        for (const example of Object.values(responseExamples)) {
+            if (example.value?.data) example.value.data.vehicle = vehicleExample;
+        }
+    } else if (currentResponse?.example?.data) {
+        currentResponse.example.data.vehicle = vehicleExample;
+    }
 }
 
 for (const stalePath of ['/api/driver/onboarding/steps/1', '/api/driver/onboarding/steps/3', '/api/driver/onboarding/steps/4']) delete openapi.paths[stalePath];
+
+// Keep Swagger examples complete with the contract as endpoints evolve.
+function resolveSchema(schema) {
+    if (!schema) return {};
+    if (schema.$ref) {
+        const target = schema.$ref.replace(/^#\//, '').split('/').reduce((value, key) => value?.[key], openapi);
+        return { ...resolveSchema(target), ...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) };
+    }
+    if (schema.allOf) {
+        return schema.allOf.reduce((merged, part) => {
+            const resolved = resolveSchema(part);
+            return { ...merged, ...resolved, properties: { ...(merged.properties || {}), ...(resolved.properties || {}) }, required: [...new Set([...(merged.required || []), ...(resolved.required || [])])] };
+        }, { ...schema, allOf: undefined });
+    }
+    return schema;
+}
+
+function sampleFor(schema, current, key = '') {
+    schema = resolveSchema(schema);
+    if (current !== undefined) {
+        if (Array.isArray(current) && schema.type === 'array') return current.map((item, index) => sampleFor(schema.items, item, `${key}${index}`));
+        if (current && typeof current === 'object' && !Array.isArray(current) && schema.type === 'object') {
+            return Object.fromEntries(Object.entries(schema.properties || {}).map(([name, child]) => [name, sampleFor(child, current[name], name)]));
+        }
+        return current;
+    }
+    if (schema.example !== undefined) return schema.example;
+    if (schema.enum?.length) return schema.enum[0];
+    if (schema.nullable) return null;
+    if (schema.type === 'object' || schema.properties) {
+        const properties = schema.properties || {};
+        return Object.fromEntries(Object.entries(properties).map(([name, child]) => [name, sampleFor(child, undefined, name)]));
+    }
+    if (schema.type === 'array') return schema.items ? [sampleFor(schema.items, undefined, key)] : [];
+    if (schema.type === 'integer' || schema.type === 'number') return schema.minimum ?? 1;
+    if (schema.type === 'boolean') return true;
+    if (schema.type === 'string') {
+        if (schema.format === 'binary') return '<binary file>';
+        if (schema.format === 'uuid') return '00000000-0000-4000-8000-000000000001';
+        if (schema.format === 'uri') return 'https://example.com/resource';
+        if (schema.format === 'email') return 'driver@example.com';
+        if (schema.format === 'date') return '2026-01-15';
+        if (schema.format === 'date-time') return '2026-01-15T09:00:00Z';
+        return key.toLowerCase().includes('token') ? 'example-token' : 'example';
+    }
+    return null;
+}
+
+function completeExample(schema, example) {
+    const resolved = resolveSchema(schema);
+    if (resolved.type === 'object' || resolved.properties) {
+        const source = example && typeof example === 'object' && !Array.isArray(example) ? example : {};
+        return Object.fromEntries(Object.entries(resolved.properties || {}).map(([key, child]) => [key, sampleFor(child, source[key], key)]));
+    }
+    return sampleFor(resolved, example);
+}
+
+for (const [path, pathItem] of Object.entries(openapi.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+        if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue;
+        for (const [status, responseItem] of Object.entries(operation.responses || {})) {
+            for (const content of Object.values(responseItem.content || {})) {
+                if (!content.schema) continue;
+                if (content.example !== undefined) content.example = completeExample(content.schema, content.example);
+                else if (content.examples && Object.keys(content.examples).length) {
+                    for (const example of Object.values(content.examples)) if (example.value !== undefined) example.value = completeExample(content.schema, example.value);
+                } else {
+                    content.example = completeExample(content.schema, undefined);
+                }
+            }
+        }
+        for (const content of Object.values(operation.requestBody?.content || {})) {
+            if (!content.schema) continue;
+            if (content.example !== undefined) content.example = completeExample(content.schema, content.example);
+            else if (content.examples && Object.keys(content.examples).length) {
+                for (const example of Object.values(content.examples)) if (example.value !== undefined) example.value = completeExample(content.schema, example.value);
+            } else {
+                content.example = completeExample(content.schema, undefined);
+            }
+        }
+    }
+}
 
 write(collectionPath, collection);
 write(openApiPath, openapi);
