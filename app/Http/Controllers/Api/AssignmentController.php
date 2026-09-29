@@ -1607,6 +1607,25 @@ class AssignmentController extends Controller
                         : 'Drop-off ' . ($stop->type_sequence ?: $stop->route_order)
                 );
 
+                $plannedLocation = [
+                    'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
+                    'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+                ];
+                $arrivedLocation = $this->buildActualLifecyclePoint(
+                    $displayLabel . ' arrived',
+                    $stop->arrived_latitude,
+                    $stop->arrived_longitude,
+                    $stop->arrived_at,
+                    'stop_arrival'
+                );
+                $completedLocation = $this->buildActualLifecyclePoint(
+                    $displayLabel . ' completed',
+                    $stop->completed_latitude,
+                    $stop->completed_longitude,
+                    $stop->completed_at,
+                    'stop_completion'
+                );
+
                 return [
                     'id' => $stop->id,
                     'booking_stop_id' => $stop->booking_stop_id,
@@ -1617,10 +1636,14 @@ class AssignmentController extends Controller
                     'label' => $displayLabel,
                     'display_label' => $displayLabel,
                     'address' => $stop->address,
-                    'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
-                    'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+                    'latitude' => $plannedLocation['latitude'],
+                    'longitude' => $plannedLocation['longitude'],
                     'arrived_at' => $this->toUtcIsoTimestamp($stop->arrived_at),
+                    'arrived_location' => $arrivedLocation,
+                    'arrived_location_compliance' => $this->compareLifecycleLocation($plannedLocation, $arrivedLocation),
                     'completed_at' => $this->toUtcIsoTimestamp($stop->completed_at),
+                    'completed_location' => $completedLocation,
+                    'completed_location_compliance' => $this->compareLifecycleLocation($plannedLocation, $completedLocation),
                     'completed_action' => $stop->completed_action,
                     'skip_reason' => $stop->skip_reason,
                 ];
