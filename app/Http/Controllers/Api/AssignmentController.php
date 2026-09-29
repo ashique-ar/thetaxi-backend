@@ -763,6 +763,7 @@ class AssignmentController extends Controller
         $source = 'driver_assignment_acceptance';
         $snapshotAt = $snapshot['captured_at'] ?? null;
         $deviceUuid = $snapshot['device_uuid'] ?? null;
+        $session = null;
 
         if ($snapshot === []) {
             $session = DriverSession::query()
@@ -811,7 +812,7 @@ class AssignmentController extends Controller
             'os_version' => $value($snapshot, ['os_version', 'android_version', 'ios_version', 'system_version']),
             'app_version' => $value($snapshot, ['app_version', 'version']),
             'app_build' => $value($snapshot, ['app_build', 'build', 'build_number']),
-            'is_active' => $session->status === 'active',
+            'is_active' => $session ? $session->status === 'active' : null,
             'snapshot_at' => $snapshotAt,
             'source' => $source,
         ];
