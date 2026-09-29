@@ -175,7 +175,8 @@ for (const folder of collection.item) {
 }
 
 openapi.info.version = '2.8.0';
-openapi.info.description = 'Complete canonical Driver Mobile API contract. Authentication and account/profile responses include the driver profile image, assigned vehicle, vehicle images, and driver/vehicle documents. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
+openapi.info.description = 'Driver mobile API guide. Start with Authentication: call POST /api/driver/auth/login, copy data.token.access_token, then click Authorize once and paste the token. Swagger remembers authorization in this browser. Protected endpoints use the saved bearer token. Sections follow the developer workflow: authentication, app setup, onboarding, assignments, trip lifecycle, driver status, location, devices, notifications, sessions, and earnings.';
+openapi.components.securitySchemes.bearerAuth.description = 'How to get the bearer token: (1) Execute POST /api/driver/auth/login with the driver email and password. (2) In the response, copy data.token.access_token. (3) Paste only that access-token value into this Authorize field; do not include the word Bearer. Swagger adds the prefix and remembers the token in this browser. Do not use data.token.refresh_token here.';
 
 const nullableString = (format) => ({ type: 'string', nullable: true, ...(format ? { format } : {}) });
 openapi.components.schemas.DriverMobileDocument = {
@@ -529,6 +530,58 @@ openapi.paths['/api/driver/auth/profile/photo'] = { post: {
         401: errorResponse('Missing or invalid access token'), 403: errorResponse('Account is not a driver'), 422: errorResponse('Validation error'),
     },
 } };
+
+// Present the operations as a readable mobile-app workflow in Swagger UI.
+const tagOrder = [
+    { name: 'Authentication', description: 'Login and OTP verification, account profile, profile photo, password, and session tokens.' },
+    { name: 'App Settings', description: 'Check supported app versions before starting or resuming a driver session.' },
+    { name: 'Driver Onboarding', description: 'Registration lookups, application steps, document uploads, and submission.' },
+    { name: 'Booking Assignments', description: 'Find current and upcoming work, then accept, acknowledge, or decline an assignment.' },
+    { name: 'Trip Tracking', description: 'Move an accepted assignment through pickup, stops, trip completion, and payment collection.' },
+    { name: 'Status Management', description: 'Set online/offline state and inspect current availability.' },
+    { name: 'Location Tracking', description: 'Send live or buffered locations and inspect location health/history.' },
+    { name: 'Device Management', description: 'Manage registered devices and push notification tokens.' },
+    { name: 'Notification Management', description: 'Read, count, acknowledge, and remove driver notifications.' },
+    { name: 'Sessions', description: 'Inspect active and historical driver sessions.' },
+    { name: 'Earnings', description: 'Review earnings summaries by day or date range.' },
+];
+const tagAliases = { 'Driver Authentication': 'Authentication' };
+for (const pathItem of Object.values(openapi.paths)) {
+    for (const operation of Object.values(pathItem)) {
+        if (!operation || typeof operation !== 'object' || !Array.isArray(operation.tags)) continue;
+        operation.tags = operation.tags.map((tag) => tagAliases[tag] || tag);
+    }
+}
+openapi.tags = tagOrder;
+const tagRank = new Map(tagOrder.map((tag, index) => [tag.name, index]));
+const authPathRank = new Map([
+    ['/api/driver/auth/login', 0], ['/api/driver/auth/request-otp', 1], ['/api/driver/auth/verify-otp', 2],
+    ['/api/driver/auth/profile', 3], ['/api/driver/auth/profile/photo', 4], ['/api/driver/auth/change-password', 5],
+    ['/api/driver/auth/refresh', 6], ['/api/driver/auth/logout', 7], ['/api/driver/auth/forgot-password', 8],
+    ['/api/driver/auth/reset-password', 9],
+    ['/api/driver/onboarding', 0], ['/api/driver/onboarding/countries', 1],
+    ['/api/driver/onboarding/countries/{country_id}/states', 2], ['/api/driver/onboarding/makes', 3],
+    ['/api/driver/onboarding/makes/{make_id}/models', 4], ['/api/driver/onboarding/steps/{step}', 5],
+    ['/api/driver/onboarding/documents', 6], ['/api/driver/onboarding/submit', 7],
+    ['/api/driver/assignments/current', 0], ['/api/driver/assignments', 1],
+    ['/api/driver/assignments/{assignment_id}/accept', 2], ['/api/driver/assignments/{assignment_id}/acknowledge', 3],
+    ['/api/driver/assignments/{assignment_id}/decline', 4], ['/api/driver/hires', 5],
+    ['/api/driver/assignments/{assignment_id}/status', 0], ['/api/driver/assignments/{assignment_id}/arrived', 1],
+    ['/api/driver/assignments/{assignment_id}/start', 2], ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/arrived', 3],
+    ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/picked-up', 4], ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off', 5],
+    ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip', 6], ['/api/driver/assignments/{assignment_id}/complete', 7],
+    ['/api/driver/assignments/{assignment_id}/collect-payment', 8],
+]);
+const orderedPaths = Object.entries(openapi.paths).sort(([pathA, itemA], [pathB, itemB]) => {
+    const opA = Object.values(itemA).find((value) => value && typeof value === 'object' && value.tags);
+    const opB = Object.values(itemB).find((value) => value && typeof value === 'object' && value.tags);
+    const tagA = tagRank.get(tagAliases[opA?.tags?.[0]] || opA?.tags?.[0]) ?? 99;
+    const tagB = tagRank.get(tagAliases[opB?.tags?.[0]] || opB?.tags?.[0]) ?? 99;
+    if (tagA !== tagB) return tagA - tagB;
+    if (tagA === 0) return (authPathRank.get(pathA) ?? 99) - (authPathRank.get(pathB) ?? 99);
+    return (authPathRank.get(pathA) ?? 99) - (authPathRank.get(pathB) ?? 99) || pathA.localeCompare(pathB);
+});
+openapi.paths = Object.fromEntries(orderedPaths);
 
 const currentAssignmentOperation = openapi.paths['/api/driver/assignments/current']?.get;
 if (currentAssignmentOperation) {
