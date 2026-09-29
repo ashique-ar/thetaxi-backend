@@ -746,9 +746,10 @@ class AssignmentController extends Controller
     }
 
     /**
-     * Resolve the immutable device/app information captured by the driver
-     * session that handled this trip. Never fall back to the driver's current
-     * device record because its app version changes after an update.
+     * Prefer the device/app snapshot captured when the driver accepted this
+     * trip. Older app versions have no assignment snapshot, so use the linked
+     * tracking session's start snapshot as a clearly identified fallback.
+     * Never read the driver's current device record for historical bookings.
      */
     private function resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver): ?array
     {
@@ -756,25 +757,37 @@ class AssignmentController extends Controller
             return null;
         }
 
-        $session = DriverSession::query()
-            ->where('driver_id', $selectedDriver->id)
-            ->where(function ($query) use ($tripAssignment) {
-                $query->where('assignment_id', $tripAssignment->id)
-                    ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
-            })
-            ->orderByDesc('start_time')
-            ->first();
+        $snapshot = is_array($tripAssignment->booking_device_snapshot)
+            ? $tripAssignment->booking_device_snapshot
+            : [];
+        $source = 'driver_assignment_acceptance';
+        $snapshotAt = $snapshot['captured_at'] ?? null;
+        $deviceUuid = $snapshot['device_uuid'] ?? null;
 
-        if (!$session) {
-            return null;
-        }
+        if ($snapshot === []) {
+            $session = DriverSession::query()
+                ->where('driver_id', $selectedDriver->id)
+                ->where(function ($query) use ($tripAssignment) {
+                    $query->where('assignment_id', $tripAssignment->id)
+                        ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
+                })
+                ->orderByDesc('start_time')
+                ->first();
 
-        $metadata = is_array($session->metadata) ? $session->metadata : [];
-        $snapshot = $metadata;
-        foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info', 'device_snapshot'] as $key) {
-            if (is_array($metadata[$key] ?? null)) {
-                $snapshot = array_merge($snapshot, $metadata[$key]);
+            if (!$session) {
+                return null;
             }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $snapshot = $metadata;
+            foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info', 'device_snapshot'] as $key) {
+                if (is_array($metadata[$key] ?? null)) {
+                    $snapshot = array_merge($snapshot, $metadata[$key]);
+                }
+            }
+            $source = 'driver_session_start';
+            $snapshotAt = $session->start_time?->toIso8601String();
+            $deviceUuid = $session->device_uuid;
         }
         $value = static function (array $source, array $keys): ?string {
             foreach ($keys as $key) {
@@ -789,7 +802,7 @@ class AssignmentController extends Controller
         $platform = $value($snapshot, ['platform', 'os', 'operating_system']);
 
         return [
-            'device_uuid' => $session->device_uuid,
+            'device_uuid' => $deviceUuid,
             'device_name' => $value($snapshot, ['device_name', 'name']),
             'device_model' => $value($snapshot, ['device_model', 'model', 'mobile_model', 'phone_model']),
             'device_manufacturer' => $value($snapshot, ['device_manufacturer', 'manufacturer', 'brand']),
@@ -799,9 +812,8 @@ class AssignmentController extends Controller
             'app_version' => $value($snapshot, ['app_version', 'version']),
             'app_build' => $value($snapshot, ['app_build', 'build', 'build_number']),
             'is_active' => $session->status === 'active',
-            'last_active_at' => ($session->end_time ?? $session->start_time)?->toIso8601String(),
-            'recorded_at' => $session->start_time?->toIso8601String(),
-            'source' => 'driver_session',
+            'snapshot_at' => $snapshotAt,
+            'source' => $source,
         ];
     }
 

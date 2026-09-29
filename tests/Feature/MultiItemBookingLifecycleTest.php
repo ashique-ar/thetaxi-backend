@@ -175,6 +175,7 @@ beforeEach(function () {
         $table->uuid('id')->primary();
         $table->uuid('booking_id');
         $table->uuid('booking_item_id')->nullable();
+        $table->json('booking_device_snapshot')->nullable();
         $table->uuid('vehicle_id')->nullable();
         $table->uuid('driver_id')->nullable();
         $table->string('dispatch_status')->default(DispatchStatus::DISPATCHED->value);

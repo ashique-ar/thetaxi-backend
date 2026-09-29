@@ -306,6 +306,7 @@ class MobileAssignmentService
                 'trip_phase' => TripPhase::ACCEPTED,
                 'accept_latitude' => $location['latitude'] ?? null,
                 'accept_longitude' => $location['longitude'] ?? null,
+                'booking_device_snapshot' => $this->buildBookingDeviceSnapshot($location['device_snapshot'] ?? null, $now),
             ]);
 
             // Link active session to assignment
@@ -346,6 +347,32 @@ class MobileAssignmentService
 
             return $updated;
         });
+    }
+
+    private function buildBookingDeviceSnapshot(mixed $snapshot, Carbon $capturedAt): ?array
+    {
+        if (!is_array($snapshot)) {
+            return null;
+        }
+
+        $allowed = [
+            'device_uuid', 'device_name', 'device_model', 'device_manufacturer', 'platform',
+            'os_version', 'app_version', 'app_build',
+        ];
+        $values = array_filter(
+            array_intersect_key($snapshot, array_flip($allowed)),
+            static fn ($value): bool => is_string($value) && trim($value) !== '',
+        );
+
+        if ($values === []) {
+            return null;
+        }
+
+        return [
+            ...$values,
+            'captured_at' => $capturedAt->toIso8601String(),
+            'source' => 'driver_assignment_acceptance',
+        ];
     }
 
     /**

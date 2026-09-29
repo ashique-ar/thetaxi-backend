@@ -200,6 +200,7 @@ beforeEach(function () {
         $table->uuid('driver_id')->nullable();
         $table->uuid('booking_id')->nullable();
         $table->uuid('booking_item_id')->nullable();
+        $table->json('booking_device_snapshot')->nullable();
         $table->uuid('confirmed_by')->nullable();
         $table->decimal('accept_latitude', 10, 8)->nullable();
         $table->decimal('accept_longitude', 11, 8)->nullable();
@@ -1064,7 +1065,18 @@ it('preserves the enabled contractual snapshot through the full operational life
         'status' => 'active',
     ]);
 
-    $accepted = $this->assignmentService->acceptAssignment($driver, $assignment);
+    $accepted = $this->assignmentService->acceptAssignment($driver, $assignment, [
+        'device_snapshot' => [
+            'device_uuid' => 'driver-phone-1',
+            'device_name' => 'Samsung Galaxy',
+            'device_model' => 'SM-S918B',
+            'device_manufacturer' => 'Samsung',
+            'platform' => 'android',
+            'os_version' => 'Android 15 (SDK 35)',
+            'app_version' => '1.2.3',
+            'app_build' => '123',
+        ],
+    ]);
     $this->tripService->confirmPickupArrival($accepted, ['latitude' => 6.91, 'longitude' => 79.81]);
     $this->tripService->startTrip($accepted->fresh());
     RoutePoint::create([
@@ -1080,6 +1092,9 @@ it('preserves the enabled contractual snapshot through the full operational life
     $item->refresh();
 
     expect($completed->confirmed_at)->not->toBeNull()
+        ->and(data_get($completed->booking_device_snapshot, 'app_version'))->toBe('1.2.3')
+        ->and(data_get($completed->booking_device_snapshot, 'source'))->toBe('driver_assignment_acceptance')
+        ->and(data_get($completed->booking_device_snapshot, 'captured_at'))->not->toBeNull()
         ->and($completed->pickup_arrived_at)->not->toBeNull()
         ->and((float) $completed->pickup_arrival_latitude)->toBe(6.91)
         ->and($completed->trip_started_at)->not->toBeNull()
