@@ -46,6 +46,10 @@ class AssignmentController extends Controller
                 $request->query('include_tracking', true),
                 FILTER_VALIDATE_BOOLEAN
             );
+            $includeAccountSummary = filter_var(
+                $request->query('include_account_summary', true),
+                FILTER_VALIDATE_BOOLEAN
+            );
             $trackingLimit = (int) $request->query('tracking_limit', 300);
             $trackingLimit = max(20, min($trackingLimit, 1000));
 
@@ -316,7 +320,9 @@ class AssignmentController extends Controller
                     'justification' => $booking->approval_justification,
                 ],
                 'payment_summary' => $this->paymentLedger->summary($booking),
-                'payment_account_summary' => $this->paymentLedger->accountSummary($booking),
+                'payment_account_summary' => $includeAccountSummary
+                    ? $this->paymentLedger->accountSummary($booking)
+                    : null,
                 'current_vehicle' => $selectedVehicle ? [
                     'id' => $selectedVehicle->id,
                     'name' => $selectedVehicle->title,
