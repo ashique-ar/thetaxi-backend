@@ -1031,6 +1031,7 @@ class Booking extends BaseModel
         if ($this->dispatch) {
             switch ($this->dispatch->dispatch_status) {
                 case DispatchStatus::DISPATCHED:
+                    return BookingLifecycleStatus::DISPATCH_OUT;
                 case DispatchStatus::IN_PROGRESS:
                     return BookingLifecycleStatus::ONGOING_ACTIVE;
                 case DispatchStatus::RETURNED:

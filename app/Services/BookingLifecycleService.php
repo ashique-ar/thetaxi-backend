@@ -3732,7 +3732,8 @@ class BookingLifecycleService
         if ($dispatch) {
             return match ($dispatch->dispatch_status) {
                 DispatchStatus::READY_FOR_DISPATCH => BookingLifecycleStatus::DISPATCH_READY,
-                DispatchStatus::DISPATCHED, DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
+                DispatchStatus::DISPATCHED => BookingLifecycleStatus::DISPATCH_OUT,
+                DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
                 default => $booking->getLifecycleStatus(),
             };
         }

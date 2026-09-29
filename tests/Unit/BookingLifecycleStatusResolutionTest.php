@@ -79,6 +79,37 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $status);
     }
 
+    public function test_dispatched_item_is_not_active_hire_until_trip_starts(): void
+    {
+        $booking = $this->modelWithoutConstructor(Booking::class, ['status' => 'confirmed']);
+        $item = $this->modelWithoutConstructor(BookingItem::class, ['completed_at' => null]);
+        $dispatch = $this->modelWithoutConstructor(BookingDispatch::class, [
+            'dispatch_status' => DispatchStatus::DISPATCHED->value,
+        ]);
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'resolveSelectedItemLifecycleStatus');
+
+        $status = $method->invoke($service, $booking, $item, $dispatch, null);
+
+        $this->assertSame(BookingLifecycleStatus::DISPATCH_OUT, $status);
+        $this->assertSame('allocation_dispatch', $status->getStage());
+        $this->assertSame('Dispatched', $status->getDisplayName());
+    }
+
+    public function test_booking_model_uses_dispatch_out_until_driver_starts_the_trip(): void
+    {
+        $booking = $this->modelWithoutConstructor(Booking::class, ['status' => 'confirmed']);
+        $dispatch = $this->modelWithoutConstructor(BookingDispatch::class, [
+            'dispatch_status' => DispatchStatus::DISPATCHED->value,
+        ]);
+        $booking->setRelation('dispatch', $dispatch);
+
+        $this->assertSame(BookingLifecycleStatus::DISPATCH_OUT, $booking->getLifecycleStatus());
+
+        $dispatch->setAttribute('dispatch_status', DispatchStatus::IN_PROGRESS->value);
+        $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $booking->getLifecycleStatus());
+    }
+
     public function test_final_telemetry_uses_exact_minutes_and_rejects_reversed_ranges(): void
     {
         $resolver = new FinalPricingTelemetryResolver();
