@@ -17,6 +17,8 @@ it('returns saved stop arrival and completion locations with selected-stop dista
         ->toContain('$stop->completed_latitude')
         ->toContain('$stop->completed_longitude')
         ->toContain('$stop->completed_at')
+        ->toContain("'skipped' => ' skipped'")
         ->toContain("'arrived_location_compliance' => \$this->compareLifecycleLocation(\$plannedLocation, \$arrivedLocation)")
-        ->toContain("'completed_location_compliance' => \$this->compareLifecycleLocation(\$plannedLocation, \$completedLocation)");
+        ->toContain("'completed_location_compliance' => \$this->compareLifecycleLocation(\$plannedLocation, \$completedLocation)")
+        ->toContain("'skip_reason' => \$stop->skip_reason");
 });

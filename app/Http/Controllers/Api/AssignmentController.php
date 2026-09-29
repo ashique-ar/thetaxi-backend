@@ -1618,8 +1618,14 @@ class AssignmentController extends Controller
                     $stop->arrived_at,
                     'stop_arrival'
                 );
+                $completedActionLabel = match ($stop->completed_action) {
+                    'skipped' => ' skipped',
+                    'picked_up' => ' passenger picked up',
+                    'dropped_off' => ' passenger dropped off',
+                    default => ' completed',
+                };
                 $completedLocation = $this->buildActualLifecyclePoint(
-                    $displayLabel . ' completed',
+                    $displayLabel . $completedActionLabel,
                     $stop->completed_latitude,
                     $stop->completed_longitude,
                     $stop->completed_at,
@@ -1644,6 +1650,8 @@ class AssignmentController extends Controller
                     'completed_at' => $this->toUtcIsoTimestamp($stop->completed_at),
                     'completed_location' => $completedLocation,
                     'completed_location_compliance' => $this->compareLifecycleLocation($plannedLocation, $completedLocation),
+                    'completed_action' => $stop->completed_action,
+                    'skip_reason' => $stop->skip_reason,
                     'completed_action' => $stop->completed_action,
                     'skip_reason' => $stop->skip_reason,
                 ];
