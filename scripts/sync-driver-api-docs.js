@@ -174,7 +174,7 @@ for (const folder of collection.item) {
     }
 }
 
-openapi.info.version = '2.7.0';
+openapi.info.version = '2.8.0';
 openapi.info.description = 'Complete canonical Driver Mobile API contract. Authentication and account/profile responses include the driver profile image, assigned vehicle, vehicle images, and driver/vehicle documents. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
 
 const nullableString = (format) => ({ type: 'string', nullable: true, ...(format ? { format } : {}) });
