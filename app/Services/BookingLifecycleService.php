@@ -3633,7 +3633,7 @@ class BookingLifecycleService
             'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'current_status' => [
                 'value' => $currentStatus->value,
-                'stage' => $currentStatus->getStage(),
+                'stage' => $currentStatus->getProgressStage(),
                 'display_name' => $currentStatus->getDisplayName(),
                 'label' => $currentStatus->getDisplayName(),
                 'color' => $currentStatus->getColor(),
@@ -4003,7 +4003,8 @@ class BookingLifecycleService
         $stages = [
             'inquiry' => ['completed' => false, 'current' => false],
             'booking' => ['completed' => false, 'current' => false],
-            'allocation_dispatch' => ['completed' => false, 'current' => false],
+            'allocation' => ['completed' => false, 'current' => false],
+            'dispatch' => ['completed' => false, 'current' => false],
             'ongoing' => ['completed' => false, 'current' => false],
         ];
         if ($workflowSettings['enable_return_stage'] ?? false) {
@@ -4014,7 +4015,7 @@ class BookingLifecycleService
         }
         $stages['final'] = ['completed' => false, 'current' => false];
 
-        $currentStage = $currentStatus->getStage();
+        $currentStage = $currentStatus->getProgressStage();
         $stageOrder = array_keys($stages);
         $currentIndex = array_search($currentStage, $stageOrder);
 

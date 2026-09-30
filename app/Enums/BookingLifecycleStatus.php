@@ -74,6 +74,20 @@ enum BookingLifecycleStatus: string
         };
     }
 
+    /** Fine-grained operational stage for progress displays. */
+    public function getProgressStage(): string
+    {
+        return match ($this) {
+            self::ALLOCATION_PENDING,
+            self::ALLOCATION_ASSIGNED,
+            self::ALLOCATION_CONFLICTS,
+            self::ALLOCATION_APPROVED => 'allocation',
+            self::DISPATCH_READY,
+            self::DISPATCH_OUT => 'dispatch',
+            default => $this->getStage(),
+        };
+    }
+
     /**
      * Get the display name for this status
      */
