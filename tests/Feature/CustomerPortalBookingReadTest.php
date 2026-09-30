@@ -123,8 +123,30 @@ class CustomerPortalBookingReadTest extends TestCase
         $detail->assertJsonPath('data.id', $ownBooking);
         $detail->assertJsonPath('data.trips.0.pickup', 'Colombo');
         $detail->assertJsonMissingPath('data.trips.0.request_status');
+        $detail->assertJsonPath('data.request_status', 'Under review');
         $this->assertStringNotContainsString('99999', $detail->getContent());
         $this->assertStringNotContainsString('88888', $detail->getContent());
+
+        DB::table('bookings')->where('id', $ownBooking)->update([
+            'status' => 'cancelled', 'approval_status' => 'rejected', 'updated_at' => now(),
+        ]);
+        DB::table('booking_items')->where('booking_id', $ownBooking)->update([
+            'status' => 'cancelled', 'updated_at' => now(),
+        ]);
+        $this->actingAs($owner, 'api')->withHeaders($headers)
+            ->getJson('/api/customer-portal/bookings/'.$ownBooking)
+            ->assertOk()
+            ->assertJsonPath('data.request_status', 'Cancelled')
+            ->assertJsonPath('data.trips.0.status', 'Cancelled');
+
+        DB::table('bookings')->where('id', $ownBooking)->update([
+            'status' => 'completed', 'approval_status' => 'pending', 'updated_at' => now(),
+        ]);
+        $this->actingAs($owner, 'api')->withHeaders($headers)
+            ->getJson('/api/customer-portal/bookings/'.$ownBooking)
+            ->assertOk()
+            ->assertJsonPath('data.request_status', 'Completed');
+
         $this->actingAs($owner, 'api')->withHeaders($headers)
             ->getJson('/api/customer-portal/bookings/'.$foreignBooking)->assertNotFound();
         $this->actingAs($owner, 'api')->withHeaders(array_merge($headers, ['X-Active-Context-Id' => (string) Str::uuid()]))

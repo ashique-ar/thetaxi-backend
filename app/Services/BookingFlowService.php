@@ -941,11 +941,10 @@ class BookingFlowService
         // Get total count for pagination
         $total = $baseQuery->count();
 
-        // Apply pagination
-        $vehicleGroups = $baseQuery->orderBy('name', 'asc')
-            ->skip(($page - 1) * $perPage)
-            ->take($perPage)
-            ->get();
+        // Pricing is calculated per group below, so fetch the full result set
+        // before sorting and slicing. Paginating here would sort each page in
+        // isolation and produce a globally incorrect price order.
+        $vehicleGroups = $baseQuery->orderBy('id', 'asc')->get();
 
         $selectedServiceTypeModel = (($isPublic || $this->shouldUsePublicServiceContext($params))
         ? ServiceType::publicContext()
@@ -1241,10 +1240,30 @@ class BookingFlowService
             $availability[] = $availabilityEntry;
         }
 
-        $availability = collect($availability)
-            ->sortBy(fn($item) => $item['pricing_info']['base_amount'] ?? PHP_INT_MAX)
-            ->values()
-            ->all();
+        $sortBy = $params['sort_by'] ?? 'price_low';
+        $sortBy = in_array($sortBy, ['price_low', 'price_high', 'name_asc', 'name_desc'], true)
+            ? $sortBy
+            : 'price_low';
+        $availability = collect($availability)->sort(function ($left, $right) use ($sortBy) {
+            $leftPrice = $left['pricing_info']['base_amount'] ?? null;
+            $rightPrice = $right['pricing_info']['base_amount'] ?? null;
+            $leftName = mb_strtolower((string) ($left['name'] ?? ''));
+            $rightName = mb_strtolower((string) ($right['name'] ?? ''));
+
+            $comparison = match ($sortBy) {
+                'price_high' => ($rightPrice ?? PHP_INT_MIN) <=> ($leftPrice ?? PHP_INT_MIN),
+                'name_asc' => $leftName <=> $rightName,
+                'name_desc' => $rightName <=> $leftName,
+                default => ($leftPrice ?? PHP_INT_MAX) <=> ($rightPrice ?? PHP_INT_MAX),
+            };
+
+            // Keep unpriced groups last for price sorts and use id as a stable
+            // tie-breaker so pagination boundaries do not shift arbitrarily.
+            if (str_starts_with($sortBy, 'price_') && (($leftPrice === null) !== ($rightPrice === null))) {
+                return $leftPrice === null ? 1 : -1;
+            }
+            return $comparison ?: ((string) $left['id'] <=> (string) $right['id']);
+        })->values();
 
         // Calculate total journey distance if locations are provided
         $totalJourneyDistance = null;
@@ -1332,6 +1351,10 @@ class BookingFlowService
                 'dropoff_location' => $dropoffLocation,
             ]);
         }
+
+        // Pagination must happen after availability and price calculation so
+        // every page is a slice of the same globally sorted result set.
+        $availability = collect($availability)->forPage($page, $perPage)->values()->all();
 
         // Return with pagination if requested
         if (isset($params['page']) || isset($params['per_page'])) {
@@ -2100,12 +2123,13 @@ class BookingFlowService
     {
         $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);
 
-        if (!$isCorporateBooking) {
+        // Staff create both individual and corporate bookings with explicit
+        // resource selections. This portal-only scrub applies exclusively to
+        // customer submitted corporate requests; customer individual requests
+        // are scrubbed by CustomerPortalBookingController.
+        if (!$isCorporateBooking || $this->isInternalStaffBookingRequest()) {
             return $params;
         }
-
-        $corporateId = $params['corporate_account_id'] ?? null;
-        $corporate = $corporateId ? Corporate::find($corporateId) : null;
 
         unset(
             $params['vehicle_id'],
@@ -2118,11 +2142,18 @@ class BookingFlowService
         if (isset($params['booking_items']) && is_array($params['booking_items'])) {
             foreach ($params['booking_items'] as $index => $item) {
                 if (is_array($item)) {
-                    if ($corporate) {
-                        $this->assertCorporateBookingItemAllowed($corporate, $item);
-                    }
                     unset($item['vehicle_id'], $item['driver_id']);
                     $params['booking_items'][$index] = $item;
+                }
+            }
+        }
+
+        $corporateId = $params['corporate_account_id'] ?? null;
+        $corporate = $corporateId ? Corporate::find($corporateId) : null;
+        if ($corporate && isset($params['booking_items']) && is_array($params['booking_items'])) {
+            foreach ($params['booking_items'] as $item) {
+                if (is_array($item)) {
+                    $this->assertCorporateBookingItemAllowed($corporate, $item);
                 }
             }
         } elseif ($corporate) {
@@ -2130,6 +2161,24 @@ class BookingFlowService
         }
 
         return $params;
+    }
+
+    /**
+     * Corporate bookings entered by internal staff may include concrete vehicle
+     * and driver assignments. Requests without an internal staff context are
+     * restricted to vehicle-group selection.
+     */
+    private function isInternalStaffBookingRequest(): bool
+    {
+        $user = Auth::user();
+        if (!$user) {
+            return false;
+        }
+
+        $context = app(\App\Services\UserContextService::class)
+            ->resolveActiveContextFromRequest($user, request());
+
+        return ($context['portal_profile'] ?? null) === 'internal';
     }
 
     private function assertCorporateBookingItemAllowed(Corporate $corporate, array $item): void

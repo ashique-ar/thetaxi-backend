@@ -1051,6 +1051,10 @@ class BookingController extends Controller
             $perPage = 8;
             $searchParams['page'] = 1;
             $searchParams['per_page'] = $perPage;
+            $requestedSort = (string) $request->query('sort_by', 'price_low');
+            $searchParams['sort_by'] = in_array($requestedSort, ['price_low', 'price_high', 'name_asc', 'name_desc'], true)
+                ? $requestedSort
+                : 'price_low';
             $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
 
             // Extract data and pagination
@@ -1187,6 +1191,7 @@ class BookingController extends Controller
     {
         $validated = $request->validate([
             'page' => 'required|integer|min:2|max:1000',
+            'sort_by' => 'sometimes|in:price_low,price_high,name_asc,name_desc',
         ]);
 
         $searchParams = session()->get('current_search_params');
@@ -1201,6 +1206,7 @@ class BookingController extends Controller
 
         $searchParams['page'] = (int) $validated['page'];
         $searchParams['per_page'] = 8;
+        $searchParams['sort_by'] = $validated['sort_by'] ?? 'price_low';
         $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
         $groups = $availabilityData['data'] ?? $availabilityData;
         $vehicles = $this->transformResultsForPublicView($groups ?? [], $searchParams, $pricingContext);

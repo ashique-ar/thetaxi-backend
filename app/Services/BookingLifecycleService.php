@@ -1416,6 +1416,11 @@ class BookingLifecycleService
                 && in_array($fromStatus, [
                     BookingLifecycleStatus::RETURN_COMPLETED,
                     BookingLifecycleStatus::RETURN_LATE,
+                    BookingLifecycleStatus::QC_PENDING,
+                    BookingLifecycleStatus::QC_IN_PROGRESS,
+                    BookingLifecycleStatus::QC_ISSUES_FOUND,
+                    BookingLifecycleStatus::QC_REPAIR_NEEDED,
+                    BookingLifecycleStatus::QC_COMPLETED,
                 ], true);
 
             if ($canSkipReturn && $dispatch) {
@@ -3279,13 +3284,42 @@ class BookingLifecycleService
         ];
     }
 
+    /**
+     * Keep optional return/QC stages out of the workspace when the business
+     * setting is disabled. A trip still in an old return/inspection state can
+     * proceed to the explicit final close-out action without reopening those
+     * stages or being mislabeled as an active return task.
+     */
+    private function normalizeStatusForDisabledOptionalStages(
+        BookingLifecycleStatus $status,
+        array $workflowSettings
+    ): BookingLifecycleStatus {
+        if (!($workflowSettings['enable_return_stage'] ?? false)) {
+            if (in_array($status, [BookingLifecycleStatus::RETURN_SCHEDULED, BookingLifecycleStatus::RETURN_OVERDUE], true)) {
+                return BookingLifecycleStatus::ONGOING_ACTIVE;
+            }
+            if (in_array($status, [BookingLifecycleStatus::RETURN_COMPLETED, BookingLifecycleStatus::RETURN_LATE], true)) {
+                return BookingLifecycleStatus::COMPLETION_PENDING;
+            }
+        }
+
+        if (!($workflowSettings['enable_qc_stage'] ?? false) && in_array($status, [
+            BookingLifecycleStatus::QC_PENDING,
+            BookingLifecycleStatus::QC_IN_PROGRESS,
+            BookingLifecycleStatus::QC_ISSUES_FOUND,
+            BookingLifecycleStatus::QC_REPAIR_NEEDED,
+            BookingLifecycleStatus::QC_COMPLETED,
+        ], true)) {
+            return BookingLifecycleStatus::COMPLETION_PENDING;
+        }
+
+        return $status;
+    }
+
     private function assertReturnStageAvailable(Booking $booking): void
     {
         $settings = $this->getLifecycleWorkflowSettings();
-        if (
-            !($settings['enable_return_stage'] ?? false)
-            && $booking->getLifecycleStatus()->getStage() !== 'return'
-        ) {
+        if (!($settings['enable_return_stage'] ?? false)) {
             throw new \Exception('Vehicle return management is disabled in booking settings');
         }
     }
@@ -3293,10 +3327,7 @@ class BookingLifecycleService
     private function assertQcStageAvailable(Booking $booking): void
     {
         $settings = $this->getLifecycleWorkflowSettings();
-        if (
-            !($settings['enable_qc_stage'] ?? false)
-            && $booking->getLifecycleStatus()->getStage() !== 'qc_repair'
-        ) {
+        if (!($settings['enable_qc_stage'] ?? false)) {
             throw new \Exception('QC management is disabled in booking settings');
         }
     }
@@ -3529,6 +3560,7 @@ class BookingLifecycleService
             $itemDispatch,
             $itemQc
         );
+        $currentStatus = $this->normalizeStatusForDisabledOptionalStages($currentStatus, $workflowSettings);
         $nextActions = array_map(static fn (BookingLifecycleStatus $status): array => [
             'status' => $status->value,
             'display_name' => $status->getDisplayName(),
@@ -3536,14 +3568,6 @@ class BookingLifecycleService
             'color' => $status->getColor(),
         ], $currentStatus->getNextStatuses());
         $currentStage = $currentStatus->getStage();
-
-        // Do not strand bookings already inside an optional stage when settings change.
-        if ($currentStage === 'return') {
-            $workflowSettings['enable_return_stage'] = true;
-        } elseif ($currentStage === 'qc_repair') {
-            $workflowSettings['enable_return_stage'] = true;
-            $workflowSettings['enable_qc_stage'] = true;
-        }
 
         if (
             $currentStatus === BookingLifecycleStatus::ONGOING_ACTIVE
@@ -3667,13 +3691,7 @@ class BookingLifecycleService
             $itemQc
         );
         $workflowSettings = $this->getLifecycleWorkflowSettings();
-
-        if ($currentStatus->getStage() === 'return') {
-            $workflowSettings['enable_return_stage'] = true;
-        } elseif ($currentStatus->getStage() === 'qc_repair') {
-            $workflowSettings['enable_return_stage'] = true;
-            $workflowSettings['enable_qc_stage'] = true;
-        }
+        $currentStatus = $this->normalizeStatusForDisabledOptionalStages($currentStatus, $workflowSettings);
 
         $driverAssignment = $this->latestDriverAssignment(
             (string) $booking->id,
@@ -3723,11 +3741,17 @@ class BookingLifecycleService
         if (in_array($bookingStatus, ['inquiry_cancelled', 'inquiry_canceled'], true)) {
             return BookingLifecycleStatus::INQUIRY_CANCELLED;
         }
-        if (in_array($bookingStatus, ['cancelled', 'canceled', 'booking_cancelled'], true)) {
+        if (in_array($bookingStatus, ['cancelled', 'canceled'], true)) {
             return BookingLifecycleStatus::CANCELLED;
+        }
+        if ($bookingStatus === 'booking_cancelled') {
+            return BookingLifecycleStatus::BOOKING_CANCELLED;
         }
         if (in_array($bookingStatus, ['rejected', 'booking_rejected'], true)) {
             return BookingLifecycleStatus::BOOKING_REJECTED;
+        }
+        if ($itemStatus === 'completed') {
+            return BookingLifecycleStatus::COMPLETED;
         }
         if ($bookingStatus === 'completed') {
             return BookingLifecycleStatus::COMPLETED;
@@ -3758,6 +3782,21 @@ class BookingLifecycleService
                 DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
                 default => $booking->getLifecycleStatus(),
             };
+        }
+
+        // Multi-trip bookings store assignments on each booking item. The
+        // booking-level lifecycle status cannot reflect those item-owned IDs,
+        // so project the selected trip as allocated when its required resources
+        // have been saved. This keeps the workspace from asking staff to assign
+        // the same vehicle and driver again after reopening the trip.
+        $itemIsSelfDriven = (bool) ($bookingItem?->is_self_driven ?? $booking->is_self_driven);
+        if (
+            $bookingItem
+            && in_array($bookingStatus, ['confirmed', 'approved', 'booking_confirmed', 'booking_approved', 'allocation_pending', 'pending_allocation'], true)
+            && !empty($bookingItem->vehicle_id)
+            && ($itemIsSelfDriven || !empty($bookingItem->driver_id))
+        ) {
+            return BookingLifecycleStatus::ALLOCATION_ASSIGNED;
         }
 
         return $booking->getLifecycleStatus();
@@ -3855,6 +3894,7 @@ class BookingLifecycleService
             BookingLifecycleStatus::RETURN_COMPLETED,
             BookingLifecycleStatus::RETURN_LATE,
             BookingLifecycleStatus::QC_PENDING,
+            BookingLifecycleStatus::COMPLETION_PENDING,
         ], true)) {
             if ($workflowSettings['enable_qc_stage'] ?? false) {
                 $actions[] = 'start_qc_inspection';
@@ -3876,6 +3916,10 @@ class BookingLifecycleService
         }
 
         if ($currentStatus === BookingLifecycleStatus::QC_COMPLETED) {
+            $actions[] = 'complete_booking';
+        }
+
+        if ($currentStatus === BookingLifecycleStatus::COMPLETION_PENDING) {
             $actions[] = 'complete_booking';
         }
 
@@ -4395,6 +4439,14 @@ class BookingLifecycleService
             && !($workflowSettings['enable_qc_stage'] ?? false)
         ) {
             return 'Complete Booking';
+        }
+
+        if ($status === BookingLifecycleStatus::COMPLETION_PENDING) {
+            return 'Complete Booking';
+        }
+
+        if ($status === BookingLifecycleStatus::RETURN_SCHEDULED && !($workflowSettings['enable_return_stage'] ?? false)) {
+            return 'Complete Trip';
         }
 
         return match ($status) {

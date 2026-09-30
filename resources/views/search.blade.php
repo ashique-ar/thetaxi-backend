@@ -267,10 +267,10 @@
                                 </button>
                                 <div class="sort-dropdown">
                                     <select class="form-select form-select-sm" id="sortResults" style="min-width: 180px;">
-                                        <option value="price_low" selected>Price: Low to High</option>
-                                        <option value="price_high">Price: High to Low</option>
-                                        <option value="name_asc">Name: A to Z</option>
-                                        <option value="name_desc">Name: Z to A</option>
+                                        <option value="price_low" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'price_low')>Price: Low to High</option>
+                                        <option value="price_high" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'price_high')>Price: High to Low</option>
+                                        <option value="name_asc" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'name_asc')>Name: A to Z</option>
+                                        <option value="name_desc" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'name_desc')>Name: Z to A</option>
                                     </select>
                                 </div>
                                 <a href="{{ route('home') }}" class="btn btn-success btn-sm text-nowrap">
@@ -285,13 +285,8 @@
 
             @if (isset($results['data']) && count($results['data']) > 0)
                 @php
-                    // Sort results by price ascending by default
-                    $sortedResults = collect($results['data'])
-                        ->sortBy(function ($item) {
-                            return $item['pricing_info']['base_amount'] ?? 0;
-                        })
-                        ->values()
-                        ->all();
+                    // Results are globally sorted by the server before pagination.
+                    $sortedResults = $results['data'];
                 @endphp
                 <!-- Vehicle Grid - 4 cols (lg), 3 cols (md), 1 col (sm) -->
                 <div class="row g-4 vehicle-results-grid">
@@ -1218,41 +1213,12 @@
             });
 
             // Sort functionality
+            // Sorting changes the server query and restarts pagination at page 1.
             $(document).on('change', '#sortResults', function() {
-                sortVehicleResults($(this).val());
+                const url = new URL(window.location.href);
+                url.searchParams.set('sort_by', $(this).val());
+                window.location.assign(url.toString());
             });
-
-            // Function to sort vehicle results
-            function sortVehicleResults(sortBy) {
-                const $grid = $('.vehicle-results-grid');
-                const $cards = $grid.find('.vehicle-card-wrapper').toArray();
-
-                $cards.sort(function(a, b) {
-                    const priceA = parseFloat($(a).data('price')) || 0;
-                    const priceB = parseFloat($(b).data('price')) || 0;
-                    const nameA = ($(a).data('name') || '').toString().toLowerCase();
-                    const nameB = ($(b).data('name') || '').toString().toLowerCase();
-
-                    switch (sortBy) {
-                        case 'price_low':
-                            return priceA - priceB;
-                        case 'price_high':
-                            return priceB - priceA;
-                        case 'name_asc':
-                            return nameA.localeCompare(nameB);
-                        case 'name_desc':
-                            return nameB.localeCompare(nameA);
-                        default:
-                            return priceA - priceB; // Default to price low
-                    }
-                });
-
-                // Re-append sorted column wrappers (preserves grid classes and layout)
-                $grid.empty();
-                $cards.forEach(function(c) {
-                    $grid.append(c);
-                });
-            }
 
             // Booking form date change - update prices
             $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function() {
@@ -1311,7 +1277,8 @@
                     window.vehicleLoadMoreAbortController = requestController;
                     let shouldPrefetchNextPage = false;
                     try {
-                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}`, {
+                        const sortBy = document.getElementById('sortResults')?.value || 'price_low';
+                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}&sort_by=${encodeURIComponent(sortBy)}`, {
                             credentials: 'same-origin',
                             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                             signal: requestController.signal

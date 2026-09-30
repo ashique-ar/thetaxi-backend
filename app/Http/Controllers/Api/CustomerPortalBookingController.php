@@ -60,9 +60,10 @@ class CustomerPortalBookingController extends BookingFlowController
         $status = strtolower((string) $booking->status);
         $approval = strtolower((string) $booking->approval_status);
         $progress = match (true) {
-            in_array($status, ['cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled'], true) => 'Cancelled',
-            in_array($status, ['rejected', 'booking_rejected'], true) || $approval === 'rejected' => 'Rejected',
+            in_array($status, ['cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled', 'inquiry_canceled'], true) => 'Cancelled',
+            in_array($status, ['rejected', 'booking_rejected'], true) => 'Rejected',
             $status === 'completed' => 'Completed',
+            $approval === 'rejected' => 'Rejected',
             in_array($status, ['confirmed', 'approved'], true) || $approval === 'approved' => 'Confirmed',
             $approval === 'pending' || in_array($status, ['pending_approval', 'under_review'], true) => 'Under review',
             default => 'Received',
@@ -95,6 +96,16 @@ class CustomerPortalBookingController extends BookingFlowController
             'completed' => 'Completed',
             'confirmed', 'approved', 'booking_confirmed', 'booking_approved' => 'Confirmed',
             'pending_approval', 'booking_requires_approval' => 'Under review',
+            'allocation_pending', 'allocation_conflicts' => 'Vehicle and driver being arranged',
+            'allocation_assigned', 'allocation_approved' => 'Vehicle and driver assigned',
+            'dispatch_ready' => 'Preparing trip',
+            'dispatch_out', 'dispatched' => 'Vehicle dispatched',
+            'ongoing_active', 'in_progress' => 'In progress',
+            'ongoing_replacement_needed' => 'Replacement being arranged',
+            'ongoing_breakdown' => 'Breakdown support in progress',
+            'return_scheduled', 'return_overdue', 'return_late', 'ongoing_active' => 'In progress',
+            'return_completed', 'returned', 'qc_pending', 'qc_in_progress', 'qc_issues_found',
+            'qc_repair_needed', 'qc_completed', 'completion_pending' => 'Trip ended',
             default => null,
         };
     }
@@ -196,6 +207,10 @@ class CustomerPortalBookingController extends BookingFlowController
             'vehicles',
             'drivers',
             'vehicle_driver_assignments',
+            'vehicle_id',
+            'driver_id',
+            'specific_vehicle_id',
+            'specific_driver_id',
         ]);
 
         $payload['customer_id'] = (string) $customer->id;
@@ -219,7 +234,9 @@ class CustomerPortalBookingController extends BookingFlowController
                     $item['price_adjustment_reason'],
                     $item['vehicles'],
                     $item['drivers'],
-                    $item['vehicle_driver_assignments']
+                    $item['vehicle_driver_assignments'],
+                    $item['vehicle_id'],
+                    $item['driver_id']
                 );
                 if (is_array($item['selected_addons'] ?? null)) {
                     foreach ($item['selected_addons'] as &$addon) {

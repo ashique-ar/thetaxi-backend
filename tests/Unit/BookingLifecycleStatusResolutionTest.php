@@ -154,6 +154,28 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $booking->getLifecycleStatus());
     }
 
+    public function test_booking_model_resolves_every_canonical_lifecycle_value(): void
+    {
+        foreach (BookingLifecycleStatus::cases() as $expected) {
+            $booking = $this->modelWithoutConstructor(Booking::class, ['status' => $expected->value]);
+
+            $this->assertSame($expected, $booking->getLifecycleStatus(), $expected->value);
+        }
+    }
+
+    public function test_disabled_return_and_qc_stages_map_to_direct_trip_closeout(): void
+    {
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'normalizeStatusForDisabledOptionalStages');
+        $settings = ['enable_return_stage' => false, 'enable_qc_stage' => false];
+
+        $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $method->invoke($service, BookingLifecycleStatus::RETURN_SCHEDULED, $settings));
+        $this->assertSame(BookingLifecycleStatus::ONGOING_ACTIVE, $method->invoke($service, BookingLifecycleStatus::RETURN_OVERDUE, $settings));
+        $this->assertSame(BookingLifecycleStatus::COMPLETION_PENDING, $method->invoke($service, BookingLifecycleStatus::RETURN_COMPLETED, $settings));
+        $this->assertSame(BookingLifecycleStatus::COMPLETION_PENDING, $method->invoke($service, BookingLifecycleStatus::QC_REPAIR_NEEDED, $settings));
+        $this->assertSame(BookingLifecycleStatus::RETURN_SCHEDULED, $method->invoke($service, BookingLifecycleStatus::RETURN_SCHEDULED, ['enable_return_stage' => true, 'enable_qc_stage' => false]));
+    }
+
     public function test_final_telemetry_uses_exact_minutes_and_rejects_reversed_ranges(): void
     {
         $resolver = new FinalPricingTelemetryResolver();
