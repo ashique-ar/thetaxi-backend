@@ -8,6 +8,14 @@ use Illuminate\Support\Facades\Log;
 
 class CurrencyService
 {
+    private function fractionDigits(string $currencyCode): int
+    {
+        // Currency codes and rates come from the system's currencies table.
+        // The current currency model has no precision setting, so use a
+        // consistent generic minor-unit default.
+        return 2;
+    }
+
     /**
      * Normalize calculated monetary amounts for customer-facing totals and charges.
      */
@@ -18,17 +26,24 @@ class CurrencyService
         return (float) ($numericAmount < 0 ? ceil($numericAmount) : floor($numericAmount));
     }
 
+    /** Round a booked or displayed amount using the currency's minor unit. */
+    public function roundAmount(float|int|string|null $amount, string $currencyCode): float
+    {
+        $numericAmount = is_numeric($amount) ? (float) $amount : 0.0;
+        return round($numericAmount, $this->fractionDigits($currencyCode));
+    }
+
     /**
      * Convert amount from one currency to another
      */
     public function convert(float $amount, string $fromCurrency, string $toCurrency): float
     {
         if ($fromCurrency === $toCurrency) {
-            return $this->normalizeAmount($amount);
+            return $this->roundAmount($amount, $toCurrency);
         }
 
         $exchangeRate = $this->getExchangeRate($fromCurrency, $toCurrency);
-        return $this->normalizeAmount($amount * $exchangeRate);
+        return $this->roundAmount($amount * $exchangeRate, $toCurrency);
     }
 
     /**
@@ -36,11 +51,20 @@ class CurrencyService
      */
     public function getExchangeRate(string $fromCurrency, string $toCurrency): float
     {
+        $fromCurrency = strtoupper(trim($fromCurrency));
+        $toCurrency = strtoupper(trim($toCurrency));
+        if (!$this->isValidCurrency($fromCurrency) || !$this->isValidCurrency($toCurrency)) {
+            throw new \RuntimeException("Exchange rate unavailable for {$fromCurrency} to {$toCurrency}");
+        }
+
         if ($fromCurrency === $toCurrency) {
             return 1.0;
         }
 
-        $cacheKey = "exchange_rate_{$fromCurrency}_{$toCurrency}";
+        // Version the key so currency admin changes invalidate every pair
+        // immediately, including old cached 1:1 fallback values.
+        $rateVersion = (int) Cache::get('currency.exchange_rates.v', 0);
+        $cacheKey = "exchange_rate.v{$rateVersion}_{$fromCurrency}_{$toCurrency}";
         
         return Cache::remember($cacheKey, 3600, function () use ($fromCurrency, $toCurrency) {
             $fromCurrencyData = Currency::where('code', $fromCurrency)->first();
@@ -51,15 +75,22 @@ class CurrencyService
                     'from' => $fromCurrency,
                     'to' => $toCurrency
                 ]);
-                return 1.0;
+                throw new \RuntimeException("Exchange rate unavailable for {$fromCurrency} to {$toCurrency}");
             }
 
-            // Get rates relative to base currency (assuming LKR is base)
-            $fromRate = (float) ($fromCurrencyData->exrate ?? 1.0);
-            $toRate = (float) ($toCurrencyData->exrate ?? 1.0);
+            // Currency exrates are maintained by the system against its configured base.
+            $fromRate = is_numeric($fromCurrencyData->exrate) ? (float) $fromCurrencyData->exrate : 0.0;
+            $toRate = is_numeric($toCurrencyData->exrate) ? (float) $toCurrencyData->exrate : 0.0;
 
-            if ($fromRate <= 0) $fromRate = 1.0;
-            if ($toRate <= 0) $toRate = 1.0;
+            if ($fromRate <= 0 || $toRate <= 0) {
+                Log::error('Invalid exchange rate for conversion', [
+                    'from' => $fromCurrency,
+                    'to' => $toCurrency,
+                    'from_rate' => $fromRate,
+                    'to_rate' => $toRate,
+                ]);
+                throw new \RuntimeException("Invalid exchange rate for {$fromCurrency} to {$toCurrency}");
+            }
 
             // Convert: amount_in_from -> amount_in_base -> amount_in_to
             return $toRate / $fromRate;
@@ -87,7 +118,8 @@ class CurrencyService
         $currency = Currency::where('code', $currencyCode)->first();
         $symbol = $currency ? $currency->symbol : $currencyCode;
         
-        return $symbol . ' ' . number_format($this->normalizeAmount($amount), 0);
+        $digits = $this->fractionDigits($currencyCode);
+        return $symbol . ' ' . number_format($this->roundAmount($amount, $currencyCode), $digits);
     }
 
     /**
@@ -95,9 +127,37 @@ class CurrencyService
      */
     public function getDefaultCurrency(): string
     {
-        $currency = app(WebsiteSettingsService::class)->get('default_currency', config('app.default_currency', 'LKR'));
+        $configured = strtoupper(trim((string) (
+            app(WebsiteSettingsService::class)->get('default_currency')
+            ?: config('app.default_currency', '')
+        )));
+        if ($configured !== '' && $this->hasUsableExchangeRate($configured)) {
+            return $configured;
+        }
 
-        return strtoupper(trim((string) ($currency ?: 'LKR')));
+        $available = Currency::query()
+            ->whereNotNull('exrate')
+            ->where('exrate', '>', 0)
+            ->orderBy('code')
+            ->value('code');
+        if ($available) {
+            return strtoupper((string) $available);
+        }
+
+        throw new \RuntimeException('No valid currencies are configured in system settings.');
+    }
+
+    public function getBookingBaseCurrency(): string
+    {
+        $settings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $configured = strtoupper(trim((string) (
+            $settings['booking_base_currency']
+            ?? config('booking.base_currency', '')
+        )));
+
+        return $configured !== '' && $this->isValidCurrency($configured)
+            ? $configured
+            : $this->getDefaultCurrency();
     }
 
     /**
@@ -105,7 +165,16 @@ class CurrencyService
      */
     public function isValidCurrency(string $currencyCode): bool
     {
-        return Currency::where('code', $currencyCode)->exists();
+        return Currency::where('code', strtoupper(trim($currencyCode)))->exists();
+    }
+
+    private function hasUsableExchangeRate(string $currencyCode): bool
+    {
+        return Currency::query()
+            ->where('code', strtoupper(trim($currencyCode)))
+            ->whereNotNull('exrate')
+            ->where('exrate', '>', 0)
+            ->exists();
     }
 
     /**
@@ -116,7 +185,7 @@ class CurrencyService
     public function convertFromLKR(float $lkrAmount, string $targetCurrencyCode): float
     {
         if ($targetCurrencyCode === 'LKR') {
-            return $this->normalizeAmount($lkrAmount);
+            return $this->roundAmount($lkrAmount, $targetCurrencyCode);
         }
 
         $targetCurrency = Currency::where('code', $targetCurrencyCode)->first();
@@ -125,12 +194,12 @@ class CurrencyService
                 'target_currency' => $targetCurrencyCode,
                 'exrate' => $targetCurrency?->exrate
             ]);
-            return $this->normalizeAmount($lkrAmount); // Return original amount if conversion fails
+            throw new \RuntimeException("Exchange rate unavailable for LKR to {$targetCurrencyCode}");
         }
 
         $exchangeRate = (float) $targetCurrency->exrate;
         // Since exrate is "1 LKR = X foreign currency", multiply by the rate
-        return $this->normalizeAmount($lkrAmount * $exchangeRate);
+        return $this->roundAmount($lkrAmount * $exchangeRate, $targetCurrencyCode);
     }
 
     /**
@@ -140,7 +209,7 @@ class CurrencyService
     public function convertToLKR(float $amount, string $fromCurrencyCode): float
     {
         if ($fromCurrencyCode === 'LKR') {
-            return $this->normalizeAmount($amount);
+            return $this->roundAmount($amount, 'LKR');
         }
 
         $fromCurrency = Currency::where('code', $fromCurrencyCode)->first();
@@ -149,12 +218,12 @@ class CurrencyService
                 'from_currency' => $fromCurrencyCode,
                 'exrate' => $fromCurrency?->exrate
             ]);
-            return $this->normalizeAmount($amount); // Return original amount if conversion fails
+            throw new \RuntimeException("Exchange rate unavailable for {$fromCurrencyCode} to LKR");
         }
 
         $exchangeRate = (float) $fromCurrency->exrate;
         // Since exrate is "1 LKR = X foreign currency", divide by the rate to get LKR
-        return $this->normalizeAmount($amount / $exchangeRate);
+        return $this->roundAmount($amount / $exchangeRate, 'LKR');
     }
 
     /**
@@ -162,7 +231,10 @@ class CurrencyService
      */
     public function getSelectedCurrency(): string
     {
-        return session('selected_currency', $this->getDefaultCurrency());
+        $selected = strtoupper(trim((string) session('selected_currency', '')));
+        return $selected !== '' && $this->isValidCurrency($selected)
+            ? $selected
+            : $this->getDefaultCurrency();
     }
 
     /**
@@ -170,6 +242,7 @@ class CurrencyService
      */
     public function setSelectedCurrency(string $currencyCode): void
     {
+        $currencyCode = strtoupper(trim($currencyCode));
         if ($this->isValidCurrency($currencyCode)) {
             session(['selected_currency' => $currencyCode]);
         }
@@ -217,7 +290,7 @@ class CurrencyService
         
         foreach ($amountFields as $field) {
             if (isset($convertedPricing[$field])) {
-                $convertedPricing[$field] = $this->normalizeAmount($convertedPricing[$field] * $exchangeRate);
+                $convertedPricing[$field] = $this->roundAmount($convertedPricing[$field] * $exchangeRate, $toCurrency);
             }
         }
 
@@ -225,7 +298,7 @@ class CurrencyService
         if (isset($convertedPricing['breakdown']) && is_array($convertedPricing['breakdown'])) {
             foreach ($convertedPricing['breakdown'] as &$item) {
                 if (isset($item['amount'])) {
-                    $item['amount'] = $this->normalizeAmount($item['amount'] * $exchangeRate);
+                    $item['amount'] = $this->roundAmount($item['amount'] * $exchangeRate, $toCurrency);
                 }
             }
         }
@@ -234,10 +307,10 @@ class CurrencyService
         if (isset($convertedPricing['base_pricing']) && is_array($convertedPricing['base_pricing'])) {
             foreach ($convertedPricing['base_pricing'] as &$item) {
                 if (isset($item['amount'])) {
-                    $item['amount'] = $this->normalizeAmount($item['amount'] * $exchangeRate);
+                    $item['amount'] = $this->roundAmount($item['amount'] * $exchangeRate, $toCurrency);
                 }
                 if (isset($item['original_amount'])) {
-                    $item['original_amount'] = $this->normalizeAmount($item['original_amount'] * $exchangeRate);
+                    $item['original_amount'] = $this->roundAmount($item['original_amount'] * $exchangeRate, $toCurrency);
                 }
             }
         }
@@ -246,13 +319,13 @@ class CurrencyService
         if (isset($convertedPricing['addons_pricing']['addons']) && is_array($convertedPricing['addons_pricing']['addons'])) {
             foreach ($convertedPricing['addons_pricing']['addons'] as &$addon) {
                 if (isset($addon['unit_price'])) {
-                    $addon['unit_price'] = $this->normalizeAmount($addon['unit_price'] * $exchangeRate);
+                    $addon['unit_price'] = $this->roundAmount($addon['unit_price'] * $exchangeRate, $toCurrency);
                 }
                 if (isset($addon['total_price'])) {
-                    $addon['total_price'] = $this->normalizeAmount($addon['total_price'] * $exchangeRate);
+                    $addon['total_price'] = $this->roundAmount($addon['total_price'] * $exchangeRate, $toCurrency);
                 }
                 if (isset($addon['original_price'])) {
-                    $addon['original_price'] = $this->normalizeAmount($addon['original_price'] * $exchangeRate);
+                    $addon['original_price'] = $this->roundAmount($addon['original_price'] * $exchangeRate, $toCurrency);
                 }
             }
         }

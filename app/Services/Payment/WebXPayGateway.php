@@ -35,7 +35,7 @@ class WebXPayGateway implements PaymentGatewayInterface
         }
 
         try {
-            $result = $this->webXPayService->createPayment($booking, $amount, $options['payment_type'] ?? 'full');
+            $result = $this->webXPayService->createPayment($booking, $amount, $options['payment_type'] ?? 'full', $currency);
 
             return [
                 'success'          => $result['success'] ?? false,

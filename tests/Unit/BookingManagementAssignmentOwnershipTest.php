@@ -38,6 +38,20 @@ it('treats a selected booking item as the authoritative assignment owner', funct
         ->not->toContain('if ($filteredDriverAssignments->isNotEmpty())');
 });
 
+it('lets the new workspace defer account-wide finance totals without changing legacy defaults', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/AssignmentController.php');
+    $detailsMethod = Str::between(
+        $source,
+        'public function getAssignmentDetails(',
+        'private function buildTrackingPayload('
+    );
+
+    expect($detailsMethod)
+        ->toContain("\$request->query('include_account_summary', true)")
+        ->toContain("'payment_account_summary' => \$includeAccountSummary")
+        ->toContain('? $this->paymentLedger->accountSummary($booking)');
+});
+
 it('persists Angular booking item assignments during direct confirmation', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
     $confirmation = Str::between(
@@ -82,4 +96,15 @@ it('does not project a drivers later live position onto a completed trip', funct
         ->toContain('$historicalLatitude = $tripAssignment->final_latitude')
         ->toContain("'is_online' => false")
         ->toContain("'source' => \$tripCompleted ? 'trip_completion' : 'driver_live_location'");
+});
+
+it('accepts the legacy conflict dialog override mode during assignment confirmation', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/Api/Booking/Traits/BookingAvailabilityTrait.php');
+    $confirmation = Str::between(
+        $source,
+        'public function processAssignmentConfirmation(',
+        'public function approveAssignments('
+    );
+
+    expect($confirmation)->toContain("'overlap_type' => 'nullable|string|in:full,partial,concurrent,override'");
 });

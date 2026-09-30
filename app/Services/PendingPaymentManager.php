@@ -65,12 +65,7 @@ class PendingPaymentManager
 
         if ($existing) {
 
-            // Ensure context and amount are up-to-date
-            $existing->update([
-                'booking_context' => json_encode($bookingContext),
-                'amount_due' => $amountDue,
-                'updated_at' => Carbon::now(),
-            ]);
+            // Keep the first version attached to this URL as the original quotation.
 
             return $existing;
         }
@@ -190,10 +185,17 @@ class PendingPaymentManager
             ]);
 
             // Return booking context and payment details
+            $bookingContext = $paymentLink->booking_context;
+            if (!is_array($bookingContext)) {
+                $bookingContext = json_decode((string) $bookingContext, true) ?: [];
+            }
             return [
                 'booking' => $paymentLink->booking()->first(),
-                'context' => json_decode($paymentLink->booking_context, true),
-                'amount_due' => $paymentLink->amount_due,
+                'context' => $bookingContext,
+                'amount_due' => $paymentLink->revision_amount_due ?? $paymentLink->amount_due,
+                'original_amount_due' => $paymentLink->amount_due,
+                'revision_item_ids' => $paymentLink->revision_item_ids,
+                'revision_total' => $paymentLink->revision_total,
                 'token' => $token,
                 'expires_at' => $paymentLink->expires_at,
             ];
@@ -309,6 +311,7 @@ class PendingPaymentManager
                 'amount_paid' => $booking->amount_paid ?? 0,
                 'currency' => $booking->currency ?? 'LKR',
             ],
+            'pricing_snapshot' => is_array($booking->pricing_snapshot) ? $booking->pricing_snapshot : [],
             'items_count' => $itemsCount,
             'booking_items' => $booking->bookingItems->map(function ($item) {
                 // Get vehicle group images
@@ -396,6 +399,7 @@ class PendingPaymentManager
                 $displayBaseTotalKm = $includedTotalKmForExtra ?? $baseTotalKm;
 
                 return [
+                'id' => (string) $item->id,
                     'vehicle_group' => $item->vehicle_group_name ?? ($item->vehicleGroup?->name ?? 'N/A'),
                     'service_type' => $item->service_type_name ?? ($item->serviceType?->name ?? 'N/A'),
                     'from_date' => $item->from_date?->toDateString(),
@@ -407,6 +411,7 @@ class PendingPaymentManager
                     'dropoff_location' => is_array($item->dropoff_location) ? $item->dropoff_location : json_decode($item->dropoff_location ?? '{}', true),
                     'unit_price' => $item->unit_price,
                     'total_price' => $item->total_price,
+                    'pricing_breakdown' => is_array($item->pricing_breakdown) ? $item->pricing_breakdown : [],
                     'vehicle_group_images' => $vehicleGroupImages,
                     'addons' => $addonsData,
                     'extra_kilometers' => $extraKilometers,
@@ -435,6 +440,17 @@ class PendingPaymentManager
     public static function invalidatePaymentLink(string $token): void
     {
         PendingPaymentLink::where('token', $token)
+            ->update([
+                'expires_at' => Carbon::now()->subMinute(),
+                'invalidated_at' => Carbon::now(),
+            ]);
+    }
+
+    /** Invalidate every outstanding resume URL after its booking is paid. */
+    public static function invalidateLinksForBooking(string $bookingId): void
+    {
+        PendingPaymentLink::where('booking_id', $bookingId)
+            ->whereNull('invalidated_at')
             ->update([
                 'expires_at' => Carbon::now()->subMinute(),
                 'invalidated_at' => Carbon::now(),

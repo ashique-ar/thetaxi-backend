@@ -51,6 +51,8 @@ enum BookingLifecycleStatus: string
     
     // Final Stage
     case COMPLETED = 'completed';
+    /** Trip has ended; only final booking close-out remains. */
+    case COMPLETION_PENDING = 'completion_pending';
     case CANCELLED = 'cancelled';
 
     /**
@@ -68,7 +70,21 @@ enum BookingLifecycleStatus: string
             self::RETURN_SCHEDULED, self::RETURN_OVERDUE, self::RETURN_COMPLETED, self::RETURN_LATE => 'return',
             self::QC_PENDING, self::QC_IN_PROGRESS, self::QC_ISSUES_FOUND, 
             self::QC_REPAIR_NEEDED, self::QC_COMPLETED => 'qc_repair',
-            self::COMPLETED, self::CANCELLED => 'final',
+            self::COMPLETED, self::COMPLETION_PENDING, self::CANCELLED => 'final',
+        };
+    }
+
+    /** Fine-grained operational stage for progress displays. */
+    public function getProgressStage(): string
+    {
+        return match ($this) {
+            self::ALLOCATION_PENDING,
+            self::ALLOCATION_ASSIGNED,
+            self::ALLOCATION_CONFLICTS,
+            self::ALLOCATION_APPROVED => 'allocation',
+            self::DISPATCH_READY,
+            self::DISPATCH_OUT => 'dispatch',
+            default => $this->getStage(),
         };
     }
 
@@ -106,6 +122,7 @@ enum BookingLifecycleStatus: string
             self::QC_REPAIR_NEEDED => 'Repair Needed',
             self::QC_COMPLETED => 'QC Completed',
             self::COMPLETED => 'Completed',
+            self::COMPLETION_PENDING => 'Trip Ended',
             self::CANCELLED => 'Cancelled',
         };
     }
@@ -139,6 +156,7 @@ enum BookingLifecycleStatus: string
             self::QC_ISSUES_FOUND => [self::QC_REPAIR_NEEDED, self::QC_COMPLETED],
             self::QC_REPAIR_NEEDED => [self::QC_COMPLETED],
             self::QC_COMPLETED => [self::COMPLETED],
+            self::COMPLETION_PENDING => [self::COMPLETED],
             default => [],
         };
     }
@@ -180,6 +198,7 @@ enum BookingLifecycleStatus: string
             self::QC_ISSUES_FOUND => 'Schedule Repair',
             self::QC_REPAIR_NEEDED => 'Complete Repair',
             self::QC_COMPLETED => 'Mark Complete',
+            self::COMPLETION_PENDING => 'Complete Booking',
             default => null,
         };
     }

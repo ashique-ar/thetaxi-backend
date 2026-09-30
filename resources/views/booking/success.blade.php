@@ -42,7 +42,7 @@
     @php
         $transactionId = sprintf('BOOKING_%s_%s', $booking->id ?? 'unknown', time());
         $bookingTotal = $booking->total_estimated ?? $booking->total_amount ?? 0;
-        $currency = $booking->currency ?? 'LKR';
+        $currency = getBookingDisplayCurrency($booking);
         $conversionId = $settings['google_ads_conversion_id'];
         $conversionLabel = $settings['google_ads_conversion_label'];
         $sendTo = "{$conversionId}/{$conversionLabel}";

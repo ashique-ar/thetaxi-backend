@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Driver;
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverDevice;
+use App\Jobs\SendCustomDriverPushNotificationJob;
 use App\Models\Driver\DriverLog;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
@@ -40,17 +41,44 @@ class DriverController extends Controller
         $this->notificationService = $notificationService;
         $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification', 'sendCustomNotification', 'sendBulkCustomNotifications']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
         $this->middleware('permission:drivers.delete')->only(['removeDevice']);
     }
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Driver::with(['user', 'licenseType', 'paymentMethod', 'defaultVehicle'])
+        $q = $this->driverListQuery($request)
+            ->with([
+                'user',
+                'licenseType',
+                'paymentMethod',
+                'defaultVehicle',
+                'profilePhotoDocument',
+                'devices:id,driver_id,device_uuid,device_name,device_model,device_manufacturer,platform,os_version,app_version,app_build,push_token,push_provider,is_active,last_active_at,registered_at,locale,timezone,created_at,updated_at',
+            ])
             ->withCount(['assignments as total_trips' => function ($query) {
                 $query->where('trip_phase', 'completed');
             }]);
+        return DriverResource::collection($q->paginate($request->integer('per_page', 25)));
+    }
+
+    public function listSummary(Request $request): JsonResponse
+    {
+        $query = $this->driverListQuery($request);
+        $soon = now()->addDays(30)->toDateString();
+        return response()->json(['status' => 'success', 'data' => [
+            'total' => (clone $query)->count(),
+            'available' => (clone $query)->where(fn ($q) => $q->where('availability_status', 'available')->orWhere(fn ($fallback) => $fallback->whereNull('availability_status')->where('is_online', true)))->count(),
+            'online' => (clone $query)->where('is_online', true)->count(),
+            'active' => (clone $query)->whereHas('user', fn ($q) => $q->where('is_active', true))->count(),
+            'license_attention' => (clone $query)->where(fn ($q) => $q->whereNull('license_no')->orWhereNull('license_expiry')->orWhereDate('license_expiry', '<=', $soon))->count(),
+        ]]);
+    }
+
+    private function driverListQuery(Request $request)
+    {
+        $q = Driver::query();
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
@@ -72,6 +100,16 @@ class DriverController extends Controller
                     ->orWhereLikeInsensitive('availability_status', $search)
                     ->orWhereLikeInsensitive('current_latitude', $search)
                     ->orWhereLikeInsensitive('current_longitude', $search)
+                    ->orWhereHas('devices', function ($deviceQuery) use ($search) {
+                        $deviceQuery->whereLikeInsensitive('device_uuid', $search)
+                            ->orWhereLikeInsensitive('device_name', $search)
+                            ->orWhereLikeInsensitive('device_model', $search)
+                            ->orWhereLikeInsensitive('device_manufacturer', $search)
+                            ->orWhereLikeInsensitive('platform', $search)
+                            ->orWhereLikeInsensitive('os_version', $search)
+                            ->orWhereLikeInsensitive('app_version', $search)
+                            ->orWhereLikeInsensitive('app_build', $search);
+                    })
                     ->orWhereHas('user', function ($userQuery) use ($search) {
                         $userQuery->whereLikeInsensitive('id', $search)
                             ->orWhereLikeInsensitive('first_name', $search)
@@ -95,7 +133,36 @@ class DriverController extends Controller
         if ($request->filled('availability_status') || $request->filled('status')) {
             $q->where('availability_status', $request->get('availability_status', $request->get('status')));
         }
-        return DriverResource::collection($q->paginate($request->per_page ?? 15));
+        if ($request->filled('online')) $q->where('is_online', filter_var($request->online, FILTER_VALIDATE_BOOLEAN));
+        if ($request->filled('active')) $q->whereHas('user', fn ($user) => $user->where('is_active', filter_var($request->active, FILTER_VALIDATE_BOOLEAN)));
+        if ($request->filled('license_status')) {
+            match ($request->license_status) {
+                'missing' => $q->where(fn ($x) => $x->whereNull('license_no')->orWhereNull('license_expiry')),
+                'expired' => $q->whereNotNull('license_expiry')->whereDate('license_expiry', '<', now()->toDateString()),
+                'expiring' => $q->whereDate('license_expiry', '>=', now()->toDateString())->whereDate('license_expiry', '<=', now()->addDays(30)->toDateString()),
+                'valid' => $q->whereDate('license_expiry', '>', now()->addDays(30)->toDateString()),
+                default => null,
+            };
+        }
+        if ($request->filled('license_type')) $q->where('license_type', $request->license_type);
+        if ($request->filled('city')) $q->whereLikeInsensitive('city', trim($request->city));
+        if ($request->filled('hire_date_from')) $q->whereDate('hire_date', '>=', $request->hire_date_from);
+        if ($request->filled('hire_date_to')) $q->whereDate('hire_date', '<=', $request->hire_date_to);
+        if ($request->filled('has_device')) {
+            filter_var($request->has_device, FILTER_VALIDATE_BOOLEAN)
+                ? $q->whereHas('devices')
+                : $q->whereDoesntHave('devices');
+        }
+        if ($request->filled('device_active')) $q->whereHas('devices', fn ($device) => $device->where('is_active', filter_var($request->device_active, FILTER_VALIDATE_BOOLEAN)));
+        if ($request->filled('device_platform')) $q->whereHas('devices', fn ($device) => $device->where('platform', $request->device_platform));
+        if ($request->filled('app_version')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('app_version', trim($request->app_version)));
+        if ($request->filled('device_model')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('device_model', trim($request->device_model)));
+        if ($request->filled('push_enabled')) {
+            filter_var($request->push_enabled, FILTER_VALIDATE_BOOLEAN)
+                ? $q->whereHas('devices', fn ($device) => $device->whereNotNull('push_token')->where('push_token', '!=', ''))
+                : $q->whereDoesntHave('devices', fn ($device) => $device->whereNotNull('push_token')->where('push_token', '!=', ''));
+        }
+        return $q;
     }
 
     public function store(CreateDriverRequest $request): JsonResponse
@@ -182,7 +249,7 @@ class DriverController extends Controller
                 if ($driver && array_key_exists('payment_method', $data)) {
                     app(PaymentMethodSyncService::class)->syncOne($driver, $data['payment_method'], request()->user()->id);
                 }
-                $driver?->load(['user', 'licenseType', 'paymentMethod']);
+                $driver?->load(['user', 'licenseType', 'paymentMethod', 'profilePhotoDocument']);
 
                 return response()->json([
                     'status' => 'success',
@@ -252,7 +319,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'documents', 'profilePhotoDocument', 'defaultVehicle.documents', 'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -304,6 +371,16 @@ class DriverController extends Controller
                 ]);
                 $previousDocuments->each->update(['status' => 'superseded']);
                 $driver->update(['license_last_reminded_on' => null]);
+                $this->notificationService->sendDriverLicenseNotification(
+                    $driver->fresh(),
+                    'driver_license_updated',
+                    'Driving licence updated',
+                    'Your driving licence details were updated. Open the app to refresh your licence information.',
+                    [
+                        'previous_license_expiry' => optional($previousLicense['license_expiry'])->toDateString() ?? '',
+                        'license_status' => $driver->license_expiry->isPast() ? 'expired' : 'valid',
+                    ]
+                );
             }
 
             if ($paymentMethod !== null) {
@@ -311,7 +388,7 @@ class DriverController extends Controller
             }
 
             // Reload the relationship to get updated data
-            $driver->load(['user', 'licenseType', 'paymentMethod', 'licenseRenewals']);
+            $driver->load(['user', 'licenseType', 'paymentMethod', 'licenseRenewals', 'profilePhotoDocument']);
 
             return response()->json([
                 'status' => 'success',
@@ -506,6 +583,75 @@ class DriverController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /** Send an administrator-authored push notification to one driver. */
+    public function sendCustomNotification(Request $request, Driver $driver): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:120'],
+            'body' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $result = $this->notificationService->sendDriverPushNotification(
+            $driver,
+            'driver_custom_push',
+            trim($validated['title']),
+            trim($validated['body']),
+            ['triggered_by' => (string) $request->user()?->id]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $result['delivered_devices'] > 0
+                ? 'Custom notification delivered.'
+                : 'Notification recorded, but no device confirmed delivery.',
+            'data' => ['driver_id' => $driver->id, ...$result],
+        ]);
+    }
+
+    /** Send a custom push to selected active drivers or all active drivers. */
+    public function sendBulkCustomNotifications(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:120'],
+            'body' => ['required', 'string', 'max:1000'],
+            'all_drivers' => ['required_without:driver_ids', 'boolean'],
+            'driver_ids' => ['required_without:all_drivers', 'array', 'min:1', 'max:500'],
+            'driver_ids.*' => ['required', 'uuid', 'distinct', 'exists:drivers,id'],
+        ]);
+        $allDrivers = (bool) ($validated['all_drivers'] ?? false);
+        if (!$allDrivers && empty($validated['driver_ids'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'driver_ids' => ['Select at least one driver or choose all active drivers.'],
+            ]);
+        }
+        $query = Driver::query()->where('is_active', true);
+        if (!$allDrivers) {
+            $query->whereIn('id', $validated['driver_ids']);
+        }
+
+        $summary = ['targeted_drivers' => 0, 'queued_drivers' => 0];
+        $title = trim($validated['title']);
+        $body = trim($validated['body']);
+        $query->chunkById(100, function ($drivers) use (&$summary, $title, $body, $request): void {
+            foreach ($drivers as $driver) {
+                $summary['targeted_drivers']++;
+                SendCustomDriverPushNotificationJob::dispatch(
+                    (string) $driver->id,
+                    $title,
+                    $body,
+                    (string) $request->user()?->id
+                )->onQueue(config('services.firebase.queue', 'driver-notifications'));
+                $summary['queued_drivers']++;
+            }
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Custom notification campaign queued for delivery.',
+            'data' => $summary,
+        ]);
     }
 
     /**

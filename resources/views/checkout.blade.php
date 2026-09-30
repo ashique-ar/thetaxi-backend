@@ -656,18 +656,6 @@
             font-weight: 600;
         }
 
-        .price-adjustment-discount-row {
-            background: rgba(40, 167, 69, 0.05);
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-        }
-
-        .price-adjustment-discount-row span:first-child {
-            font-weight: 500;
-        }
-
-
         .checkout-remove-item-btn,
         .checkout-clear-cart-btn {
             border: 1px solid #dc3545;
@@ -1205,6 +1193,8 @@
 
         .promo-code-checkout-wrapper {
             width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
 
         .promo-code-header {
@@ -1223,10 +1213,15 @@
         .promo-input-checkout {
             display: flex;
             gap: 0;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
 
         .promo-input-checkout input {
             flex: 1;
+            min-width: 0;
+            box-sizing: border-box;
             padding: 8px 12px;
             border: 2px solid #ddd;
             border-radius: 6px 0 0 6px;
@@ -1270,6 +1265,10 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             background: #e8f5e9;
             border: 1px solid #c8e6c9;
             border-radius: 6px;
@@ -1287,9 +1286,12 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
         .remove-promo-checkout-btn {
+            flex: 0 0 auto;
             background: none;
             border: none;
             color: #dc3545;
@@ -1318,15 +1320,28 @@
 
         .discount-checkout-row {
             background: #f1f8e9;
-            margin: 0 -20px;
-            padding: 12px 20px !important;
-            border-radius: 0;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            gap: 12px;
+            padding: 10px 0 !important;
+            border-radius: 6px;
         }
 
         .discount-checkout-row strong {
             display: flex;
             align-items: center;
             gap: 6px;
+            min-width: 0;
+        }
+
+        .discount-checkout-row .order-info {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        .discount-checkout-row .order-info i {
+            flex: 0 0 auto;
         }
 
         .alert {
@@ -1994,10 +2009,7 @@
                     'vat',
                     'total'
                 ];
-                const discountFields = [
-                    'price_adjustment_discount',
-                    'coupon_discount'
-                ];
+                const discountFields = ['coupon_discount'];
 
                 normalFields.forEach(function(field) {
                     const value = Number(totals[field] || 0);
@@ -2018,6 +2030,14 @@
                     $('[data-advance-payment-amount]').text(Math.floor(advanceAmount).toFixed(0));
                 } else if (paymentType === 'checkin') {
                     $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(totals.total));
+                }
+
+                // Promo/charge changes can happen without changing payment type.
+                // Re-run the selected type handler so the submit button uses
+                // the latest discounted total instead of its initial amount.
+                const $selectedPaymentType = $('input[name="payment_type"]:checked');
+                if ($selectedPaymentType.length) {
+                    $selectedPaymentType.trigger('change');
                 }
 
                 const itemCount = Number(cart.item_count || Object.keys(cart.items || {}).length);
@@ -2571,7 +2591,11 @@
                     success: function(response) {
                         if (response.success) {
                             updateCheckoutCartTotals(response.cart);
-                            renderCheckoutAppliedPromo(response.promo_code || promoCode);
+                            const appliedPromo = response.promo_code;
+                            const appliedPromoCode = typeof appliedPromo === 'string'
+                                ? appliedPromo
+                                : appliedPromo?.code;
+                            renderCheckoutAppliedPromo(appliedPromoCode || promoCode);
                             showCheckoutPromoSuccess(response.message || 'Promo code applied!');
                         } else {
                             showCheckoutPromoError(response.message || 'Invalid promo code');

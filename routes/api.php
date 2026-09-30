@@ -319,6 +319,10 @@ Route::middleware(['auth:api'])->group(function () {
 
     // Customer requests are always owned by the authenticated customer's
     // active context; this route does not accept a client-selected owner.
+    Route::get('customer-portal/bookings', [CustomerPortalBookingController::class, 'index'])
+        ->middleware('throttle:60,1');
+    Route::get('customer-portal/bookings/{id}', [CustomerPortalBookingController::class, 'show'])
+        ->whereUuid('id')->middleware('throttle:60,1');
     Route::post('customer-portal/bookings', [CustomerPortalBookingController::class, 'store'])
         ->middleware('throttle:10,1');
 
@@ -1802,10 +1806,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::delete('/vehicles/{vehicle}/commissions/{commission}', [VehicleCommissionController::class, 'destroy']);
         Route::get('/vehicles/{id}/availability', [VehicleController::class, 'checkAvailability']);
         Route::get('/vehicles/{id}/maintenance/history', [VehicleController::class, 'getMaintenanceHistory']);
+        Route::get('/vehicles/{vehicle}/maintenance/schedules', [VehicleMaintenanceScheduleController::class, 'forVehicle'])
+            ->middleware('permission:vehicle-maintenance-schedules.view');
         Route::get('/vehicles/maintenance/upcoming', [VehicleController::class, 'getUpcomingMaintenance']);
         Route::post('/vehicles/maintenance/schedules/{id}/complete', [VehicleController::class, 'completeMaintenanceSchedule']);
         Route::post('/vehicles/{id}/block', [VehicleController::class, 'blockVehicle']);
-        Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability']);
+        Route::patch('/vehicles/{id}/availability', [VehicleController::class, 'updateAvailability'])
+            ->middleware('permission:vehicles.edit');
         Route::get('/vehicles/service-types', [VehicleController::class, 'getServiceTypes'])
             ->middleware('pricing.context');
         Route::get('/vehicles/insurance-types', [VehicleController::class, 'getInsuranceTypes']);
@@ -1927,12 +1934,14 @@ Route::middleware(['auth:api'])->group(function () {
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
-        Route::get('drivers/with-status', [BookingAssignmentController::class, 'driversWithStatus']);
+        Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
         Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
+        Route::post('drivers/{driver}/notifications/custom', [DriverController::class, 'sendCustomNotification'])
+            ->middleware('permission:drivers.edit');
         Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
         Route::apiResource('drivers', DriverController::class);
         Route::get('logsheets/stats', [DriverLogController::class, 'stats']);
@@ -2225,6 +2234,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Enhanced Discount & Loyalty Management Routes
+            Route::post('discounts/apply-promo-code', [BookingFlowController::class, 'applyPromoCode'])
+                ->middleware('permission:bookings.create|bookings.update');
             Route::get('discounts/customer-loyalty/{customerId}', [BookingFlowController::class, 'getCustomerLoyaltyInfo'])
                 ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('discounts/remove', [BookingFlowController::class, 'removeDiscount'])

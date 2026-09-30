@@ -261,6 +261,12 @@ class DocumentController extends Controller
         ]);
 
         $this->assertOwnerAccess($request, $data['owner_type'], 'create', $data['owner_id']);
+
+        if ($data['document_type'] === 'driver_photo') {
+            $request->validate([
+                'file' => ['required', 'image', 'mimes:jpeg,jpg,png,webp', 'max:10240'],
+            ]);
+        }
         $file = $request->file('file');
         $checksum = hash('sha256', json_encode([
             'actor_id' => $request->user()?->id,
@@ -359,6 +365,11 @@ class DocumentController extends Controller
         } catch (\Throwable $exception) {
             Storage::disk($disk)->delete($path);
             throw $exception;
+        }
+
+        // Keep the driver resource photo pointer in sync with photo document uploads.
+        if ($owner instanceof Driver && $data['document_type'] === 'driver_photo') {
+            $owner->update(['profile_photo_document_id' => $document->id]);
         }
         return response()->json([
             'status' => 'success',

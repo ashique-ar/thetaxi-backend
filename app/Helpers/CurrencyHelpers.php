@@ -102,8 +102,11 @@ if (!function_exists('getBookingDisplayCurrency')) {
         $snapshotCurrency = is_array($workflowData)
             ? ($workflowData['display_currency'] ?? null)
             : null;
-        $currencyCode = strtoupper(trim((string) ($snapshotCurrency ?: ($booking->currency ?? 'LKR'))));
+        $currencyService = app(CurrencyService::class);
+        $currencyCode = strtoupper(trim((string) ($snapshotCurrency ?: ($booking->currency ?? ''))));
 
-        return preg_match('/^[A-Z]{3}$/', $currencyCode) ? $currencyCode : 'LKR';
+        return $currencyService->isValidCurrency($currencyCode)
+            ? $currencyCode
+            : $currencyService->getDefaultCurrency();
     }
 }

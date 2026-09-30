@@ -174,8 +174,9 @@ for (const folder of collection.item) {
     }
 }
 
-openapi.info.version = '2.7.0';
-openapi.info.description = 'Complete canonical Driver Mobile API contract. Authentication and account/profile responses include the driver profile image, assigned vehicle, vehicle images, and driver/vehicle documents. Assignment projections expose server-owned service capabilities and traveler/contact identity. Pricing is visible only when the driver must collect payment. Complete-trip calculates and stores the final amount first; cash collection uses the separate collect-payment endpoint only when `payment.collection_required` is true.';
+openapi.info.version = '2.8.0';
+openapi.info.description = 'Driver mobile API guide. Start with Authentication: call POST /api/driver/auth/login, copy data.token.access_token, then click Authorize once and paste the token. Swagger remembers authorization in this browser. Protected endpoints use the saved bearer token. Sections follow the developer workflow: authentication, app setup, onboarding, assignments, trip lifecycle, driver status, location, devices, notifications, sessions, and earnings.';
+openapi.components.securitySchemes.bearerAuth.description = 'How to get the bearer token: (1) Execute POST /api/driver/auth/login with the driver email and password. (2) In the response, copy data.token.access_token. (3) Paste only that access-token value into this Authorize field; do not include the word Bearer. Swagger adds the prefix and remembers the token in this browser. Do not use data.token.refresh_token here.';
 
 const nullableString = (format) => ({ type: 'string', nullable: true, ...(format ? { format } : {}) });
 openapi.components.schemas.DriverMobileDocument = {
@@ -227,8 +228,8 @@ openapi.components.schemas.DriverMobileAccount = {
         email: nullableString('email'), phone: nullableString(), nic: nullableString(), license_no: nullableString(),
         license_number: nullableString(), license_expiry: nullableString('date'), license_status: { type: 'string', enum: ['missing', 'expired', 'expiring', 'valid'] },
         default_vehicle_id: nullableString('uuid'),
-        profile_image_url: nullableString('uri'), profile_image: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
-        profile_photo_url: nullableString('uri'), profile_photo: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        profile_image_url: { ...nullableString('uri'), description: 'URL for the current driver profile photo. This URL is generated from the stored photo document path. Read from GET /api/driver/auth/profile at data.driver.profile_image_url.' }, profile_image: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
+        profile_photo_url: { ...nullableString('uri'), description: 'Alias of profile_image_url for clients using the profile_photo naming convention.' }, profile_photo: { allOf: [{ $ref: '#/components/schemas/DriverMobileDocument' }], nullable: true },
         documents: { type: 'array', items: { $ref: '#/components/schemas/DriverMobileDocument' } },
         is_active: { type: 'boolean' }, is_online: { type: 'boolean' }, availability_status: nullableString(),
         current_booking_id: nullableString('uuid'), current_booking_number: nullableString(), rating: { type: 'number', format: 'float' }, total_trips: { type: 'integer' },
@@ -517,10 +518,187 @@ openapi.paths['/api/driver/auth/login'].post.responses['200'].content['applicati
 openapi.paths['/api/driver/auth/verify-otp'].post.description = 'Verifies the default mobile OTP flow. Existing approved drivers receive the same complete account projection as password login; new drivers receive an onboarding token.';
 openapi.paths['/api/driver/auth/verify-otp'].post.responses['200'].content['application/json'].schema = authEnvelope(true);
 openapi.paths['/api/driver/auth/profile'].get.summary = 'Get current driver account';
-openapi.paths['/api/driver/auth/profile'].get.description = 'Returns the current account, including profile image aliases, driver documents, assigned vehicle details/images/documents, and assignment statistics.';
+openapi.paths['/api/driver/auth/profile'].get.description = 'Returns the current account. The driver profile photo URL is at `data.driver.profile_image_url` (also `data.driver.profile_photo_url`); these URL fields are generated from the stored photo document path. Also includes driver documents, assigned vehicle details/images/documents, and assignment statistics.';
 openapi.paths['/api/driver/auth/profile'].get.responses['200'].content['application/json'].schema = profileEnvelope;
+openapi.paths['/api/driver/auth/profile/photo'] = { post: {
+    tags: ['Driver Authentication'], summary: 'Update current driver profile photo',
+    description: 'Uploads a JPG, PNG, or WebP image and sets it as the authenticated driver profile photo. The response includes its generated resource URL.',
+    operationId: 'post_api_driver_auth_profile_photo_Update_Profile_Photo', security: protectedSecurity,
+    requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['photo'], properties: { photo: { type: 'string', format: 'binary', description: 'JPG, PNG, or WebP image; maximum 10 MB.' } } } } } },
+    responses: {
+        200: jsonResponse('Profile photo updated', { type: 'object', required: ['status', 'data'], properties: { status: { type: 'string', enum: ['success'] }, message: { type: 'string' }, data: { type: 'object', required: ['profile_image_url', 'profile_photo_url', 'profile_image', 'driver'], properties: { profile_image_url: { type: 'string', format: 'uri' }, profile_photo_url: { type: 'string', format: 'uri' }, profile_image: { type: 'object', additionalProperties: true }, driver: { $ref: '#/components/schemas/DriverMobileAccount' } } } } }),
+        401: errorResponse('Missing or invalid access token'), 403: errorResponse('Account is not a driver'), 422: errorResponse('Validation error'),
+    },
+} };
+
+// Present the operations as a readable mobile-app workflow in Swagger UI.
+const tagOrder = [
+    { name: 'Authentication', description: 'Login and OTP verification, account profile, profile photo, password, and session tokens.' },
+    { name: 'App Settings', description: 'Check supported app versions before starting or resuming a driver session.' },
+    { name: 'Driver Onboarding', description: 'Registration lookups, application steps, document uploads, and submission.' },
+    { name: 'Booking Assignments', description: 'Find current and upcoming work, then accept, acknowledge, or decline an assignment.' },
+    { name: 'Trip Tracking', description: 'Move an accepted assignment through pickup, stops, trip completion, and payment collection.' },
+    { name: 'Status Management', description: 'Set online/offline state and inspect current availability.' },
+    { name: 'Location Tracking', description: 'Send live or buffered locations and inspect location health/history.' },
+    { name: 'Device Management', description: 'Manage registered devices and push notification tokens.' },
+    { name: 'Notification Management', description: 'Read, count, acknowledge, and remove driver notifications.' },
+    { name: 'Sessions', description: 'Inspect active and historical driver sessions.' },
+    { name: 'Earnings', description: 'Review earnings summaries by day or date range.' },
+];
+const tagAliases = { 'Driver Authentication': 'Authentication' };
+for (const pathItem of Object.values(openapi.paths)) {
+    for (const operation of Object.values(pathItem)) {
+        if (!operation || typeof operation !== 'object' || !Array.isArray(operation.tags)) continue;
+        operation.tags = operation.tags.map((tag) => tagAliases[tag] || tag);
+    }
+}
+openapi.tags = tagOrder;
+const tagRank = new Map(tagOrder.map((tag, index) => [tag.name, index]));
+const authPathRank = new Map([
+    ['/api/driver/auth/login', 0], ['/api/driver/auth/request-otp', 1], ['/api/driver/auth/verify-otp', 2],
+    ['/api/driver/auth/profile', 3], ['/api/driver/auth/profile/photo', 4], ['/api/driver/auth/change-password', 5],
+    ['/api/driver/auth/refresh', 6], ['/api/driver/auth/logout', 7], ['/api/driver/auth/forgot-password', 8],
+    ['/api/driver/auth/reset-password', 9],
+    ['/api/driver/onboarding', 0], ['/api/driver/onboarding/countries', 1],
+    ['/api/driver/onboarding/countries/{country_id}/states', 2], ['/api/driver/onboarding/makes', 3],
+    ['/api/driver/onboarding/makes/{make_id}/models', 4], ['/api/driver/onboarding/steps/{step}', 5],
+    ['/api/driver/onboarding/documents', 6], ['/api/driver/onboarding/submit', 7],
+    ['/api/driver/assignments/current', 0], ['/api/driver/assignments', 1],
+    ['/api/driver/assignments/{assignment_id}/accept', 2], ['/api/driver/assignments/{assignment_id}/acknowledge', 3],
+    ['/api/driver/assignments/{assignment_id}/decline', 4], ['/api/driver/hires', 5],
+    ['/api/driver/assignments/{assignment_id}/status', 0], ['/api/driver/assignments/{assignment_id}/arrived', 1],
+    ['/api/driver/assignments/{assignment_id}/start', 2], ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/arrived', 3],
+    ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/picked-up', 4], ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/dropped-off', 5],
+    ['/api/driver/assignments/{assignment_id}/stops/{stop_id}/skip', 6], ['/api/driver/assignments/{assignment_id}/complete', 7],
+    ['/api/driver/assignments/{assignment_id}/collect-payment', 8],
+]);
+const orderedPaths = Object.entries(openapi.paths).sort(([pathA, itemA], [pathB, itemB]) => {
+    const opA = Object.values(itemA).find((value) => value && typeof value === 'object' && value.tags);
+    const opB = Object.values(itemB).find((value) => value && typeof value === 'object' && value.tags);
+    const tagA = tagRank.get(tagAliases[opA?.tags?.[0]] || opA?.tags?.[0]) ?? 99;
+    const tagB = tagRank.get(tagAliases[opB?.tags?.[0]] || opB?.tags?.[0]) ?? 99;
+    if (tagA !== tagB) return tagA - tagB;
+    if (tagA === 0) return (authPathRank.get(pathA) ?? 99) - (authPathRank.get(pathB) ?? 99);
+    return (authPathRank.get(pathA) ?? 99) - (authPathRank.get(pathB) ?? 99) || pathA.localeCompare(pathB);
+});
+openapi.paths = Object.fromEntries(orderedPaths);
+
+const currentAssignmentOperation = openapi.paths['/api/driver/assignments/current']?.get;
+if (currentAssignmentOperation) {
+    currentAssignmentOperation.description = 'Returns the current active assignment, including the assigned vehicle details when a vehicle is linked to the booking item. Multi-stop assignments include `route_stops`; use each stop `id` for stop action endpoints and `display_label`/`booking_stop_id` for UI identification.';
+    const dataSchema = currentAssignmentOperation.responses?.['200']?.content?.['application/json']?.schema?.properties?.data;
+    if (dataSchema?.properties) {
+        dataSchema.properties.vehicle = {
+            type: 'object', nullable: true, description: 'Vehicle assigned to this booking item; null when no vehicle is linked.',
+            properties: {
+                id: { type: 'string', format: 'uuid' }, title: nullableString(), registration_no: nullableString(),
+                license_plate: nullableString(), model_year: { type: 'integer', nullable: true }, color: nullableString(),
+                ac: { type: 'boolean', nullable: true }, seats: nullableString(), bags: nullableString(),
+                thumbnail: { type: 'object', nullable: true, additionalProperties: true },
+                images: { type: 'array', items: { type: 'object', additionalProperties: true } },
+                group: { type: 'object', nullable: true, properties: { id: { type: 'string', format: 'uuid' }, name: nullableString() } },
+            },
+        };
+    }
+    const currentResponse = currentAssignmentOperation.responses?.['200']?.content?.['application/json'];
+    const vehicleExample = {
+        id: 'vehicle-uuid', title: 'Toyota Prius', registration_no: 'ABC-1234', license_plate: 'ABC-1234',
+        model_year: 2024, color: 'White', ac: true, seats: '4', bags: '2', thumbnail: null, images: [],
+        group: { id: 'vehicle-group-uuid', name: 'Sedan' },
+    };
+    const responseExamples = currentResponse?.examples;
+    if (responseExamples) {
+        for (const example of Object.values(responseExamples)) {
+            if (example.value?.data) example.value.data.vehicle = vehicleExample;
+        }
+    } else if (currentResponse?.example?.data) {
+        currentResponse.example.data.vehicle = vehicleExample;
+    }
+}
 
 for (const stalePath of ['/api/driver/onboarding/steps/1', '/api/driver/onboarding/steps/3', '/api/driver/onboarding/steps/4']) delete openapi.paths[stalePath];
+
+// Keep Swagger examples complete with the contract as endpoints evolve.
+function resolveSchema(schema) {
+    if (!schema) return {};
+    if (schema.$ref) {
+        const target = schema.$ref.replace(/^#\//, '').split('/').reduce((value, key) => value?.[key], openapi);
+        return { ...resolveSchema(target), ...Object.fromEntries(Object.entries(schema).filter(([key]) => key !== '$ref')) };
+    }
+    if (schema.allOf) {
+        return schema.allOf.reduce((merged, part) => {
+            const resolved = resolveSchema(part);
+            return { ...merged, ...resolved, properties: { ...(merged.properties || {}), ...(resolved.properties || {}) }, required: [...new Set([...(merged.required || []), ...(resolved.required || [])])] };
+        }, { ...schema, allOf: undefined });
+    }
+    return schema;
+}
+
+function sampleFor(schema, current, key = '') {
+    schema = resolveSchema(schema);
+    if (current !== undefined) {
+        if (Array.isArray(current) && schema.type === 'array') return current.map((item, index) => sampleFor(schema.items, item, `${key}${index}`));
+        if (current && typeof current === 'object' && !Array.isArray(current) && schema.type === 'object') {
+            return Object.fromEntries(Object.entries(schema.properties || {}).map(([name, child]) => [name, sampleFor(child, current[name], name)]));
+        }
+        return current;
+    }
+    if (schema.example !== undefined) return schema.example;
+    if (schema.enum?.length) return schema.enum[0];
+    if (schema.nullable) return null;
+    if (schema.type === 'object' || schema.properties) {
+        const properties = schema.properties || {};
+        return Object.fromEntries(Object.entries(properties).map(([name, child]) => [name, sampleFor(child, undefined, name)]));
+    }
+    if (schema.type === 'array') return schema.items ? [sampleFor(schema.items, undefined, key)] : [];
+    if (schema.type === 'integer' || schema.type === 'number') return schema.minimum ?? 1;
+    if (schema.type === 'boolean') return true;
+    if (schema.type === 'string') {
+        if (schema.format === 'binary') return '<binary file>';
+        if (schema.format === 'uuid') return '00000000-0000-4000-8000-000000000001';
+        if (schema.format === 'uri') return 'https://example.com/resource';
+        if (schema.format === 'email') return 'driver@example.com';
+        if (schema.format === 'date') return '2026-01-15';
+        if (schema.format === 'date-time') return '2026-01-15T09:00:00Z';
+        return key.toLowerCase().includes('token') ? 'example-token' : 'example';
+    }
+    return null;
+}
+
+function completeExample(schema, example) {
+    const resolved = resolveSchema(schema);
+    if (resolved.type === 'object' || resolved.properties) {
+        const source = example && typeof example === 'object' && !Array.isArray(example) ? example : {};
+        return Object.fromEntries(Object.entries(resolved.properties || {}).map(([key, child]) => [key, sampleFor(child, source[key], key)]));
+    }
+    return sampleFor(resolved, example);
+}
+
+for (const [path, pathItem] of Object.entries(openapi.paths)) {
+    for (const [method, operation] of Object.entries(pathItem)) {
+        if (!['get', 'post', 'put', 'patch', 'delete'].includes(method)) continue;
+        for (const [status, responseItem] of Object.entries(operation.responses || {})) {
+            for (const content of Object.values(responseItem.content || {})) {
+                if (!content.schema) continue;
+                if (content.example !== undefined) content.example = completeExample(content.schema, content.example);
+                else if (content.examples && Object.keys(content.examples).length) {
+                    for (const example of Object.values(content.examples)) if (example.value !== undefined) example.value = completeExample(content.schema, example.value);
+                } else {
+                    content.example = completeExample(content.schema, undefined);
+                }
+            }
+        }
+        for (const content of Object.values(operation.requestBody?.content || {})) {
+            if (!content.schema) continue;
+            if (content.example !== undefined) content.example = completeExample(content.schema, content.example);
+            else if (content.examples && Object.keys(content.examples).length) {
+                for (const example of Object.values(content.examples)) if (example.value !== undefined) example.value = completeExample(content.schema, example.value);
+            } else {
+                content.example = completeExample(content.schema, undefined);
+            }
+        }
+    }
+}
 
 write(collectionPath, collection);
 write(openApiPath, openapi);

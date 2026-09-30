@@ -1051,6 +1051,10 @@ class BookingController extends Controller
             $perPage = 8;
             $searchParams['page'] = 1;
             $searchParams['per_page'] = $perPage;
+            $requestedSort = (string) $request->query('sort_by', 'price_low');
+            $searchParams['sort_by'] = in_array($requestedSort, ['price_low', 'price_high', 'name_asc', 'name_desc'], true)
+                ? $requestedSort
+                : 'price_low';
             $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
 
             // Extract data and pagination
@@ -1187,6 +1191,7 @@ class BookingController extends Controller
     {
         $validated = $request->validate([
             'page' => 'required|integer|min:2|max:1000',
+            'sort_by' => 'sometimes|in:price_low,price_high,name_asc,name_desc',
         ]);
 
         $searchParams = session()->get('current_search_params');
@@ -1201,6 +1206,7 @@ class BookingController extends Controller
 
         $searchParams['page'] = (int) $validated['page'];
         $searchParams['per_page'] = 8;
+        $searchParams['sort_by'] = $validated['sort_by'] ?? 'price_low';
         $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
         $groups = $availabilityData['data'] ?? $availabilityData;
         $vehicles = $this->transformResultsForPublicView($groups ?? [], $searchParams, $pricingContext);
@@ -1262,6 +1268,22 @@ class BookingController extends Controller
                 ->values();
         }
 
+        // Resolve once per result page. Looking up the same service type for
+        // every vehicle can trigger unnecessary queries and makes later pages
+        // fail if the service type is configured outside the public context.
+        $serviceType = null;
+        if (isset($searchParams['service_type'])) {
+            $serviceTypeValue = $searchParams['service_type'];
+            $serviceTypeModel = ServiceType::publicContext()
+                ->where(function ($query) use ($serviceTypeValue) {
+                    $query->where('id', $serviceTypeValue)
+                        ->orWhere('code', $serviceTypeValue)
+                        ->orWhere('name', $serviceTypeValue);
+                })
+                ->first();
+            $serviceType = $serviceTypeModel?->code ?? 'point_to_point';
+        }
+
 
         foreach ($vehicleGroups as $index => $groupData) {
             // Check if we have minimum required data
@@ -1273,14 +1295,6 @@ class BookingController extends Controller
             // Format pricing from the structure returned by BookingFlowService
             $pricingInfo = $groupData['pricing_info'] ?? [];
             $oneWayFare = $pricingInfo['base_amount'] ?? 0;
-
-            // Get service type information
-            $serviceType = null;
-            if (isset($searchParams['service_type'])) {
-                $serviceTypeId = $searchParams['service_type'];
-                $serviceTypeModel = ServiceType::publicContext()->find($serviceTypeId);
-                $serviceType = $serviceTypeModel ? $serviceTypeModel->code : 'point_to_point';
-            }
 
             // Convert distance_details pricing to selected currency
             $distanceDetails = $pricingInfo['distance_details'] ?? null;

@@ -30,6 +30,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
+use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
 /**
@@ -491,8 +492,13 @@ class BookingLifecycleService
                 $dispatch->isReturned()
             ));
             $isRepeatDispatch = $hasPreviousDispatch;
-            $isReopeningCompletedHire = (bool) ($dispatch && !$dispatch->isActive());
             $allowRepeatDispatchForTesting = (bool) ($dispatchData['allow_repeat_dispatch_for_testing'] ?? false);
+
+            if ($allowRepeatDispatchForTesting && (!$dispatch || !$dispatch->isActive())) {
+                throw ValidationException::withMessages([
+                    'allow_repeat_dispatch_for_testing' => 'Test-only redispatch is only allowed while this trip is actively on hire.',
+                ]);
+            }
 
             if (!$vehicleId) {
                 throw new \Exception('Vehicle must be assigned before dispatch');
@@ -508,11 +514,6 @@ class BookingLifecycleService
 
             if ($isRepeatDispatch && !$allowRepeatDispatchForTesting) {
                 throw new \Exception('Repeat dispatch is blocked unless allow_repeat_dispatch_for_testing is true');
-            }
-
-            if ($isReopeningCompletedHire) {
-                $this->resetBookingAfterCompletedHireForRedispatch($booking);
-                $this->resetBookingItemAfterCompletedHireForRedispatch($context['booking_item']);
             }
 
             if (!$dispatch) {
@@ -582,41 +583,6 @@ class BookingLifecycleService
 
             return $dispatch;
         });
-    }
-
-    private function resetBookingAfterCompletedHireForRedispatch(Booking $booking): void
-    {
-        if ($booking->qc) {
-            $booking->qc->repairItems()->delete();
-            $booking->qc()->delete();
-            $booking->unsetRelation('qc');
-        }
-
-        if ((string) $booking->status === 'completed' || $booking->completed_at) {
-            $booking->update([
-                'status' => 'confirmed',
-                'completed_at' => null,
-                'updated_user_id' => Auth::id(),
-            ]);
-        }
-    }
-
-    private function resetBookingItemAfterCompletedHireForRedispatch(?BookingItem $bookingItem): void
-    {
-        if (!$bookingItem) {
-            return;
-        }
-
-        $bookingItem->update([
-            'returned_at' => null,
-            'final_priced_at' => null,
-            'completed_at' => null,
-            'status' => 'confirmed',
-            'lifecycle_data' => array_merge(
-                is_array($bookingItem->lifecycle_data) ? $bookingItem->lifecycle_data : [],
-                ['redispatched_at' => Carbon::now('UTC')->toIso8601String()]
-            ),
-        ]);
     }
 
     private function triggerDriverDispatchNotification(string $bookingId, ?string $driverId, ?string $bookingItemId = null, array $notificationContext = []): void
@@ -1450,6 +1416,11 @@ class BookingLifecycleService
                 && in_array($fromStatus, [
                     BookingLifecycleStatus::RETURN_COMPLETED,
                     BookingLifecycleStatus::RETURN_LATE,
+                    BookingLifecycleStatus::QC_PENDING,
+                    BookingLifecycleStatus::QC_IN_PROGRESS,
+                    BookingLifecycleStatus::QC_ISSUES_FOUND,
+                    BookingLifecycleStatus::QC_REPAIR_NEEDED,
+                    BookingLifecycleStatus::QC_COMPLETED,
                 ], true);
 
             if ($canSkipReturn && $dispatch) {
@@ -2978,9 +2949,9 @@ class BookingLifecycleService
     }
 
     /**
-     * Final pricing runs in the original calculation currency, then reuses the
-     * exchange rate locked into the booked pricing snapshot. Current market
-     * rates must never rewrite a confirmed booking at return time.
+     * Final pricing runs in the configured calculation currency and converts
+     * using the active global currency settings. The booking's currency code
+     * determines the output currency; its original amount is not rewritten.
      *
      * @return array{calculation_currency:string,booking_currency:string,exchange_rate:float,rate_source:string}
      */
@@ -2992,7 +2963,7 @@ class BookingLifecycleService
         $calculationCurrency = strtoupper(trim((string) (
             data_get($pricingBreakdown, 'base_pricing.original_currency')
             ?? data_get($pricingBreakdown, 'original_currency')
-            ?? config('booking.base_currency', 'LKR')
+            ?? $this->currencyService->getBookingBaseCurrency()
         )));
         $bookingCurrency = strtoupper(trim((string) (
             $bookingItem->currency
@@ -3000,7 +2971,9 @@ class BookingLifecycleService
             ?? data_get($pricingBreakdown, 'summary.currency')
             ?? $calculationCurrency
         )));
-        $calculationCurrency = $calculationCurrency !== '' ? $calculationCurrency : 'LKR';
+        $calculationCurrency = $calculationCurrency !== ''
+            ? $calculationCurrency
+            : $this->currencyService->getBookingBaseCurrency();
         $bookingCurrency = $bookingCurrency !== '' ? $bookingCurrency : $calculationCurrency;
 
         if ($bookingCurrency === $calculationCurrency) {
@@ -3012,25 +2985,19 @@ class BookingLifecycleService
             ];
         }
 
-        $rateCandidates = [
-            'base_pricing_snapshot' => data_get($pricingBreakdown, 'base_pricing.exchange_rate'),
-            'item_summary_snapshot' => data_get($pricingBreakdown, 'summary.exchange_rate'),
-            'item_snapshot' => data_get($pricingBreakdown, 'exchange_rate'),
-        ];
-        foreach ($rateCandidates as $source => $candidate) {
-            if (is_numeric($candidate) && is_finite((float) $candidate) && (float) $candidate > 0) {
-                return [
-                    'calculation_currency' => $calculationCurrency,
-                    'booking_currency' => $bookingCurrency,
-                    'exchange_rate' => (float) $candidate,
-                    'rate_source' => $source,
-                ];
-            }
+        $exchangeRate = $this->currencyService->getExchangeRate($calculationCurrency, $bookingCurrency);
+        if (!is_finite($exchangeRate) || $exchangeRate <= 0) {
+            throw new \DomainException(
+                "The global {$calculationCurrency} to {$bookingCurrency} exchange rate is unavailable. Final pricing was stopped."
+            );
         }
 
-        throw new \DomainException(
-            "The locked {$calculationCurrency} to {$bookingCurrency} exchange rate is missing. Final pricing was stopped."
-        );
+        return [
+            'calculation_currency' => $calculationCurrency,
+            'booking_currency' => $bookingCurrency,
+            'exchange_rate' => $exchangeRate,
+            'rate_source' => 'global_currency_settings',
+        ];
     }
 
     private function assertItemSafeLifecycle(Booking $booking, ?string $bookingItemId): void
@@ -3313,13 +3280,42 @@ class BookingLifecycleService
         ];
     }
 
+    /**
+     * Keep optional return/QC stages out of the workspace when the business
+     * setting is disabled. A trip still in an old return/inspection state can
+     * proceed to the explicit final close-out action without reopening those
+     * stages or being mislabeled as an active return task.
+     */
+    private function normalizeStatusForDisabledOptionalStages(
+        BookingLifecycleStatus $status,
+        array $workflowSettings
+    ): BookingLifecycleStatus {
+        if (!($workflowSettings['enable_return_stage'] ?? false)) {
+            if (in_array($status, [BookingLifecycleStatus::RETURN_SCHEDULED, BookingLifecycleStatus::RETURN_OVERDUE], true)) {
+                return BookingLifecycleStatus::ONGOING_ACTIVE;
+            }
+            if (in_array($status, [BookingLifecycleStatus::RETURN_COMPLETED, BookingLifecycleStatus::RETURN_LATE], true)) {
+                return BookingLifecycleStatus::COMPLETION_PENDING;
+            }
+        }
+
+        if (!($workflowSettings['enable_qc_stage'] ?? false) && in_array($status, [
+            BookingLifecycleStatus::QC_PENDING,
+            BookingLifecycleStatus::QC_IN_PROGRESS,
+            BookingLifecycleStatus::QC_ISSUES_FOUND,
+            BookingLifecycleStatus::QC_REPAIR_NEEDED,
+            BookingLifecycleStatus::QC_COMPLETED,
+        ], true)) {
+            return BookingLifecycleStatus::COMPLETION_PENDING;
+        }
+
+        return $status;
+    }
+
     private function assertReturnStageAvailable(Booking $booking): void
     {
         $settings = $this->getLifecycleWorkflowSettings();
-        if (
-            !($settings['enable_return_stage'] ?? false)
-            && $booking->getLifecycleStatus()->getStage() !== 'return'
-        ) {
+        if (!($settings['enable_return_stage'] ?? false)) {
             throw new \Exception('Vehicle return management is disabled in booking settings');
         }
     }
@@ -3327,10 +3323,7 @@ class BookingLifecycleService
     private function assertQcStageAvailable(Booking $booking): void
     {
         $settings = $this->getLifecycleWorkflowSettings();
-        if (
-            !($settings['enable_qc_stage'] ?? false)
-            && $booking->getLifecycleStatus()->getStage() !== 'qc_repair'
-        ) {
+        if (!($settings['enable_qc_stage'] ?? false)) {
             throw new \Exception('QC management is disabled in booking settings');
         }
     }
@@ -3563,6 +3556,7 @@ class BookingLifecycleService
             $itemDispatch,
             $itemQc
         );
+        $currentStatus = $this->normalizeStatusForDisabledOptionalStages($currentStatus, $workflowSettings);
         $nextActions = array_map(static fn (BookingLifecycleStatus $status): array => [
             'status' => $status->value,
             'display_name' => $status->getDisplayName(),
@@ -3570,14 +3564,6 @@ class BookingLifecycleService
             'color' => $status->getColor(),
         ], $currentStatus->getNextStatuses());
         $currentStage = $currentStatus->getStage();
-
-        // Do not strand bookings already inside an optional stage when settings change.
-        if ($currentStage === 'return') {
-            $workflowSettings['enable_return_stage'] = true;
-        } elseif ($currentStage === 'qc_repair') {
-            $workflowSettings['enable_return_stage'] = true;
-            $workflowSettings['enable_qc_stage'] = true;
-        }
 
         if (
             $currentStatus === BookingLifecycleStatus::ONGOING_ACTIVE
@@ -3643,7 +3629,7 @@ class BookingLifecycleService
             'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'current_status' => [
                 'value' => $currentStatus->value,
-                'stage' => $currentStatus->getStage(),
+                'stage' => $currentStatus->getProgressStage(),
                 'display_name' => $currentStatus->getDisplayName(),
                 'label' => $currentStatus->getDisplayName(),
                 'color' => $currentStatus->getColor(),
@@ -3654,6 +3640,17 @@ class BookingLifecycleService
             'stage_progress' => $this->getStageProgress($booking, $workflowSettings, $currentStatus),
             'timeline' => $this->getLifecycleTimeline($booking, $itemDispatch, $itemQc),
             'lifecycle_history' => $lifecycleHistory,
+            'return_details' => $itemDispatch ? [
+                'returned_at' => $itemDispatch->actual_return_at,
+                'return_condition_notes' => data_get($itemDispatch->vehicle_condition_in, 'notes'),
+                'evidence' => data_get($itemDispatch->vehicle_condition_in, 'evidence', []),
+                'return_fuel_level' => $itemDispatch->fuel_level_in,
+                'return_mileage' => $itemDispatch->mileage_in,
+                'return_notes' => $itemDispatch->return_notes,
+                'damages' => $itemDispatch->damages_reported,
+                'additional_charges' => $itemDispatch->additional_charges,
+                'late_return_fee' => $itemDispatch->late_return_fee,
+            ] : null,
             'workflow_settings' => $workflowSettings,
             'approval_context' => [
                 'requires_approval' => $requiresApproval,
@@ -3690,13 +3687,7 @@ class BookingLifecycleService
             $itemQc
         );
         $workflowSettings = $this->getLifecycleWorkflowSettings();
-
-        if ($currentStatus->getStage() === 'return') {
-            $workflowSettings['enable_return_stage'] = true;
-        } elseif ($currentStatus->getStage() === 'qc_repair') {
-            $workflowSettings['enable_return_stage'] = true;
-            $workflowSettings['enable_qc_stage'] = true;
-        }
+        $currentStatus = $this->normalizeStatusForDisabledOptionalStages($currentStatus, $workflowSettings);
 
         $driverAssignment = $this->latestDriverAssignment(
             (string) $booking->id,
@@ -3730,7 +3721,35 @@ class BookingLifecycleService
         ?BookingDispatch $dispatch,
         ?BookingQC $qc = null
     ): BookingLifecycleStatus {
-        if ((string) $booking->status === 'completed') {
+        // Terminal rejection/cancellation must win over stale completion
+        // timestamps, QC and dispatch data. This is especially important for
+        // selected items in multi-trip bookings, where unrelated trip records
+        // can otherwise make a cancelled trip appear completed.
+        $itemStatus = strtolower(trim((string) ($bookingItem?->status ?? '')));
+        if (in_array($itemStatus, ['cancelled', 'canceled', 'booking_cancelled'], true)) {
+            return BookingLifecycleStatus::CANCELLED;
+        }
+        if (in_array($itemStatus, ['rejected', 'booking_rejected'], true)) {
+            return BookingLifecycleStatus::BOOKING_REJECTED;
+        }
+
+        $bookingStatus = strtolower(trim((string) ($booking->status ?? '')));
+        if (in_array($bookingStatus, ['inquiry_cancelled', 'inquiry_canceled'], true)) {
+            return BookingLifecycleStatus::INQUIRY_CANCELLED;
+        }
+        if (in_array($bookingStatus, ['cancelled', 'canceled'], true)) {
+            return BookingLifecycleStatus::CANCELLED;
+        }
+        if ($bookingStatus === 'booking_cancelled') {
+            return BookingLifecycleStatus::BOOKING_CANCELLED;
+        }
+        if (in_array($bookingStatus, ['rejected', 'booking_rejected'], true)) {
+            return BookingLifecycleStatus::BOOKING_REJECTED;
+        }
+        if ($itemStatus === 'completed') {
+            return BookingLifecycleStatus::COMPLETED;
+        }
+        if ($bookingStatus === 'completed') {
             return BookingLifecycleStatus::COMPLETED;
         }
 
@@ -3755,9 +3774,25 @@ class BookingLifecycleService
         if ($dispatch) {
             return match ($dispatch->dispatch_status) {
                 DispatchStatus::READY_FOR_DISPATCH => BookingLifecycleStatus::DISPATCH_READY,
-                DispatchStatus::DISPATCHED, DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
+                DispatchStatus::DISPATCHED => BookingLifecycleStatus::DISPATCH_OUT,
+                DispatchStatus::IN_PROGRESS => BookingLifecycleStatus::ONGOING_ACTIVE,
                 default => $booking->getLifecycleStatus(),
             };
+        }
+
+        // Multi-trip bookings store assignments on each booking item. The
+        // booking-level lifecycle status cannot reflect those item-owned IDs,
+        // so project the selected trip as allocated when its required resources
+        // have been saved. This keeps the workspace from asking staff to assign
+        // the same vehicle and driver again after reopening the trip.
+        $itemIsSelfDriven = (bool) ($bookingItem?->is_self_driven ?? $booking->is_self_driven);
+        if (
+            $bookingItem
+            && in_array($bookingStatus, ['confirmed', 'approved', 'booking_confirmed', 'booking_approved', 'allocation_pending', 'pending_allocation'], true)
+            && !empty($bookingItem->vehicle_id)
+            && ($itemIsSelfDriven || !empty($bookingItem->driver_id))
+        ) {
+            return BookingLifecycleStatus::ALLOCATION_ASSIGNED;
         }
 
         return $booking->getLifecycleStatus();
@@ -3855,6 +3890,7 @@ class BookingLifecycleService
             BookingLifecycleStatus::RETURN_COMPLETED,
             BookingLifecycleStatus::RETURN_LATE,
             BookingLifecycleStatus::QC_PENDING,
+            BookingLifecycleStatus::COMPLETION_PENDING,
         ], true)) {
             if ($workflowSettings['enable_qc_stage'] ?? false) {
                 $actions[] = 'start_qc_inspection';
@@ -3876,6 +3912,10 @@ class BookingLifecycleService
         }
 
         if ($currentStatus === BookingLifecycleStatus::QC_COMPLETED) {
+            $actions[] = 'complete_booking';
+        }
+
+        if ($currentStatus === BookingLifecycleStatus::COMPLETION_PENDING) {
             $actions[] = 'complete_booking';
         }
 
@@ -3959,7 +3999,8 @@ class BookingLifecycleService
         $stages = [
             'inquiry' => ['completed' => false, 'current' => false],
             'booking' => ['completed' => false, 'current' => false],
-            'allocation_dispatch' => ['completed' => false, 'current' => false],
+            'allocation' => ['completed' => false, 'current' => false],
+            'dispatch' => ['completed' => false, 'current' => false],
             'ongoing' => ['completed' => false, 'current' => false],
         ];
         if ($workflowSettings['enable_return_stage'] ?? false) {
@@ -3970,7 +4011,7 @@ class BookingLifecycleService
         }
         $stages['final'] = ['completed' => false, 'current' => false];
 
-        $currentStage = $currentStatus->getStage();
+        $currentStage = $currentStatus->getProgressStage();
         $stageOrder = array_keys($stages);
         $currentIndex = array_search($currentStage, $stageOrder);
 
@@ -4274,6 +4315,7 @@ class BookingLifecycleService
             'return_details' => [
                 'returned_at' => $dispatch->actual_return_at,
                 'return_condition_notes' => data_get($dispatch->vehicle_condition_in, 'notes'),
+                'evidence' => data_get($dispatch->vehicle_condition_in, 'evidence', []),
                 'return_fuel_level' => $dispatch->fuel_level_in,
                 'return_mileage' => $dispatch->mileage_in,
                 'return_notes' => $dispatch->return_notes,
@@ -4394,6 +4436,14 @@ class BookingLifecycleService
             && !($workflowSettings['enable_qc_stage'] ?? false)
         ) {
             return 'Complete Booking';
+        }
+
+        if ($status === BookingLifecycleStatus::COMPLETION_PENDING) {
+            return 'Complete Booking';
+        }
+
+        if ($status === BookingLifecycleStatus::RETURN_SCHEDULED && !($workflowSettings['enable_return_stage'] ?? false)) {
+            return 'Complete Trip';
         }
 
         return match ($status) {

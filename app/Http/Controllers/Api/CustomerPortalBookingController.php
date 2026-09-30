@@ -4,12 +4,152 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Models\Customer;
+use App\Models\Booking\Booking;
 use App\Services\UserContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
 class CustomerPortalBookingController extends BookingFlowController
 {
+    /** Read-only, owner-scoped request list. */
+    public function index(Request $request): JsonResponse
+    {
+        $customer = $this->activeCustomer($request);
+        $bookings = Booking::query()
+            ->where('customer_id', $customer->id)
+            ->where('is_corporate_booking', false)
+            ->with(['bookingItems' => fn ($query) => $query->select([
+                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
+                'pickup_location', 'dropoff_location',
+            ])])
+            ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
+            ->latest('created_at')
+            ->paginate(min(25, max(1, (int) $request->integer('per_page', 10))));
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $bookings->getCollection()->map(fn (Booking $booking) => $this->requestSummary($booking))->values(),
+            'pagination' => [
+                'current_page' => $bookings->currentPage(),
+                'last_page' => $bookings->lastPage(),
+                'total' => $bookings->total(),
+            ],
+        ]);
+    }
+
+    /** Read-only detail; a foreign ID has the same 404 outcome as an unknown ID. */
+    public function show(Request $request, string $id): JsonResponse
+    {
+        $customer = $this->activeCustomer($request);
+        $booking = Booking::query()
+            ->whereKey($id)
+            ->where('customer_id', $customer->id)
+            ->where('is_corporate_booking', false)
+            ->with(['bookingItems' => fn ($query) => $query->select([
+                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
+                'pickup_location', 'dropoff_location',
+            ])])
+            ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
+            ->firstOrFail();
+
+        return response()->json(['status' => 'success', 'data' => $this->requestSummary($booking)]);
+    }
+
+    private function requestSummary(Booking $booking): array
+    {
+        $status = strtolower((string) $booking->status);
+        $approval = strtolower((string) $booking->approval_status);
+        $progress = match (true) {
+            in_array($status, ['cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled', 'inquiry_canceled'], true) => 'Cancelled',
+            in_array($status, ['rejected', 'booking_rejected'], true) => 'Rejected',
+            $status === 'completed' => 'Completed',
+            $approval === 'rejected' => 'Rejected',
+            in_array($status, ['confirmed', 'approved'], true) || $approval === 'approved' => 'Confirmed',
+            $approval === 'pending' || in_array($status, ['pending_approval', 'under_review'], true) => 'Under review',
+            default => 'Received',
+        };
+
+        return [
+            'id' => (string) $booking->id,
+            'reference' => $booking->booking_number ?: (string) $booking->id,
+            'submitted_at' => $booking->created_at?->toIso8601String(),
+            'request_status' => $progress,
+            'trips' => $booking->bookingItems->map(fn ($item) => [
+                'id' => (string) $item->id,
+                'status' => $this->customerTripStatus($item->status),
+                'pickup' => $this->locationLabel($item->pickup_location),
+                'destination' => $this->locationLabel($item->dropoff_location),
+                'from_date' => $item->from_date,
+                'from_time' => $item->from_time,
+                'to_date' => $item->to_date,
+                'to_time' => $item->to_time,
+            ])->values()->all(),
+            'support_hint' => 'Contact TheTaxi support and quote this reference for help with your request.',
+        ];
+    }
+
+    private function customerTripStatus(?string $status): ?string
+    {
+        return match (strtolower(trim((string) $status))) {
+            'cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled' => 'Cancelled',
+            'rejected', 'booking_rejected' => 'Rejected',
+            'completed' => 'Completed',
+            'confirmed', 'approved', 'booking_confirmed', 'booking_approved' => 'Confirmed',
+            'pending_approval', 'booking_requires_approval' => 'Under review',
+            'allocation_pending', 'allocation_conflicts' => 'Vehicle and driver being arranged',
+            'allocation_assigned', 'allocation_approved' => 'Vehicle and driver assigned',
+            'dispatch_ready' => 'Preparing trip',
+            'dispatch_out', 'dispatched' => 'Vehicle dispatched',
+            'ongoing_active', 'in_progress' => 'In progress',
+            'ongoing_replacement_needed' => 'Replacement being arranged',
+            'ongoing_breakdown' => 'Breakdown support in progress',
+            'return_scheduled', 'return_overdue', 'return_late', 'ongoing_active' => 'In progress',
+            'return_completed', 'returned', 'qc_pending', 'qc_in_progress', 'qc_issues_found',
+            'qc_repair_needed', 'qc_completed', 'completion_pending' => 'Trip ended',
+            default => null,
+        };
+    }
+
+    private function locationLabel(mixed $value): ?string
+    {
+        if (is_string($value)) {
+            $decoded = json_decode($value, true);
+            $value = is_array($decoded) ? $decoded : $value;
+        }
+        if (is_array($value)) {
+            foreach (['address', 'formatted_address', 'label', 'name', 'description'] as $key) {
+                if (is_string($value[$key] ?? null) && trim($value[$key]) !== '') return trim($value[$key]);
+            }
+            return null;
+        }
+        return is_string($value) && trim($value) !== '' ? trim($value) : null;
+    }
+
+    private function activeCustomer(Request $request): Customer
+    {
+        $user = $request->user();
+        abort_unless($user, 403, 'An active customer profile is required.');
+        $activeContext = app(UserContextService::class)->resolveActiveContextFromRequest($user, $request);
+        abort_unless($activeContext && ($activeContext['portal_profile'] ?? null) === 'customer', 403,
+            'An active customer profile is required.');
+        abort_if($request->header('X-Active-Context-Id') &&
+            $request->header('X-Active-Context-Id') !== (string) $activeContext['id'], 403,
+            'The selected customer context is unavailable.');
+        abort_if($request->header('X-Active-Context-Type') &&
+            $request->header('X-Active-Context-Type') !== 'customer', 403,
+            'A customer context is required.');
+        abort_if($request->header('X-Active-Portal-Profile') &&
+            $request->header('X-Active-Portal-Profile') !== 'customer', 403,
+            'A customer profile is required.');
+        $context = $user->contexts()->whereKey($activeContext['id'])
+            ->where('context_type', 'customer')->where('is_active', true)->first();
+        $customer = $context?->context_id
+            ? Customer::query()->whereKey($context->context_id)->where('user_id', $user->id)->first()
+            : null;
+        abort_unless($customer, 403, 'An active customer profile is required.');
+        return $customer;
+    }
+
     /**
      * Create a customer-owned booking request for staff review.
      *
@@ -67,6 +207,10 @@ class CustomerPortalBookingController extends BookingFlowController
             'vehicles',
             'drivers',
             'vehicle_driver_assignments',
+            'vehicle_id',
+            'driver_id',
+            'specific_vehicle_id',
+            'specific_driver_id',
         ]);
 
         $payload['customer_id'] = (string) $customer->id;
@@ -90,7 +234,9 @@ class CustomerPortalBookingController extends BookingFlowController
                     $item['price_adjustment_reason'],
                     $item['vehicles'],
                     $item['drivers'],
-                    $item['vehicle_driver_assignments']
+                    $item['vehicle_driver_assignments'],
+                    $item['vehicle_id'],
+                    $item['driver_id']
                 );
                 if (is_array($item['selected_addons'] ?? null)) {
                     foreach ($item['selected_addons'] as &$addon) {

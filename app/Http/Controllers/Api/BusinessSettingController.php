@@ -4,11 +4,13 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\BusinessSetting;
+use App\Models\Driver\Driver;
 use App\Http\Requests\BusinessSetting\CreateBusinessSettingRequest;
 use App\Http\Requests\BusinessSetting\UpdateBusinessSettingRequest;
 use App\Http\Resources\BusinessSettingResource;
 use App\Models\Website\WebsiteSetting;
 use App\Services\WebsiteSettingsService;
+use App\Services\Driver\NotificationTriggerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -206,6 +208,9 @@ class BusinessSettingController extends Controller
             ], 422);
         }
 
+        $previousDriverVersion = $category === 'driverMobile'
+            ? trim((string) $this->websiteSettingsService->get('driver_mobile_latest_version', ''))
+            : '';
         $userId = $request->user()?->id;
         foreach ($settings as $type => $value) {
             $normalizedValue = WebsiteSetting::normalizeValue($value);
@@ -220,6 +225,15 @@ class BusinessSettingController extends Controller
 
             // Keep existing runtime consumers working while business-owned reads migrate.
             $this->websiteSettingsService->set($type, $normalizedValue);
+        }
+
+        if ($category === 'driverMobile' && array_key_exists('driver_mobile_latest_version', $settings)) {
+            $this->notifyDriversAboutAppUpdate(
+                $previousDriverVersion,
+                (string) $settings['driver_mobile_latest_version'],
+                (string) ($settings['driver_mobile_update_message'] ?? ''),
+                $settings['driver_mobile_mandatory_update'] ?? false
+            );
         }
 
         return response()->json([
@@ -263,9 +277,18 @@ class BusinessSettingController extends Controller
 
     public function update(UpdateBusinessSettingRequest $request, BusinessSetting $businessSetting): JsonResponse
     {
+        $previousValue = (string) $businessSetting->value;
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
         $businessSetting->update($data);
+        if ($businessSetting->type === 'driver_mobile_latest_version') {
+            $this->notifyDriversAboutAppUpdate(
+                $previousValue,
+                (string) $businessSetting->value,
+                (string) $this->websiteSettingsService->get('driver_mobile_update_message', ''),
+                $this->websiteSettingsService->get('driver_mobile_mandatory_update', false)
+            );
+        }
 
         return response()->json([
             'status'=>'success',
@@ -312,5 +335,45 @@ class BusinessSettingController extends Controller
             'on',
             'enabled',
         ], true);
+    }
+
+    private function notifyDriversAboutAppUpdate(string $previousVersion, string $configuredVersion, string $message, mixed $mandatory): void
+    {
+        $latestVersion = ltrim(trim($configuredVersion), 'vV');
+        $previousVersion = ltrim(trim($previousVersion), 'vV');
+        if ($latestVersion === '' || !version_compare($latestVersion, $previousVersion, '>')) {
+            return;
+        }
+
+        $updateMessage = trim($message) ?: 'A new driver app version is available. Please update your app.';
+        $mandatoryUpdate = in_array(strtolower((string) $mandatory), ['1', 'true', 'yes', 'on', 'enabled'], true);
+        Driver::query()
+            ->where('is_active', true)
+            ->whereHas('activeDevices', fn ($query) => $query->whereNotNull('push_token')->whereNotNull('app_version'))
+            ->with('activeDevices')
+            ->chunkById(100, function ($drivers) use ($latestVersion, $updateMessage, $mandatoryUpdate): void {
+                $notifications = app(NotificationTriggerService::class);
+                foreach ($drivers as $driver) {
+                    $hasOutdatedDevice = $driver->activeDevices->contains(fn ($device) =>
+                        $device->push_token
+                        && $device->app_version
+                        && version_compare(ltrim(trim((string) $device->app_version), 'vV'), $latestVersion, '<')
+                    );
+                    if (!$hasOutdatedDevice) {
+                        continue;
+                    }
+                    $notifications->sendDriverPushNotification(
+                        $driver,
+                        'driver_app_update_available',
+                        'Driver app update available',
+                        $updateMessage,
+                        [
+                            'latest_version' => $latestVersion,
+                            'mandatory_update' => $mandatoryUpdate ? 'true' : 'false',
+                            'action' => 'update_driver_app',
+                        ]
+                    );
+                }
+            });
     }
 }

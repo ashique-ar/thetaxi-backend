@@ -89,8 +89,8 @@ trait BookingPricingTrait
                 'has_variable_customizations' => 'sometimes|boolean',
                 'session_id' => 'sometimes|string',
                 'is_preview_calculation' => 'sometimes|boolean',
-                'currency' => 'sometimes|string|size:3',
-                'base_currency' => 'sometimes|string|size:3',
+                'currency' => 'sometimes|string|size:3|exists:currencies,code',
+                'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
                 'booking_id' => 'nullable|string',
                 'preserve_custom_pricing' => 'sometimes|boolean',
                 'preserve_custom_addon_prices' => 'sometimes|boolean',
@@ -262,7 +262,13 @@ trait BookingPricingTrait
     public function getAvailableCurrencies(): JsonResponse
     {
         try {
-            $currencies = $this->currencyService->getAvailableCurrencies();
+            $defaultCurrency = $this->currencyService->getDefaultCurrency();
+            $bookingBaseCurrency = $this->currencyService->getBookingBaseCurrency();
+            $currencies = array_map(static function (array $currency) use ($defaultCurrency, $bookingBaseCurrency): array {
+                $currency['is_default'] = strtoupper((string) ($currency['code'] ?? '')) === $defaultCurrency;
+                $currency['is_booking_base'] = strtoupper((string) ($currency['code'] ?? '')) === $bookingBaseCurrency;
+                return $currency;
+            }, $this->currencyService->getAvailableCurrenciesForDisplay());
 
             return response()->json([
                 'success' => true,
@@ -284,8 +290,8 @@ trait BookingPricingTrait
         try {
             $request->validate([
                 'amount' => 'required|numeric|min:0',
-                'from_currency' => 'required|string|size:3',
-                'to_currency' => 'required|string|size:3',
+                'from_currency' => 'required|string|size:3|exists:currencies,code',
+                'to_currency' => 'required|string|size:3|exists:currencies,code',
             ]);
 
             $convertedAmount = $this->currencyService->convert(

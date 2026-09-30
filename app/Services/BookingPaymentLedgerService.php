@@ -497,6 +497,7 @@ class BookingPaymentLedgerService
                 'received_at' => $data['received_at'],
                 'received_by' => $userId,
                 'notes' => $data['notes'] ?? null,
+                'metadata' => $data['metadata'] ?? null,
                 'received_via' => $data['received_via'] ?? 'company',
                 'payer_type' => (bool) $booking->is_corporate_booking ? 'corporate' : 'customer',
                 'payer_id' => (bool) $booking->is_corporate_booking ? $booking->corporate_account_id : $booking->customer_id,

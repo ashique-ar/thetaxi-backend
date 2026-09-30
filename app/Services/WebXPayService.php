@@ -29,7 +29,14 @@ class WebXPayService
         $this->publicKey = $this->getSettingValue('webxpay_public_key', config('booking.webxpay.public_key'));
         $this->apiUrl = $this->getSettingValue('webxpay_api_url', config('booking.webxpay.api_url'));
         $this->checkoutUrl = $this->getSettingValue('webxpay_checkout_url', config('booking.webxpay.checkout_url'));
-        $this->currency = $this->getSettingValue('webxpay_currency', config('booking.webxpay.currency', 'LKR'));
+        $configuredCurrency = strtoupper(trim((string) $this->getSettingValue(
+            'webxpay_currency',
+            config('booking.webxpay.currency', '')
+        )));
+        $currencyService = app(CurrencyService::class);
+        $this->currency = $configuredCurrency !== '' && $currencyService->isValidCurrency($configuredCurrency)
+            ? $configuredCurrency
+            : $currencyService->getDefaultCurrency();
         $settingEnabled = $this->getSettingValue('webxpay_enabled', null);
         $this->enabled = $this->normalizeBoolean($settingEnabled, (bool) config('booking.webxpay.enabled', false));
         $this->apiUsername = $this->getSettingValue('webxpay_api_username', config('booking.webxpay.api_username'));
@@ -91,14 +98,27 @@ class WebXPayService
      * Create payment request using RSA encryption (WebXPay Redirect Method)
      * Based on official WebXPay redirect-sample-code
      */
-    public function createPayment(Booking $booking, float $amount, string $paymentType = 'full'): array
+    public function createPayment(Booking $booking, float $amount, string $paymentType = 'full', ?string $amountCurrency = null): array
     {
         if (!$this->isEnabled()) {
             throw new \Exception('WebXPay is not enabled or configured properly');
         }
 
         try {
-            $amount = max(0, app(CurrencyService::class)->normalizeAmount($amount));
+            // Booking totals are stored in the currency selected at checkout.
+            // WebXPay charges in its configured process currency, so convert
+            // before encrypting the amount sent to the gateway.
+            $workflowData = is_array($booking->workflow_data)
+                ? $booking->workflow_data
+                : (json_decode((string) $booking->workflow_data, true) ?: []);
+            $sourceCurrency = $amountCurrency
+                ?: ($workflowData['display_currency'] ?? null)
+                ?: $booking->currency
+                ?: app(CurrencyService::class)->getDefaultCurrency();
+            $bookingCurrency = strtoupper(trim((string) $sourceCurrency));
+            $bookingAmount = app(CurrencyService::class)->roundAmount($amount, $bookingCurrency);
+            $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
+            $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
             $orderId = $booking->booking_number . '-' . time();
 
             // Step 1: Create plaintext payment data
@@ -143,6 +163,8 @@ class WebXPayService
                 'booking_id'   => $booking->id,
                 'order_id'     => $orderId,
                 'amount'       => $amountFormatted,
+                'currency'     => $this->currency,
+                'booking_currency' => $bookingCurrency,
             ]);
 
             // Step 5: Return all data for form submission
@@ -150,6 +172,10 @@ class WebXPayService
                 'success' => true,
                 'payment_url' => $this->checkoutUrl, // e.g., https://webxpay.com/index.php?route=checkout/billing
                 'order_id' => $orderId,
+                'amount' => (float) $amountFormatted,
+                'currency' => $this->currency,
+                'booking_amount' => (float) $bookingAmount,
+                'booking_currency' => $bookingCurrency,
                 'encrypted_payment' => $encryptedPayment,
                 'secret_key' => $this->secretKey,
                 'custom_fields' => $encryptedCustomFields,
@@ -174,6 +200,27 @@ class WebXPayService
                 'error' => $e->getMessage()
             ];
         }
+    }
+
+    /** Convert an amount stored in the booking currency into WebXPay currency. */
+    private function convertBookingAmountToGatewayCurrency(float $amount, string $bookingCurrency): float
+    {
+        if ($amount < 0) {
+            throw new \InvalidArgumentException('Payment amount cannot be negative.');
+        }
+
+        if ($bookingCurrency === $this->currency) {
+            return $amount;
+        }
+
+        // Use the same globally configured currency table as booking and portal
+        // conversions so payment initiation cannot use a separate rate path.
+        $rate = app(CurrencyService::class)->getExchangeRate($bookingCurrency, $this->currency);
+        if (!is_finite($rate) || $rate <= 0) {
+            throw new \RuntimeException("Cannot convert payment from {$bookingCurrency} to {$this->currency}: global exchange rate is unavailable.");
+        }
+
+        return $amount * $rate;
     }
 
     /**
@@ -389,4 +436,3 @@ class WebXPayService
         return $phone ?: '0000000000';
     }
 }
-

@@ -14,6 +14,8 @@ it('forwards corporate ownership into each vehicle group card pricing calculatio
         ->toContain("'is_corporate_booking' => filter_var(")
         ->toContain("\$params['is_corporate_booking'] ?? !empty(\$corporateAccountId)")
         ->toContain("'corporate_account_id' => \$corporateAccountId")
+        ->toContain("'owner_type' => !empty(\$corporateAccountId) ? 'corporate' : null")
+        ->toContain("'owner_id' => \$corporateAccountId")
         ->toContain('$this->calculatePricing($pricingParams)');
 });
 

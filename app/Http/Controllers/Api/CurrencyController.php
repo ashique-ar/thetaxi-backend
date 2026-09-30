@@ -99,6 +99,7 @@ class CurrencyController extends Controller
     private function clearCurrencyCaches(): void
     {
         Cache::put('ref.currencies.v', ((int) Cache::get('ref.currencies.v', 0)) + 1, 86400);
+        Cache::put('currency.exchange_rates.v', ((int) Cache::get('currency.exchange_rates.v', 0)) + 1, 86400);
         Cache::forget('available_currencies');
         Cache::forget('display_currencies');
         Cache::forget('display_currencies_for_views');

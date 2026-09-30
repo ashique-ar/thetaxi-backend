@@ -1012,18 +1012,43 @@ class Booking extends BaseModel
      */
     public function getLifecycleStatus(): BookingLifecycleStatus
     {
-        // Map current status to lifecycle status
-        return match ($this->status) {
+        // Accept both stored booking statuses and canonical lifecycle values.
+        // Several portal projections return lifecycle values, while older
+        // booking records use shorter aliases such as `confirmed`/`in_progress`.
+        $status = strtolower(trim((string) $this->status));
+
+        return match ($status) {
             'inquiry' => BookingLifecycleStatus::INQUIRY,
             'inquiry_qualified' => BookingLifecycleStatus::INQUIRY_QUALIFIED,
-            'inquiry_cancelled' => BookingLifecycleStatus::INQUIRY_CANCELLED,
-            'pending' => BookingLifecycleStatus::BOOKING_PENDING,
+            'inquiry_cancelled', 'inquiry_canceled' => BookingLifecycleStatus::INQUIRY_CANCELLED,
+            'pending', 'booking_pending' => BookingLifecycleStatus::BOOKING_PENDING,
             'confirmed' => $this->getDetailedLifecycleStatus(),
-            'cancelled' => BookingLifecycleStatus::CANCELLED,
+            'booking_confirmed' => BookingLifecycleStatus::BOOKING_CONFIRMED,
+            'cancelled', 'canceled' => BookingLifecycleStatus::CANCELLED,
+            'booking_cancelled' => BookingLifecycleStatus::BOOKING_CANCELLED,
             'completed' => BookingLifecycleStatus::COMPLETED,
-            'pending_approval' => BookingLifecycleStatus::BOOKING_REQUIRES_APPROVAL,
-            'approved' => BookingLifecycleStatus::BOOKING_APPROVED,
-            'rejected' => BookingLifecycleStatus::BOOKING_REJECTED,
+            'pending_approval', 'booking_requires_approval' => BookingLifecycleStatus::BOOKING_REQUIRES_APPROVAL,
+            'approved', 'booking_approved' => BookingLifecycleStatus::BOOKING_APPROVED,
+            'rejected', 'booking_rejected' => BookingLifecycleStatus::BOOKING_REJECTED,
+            'allocation_pending', 'pending_allocation' => BookingLifecycleStatus::ALLOCATION_PENDING,
+            'allocation_assigned', 'allocated' => BookingLifecycleStatus::ALLOCATION_ASSIGNED,
+            'allocation_conflicts' => BookingLifecycleStatus::ALLOCATION_CONFLICTS,
+            'allocation_approved' => BookingLifecycleStatus::ALLOCATION_APPROVED,
+            'dispatch_ready' => BookingLifecycleStatus::DISPATCH_READY,
+            'dispatch_out', 'dispatched' => BookingLifecycleStatus::DISPATCH_OUT,
+            'ongoing_active', 'in_progress' => BookingLifecycleStatus::ONGOING_ACTIVE,
+            'ongoing_replacement_needed' => BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED,
+            'ongoing_breakdown' => BookingLifecycleStatus::ONGOING_BREAKDOWN,
+            'return_scheduled' => BookingLifecycleStatus::RETURN_SCHEDULED,
+            'return_overdue' => BookingLifecycleStatus::RETURN_OVERDUE,
+            'return_completed', 'returned' => BookingLifecycleStatus::RETURN_COMPLETED,
+            'return_late' => BookingLifecycleStatus::RETURN_LATE,
+            'qc_pending' => BookingLifecycleStatus::QC_PENDING,
+            'qc_in_progress' => BookingLifecycleStatus::QC_IN_PROGRESS,
+            'qc_issues_found' => BookingLifecycleStatus::QC_ISSUES_FOUND,
+            'qc_repair_needed' => BookingLifecycleStatus::QC_REPAIR_NEEDED,
+            'qc_completed' => BookingLifecycleStatus::QC_COMPLETED,
+            'completion_pending' => BookingLifecycleStatus::COMPLETION_PENDING,
             default => BookingLifecycleStatus::BOOKING_PENDING,
         };
     }
@@ -1037,6 +1062,7 @@ class Booking extends BaseModel
         if ($this->dispatch) {
             switch ($this->dispatch->dispatch_status) {
                 case DispatchStatus::DISPATCHED:
+                    return BookingLifecycleStatus::DISPATCH_OUT;
                 case DispatchStatus::IN_PROGRESS:
                     return BookingLifecycleStatus::ONGOING_ACTIVE;
                 case DispatchStatus::RETURNED:

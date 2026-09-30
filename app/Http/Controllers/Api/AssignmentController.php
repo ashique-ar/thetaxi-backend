@@ -46,6 +46,10 @@ class AssignmentController extends Controller
                 $request->query('include_tracking', true),
                 FILTER_VALIDATE_BOOLEAN
             );
+            $includeAccountSummary = filter_var(
+                $request->query('include_account_summary', true),
+                FILTER_VALIDATE_BOOLEAN
+            );
             $trackingLimit = (int) $request->query('tracking_limit', 300);
             $trackingLimit = max(20, min($trackingLimit, 1000));
 
@@ -210,6 +214,9 @@ class AssignmentController extends Controller
             );
             $customerUser = $booking->customer?->user;
             $canManagePrice = Auth::user()?->can('bookings.price_override') === true;
+            $canUpdateBooking = Auth::user()?->can('bookings.update') === true;
+            $canDeleteBooking = Auth::user()?->can('bookings.delete') === true;
+            $isRecurringBooking = (bool) $booking->is_recurring || !empty($booking->recurring_series_id);
 
             $result = [
                 'booking' => [
@@ -247,6 +254,17 @@ class AssignmentController extends Controller
                     'dropoff_latitude' => $dropoffLatitude,
                     'dropoff_longitude' => $dropoffLongitude,
                     'status' => $booking->status,
+                    'can_cancel' => $canUpdateBooking && $booking->canBeCancelled(),
+                    'cancellation_block_reason' => $canUpdateBooking ? $booking->cancellationBlockReason() : null,
+                    'can_delete_draft' => $canDeleteBooking && (string) $booking->status === 'draft',
+                    'is_recurring' => $isRecurringBooking,
+                    'has_recurring_series' => !empty($booking->recurring_series_id),
+                    'recurring_series_id' => $booking->recurring_series_id,
+                    'recurring_occurrence_date' => $booking->recurring_occurrence_date,
+                    'recurrence_pattern' => $booking->recurrence_pattern,
+                    'recurrence_end_date' => $booking->recurrence_end_date,
+                    'recurring_sequence' => $booking->recurring_sequence,
+                    'can_cancel_recurring' => $canDeleteBooking && $isRecurringBooking && $booking->canBeCancelled(),
                     'approval_status' => $booking->approval_status,
                     'payment_status' => $booking->payment_status,
                     'payment_method' => $booking->payment_method,
@@ -302,7 +320,9 @@ class AssignmentController extends Controller
                     'justification' => $booking->approval_justification,
                 ],
                 'payment_summary' => $this->paymentLedger->summary($booking),
-                'payment_account_summary' => $this->paymentLedger->accountSummary($booking),
+                'payment_account_summary' => $includeAccountSummary
+                    ? $this->paymentLedger->accountSummary($booking)
+                    : null,
                 'current_vehicle' => $selectedVehicle ? [
                     'id' => $selectedVehicle->id,
                     'name' => $selectedVehicle->title,
@@ -736,9 +756,10 @@ class AssignmentController extends Controller
     }
 
     /**
-     * Resolve the immutable device/app information captured by the driver
-     * session that handled this trip. Never fall back to the driver's current
-     * device record because its app version changes after an update.
+     * Prefer the device/app snapshot captured when the driver accepted this
+     * trip. Older app versions have no assignment snapshot, so use the linked
+     * tracking session's start snapshot as a clearly identified fallback.
+     * Never read the driver's current device record for historical bookings.
      */
     private function resolveBookingDeviceSnapshot($tripAssignment, $selectedDriver): ?array
     {
@@ -746,25 +767,38 @@ class AssignmentController extends Controller
             return null;
         }
 
-        $session = DriverSession::query()
-            ->where('driver_id', $selectedDriver->id)
-            ->where(function ($query) use ($tripAssignment) {
-                $query->where('assignment_id', $tripAssignment->id)
-                    ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
-            })
-            ->orderByDesc('start_time')
-            ->first();
+        $snapshot = is_array($tripAssignment->booking_device_snapshot)
+            ? $tripAssignment->booking_device_snapshot
+            : [];
+        $source = 'driver_assignment_acceptance';
+        $snapshotAt = $snapshot['captured_at'] ?? null;
+        $deviceUuid = $snapshot['device_uuid'] ?? null;
+        $session = null;
 
-        if (!$session) {
-            return null;
-        }
+        if ($snapshot === []) {
+            $session = DriverSession::query()
+                ->where('driver_id', $selectedDriver->id)
+                ->where(function ($query) use ($tripAssignment) {
+                    $query->where('assignment_id', $tripAssignment->id)
+                        ->orWhereHas('routePoints', fn ($points) => $points->where('assignment_id', $tripAssignment->id));
+                })
+                ->orderByDesc('start_time')
+                ->first();
 
-        $metadata = is_array($session->metadata) ? $session->metadata : [];
-        $snapshot = $metadata;
-        foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info', 'device_snapshot'] as $key) {
-            if (is_array($metadata[$key] ?? null)) {
-                $snapshot = array_merge($snapshot, $metadata[$key]);
+            if (!$session) {
+                return null;
             }
+
+            $metadata = is_array($session->metadata) ? $session->metadata : [];
+            $snapshot = $metadata;
+            foreach (['device', 'device_info', 'device_details', 'mobile', 'mobile_info', 'app', 'app_info', 'device_snapshot'] as $key) {
+                if (is_array($metadata[$key] ?? null)) {
+                    $snapshot = array_merge($snapshot, $metadata[$key]);
+                }
+            }
+            $source = 'driver_session_start';
+            $snapshotAt = $session->start_time?->toIso8601String();
+            $deviceUuid = $session->device_uuid;
         }
         $value = static function (array $source, array $keys): ?string {
             foreach ($keys as $key) {
@@ -779,7 +813,7 @@ class AssignmentController extends Controller
         $platform = $value($snapshot, ['platform', 'os', 'operating_system']);
 
         return [
-            'device_uuid' => $session->device_uuid,
+            'device_uuid' => $deviceUuid,
             'device_name' => $value($snapshot, ['device_name', 'name']),
             'device_model' => $value($snapshot, ['device_model', 'model', 'mobile_model', 'phone_model']),
             'device_manufacturer' => $value($snapshot, ['device_manufacturer', 'manufacturer', 'brand']),
@@ -788,10 +822,9 @@ class AssignmentController extends Controller
             'os_version' => $value($snapshot, ['os_version', 'android_version', 'ios_version', 'system_version']),
             'app_version' => $value($snapshot, ['app_version', 'version']),
             'app_build' => $value($snapshot, ['app_build', 'build', 'build_number']),
-            'is_active' => $session->status === 'active',
-            'last_active_at' => ($session->end_time ?? $session->start_time)?->toIso8601String(),
-            'recorded_at' => $session->start_time?->toIso8601String(),
-            'source' => 'driver_session',
+            'is_active' => $session ? $session->status === 'active' : null,
+            'snapshot_at' => $snapshotAt,
+            'source' => $source,
         ];
     }
 
@@ -838,6 +871,7 @@ class AssignmentController extends Controller
                     : (string) $bookingDispatch->dispatch_status,
                 'dispatched_at' => $this->toUtcIsoTimestamp($bookingDispatch->dispatched_at),
                 'actual_return_at' => $this->toUtcIsoTimestamp($bookingDispatch->actual_return_at),
+                'return_evidence' => data_get($bookingDispatch->vehicle_condition_in, 'evidence', []),
                 'source' => 'booking_dispatch',
             ] : null,
             'assignment' => null,
@@ -1583,6 +1617,31 @@ class AssignmentController extends Controller
                         : 'Drop-off ' . ($stop->type_sequence ?: $stop->route_order)
                 );
 
+                $plannedLocation = [
+                    'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
+                    'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+                ];
+                $arrivedLocation = $this->buildActualLifecyclePoint(
+                    $displayLabel . ' arrived',
+                    $stop->arrived_latitude,
+                    $stop->arrived_longitude,
+                    $stop->arrived_at,
+                    'stop_arrival'
+                );
+                $completedActionLabel = match ($stop->completed_action) {
+                    'skipped' => ' skipped',
+                    'picked_up' => ' passenger picked up',
+                    'dropped_off' => ' passenger dropped off',
+                    default => ' completed',
+                };
+                $completedLocation = $this->buildActualLifecyclePoint(
+                    $displayLabel . $completedActionLabel,
+                    $stop->completed_latitude,
+                    $stop->completed_longitude,
+                    $stop->completed_at,
+                    'stop_completion'
+                );
+
                 return [
                     'id' => $stop->id,
                     'booking_stop_id' => $stop->booking_stop_id,
@@ -1593,10 +1652,16 @@ class AssignmentController extends Controller
                     'label' => $displayLabel,
                     'display_label' => $displayLabel,
                     'address' => $stop->address,
-                    'latitude' => $stop->latitude !== null ? (float) $stop->latitude : null,
-                    'longitude' => $stop->longitude !== null ? (float) $stop->longitude : null,
+                    'latitude' => $plannedLocation['latitude'],
+                    'longitude' => $plannedLocation['longitude'],
                     'arrived_at' => $this->toUtcIsoTimestamp($stop->arrived_at),
+                    'arrived_location' => $arrivedLocation,
+                    'arrived_location_compliance' => $this->compareLifecycleLocation($plannedLocation, $arrivedLocation),
                     'completed_at' => $this->toUtcIsoTimestamp($stop->completed_at),
+                    'completed_location' => $completedLocation,
+                    'completed_location_compliance' => $this->compareLifecycleLocation($plannedLocation, $completedLocation),
+                    'completed_action' => $stop->completed_action,
+                    'skip_reason' => $stop->skip_reason,
                     'completed_action' => $stop->completed_action,
                     'skip_reason' => $stop->skip_reason,
                 ];

@@ -7,12 +7,12 @@
         $booking = $paymentData['booking'];
         $context = $paymentData['context'];
         $amountDue = $paymentData['amount_due'];
+        $quotedItems = $context['booking_items'] ?? [];
+        $selectedItemIds = $paymentData['revision_item_ids'] ?? array_column($quotedItems, 'id');
+        $canEditVehicles = count($quotedItems) > 0 && collect($quotedItems)->every(fn ($item) => !empty($item['id']));
+        $hasRevisedSelection = !empty($paymentData['revision_item_ids']) && count($paymentData['revision_item_ids']) < count($quotedItems);
         $currencySymbol = getCurrencySymbol($context['pricing']['currency'] ?? 'LKR');
 
-        // Fallback for invalid or zero amounts
-        if ($amountDue <= 0) {
-            $amountDue = $context['pricing']['total_estimated'] ?? 1000; // Use booking total or default
-        }
         $paymentStatus = $booking?->payment_status ?? ($context['payment_status'] ?? 'pending');
         if ($amountDue > 0 && $paymentStatus === 'not_required') {
             $paymentStatus = 'pending';
@@ -68,6 +68,11 @@
                             <h2 class="section-title">
                                 <span class="icon">🚗</span> Vehicle Wise Trip Details
                             </h2>
+                            @if ($canEditVehicles)
+                            <p style="color:#555;">Choose the vehicles you want to keep. Your original quotation is preserved.</p>
+                            <form method="POST" action="{{ route('checkout.payment-resume.vehicles', ['token' => $token]) }}">
+                                @csrf
+                            @endif
                             @if (!empty($context['booking_items']))
                                 @foreach ($context['booking_items'] as $index => $item)
                                     @php
@@ -127,6 +132,10 @@
                                         );
                                     @endphp
                                     <div class="booking-item-email">
+                                        @if ($canEditVehicles)<label style="display:flex;align-items:center;gap:8px;margin-bottom:14px;color:#333;font-weight:600;">
+                                            <input type="checkbox" name="item_ids[]" value="{{ $item['id'] ?? '' }}" {{ in_array((string) ($item['id'] ?? ''), array_map('strval', $selectedItemIds), true) ? 'checked' : '' }}>
+                                            Keep this vehicle
+                                        </label>@endif
                                         <div
                                             style="display: flex; align-items: flex-start; gap: 15px; margin-bottom: 5px;">
                                             @if ($defaultImage)
@@ -273,7 +282,12 @@
                                     </div>
                                 @endforeach
                             @endif
-
+                            @if ($canEditVehicles)
+                            <button type="submit" class="btn btn-secondary" style="margin:12px 0;">Update vehicle selection</button>
+                            </form>
+                            @else
+                            <p style="color:#777;">To change this older quotation, please contact our booking team.</p>
+                            @endif
                         </div>
 
                         <!-- Customer Information Section -->
@@ -317,6 +331,14 @@
 
                         <!-- Payment Summary Section -->
                         <div class="section">
+                            @if ($hasRevisedSelection)
+                                <h2 class="section-title">Updated booking summary</h2>
+                                <table class="info-table">
+                                    <tr><td>Original quotation total</td><td>{{ $currencySymbol }} {{ number_format((float) ($context['pricing']['total_estimated'] ?? 0), 2) }}</td></tr>
+                                    <tr><td>Revised booking total</td><td><strong>{{ $currencySymbol }} {{ number_format((float) ($paymentData['revision_total'] ?? 0), 2) }}</strong></td></tr>
+                                    <tr style="background:#fef3c7"><td><strong>Amount due today</strong></td><td><strong>{{ $currencySymbol }} {{ number_format((float) $amountDue, 2) }}</strong></td></tr>
+                                </table>
+                            @else
                             <h2 class="section-title">
                                 <span class="icon">💳</span> Payment Summary
                             </h2>
@@ -395,6 +417,7 @@
                                     </td>
                                 </tr>
                             </table>
+                            @endif
                         </div>
 
                         <div class="divider"></div>
@@ -433,9 +456,13 @@
 
                                 <!-- Payment CTA -->
                                 <div class="btn-container" style="margin: 30px 0;">
-                                    <button type="submit" class="btn submit-btn">
-                                        Pay {{ $currencySymbol }} {{ number_format(floor(max(0, $amountDue)), 0) }}
-                                    </button>
+                                    @if ($amountDue > 0)
+                                        <button type="submit" class="btn submit-btn">
+                                            Pay {{ $currencySymbol }} {{ number_format(floor($amountDue), 0) }}
+                                        </button>
+                                    @else
+                                        <p style="text-align:center;color:#16803c;font-weight:600;">No payment is due for this booking.</p>
+                                    @endif
                                     <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                                         <span style="color: #28a745;">✓ Secure SSL Encryption</span> •
                                         <span style="color: #28a745;">✓ All Major Cards Accepted</span> •

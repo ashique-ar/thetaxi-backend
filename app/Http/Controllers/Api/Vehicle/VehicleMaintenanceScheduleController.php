@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\VehicleMaintenanceSchedule;
+use App\Models\Vehicle\Vehicle;
 use App\Http\Requests\Vehicle\VehicleMaintenanceSchedule\CreateVehicleMaintenanceScheduleRequest;
 use App\Http\Requests\Vehicle\VehicleMaintenanceSchedule\UpdateVehicleMaintenanceScheduleRequest;
 use App\Http\Resources\Vehicle\VehicleMaintenanceScheduleResource;
@@ -25,6 +26,16 @@ class VehicleMaintenanceScheduleController extends Controller
     {
         $q = VehicleMaintenanceSchedule::query();
         return VehicleMaintenanceScheduleResource::collection($q->paginate($request->per_page ?? 15));
+    }
+
+    public function forVehicle(Request $request, Vehicle $vehicle)
+    {
+        return VehicleMaintenanceScheduleResource::collection(
+            VehicleMaintenanceSchedule::query()
+                ->where('vehicle_id', $vehicle->id)
+                ->orderBy('next_due_date')
+                ->paginate($request->integer('per_page', 50))
+        );
     }
 
     public function store(CreateVehicleMaintenanceScheduleRequest $request): JsonResponse

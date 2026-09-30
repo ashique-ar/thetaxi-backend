@@ -77,7 +77,7 @@
         </h2>
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
-                <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
+                <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
             @endforeach
         @endif
     </div>
@@ -87,7 +87,7 @@
         <h2 class="section-title">
             <span class="icon">💳</span> Payment Summary
         </h2>
-        <x-booking-payment-summary :booking="$booking" :currencySymbol="$currencySymbol" :amountDue="$amount" />
+        <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :amount_due="$amount" />
     </div>
     @php
         $paymentType = $booking->payment_type ?? null;

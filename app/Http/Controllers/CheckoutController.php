@@ -9,6 +9,7 @@ use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingAddon;
 use App\Models\Booking\BookingItem;
+use App\Models\Customer;
 use App\Models\Service\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
@@ -26,11 +27,14 @@ use App\Services\BookingPaymentLedgerService;
 use App\Helpers\BookingLinkHelper;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
 
 class CheckoutController extends Controller
 {
@@ -113,7 +117,7 @@ class CheckoutController extends Controller
             'rate_per_km' => $rate,
             'total' => $total,
             'total_cost' => $total,
-            'currency' => $extraKm['currency'] ?? config('booking.base_currency', 'LKR'),
+            'currency' => $extraKm['currency'] ?? $this->currencyService->getBookingBaseCurrency(),
             'added_at' => $extraKm['added_at'] ?? null,
         ];
     }
@@ -312,19 +316,77 @@ class CheckoutController extends Controller
                 ->with('error', 'No payment methods are currently available. Please try again later.');
         }
 
+        foreach ([
+            'first_name', 'last_name', 'phone', 'phone_country_code',
+            'phone_international', 'email', 'address', 'city', 'country',
+            'identification', 'flight_airline', 'flight_number',
+            'special_notes', 'additional_notes',
+            'flight_arrival_date', 'flight_arrival_time', 'contact_time', 'budget_range',
+        ] as $field) {
+            $value = $request->input($field);
+            if (is_string($value)) {
+                $trimmed = trim($value);
+                $request->merge([$field => $trimmed === '' ? null : $trimmed]);
+            }
+        }
+        foreach ([
+            'identification', 'flight_airline', 'flight_number',
+            'special_notes', 'additional_notes', 'flight_arrival_date',
+            'flight_arrival_time', 'contact_time', 'budget_range',
+        ] as $field) {
+            $value = $request->input($field);
+            if (!is_string($value) || $value === '') {
+                continue;
+            }
+
+            $meaningfulCharacters = preg_match_all('/[\p{L}\p{N}]/u', $value);
+            if (Str::length($value) <= 1 || $meaningfulCharacters < 2) {
+                $request->merge([$field => null]);
+            }
+        }
+        if (is_string($request->input('email'))) {
+            $request->merge(['email' => strtolower($request->input('email'))]);
+        }
+        $request->merge([
+            'identification' => filled($request->input('identification'))
+                ? strtoupper(trim((string) $request->input('identification')))
+                : null,
+        ]);
+        $existingCustomerId = Customer::query()
+            ->whereHas('user', fn ($query) => $query->whereRaw(
+                'LOWER(email) = ?',
+                [strtolower(trim((string) $request->input('email')))]
+            ))
+            ->value('id');
+        if (!$existingCustomerId && Auth::check()) {
+            $existingCustomerId = Auth::user()?->customer?->id;
+        }
+        $uniqueIdentification = Rule::unique('customers', 'nic');
+        if ($existingCustomerId) {
+            $uniqueIdentification->ignore($existingCustomerId);
+        }
+
         // Define validation rules
         $rules = [
             'payment_type' => 'required|in:' . implode(',', $allowedPaymentTypes),
-            'first_name' => 'required|string|max:255',
-            'last_name' => 'nullable|string|max:255',
-            'phone' => 'required|string|min:5|max:20',
+            'first_name' => ['required', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
+            'last_name' => ['nullable', 'string', 'max:255', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27?-]+$/u'],
+            'phone' => ['required', 'string', 'min:5', 'max:20', 'regex:/^(?=(?:.*\d){5,})[+\d\s().-]+$/'],
             'phone_country_code' => 'required|string|max:5',
             'phone_international' => 'required|string|regex:/^\+[0-9]{1,3}[0-9]{6,14}$/',
             'email' => 'required|email|max:255',
-            'identification' => 'nullable|string|max:50',
-            'address' => 'required|string|max:500',
-            'city' => 'required|string|max:100',
-            'country' => 'required|string|max:100',
+            'identification' => [
+                'nullable', 'string', 'max:50',
+                function ($attribute, $value, $fail): void {
+                    if (preg_match_all('/[\p{L}\p{N}]/u', (string) $value) < 2) {
+                        $fail('Enter at least two letters or numbers. ID and passport formats from any country are accepted.');
+                    }
+                },
+                $uniqueIdentification,
+            ],
+            'address' => ['required', 'string', 'max:500', 'regex:/^(?=(?:.*[\p{L}\p{N}]){2})[\p{L}\p{M}\p{N}\s.,#\x27’()\/-]+$/u'],
+            'city' => ['required', 'string', 'max:100', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
+            'country' => ['required', 'string', 'max:100', 'regex:/^(?=.*\p{L})[\p{L}\p{M} .\x27’-]+$/u'],
             'special_notes' => 'nullable|string|max:1000',
             'flight_airline' => 'nullable|string|max:100',
             'flight_number' => 'nullable|string|max:20',
@@ -342,12 +404,19 @@ class CheckoutController extends Controller
             'first_name.required' => 'Please enter your first name.',
             'phone.required' => 'Please enter your phone number.',
             'phone.min' => 'Phone number is too short.',
+            'phone.regex' => 'Enter a valid phone number with at least five digits.',
             'phone_country_code.required' => 'Please select a valid country for your phone number.',
             'phone_international.required' => 'Please enter a valid international phone number.',
             'phone_international.regex' => 'Please enter a valid international phone number format with country code.',
             'email.required' => 'Please enter your email address.',
             'email.email' => 'Please enter a valid email address.',
+            'first_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
+            'last_name.regex' => 'Enter a name containing at least one letter. Numbers or punctuation alone are not accepted.',
             'identification.required' => 'Please enter your identification number.',
+            'identification.unique' => 'This identification number is already linked to another customer. Please check the number or use the email address on that customer account.',
+            'address.regex' => 'Enter an address with at least two letters or numbers.',
+            'city.regex' => 'Enter a city name containing at least one letter.',
+            'country.regex' => 'Enter a country name containing at least one letter.',
             'address.required' => 'Please enter your address.',
             'city.required' => 'Please enter your city.',
             'country.required' => 'Please enter your country.',
@@ -464,12 +533,12 @@ class CheckoutController extends Controller
             $discount = $totals['coupon_discount'] ?? 0;
             $total = $totals['total'] ?? 0;
 
-            $subtotal = max(0, $this->currencyService->normalizeAmount($subtotal));
-            $serviceFee = max(0, $this->currencyService->normalizeAmount($serviceFee));
-            $tax = max(0, $this->currencyService->normalizeAmount($tax));
-            $vat = max(0, $this->currencyService->normalizeAmount($vat));
-            $discount = max(0, $this->currencyService->normalizeAmount($discount));
-            $total = max(0, $this->currencyService->normalizeAmount($total));
+            $subtotal = max(0, $this->currencyService->roundAmount($subtotal, $bookingCurrency));
+            $serviceFee = max(0, $this->currencyService->roundAmount($serviceFee, $bookingCurrency));
+            $tax = max(0, $this->currencyService->roundAmount($tax, $bookingCurrency));
+            $vat = max(0, $this->currencyService->roundAmount($vat, $bookingCurrency));
+            $discount = max(0, $this->currencyService->roundAmount($discount, $bookingCurrency));
+            $total = max(0, $this->currencyService->roundAmount($total, $bookingCurrency));
 
 
             // Calculate payment amount based on type
@@ -488,7 +557,7 @@ class CheckoutController extends Controller
                 $paymentAmount = max($paymentAmount, $advanceMinAmount);
                 $paymentAmount = min($paymentAmount, $total);
             }
-            $paymentAmount = max(0, $this->currencyService->normalizeAmount($paymentAmount));
+            $paymentAmount = max(0, $this->currencyService->roundAmount($paymentAmount, $bookingCurrency));
 
             // Prepare flight details
             $flightDetails = null;
@@ -634,18 +703,18 @@ class CheckoutController extends Controller
 
                 // Cart items have 'price' (unit price) and 'total_price' (total price)
                 if (isset($item['price'])) {
-                    $unitPrice = max(0, $this->currencyService->normalizeAmount($item['price']));
+                    $unitPrice = max(0, $this->currencyService->roundAmount($item['price'], $bookingCurrency));
                 }
 
                 if (isset($item['total_price'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total_price']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['total_price'], $bookingCurrency));
                 } elseif (isset($item['total'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['total'], $bookingCurrency));
                 } elseif (isset($item['amount'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['amount']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['amount'], $bookingCurrency));
                 } elseif ($unitPrice > 0 && $durationDays > 0) {
                     // Fallback: calculate total from unit price and duration
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($unitPrice * $durationDays));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($unitPrice * $durationDays, $bookingCurrency));
                 }
 
                 // Normalize service_type_id: extract from service_type_data['id'] or ensure it's a valid UUID or null
@@ -782,8 +851,26 @@ class CheckoutController extends Controller
                 default:
                     throw new \Exception('Invalid payment type');
             }
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            return redirect()->back()
+                ->withInput()
+                ->withErrors($e->errors());
         } catch (\Exception $e) {
             DB::rollback();
+            if ($e instanceof QueryException) {
+                $databaseMessage = strtolower($e->getMessage());
+                if (str_contains($databaseMessage, 'customers_nic') || str_contains($databaseMessage, 'customers.nic')) {
+                    return redirect()->back()->withInput()->withErrors([
+                        'identification' => 'This identification number is already linked to another customer. Please check the number or use the email address on that customer account.',
+                    ]);
+                }
+                if (str_contains($databaseMessage, 'users_email') || str_contains($databaseMessage, 'users.email')) {
+                    return redirect()->back()->withInput()->withErrors([
+                        'email' => 'This email address is already registered. Please use the email address on your existing customer account.',
+                    ]);
+                }
+            }
             Log::error('Checkout processing error', [
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
@@ -846,7 +933,8 @@ class CheckoutController extends Controller
 
             return redirect()->route('checkout.success', [
                 'type' => 'quotation',
-                'reference' => $booking->booking_number
+                'reference' => $booking->booking_number,
+                'initial_currency' => getBookingDisplayCurrency($booking),
             ])->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 24 hours.');
         } catch (\Exception $e) {
             Log::error('Quotation Request: Process failed', [
@@ -894,11 +982,10 @@ class CheckoutController extends Controller
     protected function processOnlinePayment(Booking $booking, float $amount)
     {
         if (!$this->webxPayService->isEnabled()) {
-            // If WebXPay is not enabled, fall back to offline payment flow
-            Log::warning('Online Payment: WebXPay not enabled, falling back to offline', [
+            Log::warning('Online Payment: WebXPay is not enabled; rejecting online checkout', [
                 'booking_id' => $booking->id,
             ]);
-            return $this->processOfflinePayment($booking, 'online');
+            throw new \RuntimeException('Online payment is not available. Please select another payment method or try again later.');
         }
 
         try {
@@ -908,6 +995,7 @@ class CheckoutController extends Controller
             $result = $this->webxPayService->createPayment($booking, $amount, $paymentType);
 
             if ($result['success']) {
+                $this->storeGatewayPaymentSnapshot($booking, $result);
                 // Update booking with payment details
                 $booking->update([
                     'status' => config('booking.status.payment_processing'),
@@ -951,7 +1039,6 @@ class CheckoutController extends Controller
                 // Direct URL redirect (if needed for other methods)
                 return redirect($result['payment_url']);
             } else {
-                // Payment gateway returned error - fallback to offline payment
                 $errorMessage = $result['message'] ?? $result['error'] ?? 'Payment gateway error';
 
                 Log::warning('Online Payment: Payment gateway error, falling back to offline', [
@@ -959,17 +1046,16 @@ class CheckoutController extends Controller
                     'error' => $errorMessage
                 ]);
 
-                return $this->processOfflinePayment($booking, 'online');
+                throw new \RuntimeException('Online payment could not be initiated. Please try again.');
             }
         } catch (\Exception $e) {
-            Log::error('Online Payment: Exception occurred, falling back to offline', [
+            Log::error('Online Payment: Exception occurred; checkout will not change the payment method', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // Fallback to offline payment on any error
-            return $this->processOfflinePayment($booking, 'online');
+            throw new \RuntimeException('Online payment could not be initiated. Please try again.');
         }
     }
 
@@ -1058,7 +1144,8 @@ class CheckoutController extends Controller
                 'type' => 'payment',
                 'reference' => $booking->booking_number,
                 'method' => $paymentMethod,
-                'status' => $booking->status
+                'status' => $booking->status,
+                'initial_currency' => getBookingDisplayCurrency($booking),
             ])->with('success', $message);
         } catch (\Exception $e) {
             Log::error('Complete Booking: Process failed', [
@@ -1096,6 +1183,15 @@ class CheckoutController extends Controller
 
         if (!$booking) {
             return redirect()->route('home')->with('error', 'Booking not found.');
+        }
+
+        // The payment return carries a one-time currency seed so a lost session is
+        // initialized from the booking. Do not reapply it on later page reloads:
+        // the visitor may have explicitly switched currencies from the selector.
+        $bookingCurrency = getBookingDisplayCurrency($booking);
+        $initialCurrency = strtoupper((string) $request->query('initial_currency', ''));
+        if ($initialCurrency === $bookingCurrency) {
+            $this->currencyService->setSelectedCurrency($bookingCurrency);
         }
 
         return view('checkout.success', compact('type', 'reference', 'method', 'status', 'booking'));
@@ -1252,6 +1348,8 @@ class CheckoutController extends Controller
 
                     DB::commit();
 
+                    \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $booking->id);
+
                     // Clear session
                     session()->forget(['pending_booking_id', 'pending_payment_amount']);
 
@@ -1259,7 +1357,8 @@ class CheckoutController extends Controller
                         'type' => 'payment',
                         'reference' => $booking->booking_number,
                         'method' => 'online',
-                        'status' => 'confirmed'
+                        'status' => 'confirmed',
+                        'initial_currency' => getBookingDisplayCurrency($booking),
                     ])->with('success', 'Payment successful! Your booking is confirmed.');
                 } else {
                     $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'failed']);
@@ -1293,7 +1392,32 @@ class CheckoutController extends Controller
                 ]);
             }
 
-            if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
+            if (!$this->matchesBookingGatewayOrder($booking, $verificationResult)) {
+                $this->paymentEventService->recordEvent('payment_callback_rejected', [
+                    'booking_id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'transaction_id' => $verificationResult['transaction_id'] ?? null,
+                    'payload' => [
+                        'reason' => 'gateway_order_mismatch',
+                        'order_id' => $verificationResult['order_id'] ?? null,
+                        'verification_status' => $verificationResult['status'] ?? null,
+                        'verification_success' => $verificationResult['success'] ?? false,
+                    ],
+                    'source' => 'webxpay',
+                    'status' => 'rejected',
+                ]);
+                Log::warning('WebXPay callback rejected: order does not match booking', [
+                    'booking_id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'order_id' => $verificationResult['order_id'] ?? null,
+                ]);
+                return view('checkout.callback-error', ['message' => 'We could not match this payment to your booking. If you have been charged, contact support with your transaction details.']);
+            }
+
+            // verifyPayment returns success only after the signed gateway response
+            // has been validated. Do not reject an approved payment because a
+            // gateway adapter labels its successful status with another string.
+            if (!empty($verificationResult['success'])) {
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
 
                 $wasPaid = false;
@@ -1303,6 +1427,66 @@ class CheckoutController extends Controller
                 $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
 
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
+                    $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
+                    $verifiedOrderId = (string) ($verificationResult['order_id'] ?? '');
+                    $gatewayPayment = collect((array) data_get($workflowData, 'gateway_payment_attempts', []))
+                        ->first(fn ($attempt) => (string) ($attempt['order_id'] ?? '') === $verifiedOrderId);
+                    if (!$gatewayPayment) {
+                        $currentAttempt = (array) data_get($workflowData, 'gateway_payment', []);
+                        $gatewayPayment = (string) ($currentAttempt['order_id'] ?? '') === $verifiedOrderId
+                            ? $currentAttempt
+                            : [];
+                    }
+                    $gatewayPayment = (array) $gatewayPayment;
+                    $gatewayAmount = (float) ($gatewayPayment['amount'] ?? 0);
+                    $bookingAmount = (float) ($gatewayPayment['booking_amount'] ?? 0);
+                    $gatewayCurrency = strtoupper((string) ($gatewayPayment['currency'] ?? ''));
+                    $bookingCurrency = strtoupper((string) ($gatewayPayment['booking_currency'] ?? $lockedBooking->currency ?? $this->currencyService->getDefaultCurrency()));
+                    $gatewayOrderId = (string) ($verificationResult['order_id'] ?? $gatewayPayment['order_id'] ?? '');
+                    $transactionId = (string) ($verificationResult['transaction_id'] ?? '');
+
+                    if ($bookingAmount <= 0 || $gatewayOrderId !== $verifiedOrderId) {
+                        DB::rollBack();
+                        Log::critical('Verified WebXPay callback has no matching payment amount snapshot', [
+                            'booking_id' => $lockedBooking->id,
+                            'order_id' => $verifiedOrderId,
+                            'transaction_id' => $transactionId,
+                        ]);
+                        $this->paymentEventService->recordEvent('payment_callback_rejected', [
+                            'booking_id' => $lockedBooking->id,
+                            'booking_number' => $lockedBooking->booking_number,
+                            'transaction_id' => $transactionId,
+                            'payload' => ['reason' => 'verified_order_amount_snapshot_missing', 'order_id' => $verifiedOrderId],
+                            'source' => 'webxpay',
+                            'status' => 'reconciliation_required',
+                        ]);
+                        return view('checkout.callback-error', ['message' => 'Your payment was approved, but we could not match it to the amount requested. Please contact support with your transaction details so we can confirm your booking.']);
+                    }
+
+                    if ($bookingAmount > 0) {
+                        app(\App\Services\BookingPaymentLedgerService::class)->receive($lockedBooking, [
+                            'amount' => $bookingAmount,
+                            'payment_method' => 'online',
+                            'payment_stage' => 'full',
+                            'payment_purpose' => 'booking_payment',
+                            'reference' => $transactionId !== '' ? $transactionId : $gatewayOrderId,
+                            'idempotency_key' => 'webxpay:' . ($transactionId !== '' ? $transactionId : $gatewayOrderId),
+                            'received_at' => $verificationResult['paid_at'] ?? now(),
+                            'received_via' => 'company',
+                            'notes' => 'Verified WebXPay payment.',
+                            'metadata' => [
+                                'gateway' => 'webxpay',
+                                'gateway_order_id' => $gatewayOrderId,
+                                'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
+                                'gateway_amount' => $gatewayAmount,
+                                'gateway_currency' => $gatewayCurrency,
+                                'booking_amount' => $bookingAmount,
+                                'booking_currency' => $bookingCurrency,
+                                'verification_status' => $verificationResult['status'] ?? null,
+                            ],
+                        ], null);
+                    }
+
                     $lockedBooking->update([
                         'status' => config('booking.status.confirmed'),
                         'payment_gateway_transaction_id' => $verificationResult['transaction_id'] ?? null,
@@ -1344,6 +1528,8 @@ class CheckoutController extends Controller
 
                 DB::commit();
 
+                \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $booking->id);
+
                 // Clear session
                 session()->forget('pending_booking_id');
 
@@ -1351,16 +1537,22 @@ class CheckoutController extends Controller
                     'type' => 'payment',
                     'reference' => $booking->booking_number,
                     'method' => 'online',
-                    'status' => 'confirmed'
+                    'status' => 'confirmed',
+                    'initial_currency' => getBookingDisplayCurrency($booking),
                 ])->with('success', 'Payment successful! Your booking is confirmed.');
             } else {
                 Log::warning('WebXPay: payment verification failed', ['verification' => $verificationResult, 'booking_id' => $booking->id]);
                 $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'failed']);
-                // Payment failed or pending
-                $booking->update([
-                    'status' => config('booking.status.pending_payment'),
-                    'payment_status' => 'failed',
-                ]);
+                // A late failure callback must never downgrade a booking that another callback paid.
+                DB::transaction(function () use ($booking): void {
+                    $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
+                    if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
+                        $lockedBooking->update([
+                            'status' => config('booking.status.pending_payment'),
+                            'payment_status' => 'failed',
+                        ]);
+                    }
+                });
 
                 return redirect()->route('checkout')->with('error', 'Payment verification failed. Please try again.');
             }
@@ -1389,10 +1581,19 @@ class CheckoutController extends Controller
             if ($verificationResult['success']) {
                 $orderId = $verificationResult['order_id'];
 
-                // Extract booking number from order ID (format: BK12345678-timestamp)
+                // Extract booking number from the signed order ID (format: BK12345678-timestamp)
                 $bookingNumber = explode('-', $orderId)[0] ?? null;
 
-                if ($bookingNumber && $verificationResult['status'] === 'completed') {
+                if ($bookingNumber && in_array($verificationResult['status'] ?? null, ['completed', 'success'], true)) {
+                    $matchedBooking = Booking::where('booking_number', $bookingNumber)->first();
+                    if (!$matchedBooking || !$this->matchesBookingGatewayOrder($matchedBooking, $verificationResult)
+                        || (!empty($verificationResult['booking_number']) && $verificationResult['booking_number'] !== $matchedBooking->booking_number)) {
+                        Log::warning('WebXPay notify rejected: order does not match booking', [
+                            'booking_number' => $bookingNumber,
+                            'order_id' => $orderId,
+                        ]);
+                        return response('Payment order mismatch', 422);
+                    }
                     $emailBooking = null;
 
                     DB::transaction(function () use ($bookingNumber, $verificationResult, &$emailBooking) {
@@ -1405,6 +1606,8 @@ class CheckoutController extends Controller
 
                         // Idempotency: if already paid, nothing to do
                         if ($booking->payment_status === 'paid') return;
+
+                        $this->recordVerifiedWebXPayReceipt($booking, $verificationResult);
 
                         $booking->update([
                             'status'                           => config('booking.status.confirmed'),
@@ -1420,6 +1623,11 @@ class CheckoutController extends Controller
 
                         $emailBooking = $booking;
                     });
+
+                    $paidBookingId = Booking::where('booking_number', $bookingNumber)->value('id');
+                    if ($paidBookingId) {
+                        \App\Services\PendingPaymentManager::invalidateLinksForBooking((string) $paidBookingId);
+                    }
 
                     if ($emailBooking) {
                         try {
@@ -1740,11 +1948,11 @@ class CheckoutController extends Controller
     {
         $currency = $bookingSettings['booking_base_currency'] ?? null;
         $currency = strtoupper(trim((string) $currency));
-        if ($currency !== '') {
+        if ($currency !== '' && $this->currencyService->isValidCurrency($currency)) {
             return $currency;
         }
 
-        return config('booking.base_currency', 'LKR');
+        return $this->currencyService->getBookingBaseCurrency();
     }
 
     /**
@@ -1822,6 +2030,68 @@ class CheckoutController extends Controller
         }
     }
 
+    /** Save a customer's vehicle selection as a revision while retaining the original quote snapshot. */
+    public function updatePaymentResumeVehicles(Request $request, string $token)
+    {
+        $link = \App\Models\Website\PendingPaymentLink::where('token', $token)
+            ->where('expires_at', '>', now())->whereNull('invalidated_at')->first();
+        if (!$link) {
+            return redirect()->route('home')->with('error', 'This payment link has expired or is invalid.');
+        }
+        $linkedBooking = $link->booking;
+        if (!$linkedBooking || $linkedBooking->payment_status === 'paid'
+            || $linkedBooking->status === config('booking.status.payment_processing')) {
+            return back()->with('error', 'This booking can no longer be changed through this payment link.');
+        }
+
+        $context = $link->booking_context ?? [];
+        $items = $context['booking_items'] ?? [];
+        $validIds = collect($items)->pluck('id')->filter()->map(fn ($id) => (string) $id)->all();
+        $selected = collect($request->input('item_ids', []))->map(fn ($id) => (string) $id)->unique()->values()->all();
+        if (!$selected || array_diff($selected, $validIds)) {
+            return back()->with('error', 'Keep at least one quoted vehicle in your booking.');
+        }
+
+        // BookingFlowService stores each vehicle's final calculated price in total_price.
+        // Summing those saved prices avoids accepting or inventing client-side prices.
+        $allLineTotal = collect($items)->sum(fn ($item) => (float) ($item['total_price'] ?? 0));
+        $selectedLineTotal = collect($items)->filter(fn ($item) => in_array((string) ($item['id'] ?? ''), $selected, true))
+            ->sum(fn ($item) => (float) ($item['total_price'] ?? 0));
+        if ($allLineTotal <= 0 || $selectedLineTotal <= 0) {
+            return back()->with('error', 'We could not recalculate this quotation. Please contact our team.');
+        }
+
+        $history = $link->revision_history ?? [];
+        $history[] = [
+            'updated_at' => now()->toIso8601String(),
+            'item_ids' => $selected,
+            'total' => round($selectedLineTotal, 2),
+            'amount_due' => max(0, round($selectedLineTotal - (float) ($context['pricing']['amount_paid'] ?? 0), 2)),
+            'booking_totals_before_edit' => [
+                'base_amount' => (float) ($linkedBooking->base_amount ?? 0),
+                'addons_cost' => (float) ($linkedBooking->addons_cost ?? 0),
+                'discount_amount' => (float) ($linkedBooking->discount_amount ?? 0),
+                'tax_amount' => (float) ($linkedBooking->tax_amount ?? 0),
+                'total_estimated' => (float) ($linkedBooking->total_estimated ?? 0),
+                'amount_to_pay' => (float) ($linkedBooking->amount_to_pay ?? 0),
+                'pricing_snapshot' => $linkedBooking->pricing_snapshot ?? [],
+            ],
+        ];
+        $isOriginalSelection = count($selected) === count($validIds);
+        $link->revision_item_ids = $selected;
+        $link->revision_total = $isOriginalSelection
+            ? (float) ($context['pricing']['total_estimated'] ?? $selectedLineTotal)
+            : round($selectedLineTotal, 2);
+        $link->revision_amount_due = $isOriginalSelection
+            ? (float) $link->amount_due
+            : max(0, round((float) $link->revision_total - (float) ($context['pricing']['amount_paid'] ?? 0), 2));
+        $link->revision_history = $history;
+        $link->save();
+        return redirect()->route('checkout.payment-resume', ['token' => $token])->with('success', $isOriginalSelection
+            ? 'Your original vehicle selection is restored.'
+            : 'Your revised vehicle selection has been saved.');
+    }
+
     /**
      * Process payment from the dedicated payment resume page
      */
@@ -1830,7 +2100,6 @@ class CheckoutController extends Controller
         try {
             $token = $request->input('payment_token');
             $bookingId = $request->input('booking_id');
-            $amount = $request->input('amount');
             $paymentMethod = $request->input('payment_method', 'webxpay');
 
             // Validate the payment link
@@ -1840,10 +2109,68 @@ class CheckoutController extends Controller
             }
 
             $booking = $paymentLinkData['booking'];
+            $amount = (float) $paymentLinkData['amount_due'];
+            if ($amount <= 0) {
+                return back()->with('success', 'No payment is due for this booking.');
+            }
 
             // Validate booking ID matches
             if ($booking->id !== $bookingId) {
                 return back()->with('error', 'Invalid payment request.');
+            }
+
+            // Apply the saved selection only when the customer commits to payment.
+            $link = \App\Models\Website\PendingPaymentLink::where('token', $token)->firstOrFail();
+            if ($link->revision_item_ids) {
+                $allIds = collect($paymentLinkData['context']['booking_items'] ?? [])->pluck('id')->filter()->all();
+                $keepIds = array_values(array_intersect($allIds, $link->revision_item_ids));
+                if (!$keepIds) {
+                    return back()->with('error', 'Keep at least one vehicle before continuing to payment.');
+                }
+                \Illuminate\Support\Facades\DB::transaction(function () use ($booking, $keepIds, $allIds, $amount, $link, $paymentLinkData) {
+                    $booking->bookingItems()->withTrashed()->whereIn('id', $keepIds)->restore();
+                    $booking->bookingItems()->whereNotIn('id', $keepIds)->delete();
+                    $isOriginalSelection = count($keepIds) === count($allIds);
+                    if ($isOriginalSelection) {
+                        $pricing = $paymentLinkData['context']['pricing'] ?? [];
+                        $originalTotals = data_get($link->revision_history, '0.booking_totals_before_edit', []);
+                        $booking->update([
+                            'base_amount' => (float) ($originalTotals['base_amount'] ?? $pricing['base_amount'] ?? $booking->base_amount),
+                            'addons_cost' => (float) ($originalTotals['addons_cost'] ?? $pricing['addon_charges'] ?? $booking->addons_cost),
+                            'discount_amount' => (float) ($originalTotals['discount_amount'] ?? $pricing['discount_amount'] ?? $booking->discount_amount),
+                            'tax_amount' => (float) ($originalTotals['tax_amount'] ?? $pricing['tax_amount'] ?? $booking->tax_amount),
+                            'total_estimated' => (float) ($originalTotals['total_estimated'] ?? $pricing['total_estimated'] ?? $link->revision_total),
+                            'amount_to_pay' => $amount,
+                            'pricing_snapshot' => $originalTotals['pricing_snapshot'] ?? $paymentLinkData['context']['pricing_snapshot'] ?? $booking->pricing_snapshot,
+                        ]);
+                        return;
+                    }
+                    $items = $booking->bookingItems()->whereIn('id', $keepIds)->get();
+                    $pricingBreakdowns = $items->map(fn ($item) => is_array($item->pricing_breakdown) ? $item->pricing_breakdown : []);
+                    $total = round((float) $items->sum('total_price'), 2);
+                    if (abs($total - (float) ($link->revision_total ?? 0)) > 0.02) {
+                        throw new \RuntimeException('Saved vehicle prices no longer match this quotation revision.');
+                    }
+                    $booking->update([
+                        'base_amount' => round((float) $items->sum('unit_price'), 2),
+                        'addons_cost' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'addons_pricing.addons_total', 0)), 2),
+                        'discount_amount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'discount_summary.total_discount_amount', 0)), 2),
+                        'tax_amount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) (data_get($p, 'tax_amount') ?? data_get($p, 'taxes.total') ?? 0)), 2),
+                        'total_estimated' => $total,
+                        'amount_to_pay' => $amount,
+                        'pricing_snapshot' => [
+                            'items_count' => $items->count(),
+                            'total_base' => round((float) $items->sum('unit_price'), 2),
+                            'total_addons' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'addons_pricing.addons_total', 0)), 2),
+                            'total_discount' => round((float) $pricingBreakdowns->sum(fn ($p) => (float) data_get($p, 'discount_summary.total_discount_amount', 0)), 2),
+                            'total' => $total,
+                            'revision_source' => 'payment_resume',
+                            'original_quote_total' => (float) data_get($link->booking_context, 'pricing.total_estimated', $link->amount_due),
+                            'removed_item_ids' => array_values(array_diff($allIds, $keepIds)),
+                            'revision_history' => $link->revision_history ?? [],
+                        ],
+                    ]);
+                });
             }
 
             // Store necessary data in session for payment processing
@@ -1893,6 +2220,8 @@ class CheckoutController extends Controller
                 return back()->with('error', 'Unable to initiate payment. Please try again.');
             }
 
+            $this->storeGatewayPaymentSnapshot($booking, $result);
+
             // Update booking to payment_processing
             $booking->update(['status' => config('booking.status.payment_processing'), 'payment_gateway_order_id' => $result['order_id'] ?? null]);
 
@@ -1931,6 +2260,96 @@ class CheckoutController extends Controller
 
             return back()->with('error', 'Unable to initiate payment. Please try again.');
         }
+    }
+
+    /** Persist both the checkout amount and the amount/currency sent to WebXPay. */
+    private function storeGatewayPaymentSnapshot(Booking $booking, array $gatewayResult): void
+    {
+        $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+        $snapshot = [
+            'amount' => (float) ($gatewayResult['amount'] ?? 0),
+            'currency' => strtoupper((string) ($gatewayResult['currency'] ?? '')),
+            'booking_amount' => (float) ($gatewayResult['booking_amount'] ?? $booking->amount_to_pay ?? 0),
+            'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency())),
+            'order_id' => $gatewayResult['order_id'] ?? null,
+        ];
+        $workflowData['gateway_payment'] = $snapshot;
+        $attempts = (array) ($workflowData['gateway_payment_attempts'] ?? []);
+        $attempts = array_values(array_filter($attempts, fn ($attempt) => (string) ($attempt['order_id'] ?? '') !== (string) $snapshot['order_id']));
+        $attempts[] = $snapshot;
+        $workflowData['gateway_payment_attempts'] = array_slice($attempts, -20);
+        $booking->workflow_data = $workflowData;
+        $booking->save();
+    }
+
+    /** Record the booking-currency amount and retain the exact gateway charge evidence. */
+    private function recordVerifiedWebXPayReceipt(Booking $booking, array $verification): void
+    {
+        $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+        $orderId = (string) ($verification['order_id'] ?? '');
+        $snapshot = collect((array) data_get($workflowData, 'gateway_payment_attempts', []))
+            ->first(fn ($attempt) => (string) ($attempt['order_id'] ?? '') === $orderId);
+        if (!$snapshot) {
+            $current = (array) data_get($workflowData, 'gateway_payment', []);
+            $snapshot = (string) ($current['order_id'] ?? '') === $orderId ? $current : null;
+        }
+
+        $snapshot = (array) $snapshot;
+        $bookingAmount = (float) ($snapshot['booking_amount'] ?? 0);
+        if ($orderId === '' || $bookingAmount <= 0 || (string) ($snapshot['order_id'] ?? '') !== $orderId) {
+            throw new \RuntimeException('Verified WebXPay order has no matching saved amount snapshot.');
+        }
+
+        $transactionId = (string) ($verification['transaction_id'] ?? '');
+        $gatewayCurrency = strtoupper((string) ($snapshot['currency'] ?? ''));
+        $bookingCurrency = strtoupper((string) ($snapshot['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency()));
+        app(\App\Services\BookingPaymentLedgerService::class)->receive($booking, [
+            'amount' => $bookingAmount,
+            'payment_method' => 'online',
+            'payment_stage' => ($verification['payment_type'] ?? $booking->payment_type) === 'advance' ? 'advance' : 'full',
+            'payment_purpose' => 'booking_payment',
+            'reference' => $transactionId !== '' ? $transactionId : $orderId,
+            'idempotency_key' => 'webxpay:' . ($transactionId !== '' ? $transactionId : $orderId),
+            'received_at' => $verification['paid_at'] ?? $verification['transaction_date'] ?? now(),
+            'received_via' => 'company',
+            'notes' => 'Verified WebXPay payment.',
+            'metadata' => [
+                'gateway' => 'webxpay',
+                'gateway_order_id' => $orderId,
+                'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
+                'gateway_amount' => (float) ($snapshot['amount'] ?? 0),
+                'gateway_currency' => $gatewayCurrency,
+                'booking_amount' => $bookingAmount,
+                'booking_currency' => $bookingCurrency,
+                'verification_status' => $verification['status'] ?? null,
+            ],
+        ], null);
+    }
+
+    /** Bind a verified WebXPay response to the booking, including legacy rows without an order snapshot. */
+    private function matchesBookingGatewayOrder(Booking $booking, array $verification): bool
+    {
+        $expectedOrderId = (string) ($booking->payment_gateway_order_id ?? '');
+        $receivedOrderId = (string) ($verification['order_id'] ?? '');
+        $verifiedBookingNumber = (string) ($verification['booking_number'] ?? '');
+        $bookingNumber = (string) ($booking->booking_number ?? '');
+
+        if ($receivedOrderId === '' || $bookingNumber === '' || ($verifiedBookingNumber !== '' && !hash_equals($bookingNumber, $verifiedBookingNumber))) {
+            return false;
+        }
+
+        if ($expectedOrderId === '') {
+            $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+            $expectedOrderId = (string) data_get($workflowData, 'gateway_payment.order_id', '');
+        }
+
+        if ($expectedOrderId !== '' && hash_equals($expectedOrderId, $receivedOrderId)) {
+            return true;
+        }
+
+        // A booking can have several payment attempts, while the booking stores only the latest order ID.
+        // WebXPay signs the response containing this order ID; bind its known format to this booking.
+        return preg_match('/^' . preg_quote($bookingNumber, '/') . '-\d{10,}$/D', $receivedOrderId) === 1;
     }
 
     /**

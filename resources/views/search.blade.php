@@ -267,10 +267,10 @@
                                 </button>
                                 <div class="sort-dropdown">
                                     <select class="form-select form-select-sm" id="sortResults" style="min-width: 180px;">
-                                        <option value="price_low" selected>Price: Low to High</option>
-                                        <option value="price_high">Price: High to Low</option>
-                                        <option value="name_asc">Name: A to Z</option>
-                                        <option value="name_desc">Name: Z to A</option>
+                                        <option value="price_low" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'price_low')>Price: Low to High</option>
+                                        <option value="price_high" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'price_high')>Price: High to Low</option>
+                                        <option value="name_asc" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'name_asc')>Name: A to Z</option>
+                                        <option value="name_desc" @selected(($search->search_params['sort_by'] ?? 'price_low') === 'name_desc')>Name: Z to A</option>
                                     </select>
                                 </div>
                                 <a href="{{ route('home') }}" class="btn btn-success btn-sm text-nowrap">
@@ -285,13 +285,8 @@
 
             @if (isset($results['data']) && count($results['data']) > 0)
                 @php
-                    // Sort results by price ascending by default
-                    $sortedResults = collect($results['data'])
-                        ->sortBy(function ($item) {
-                            return $item['pricing_info']['base_amount'] ?? 0;
-                        })
-                        ->values()
-                        ->all();
+                    // Results are globally sorted by the server before pagination.
+                    $sortedResults = $results['data'];
                 @endphp
                 <!-- Vehicle Grid - 4 cols (lg), 3 cols (md), 1 col (sm) -->
                 <div class="row g-4 vehicle-results-grid">
@@ -1218,41 +1213,12 @@
             });
 
             // Sort functionality
-            $('#sortResults').on('change', function() {
-                sortVehicleResults($(this).val());
+            // Sorting changes the server query and restarts pagination at page 1.
+            $(document).on('change', '#sortResults', function() {
+                const url = new URL(window.location.href);
+                url.searchParams.set('sort_by', $(this).val());
+                window.location.assign(url.toString());
             });
-
-            // Function to sort vehicle results
-            function sortVehicleResults(sortBy) {
-                const $grid = $('.vehicle-results-grid');
-                const $cards = $grid.find('.vehicle-card-wrapper').toArray();
-
-                $cards.sort(function(a, b) {
-                    const priceA = parseFloat($(a).data('price')) || 0;
-                    const priceB = parseFloat($(b).data('price')) || 0;
-                    const nameA = ($(a).data('name') || '').toString().toLowerCase();
-                    const nameB = ($(b).data('name') || '').toString().toLowerCase();
-
-                    switch (sortBy) {
-                        case 'price_low':
-                            return priceA - priceB;
-                        case 'price_high':
-                            return priceB - priceA;
-                        case 'name_asc':
-                            return nameA.localeCompare(nameB);
-                        case 'name_desc':
-                            return nameB.localeCompare(nameA);
-                        default:
-                            return priceA - priceB; // Default to price low
-                    }
-                });
-
-                // Re-append sorted column wrappers (preserves grid classes and layout)
-                $grid.empty();
-                $cards.forEach(function(c) {
-                    $grid.append(c);
-                });
-            }
 
             // Booking form date change - update prices
             $(document).on('change', 'input[name="from_date"], input[name="to_date"]', function() {
@@ -1269,29 +1235,37 @@
             // For now, we'll keep the base prices
         }
 
-        // Vehicle Groups Search Functionality
-        $(document).ready(function() {
-            const $searchInput = $('#vehicleGroupSearch');
-            const $clearButton = $('#clearSearch');
+        // Vehicle Groups Search Functionality. AJAX searches replace this
+        // section without reloading the page, so expose an initializer for the
+        // replacement section as well as the initial server-rendered page.
+        window.initializeVehicleSearchResults = function(root = document) {
+            const $root = $(root);
+            const $searchInput = $root.find('#vehicleGroupSearch');
+            const $clearButton = $root.find('#clearSearch');
             // Always target the column wrappers so the grid classes (e.g., col-lg-3) are preserved
-            const $vehicleCards = $('.vehicle-results-grid').find('.vehicle-card-wrapper');
-            const $vehicleCountDisplay = $('#vehicleGroupsCount');
+            const $vehicleCards = $root.find('.vehicle-results-grid').find('.vehicle-card-wrapper');
+            const $vehicleCountDisplay = $root.find('#vehicleGroupsCount');
             let totalVehicles = $vehicleCards.length;
             let loadedVehicleCards = $vehicleCards;
             const applyVehicleFilter = () => $searchInput.trigger('input');
 
-            const loadMoreStatus = document.getElementById('vehicleLoadMoreStatus');
+            window.vehicleLoadMoreObserver?.disconnect();
+            window.vehicleLoadMoreAbortController?.abort();
+            window.vehicleLoadMoreAbortController = null;
+            const loadMoreStatus = $root.find('#vehicleLoadMoreStatus').get(0);
             if (loadMoreStatus) {
                 let loading = false;
+                let observer = null;
+                const preloadDistance = 450;
                 const spinner = loadMoreStatus.querySelector('.vehicle-load-more-spinner');
                 const message = loadMoreStatus.querySelector('.vehicle-load-more-message');
-                const grid = document.querySelector('.vehicle-results-grid');
+                const grid = $root.find('.vehicle-results-grid').get(0);
                 const loadNextPage = async () => {
                     if (loading) return;
                     const nextPage = Number(loadMoreStatus.dataset.nextPage);
                     const lastPage = Number(loadMoreStatus.dataset.lastPage);
                     if (nextPage > lastPage) {
-                        observer?.disconnect();
+                        window.vehicleLoadMoreObserver?.disconnect();
                         message.textContent = 'You’ve reached the end of the vehicles';
                         return;
                     }
@@ -1299,16 +1273,23 @@
                     loading = true;
                     spinner.classList.remove('d-none');
                     message.textContent = 'Loading more vehicles…';
+                    const requestController = new AbortController();
+                    window.vehicleLoadMoreAbortController = requestController;
+                    let shouldPrefetchNextPage = false;
                     try {
-                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}`, {
+                        const sortBy = document.getElementById('sortResults')?.value || 'price_low';
+                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}&sort_by=${encodeURIComponent(sortBy)}`, {
                             credentials: 'same-origin',
-                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
+                            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                            signal: requestController.signal
                         });
-                        if (!response.ok) throw new Error('Unable to load more vehicles');
-                        const payload = await response.json();
-                        const vehicles = payload.data || [];
+                        const payload = await response.json().catch(() => ({}));
+                        if (!response.ok) {
+                            throw new Error(payload.message || 'Unable to load more vehicles');
+                        }
+                        const vehicles = Array.isArray(payload.data) ? payload.data : [];
                         if (!vehicles.length) {
-                            observer?.disconnect();
+                            window.vehicleLoadMoreObserver?.disconnect();
                             message.textContent = 'No more vehicles';
                             return;
                         }
@@ -1317,6 +1298,7 @@
                             const template = document.createElement('template');
                             template.innerHTML = vehicle.html.trim();
                             const card = template.content.firstElementChild;
+                            if (!card) return;
                             grid.appendChild(card);
                             loadedVehicleCards = loadedVehicleCards.add(card);
                         });
@@ -1324,25 +1306,39 @@
                         applyVehicleFilter();
                         loadMoreStatus.dataset.nextPage = String(nextPage + 1);
                         loadMoreStatus.dataset.lastPage = String(payload.pagination?.last_page || lastPage);
+                        shouldPrefetchNextPage = nextPage < Number(loadMoreStatus.dataset.lastPage);
                         message.textContent = nextPage >= Number(loadMoreStatus.dataset.lastPage)
                             ? 'You’ve reached the end of the vehicles'
                             : 'Scroll to load more vehicles';
                         if (nextPage >= Number(loadMoreStatus.dataset.lastPage)) {
-                            observer?.disconnect();
+                            window.vehicleLoadMoreObserver?.disconnect();
                             message.textContent = 'You’ve reached the end of the vehicles';
                         }
                     } catch (error) {
-                        message.textContent = 'Could not load vehicles. Scroll to try again.';
+                        if (error.name !== 'AbortError') {
+                            message.textContent = error.message || 'Could not load vehicles. Scroll to try again.';
+                        }
                     } finally {
                         spinner.classList.add('d-none');
                         loading = false;
+                        if (window.vehicleLoadMoreAbortController === requestController) {
+                            window.vehicleLoadMoreAbortController = null;
+                        }
+                        if (shouldPrefetchNextPage) {
+                            requestAnimationFrame(() => {
+                                if (loadMoreStatus.isConnected &&
+                                    loadMoreStatus.getBoundingClientRect().top <= window.innerHeight + preloadDistance) {
+                                    loadNextPage();
+                                }
+                            });
+                        }
                     }
                 };
-                let observer = null;
                 if ('IntersectionObserver' in window) {
                     observer = new IntersectionObserver(entries => {
                         if (entries.some(entry => entry.isIntersecting)) loadNextPage();
-                    }, { rootMargin: '500px 0px' });
+                    }, { rootMargin: `${preloadDistance}px 0px` });
+                    window.vehicleLoadMoreObserver = observer;
                     observer.observe(loadMoreStatus);
                 } else {
                     loadMoreStatus.querySelector('.vehicle-load-more-message').innerHTML =
@@ -1384,8 +1380,8 @@
 
                 // Show no results message if needed
                 if (visibleCount === 0 && searchTerm !== '') {
-                    if ($('.no-search-results').length === 0) {
-                        $('.vehicle-results-grid').after(`
+                    if ($root.find('.no-search-results').length === 0) {
+                        $root.find('.vehicle-results-grid').after(`
                                     <div class="no-search-results text-center py-5">
                                         <i class="bi bi-search text-muted" style="font-size: 3rem;"></i>
                                         <h5 class="mt-3 text-muted">No vehicles found</h5>
@@ -1394,7 +1390,7 @@
                                 `);
                     }
                 } else {
-                    $('.no-search-results').remove();
+                    $root.find('.no-search-results').remove();
                 }
             });
 
@@ -1410,7 +1406,12 @@
                     $(this).val('').trigger('input');
                 }
             });
+        };
+
+        document.addEventListener('booking:search-results-replaced', function(event) {
+            window.initializeVehicleSearchResults(event.detail?.root || document);
         });
+        window.initializeVehicleSearchResults(document);
 
         // New Search functionality
         $('#newSearchBtn').on('click', function() {
