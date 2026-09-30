@@ -98,11 +98,19 @@ class PaymentController extends Controller
                 ];
             }
 
+            $chargedAmount = data_get($gatewayResult, 'gateway_data.amount', $request->amount);
+            $chargedCurrency = data_get($gatewayResult, 'gateway_data.currency', strtoupper($request->currency));
+
             // Persist gateway transaction ID if provided
             if (!empty($gatewayResult['transaction_id']) && $gatewayResult['transaction_id'] !== $transactionId) {
                 DB::table('payment_transactions')
                     ->where('id', $recordId)
-                    ->update(['gateway_transaction_id' => $gatewayResult['transaction_id'], 'updated_at' => now()]);
+                    ->update([
+                        'gateway_transaction_id' => $gatewayResult['transaction_id'],
+                        'amount' => $chargedAmount,
+                        'currency' => $chargedCurrency,
+                        'updated_at' => now(),
+                    ]);
             }
 
             return response()->json([
@@ -114,7 +122,11 @@ class PaymentController extends Controller
                     'payment_url'            => $gatewayResult['payment_url'] ?? '',
                     'gateway_data'           => $gatewayResult['gateway_data'] ?? null,
                     'amount'                 => $request->amount,
-                    'currency'               => $request->currency,
+                    'currency'               => strtoupper($request->currency),
+                    'requested_amount'       => $request->amount,
+                    'requested_currency'     => strtoupper($request->currency),
+                    'gateway_amount'         => $chargedAmount,
+                    'gateway_currency'       => $chargedCurrency,
                     'status'                 => 'pending',
                     'gateway_success'        => $gatewayResult['success'] ?? false,
                 ],

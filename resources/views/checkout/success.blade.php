@@ -10,7 +10,8 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
-        $currencySymbol = $booking ? getCurrencySymbol($booking->currency) : getCurrencySymbol();
+        $currencyCode = $booking ? getBookingDisplayCurrency($booking) : 'LKR';
+        $currencySymbol = getCurrencySymbol($currencyCode);
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
             config('booking.advance_payment.percentage', 50),
@@ -765,7 +766,7 @@
                         gtag('event', 'conversion', {
                             'send_to': '{{ $settings['google_ads_conversion_id'] }}/{{ $settings['google_ads_conversion_label'] }}',
                             'value': {{ $booking->amount_to_pay ?? $booking->total_estimated }},
-                            'currency': '{{ $booking->currency ?? 'LKR' }}',
+                            'currency': '{{ $currencyCode }}',
                             'transaction_id': '{{ $booking->booking_number }}',
                             'new_customer': {{ $isNewCustomer ? 'true' : 'false' }}
                         });
@@ -773,7 +774,7 @@
                         console.log('Google Ads Conversion tracked successfully', {
                             booking: '{{ $booking->booking_number }}',
                             value: {{ $booking->amount_to_pay ?? $booking->total_estimated }},
-                            currency: '{{ $booking->currency ?? 'LKR' }}',
+                            currency: '{{ $currencyCode }}',
                             new_customer: {{ $isNewCustomer ? 'true' : 'false' }}
                         });
                     } else {

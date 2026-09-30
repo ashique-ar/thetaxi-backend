@@ -92,7 +92,7 @@ class WebXPayService
      * Create payment request using RSA encryption (WebXPay Redirect Method)
      * Based on official WebXPay redirect-sample-code
      */
-    public function createPayment(Booking $booking, float $amount, string $paymentType = 'full'): array
+    public function createPayment(Booking $booking, float $amount, string $paymentType = 'full', ?string $amountCurrency = null): array
     {
         if (!$this->isEnabled()) {
             throw new \Exception('WebXPay is not enabled or configured properly');
@@ -102,7 +102,14 @@ class WebXPayService
             // Booking totals are stored in the currency selected at checkout.
             // WebXPay charges in its configured process currency, so convert
             // before encrypting the amount sent to the gateway.
-            $bookingCurrency = strtoupper(trim((string) ($booking->currency ?: 'LKR')));
+            $workflowData = is_array($booking->workflow_data)
+                ? $booking->workflow_data
+                : (json_decode((string) $booking->workflow_data, true) ?: []);
+            $sourceCurrency = $amountCurrency
+                ?: ($workflowData['display_currency'] ?? null)
+                ?: $booking->currency
+                ?: 'LKR';
+            $bookingCurrency = strtoupper(trim((string) $sourceCurrency));
             $bookingAmount = app(CurrencyService::class)->normalizeAmount($amount);
             $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
             $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
@@ -209,7 +216,7 @@ class WebXPayService
             throw new \RuntimeException("Cannot convert payment from {$bookingCurrency} to {$this->currency}: exchange rate is missing.");
         }
 
-        // exrate is expressed as units of foreign currency for one LKR.
+        // exrate is the currency value of one LKR.
         return $amount * ($toRate / $fromRate);
     }
 

@@ -980,11 +980,10 @@ class CheckoutController extends Controller
     protected function processOnlinePayment(Booking $booking, float $amount)
     {
         if (!$this->webxPayService->isEnabled()) {
-            // If WebXPay is not enabled, fall back to offline payment flow
-            Log::warning('Online Payment: WebXPay not enabled, falling back to offline', [
+            Log::warning('Online Payment: WebXPay is not enabled; rejecting online checkout', [
                 'booking_id' => $booking->id,
             ]);
-            return $this->processOfflinePayment($booking, 'online');
+            throw new \RuntimeException('Online payment is not available. Please select another payment method or try again later.');
         }
 
         try {
@@ -994,6 +993,7 @@ class CheckoutController extends Controller
             $result = $this->webxPayService->createPayment($booking, $amount, $paymentType);
 
             if ($result['success']) {
+                $this->storeGatewayPaymentSnapshot($booking, $result);
                 // Update booking with payment details
                 $booking->update([
                     'status' => config('booking.status.payment_processing'),
@@ -1037,7 +1037,6 @@ class CheckoutController extends Controller
                 // Direct URL redirect (if needed for other methods)
                 return redirect($result['payment_url']);
             } else {
-                // Payment gateway returned error - fallback to offline payment
                 $errorMessage = $result['message'] ?? $result['error'] ?? 'Payment gateway error';
 
                 Log::warning('Online Payment: Payment gateway error, falling back to offline', [
@@ -1045,17 +1044,16 @@ class CheckoutController extends Controller
                     'error' => $errorMessage
                 ]);
 
-                return $this->processOfflinePayment($booking, 'online');
+                throw new \RuntimeException('Online payment could not be initiated. Please try again.');
             }
         } catch (\Exception $e) {
-            Log::error('Online Payment: Exception occurred, falling back to offline', [
+            Log::error('Online Payment: Exception occurred; checkout will not change the payment method', [
                 'booking_id' => $booking->id,
                 'error' => $e->getMessage(),
                 'trace' => $e->getTraceAsString()
             ]);
 
-            // Fallback to offline payment on any error
-            return $this->processOfflinePayment($booking, 'online');
+            throw new \RuntimeException('Online payment could not be initiated. Please try again.');
         }
     }
 
@@ -1375,6 +1373,16 @@ class CheckoutController extends Controller
             }
 
             if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
+                if (!$this->matchesBookingGatewayOrder($booking, $verificationResult)) {
+                    $this->paymentEventService->recordEvent('payment_failed', [
+                        'booking_id' => $booking->id,
+                        'booking_number' => $booking->booking_number,
+                        'payload' => ['reason' => 'gateway_order_mismatch', 'order_id' => $verificationResult['order_id'] ?? null],
+                        'source' => 'webxpay',
+                        'status' => 'failed',
+                    ]);
+                    return view('checkout.callback-error', ['message' => 'We could not match this payment to your booking. If you have been charged, contact support with your transaction details.']);
+                }
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
 
                 $wasPaid = false;
@@ -1471,7 +1479,16 @@ class CheckoutController extends Controller
                 // Extract booking number from order ID (format: BK12345678-timestamp)
                 $bookingNumber = explode('-', $orderId)[0] ?? null;
 
-                if ($bookingNumber && $verificationResult['status'] === 'completed') {
+                if ($bookingNumber && in_array($verificationResult['status'] ?? null, ['completed', 'success'], true)) {
+                    $matchedBooking = Booking::where('booking_number', $bookingNumber)->first();
+                    if (!$matchedBooking || !$this->matchesBookingGatewayOrder($matchedBooking, $verificationResult)
+                        || (!empty($verificationResult['booking_number']) && $verificationResult['booking_number'] !== $matchedBooking->booking_number)) {
+                        Log::warning('WebXPay notify rejected: order does not match booking', [
+                            'booking_number' => $bookingNumber,
+                            'order_id' => $orderId,
+                        ]);
+                        return response('Payment order mismatch', 422);
+                    }
                     $emailBooking = null;
 
                     DB::transaction(function () use ($bookingNumber, $verificationResult, &$emailBooking) {
@@ -2092,6 +2109,8 @@ class CheckoutController extends Controller
                 return back()->with('error', 'Unable to initiate payment. Please try again.');
             }
 
+            $this->storeGatewayPaymentSnapshot($booking, $result);
+
             // Update booking to payment_processing
             $booking->update(['status' => config('booking.status.payment_processing'), 'payment_gateway_order_id' => $result['order_id'] ?? null]);
 
@@ -2130,6 +2149,29 @@ class CheckoutController extends Controller
 
             return back()->with('error', 'Unable to initiate payment. Please try again.');
         }
+    }
+
+    /** Persist both the checkout amount and the amount/currency sent to WebXPay. */
+    private function storeGatewayPaymentSnapshot(Booking $booking, array $gatewayResult): void
+    {
+        $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+        $workflowData['gateway_payment'] = [
+            'amount' => (float) ($gatewayResult['amount'] ?? 0),
+            'currency' => strtoupper((string) ($gatewayResult['currency'] ?? '')),
+            'booking_amount' => (float) ($gatewayResult['booking_amount'] ?? $booking->amount_to_pay ?? 0),
+            'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? 'LKR')),
+            'order_id' => $gatewayResult['order_id'] ?? null,
+        ];
+        $booking->workflow_data = $workflowData;
+        $booking->save();
+    }
+
+    /** Require a signed callback to refer to the exact gateway order created for this booking. */
+    private function matchesBookingGatewayOrder(Booking $booking, array $verification): bool
+    {
+        $expectedOrderId = (string) ($booking->payment_gateway_order_id ?? '');
+        $receivedOrderId = (string) ($verification['order_id'] ?? '');
+        return $expectedOrderId !== '' && hash_equals($expectedOrderId, $receivedOrderId);
     }
 
     /**
