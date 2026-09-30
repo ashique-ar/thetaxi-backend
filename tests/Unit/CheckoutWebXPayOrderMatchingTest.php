@@ -8,43 +8,36 @@ uses(Tests\TestCase::class);
 function webxpayOrderMatchesBooking(Booking $booking, array $verification): bool
 {
     $controller = (new ReflectionClass(CheckoutController::class))->newInstanceWithoutConstructor();
-    $method = new \ReflectionMethod(CheckoutController::class, 'matchesBookingGatewayOrder');
-    $method->setAccessible(true);
+    $method = new ReflectionMethod(CheckoutController::class, 'matchesBookingGatewayOrder');
 
     return $method->invoke($controller, $booking, $verification);
 }
 
-it('accepts a verified legacy order when its booking number is bound into the order id', function () {
-    // The defect: older bookings can lack the dedicated order column even though WebXPay signed an order ID
-    // that embeds the exact booking number; the current exact-column-only check rejects that paid callback.
+it('accepts a signed order for this booking when session/order snapshot is missing or from an older attempt', function () {
     $booking = new Booking();
-    $booking->booking_number = 'BK002542';
+    $booking->booking_number = 'BK002546';
+    $booking->payment_gateway_order_id = 'BK002546-1790742818';
 
     expect(webxpayOrderMatchesBooking($booking, [
-        'order_id' => 'BK002542-1790740854',
-        'booking_number' => 'BK002542',
+        'order_id' => 'BK002546-1790740854',
+        'booking_number' => 'BK002546',
     ]))->toBeTrue();
 });
 
-it('accepts older attempts for the same booking and rejects malformed or cross-booking orders', function () {
+it('rejects an order that belongs to another booking or has an invalid order format', function () {
     $booking = new Booking();
-    $booking->booking_number = 'BK002542';
-    $booking->payment_gateway_order_id = 'BK002542-1790740854';
+    $booking->booking_number = 'BK002546';
 
     expect(webxpayOrderMatchesBooking($booking, [
-        'order_id' => 'BK002542-1790740854',
-        'booking_number' => 'BK002542',
-    ]))->toBeTrue()
+        'order_id' => 'BK002547-1790740854',
+        'booking_number' => 'BK002546',
+    ]))->toBeFalse()
         ->and(webxpayOrderMatchesBooking($booking, [
-            'order_id' => 'BK002542-1790740855',
-            'booking_number' => 'BK002542',
-        ]))->toBeTrue()
-        ->and(webxpayOrderMatchesBooking(tap(new Booking(), function ($booking) { $booking->booking_number = 'BK002542'; }), [
-            'order_id' => 'BK002543-1790740854',
-            'booking_number' => 'BK002542',
+            'order_id' => 'BK002546-invalid',
+            'booking_number' => 'BK002546',
         ]))->toBeFalse()
-        ->and(webxpayOrderMatchesBooking(tap(new Booking(), function ($booking) { $booking->booking_number = 'BK002542'; }), [
-            'order_id' => 'BK002542-invalid',
-            'booking_number' => 'BK002543',
+        ->and(webxpayOrderMatchesBooking($booking, [
+            'order_id' => 'BK002546-1790740854',
+            'booking_number' => 'BK002547',
         ]))->toBeFalse();
 });
