@@ -75,7 +75,25 @@
 /* Keep search and homepage fleet cards compact while retaining aligned rows. */
 .theme-default .vehicle-card .vehicle-card-content {
     padding: 14px !important;
-    grid-template-rows: 34px 82px 32px 28px 34px minmax(82px, auto) !important;
+    grid-template-rows: minmax(48px, auto) minmax(92px, auto) minmax(0, auto) minmax(32px, auto) minmax(0, auto) minmax(96px, auto) !important;
+}
+
+.theme-default .vehicle-card .vehicle-name {
+    min-height: 0;
+    margin: 0;
+    align-self: center;
+}
+
+.theme-default .vehicle-card .vehicle-actions {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.theme-default .vehicle-card .vehicle-actions .btn {
+    margin-bottom: 0 !important;
+    flex-shrink: 0;
 }
 
 .theme-default .vehicle-card .vehicle-card-price-slot,
@@ -173,7 +191,7 @@
 
     .theme-default .vehicle-card .vehicle-card-content {
         padding: 12px !important;
-        grid-template-rows: 38px 88px 34px 32px 38px minmax(82px, auto) !important;
+        grid-template-rows: minmax(48px, auto) minmax(92px, auto) minmax(0, auto) minmax(32px, auto) minmax(0, auto) minmax(96px, auto) !important;
     }
 
     .theme-default .vehicle-card--quotation .vehicle-card-content {

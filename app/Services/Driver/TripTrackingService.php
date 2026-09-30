@@ -64,6 +64,10 @@ class TripTrackingService
         $bookingItem = $assignment->bookingItem;
         $driver = $assignment->driver;
         $isOpenPackage = $this->isOpenPackageAssignment($assignment);
+        $handoffLocation = data_get($assignment->special_requirements, 'handoff_location');
+        $replacementHandoffPending = (bool) data_get($assignment->special_requirements, 'replacement_handoff', false)
+            && is_array($handoffLocation)
+            && !in_array($assignment->trip_phase, [TripPhase::PICKUP_ARRIVED, TripPhase::IN_PROGRESS, TripPhase::COMPLETED], true);
 
         $pickupLocation = null;
         $distanceToPickup = null;
@@ -76,7 +80,22 @@ class TripTrackingService
                 'landmark' => $bookingItem->pickup_landmark ?? null,
             ];
 
-            if ($driver && $assignment->trip_phase === TripPhase::ACCEPTED) {
+            if ($replacementHandoffPending) {
+                $pickupLocation = [
+                    'latitude' => (float) $handoffLocation['latitude'],
+                    'longitude' => (float) $handoffLocation['longitude'],
+                    'landmark' => 'Passenger handoff point',
+                ];
+                if ($driver?->current_latitude !== null && $driver?->current_longitude !== null) {
+                    $distanceToPickup = $this->haversineDistance(
+                        (float) $driver->current_latitude,
+                        (float) $driver->current_longitude,
+                        (float) $handoffLocation['latitude'],
+                        (float) $handoffLocation['longitude']
+                    );
+                    $nearPickup = $distanceToPickup * 1000 <= self::NEAR_PICKUP_THRESHOLD_METERS;
+                }
+            } elseif ($driver && $assignment->trip_phase === TripPhase::ACCEPTED) {
                 $distanceToPickup = $this->calculateDistanceToPickup($driver, $bookingItem);
                 $nearPickup = $this->isNearPickup($driver, $bookingItem);
             }
@@ -95,6 +114,10 @@ class TripTrackingService
 
         return [
             'assignment_id' => $assignment->id,
+            'replacement_handoff' => $replacementHandoffPending,
+            'handoff_location' => data_get($assignment->special_requirements, 'handoff_location'),
+            'handoff_instructions' => data_get($assignment->special_requirements, 'handoff_instructions'),
+            'vehicle_replacement_handoff' => data_get($assignment->special_requirements, 'vehicle_replacement_handoff'),
             'booking_id' => $assignment->booking_id,
             'trip_phase' => $assignment->trip_phase->value,
             'trip_mode' => $isOpenPackage ? 'open_package' : 'fixed_route',

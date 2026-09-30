@@ -283,6 +283,10 @@ class NotificationTriggerService
             'dispatched_at' => $dispatch?->dispatched_at?->toIso8601String(),
             'dispatch_action' => $dispatch?->isActive() ? 'dispatch' : null,
             'is_repeat_dispatch' => false,
+            'replacement_handoff' => (bool) data_get($assignment->special_requirements, 'replacement_handoff', false),
+            'handoff_location' => data_get($assignment->special_requirements, 'handoff_location'),
+            'handoff_instructions' => data_get($assignment->special_requirements, 'handoff_instructions'),
+            'vehicle_replacement_handoff' => data_get($assignment->special_requirements, 'vehicle_replacement_handoff'),
         ], $context);
     }
 

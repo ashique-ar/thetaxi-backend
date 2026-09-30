@@ -939,6 +939,31 @@ class BookingFlowService
             $baseQuery->whereIn('id', $assignedVehicleGroupIds);
         }
 
+        // Staff assignment selectors only need the group identity and a count.
+        // Skip full fleet conflict analysis and per-group pricing, both of which
+        // are required for customer booking cards but make allocation searches
+        // needlessly expensive.
+        if (filter_var($params['resource_lookup'] ?? false, FILTER_VALIDATE_BOOL)) {
+            $groupsPage = (clone $baseQuery)
+                ->setEagerLoads([])
+                ->select(['id', 'name'])
+                ->withCount(['vehicles' => fn ($query) => $query->where('is_active', true)])
+                ->orderBy('name')
+                ->paginate($perPage, ['*'], 'page', $page);
+
+            return [
+                'data' => $groupsPage->items(),
+                'pagination' => [
+                    'current_page' => $groupsPage->currentPage(),
+                    'per_page' => $groupsPage->perPage(),
+                    'total' => $groupsPage->total(),
+                    'last_page' => $groupsPage->lastPage(),
+                    'from' => $groupsPage->firstItem(),
+                    'to' => $groupsPage->lastItem(),
+                ],
+            ];
+        }
+
         // Get total count for pagination
         $total = $baseQuery->count();
 
@@ -4177,7 +4202,17 @@ class BookingFlowService
                 });
             });
 
-        $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
+        $resourcePage = null;
+        if ($includeUnavailable && isset($params['page'], $params['per_page'])) {
+            $resourcePage = $query->orderBy('title')->paginate(
+                (int) $params['per_page'], ['*'], 'page', (int) $params['page']
+            );
+            $vehicleRows = $resourcePage->getCollection();
+        } else {
+            $vehicleRows = $query->get();
+        }
+
+        $vehicles = $vehicleRows->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
             $availability = $this->assignmentService->getEnhancedVehicleAvailability(
                 $vehicle->id,
                 $fromDate,
@@ -4219,6 +4254,16 @@ class BookingFlowService
             )->values();
         });
 
+        if ($resourcePage) {
+            return [
+                'data' => $vehicles->values()->all(),
+                'pagination' => [
+                    'current_page' => $resourcePage->currentPage(), 'per_page' => $resourcePage->perPage(),
+                    'total' => $resourcePage->total(), 'last_page' => $resourcePage->lastPage(),
+                    'from' => $resourcePage->firstItem(), 'to' => $resourcePage->lastItem(),
+                ],
+            ];
+        }
         return $vehicles->toArray();
     }
 
@@ -4250,7 +4295,17 @@ class BookingFlowService
             });
         }
 
-        $drivers = $query->get()->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
+        $resourcePage = null;
+        if ($includeUnavailable && isset($params['page'], $params['per_page'])) {
+            $resourcePage = $query->orderBy('id')->paginate(
+                (int) $params['per_page'], ['*'], 'page', (int) $params['page']
+            );
+            $driverRows = $resourcePage->getCollection();
+        } else {
+            $driverRows = $query->get();
+        }
+
+        $drivers = $driverRows->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
             $availability = $this->assignmentService->getEnhancedDriverAvailability(
                 $driver->id,
                 $fromDate,
@@ -4288,6 +4343,16 @@ class BookingFlowService
             return $drivers->where('availability_status', 'available')->values();
         });
 
+        if ($resourcePage) {
+            return [
+                'data' => $drivers->values()->all(),
+                'pagination' => [
+                    'current_page' => $resourcePage->currentPage(), 'per_page' => $resourcePage->perPage(),
+                    'total' => $resourcePage->total(), 'last_page' => $resourcePage->lastPage(),
+                    'from' => $resourcePage->firstItem(), 'to' => $resourcePage->lastItem(),
+                ],
+            ];
+        }
         return $drivers->toArray();
     }
 

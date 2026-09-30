@@ -11,6 +11,8 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
+use App\Models\Driver\Driver;
+use App\Services\Driver\NotificationTriggerService;
 use App\Models\Vehicle\VehicleAddon;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Http\Request;
@@ -31,6 +33,7 @@ class AssignmentController extends Controller
         BookingFlowService $bookingFlowService,
         private readonly ContractualDistanceSnapshotProjector $distanceSnapshotProjector,
         private readonly BookingPaymentLedgerService $paymentLedger,
+        private readonly NotificationTriggerService $assignmentNotifications,
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -1751,6 +1754,9 @@ class AssignmentController extends Controller
             'swap_fee' => 'nullable|numeric|min:0',
             'photos' => 'nullable|array',
             'documents' => 'nullable|array',
+            'handoff_location' => 'nullable|array',
+            'handoff_location.latitude' => 'required_with:handoff_location|numeric|between:-90,90',
+            'handoff_location.longitude' => 'required_with:handoff_location|numeric|between:-180,180',
         ]);
 
         try {
@@ -1795,6 +1801,44 @@ class AssignmentController extends Controller
                     $customerName = 'Unknown Customer';
                 }
 
+                // Keep the old driver's GPS history attached to the old assignment
+                // and use its most recent point as the new driver's handoff target.
+                $handoff = null;
+                $oldDriverAssignment = null;
+                if ($oldDriverId) {
+                    $oldDriverAssignment = $booking->driverAssignments()
+                        ->where('driver_id', $oldDriverId)
+                        ->where('status', 'active')
+                        ->when($selectedBookingItem?->id, fn ($query) => $query->where('booking_item_id', $selectedBookingItem->id))
+                        ->latest('assigned_from')
+                        ->first();
+                    $outgoingPhase = $oldDriverAssignment?->trip_phase?->value ?? (string) ($oldDriverAssignment?->trip_phase ?? '');
+                    $lastPoint = $outgoingPhase === 'in_progress' && $oldDriverAssignment
+                        ? RoutePoint::query()->where('assignment_id', $oldDriverAssignment->id)->latest('recorded_at')->first()
+                        : null;
+                    $handoff = $lastPoint ? [
+                        'latitude' => (float) $lastPoint->latitude,
+                        'longitude' => (float) $lastPoint->longitude,
+                        'recorded_at' => $lastPoint->recorded_at?->utc()->toIso8601String(),
+                        'source' => 'driver_gps',
+                        'fresh' => $lastPoint->recorded_at?->gt(now()->subMinutes(5)) ?? false,
+                    ] : null;
+                    if ((!$handoff || !$handoff['fresh']) && $request->filled('handoff_location')) {
+                        $handoff = [
+                            'latitude' => (float) $request->input('handoff_location.latitude'),
+                            'longitude' => (float) $request->input('handoff_location.longitude'),
+                            'recorded_at' => now('UTC')->toIso8601String(),
+                            'source' => 'staff_confirmed',
+                            'fresh' => true,
+                        ];
+                    }
+                    if ($outgoingPhase === 'in_progress' && (!$handoff || !$handoff['fresh'])) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'handoff_location' => 'The current driver location is missing or stale. Confirm the passenger handoff coordinates before swapping resources.',
+                        ]);
+                    }
+                }
+
                 // Close current assignments at swap time
                 if ($oldVehicleId && ($request->swap_type === 'vehicle' || $request->swap_type === 'both')) {
                     $booking->vehicleAssignments()
@@ -1812,7 +1856,16 @@ class AssignmentController extends Controller
                             fn($query) => $query->where('booking_item_id', $selectedBookingItem->id)
                         );
 
-                    $driverAssignments->update(['actual_end' => $swapTime]);
+                    $driverAssignments->update([
+                        'actual_end' => $swapTime,
+                        'trip_completed_at' => $swapTime,
+                        'trip_phase' => 'completed',
+                        'status' => 'completed',
+                        ...($handoff ? [
+                            'final_latitude' => $handoff['latitude'],
+                            'final_longitude' => $handoff['longitude'],
+                        ] : []),
+                    ]);
                 }
 
                 // Calculate remaining period from now to original end
@@ -1855,7 +1908,8 @@ class AssignmentController extends Controller
                 }
 
                 if ($newDriverId && ($request->swap_type === 'driver' || $request->swap_type === 'both')) {
-                    $this->assignmentService->createDriverAssignment([
+                    $isMidTripHandoff = ($oldDriverAssignment?->trip_phase?->value ?? (string) ($oldDriverAssignment?->trip_phase ?? '')) === 'in_progress';
+                    $newDriverAssignment = $this->assignmentService->createDriverAssignment([
                         'driver_id' => $newDriverId,
                         'booking_id' => $booking->id,
                         'booking_item_id' => $selectedBookingItem?->id,
@@ -1867,13 +1921,79 @@ class AssignmentController extends Controller
                         'status' => 'active',
                         'requires_approval' => false,
                         'assignment_notes' => "Swap from driver {$oldDriverId}. Reason: {$reason}",
+                        'special_requirements' => [
+                            'replacement_handoff' => $isMidTripHandoff,
+                            'handoff_location' => $isMidTripHandoff ? $handoff : null,
+                            'previous_assignment_id' => $oldDriverAssignment?->id,
+                            'handoff_instructions' => !$isMidTripHandoff
+                                ? 'Proceed to the scheduled pickup location using the normal dispatch details.'
+                                : ($handoff
+                                ? 'Meet the passenger/current driver at the recorded handoff location. Confirm the passenger handover before continuing the trip.'
+                                : 'Contact dispatch before proceeding. The previous driver location was not available; confirm the passenger handoff location.'),
+                        ],
                     ]);
+
+                    DB::afterCommit(fn () => $this->assignmentNotifications->sendAssignmentNotification($newDriverAssignment));
+
+                    if ($oldDriverId && (string) $oldDriverId !== (string) $newDriverId) {
+                        $outgoingDriver = Driver::find($oldDriverId);
+                        if ($outgoingDriver) {
+                            DB::afterCommit(fn () => $this->assignmentNotifications->sendDriverPushNotification(
+                                $outgoingDriver,
+                                'trip_assignment_replaced',
+                                'Trip handoff required',
+                                $isMidTripHandoff
+                                    ? 'Dispatch assigned a replacement driver. Stay with the passenger until the handoff is complete, then stop this trip.'
+                                    : 'Dispatch replaced your assignment. Stop this trip and follow your supervisor instructions.',
+                                [
+                                    'booking_id' => $booking->id,
+                                    'booking_item_id' => $selectedBookingItem?->id,
+                                    'replacement_assignment_id' => $newDriverAssignment->id,
+                                    'handoff_location' => $isMidTripHandoff ? $handoff : null,
+                                ]
+                            ));
+                        }
+                    }
 
                     if ($selectedBookingItem) {
                         $selectedBookingItem->update(['driver_id' => $newDriverId]);
                     }
                     if (!$selectedBookingItem || $booking->bookingItems->count() <= 1) {
                         $booking->update(['driver_id' => $newDriverId]);
+                    }
+                } elseif ($oldDriverId && $request->swap_type === 'vehicle') {
+                    // The same driver continues in the replacement vehicle. Notify
+                    // them of the vehicle change and the location where the keys and
+                    // passenger should be handed over.
+                    if ($oldDriverAssignment) {
+                        $requirements = $oldDriverAssignment->special_requirements ?? [];
+                        $requirements['vehicle_replacement_handoff'] = [
+                            'location' => $handoff,
+                            'new_vehicle_id' => $newVehicleId,
+                            'instructions' => $handoff
+                                ? 'Meet the replacement vehicle at the handoff location, confirm passenger transfer, then continue the current trip.'
+                                : 'Use the normal dispatch details for the replacement vehicle.',
+                        ];
+                        $oldDriverAssignment->update(['special_requirements' => $requirements]);
+                    }
+                    $currentDriver = Driver::find($oldDriverId);
+                    if ($currentDriver) {
+                        DB::afterCommit(fn () => $this->assignmentNotifications->sendDriverPushNotification(
+                            $currentDriver,
+                            'vehicle_replacement_handoff',
+                            'Replacement vehicle dispatch',
+                            $handoff
+                                ? 'A replacement vehicle is being sent. Meet it at the handoff location before continuing the trip.'
+                                : 'A replacement vehicle is assigned. Follow the normal dispatch details.',
+                            [
+                                'booking_id' => $booking->id,
+                                'booking_item_id' => $selectedBookingItem?->id,
+                                'assignment_id' => $oldDriverAssignment?->id,
+                                'new_vehicle_id' => $newVehicleId,
+                                'handoff_location' => $handoff,
+                                'handoff_instructions' => 'Confirm the passenger transfer before continuing the trip.',
+                            ]
+                        ));
                     }
                 }
 
@@ -1919,6 +2039,7 @@ class AssignmentController extends Controller
                     'old_driver_id' => $oldDriverId,
                     'new_driver_id' => $newDriverId,
                     'swap_time' => $swapTime,
+                    'handoff_location' => $handoff,
                     'initiated_by' => Auth::id(),
                     'notes' => $request->notes,
                     'photos' => $request->photos,
