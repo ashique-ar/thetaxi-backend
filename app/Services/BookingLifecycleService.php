@@ -2987,6 +2987,9 @@ class BookingLifecycleService
             'base_pricing_snapshot' => data_get($pricingBreakdown, 'base_pricing.exchange_rate'),
             'item_summary_snapshot' => data_get($pricingBreakdown, 'summary.exchange_rate'),
             'item_snapshot' => data_get($pricingBreakdown, 'exchange_rate'),
+            // Checkout and older BookingFlow writes persist the locked rate on
+            // the item column even when the nested pricing snapshot is sparse.
+            'booking_item_snapshot' => $bookingItem->exchange_rate,
         ];
         foreach ($rateCandidates as $source => $candidate) {
             if (is_numeric($candidate) && is_finite((float) $candidate) && (float) $candidate > 0) {

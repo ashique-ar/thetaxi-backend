@@ -9683,6 +9683,9 @@ class BookingFlowService
             'total_amount' => (float) ($item->total_price ?? 0),
             'booking_total_amount' => (float) ($booking?->total_actual ?? $booking?->total_estimated ?? 0),
             'currency' => $item->currency ?? 'LKR',
+            'payment_collected_amount' => $booking?->payment_collected_amount !== null
+                ? (float) $booking->payment_collected_amount
+                : null,
             'created_at' => $item->created_at ?? $booking?->created_at,
             'requires_approval' => $requiresApproval,
             'booking_requires_approval' => $requiresApproval,
