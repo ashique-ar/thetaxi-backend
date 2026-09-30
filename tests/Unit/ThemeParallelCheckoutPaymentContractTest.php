@@ -65,8 +65,13 @@ it('preserves cart item, addon, extra-km, promotion and payment-selection hooks'
         ->toContain('data-summary-field="total"')
         ->toContain('id="checkout-promo-input"')
         ->toContain('id="apply-promo-checkout-btn"')
-        ->toContain('price_adjustment_discount')
+        ->not->toContain('price-adjustment-discount-row')
+        ->toContain("data-summary-row=\"coupon_discount\"")
         ->toContain('coupon_discount');
+
+    expect($this->checkout)
+        ->toContain("const \$selectedPaymentType = $('input[name=\"payment_type\"]:checked');")
+        ->toContain("\$selectedPaymentType.trigger('change');");
 
     foreach (['full', 'advance', 'checkin', 'quotation'] as $selection) {
         expect($this->checkout)->toContain('value="' . $selection . '"');

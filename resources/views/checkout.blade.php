@@ -2032,6 +2032,14 @@
                     $('[data-summary-field="payment_amount"]').text(formatCheckoutAmount(totals.total));
                 }
 
+                // Promo/charge changes can happen without changing payment type.
+                // Re-run the selected type handler so the submit button uses
+                // the latest discounted total instead of its initial amount.
+                const $selectedPaymentType = $('input[name="payment_type"]:checked');
+                if ($selectedPaymentType.length) {
+                    $selectedPaymentType.trigger('change');
+                }
+
                 const itemCount = Number(cart.item_count || Object.keys(cart.items || {}).length);
                 if (cart.is_empty || itemCount === 0) {
                     checkoutRedirectHome();
