@@ -2949,9 +2949,9 @@ class BookingLifecycleService
     }
 
     /**
-     * Final pricing runs in the original calculation currency, then reuses the
-     * exchange rate locked into the booked pricing snapshot. Current market
-     * rates must never rewrite a confirmed booking at return time.
+     * Final pricing runs in the configured calculation currency and converts
+     * using the active global currency settings. The booking's currency code
+     * determines the output currency; its original amount is not rewritten.
      *
      * @return array{calculation_currency:string,booking_currency:string,exchange_rate:float,rate_source:string}
      */
@@ -2983,28 +2983,19 @@ class BookingLifecycleService
             ];
         }
 
-        $rateCandidates = [
-            'base_pricing_snapshot' => data_get($pricingBreakdown, 'base_pricing.exchange_rate'),
-            'item_summary_snapshot' => data_get($pricingBreakdown, 'summary.exchange_rate'),
-            'item_snapshot' => data_get($pricingBreakdown, 'exchange_rate'),
-            // Checkout and older BookingFlow writes persist the locked rate on
-            // the item column even when the nested pricing snapshot is sparse.
-            'booking_item_snapshot' => $bookingItem->exchange_rate,
-        ];
-        foreach ($rateCandidates as $source => $candidate) {
-            if (is_numeric($candidate) && is_finite((float) $candidate) && (float) $candidate > 0) {
-                return [
-                    'calculation_currency' => $calculationCurrency,
-                    'booking_currency' => $bookingCurrency,
-                    'exchange_rate' => (float) $candidate,
-                    'rate_source' => $source,
-                ];
-            }
+        $exchangeRate = $this->currencyService->getExchangeRate($calculationCurrency, $bookingCurrency);
+        if (!is_finite($exchangeRate) || $exchangeRate <= 0) {
+            throw new \DomainException(
+                "The global {$calculationCurrency} to {$bookingCurrency} exchange rate is unavailable. Final pricing was stopped."
+            );
         }
 
-        throw new \DomainException(
-            "The locked {$calculationCurrency} to {$bookingCurrency} exchange rate is missing. Final pricing was stopped."
-        );
+        return [
+            'calculation_currency' => $calculationCurrency,
+            'booking_currency' => $bookingCurrency,
+            'exchange_rate' => $exchangeRate,
+            'rate_source' => 'global_currency_settings',
+        ];
     }
 
     private function assertItemSafeLifecycle(Booking $booking, ?string $bookingItemId): void
