@@ -5,6 +5,7 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
+use App\Models\Currency;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 
@@ -29,7 +30,7 @@ class WebXPayService
         $this->publicKey = $this->getSettingValue('webxpay_public_key', config('booking.webxpay.public_key'));
         $this->apiUrl = $this->getSettingValue('webxpay_api_url', config('booking.webxpay.api_url'));
         $this->checkoutUrl = $this->getSettingValue('webxpay_checkout_url', config('booking.webxpay.checkout_url'));
-        $this->currency = $this->getSettingValue('webxpay_currency', config('booking.webxpay.currency', 'LKR'));
+        $this->currency = strtoupper(trim((string) $this->getSettingValue('webxpay_currency', config('booking.webxpay.currency', 'LKR'))));
         $settingEnabled = $this->getSettingValue('webxpay_enabled', null);
         $this->enabled = $this->normalizeBoolean($settingEnabled, (bool) config('booking.webxpay.enabled', false));
         $this->apiUsername = $this->getSettingValue('webxpay_api_username', config('booking.webxpay.api_username'));
@@ -98,7 +99,13 @@ class WebXPayService
         }
 
         try {
-            $amount = max(0, app(CurrencyService::class)->normalizeAmount($amount));
+            // Booking totals are stored in the currency selected at checkout.
+            // WebXPay charges in its configured process currency, so convert
+            // before encrypting the amount sent to the gateway.
+            $bookingCurrency = strtoupper(trim((string) ($booking->currency ?: 'LKR')));
+            $bookingAmount = app(CurrencyService::class)->normalizeAmount($amount);
+            $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
+            $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
             $orderId = $booking->booking_number . '-' . time();
 
             // Step 1: Create plaintext payment data
@@ -143,6 +150,8 @@ class WebXPayService
                 'booking_id'   => $booking->id,
                 'order_id'     => $orderId,
                 'amount'       => $amountFormatted,
+                'currency'     => $this->currency,
+                'booking_currency' => $bookingCurrency,
             ]);
 
             // Step 5: Return all data for form submission
@@ -150,6 +159,10 @@ class WebXPayService
                 'success' => true,
                 'payment_url' => $this->checkoutUrl, // e.g., https://webxpay.com/index.php?route=checkout/billing
                 'order_id' => $orderId,
+                'amount' => (float) $amountFormatted,
+                'currency' => $this->currency,
+                'booking_amount' => (float) $bookingAmount,
+                'booking_currency' => $bookingCurrency,
                 'encrypted_payment' => $encryptedPayment,
                 'secret_key' => $this->secretKey,
                 'custom_fields' => $encryptedCustomFields,
@@ -174,6 +187,30 @@ class WebXPayService
                 'error' => $e->getMessage()
             ];
         }
+    }
+
+    /** Convert an amount stored in the booking currency into WebXPay currency. */
+    private function convertBookingAmountToGatewayCurrency(float $amount, string $bookingCurrency): float
+    {
+        if ($amount < 0) {
+            throw new \InvalidArgumentException('Payment amount cannot be negative.');
+        }
+
+        if ($bookingCurrency === $this->currency) {
+            return $amount;
+        }
+
+        $from = Currency::where('code', $bookingCurrency)->first();
+        $to = Currency::where('code', $this->currency)->first();
+        $fromRate = $bookingCurrency === 'LKR' ? 1.0 : (float) ($from?->exrate ?? 0);
+        $toRate = $this->currency === 'LKR' ? 1.0 : (float) ($to?->exrate ?? 0);
+
+        if ($fromRate <= 0 || $toRate <= 0) {
+            throw new \RuntimeException("Cannot convert payment from {$bookingCurrency} to {$this->currency}: exchange rate is missing.");
+        }
+
+        // exrate is expressed as units of foreign currency for one LKR.
+        return $amount * ($toRate / $fromRate);
     }
 
     /**

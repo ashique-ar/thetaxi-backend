@@ -476,6 +476,25 @@ class CartController extends Controller
 
                 }
             } catch (\Exception $e) {
+                if ($e instanceof \DomainException) {
+                    Log::notice('Cart item rejected because availability changed', [
+                        'vehicle_id' => $vehicleId,
+                        'service_type' => $serviceType,
+                        'dates' => ['from' => $pickupDate, 'to' => $returnDate],
+                    ]);
+
+                    $message = $e->getMessage();
+                    if ($request->ajax()) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => $message,
+                            'code' => 'vehicle_unavailable',
+                        ], 409);
+                    }
+
+                    return redirect()->back()->with('error', $message);
+                }
+
                 Log::error('Failed to calculate pricing for cart item', [
                     'vehicle_id' => $vehicleId,
                     'service_type' => $serviceType,

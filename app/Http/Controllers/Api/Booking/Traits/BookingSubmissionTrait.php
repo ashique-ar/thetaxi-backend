@@ -507,13 +507,27 @@ trait BookingSubmissionTrait
                 'message' => 'Booking draft saved successfully'
             ]);
         } catch (\Exception $e) {
-            Log::error('Draft saving failed: ' . $e->getMessage());
+            $status = $e instanceof \Symfony\Component\HttpKernel\Exception\HttpExceptionInterface
+                ? $e->getStatusCode()
+                : 500;
+
+            if ($status >= 500) {
+                Log::error('Draft saving failed: ' . $e->getMessage());
+            } elseif ($status >= 400) {
+                Log::notice('Draft save rejected', [
+                    'status' => $status,
+                    'booking_id' => $request->input('booking_id'),
+                    'reason' => $e->getMessage(),
+                ]);
+            }
 
             return response()->json([
                 'status' => 'error',
-                'message' => 'Failed to save booking draft',
+                'message' => $status === 409
+                    ? $e->getMessage()
+                    : ($status >= 500 ? 'Failed to save booking draft' : $e->getMessage()),
                 'error' => $e->getMessage()
-            ], 500);
+            ], $status);
         }
     }
 
