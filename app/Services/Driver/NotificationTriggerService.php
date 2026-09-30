@@ -153,6 +153,9 @@ class NotificationTriggerService
         $message = $this->buildAssignmentMessage($assignment, $payload);
         $payload['title'] = $message['title'];
         $payload['message'] = $message['body'];
+        // Keep the conventional FCM body key alongside the legacy inbox key.
+        // Mobile clients and notification routers commonly consume `body`.
+        $payload['body'] = $message['body'];
 
         $databaseNotificationId = $this->storeDriverNotification(
             $driver,
@@ -571,17 +574,6 @@ class NotificationTriggerService
     private function pushToDriverDevices(Driver $driver, array $payload, string $title, string $body): array
     {
         try {
-            $driver->loadMissing('activeSession');
-
-            if (!$driver->is_online || !$driver->activeSession) {
-
-                return [
-                    'success' => false,
-                    'eligible_devices' => 0,
-                    'delivered_devices' => 0,
-                ];
-            }
-
             $session = $this->fcm->prepareSession();
             if (!$session) {
                 return [
@@ -591,24 +583,14 @@ class NotificationTriggerService
                 ];
             }
 
-            $sessionDeviceUuid = $driver->activeSession->device_uuid;
-            $targetDeviceUuid = $driver->current_device_uuid ?: $sessionDeviceUuid;
-            $devicesQuery = $driver->activeDevices()->whereNotNull('push_token');
+            // Push delivery must work when the driver is offline or the app is
+            // terminated. Active device registrations, not the live session,
+            // determine the FCM audience.
+            $devices = $driver->activeDevices()
+                ->whereNotNull('push_token')
+                ->get();
 
-            if ($targetDeviceUuid) {
-                $devicesQuery->where('device_uuid', $targetDeviceUuid);
-            }
-
-            if ($sessionDeviceUuid && $sessionDeviceUuid !== $targetDeviceUuid) {
-                $devicesQuery->orWhere(function ($query) use ($driver, $sessionDeviceUuid) {
-                    $query->where('driver_id', $driver->id)
-                        ->where('is_active', true)
-                        ->whereNotNull('push_token')
-                        ->where('device_uuid', $sessionDeviceUuid);
-                });
-            }
-
-            $devices = $devicesQuery->get();
+            $devices = $devices->filter(fn ($device) => in_array($device->push_provider, [null, '', 'fcm'], true));
 
             $eligibleDevices = $devices->count();
             if ($eligibleDevices === 0) {

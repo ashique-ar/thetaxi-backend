@@ -571,6 +571,11 @@ class BookingLifecycleService
                     [
                         'event_type' => 'booking_dispatch',
                         'notification_type' => 'booking_dispatch',
+                        // Explicitly classify the dispatch action for the driver
+                        // app. Do not infer offer behavior from notification text.
+                        'type' => 'dispatch',
+                        'route' => 'dispatch',
+                        'action' => 'open_dispatch',
                         'dispatch_action' => $isRepeatDispatch ? 'redispatch' : 'dispatch',
                         'dispatch_id' => (string) $dispatch->id,
                         'dispatch_status' => $dispatch->dispatch_status?->value,
