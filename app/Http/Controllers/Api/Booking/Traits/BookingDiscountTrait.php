@@ -9,6 +9,57 @@ use Illuminate\Support\Facades\Log;
 
 trait BookingDiscountTrait
 {
+    public function applyPromoCode(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'promo_code' => 'required|string|max:50',
+            'subtotal' => 'required|numeric|min:0.01',
+            'currency' => 'required|string|size:3|exists:currencies,code',
+            'customer_id' => 'nullable|uuid|exists:customers,id',
+        ]);
+
+        $currency = strtoupper($validated['currency']);
+        $baseSubtotal = (float) $validated['subtotal']
+            * app(\App\Services\CurrencyService::class)->getExchangeRate($currency, 'LKR');
+        $promoService = app(\App\Services\PromoCodeService::class);
+        $customerId = $validated['customer_id']
+            ?? \App\Models\Customer::where('user_id', Auth::id())->value('id');
+        $result = $promoService->validatePromoCode($validated['promo_code'], $baseSubtotal, $customerId);
+
+        if (!($result['valid'] ?? false)) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $result['message'] ?? 'This promo code cannot be applied.',
+                'error_code' => $result['error_code'] ?? 'PROMO_CODE_INVALID',
+                'details' => $result['details'] ?? null,
+            ], 422);
+        }
+
+        $promo = $promoService->getByCode($validated['promo_code']);
+        if (!$promo) {
+            return response()->json(['status' => 'error', 'message' => 'This promo code is no longer available.'], 422);
+        }
+
+        $discountBase = $promoService->calculateDiscount($promo, $baseSubtotal);
+        $discount = round($discountBase * app(\App\Services\CurrencyService::class)->getExchangeRate('LKR', $currency), 2);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'code' => $promo->code,
+                'name' => $promo->name,
+                'description' => $promo->description,
+                'discount' => $discount,
+                'discount_base' => $discountBase,
+                'currency' => $currency,
+                'discount_type' => $promo->discount_type,
+                'discount_value' => (float) $promo->discount_value,
+                'order_amount_base' => round($baseSubtotal, 2),
+            ],
+            'message' => 'Promo code applied successfully.',
+        ]);
+    }
+
     public function applyGamifyDiscount(Request $request): JsonResponse
     {
         $request->validate([

@@ -1416,6 +1416,66 @@ class CheckoutController extends Controller
                 $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
 
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
+                    $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
+                    $verifiedOrderId = (string) ($verificationResult['order_id'] ?? '');
+                    $gatewayPayment = collect((array) data_get($workflowData, 'gateway_payment_attempts', []))
+                        ->first(fn ($attempt) => (string) ($attempt['order_id'] ?? '') === $verifiedOrderId);
+                    if (!$gatewayPayment) {
+                        $currentAttempt = (array) data_get($workflowData, 'gateway_payment', []);
+                        $gatewayPayment = (string) ($currentAttempt['order_id'] ?? '') === $verifiedOrderId
+                            ? $currentAttempt
+                            : [];
+                    }
+                    $gatewayPayment = (array) $gatewayPayment;
+                    $gatewayAmount = (float) ($gatewayPayment['amount'] ?? 0);
+                    $bookingAmount = (float) ($gatewayPayment['booking_amount'] ?? 0);
+                    $gatewayCurrency = strtoupper((string) ($gatewayPayment['currency'] ?? ''));
+                    $bookingCurrency = strtoupper((string) ($gatewayPayment['booking_currency'] ?? $lockedBooking->currency ?? 'LKR'));
+                    $gatewayOrderId = (string) ($verificationResult['order_id'] ?? $gatewayPayment['order_id'] ?? '');
+                    $transactionId = (string) ($verificationResult['transaction_id'] ?? '');
+
+                    if ($bookingAmount <= 0 || $gatewayOrderId !== $verifiedOrderId) {
+                        DB::rollBack();
+                        Log::critical('Verified WebXPay callback has no matching payment amount snapshot', [
+                            'booking_id' => $lockedBooking->id,
+                            'order_id' => $verifiedOrderId,
+                            'transaction_id' => $transactionId,
+                        ]);
+                        $this->paymentEventService->recordEvent('payment_callback_rejected', [
+                            'booking_id' => $lockedBooking->id,
+                            'booking_number' => $lockedBooking->booking_number,
+                            'transaction_id' => $transactionId,
+                            'payload' => ['reason' => 'verified_order_amount_snapshot_missing', 'order_id' => $verifiedOrderId],
+                            'source' => 'webxpay',
+                            'status' => 'reconciliation_required',
+                        ]);
+                        return view('checkout.callback-error', ['message' => 'Your payment was approved, but we could not match it to the amount requested. Please contact support with your transaction details so we can confirm your booking.']);
+                    }
+
+                    if ($bookingAmount > 0) {
+                        app(\App\Services\BookingPaymentLedgerService::class)->receive($lockedBooking, [
+                            'amount' => $bookingAmount,
+                            'payment_method' => 'online',
+                            'payment_stage' => 'full',
+                            'payment_purpose' => 'booking_payment',
+                            'reference' => $transactionId !== '' ? $transactionId : $gatewayOrderId,
+                            'idempotency_key' => 'webxpay:' . ($transactionId !== '' ? $transactionId : $gatewayOrderId),
+                            'received_at' => $verificationResult['paid_at'] ?? now(),
+                            'received_via' => 'company',
+                            'notes' => 'Verified WebXPay payment.',
+                            'metadata' => [
+                                'gateway' => 'webxpay',
+                                'gateway_order_id' => $gatewayOrderId,
+                                'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
+                                'gateway_amount' => $gatewayAmount,
+                                'gateway_currency' => $gatewayCurrency,
+                                'booking_amount' => $bookingAmount,
+                                'booking_currency' => $bookingCurrency,
+                                'verification_status' => $verificationResult['status'] ?? null,
+                            ],
+                        ], null);
+                    }
+
                     $lockedBooking->update([
                         'status' => config('booking.status.confirmed'),
                         'payment_status' => 'paid',
@@ -1531,6 +1591,8 @@ class CheckoutController extends Controller
 
                         // Idempotency: if already paid, nothing to do
                         if ($booking->payment_status === 'paid') return;
+
+                        $this->recordVerifiedWebXPayReceipt($booking, $verificationResult);
 
                         $booking->update([
                             'status'                           => config('booking.status.confirmed'),
@@ -2185,15 +2247,64 @@ class CheckoutController extends Controller
     private function storeGatewayPaymentSnapshot(Booking $booking, array $gatewayResult): void
     {
         $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
-        $workflowData['gateway_payment'] = [
+        $snapshot = [
             'amount' => (float) ($gatewayResult['amount'] ?? 0),
             'currency' => strtoupper((string) ($gatewayResult['currency'] ?? '')),
             'booking_amount' => (float) ($gatewayResult['booking_amount'] ?? $booking->amount_to_pay ?? 0),
             'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? 'LKR')),
             'order_id' => $gatewayResult['order_id'] ?? null,
         ];
+        $workflowData['gateway_payment'] = $snapshot;
+        $attempts = (array) ($workflowData['gateway_payment_attempts'] ?? []);
+        $attempts = array_values(array_filter($attempts, fn ($attempt) => (string) ($attempt['order_id'] ?? '') !== (string) $snapshot['order_id']));
+        $attempts[] = $snapshot;
+        $workflowData['gateway_payment_attempts'] = array_slice($attempts, -20);
         $booking->workflow_data = $workflowData;
         $booking->save();
+    }
+
+    /** Record the booking-currency amount and retain the exact gateway charge evidence. */
+    private function recordVerifiedWebXPayReceipt(Booking $booking, array $verification): void
+    {
+        $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+        $orderId = (string) ($verification['order_id'] ?? '');
+        $snapshot = collect((array) data_get($workflowData, 'gateway_payment_attempts', []))
+            ->first(fn ($attempt) => (string) ($attempt['order_id'] ?? '') === $orderId);
+        if (!$snapshot) {
+            $current = (array) data_get($workflowData, 'gateway_payment', []);
+            $snapshot = (string) ($current['order_id'] ?? '') === $orderId ? $current : null;
+        }
+
+        $snapshot = (array) $snapshot;
+        $bookingAmount = (float) ($snapshot['booking_amount'] ?? 0);
+        if ($orderId === '' || $bookingAmount <= 0 || (string) ($snapshot['order_id'] ?? '') !== $orderId) {
+            throw new \RuntimeException('Verified WebXPay order has no matching saved amount snapshot.');
+        }
+
+        $transactionId = (string) ($verification['transaction_id'] ?? '');
+        $gatewayCurrency = strtoupper((string) ($snapshot['currency'] ?? ''));
+        $bookingCurrency = strtoupper((string) ($snapshot['booking_currency'] ?? $booking->currency ?? 'LKR'));
+        app(\App\Services\BookingPaymentLedgerService::class)->receive($booking, [
+            'amount' => $bookingAmount,
+            'payment_method' => 'online',
+            'payment_stage' => ($verification['payment_type'] ?? $booking->payment_type) === 'advance' ? 'advance' : 'full',
+            'payment_purpose' => 'booking_payment',
+            'reference' => $transactionId !== '' ? $transactionId : $orderId,
+            'idempotency_key' => 'webxpay:' . ($transactionId !== '' ? $transactionId : $orderId),
+            'received_at' => $verification['paid_at'] ?? $verification['transaction_date'] ?? now(),
+            'received_via' => 'company',
+            'notes' => 'Verified WebXPay payment.',
+            'metadata' => [
+                'gateway' => 'webxpay',
+                'gateway_order_id' => $orderId,
+                'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
+                'gateway_amount' => (float) ($snapshot['amount'] ?? 0),
+                'gateway_currency' => $gatewayCurrency,
+                'booking_amount' => $bookingAmount,
+                'booking_currency' => $bookingCurrency,
+                'verification_status' => $verification['status'] ?? null,
+            ],
+        ], null);
     }
 
     /** Bind a verified WebXPay response to the booking, including legacy rows without an order snapshot. */

@@ -134,7 +134,7 @@
                 'class' => 'booking-payment-due-row',
                 'style' => 'background: #f0fdf4;',
                 'label' => 'Amount Paid',
-                'value' => $currency . ' ' . number_format(floor(max(0, $amountToPay)), 0),
+                'value' => $currency . ' ' . number_format(floor(max(0, $amountPaid > 0 ? $amountPaid : $amountToPay)), 0),
                 'strong' => true,
             ];
         }

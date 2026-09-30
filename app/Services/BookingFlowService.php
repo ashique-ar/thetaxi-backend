@@ -2014,6 +2014,7 @@ class BookingFlowService
         $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
+        $params = $this->validateAndPricePromoDiscounts($params);
 
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
@@ -2084,6 +2085,8 @@ class BookingFlowService
 
             $booking->save();
 
+            $this->recordPortalPromoUsage($booking, $params);
+
             // 4) Persist addons (straight from selected_addons)
             if (!empty($params['selected_addons'])) {
                 $this->syncBookingAddons($booking, $params['selected_addons']);
@@ -2117,6 +2120,93 @@ class BookingFlowService
 
             return $booking->load(['customer', 'vehicle', 'driver', 'serviceType', 'vehicleGroup', 'approvals']);
         });
+    }
+
+    /** Revalidate portal-entered promo codes against server-calculated booking pricing. */
+    private function validateAndPricePromoDiscounts(array $params): array
+    {
+        $discounts = (array) ($params['applied_discounts'] ?? []);
+        $promoDiscounts = array_values(array_filter($discounts, fn ($discount) =>
+            is_array($discount) && !empty($discount['code'])
+            && (($discount['source'] ?? null) === 'promo_code' || ($discount['type'] ?? null) === 'promo')
+        ));
+        if ($promoDiscounts === []) {
+            return $params;
+        }
+        if (count($promoDiscounts) > 1) {
+            throw ValidationException::withMessages(['applied_discounts' => ['Only one promo code can be applied to a booking.']]);
+        }
+
+        $promoDiscount = $promoDiscounts[0];
+        $promoService = app(PromoCodeService::class);
+        $code = strtoupper(trim((string) $promoDiscount['code']));
+        $promo = $promoService->getByCode($code);
+        if (!$promo) {
+            throw ValidationException::withMessages(['promo_code' => ['This promo code is no longer available.']]);
+        }
+
+        $baseParams = $params;
+        $baseParams['applied_discounts'] = array_values(array_filter($discounts, fn ($discount) =>
+            !(is_array($discount) && !empty($discount['code'])
+                && (($discount['source'] ?? null) === 'promo_code' || ($discount['type'] ?? null) === 'promo'))
+        ));
+        $basePricing = $this->calculatePricing($baseParams);
+        $orderAmount = (float) ($basePricing['summary']['total'] ?? 0);
+        $currency = strtoupper((string) ($params['currency'] ?? 'LKR'));
+        $baseOrderAmount = $orderAmount * $this->currencyService->getExchangeRate($currency, 'LKR');
+        $customerId = $this->resolveBookingCustomerId($params);
+        $validation = $promoService->validatePromoCode($code, $baseOrderAmount, $customerId);
+        if (!($validation['valid'] ?? false)) {
+            throw ValidationException::withMessages(['promo_code' => [$validation['message'] ?? 'This promo code cannot be applied.']]);
+        }
+
+        $discountBase = $promoService->calculateDiscount($promo, $baseOrderAmount);
+        $discountInCurrency = round($discountBase * $this->currencyService->getExchangeRate('LKR', $currency), 2);
+        $promoDiscount = array_merge($promoDiscount, [
+            'id' => 'promo-' . $promo->id,
+            'name' => $promo->name ?: $promo->code,
+            'description' => $promo->description ?: ('Promo code ' . $promo->code),
+            'type' => 'promo',
+            'source' => 'promo_code',
+            'method' => 'fixed_amount',
+            'value' => $discountInCurrency,
+            'discount_amount' => $discountInCurrency,
+            'calculated_amount' => $discountInCurrency,
+            'currency' => $currency,
+            'promo_code_id' => $promo->id,
+            'promo_order_amount_base' => round($baseOrderAmount, 2),
+            'promo_discount_amount_base' => $discountBase,
+        ]);
+        $baseParams['applied_discounts'][] = $promoDiscount;
+        return $baseParams;
+    }
+
+    /** Record portal promo redemption once per booking after the booking row exists. */
+    private function recordPortalPromoUsage(Booking $booking, array $params): void
+    {
+        foreach ((array) ($params['applied_discounts'] ?? []) as $discount) {
+            if (!is_array($discount) || ($discount['source'] ?? null) !== 'promo_code' || empty($discount['promo_code_id'])) {
+                continue;
+            }
+            $exists = \App\Models\PromoCodeUsage::query()
+                ->where('promo_code_id', $discount['promo_code_id'])
+                ->where('booking_id', $booking->id)
+                ->exists();
+            if ($exists) {
+                continue;
+            }
+            $promo = \App\Models\PromoCode::find($discount['promo_code_id']);
+            if (!$promo) {
+                continue;
+            }
+            app(PromoCodeService::class)->recordUsage(
+                $promo,
+                $booking->customer_id,
+                $booking->id,
+                (float) ($discount['promo_discount_amount_base'] ?? 0),
+                (float) ($discount['promo_order_amount_base'] ?? 0)
+            );
+        }
     }
 
     private function sanitizeCorporateRequestPayload(array $params): array
@@ -3364,6 +3454,29 @@ class BookingFlowService
                     )
                     ->delete();
                 $booking->unsetRelation('bookingItems');
+
+                // Booking-level discounts are separate from per-item pricing.
+                // Preserve them when an edit payload contains trips but the
+                // discount was not attached to an individual booking item.
+                $bookingLevelDiscount = 0.0;
+                foreach ((array) ($params['applied_discounts'] ?? []) as $discount) {
+                    if (!is_array($discount)) {
+                        continue;
+                    }
+                    $explicitAmount = $discount['calculated_amount'] ?? $discount['discount_amount'] ?? null;
+                    if (is_numeric($explicitAmount)) {
+                        $bookingLevelDiscount += max(0, (float) $explicitAmount);
+                        continue;
+                    }
+                    $value = max(0, (float) ($discount['value'] ?? 0));
+                    $method = strtolower((string) ($discount['method'] ?? 'fixed'));
+                    $bookingLevelDiscount += $method === 'percentage'
+                        ? ($totalEstimated * min(100, $value) / 100)
+                        : $value;
+                }
+                $bookingLevelDiscount = min($totalEstimated, $bookingLevelDiscount);
+                $totalDiscountAmount += $bookingLevelDiscount;
+                $totalEstimated = max(0, $totalEstimated - $bookingLevelDiscount);
 
                 // Update booking totals
                 $booking->base_amount = $totalBaseAmount;

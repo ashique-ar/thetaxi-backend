@@ -1354,6 +1354,8 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
 
             // Enhanced Discount & Loyalty Management Routes
+            Route::post('discounts/apply-promo-code', [BookingFlowController::class, 'applyPromoCode'])
+                ->middleware('permission:bookings.create|bookings.update');
             Route::get('discounts/customer-loyalty/{customerId}', [BookingFlowController::class, 'getCustomerLoyaltyInfo'])
                 ->middleware(['permission:bookings.view', DenyCustomerPortalLegacyBookingActions::class]);
             Route::post('discounts/remove', [BookingFlowController::class, 'removeDiscount'])
