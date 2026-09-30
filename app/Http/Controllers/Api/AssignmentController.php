@@ -8,6 +8,7 @@ use App\Services\BookingFlowService;
 use App\Services\ContractualDistanceSnapshotProjector;
 use App\Services\BookingPaymentLedgerService;
 use App\Models\Booking\Booking;
+use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
@@ -1752,6 +1753,8 @@ class AssignmentController extends Controller
             'carrier_cost' => 'nullable|numeric|min:0',
             'mechanic_cost' => 'nullable|numeric|min:0',
             'swap_fee' => 'nullable|numeric|min:0',
+            'current_vehicle_mileage' => 'nullable|integer|min:0',
+            'replacement_vehicle_mileage' => 'nullable|integer|min:0',
             'photos' => 'nullable|array',
             'documents' => 'nullable|array',
             'handoff_location' => 'nullable|array',
@@ -2047,9 +2050,39 @@ class AssignmentController extends Controller
                     'carrier_cost' => $request->carrier_cost,
                     'mechanic_cost' => $request->mechanic_cost,
                     'swap_fee' => $request->swap_fee,
+                    'current_vehicle_mileage' => $request->current_vehicle_mileage,
+                    'replacement_vehicle_mileage' => $request->replacement_vehicle_mileage,
                 ];
 
-                // Log the swap (you might want to create a swaps table for this)
+                $mileageDetails = array_filter([
+                    $request->current_vehicle_mileage !== null ? 'Current vehicle odometer: ' . $request->current_vehicle_mileage . ' km' : null,
+                    $request->replacement_vehicle_mileage !== null ? 'Replacement vehicle odometer: ' . $request->replacement_vehicle_mileage . ' km' : null,
+                ]);
+                $swapDescription = sprintf(
+                    '%s replacement completed (%s). Driver %s → %s; vehicle %s → %s.%s',
+                    ucfirst($request->swap_type),
+                    str_replace('_', ' ', $reason),
+                    $oldDriverId ?: 'none',
+                    $newDriverId ?: 'unchanged',
+                    $oldVehicleId ?: 'none',
+                    $newVehicleId ?: 'unchanged',
+                    $mileageDetails ? ' ' . implode('. ', $mileageDetails) . '.' : ''
+                );
+                BookingActivity::create([
+                    'booking_id' => $booking->id,
+                    'booking_item_id' => $selectedBookingItem?->id,
+                    'driver_assignment_id' => $oldDriverAssignment?->id,
+                    'event_key' => 'resource_swap_completed',
+                    'channel' => 'operations',
+                    'result_status' => 'completed',
+                    'source' => 'booking_workspace',
+                    'title' => 'Trip resource replacement completed',
+                    'detail' => $swapDescription,
+                    'idempotency_key' => 'resource-swap-' . \Illuminate\Support\Str::uuid(),
+                    'meta' => $swapRecord,
+                    'event_at' => $swapTime,
+                ]);
+
                 Log::info('Vehicle/Driver swap performed', $swapRecord);
 
                 return response()->json([

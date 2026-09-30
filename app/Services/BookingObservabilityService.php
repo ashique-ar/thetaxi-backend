@@ -248,6 +248,7 @@ class BookingObservabilityService
     {
         $assignments = DriverAssignment::query()->where('booking_id', $booking->id)
             ->where('booking_item_id', $bookingItemId)
+            ->with('driver.user')
             ->orderBy('created_at')->orderBy('id')->get();
         [$query, $sessionAssignmentIds] = $this->routeQueryForAssignments($assignments);
         $totalPoints = (clone $query)->count();
@@ -274,6 +275,24 @@ class BookingObservabilityService
         );
         $last = $points->last();
         $activeAssignment = $this->assignmentForItem($booking, $bookingItemId);
+        $handoffs = BookingActivity::query()
+            ->where('booking_id', $booking->id)
+            ->where('booking_item_id', $bookingItemId)
+            ->where('event_key', 'resource_swap_completed')
+            ->orderBy('event_at')
+            ->get()
+            ->map(function (BookingActivity $activity): ?array {
+                $location = data_get($activity->meta, 'handoff_location');
+                if (!is_array($location) || !is_numeric($location['latitude'] ?? null) || !is_numeric($location['longitude'] ?? null)) return null;
+                return [
+                    'id' => (string) $activity->id,
+                    'latitude' => (float) $location['latitude'],
+                    'longitude' => (float) $location['longitude'],
+                    'occurred_at' => $activity->event_at?->utc()->toIso8601String(),
+                    'label' => $activity->title,
+                    'detail' => $activity->detail,
+                ];
+            })->filter()->values();
 
         return [
             'booking_id' => (string) $booking->id,
@@ -281,6 +300,7 @@ class BookingObservabilityService
             'assignment_id' => $activeAssignment?->id,
             'assignment_count' => $assignments->count(),
             'segments' => $segments->all(),
+            'handoffs' => $handoffs->all(),
             'total_points' => $totalPoints,
             'returned_points' => $mapped->count(),
             'truncated' => $hasMore,
@@ -458,6 +478,8 @@ class BookingObservabilityService
                 $current = [
                     'phase' => $phase,
                     'assignment_id' => $assignmentId,
+                    'driver_id' => $assignment?->driver_id ? (string) $assignment->driver_id : null,
+                    'driver_name' => $assignment ? trim((string) (($assignment->driver?->user?->first_name ?? '') . ' ' . ($assignment->driver?->user?->last_name ?? ''))) : null,
                     'boundary' => $assignmentChanged ? 'replacement_assignment' : null,
                     'continues_previous_segment' => $index === 0 && $previousPoint
                         && !$assignmentChanged && $gapSeconds <= $quality['gap_threshold_seconds']
@@ -854,7 +876,7 @@ class BookingObservabilityService
             'source' => 'communication',
             'event_type' => $event['source'],
             'title' => $event['title'],
-            'description' => null,
+            'description' => $event['failure_reason'] ?? null,
             'actor' => ['id' => null, 'name' => 'System', 'type' => 'system'],
             'from_status' => null,
             'to_status' => $event['status'],
