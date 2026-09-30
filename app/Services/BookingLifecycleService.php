@@ -3707,7 +3707,29 @@ class BookingLifecycleService
         ?BookingDispatch $dispatch,
         ?BookingQC $qc = null
     ): BookingLifecycleStatus {
-        if ((string) $booking->status === 'completed') {
+        // Terminal rejection/cancellation must win over stale completion
+        // timestamps, QC and dispatch data. This is especially important for
+        // selected items in multi-trip bookings, where unrelated trip records
+        // can otherwise make a cancelled trip appear completed.
+        $itemStatus = strtolower(trim((string) ($bookingItem?->status ?? '')));
+        if (in_array($itemStatus, ['cancelled', 'canceled', 'booking_cancelled'], true)) {
+            return BookingLifecycleStatus::CANCELLED;
+        }
+        if (in_array($itemStatus, ['rejected', 'booking_rejected'], true)) {
+            return BookingLifecycleStatus::BOOKING_REJECTED;
+        }
+
+        $bookingStatus = strtolower(trim((string) ($booking->status ?? '')));
+        if (in_array($bookingStatus, ['inquiry_cancelled', 'inquiry_canceled'], true)) {
+            return BookingLifecycleStatus::INQUIRY_CANCELLED;
+        }
+        if (in_array($bookingStatus, ['cancelled', 'canceled', 'booking_cancelled'], true)) {
+            return BookingLifecycleStatus::CANCELLED;
+        }
+        if (in_array($bookingStatus, ['rejected', 'booking_rejected'], true)) {
+            return BookingLifecycleStatus::BOOKING_REJECTED;
+        }
+        if ($bookingStatus === 'completed') {
             return BookingLifecycleStatus::COMPLETED;
         }
 

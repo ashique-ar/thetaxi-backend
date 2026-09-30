@@ -19,7 +19,7 @@ class CustomerPortalBookingController extends BookingFlowController
             ->where('customer_id', $customer->id)
             ->where('is_corporate_booking', false)
             ->with(['bookingItems' => fn ($query) => $query->select([
-                'id', 'booking_id', 'from_date', 'from_time', 'to_date', 'to_time',
+                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
                 'pickup_location', 'dropoff_location',
             ])])
             ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
@@ -46,7 +46,7 @@ class CustomerPortalBookingController extends BookingFlowController
             ->where('customer_id', $customer->id)
             ->where('is_corporate_booking', false)
             ->with(['bookingItems' => fn ($query) => $query->select([
-                'id', 'booking_id', 'from_date', 'from_time', 'to_date', 'to_time',
+                'id', 'booking_id', 'status', 'from_date', 'from_time', 'to_date', 'to_time',
                 'pickup_location', 'dropoff_location',
             ])])
             ->select(['id', 'customer_id', 'booking_number', 'status', 'approval_status', 'created_at'])
@@ -60,8 +60,8 @@ class CustomerPortalBookingController extends BookingFlowController
         $status = strtolower((string) $booking->status);
         $approval = strtolower((string) $booking->approval_status);
         $progress = match (true) {
-            $approval === 'rejected' || $status === 'rejected' => 'Rejected',
-            $status === 'cancelled' => 'Cancelled',
+            in_array($status, ['cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled'], true) => 'Cancelled',
+            in_array($status, ['rejected', 'booking_rejected'], true) || $approval === 'rejected' => 'Rejected',
             $status === 'completed' => 'Completed',
             in_array($status, ['confirmed', 'approved'], true) || $approval === 'approved' => 'Confirmed',
             $approval === 'pending' || in_array($status, ['pending_approval', 'under_review'], true) => 'Under review',
@@ -75,6 +75,7 @@ class CustomerPortalBookingController extends BookingFlowController
             'request_status' => $progress,
             'trips' => $booking->bookingItems->map(fn ($item) => [
                 'id' => (string) $item->id,
+                'status' => $this->customerTripStatus($item->status),
                 'pickup' => $this->locationLabel($item->pickup_location),
                 'destination' => $this->locationLabel($item->dropoff_location),
                 'from_date' => $item->from_date,
@@ -84,6 +85,18 @@ class CustomerPortalBookingController extends BookingFlowController
             ])->values()->all(),
             'support_hint' => 'Contact TheTaxi support and quote this reference for help with your request.',
         ];
+    }
+
+    private function customerTripStatus(?string $status): ?string
+    {
+        return match (strtolower(trim((string) $status))) {
+            'cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled' => 'Cancelled',
+            'rejected', 'booking_rejected' => 'Rejected',
+            'completed' => 'Completed',
+            'confirmed', 'approved', 'booking_confirmed', 'booking_approved' => 'Confirmed',
+            'pending_approval', 'booking_requires_approval' => 'Under review',
+            default => null,
+        };
     }
 
     private function locationLabel(mixed $value): ?string

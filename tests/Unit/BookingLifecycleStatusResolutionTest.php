@@ -96,6 +96,50 @@ class BookingLifecycleStatusResolutionTest extends TestCase
         $this->assertSame('Dispatched', $status->getDisplayName());
     }
 
+    public function test_cancelled_selected_item_wins_over_stale_completion_and_dispatch_records(): void
+    {
+        $booking = $this->modelWithoutConstructor(Booking::class, ['status' => 'completed']);
+        $item = $this->modelWithoutConstructor(BookingItem::class, [
+            'status' => 'cancelled',
+            'completed_at' => '2026-09-28 10:00:00',
+        ]);
+        $dispatch = $this->modelWithoutConstructor(BookingDispatch::class, [
+            'dispatch_status' => DispatchStatus::RETURNED->value,
+        ]);
+        $qc = $this->modelWithoutConstructor(BookingQC::class, [
+            'qc_status' => QCStatus::COMPLETED->value,
+        ]);
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'resolveSelectedItemLifecycleStatus');
+
+        $status = $method->invoke($service, $booking, $item, $dispatch, $qc);
+
+        $this->assertSame(BookingLifecycleStatus::CANCELLED, $status);
+        $this->assertSame('Cancelled', $status->getDisplayName());
+        $this->assertSame('final', $status->getStage());
+    }
+
+    public function test_booking_cancellation_and_rejection_are_not_overridden_by_item_timestamps(): void
+    {
+        $item = $this->modelWithoutConstructor(BookingItem::class, [
+            'status' => 'confirmed',
+            'completed_at' => '2026-09-28 10:00:00',
+        ]);
+        $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod(BookingLifecycleService::class, 'resolveSelectedItemLifecycleStatus');
+
+        foreach ([
+            ['cancelled', BookingLifecycleStatus::CANCELLED],
+            ['canceled', BookingLifecycleStatus::CANCELLED],
+            ['rejected', BookingLifecycleStatus::BOOKING_REJECTED],
+            ['inquiry_cancelled', BookingLifecycleStatus::INQUIRY_CANCELLED],
+        ] as [$bookingStatus, $expected]) {
+            $booking = $this->modelWithoutConstructor(Booking::class, ['status' => $bookingStatus]);
+
+            $this->assertSame($expected, $method->invoke($service, $booking, $item, null, null));
+        }
+    }
+
     public function test_booking_model_uses_dispatch_out_until_driver_starts_the_trip(): void
     {
         $booking = $this->modelWithoutConstructor(Booking::class, ['status' => 'confirmed']);
