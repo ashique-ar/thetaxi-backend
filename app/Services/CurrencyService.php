@@ -10,9 +10,10 @@ class CurrencyService
 {
     private function fractionDigits(string $currencyCode): int
     {
-        return in_array(strtoupper(trim($currencyCode)), [
-            'BIF', 'CLP', 'DJF', 'GNF', 'JPY', 'KMF', 'KRW', 'PYG', 'RWF', 'UGX', 'VND', 'VUV', 'XAF', 'XOF', 'XPF',
-        ], true) ? 0 : 2;
+        // Currency codes and rates come from the system's currencies table.
+        // The current currency model has no precision setting, so use a
+        // consistent generic minor-unit default.
+        return 2;
     }
 
     /**
@@ -50,11 +51,20 @@ class CurrencyService
      */
     public function getExchangeRate(string $fromCurrency, string $toCurrency): float
     {
+        $fromCurrency = strtoupper(trim($fromCurrency));
+        $toCurrency = strtoupper(trim($toCurrency));
+        if (!$this->isValidCurrency($fromCurrency) || !$this->isValidCurrency($toCurrency)) {
+            throw new \RuntimeException("Exchange rate unavailable for {$fromCurrency} to {$toCurrency}");
+        }
+
         if ($fromCurrency === $toCurrency) {
             return 1.0;
         }
 
-        $cacheKey = "exchange_rate_{$fromCurrency}_{$toCurrency}";
+        // Version the key so currency admin changes invalidate every pair
+        // immediately, including old cached 1:1 fallback values.
+        $rateVersion = (int) Cache::get('currency.exchange_rates.v', 0);
+        $cacheKey = "exchange_rate.v{$rateVersion}_{$fromCurrency}_{$toCurrency}";
         
         return Cache::remember($cacheKey, 3600, function () use ($fromCurrency, $toCurrency) {
             $fromCurrencyData = Currency::where('code', $fromCurrency)->first();
@@ -68,9 +78,9 @@ class CurrencyService
                 throw new \RuntimeException("Exchange rate unavailable for {$fromCurrency} to {$toCurrency}");
             }
 
-            // Get rates relative to base currency (assuming LKR is base)
-            $fromRate = (float) ($fromCurrencyData->exrate ?? 1.0);
-            $toRate = (float) ($toCurrencyData->exrate ?? 1.0);
+            // Currency exrates are maintained by the system against its configured base.
+            $fromRate = is_numeric($fromCurrencyData->exrate) ? (float) $fromCurrencyData->exrate : 0.0;
+            $toRate = is_numeric($toCurrencyData->exrate) ? (float) $toCurrencyData->exrate : 0.0;
 
             if ($fromRate <= 0 || $toRate <= 0) {
                 Log::error('Invalid exchange rate for conversion', [
@@ -117,9 +127,37 @@ class CurrencyService
      */
     public function getDefaultCurrency(): string
     {
-        $currency = app(WebsiteSettingsService::class)->get('default_currency', config('app.default_currency', 'LKR'));
+        $configured = strtoupper(trim((string) (
+            app(WebsiteSettingsService::class)->get('default_currency')
+            ?: config('app.default_currency', '')
+        )));
+        if ($configured !== '' && $this->hasUsableExchangeRate($configured)) {
+            return $configured;
+        }
 
-        return strtoupper(trim((string) ($currency ?: 'LKR')));
+        $available = Currency::query()
+            ->whereNotNull('exrate')
+            ->where('exrate', '>', 0)
+            ->orderBy('code')
+            ->value('code');
+        if ($available) {
+            return strtoupper((string) $available);
+        }
+
+        throw new \RuntimeException('No valid currencies are configured in system settings.');
+    }
+
+    public function getBookingBaseCurrency(): string
+    {
+        $settings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $configured = strtoupper(trim((string) (
+            $settings['booking_base_currency']
+            ?? config('booking.base_currency', '')
+        )));
+
+        return $configured !== '' && $this->isValidCurrency($configured)
+            ? $configured
+            : $this->getDefaultCurrency();
     }
 
     /**
@@ -127,7 +165,16 @@ class CurrencyService
      */
     public function isValidCurrency(string $currencyCode): bool
     {
-        return Currency::where('code', $currencyCode)->exists();
+        return Currency::where('code', strtoupper(trim($currencyCode)))->exists();
+    }
+
+    private function hasUsableExchangeRate(string $currencyCode): bool
+    {
+        return Currency::query()
+            ->where('code', strtoupper(trim($currencyCode)))
+            ->whereNotNull('exrate')
+            ->where('exrate', '>', 0)
+            ->exists();
     }
 
     /**
@@ -184,7 +231,10 @@ class CurrencyService
      */
     public function getSelectedCurrency(): string
     {
-        return session('selected_currency', $this->getDefaultCurrency());
+        $selected = strtoupper(trim((string) session('selected_currency', '')));
+        return $selected !== '' && $this->isValidCurrency($selected)
+            ? $selected
+            : $this->getDefaultCurrency();
     }
 
     /**
@@ -192,6 +242,7 @@ class CurrencyService
      */
     public function setSelectedCurrency(string $currencyCode): void
     {
+        $currencyCode = strtoupper(trim($currencyCode));
         if ($this->isValidCurrency($currencyCode)) {
             session(['selected_currency' => $currencyCode]);
         }

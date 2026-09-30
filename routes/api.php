@@ -1058,11 +1058,15 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
         Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('drivers/list-summary', [DriverController::class, 'listSummary']);
+        Route::post('drivers/notifications/custom', [DriverController::class, 'sendBulkCustomNotifications'])
+            ->middleware('permission:drivers.edit');
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);
         Route::get('driver-assignments/recent', [DriverController::class, 'recentDriverAssignments']);
         Route::get('drivers/{driver}/status', [DriverController::class, 'status']);
         Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
+        Route::post('drivers/{driver}/notifications/custom', [DriverController::class, 'sendCustomNotification'])
+            ->middleware('permission:drivers.edit');
         Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
         Route::apiResource('drivers', DriverController::class);
         Route::get('logsheets/stats', [DriverLogController::class, 'stats']);

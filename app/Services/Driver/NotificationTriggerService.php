@@ -35,6 +35,75 @@ class NotificationTriggerService
         private readonly ?SmsAutomationService $smsAutomation = null,
     ) {}
 
+    /** Deliver a driver licence lifecycle event to every registered FCM device. */
+    public function sendDriverLicenseNotification(Driver $driver, string $event, string $title, string $body, array $details = [], bool $persistInApp = true): array
+    {
+        return $this->sendDriverPushNotification($driver, $event, $title, $body, [
+            'event_type' => $event,
+            'notification_type' => $event,
+            'driver_id' => (string) $driver->id,
+            'license_expiry' => $driver->license_expiry?->toDateString() ?? '',
+            'triggered_at' => now()->toIso8601String(),
+            ...$details,
+        ], $persistInApp);
+    }
+
+    /** Deliver a general driver app event to every registered FCM device. */
+    public function sendDriverPushNotification(Driver $driver, string $event, string $title, string $body, array $payload = [], bool $persistInApp = true): array
+    {
+        $driver->loadMissing(['user', 'activeDevices']);
+        $payload = [
+            'event_type' => $event,
+            'notification_type' => $event,
+            'driver_id' => (string) $driver->id,
+            'triggered_at' => now()->toIso8601String(),
+            ...$payload,
+        ];
+        if ($persistInApp) {
+            $this->storeDriverNotification($driver, $payload, $title, $body);
+        }
+
+        try {
+            $session = $this->fcm->prepareSession();
+            if (!$session) {
+                return ['success' => false, 'eligible_devices' => 0, 'delivered_devices' => 0];
+            }
+
+            $devices = $driver->activeDevices()->whereNotNull('push_token')->get();
+            $eligible = 0;
+            $delivered = 0;
+            $data = $this->fcm->normalizeDataPayload($payload);
+            foreach ($devices as $device) {
+                if (!in_array($device->push_provider, [null, '', 'fcm'], true)) {
+                    continue;
+                }
+                $eligible++;
+                $result = $this->fcm->send($session, $device->push_token, $title, $body, $data);
+                if ($result['success']) {
+                    $delivered++;
+                } elseif ($result['invalid_token']) {
+                    $device->update(['push_token' => null]);
+                } else {
+                    Log::warning('Driver app FCM delivery failed', [
+                        'driver_id' => $driver->id,
+                        'device_uuid' => $device->device_uuid,
+                        'event' => $event,
+                        'response' => $result['response'],
+                    ]);
+                }
+            }
+
+            return ['success' => $delivered > 0, 'eligible_devices' => $eligible, 'delivered_devices' => $delivered];
+        } catch (\Throwable $exception) {
+            Log::warning('Driver app push notification failed', [
+                'driver_id' => $driver->id,
+                'event' => $event,
+                'error' => $exception->getMessage(),
+            ]);
+            return ['success' => false, 'eligible_devices' => 0, 'delivered_devices' => 0];
+        }
+    }
+
     /**
      * Send assignment notification to the assigned driver.
      *

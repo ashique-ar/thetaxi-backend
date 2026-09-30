@@ -115,7 +115,7 @@ class CheckoutController extends Controller
             'rate_per_km' => $rate,
             'total' => $total,
             'total_cost' => $total,
-            'currency' => $extraKm['currency'] ?? config('booking.base_currency', 'LKR'),
+            'currency' => $extraKm['currency'] ?? $this->currencyService->getBookingBaseCurrency(),
             'added_at' => $extraKm['added_at'] ?? null,
         ];
     }
@@ -1406,7 +1406,10 @@ class CheckoutController extends Controller
                 return view('checkout.callback-error', ['message' => 'We could not match this payment to your booking. If you have been charged, contact support with your transaction details.']);
             }
 
-            if (!empty($verificationResult['success']) && in_array($verificationResult['status'] ?? null, ['completed', 'success'], true)) {
+            // verifyPayment returns success only after the signed gateway response
+            // has been validated. Do not reject an approved payment because a
+            // gateway adapter labels its successful status with another string.
+            if (!empty($verificationResult['success'])) {
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
 
                 $wasPaid = false;
@@ -1430,7 +1433,7 @@ class CheckoutController extends Controller
                     $gatewayAmount = (float) ($gatewayPayment['amount'] ?? 0);
                     $bookingAmount = (float) ($gatewayPayment['booking_amount'] ?? 0);
                     $gatewayCurrency = strtoupper((string) ($gatewayPayment['currency'] ?? ''));
-                    $bookingCurrency = strtoupper((string) ($gatewayPayment['booking_currency'] ?? $lockedBooking->currency ?? 'LKR'));
+                    $bookingCurrency = strtoupper((string) ($gatewayPayment['booking_currency'] ?? $lockedBooking->currency ?? $this->currencyService->getDefaultCurrency()));
                     $gatewayOrderId = (string) ($verificationResult['order_id'] ?? $gatewayPayment['order_id'] ?? '');
                     $transactionId = (string) ($verificationResult['transaction_id'] ?? '');
 
@@ -1929,11 +1932,11 @@ class CheckoutController extends Controller
     {
         $currency = $bookingSettings['booking_base_currency'] ?? null;
         $currency = strtoupper(trim((string) $currency));
-        if ($currency !== '') {
+        if ($currency !== '' && $this->currencyService->isValidCurrency($currency)) {
             return $currency;
         }
 
-        return config('booking.base_currency', 'LKR');
+        return $this->currencyService->getBookingBaseCurrency();
     }
 
     /**
@@ -2251,7 +2254,7 @@ class CheckoutController extends Controller
             'amount' => (float) ($gatewayResult['amount'] ?? 0),
             'currency' => strtoupper((string) ($gatewayResult['currency'] ?? '')),
             'booking_amount' => (float) ($gatewayResult['booking_amount'] ?? $booking->amount_to_pay ?? 0),
-            'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? 'LKR')),
+            'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency())),
             'order_id' => $gatewayResult['order_id'] ?? null,
         ];
         $workflowData['gateway_payment'] = $snapshot;
@@ -2283,7 +2286,7 @@ class CheckoutController extends Controller
 
         $transactionId = (string) ($verification['transaction_id'] ?? '');
         $gatewayCurrency = strtoupper((string) ($snapshot['currency'] ?? ''));
-        $bookingCurrency = strtoupper((string) ($snapshot['booking_currency'] ?? $booking->currency ?? 'LKR'));
+        $bookingCurrency = strtoupper((string) ($snapshot['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency()));
         app(\App\Services\BookingPaymentLedgerService::class)->receive($booking, [
             'amount' => $bookingAmount,
             'payment_method' => 'online',

@@ -2963,7 +2963,7 @@ class BookingLifecycleService
         $calculationCurrency = strtoupper(trim((string) (
             data_get($pricingBreakdown, 'base_pricing.original_currency')
             ?? data_get($pricingBreakdown, 'original_currency')
-            ?? config('booking.base_currency', 'LKR')
+            ?? $this->currencyService->getBookingBaseCurrency()
         )));
         $bookingCurrency = strtoupper(trim((string) (
             $bookingItem->currency
@@ -2971,7 +2971,9 @@ class BookingLifecycleService
             ?? data_get($pricingBreakdown, 'summary.currency')
             ?? $calculationCurrency
         )));
-        $calculationCurrency = $calculationCurrency !== '' ? $calculationCurrency : 'LKR';
+        $calculationCurrency = $calculationCurrency !== ''
+            ? $calculationCurrency
+            : $this->currencyService->getBookingBaseCurrency();
         $bookingCurrency = $bookingCurrency !== '' ? $bookingCurrency : $calculationCurrency;
 
         if ($bookingCurrency === $calculationCurrency) {

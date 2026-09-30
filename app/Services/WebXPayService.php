@@ -5,7 +5,6 @@ namespace App\Services;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use App\Models\Booking\Booking;
-use App\Models\Currency;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
 
@@ -30,7 +29,14 @@ class WebXPayService
         $this->publicKey = $this->getSettingValue('webxpay_public_key', config('booking.webxpay.public_key'));
         $this->apiUrl = $this->getSettingValue('webxpay_api_url', config('booking.webxpay.api_url'));
         $this->checkoutUrl = $this->getSettingValue('webxpay_checkout_url', config('booking.webxpay.checkout_url'));
-        $this->currency = strtoupper(trim((string) $this->getSettingValue('webxpay_currency', config('booking.webxpay.currency', 'LKR'))));
+        $configuredCurrency = strtoupper(trim((string) $this->getSettingValue(
+            'webxpay_currency',
+            config('booking.webxpay.currency', '')
+        )));
+        $currencyService = app(CurrencyService::class);
+        $this->currency = $configuredCurrency !== '' && $currencyService->isValidCurrency($configuredCurrency)
+            ? $configuredCurrency
+            : $currencyService->getDefaultCurrency();
         $settingEnabled = $this->getSettingValue('webxpay_enabled', null);
         $this->enabled = $this->normalizeBoolean($settingEnabled, (bool) config('booking.webxpay.enabled', false));
         $this->apiUsername = $this->getSettingValue('webxpay_api_username', config('booking.webxpay.api_username'));
@@ -108,9 +114,9 @@ class WebXPayService
             $sourceCurrency = $amountCurrency
                 ?: ($workflowData['display_currency'] ?? null)
                 ?: $booking->currency
-                ?: 'LKR';
+                ?: app(CurrencyService::class)->getDefaultCurrency();
             $bookingCurrency = strtoupper(trim((string) $sourceCurrency));
-            $bookingAmount = app(CurrencyService::class)->normalizeAmount($amount);
+            $bookingAmount = app(CurrencyService::class)->roundAmount($amount, $bookingCurrency);
             $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
             $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
             $orderId = $booking->booking_number . '-' . time();
@@ -207,17 +213,14 @@ class WebXPayService
             return $amount;
         }
 
-        $from = Currency::where('code', $bookingCurrency)->first();
-        $to = Currency::where('code', $this->currency)->first();
-        $fromRate = $bookingCurrency === 'LKR' ? 1.0 : (float) ($from?->exrate ?? 0);
-        $toRate = $this->currency === 'LKR' ? 1.0 : (float) ($to?->exrate ?? 0);
-
-        if ($fromRate <= 0 || $toRate <= 0) {
-            throw new \RuntimeException("Cannot convert payment from {$bookingCurrency} to {$this->currency}: exchange rate is missing.");
+        // Use the same globally configured currency table as booking and portal
+        // conversions so payment initiation cannot use a separate rate path.
+        $rate = app(CurrencyService::class)->getExchangeRate($bookingCurrency, $this->currency);
+        if (!is_finite($rate) || $rate <= 0) {
+            throw new \RuntimeException("Cannot convert payment from {$bookingCurrency} to {$this->currency}: global exchange rate is unavailable.");
         }
 
-        // exrate is the currency value of one LKR.
-        return $amount * ($toRate / $fromRate);
+        return $amount * $rate;
     }
 
     /**
@@ -433,4 +436,3 @@ class WebXPayService
         return $phone ?: '0000000000';
     }
 }
-

@@ -10,14 +10,16 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
-        $bookingCurrencyCode = $booking ? getBookingDisplayCurrency($booking) : 'LKR';
+        $bookingCurrencyCode = $booking
+            ? getBookingDisplayCurrency($booking)
+            : app(\App\Services\CurrencyService::class)->getDefaultCurrency();
         $currencyCode = getSelectedCurrency();
         $displayAmount = fn ($amount) => app(\App\Services\CurrencyService::class)->convert(
             (float) $amount,
             $bookingCurrencyCode,
             $currencyCode,
         );
-        $currencySymbol = $currencyCode;
+        $currencySymbol = getCurrencySymbol($currencyCode);
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
             config('booking.advance_payment.percentage', 50),

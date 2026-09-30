@@ -62,8 +62,8 @@ class BookingFlowRequest extends FormRequest
             'preserve_custom_pricing' => 'sometimes|boolean',
             'preserve_custom_addon_prices' => 'sometimes|boolean',
             'force_recalculation' => 'sometimes|boolean',
-            'currency' => 'sometimes|string|size:3',
-            'base_currency' => 'sometimes|string|size:3',
+            'currency' => 'sometimes|string|size:3|exists:currencies,code',
+            'base_currency' => 'sometimes|string|size:3|exists:currencies,code',
 
             // Discounts (same shape as calculate)
             'applied_discounts' => 'sometimes|array',

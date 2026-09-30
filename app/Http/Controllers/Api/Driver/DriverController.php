@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Driver;
 use App\Http\Controllers\Controller;
 use App\Models\Driver\Driver;
 use App\Models\Driver\DriverDevice;
+use App\Jobs\SendCustomDriverPushNotificationJob;
 use App\Models\Driver\DriverLog;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
@@ -40,7 +41,7 @@ class DriverController extends Controller
         $this->notificationService = $notificationService;
         $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
-        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification']);
+        $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification', 'sendCustomNotification', 'sendBulkCustomNotifications']);
         $this->middleware('permission:drivers.delete')->only(['destroy']);
         $this->middleware('permission:drivers.delete')->only(['removeDevice']);
     }
@@ -318,7 +319,7 @@ class DriverController extends Controller
 
     public function show(Driver $driver): JsonResponse
     {
-        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'profilePhotoDocument']);
+        $driver->load(['user', 'country', 'state', 'licenseType', 'paymentMethod', 'licenseRenewals', 'devices', 'documents', 'profilePhotoDocument', 'defaultVehicle.documents', 'defaultVehicle.make', 'defaultVehicle.model', 'defaultVehicle.group']);
         return response()->json([
             'status' => 'success',
             'data' => new DriverResource($driver)
@@ -370,6 +371,16 @@ class DriverController extends Controller
                 ]);
                 $previousDocuments->each->update(['status' => 'superseded']);
                 $driver->update(['license_last_reminded_on' => null]);
+                $this->notificationService->sendDriverLicenseNotification(
+                    $driver->fresh(),
+                    'driver_license_updated',
+                    'Driving licence updated',
+                    'Your driving licence details were updated. Open the app to refresh your licence information.',
+                    [
+                        'previous_license_expiry' => optional($previousLicense['license_expiry'])->toDateString() ?? '',
+                        'license_status' => $driver->license_expiry->isPast() ? 'expired' : 'valid',
+                    ]
+                );
             }
 
             if ($paymentMethod !== null) {
@@ -572,6 +583,75 @@ class DriverController extends Controller
                 'error' => $e->getMessage(),
             ], 500);
         }
+    }
+
+    /** Send an administrator-authored push notification to one driver. */
+    public function sendCustomNotification(Request $request, Driver $driver): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:120'],
+            'body' => ['required', 'string', 'max:1000'],
+        ]);
+
+        $result = $this->notificationService->sendDriverPushNotification(
+            $driver,
+            'driver_custom_push',
+            trim($validated['title']),
+            trim($validated['body']),
+            ['triggered_by' => (string) $request->user()?->id]
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $result['delivered_devices'] > 0
+                ? 'Custom notification delivered.'
+                : 'Notification recorded, but no device confirmed delivery.',
+            'data' => ['driver_id' => $driver->id, ...$result],
+        ]);
+    }
+
+    /** Send a custom push to selected active drivers or all active drivers. */
+    public function sendBulkCustomNotifications(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'title' => ['required', 'string', 'max:120'],
+            'body' => ['required', 'string', 'max:1000'],
+            'all_drivers' => ['required_without:driver_ids', 'boolean'],
+            'driver_ids' => ['required_without:all_drivers', 'array', 'min:1', 'max:500'],
+            'driver_ids.*' => ['required', 'uuid', 'distinct', 'exists:drivers,id'],
+        ]);
+        $allDrivers = (bool) ($validated['all_drivers'] ?? false);
+        if (!$allDrivers && empty($validated['driver_ids'])) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'driver_ids' => ['Select at least one driver or choose all active drivers.'],
+            ]);
+        }
+        $query = Driver::query()->where('is_active', true);
+        if (!$allDrivers) {
+            $query->whereIn('id', $validated['driver_ids']);
+        }
+
+        $summary = ['targeted_drivers' => 0, 'queued_drivers' => 0];
+        $title = trim($validated['title']);
+        $body = trim($validated['body']);
+        $query->chunkById(100, function ($drivers) use (&$summary, $title, $body, $request): void {
+            foreach ($drivers as $driver) {
+                $summary['targeted_drivers']++;
+                SendCustomDriverPushNotificationJob::dispatch(
+                    (string) $driver->id,
+                    $title,
+                    $body,
+                    (string) $request->user()?->id
+                )->onQueue(config('services.firebase.queue', 'driver-notifications'));
+                $summary['queued_drivers']++;
+            }
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Custom notification campaign queued for delivery.',
+            'data' => $summary,
+        ]);
     }
 
     /**
