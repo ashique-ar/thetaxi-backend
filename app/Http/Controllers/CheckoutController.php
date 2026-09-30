@@ -532,12 +532,12 @@ class CheckoutController extends Controller
             $discount = $totals['coupon_discount'] ?? 0;
             $total = $totals['total'] ?? 0;
 
-            $subtotal = max(0, $this->currencyService->normalizeAmount($subtotal));
-            $serviceFee = max(0, $this->currencyService->normalizeAmount($serviceFee));
-            $tax = max(0, $this->currencyService->normalizeAmount($tax));
-            $vat = max(0, $this->currencyService->normalizeAmount($vat));
-            $discount = max(0, $this->currencyService->normalizeAmount($discount));
-            $total = max(0, $this->currencyService->normalizeAmount($total));
+            $subtotal = max(0, $this->currencyService->roundAmount($subtotal, $bookingCurrency));
+            $serviceFee = max(0, $this->currencyService->roundAmount($serviceFee, $bookingCurrency));
+            $tax = max(0, $this->currencyService->roundAmount($tax, $bookingCurrency));
+            $vat = max(0, $this->currencyService->roundAmount($vat, $bookingCurrency));
+            $discount = max(0, $this->currencyService->roundAmount($discount, $bookingCurrency));
+            $total = max(0, $this->currencyService->roundAmount($total, $bookingCurrency));
 
 
             // Calculate payment amount based on type
@@ -556,7 +556,7 @@ class CheckoutController extends Controller
                 $paymentAmount = max($paymentAmount, $advanceMinAmount);
                 $paymentAmount = min($paymentAmount, $total);
             }
-            $paymentAmount = max(0, $this->currencyService->normalizeAmount($paymentAmount));
+            $paymentAmount = max(0, $this->currencyService->roundAmount($paymentAmount, $bookingCurrency));
 
             // Prepare flight details
             $flightDetails = null;
@@ -702,18 +702,18 @@ class CheckoutController extends Controller
 
                 // Cart items have 'price' (unit price) and 'total_price' (total price)
                 if (isset($item['price'])) {
-                    $unitPrice = max(0, $this->currencyService->normalizeAmount($item['price']));
+                    $unitPrice = max(0, $this->currencyService->roundAmount($item['price'], $bookingCurrency));
                 }
 
                 if (isset($item['total_price'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total_price']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['total_price'], $bookingCurrency));
                 } elseif (isset($item['total'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['total']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['total'], $bookingCurrency));
                 } elseif (isset($item['amount'])) {
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($item['amount']));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($item['amount'], $bookingCurrency));
                 } elseif ($unitPrice > 0 && $durationDays > 0) {
                     // Fallback: calculate total from unit price and duration
-                    $totalPrice = max(0, $this->currencyService->normalizeAmount($unitPrice * $durationDays));
+                    $totalPrice = max(0, $this->currencyService->roundAmount($unitPrice * $durationDays, $bookingCurrency));
                 }
 
                 // Normalize service_type_id: extract from service_type_data['id'] or ensure it's a valid UUID or null

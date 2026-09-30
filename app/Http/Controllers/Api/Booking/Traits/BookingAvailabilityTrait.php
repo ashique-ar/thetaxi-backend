@@ -70,6 +70,15 @@ trait BookingAvailabilityTrait
                 'pagination' => $availability['pagination'] ?? null,
                 'message' => 'Vehicle groups retrieved successfully'
             ]);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            // Missing coordinates are a client validation issue, not a server
+            // failure. Keep repeated incomplete availability checks out of the
+            // application error logs and return the validation details.
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Availability search needs valid location coordinates.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error getting vehicle groups availability', [
                 'error' => $e->getMessage(),

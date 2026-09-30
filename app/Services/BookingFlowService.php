@@ -38,6 +38,7 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use App\Services\CurrencyService;
 use App\Services\DiscountService;
+use App\Services\PromoCodeService;
 use App\Services\MailDispatchService;
 use App\Services\Sms\SmsAutomationService;
 use App\Mail\GeneralMail;
@@ -2156,6 +2157,17 @@ class BookingFlowService
         $baseOrderAmount = $orderAmount * $this->currencyService->getExchangeRate($currency, 'LKR');
         $customerId = $this->resolveBookingCustomerId($params);
         $validation = $promoService->validatePromoCode($code, $baseOrderAmount, $customerId);
+        $alreadyUsedByThisBooking = !empty($params['booking_id'])
+            && \App\Models\PromoCodeUsage::query()
+                ->where('promo_code_id', $promo->id)
+                ->where('booking_id', $params['booking_id'])
+                ->exists();
+        if ($alreadyUsedByThisBooking && !($validation['valid'] ?? false)
+            && in_array($validation['error_code'] ?? null, ['PROMO_CODE_USAGE_LIMIT_REACHED', 'PROMO_CODE_CUSTOMER_LIMIT_REACHED'], true)) {
+            // Editing the booking that consumed the promo must not invalidate
+            // its existing redemption merely because it reached its cap.
+            $validation['valid'] = true;
+        }
         if (!($validation['valid'] ?? false)) {
             throw ValidationException::withMessages(['promo_code' => [$validation['message'] ?? 'This promo code cannot be applied.']]);
         }
@@ -2685,6 +2697,7 @@ class BookingFlowService
         $this->assertCanOverrideTripPrices($params);
         $params = $this->sanitizeCorporateRequestPayload($params);
         $params = $this->normalizeCorporateEmployeeReferences($params);
+        $params = $this->validateAndPricePromoDiscounts($params);
 
         // Pricing reads these settings. Warm database-backed cache entries
         // before opening the booking transaction so cache misses never write
@@ -2763,6 +2776,7 @@ class BookingFlowService
             // initialize actuals with estimated
             $booking->total_actual = $booking->total_estimated;
             $booking->save();
+            $this->recordPortalPromoUsage($booking, $params);
 
             // Handle multi-group booking items creation
 
@@ -2944,8 +2958,8 @@ class BookingFlowService
                     'duration_hours' => (int) ceil($groupPricing['duration']['hours'] ?? 0),
                     'duration_minutes' => $groupPricing['duration']['minutes']
                         ?? (int) round(($groupPricing['duration']['hours'] ?? 0) * 60),
-                    'currency' => $groupPricing['currency'] ?? 'LKR',
-                    'exchange_rate' => '1.000000',
+                    'currency' => $groupPricing['currency'] ?? $params['currency'] ?? $booking->currency ?? 'LKR',
+                    'exchange_rate' => (string) $this->currencyService->getExchangeRate('LKR', $groupPricing['currency'] ?? $params['currency'] ?? $booking->currency ?? 'LKR'),
                     'status' => 'confirmed',
                     'requires_approval' => $groupPricing['requires_approval'] ?? false,
                     'approved_at' => ($groupPricing['requires_approval'] ?? false) ? null : now(),
@@ -3063,8 +3077,8 @@ class BookingFlowService
             'duration_hours' => (int) ceil($pricing['duration']['hours'] ?? 0),
             'duration_minutes' => $pricing['duration']['minutes']
                 ?? (int) round(($pricing['duration']['hours'] ?? 0) * 60),
-            'currency' => $pricing['currency'] ?? 'LKR',
-            'exchange_rate' => '1.000000',
+            'currency' => $pricing['currency'] ?? $params['currency'] ?? $booking->currency ?? 'LKR',
+            'exchange_rate' => (string) $this->currencyService->getExchangeRate('LKR', $pricing['currency'] ?? $params['currency'] ?? $booking->currency ?? 'LKR'),
             'status' => $booking->status ?? 'confirmed',
             'requires_approval' => $booking->requires_approval ?? false,
             'approved_at' => $booking->confirmed_at,
@@ -3241,6 +3255,7 @@ class BookingFlowService
 
             // 1) Include booking_id in params for edit-mode customizations
             $params['booking_id'] = $bookingId;
+            $params = $this->validateAndPricePromoDiscounts($params);
 
             // 2) Update booking-level fields
             $booking->customer_id = $this->resolveBookingCustomerId($params, $booking);
@@ -3380,8 +3395,8 @@ class BookingFlowService
                         'dropoff_longitude' => $dropoffLongitude,
                         'dropoff_landmark' => $dropoffLandmark,
                         'is_self_driven' => $itemData['is_self_driven'] ?? false,
-                        'currency' => config('booking.base_currency', 'LKR'),
-                        'exchange_rate' => '1.000000',
+                        'currency' => $itemTotals['currency'] ?? $itemData['currency'] ?? $params['currency'] ?? $booking->currency ?? config('booking.base_currency', 'LKR'),
+                        'exchange_rate' => (string) $this->currencyService->getExchangeRate('LKR', $itemTotals['currency'] ?? $itemData['currency'] ?? $params['currency'] ?? $booking->currency ?? config('booking.base_currency', 'LKR')),
                         'status' => $booking->status,
                         'item_type' => 'vehicle_group',
                         'pricing_breakdown' => $itemTotals['pricing_snapshot'] ?? [],
@@ -3596,8 +3611,8 @@ class BookingFlowService
                         'dropoff_longitude' => $dropoffLongitude,
                         'dropoff_landmark' => $dropoffLandmark,
                         'is_self_driven' => $params['is_self_driven'] ?? false,
-                        'currency' => config('booking.base_currency', 'LKR'),
-                        'exchange_rate' => '1.000000',
+                        'currency' => $totals['currency'] ?? $params['currency'] ?? $booking->currency ?? config('booking.base_currency', 'LKR'),
+                        'exchange_rate' => (string) $this->currencyService->getExchangeRate('LKR', $totals['currency'] ?? $params['currency'] ?? $booking->currency ?? config('booking.base_currency', 'LKR')),
                         'status' => $booking->status,
                         'item_type' => 'vehicle_group',
                         'pricing_breakdown' => $totals['pricing_snapshot'] ?? [],
@@ -3713,6 +3728,8 @@ class BookingFlowService
                 'status' => $booking->status,
                 'requires_approval' => (bool) $booking->requires_approval,
             ]);
+
+            $this->recordPortalPromoUsage($booking, $params);
 
             return $booking->load(['customer', 'vehicleGroup', 'bookingItems.vehicle', 'bookingItems.driver', 'bookingItems.serviceType', 'bookingItems.vehicleGroup', 'approvals']);
         });
@@ -12727,6 +12744,17 @@ class BookingFlowService
 
     private function applyBookingPaymentFields(Booking $booking, array $params): void
     {
+        $bookingCurrency = strtoupper(trim((string) (
+            $params['currency']
+            ?? data_get($params, 'pricing_snapshot.currency')
+            ?? data_get($params, 'pricing_snapshot.summary.currency')
+            ?? $booking->currency
+            ?? config('booking.base_currency', 'LKR')
+        )));
+        if ($bookingCurrency !== '') {
+            $booking->currency = $bookingCurrency;
+        }
+
         foreach ($this->resolveBookingPaymentFields($params, $booking) as $field => $value) {
             $booking->{$field} = $value;
         }
