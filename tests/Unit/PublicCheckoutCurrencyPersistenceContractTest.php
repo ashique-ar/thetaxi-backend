@@ -122,10 +122,19 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $this->assertStringContainsString("'currency' => 'LKR'", $bookingItem);
 
         $controller = file_get_contents(__DIR__ . '/../../app/Http/Controllers/CheckoutController.php');
+        $this->assertStringContainsString('$request->query(\'initial_currency\', \'\')', $controller);
         $this->assertStringContainsString(
-            '$this->currencyService->setSelectedCurrency($bookingCurrency);',
+            'if ($initialCurrency === $bookingCurrency)',
             $controller,
-            'The success page must restore the booking currency after a gateway return loses browser session state.'
+            'The success page must seed the booking currency once without overriding later visitor selections.'
         );
+
+        $successPage = file_get_contents(__DIR__ . '/../../resources/views/checkout/success.blade.php');
+        $this->assertStringContainsString("url.searchParams.delete('initial_currency')", $successPage);
+        $this->assertStringContainsString('$currencyCode = getSelectedCurrency();', $successPage);
+        $this->assertStringContainsString('->convert(', $successPage);
+        $this->assertSame(4, substr_count($controller, '\'initial_currency\' => getBookingDisplayCurrency($booking)'));
+        $this->assertStringContainsString("'source_currency' => null", $paymentSummary);
+        $this->assertStringContainsString("'source_currency' => null", $bookingItem);
     }
 }

@@ -7918,7 +7918,17 @@ class BookingFlowService
 
         // Transform booking items for multi-trip support. Price-change metadata is internal-only.
         $canViewPriceAudit = Auth::user()?->can('bookings.price_override') === true;
-        $bookingItems = $booking->bookingItems->map(function ($item) use ($canViewPriceAudit, $pricingSnapshot) {
+        $bookingItems = $booking->bookingItems
+            ->sortBy(function ($item) {
+                return sprintf(
+                    '%s|%s|%010d',
+                    (string) ($item->from_date ?? ''),
+                    (string) ($item->from_time ?? ''),
+                    optional($item->created_at)->timestamp ?? 0,
+                );
+            })
+            ->values()
+            ->map(function ($item, $itemIndex) use ($canViewPriceAudit, $pricingSnapshot, $booking) {
             $metadata = is_array($item->metadata) ? $item->metadata : [];
             $servicePackageId = $metadata['service_package_id']
                 ?? $metadata['package_id']
@@ -7953,6 +7963,11 @@ class BookingFlowService
             $data = [
                 'id' => (string) $item->id,
                 'booking_id' => (string) $item->booking_id,
+                'item_code' => $item->item_code ?: sprintf(
+                    '%s-I%02d',
+                    $booking->booking_number ?: (string) $booking->id,
+                    $itemIndex + 1,
+                ),
                 'service_type_id' => $item->service_type_id ? (string) $item->service_type_id : null,
                 'service_type' => $item->serviceType ? [
                     'id' => (string) $item->serviceType->id,

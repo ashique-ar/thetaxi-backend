@@ -1,4 +1,4 @@
-@props(['item', 'index', 'currency' => 'LKR'])
+@props(['item', 'index', 'currency' => 'LKR', 'source_currency' => null])
 
 @php
     $pickupLoc = is_string($item->pickup_location ?? null)
@@ -355,6 +355,20 @@
     if ($servicePricingMode !== 'day') {
         $totalLabel = $isReturnTrip ? 'Transfer Total (Drop-off + Return)' : 'Transfer Total (Drop-off)';
     }
+
+    $convertDisplayAmount = fn ($amount) => $source_currency && $source_currency !== $currency
+        ? app(\App\Services\CurrencyService::class)->convert((float) $amount, $source_currency, $currency)
+        : (float) $amount;
+    $displayUnitPrice = $convertDisplayAmount($unitPrice);
+    $displayExtraKmPrice = $convertDisplayAmount($extraKmPrice ?? 0);
+    $displayExtraKmTotal = $convertDisplayAmount($extraKmTotal);
+    $displayBaseItemTotal = $convertDisplayAmount($baseItemTotal);
+    $displayItemGrandTotal = $convertDisplayAmount($itemGrandTotal);
+    $displayAddons = array_map(function ($addon) use ($convertDisplayAmount) {
+        $addon['rate'] = $convertDisplayAmount($addon['rate'] ?? 0);
+        $addon['total'] = $convertDisplayAmount($addon['total'] ?? 0);
+        return $addon;
+    }, $addonsList);
 @endphp
 
 <div
@@ -464,7 +478,7 @@
                     Rate per Day
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    {{ $currency }} {{ number_format(floor(max(0, $unitPrice)), 0) }}
+                    {{ $currency }} {{ number_format(floor(max(0, $displayUnitPrice)), 0) }}
                 </td>
             </tr>
         @endif
@@ -578,10 +592,10 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $currency }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
+                        @ {{ $currency }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
-                        <span style="float: right; color: #BF2629;">{{ $currency }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                        <span style="float: right; color: #BF2629;">{{ $currency }} {{ number_format(floor(max(0, $displayExtraKmTotal)), 0) }}</span>
                     @endif
                 </td>
             </tr>
@@ -605,7 +619,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $currency }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
+                <td><strong>{{ $currency }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}</strong> per km</td>
             </tr>
         @endif
 
@@ -616,7 +630,7 @@
                     Selected Add-ons
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    @foreach ($addonsList as $addon)
+                    @foreach ($displayAddons as $addon)
                         <div style="margin-bottom: 3px; display: flex; justify-content: space-between; align-items: center;">
                             <div>
                                 <strong>{{ $addon['name'] }}</strong>
@@ -640,7 +654,7 @@
                 {{ $totalLabel === 'Item Total' ? 'Base Trip Total' : $totalLabel }}
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $currency }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}
+                {{ $currency }} {{ number_format(floor(max(0, $displayBaseItemTotal)), 0) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
@@ -652,7 +666,7 @@
                     Item Total
                 </td>
                 <td style="padding: 6px 0; color: #111827; font-weight: 700; border-top: 2px solid #e5e7eb;">
-                    {{ $currency }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}
+                    {{ $currency }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
                     <small style="display:block; color:#777; font-weight:400; margin-top:2px;">
                         Includes add-ons and extra kilometers
                     </small>

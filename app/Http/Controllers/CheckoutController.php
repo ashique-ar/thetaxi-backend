@@ -932,7 +932,8 @@ class CheckoutController extends Controller
 
             return redirect()->route('checkout.success', [
                 'type' => 'quotation',
-                'reference' => $booking->booking_number
+                'reference' => $booking->booking_number,
+                'initial_currency' => getBookingDisplayCurrency($booking),
             ])->with('success', 'Your quotation request has been submitted successfully! Our team will contact you within 24 hours.');
         } catch (\Exception $e) {
             Log::error('Quotation Request: Process failed', [
@@ -1142,7 +1143,8 @@ class CheckoutController extends Controller
                 'type' => 'payment',
                 'reference' => $booking->booking_number,
                 'method' => $paymentMethod,
-                'status' => $booking->status
+                'status' => $booking->status,
+                'initial_currency' => getBookingDisplayCurrency($booking),
             ])->with('success', $message);
         } catch (\Exception $e) {
             Log::error('Complete Booking: Process failed', [
@@ -1182,10 +1184,14 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Booking not found.');
         }
 
-        // WebXPay can return without the original browser session. Restore the currency
-        // recorded on the booking before rendering the header and any session-based UI.
+        // The payment return carries a one-time currency seed so a lost session is
+        // initialized from the booking. Do not reapply it on later page reloads:
+        // the visitor may have explicitly switched currencies from the selector.
         $bookingCurrency = getBookingDisplayCurrency($booking);
-        $this->currencyService->setSelectedCurrency($bookingCurrency);
+        $initialCurrency = strtoupper((string) $request->query('initial_currency', ''));
+        if ($initialCurrency === $bookingCurrency) {
+            $this->currencyService->setSelectedCurrency($bookingCurrency);
+        }
 
         return view('checkout.success', compact('type', 'reference', 'method', 'status', 'booking'));
     }
@@ -1343,7 +1349,8 @@ class CheckoutController extends Controller
                         'type' => 'payment',
                         'reference' => $booking->booking_number,
                         'method' => 'online',
-                        'status' => 'confirmed'
+                        'status' => 'confirmed',
+                        'initial_currency' => getBookingDisplayCurrency($booking),
                     ])->with('success', 'Payment successful! Your booking is confirmed.');
                 } else {
                     $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'failed']);
@@ -1455,7 +1462,8 @@ class CheckoutController extends Controller
                     'type' => 'payment',
                     'reference' => $booking->booking_number,
                     'method' => 'online',
-                    'status' => 'confirmed'
+                    'status' => 'confirmed',
+                    'initial_currency' => getBookingDisplayCurrency($booking),
                 ])->with('success', 'Payment successful! Your booking is confirmed.');
             } else {
                 Log::warning('WebXPay: payment verification failed', ['verification' => $verificationResult, 'booking_id' => $booking->id]);

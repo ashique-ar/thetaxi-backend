@@ -10,8 +10,13 @@
         $isPaid = $isAdvancePayment || $isFullPayment;
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
-        $currencyCode = $booking ? getBookingDisplayCurrency($booking) : 'LKR';
-        // Keep the ISO code visible on payment confirmation, independent of the returning browser session.
+        $bookingCurrencyCode = $booking ? getBookingDisplayCurrency($booking) : 'LKR';
+        $currencyCode = getSelectedCurrency();
+        $displayAmount = fn ($amount) => app(\App\Services\CurrencyService::class)->convert(
+            (float) $amount,
+            $bookingCurrencyCode,
+            $currencyCode,
+        );
         $currencySymbol = $currencyCode;
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
@@ -128,7 +133,7 @@
                                 </h2>
                                 @if ($booking->bookingItems->count() > 0)
                                     @foreach ($booking->bookingItems as $index => $item)
-                                        <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
+                                        <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" :source_currency="$bookingCurrencyCode" />
                                     @endforeach
                                 @endif
                             </div>
@@ -183,7 +188,7 @@
                                 <h2 class="section-title">
                                     <span class="icon">💳</span> Payment Summary
                                 </h2>
-                                <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :advance_percentage="$advancePercentage" />
+                                <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :source_currency="$bookingCurrencyCode" :advance_percentage="$advancePercentage" />
                             </div>
                             @if ($booking->special_requirements)
                                 <div class="section">
@@ -242,9 +247,9 @@
                                         <h3>✓ Advance Payment Confirmed!</h3>
                                         <p>You have successfully paid {{ $advancePercentage }}% advance
                                             ({{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $booking->amount_to_pay ?? 0)), 0) }}).</p>
+                                            {{ number_format(floor(max(0, $displayAmount($booking->amount_to_pay ?? 0))), 0) }}).</p>
                                         <p><strong>Balance Due at Pickup:</strong> {{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $booking->total_estimated - ($booking->amount_to_pay ?? 0))), 0) }}
+                                            {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}
                                         </p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
@@ -253,7 +258,7 @@
                                             <li>A credit card may be required for security deposit</li>
                                             <li>Arrive 15 minutes before scheduled pickup time</li>
                                             <li><strong>Pay remaining balance at pickup: {{ $currencySymbol }}
-                                                    {{ number_format(floor(max(0, $booking->total_estimated - ($booking->amount_to_pay ?? 0))), 0) }}</strong>
+                                                    {{ number_format(floor(max(0, $displayAmount($booking->total_estimated - ($booking->amount_to_pay ?? 0)))), 0) }}</strong>
                                             </li>
                                         </ul>
                                     </div>
@@ -263,7 +268,7 @@
                                         <p>Your booking is confirmed. Please pay the full amount when you check-in to
                                             collect the vehicle.</p>
                                         <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</p>
+                                            {{ number_format(floor(max(0, $displayAmount($booking->total_estimated))), 0) }}</p>
                                         <p style="margin-bottom: 8px;"><strong>Important Reminders:</strong></p>
                                         <ul>
                                             <li>Bring valid government-issued ID/Passport</li>
@@ -287,7 +292,7 @@
                                             @if (!$isFallbackPaymentLink)
                                                 <a href="{{ $paymentLink }}" class="btn btn-new">
                                                     Pay {{ $currencySymbol }}
-                                                    {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated)), 0) }}
+                                                    {{ number_format(floor(max(0, $displayAmount($booking->amount_to_pay ?? $booking->total_estimated))), 0) }}
                                                 </a>
                                                 <p
                                                     style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
@@ -398,7 +403,7 @@
                                     @if (!$isFallbackPaymentLink)
                                         <a href="{{ $paymentLink }}" class="btn btn-new">Complete Payment -
                                             {{ $currencySymbol }}
-                                            {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0))), 0) }}</a>
+                                            {{ number_format(floor(max(0, $displayAmount($booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0)))), 0) }}</a>
                                     @else
                                         <a href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}"
                                             class="btn btn-new">Contact Support to Complete Payment</a>
@@ -735,6 +740,17 @@
 @endpush
 
 @push('scripts')
+    <script>
+        // Consume the one-time currency seed. Currency switching reloads this page,
+        // so leaving it in the URL would reset the visitor to the booking currency.
+        (() => {
+            const url = new URL(window.location.href);
+            if (url.searchParams.has('initial_currency')) {
+                url.searchParams.delete('initial_currency');
+                window.history.replaceState({}, document.title, url.pathname + url.search + url.hash);
+            }
+        })();
+    </script>
     @if (
         !empty($settings['google_ads_conversion_id']) &&
             !empty($settings['google_ads_conversion_label']) &&
