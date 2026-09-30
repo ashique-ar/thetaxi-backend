@@ -24,13 +24,15 @@ class AppSettingsController extends Controller
 
         $settings = $this->settingsService->getDriverMobileSettings();
         $configuredLatestVersion = $settings['driver_mobile_latest_version'] ?: '1.0.0';
+        // The configured latest version is the version policy. Do not replace it
+        // with the client's version when release metadata is incomplete, or an
+        // older client will always compare equal and never receive an update.
+        $latestVersion = trim((string) $configuredLatestVersion);
         $publishedReleases = config('driver_mobile_release.published_releases', []);
-        $latestVersion = in_array($configuredLatestVersion, $publishedReleases, true)
-            ? $configuredLatestVersion
-            : trim($validated['version']);
         $mandatoryUpdate = $this->toBoolean($settings['driver_mobile_mandatory_update'] ?? false);
         $currentVersion = trim($validated['version']);
         $updateRequired = version_compare($this->normalizeVersion($currentVersion), $this->normalizeVersion($latestVersion), '<');
+        $mandatoryUpdateRequired = $mandatoryUpdate && $updateRequired;
 
         return response()->json([
             'status' => 'success',
@@ -39,8 +41,8 @@ class AppSettingsController extends Controller
                 'latest_version' => $latestVersion,
                 'update_required' => $updateRequired,
                 'current_build_number' => $validated['build_number'] ?? null,
-                'mandatory_update' => $mandatoryUpdate && $updateRequired && (bool) config('driver_mobile_release.mandatory_release_validated', false),
-                'can_continue' => !($mandatoryUpdate && $updateRequired && (bool) config('driver_mobile_release.mandatory_release_validated', false)),
+                'mandatory_update' => $mandatoryUpdateRequired,
+                'can_continue' => !$mandatoryUpdateRequired,
                 'release_policy' => [
                     'android_package_id' => config('driver_mobile_release.android_package_id'),
                     'advertised_release_published' => in_array($configuredLatestVersion, $publishedReleases, true),
