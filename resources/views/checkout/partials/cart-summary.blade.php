@@ -131,32 +131,14 @@
                             </div>
                         </li>
 
-                        @php
-                            $priceAdjustmentDiscount = $totals['price_adjustment_discount'] ?? 0;
-                        @endphp
-                        @if ($priceAdjustmentDiscount > 0)
-                            <li class="price-adjustment-discount-row" data-summary-row="price_adjustment_discount">
-                                <span class="text-success">
-                                    <i class="bi bi-percent"></i> Price Adjustment Discount
-                                </span>
-                                <div class="order-info text-success">
-                                    <span class="checkout-summary-amount"
-                                        data-summary-field="price_adjustment_discount">-{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $priceAdjustmentDiscount)), 0) }}</span>
-                                </div>
-                            </li>
-                        @endif
-                        @if ($discount > 0)
-                            <li class="discount-checkout-row" data-summary-row="coupon_discount">
-                                <strong class="text-success"><i class="bi bi-tag-fill"></i>
-                                    Discount</strong>
-                                <div class="order-info text-success">
-                                    <span class="checkout-summary-amount"
-                                        data-summary-field="coupon_discount">-{{ $currencySymbol }}
-                                        {{ number_format(floor(max(0, $discount)), 0) }}</span>
-                                </div>
-                            </li>
-                        @endif
+                        <li class="discount-checkout-row" data-summary-row="coupon_discount"
+                            style="{{ $discount > 0 ? '' : 'display: none;' }}">
+                            <strong class="text-success"><i class="bi bi-tag-fill"></i> Discount</strong>
+                            <div class="order-info text-success">
+                                <span class="checkout-summary-amount" data-summary-field="coupon_discount">-{{ $currencySymbol }}
+                                    {{ number_format(floor(max(0, $discount)), 0) }}</span>
+                            </div>
+                        </li>
                         <li class="total-row">
                             <div>
                                 <strong>Total Amount</strong>

@@ -656,18 +656,6 @@
             font-weight: 600;
         }
 
-        .price-adjustment-discount-row {
-            background: rgba(40, 167, 69, 0.05);
-            padding: 8px 12px;
-            border-radius: 6px;
-            margin-bottom: 8px;
-        }
-
-        .price-adjustment-discount-row span:first-child {
-            font-weight: 500;
-        }
-
-
         .checkout-remove-item-btn,
         .checkout-clear-cart-btn {
             border: 1px solid #dc3545;
@@ -1332,15 +1320,28 @@
 
         .discount-checkout-row {
             background: #f1f8e9;
-            margin: 0 -20px;
-            padding: 12px 20px !important;
-            border-radius: 0;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
+            gap: 12px;
+            padding: 10px 0 !important;
+            border-radius: 6px;
         }
 
         .discount-checkout-row strong {
             display: flex;
             align-items: center;
             gap: 6px;
+            min-width: 0;
+        }
+
+        .discount-checkout-row .order-info {
+            flex: 0 0 auto;
+            white-space: nowrap;
+        }
+
+        .discount-checkout-row .order-info i {
+            flex: 0 0 auto;
         }
 
         .alert {
@@ -2008,10 +2009,7 @@
                     'vat',
                     'total'
                 ];
-                const discountFields = [
-                    'price_adjustment_discount',
-                    'coupon_discount'
-                ];
+                const discountFields = ['coupon_discount'];
 
                 normalFields.forEach(function(field) {
                     const value = Number(totals[field] || 0);
