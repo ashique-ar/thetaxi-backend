@@ -1182,6 +1182,11 @@ class CheckoutController extends Controller
             return redirect()->route('home')->with('error', 'Booking not found.');
         }
 
+        // WebXPay can return without the original browser session. Restore the currency
+        // recorded on the booking before rendering the header and any session-based UI.
+        $bookingCurrency = getBookingDisplayCurrency($booking);
+        $this->currencyService->setSelectedCurrency($bookingCurrency);
+
         return view('checkout.success', compact('type', 'reference', 'method', 'status', 'booking'));
     }
 

@@ -1,4 +1,4 @@
-@props(['item', 'index', 'currencySymbol' => 'LKR'])
+@props(['item', 'index', 'currency' => 'LKR'])
 
 @php
     $pickupLoc = is_string($item->pickup_location ?? null)
@@ -464,7 +464,7 @@
                     Rate per Day
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    {{ $currencySymbol }} {{ number_format(floor(max(0, $unitPrice)), 0) }}
+                    {{ $currency }} {{ number_format(floor(max(0, $unitPrice)), 0) }}
                 </td>
             </tr>
         @endif
@@ -578,10 +578,10 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
+                        @ {{ $currency }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
-                        <span style="float: right; color: #BF2629;">{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
+                        <span style="float: right; color: #BF2629;">{{ $currency }} {{ number_format(floor(max(0, $extraKmTotal)), 0) }}</span>
                     @endif
                 </td>
             </tr>
@@ -605,7 +605,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $currencySymbol }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
+                <td><strong>{{ $currency }} {{ number_format(floor(max(0, $extraKmPrice)), 0) }}</strong> per km</td>
             </tr>
         @endif
 
@@ -622,13 +622,13 @@
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">
                                     (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
-                                        x {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
+                                        x {{ $currency }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                     @elseif ($addon['total'] > 0 && $addon['qty'] > 0)
-                                        - Avg: {{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
+                                        - Avg: {{ $currency }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                     @endif)
                                 </small>
                             </div>
-                            <span style="color: #BF2629; font-weight: 600;">{{ $currencySymbol }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                            <span style="color: #BF2629; font-weight: 600;">{{ $currency }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                         </div>
                     @endforeach
                 </td>
@@ -640,7 +640,7 @@
                 {{ $totalLabel === 'Item Total' ? 'Base Trip Total' : $totalLabel }}
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $currencySymbol }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}
+                {{ $currency }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
@@ -652,7 +652,7 @@
                     Item Total
                 </td>
                 <td style="padding: 6px 0; color: #111827; font-weight: 700; border-top: 2px solid #e5e7eb;">
-                    {{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}
+                    {{ $currency }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}
                     <small style="display:block; color:#777; font-weight:400; margin-top:2px;">
                         Includes add-ons and extra kilometers
                     </small>

@@ -97,4 +97,35 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
             'workflow_data' => null,
         ]));
     }
+
+    public function test_success_and_email_components_receive_explicit_persisted_currency(): void
+    {
+        foreach ([
+            __DIR__ . '/../../resources/views/checkout/success.blade.php',
+            __DIR__ . '/../../resources/views/emails/checkout-confirmation.blade.php',
+            __DIR__ . '/../../resources/views/emails/payment-initiated.blade.php',
+            __DIR__ . '/../../resources/views/emails/quotation-request.blade.php',
+        ] as $template) {
+            $contents = file_get_contents($template);
+
+            $this->assertStringContainsString(
+                ':currency="$currencySymbol"',
+                $contents,
+                basename($template) . ' must pass the currency prop through to the payment summary.'
+            );
+        }
+
+        $paymentSummary = file_get_contents(__DIR__ . '/../../resources/views/components/booking-payment-summary.blade.php');
+        $bookingItem = file_get_contents(__DIR__ . '/../../resources/views/components/booking-item-email.blade.php');
+
+        $this->assertStringContainsString("'currency' => 'LKR'", $paymentSummary);
+        $this->assertStringContainsString("'currency' => 'LKR'", $bookingItem);
+
+        $controller = file_get_contents(__DIR__ . '/../../app/Http/Controllers/CheckoutController.php');
+        $this->assertStringContainsString(
+            '$this->currencyService->setSelectedCurrency($bookingCurrency);',
+            $controller,
+            'The success page must restore the booking currency after a gateway return loses browser session state.'
+        );
+    }
 }

@@ -11,7 +11,8 @@
         $isPending = $booking && $booking->payment_status === 'pending';
         $isPayOnCheckin = $booking && $booking->payment_type === 'checkin';
         $currencyCode = $booking ? getBookingDisplayCurrency($booking) : 'LKR';
-        $currencySymbol = getCurrencySymbol($currencyCode);
+        // Keep the ISO code visible on payment confirmation, independent of the returning browser session.
+        $currencySymbol = $currencyCode;
         $advancePercentage = \App\Models\Website\WebsiteSetting::getValue(
             'advance_payment_percentage',
             config('booking.advance_payment.percentage', 50),
@@ -127,7 +128,7 @@
                                 </h2>
                                 @if ($booking->bookingItems->count() > 0)
                                     @foreach ($booking->bookingItems as $index => $item)
-                                        <x-booking-item-email :item="$item" :index="$index" :currencySymbol="$currencySymbol" />
+                                        <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
                                     @endforeach
                                 @endif
                             </div>
@@ -182,7 +183,7 @@
                                 <h2 class="section-title">
                                     <span class="icon">💳</span> Payment Summary
                                 </h2>
-                                <x-booking-payment-summary :booking="$booking" :currencySymbol="$currencySymbol" :advancePercentage="$advancePercentage" />
+                                <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :advance_percentage="$advancePercentage" />
                             </div>
                             @if ($booking->special_requirements)
                                 <div class="section">
