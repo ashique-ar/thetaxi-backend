@@ -1205,6 +1205,8 @@
 
         .promo-code-checkout-wrapper {
             width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
 
         .promo-code-header {
@@ -1223,10 +1225,15 @@
         .promo-input-checkout {
             display: flex;
             gap: 0;
+            width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
         }
 
         .promo-input-checkout input {
             flex: 1;
+            min-width: 0;
+            box-sizing: border-box;
             padding: 8px 12px;
             border: 2px solid #ddd;
             border-radius: 6px 0 0 6px;
@@ -1270,6 +1277,10 @@
             display: flex;
             align-items: center;
             gap: 8px;
+            width: 100%;
+            max-width: 100%;
+            min-width: 0;
+            box-sizing: border-box;
             background: #e8f5e9;
             border: 1px solid #c8e6c9;
             border-radius: 6px;
@@ -1287,9 +1298,12 @@
             text-transform: uppercase;
             letter-spacing: 0.5px;
             flex: 1;
+            min-width: 0;
+            overflow-wrap: anywhere;
         }
 
         .remove-promo-checkout-btn {
+            flex: 0 0 auto;
             background: none;
             border: none;
             color: #dc3545;
@@ -2571,7 +2585,11 @@
                     success: function(response) {
                         if (response.success) {
                             updateCheckoutCartTotals(response.cart);
-                            renderCheckoutAppliedPromo(response.promo_code || promoCode);
+                            const appliedPromo = response.promo_code;
+                            const appliedPromoCode = typeof appliedPromo === 'string'
+                                ? appliedPromo
+                                : appliedPromo?.code;
+                            renderCheckoutAppliedPromo(appliedPromoCode || promoCode);
                             showCheckoutPromoSuccess(response.message || 'Promo code applied!');
                         } else {
                             showCheckoutPromoError(response.message || 'Invalid promo code');
