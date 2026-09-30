@@ -1372,17 +1372,29 @@ class CheckoutController extends Controller
                 ]);
             }
 
-            if (!empty($verificationResult['success']) && ($verificationResult['status'] === 'completed' || $verificationResult['status'] === 'success')) {
-                if (!$this->matchesBookingGatewayOrder($booking, $verificationResult)) {
-                    $this->paymentEventService->recordEvent('payment_failed', [
-                        'booking_id' => $booking->id,
-                        'booking_number' => $booking->booking_number,
-                        'payload' => ['reason' => 'gateway_order_mismatch', 'order_id' => $verificationResult['order_id'] ?? null],
-                        'source' => 'webxpay',
-                        'status' => 'failed',
-                    ]);
-                    return view('checkout.callback-error', ['message' => 'We could not match this payment to your booking. If you have been charged, contact support with your transaction details.']);
-                }
+            if (!$this->matchesBookingGatewayOrder($booking, $verificationResult)) {
+                $this->paymentEventService->recordEvent('payment_callback_rejected', [
+                    'booking_id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'transaction_id' => $verificationResult['transaction_id'] ?? null,
+                    'payload' => [
+                        'reason' => 'gateway_order_mismatch',
+                        'order_id' => $verificationResult['order_id'] ?? null,
+                        'verification_status' => $verificationResult['status'] ?? null,
+                        'verification_success' => $verificationResult['success'] ?? false,
+                    ],
+                    'source' => 'webxpay',
+                    'status' => 'rejected',
+                ]);
+                Log::warning('WebXPay callback rejected: order does not match booking', [
+                    'booking_id' => $booking->id,
+                    'booking_number' => $booking->booking_number,
+                    'order_id' => $verificationResult['order_id'] ?? null,
+                ]);
+                return view('checkout.callback-error', ['message' => 'We could not match this payment to your booking. If you have been charged, contact support with your transaction details.']);
+            }
+
+            if (!empty($verificationResult['success']) && in_array($verificationResult['status'] ?? null, ['completed', 'success'], true)) {
                 $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'transaction_id' => $verificationResult['transaction_id'] ?? null, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'success']);
 
                 $wasPaid = false;
@@ -1443,11 +1455,16 @@ class CheckoutController extends Controller
             } else {
                 Log::warning('WebXPay: payment verification failed', ['verification' => $verificationResult, 'booking_id' => $booking->id]);
                 $this->paymentEventService->recordEvent('payment_failed', ['booking_id' => $booking->id, 'booking_number' => $booking->booking_number, 'payload' => $verificationResult, 'source' => 'webxpay', 'status' => 'failed']);
-                // Payment failed or pending
-                $booking->update([
-                    'status' => config('booking.status.pending_payment'),
-                    'payment_status' => 'failed',
-                ]);
+                // A late failure callback must never downgrade a booking that another callback paid.
+                DB::transaction(function () use ($booking): void {
+                    $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
+                    if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
+                        $lockedBooking->update([
+                            'status' => config('booking.status.pending_payment'),
+                            'payment_status' => 'failed',
+                        ]);
+                    }
+                });
 
                 return redirect()->route('checkout')->with('error', 'Payment verification failed. Please try again.');
             }
@@ -1476,7 +1493,7 @@ class CheckoutController extends Controller
             if ($verificationResult['success']) {
                 $orderId = $verificationResult['order_id'];
 
-                // Extract booking number from order ID (format: BK12345678-timestamp)
+                // Extract booking number from the signed order ID (format: BK12345678-timestamp)
                 $bookingNumber = explode('-', $orderId)[0] ?? null;
 
                 if ($bookingNumber && in_array($verificationResult['status'] ?? null, ['completed', 'success'], true)) {
@@ -2166,12 +2183,30 @@ class CheckoutController extends Controller
         $booking->save();
     }
 
-    /** Require a signed callback to refer to the exact gateway order created for this booking. */
+    /** Bind a verified WebXPay response to the booking, including legacy rows without an order snapshot. */
     private function matchesBookingGatewayOrder(Booking $booking, array $verification): bool
     {
         $expectedOrderId = (string) ($booking->payment_gateway_order_id ?? '');
         $receivedOrderId = (string) ($verification['order_id'] ?? '');
-        return $expectedOrderId !== '' && hash_equals($expectedOrderId, $receivedOrderId);
+        $verifiedBookingNumber = (string) ($verification['booking_number'] ?? '');
+        $bookingNumber = (string) ($booking->booking_number ?? '');
+
+        if ($receivedOrderId === '' || $bookingNumber === '' || ($verifiedBookingNumber !== '' && !hash_equals($bookingNumber, $verifiedBookingNumber))) {
+            return false;
+        }
+
+        if ($expectedOrderId === '') {
+            $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
+            $expectedOrderId = (string) data_get($workflowData, 'gateway_payment.order_id', '');
+        }
+
+        if ($expectedOrderId !== '' && hash_equals($expectedOrderId, $receivedOrderId)) {
+            return true;
+        }
+
+        // A booking can have several payment attempts, while the booking stores only the latest order ID.
+        // WebXPay signs the response containing this order ID; bind its known format to this booking.
+        return preg_match('/^' . preg_quote($bookingNumber, '/') . '-\d{10,}$/D', $receivedOrderId) === 1;
     }
 
     /**
