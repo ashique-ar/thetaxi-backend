@@ -21,18 +21,20 @@ trait BookingAvailabilityTrait
             $usesDropoffTime = (bool) ($requirements['uses_dropoff_time'] ?? true);
             $pickupRequired = (bool) ($requirements['pickup_location_required'] ?? true);
             $dropoffRequired = (bool) ($requirements['dropoff_location_required'] ?? true);
+            $resourceLookup = filter_var($request->input('resource_lookup', false), FILTER_VALIDATE_BOOLEAN);
 
             $rules = [
                 'service_type' => 'required_without:service_type_id|string',
                 'service_type_id' => 'required_without:service_type|string',
                 'from_date' => 'required|date',
                 'from_time' => 'required|string',
-                'pickup_location' => $pickupRequired ? 'required|array' : 'nullable|array',
-                'pickup_location.latitude' => $pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric',
-                'pickup_location.longitude' => $pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric',
-                'dropoff_location' => $dropoffRequired ? 'required|array' : 'nullable|array',
-                'dropoff_location.latitude' => $dropoffRequired ? 'required|numeric' : 'required_with:dropoff_location|numeric',
-                'dropoff_location.longitude' => $dropoffRequired ? 'required|numeric' : 'required_with:dropoff_location|numeric',
+                'resource_lookup' => 'nullable|boolean',
+                'pickup_location' => (!$resourceLookup && $pickupRequired) ? 'required|array' : 'nullable|array',
+                'pickup_location.latitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
+                'pickup_location.longitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
+                'dropoff_location' => (!$resourceLookup && $dropoffRequired) ? 'required|array' : 'nullable|array',
+                'dropoff_location.latitude' => $resourceLookup ? 'nullable|numeric' : ($dropoffRequired ? 'required|numeric' : 'required_with:dropoff_location|numeric'),
+                'dropoff_location.longitude' => $resourceLookup ? 'nullable|numeric' : ($dropoffRequired ? 'required|numeric' : 'required_with:dropoff_location|numeric'),
                 'additional_pickup_locations' => 'sometimes|array',
                 'additional_dropoff_locations' => 'sometimes|array',
                 'ordered_additional_stops' => 'sometimes|array',

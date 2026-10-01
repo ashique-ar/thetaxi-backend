@@ -571,6 +571,11 @@ class BookingLifecycleService
                     [
                         'event_type' => 'booking_dispatch',
                         'notification_type' => 'booking_dispatch',
+                        // Explicitly classify the dispatch action for the driver
+                        // app. Do not infer offer behavior from notification text.
+                        'type' => 'dispatch',
+                        'route' => 'dispatch',
+                        'action' => 'open_dispatch',
                         'dispatch_action' => $isRepeatDispatch ? 'redispatch' : 'dispatch',
                         'dispatch_id' => (string) $dispatch->id,
                         'dispatch_status' => $dispatch->dispatch_status?->value,
@@ -3862,6 +3867,16 @@ class BookingLifecycleService
             if ($hasVehicle && ($isSelfDriven || $hasDriver)) {
                 $actions[] = 'dispatch_vehicle';
             } else {
+                // An allocation can become incomplete after it was first
+                // saved (for example, the selected trip has a vehicle but no
+                // driver). Keep resource assignment available so staff can
+                // resolve the dispatch blocker from the trip workspace.
+                if (!$hasVehicle) {
+                    $actions[] = 'assign_vehicle';
+                }
+                if (!$isSelfDriven && !$hasDriver) {
+                    $actions[] = 'assign_driver';
+                }
                 if (!$hasVehicle) {
                     $blockingReasons[] = 'Vehicle required before dispatch';
                 }

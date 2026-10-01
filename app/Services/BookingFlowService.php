@@ -880,14 +880,15 @@ class BookingFlowService
 
         // Apply search filter
         if ($search !== '') {
-            $baseQuery->where(function ($q) use ($search) {
-                $q->where('name', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhereHas('make', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('model', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('category', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('grade', fn($qq) => $qq->where('name', 'like', "%{$search}%"))
-                    ->orWhereHas('class', fn($qq) => $qq->where('name', 'like', "%{$search}%"));
+            $searchPattern = '%' . mb_strtolower($search, 'UTF-8') . '%';
+            $baseQuery->where(function ($q) use ($searchPattern) {
+                $q->whereRaw('LOWER(name) LIKE ?', [$searchPattern])
+                    ->orWhereRaw('LOWER(description) LIKE ?', [$searchPattern])
+                    ->orWhereHas('make', fn($qq) => $qq->whereRaw('LOWER(name) LIKE ?', [$searchPattern]))
+                    ->orWhereHas('model', fn($qq) => $qq->whereRaw('LOWER(name) LIKE ?', [$searchPattern]))
+                    ->orWhereHas('category', fn($qq) => $qq->whereRaw('LOWER(name) LIKE ?', [$searchPattern]))
+                    ->orWhereHas('grade', fn($qq) => $qq->whereRaw('LOWER(name) LIKE ?', [$searchPattern]))
+                    ->orWhereHas('class', fn($qq) => $qq->whereRaw('LOWER(name) LIKE ?', [$searchPattern]));
             });
         }
 
@@ -937,6 +938,31 @@ class BookingFlowService
             }
 
             $baseQuery->whereIn('id', $assignedVehicleGroupIds);
+        }
+
+        // Staff assignment selectors only need the group identity and a count.
+        // Skip full fleet conflict analysis and per-group pricing, both of which
+        // are required for customer booking cards but make allocation searches
+        // needlessly expensive.
+        if (filter_var($params['resource_lookup'] ?? false, FILTER_VALIDATE_BOOL)) {
+            $groupsPage = (clone $baseQuery)
+                ->setEagerLoads([])
+                ->select(['id', 'name'])
+                ->withCount(['vehicles' => fn ($query) => $query->where('is_active', true)])
+                ->orderBy('name')
+                ->paginate($perPage, ['*'], 'page', $page);
+
+            return [
+                'data' => $groupsPage->items(),
+                'pagination' => [
+                    'current_page' => $groupsPage->currentPage(),
+                    'per_page' => $groupsPage->perPage(),
+                    'total' => $groupsPage->total(),
+                    'last_page' => $groupsPage->lastPage(),
+                    'from' => $groupsPage->firstItem(),
+                    'to' => $groupsPage->lastItem(),
+                ],
+            ];
         }
 
         // Get total count for pagination
@@ -4169,17 +4195,28 @@ class BookingFlowService
             ->when($vehicleGroupId, fn($q) => $q->where('vehicle_group_id', $vehicleGroupId))
             ->with(['vehicleGroup', 'defaultDriver.user'])
             ->when($searchTerm !== '', function ($q) use ($searchTerm) {
-                $q->where(function ($q) use ($searchTerm) {
-                    $q->where('title', 'LIKE', "%{$searchTerm}%")
-                        ->orWhere('license_plate', 'LIKE', "%{$searchTerm}%")
-                        ->orWhere('registration_no', 'LIKE', "%{$searchTerm}%");
+                $searchPattern = '%' . mb_strtolower($searchTerm, 'UTF-8') . '%';
+                $q->where(function ($q) use ($searchPattern, $searchTerm) {
+                    $q->whereRaw('LOWER(title) LIKE ?', [$searchPattern])
+                        ->orWhereRaw('LOWER(license_plate) LIKE ?', [$searchPattern])
+                        ->orWhereRaw('LOWER(registration_no) LIKE ?', [$searchPattern]);
                     if (Uuid::isValid($searchTerm)) {
                         $q->orWhere('id', $searchTerm);
                     }
                 });
             });
 
-        $vehicles = $query->get()->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
+        $resourcePage = null;
+        if ($includeUnavailable && isset($params['page'], $params['per_page'])) {
+            $resourcePage = $query->orderBy('title')->paginate(
+                (int) $params['per_page'], ['*'], 'page', (int) $params['page']
+            );
+            $vehicleRows = $resourcePage->getCollection();
+        } else {
+            $vehicleRows = $query->get();
+        }
+
+        $vehicles = $vehicleRows->map(function ($vehicle) use ($fromDate, $toDate, $excludeBookingId) {
             $availability = $this->assignmentService->getEnhancedVehicleAvailability(
                 $vehicle->id,
                 $fromDate,
@@ -4221,6 +4258,16 @@ class BookingFlowService
             )->values();
         });
 
+        if ($resourcePage) {
+            return [
+                'data' => $vehicles->values()->all(),
+                'pagination' => [
+                    'current_page' => $resourcePage->currentPage(), 'per_page' => $resourcePage->perPage(),
+                    'total' => $resourcePage->total(), 'last_page' => $resourcePage->lastPage(),
+                    'from' => $resourcePage->firstItem(), 'to' => $resourcePage->lastItem(),
+                ],
+            ];
+        }
         return $vehicles->toArray();
     }
 
@@ -4238,13 +4285,14 @@ class BookingFlowService
         $query = Driver::with(['user', 'defaultVehicle']);
 
         if (!empty($searchTerm)) {
-            $query->where(function ($q) use ($searchTerm) {
-                $q->where('license_no', 'LIKE', "%{$searchTerm}%")
-                    ->orWhere('code', 'LIKE', "%{$searchTerm}%")
-                    ->orWhereHas('user', function ($userQuery) use ($searchTerm) {
-                        $userQuery->where('first_name', 'LIKE', "%{$searchTerm}%")
-                            ->orWhere('last_name', 'LIKE', "%{$searchTerm}%")
-                            ->orWhere('phone', 'LIKE', "%{$searchTerm}%");
+            $searchPattern = '%' . mb_strtolower($searchTerm, 'UTF-8') . '%';
+            $query->where(function ($q) use ($searchPattern, $searchTerm) {
+                $q->whereRaw('LOWER(license_no) LIKE ?', [$searchPattern])
+                    ->orWhereRaw('LOWER(code) LIKE ?', [$searchPattern])
+                    ->orWhereHas('user', function ($userQuery) use ($searchPattern) {
+                        $userQuery->whereRaw('LOWER(first_name) LIKE ?', [$searchPattern])
+                            ->orWhereRaw('LOWER(last_name) LIKE ?', [$searchPattern])
+                            ->orWhereRaw('LOWER(phone) LIKE ?', [$searchPattern]);
                     });
                 if (Uuid::isValid($searchTerm)) {
                     $q->orWhere('id', $searchTerm);
@@ -4252,7 +4300,17 @@ class BookingFlowService
             });
         }
 
-        $drivers = $query->get()->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
+        $resourcePage = null;
+        if ($includeUnavailable && isset($params['page'], $params['per_page'])) {
+            $resourcePage = $query->orderBy('id')->paginate(
+                (int) $params['per_page'], ['*'], 'page', (int) $params['page']
+            );
+            $driverRows = $resourcePage->getCollection();
+        } else {
+            $driverRows = $query->get();
+        }
+
+        $drivers = $driverRows->map(function ($driver) use ($fromDate, $toDate, $excludeBookingId) {
             $availability = $this->assignmentService->getEnhancedDriverAvailability(
                 $driver->id,
                 $fromDate,
@@ -4290,6 +4348,16 @@ class BookingFlowService
             return $drivers->where('availability_status', 'available')->values();
         });
 
+        if ($resourcePage) {
+            return [
+                'data' => $drivers->values()->all(),
+                'pagination' => [
+                    'current_page' => $resourcePage->currentPage(), 'per_page' => $resourcePage->perPage(),
+                    'total' => $resourcePage->total(), 'last_page' => $resourcePage->lastPage(),
+                    'from' => $resourcePage->firstItem(), 'to' => $resourcePage->lastItem(),
+                ],
+            ];
+        }
         return $drivers->toArray();
     }
 
