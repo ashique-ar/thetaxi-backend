@@ -46,9 +46,28 @@ it('scopes list and reference names through current People access and retains em
 
     expect($controller)->toContain("scope(Staff::query()->select('staff.id'), \$request->user())")
         ->toContain("whereIn('appointment.staff_id', \$authorizedStaff)")
-        ->toContain("whereIn('staff.id', \$authorizedStaff)")
+        ->toContain("whereIn('staff.id', \$this->access->scope")
         ->toContain("authorize(\$request->user(), Staff::query()->whereKey(\$appointment->staff_id)->firstOrFail())")
         ->and($people)->toContain("'acting_appointments' => \$actingAppointments,");
+});
+
+it('uses bounded readable selectors for acting-appointment employee manager and position choices', function () {
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/ActingAppointmentController.php'));
+    $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/acting-appointment-administration/acting-appointment-create-dialog.component.ts'));
+    $admin = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/acting-appointment-administration/acting-appointment-administration.component.ts'));
+
+    expect($routes)->toContain("Route::get('acting-appointment-reference-options'")
+        ->and($controller)->toContain("Rule::in(['staff', 'position'])")
+        ->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
+        ->toContain("scope(Staff::query()->select('staff.id'), \$request->user())")
+        ->and($dialog)->toContain('UiManagedRecordSelectComponent')
+        ->toContain('recordType="staff"')
+        ->toContain('recordType="position"')
+        ->toContain('[queryParams]="positionReferenceParams"')
+        ->not->toContain('<mat-select formControlName="staff_id">')
+        ->not->toContain('reference_limit')
+        ->and($admin)->not->toContain('actingAppointmentReferences');
 });
 
 it('retains appointment events and refuses destructive rollback after use', function () {

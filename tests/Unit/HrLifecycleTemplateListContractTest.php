@@ -12,15 +12,17 @@ it('adds the missing lifecycle template list endpoint so openCase()\'s required 
 it('gates the template list to either the manage or approve permission so an approve-only checker can still see pending templates', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($routes)->toContain("Route::get('templates',[LifecycleController::class,'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');");
+    expect($routes)->toContain("Route::get('templates', [LifecycleController::class, 'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');");
 });
 
 it('wires lifecycle templates into the Angular lifecycle-cases page, including an approved-only template selector for opening a case', function () {
     $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/hr-lifecycle.service.ts'));
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/components/lifecycle-cases/lifecycle-cases.component.ts'));
+    $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-lifecycle/components/lifecycle-cases/open-case-dialog.component.ts'));
 
     expect($service)->toContain("templates(p:any={}){return this.makeGetCall('/hr/lifecycle/templates',p)}");
     expect($component)
-        ->toContain("approvedTemplates() { return this.templates().filter(t => t.status === 'approved'); }")
-        ->toContain("canDecideTemplate(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }");
+        ->toContain("canDecideTemplate(row: any) { return this.canApproveConfig() && row.created_by !== this.myUserId && row.status === 'pending_approval'; }")
+        ->not->toContain('approvedTemplates()');
+    expect($dialog)->toContain('endpoint="/hr/lifecycle/template-options"')->not->toContain('data.approvedTemplates');
 });

@@ -86,6 +86,23 @@ class PeopleCoreController extends Controller
 
     public function detectDuplicates(Request $request):JsonResponse{$this->ensureEnabled();return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates($this->access->actorCompanyId($request->user()),(string)$request->user()->id)]);}
     public function duplicateReviews(Request $request):JsonResponse{$this->ensureEnabled();$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews($this->access->actorCompanyId($request->user()),(int)($data['per_page']??25))]);}
+    public function duplicateReviewCandidateOptions(Request $request,string $reviewId):JsonResponse
+    {
+        $this->ensureEnabled();
+        $data=$request->validate(['search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
+        $companyId=$this->access->actorCompanyId($request->user());
+        $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where('company_id',$companyId)->where('status','pending_review')->firstOrFail();
+        $search=trim((string)($data['search']??''));
+        $options=Staff::withTrashed()->leftJoin('users','users.id','=','staff.user_id')
+            ->where('staff.company_id',$companyId)->whereIn('staff.id',$review->candidate_staff_ids??[])
+            ->when($data['selected_id']??null,fn($query,$id)=>$query->where('staff.id',$id))
+            ->when($search!=='',fn($query)=>$query->where(fn($match)=>$match->whereLikeInsensitive('staff.code',$search)->orWhereLikeInsensitive('users.first_name',$search)->orWhereLikeInsensitive('users.last_name',$search)))
+            ->select('staff.id','staff.code','staff.employment_ended_at','staff.deleted_at','users.first_name','users.last_name')
+            ->orderBy('users.first_name')->orderBy('users.last_name')->paginate((int)($data['per_page']??25));
+        $options->setCollection($options->getCollection()->map(function($staff){$name=trim(($staff->first_name??'').' '.($staff->last_name??''));$status=$staff->deleted_at?'deleted':($staff->employment_ended_at?'former':'active');return['value'=>(string)$staff->id,'label'=>trim(($staff->code?$staff->code.' · ':'').($name?:'Staff member')),'metadata'=>['employment'=>$status],'status'=>$status];}));
+
+        return response()->json(['status'=>'success','data'=>$options]);
+    }
     public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$this->access->actorCompanyId($request->user()),$data,(string)$request->user()->id)]);}
     public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,$this->access->actorCompanyId($request->user()),(int)$data['expected_version'],(string)$request->user()->id)]);}
 
@@ -137,13 +154,19 @@ class PeopleCoreController extends Controller
     public function show(Request $request, string $staffId): JsonResponse
     {
         $this->ensureEnabled();
-        $staff = Staff::withTrashed()->with([
+        $staff = Staff::withTrashed()->findOrFail($staffId);
+        $this->access->authorize($request->user(), $staff);
+        activity('hr-sensitive-data')
+            ->causedBy($request->user())
+            ->performedOn($staff)
+            ->withProperties(['company_id' => $staff->company_id, 'ip' => $request->ip()])
+            ->log('employee_360_viewed');
+        $staff->load([
             'user:id,first_name,last_name,email,phone,is_active',
             'company:id,name',
             'employmentSpells' => fn($spells) => $spells->with('assignments')->orderByDesc('spell_number'),
             'employmentAssignments' => fn($assignments) => $assignments->orderByDesc('effective_from'),
-        ])->findOrFail($staffId);
-        $this->access->authorize($request->user(), $staff);
+        ]);
         $at = now()->toDateString();
         $reportingLines = DB::table('hr_reporting_lines as line')->join('staff as manager_staff', 'manager_staff.id', '=', 'line.manager_staff_id')->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
             ->where('line.company_id', $staff->company_id)->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
@@ -205,6 +228,83 @@ class PeopleCoreController extends Controller
         $search = trim((string) ($data['search'] ?? ''));
         $rows = DB::table('hr_organization_units')->where('company_id', $companyId)->when($data['unit_type'] ?? null, fn($q, $type) => $q->where('unit_type', $type))->when($data['status'] ?? null, fn($q, $status) => $q->where('status', $status))->when($search !== '', fn($q) => $q->where(fn($match) => $match->whereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])))->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
         $rows->getCollection()->transform(fn($row) => $this->decodeJsonColumns($row, ['custom_fields']));
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function organizationReferenceOptions(Request $request): JsonResponse
+    {
+        $this->ensureEnabled();
+        $companyId = $this->access->actorCompanyId($request->user());
+        $data = $request->validate([
+            'record_type' => ['required', Rule::in(['organization_unit', 'job_family', 'job_grade', 'designation'])],
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'exclude_id' => ['nullable', 'uuid'],
+            'effective_at' => ['nullable', 'date'],
+            'effective_until' => ['nullable', 'date'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $recordType = $data['record_type'];
+        $effectiveAt = $data['effective_at'] ?? now()->toDateString();
+        $effectiveUntil = $data['effective_until'] ?? null;
+        $table = match ($recordType) {
+            'organization_unit' => 'hr_organization_units',
+            'job_family' => 'hr_job_families',
+            'job_grade' => 'hr_job_grades',
+            'designation' => 'hr_designations',
+        };
+        $query = DB::table($table)->where('company_id', $companyId);
+        if (! empty($data['exclude_id'])) {
+            $query->where('id', '<>', $data['exclude_id']);
+        }
+        if (! empty($data['selected_id'])) {
+            $query->where('id', $data['selected_id']);
+        } else {
+            $query->where('status', 'active')
+                ->whereNotNull('effective_from')->whereDate('effective_from', '<=', $effectiveAt)
+                ->where(function ($active) use ($effectiveUntil) {
+                    if ($effectiveUntil === null) {
+                        $active->whereNull('effective_until');
+                    } else {
+                        $active->whereNull('effective_until')->orWhereDate('effective_until', '>=', $effectiveUntil);
+                    }
+                });
+            $search = trim((string) ($data['search'] ?? ''));
+            if ($search !== '') {
+                $query->where(fn ($matches) => $matches
+                    ->whereRaw('LOWER(name) LIKE ?', ['%' . mb_strtolower($search) . '%'])
+                    ->orWhereRaw('LOWER(code) LIKE ?', ['%' . mb_strtolower($search) . '%']));
+            }
+        }
+
+        $columns = match ($recordType) {
+            'organization_unit' => ['id', 'name', 'code', 'unit_type', 'status', 'effective_from', 'effective_until'],
+            'job_family' => ['id', 'name', 'code', 'status', 'effective_from', 'effective_until'],
+            'job_grade' => ['id', 'name', 'code', 'rank', 'status', 'effective_from', 'effective_until'],
+            'designation' => ['id', 'name', 'code', 'status', 'effective_from', 'effective_until', 'job_family_id', 'job_grade_id'],
+        };
+        $rows = $query->select($columns)->orderBy('name')->orderBy('id')->paginate((int) ($data['per_page'] ?? 25));
+        $rows->getCollection()->transform(function ($row) use ($recordType): array {
+            $metadata = [
+                'code' => $row->code,
+                'effective_from' => $row->effective_from,
+                'effective_until' => $row->effective_until,
+            ];
+            if ($recordType === 'organization_unit') {
+                $metadata['type'] = $row->unit_type;
+            } elseif ($recordType === 'job_grade') {
+                $metadata['rank'] = (string) $row->rank;
+            }
+
+            return [
+                'value' => (string) $row->id,
+                'label' => (string) $row->name,
+                'metadata' => $metadata,
+                'status' => (string) $row->status,
+            ];
+        });
+
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -538,6 +638,22 @@ class PeopleCoreController extends Controller
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         return response()->json(['status' => 'success', 'data' => HrEmploymentSpell::query()->where('staff_id', $staff->id)->with('assignments')->orderBy('spell_number')->get()]);
+    }
+
+    public function employmentSpellOptions(Request $request, string $staffId): JsonResponse
+    {
+        $this->ensureEnabled();
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
+        $staff = Staff::withTrashed()->findOrFail($staffId);
+        $this->access->authorize($request->user(), $staff);
+        $search = trim((string) ($data['search'] ?? ''));
+        $options = HrEmploymentSpell::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)
+            ->when($data['selected_id'] ?? null, fn($query, $id) => $query->whereKey($id))
+            ->when($search !== '', fn($query) => $query->where(fn($match) => $match->where('spell_number', 'like', '%' . $search . '%')->orWhere('status', 'like', '%' . $search . '%')))
+            ->orderByDesc('spell_number')->paginate((int) ($data['per_page'] ?? 25));
+        $options->getCollection()->transform(fn($spell) => ['value' => (string) $spell->id, 'label' => 'Spell ' . $spell->spell_number, 'metadata' => ['joined' => $spell->joined_at?->toDateString(), 'ended' => $spell->terminated_at?->toDateString()], 'status' => $spell->status]);
+
+        return response()->json(['status' => 'success', 'data' => $options]);
     }
 
     public function timeline(Request $request, string $staffId): JsonResponse

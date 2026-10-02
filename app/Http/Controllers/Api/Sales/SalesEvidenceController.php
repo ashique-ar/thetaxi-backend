@@ -29,6 +29,40 @@ class SalesEvidenceController extends Controller
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
+    public function options(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'subject_type' => ['required', Rule::in(['booking', 'booking_payment_receipt', 'commission_statement_line', 'commission_statement', 'commission_payout'])],
+            'subject_id' => ['required', 'uuid'],
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->authorizeSubject($request, $data['subject_type'], $data['subject_id'], true);
+        $query = DB::table('domain_evidence_files')->where('domain', 'sales')->where('company_id', $companyId)
+            ->where('subject_type', $data['subject_type'])->where('subject_id', $data['subject_id'])->whereNull('deleted_at')
+            ->select(['id', 'evidence_type', 'classification', 'file_name', 'version', 'created_at']);
+        if (! empty($data['selected_id'])) {
+            $query->where('id', $data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = '%'.addcslashes($data['search'], '%_\\').'%';
+            $query->where(fn ($q) => $q->where('file_name', 'like', $term)->orWhere('evidence_type', 'like', $term));
+        }
+        $map = static fn ($row) => [
+            'value' => (string) $row->id,
+            'label' => $row->file_name,
+            'metadata' => ['type' => $row->evidence_type, 'version' => 'v'.$row->version, 'classification' => $row->classification],
+        ];
+        if (! empty($data['selected_id'])) {
+            return response()->json(['status' => 'success', 'data' => $query->limit(1)->get()->map($map)->values()]);
+        }
+        $rows = $query->orderByDesc('created_at')->orderBy('id')->paginate((int) ($data['per_page'] ?? 25));
+        $rows->getCollection()->transform($map);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([

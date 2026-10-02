@@ -95,6 +95,46 @@ trait ManagesAttendanceDeviceCrud
         return response()->json(['status' => 'success', 'data' => $devices]);
     }
 
+    public function deviceOptions(Request $request): JsonResponse
+    {
+        $companyId = $this->authorizedCompanyId($request, null);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:100'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $devices = AttendanceDevice::query()->where('company_id', $companyId);
+
+        if (! empty($data['selected_id'])) {
+            $devices->whereKey($data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $search = '%'.trim($data['search']).'%';
+            $devices->where(fn ($query) => $query
+                ->where('site_code', 'like', $search)
+                ->orWhere('model', 'like', $search)
+                ->orWhere('serial_number', 'like', $search));
+        }
+
+        $results = $devices->select(['id', 'company_id', 'site_code', 'model', 'serial_number', 'status'])
+            ->orderBy('site_code')
+            ->orderBy('id')
+            ->paginate($data['per_page'] ?? 25, ['*'], 'page', $data['page'] ?? 1);
+
+        return response()->json(['status' => 'success', 'data' => [
+            'data' => collect($results->items())->map(fn (AttendanceDevice $device) => [
+                'value' => $device->id,
+                'label' => $device->site_code,
+                'company_id' => $device->company_id,
+                'metadata' => ['model' => $device->model, 'serial' => $device->serial_number, 'timezone' => $device->timezone],
+                'status' => $device->status,
+            ])->values(),
+            'current_page' => $results->currentPage(),
+            'per_page' => $results->perPage(),
+            'total' => $results->total(),
+        ]]);
+    }
+
     public function health(Request $request): JsonResponse
     {
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));

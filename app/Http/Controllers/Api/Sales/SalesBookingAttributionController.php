@@ -41,8 +41,13 @@ class SalesBookingAttributionController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
+        $allowedProfileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
+        $profile = fn ($query) => $query->with('staff.user:id,first_name,last_name')
+            ->when($allowedProfileIds !== null, fn ($profiles) => $profiles->whereIn('id', $allowedProfileIds));
         $query = SalesBookingAttribution::query()->with([
             'booking:id,booking_number,payment_status,payment_collection_status',
+            'acquisitionProfile' => $profile,
+            'collectionProfile' => $profile,
         ]);
         $this->applyActorScope($query, $request, 'sales_booking_attributions', $data['company_id'] ?? null);
 
@@ -77,6 +82,7 @@ class SalesBookingAttributionController extends Controller
                 'attribution.company_id',
                 'attribution.acquisition_sales_profile_id',
                 'attribution.collection_sales_profile_id',
+                'attribution.secured_at',
             );
         $this->applyActorScope($query, $request, 'attribution', $data['company_id'] ?? null);
 
@@ -249,8 +255,10 @@ class SalesBookingAttributionController extends Controller
     public function previewPlanFamilyCorrection(Request $request, string $attribution): JsonResponse
     {
         $attribution = $this->scopedAttribution($request, $attribution);
+        $preview = $this->commissionPlans->previewMissingFamily($attribution);
+        unset($preview['frozen_correction_snapshot'], $preview['prohibited_approver_ids']);
 
-        return response()->json(['status' => 'success', 'data' => $this->commissionPlans->previewMissingFamily($attribution)]);
+        return response()->json(['status' => 'success', 'data' => $preview]);
     }
 
     public function correctPlanFamily(Request $request, string $attribution): JsonResponse
@@ -376,29 +384,7 @@ class SalesBookingAttributionController extends Controller
         if ($defaultCompany && $companyIds !== null && ! in_array($defaultCompany->id, $companyIds, true)) {
             $defaultCompany = null;
         }
-        $profiles = SalesProfile::query()
-            ->with('staff.user:id,first_name,last_name')
-            ->configured()
-            ->when($data['company_id'] ?? null, fn ($query, $companyId) => $query->where('company_id', $companyId))
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('company_id', $companyIds));
-        $profiles = $this->scope->scopeProfiles(
-            $profiles,
-            $request->user(),
-            'sales.attributions.view-all',
-            'sales.attributions.view-team',
-            $data['company_id'] ?? null,
-        )->orderBy('sales_code')->get()->map(fn (SalesProfile $profile) => [
-            'id' => $profile->id,
-            'company_id' => $profile->company_id,
-            'sales_code' => $profile->sales_code,
-            'name' => trim((string) ($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name)),
-            'acquisition_eligible' => (bool) $profile->acquisition_eligible,
-            'collection_eligible' => (bool) $profile->collection_eligible,
-            'status' => $profile->status,
-        ])->values();
-
         return response()->json(['status' => 'success', 'data' => [
-            'profiles' => $profiles,
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
             'default_company_id' => $defaultCompany?->id,
         ]]);
@@ -418,9 +404,74 @@ class SalesBookingAttributionController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => ['city' => $company->city], 'status' => 'active']);
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'status' => $company->is_active ? 'active' : 'inactive']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function profileOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'purpose' => ['required', Rule::in(['acquisition', 'collection'])],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'cross_company' => ['sometimes', 'boolean'],
+            'effective_at' => ['nullable', 'date'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $data['company_id'] ?? null;
+        abort_if(! $companyId && ! ($data['cross_company'] ?? false), 422, 'Select a legal entity.');
+        if ($companyId) {
+            abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+            $this->scope->assertCompany($request->user(), $companyId, 'sales.attributions.view-all');
+        }
+
+        $at = isset($data['effective_at']) ? Carbon::parse($data['effective_at']) : now();
+        $eligibility = $data['purpose'].'_eligible';
+        $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+        $query = SalesProfile::query()
+            ->select('sales_profiles.*', 'companies.name as company_name')
+            ->join('companies', 'companies.id', '=', 'sales_profiles.company_id')
+            ->with('staff.user:id,first_name,last_name')
+            ->whereNull('companies.deleted_at')
+            ->where('sales_profiles.status', 'active')
+            ->where("sales_profiles.{$eligibility}", true)
+            ->where('sales_profiles.effective_from', '<=', $at)
+            ->where(fn ($effective) => $effective->whereNull('sales_profiles.effective_until')->orWhere('sales_profiles.effective_until', '>', $at))
+            ->whereNotNull('sales_profiles.reporting_currency')
+            ->whereNotNull('sales_profiles.staff_category_snapshot')
+            ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', $at)))
+            ->when($companyId, fn ($profiles) => $profiles->where('sales_profiles.company_id', $companyId))
+            ->when($companyIds !== null, fn ($profiles) => $profiles->whereIn('sales_profiles.company_id', $companyIds));
+
+        if ($companyId) {
+            $this->scope->scopeProfiles($query, $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team', $companyId);
+        } elseif ($companyIds !== null) {
+            $profileIds = collect($companyIds)->flatMap(fn ($id) => $this->scope->profileIds(
+                $request->user(), 'sales.attributions.view-all', 'sales.attributions.view-team', $id,
+            ) ?? [])->unique()->values()->all();
+            $query->whereIn('sales_profiles.id', $profileIds);
+        }
+
+        if (! empty($data['selected_id'])) $query->where('sales_profiles.id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%'.addcslashes($data['search'], '%_\\').'%';
+            $query->where(fn ($profiles) => $profiles->where('sales_profiles.sales_code', 'like', $term)
+                ->orWhereHas('staff.user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term))
+                ->orWhere('companies.name', 'like', $term));
+        }
+
+        $rows = $query->orderBy('sales_profiles.sales_code')->orderBy('sales_profiles.id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn (SalesProfile $profile) => [
+            'value' => (string) $profile->id,
+            'label' => trim($profile->sales_code.' — '.($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name)),
+            'metadata' => ['company' => $profile->company_name],
+            'status' => $profile->status,
+        ]);
+
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 

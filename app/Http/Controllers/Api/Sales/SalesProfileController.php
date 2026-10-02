@@ -248,6 +248,8 @@ class SalesProfileController extends Controller
         if (! $data['acquisition_eligible'] && ! $data['collection_eligible'] && ! $data['commission_eligible']) {
             $this->fail('VALIDATION_FAILED', 'A Sales Profile must have at least one explicit eligibility.', 422);
         }
+        $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->first();
+        abort_unless($company && $company->is_active, 422, 'Select an active legal entity.');
         $salesStaffCategories = $this->salesStaffCategories($data['company_id']);
         if ($salesStaffCategories === []) {
             $this->fail('CONFIGURATION_MISSING', 'Approved Sales Staff categories are not configured.', 503);
@@ -256,10 +258,18 @@ class SalesProfileController extends Controller
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $profile = DB::transaction(function () use ($data, $request, $salesStaffCategories) {
-            DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
+            $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
+            abort_unless($company->is_active, 422, 'Select an active legal entity.');
             $staff = Staff::query()->lockForUpdate()->findOrFail($data['staff_id']);
             abort_unless($staff->company_id === $data['company_id'], 422, 'Staff and Sales Profile must belong to the same legal entity.');
             abort_unless($staff->user_id, 422, 'Sales self-service enrollment requires a linked User identity.');
+            $user = $staff->user()->lockForUpdate()->firstOrFail();
+            abort_unless($user->is_active, 422, 'Sales Profile enrollment requires an active User account.');
+            $context = $user->contexts()->where('context_type', 'staff')->where('context_id', $staff->id)
+                ->where('is_active', true)->lockForUpdate()->first();
+            if (! $context) {
+                $this->fail('AUTH_CONTEXT_INVALID', 'The linked Staff identity has no active internal context.', 422);
+            }
             abort_unless($this->isSalesStaffCategory($staff->staff_type, $salesStaffCategories), 422,
                 'Only Staff in an approved Sales category may be explicitly enrolled as a Sales Profile.');
             if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
@@ -350,15 +360,6 @@ class SalesProfileController extends Controller
                 'updated_at' => now(),
             ]);
 
-            $user = $staff->user()->firstOrFail();
-            $context = $user->contexts()
-                ->where('context_type', 'staff')
-                ->where('context_id', $staff->id)
-                ->where('is_active', true)
-                ->first();
-            if (! $context) {
-                $this->fail('AUTH_CONTEXT_INVALID', 'The linked Staff identity has no active internal context.', 422);
-            }
             if (! DB::table('roles')->where('name', 'salesperson')->exists()) {
                 $this->fail('CONFIGURATION_MISSING', 'The Salesperson authorization role is not configured.', 503);
             }
@@ -513,9 +514,10 @@ class SalesProfileController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => ['city' => $company->city], 'status' => 'active']);
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'status' => $company->is_active ? 'active' : 'inactive']);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -531,6 +533,8 @@ class SalesProfileController extends Controller
         $categories = $this->salesStaffCategories($data['company_id']);
         $query = Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
             ->whereNull('deleted_at')->whereNotNull('user_id')->whereIn('staff_type', $categories)
+            ->whereHas('user', fn (Builder $user) => $user->where('is_active', true)->whereHas('contexts', fn (Builder $context) => $context
+                ->where('context_type', 'staff')->whereColumn('context_id', 'staff.id')->where('is_active', true)))
             ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
         if (! $this->scope->hasPermission($request->user(), 'sales.profiles.manage-all')) {
             $profileIds = $this->scope->profileIds($request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']) ?? [];
@@ -548,6 +552,38 @@ class SalesProfileController extends Controller
             return ['value' => (string) $staff->id, 'label' => $name !== '' ? $name : 'Named Staff',
                 'metadata' => ['staff_code' => $staff->code, 'staff_category' => $staff->staff_type], 'status' => 'active'];
         });
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function reportingProfileOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
+
+        $query = SalesProfile::query()->with('staff.user:id,first_name,last_name')
+            ->where('company_id', $data['company_id'])->activeAt(now())->configured()
+            ->whereHas('staff', fn (Builder $staff) => $staff->whereNull('deleted_at')
+                ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())));
+        $query = $this->scope->scopeProfiles($query, $request->user(), 'sales.profiles.manage-all', 'sales.profiles.manage-team', $data['company_id']);
+        if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn (Builder $profile) => $profile->where('sales_code', 'like', $term)
+                ->orWhereHas('staff', fn (Builder $staff) => $staff->where('code', 'like', $term)
+                    ->orWhereHas('user', fn (Builder $user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term))));
+        }
+        $rows = $query->orderBy('sales_code')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(function (SalesProfile $profile): array {
+            $name = trim((string) ($profile->staff?->user?->first_name . ' ' . $profile->staff?->user?->last_name));
+            return ['value' => (string) $profile->id, 'label' => $profile->sales_code . ' / ' . ($name ?: ($profile->staff?->code ?: 'Staff')),
+                'metadata' => ['staff_code' => $profile->staff?->code], 'status' => $profile->status];
+        });
+
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -586,6 +622,16 @@ class SalesProfileController extends Controller
             }
             if ($data['to_status'] === 'active') {
                 $staff = Staff::query()->lockForUpdate()->findOrFail($profile->staff_id);
+                abort_unless(
+                    DB::table('staff')->where('id', $staff->id)->whereNull('deleted_at')
+                        ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+                        ->exists()
+                    && $staff->user()->where('is_active', true)->exists()
+                    && DB::table('user_contexts')->where('user_id', $staff->user_id)->where('context_type', 'staff')->whereNull('deleted_at')
+                        ->where('context_id', $staff->id)->where('is_active', true)->exists(),
+                    422,
+                    'A Sales Profile can only be reactivated for a current Staff identity with an active User and Staff context.',
+                );
                 $salesStaffCategories = $this->salesStaffCategories((string) $profile->company_id);
                 abort_if($profile->effective_until && $profile->effective_until->lte(now()), 422, 'An ended effective interval cannot be reactivated.');
                 abort_unless(

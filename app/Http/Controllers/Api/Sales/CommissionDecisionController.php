@@ -21,7 +21,7 @@ class CommissionDecisionController extends Controller
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $query = SalesCommissionDecision::query();
+        $query = SalesCommissionDecision::query()->with('booking:id,booking_number');
         $this->applyScope($query, $request);
         return response()->json(['status' => 'success', 'data' => $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))

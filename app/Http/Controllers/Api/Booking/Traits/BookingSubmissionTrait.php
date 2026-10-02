@@ -650,21 +650,25 @@ trait BookingSubmissionTrait
     public function getReturnInspectionOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'record_type' => 'required|string|in:customer,vehicle,driver',
+            'record_type' => 'required|string|in:customer,vehicle,driver,service_type',
             'search' => 'nullable|string|max:100',
             'selected_id' => 'nullable|uuid',
+            'page' => 'nullable|integer|min:1',
             'per_page' => 'nullable|integer|min:1|max:50',
+            'operations_queue' => 'nullable|string|in:active',
         ]);
 
         $recordType = $data['record_type'];
         $filters = [
             'per_page' => min(50, (int) ($data['per_page'] ?? 25)),
             'search' => trim((string) ($data['search'] ?? '')),
+            'page' => (int) ($data['page'] ?? 1),
             'sort_by' => 'to_date',
             'sort_direction' => 'desc',
+            'operations_queue' => $data['operations_queue'] ?? null,
         ];
         if (! empty($data['selected_id'])) {
-            $filters[$recordType . '_id'] = $data['selected_id'];
+            $filters[$recordType === 'service_type' ? 'service_type' : $recordType . '_id'] = $data['selected_id'];
             unset($filters['search']);
         }
 
@@ -679,6 +683,7 @@ trait BookingSubmissionTrait
                 'customer' => $record['name'] ?? null,
                 'vehicle' => $record['name'] ?? $record['title'] ?? $record['registration_number'] ?? $record['license_plate'] ?? null,
                 'driver' => $record['name'] ?? null,
+                'service_type' => $record['name'] ?? null,
             };
             if (! filled($label)) {
                 return null;

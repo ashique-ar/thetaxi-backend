@@ -141,7 +141,7 @@ class UserContextController extends Controller
 
         try {
             $user = $request->user();
-            $success = $this->contextService->deactivateContext($user, $request->get('context_type'));
+            $success = $this->contextService->deactivateContext($user, $request->get('context_type'), null, $user->id);
 
             if ($success) {
                 return response()->json([

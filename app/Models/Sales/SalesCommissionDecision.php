@@ -3,6 +3,8 @@
 namespace App\Models\Sales;
 
 use App\Models\BaseModel;
+use App\Models\Booking\Booking;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SalesCommissionDecision extends BaseModel
@@ -31,6 +33,11 @@ class SalesCommissionDecision extends BaseModel
     {
         static::updating(fn () => throw new \LogicException('Commission decisions are immutable; create a linked adjustment.'));
         static::deleting(fn () => throw new \LogicException('Commission decisions cannot be deleted.'));
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
     }
 
     public function holdRelease(): HasOne

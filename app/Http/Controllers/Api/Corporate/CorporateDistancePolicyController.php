@@ -14,6 +14,8 @@ use App\Models\Service\ServiceType;
 use App\Services\BookingFlowService;
 use App\Services\CorporateDistancePolicyService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class CorporateDistancePolicyController extends Controller
@@ -23,7 +25,7 @@ class CorporateDistancePolicyController extends Controller
         private BookingFlowService $bookingFlow,
     ) {
         $this->middleware('permission:corporates.view')->only(['show', 'services', 'preview', 'locations']);
-        $this->middleware('permission:corporates.edit|corporates.manage')->only(['update', 'updateService', 'storeLocation', 'updateLocation']);
+        $this->middleware('permission:corporates.edit|corporates.manage')->only(['update', 'updateService', 'storeLocation', 'updateLocation', 'locationOptions']);
     }
 
     public function show(Corporate $corporate): JsonResponse
@@ -61,6 +63,38 @@ class CorporateDistancePolicyController extends Controller
             ->where(fn ($query) => $query->where('corporate_id', $corporate->id)->orWhere(fn ($operator) => $operator->whereNull('corporate_id')->where('owner_type', 'operator')))
             ->orderBy('owner_type')->orderBy('name')->get()->map->only(['id', 'corporate_id', 'owner_type', 'name', 'address', 'latitude', 'longitude', 'is_active']);
         return response()->json(['status' => 'success', 'data' => ['locations' => $locations]]);
+    }
+
+    public function locationOptions(Request $request, Corporate $corporate): JsonResponse
+    {
+        $data = $request->validate([
+            'record_type' => ['required', \Illuminate\Validation\Rule::in(['operator_location', 'corporate_location'])],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = CorporateContractLocation::query();
+        if ($data['record_type'] === 'operator_location') {
+            $query->where('owner_type', 'operator')->whereNull('corporate_id');
+        } else {
+            $query->where('corporate_id', $corporate->id)->whereIn('owner_type', ['corporate', 'customer', 'named_contract']);
+        }
+        if (! empty($data['selected_id'])) {
+            $query->whereKey($data['selected_id']);
+        } else {
+            $query->where('is_active', true);
+            if (($search = trim((string) ($data['search'] ?? ''))) !== '') {
+                $term = '%' . mb_strtolower($search) . '%';
+                $query->where(fn ($matches) => $matches->whereRaw('LOWER(name) LIKE ?', [$term])->orWhereRaw('LOWER(address) LIKE ?', [$term]));
+            }
+        }
+        $rows = $query->select(['id', 'owner_type', 'name', 'address'])->orderBy('name')->orderBy('id')
+            ->paginate((int) ($data['per_page'] ?? 25));
+        $rows->getCollection()->transform(fn ($location) => [
+            'value' => (string) $location->id, 'label' => $location->name,
+            'metadata' => ['owner' => str($location->owner_type)->replace('_', ' ')->title()->toString(), 'address' => Str::limit($location->address, 160)],
+            'status' => $location->is_active ? 'active' : 'inactive',
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function storeLocation(\Illuminate\Http\Request $request, Corporate $corporate): JsonResponse

@@ -293,6 +293,7 @@ class OnboardingController extends Controller
                     'password' => bcrypt(Str::random(24)),
                     'is_active' => true,
                 ]);
+                $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 $user->update(array_merge($p['identity'], ['phone' => $application->mobile, 'phone_verified_at' => now()]));
                 $make = VehicleMake::findOrFail($p['vehicle']['make_id']);
                 $model = VehicleModel::where('make_id', $make->id)->findOrFail($p['vehicle']['model_id']);

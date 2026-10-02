@@ -24,7 +24,15 @@ it('uses canonical identity links instead of rewriting historical domain ownersh
 
 it('exposes only explicit non destructive dispositions',function(){
  $controller=file_get_contents(app_path('Http/Controllers/Api/Hr/PeopleCoreController.php'));
+ $routes=file_get_contents(base_path('routes/api.php'));
+ $template=file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/people-directory/people-directory.component.html'));
  expect($controller)->toContain("Rule::in(['keep_separate','canonical_selected','false_positive'])")
   ->toContain("'reason'=>['required','string','min:10','max:2000']")
+  ->toContain('duplicateReviewCandidateOptions(Request $request,string $reviewId)')
+  ->toContain("whereIn('staff.id',\$review->candidate_staff_ids??[])")
+  ->and($routes)->toContain("duplicate-reviews/{reviewId}/candidate-options")
+  ->and($template)->toContain('<app-ui-managed-record-select')
+  ->toContain("'/hr/people/duplicate-reviews/' + review.id + '/candidate-options'")
+  ->not->toContain('<mat-select [value]="duplicateCanonical[review.id]"')
   ->not->toContain('mergeStaff');
 });

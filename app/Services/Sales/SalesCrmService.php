@@ -31,21 +31,27 @@ class SalesCrmService
         private readonly SalesPolicySettingsService $policySettings,
     ) {}
 
-    public function createOpportunity(array $data, string $actorUserId): SalesOpportunity
+    public function createOpportunity(array $data, string $actorUserId, ?array $sourceUserIds): SalesOpportunity
     {
         $this->assertEnabled((string) $data['company_id']);
-        return DB::transaction(function () use ($data, $actorUserId) {
-            $owner = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
-            abort_unless($owner->company_id === $data['company_id'], 422, 'Opportunity owner and legal entity must match.');
+        return DB::transaction(function () use ($data, $actorUserId, $sourceUserIds) {
+            abort_if(! empty($data['inquiry_id']) && ! empty($data['source_phone_call_id']), 422,
+                'An opportunity can have only one managed source record.');
+            $owner = $this->lockActiveOpportunityOwner((string) $data['owner_sales_profile_id'], (string) $data['company_id']);
             if (! empty($data['inquiry_id'])) {
-                $inquiry = Inquiry::query()->findOrFail($data['inquiry_id']);
+                $inquiry = Inquiry::query()->lockForUpdate()->findOrFail($data['inquiry_id']);
+                abort_unless($sourceUserIds === null || in_array($inquiry->assigned_to, $sourceUserIds, true)
+                    || in_array($inquiry->created_user_id, $sourceUserIds, true), 403,
+                    'The Inquiry source is outside your authorised Sales scope.');
                 $data['source'] = $inquiry->source ?: 'inquiry';
                 $data['customer_id'] = $data['customer_id'] ?? $inquiry->customer_id;
                 $data['prospect_name'] = $data['prospect_name'] ?? $inquiry->name;
                 $data['prospect_email'] = $data['prospect_email'] ?? $inquiry->email;
                 $data['prospect_phone'] = $data['prospect_phone'] ?? $inquiry->phone;
             } elseif (! empty($data['source_phone_call_id'])) {
-                $phoneCall = PhoneCall::query()->findOrFail($data['source_phone_call_id']);
+                $phoneCall = PhoneCall::query()->lockForUpdate()->findOrFail($data['source_phone_call_id']);
+                abort_unless($sourceUserIds === null || in_array($phoneCall->created_user_id, $sourceUserIds, true), 403,
+                    'The Phone Call source is outside your authorised Sales scope.');
                 $data['source'] = 'phone_call';
                 $data['prospect_name'] = $data['prospect_name'] ?? $phoneCall->client_name;
                 $data['prospect_phone'] = $data['prospect_phone'] ?? $phoneCall->phone;
@@ -53,6 +59,9 @@ class SalesCrmService
             $this->assertNoSilentCustomerDuplicate($data);
             if (! empty($data['inquiry_id'])) {
                 abort_if(SalesOpportunity::query()->where('inquiry_id', $data['inquiry_id'])->exists(), 409, 'This inquiry is already linked to an opportunity.');
+            }
+            if (! empty($data['source_phone_call_id'])) {
+                abort_if(SalesOpportunity::query()->where('source_phone_call_id', $data['source_phone_call_id'])->exists(), 409, 'This Phone Call is already linked to an opportunity.');
             }
             $opportunity = SalesOpportunity::create($data + [
                 'opportunity_number' => 'OPP-'.now()->format('Ym').'-'.strtoupper(Str::random(8)),
@@ -91,6 +100,7 @@ class SalesCrmService
             if (SalesOpportunityStageEvent::query()->where('idempotency_key', $key)->exists()) return $locked->refresh();
             $this->assertEnabled((string) $locked->company_id);
             abort_unless($locked->state_version === $expectedVersion, 409, 'Opportunity version changed; refresh before retrying.');
+            $newOwner = $this->lockActiveOpportunityOwner((string) $newOwner->id, (string) $locked->company_id);
             abort_unless($locked->company_id === $newOwner->company_id, 422, 'Opportunity transfers cannot cross legal entities.');
             $oldOwner = $locked->owner_sales_profile_id;
             $locked->update(['owner_sales_profile_id' => $newOwner->id, 'state_version' => $locked->state_version + 1, 'updated_user_id' => $actorUserId]);
@@ -124,6 +134,7 @@ class SalesCrmService
             $lockedOpportunity = SalesOpportunity::query()->lockForUpdate()->findOrFail($opportunity->id);
             $lockedBooking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $this->assertEnabled((string) $lockedOpportunity->company_id);
+            $this->lockActiveOpportunityOwner((string) $lockedOpportunity->owner_sales_profile_id, (string) $lockedOpportunity->company_id);
             $bookingStaff = $lockedBooking->commission_owner_staff_id
                 ? DB::table('staff')->where('id', $lockedBooking->commission_owner_staff_id)->first()
                 : DB::table('staff')->where('user_id', $lockedBooking->created_user_id)->first();
@@ -218,6 +229,24 @@ class SalesCrmService
             $this->taskEvent($locked, 'reassigned', $locked->status, $locked->status, $oldOwner, $newOwner->id, $reason, $key, $actorUserId);
             return $locked->refresh();
         });
+    }
+
+    private function lockActiveOpportunityOwner(string $profileId, string $companyId): SalesProfile
+    {
+        $owner = SalesProfile::query()->activeAt(now())->configured()->lockForUpdate()->findOrFail($profileId);
+        abort_unless($owner->company_id === $companyId, 422, 'Opportunity owner and legal entity must match.');
+        $staff = DB::table('staff')->where('id', $owner->staff_id)->where('company_id', $companyId)
+            ->whereNull('deleted_at')->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+            ->lockForUpdate()->first(['id', 'user_id']);
+        abort_unless($staff && $staff->user_id, 422, 'Opportunity owner must be current Staff with a linked User.');
+        $user = DB::table('users')->where('id', $staff->user_id)->where('is_active', true)->whereNull('deleted_at')
+            ->lockForUpdate()->first(['id']);
+        abort_unless($user, 422, 'Opportunity owner must have an active User account.');
+        $context = DB::table('user_contexts')->where('user_id', $staff->user_id)->where('context_type', 'staff')
+            ->where('context_id', $staff->id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+        abort_unless($context, 422, 'Opportunity owner must have an active Staff context.');
+
+        return $owner;
     }
 
     private function stageEvent(SalesOpportunity $opportunity, ?string $from, string $to, ?string $reasonCode, ?string $reason, string $key, string $actor, ?string $fromOwner = null): void

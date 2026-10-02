@@ -6,19 +6,16 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Role\CreateRoleRequest;
 use App\Http\Requests\Role\UpdateRoleRequest;
 use App\Http\Resources\RoleResource;
-use App\Models\User;
 use App\Services\PermissionAssignmentService;
 use App\Services\UserContextService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
-use Spatie\Permission\PermissionRegistrar;
 
 class RoleController extends Controller
 {
@@ -89,7 +86,7 @@ class RoleController extends Controller
             $this->applyContextData($role, $contextData);
             
             if ($permissions !== null) {
-                $this->syncRolePermissionsAndCleanup($role, $permissions);
+                $this->syncRolePermissions($role, $permissions);
             }
 
             return response()->json([
@@ -147,7 +144,7 @@ class RoleController extends Controller
             }
             
             if ($permissions !== null) {
-                $this->syncRolePermissionsAndCleanup($role, $permissions);
+                $this->syncRolePermissions($role, $permissions);
             }
 
             return response()->json([
@@ -240,7 +237,7 @@ class RoleController extends Controller
         try {
             $current = $role->permissions()->pluck('name')->all();
             $permissions = array_values(array_unique(array_merge($current, $request->permissions)));
-            $this->syncRolePermissionsAndCleanup($role, $permissions);
+            $this->syncRolePermissions($role, $permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -275,7 +272,7 @@ class RoleController extends Controller
                 ->reject(fn ($permission) => in_array($permission, $remove, true))
                 ->values()
                 ->all();
-            $this->syncRolePermissionsAndCleanup($role, $permissions);
+            $this->syncRolePermissions($role, $permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -347,7 +344,7 @@ class RoleController extends Controller
             ]);
         }
 
-        $permissions = $this->syncRolePermissionsAndCleanup($role, $requestedPermissionNames->all())
+        $permissions = $this->syncRolePermissions($role, $requestedPermissionNames->all())
             ->filter(fn ($permission) => $requestedPermissionNames->contains((string) $permission->name))
             ->values();
 
@@ -371,26 +368,11 @@ class RoleController extends Controller
             'mode' => ['sometimes', Rule::in(['merge', 'replace'])],
         ]);
 
-        $previousPermissionNames = $role->permissions()
-            ->pluck('name')
-            ->map(fn ($name) => (string) $name)
-            ->all();
-
         $permissions = $this->assignmentService->applyTemplate(
             $role,
             $request->input('template'),
             $request->input('mode', 'merge')
         );
-
-        $currentPermissionNames = $permissions
-            ->pluck('name')
-            ->map(fn ($name) => (string) $name)
-            ->all();
-        $removedPermissionNames = array_values(array_diff($previousPermissionNames, $currentPermissionNames));
-
-        if ($removedPermissionNames !== []) {
-            $this->removeRoleDerivedDirectPermissions($role, $removedPermissionNames);
-        }
 
         return response()->json([
             'status' => 'success',
@@ -454,130 +436,9 @@ class RoleController extends Controller
         return $this->assignmentService->normalizePermissionNames($resolvedNames->all());
     }
 
-    private function syncRolePermissionsAndCleanup(Role $role, array $permissionIdentifiers): Collection
+    private function syncRolePermissions(Role $role, array $permissionIdentifiers): Collection
     {
-        $previousPermissionNames = $role->permissions()
-            ->pluck('name')
-            ->map(fn ($name) => (string) $name)
-            ->all();
-
-        $permissions = $this->assignmentService->syncRolePermissions($role, $permissionIdentifiers);
-
-        $currentPermissionNames = $permissions
-            ->pluck('name')
-            ->map(fn ($name) => (string) $name)
-            ->all();
-        $removedPermissionNames = array_values(array_diff($previousPermissionNames, $currentPermissionNames));
-
-        if ($removedPermissionNames !== []) {
-            $this->removeRoleDerivedDirectPermissions($role, $removedPermissionNames);
-        }
-
-        $this->removeOrphanedRoleCopiedDirectPermissions($role);
-
-        return $permissions;
-    }
-
-    private function removeRoleDerivedDirectPermissions(Role $role, array $removedPermissionNames): void
-    {
-        $permissionIds = Permission::query()
-            ->where('guard_name', $role->guard_name)
-            ->whereIn('name', $removedPermissionNames)
-            ->pluck('id')
-            ->map(fn ($id) => (int) $id)
-            ->values();
-
-        if ($permissionIds->isEmpty()) {
-            return;
-        }
-
-        $roleUserIds = DB::table('model_has_roles')
-            ->where('role_id', $role->id)
-            ->where('model_type', User::class)
-            ->pluck('model_id')
-            ->map(fn ($id) => (string) $id)
-            ->values();
-
-        if ($roleUserIds->isEmpty()) {
-            return;
-        }
-
-        $permissionIdsStillGrantedByOtherRoles = DB::table('model_has_roles')
-            ->join('role_has_permissions', 'model_has_roles.role_id', '=', 'role_has_permissions.role_id')
-            ->where('model_has_roles.model_type', User::class)
-            ->whereIn('model_has_roles.model_id', $roleUserIds->all())
-            ->where('model_has_roles.role_id', '<>', $role->id)
-            ->whereIn('role_has_permissions.permission_id', $permissionIds->all())
-            ->select('model_has_roles.model_id', 'role_has_permissions.permission_id')
-            ->get()
-            ->groupBy(fn ($row) => (string) $row->model_id)
-            ->map(fn ($rows) => $rows->pluck('permission_id')->map(fn ($id) => (int) $id)->all());
-
-        DB::table('model_has_permissions')
-            ->where('model_type', User::class)
-            ->whereIn('model_id', $roleUserIds->all())
-            ->whereIn('permission_id', $permissionIds->all())
-            ->get(['model_id', 'permission_id'])
-            ->each(function ($row) use ($permissionIdsStillGrantedByOtherRoles) {
-                $modelId = (string) $row->model_id;
-                $permissionId = (int) $row->permission_id;
-
-                if (in_array($permissionId, $permissionIdsStillGrantedByOtherRoles->get($modelId, []), true)) {
-                    return;
-                }
-
-                DB::table('model_has_permissions')
-                    ->where('model_type', User::class)
-                    ->where('model_id', $modelId)
-                    ->where('permission_id', $permissionId)
-                    ->delete();
-            });
-
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
-    }
-
-    private function removeOrphanedRoleCopiedDirectPermissions(Role $role): void
-    {
-        $roleUserIds = DB::table('model_has_roles')
-            ->where('role_id', $role->id)
-            ->where('model_type', User::class)
-            ->pluck('model_id')
-            ->map(fn ($id) => (string) $id)
-            ->values();
-
-        if ($roleUserIds->isEmpty()) {
-            return;
-        }
-
-        $roleGrantedPermissionIdsByUser = DB::table('model_has_roles')
-            ->join('role_has_permissions', 'model_has_roles.role_id', '=', 'role_has_permissions.role_id')
-            ->where('model_has_roles.model_type', User::class)
-            ->whereIn('model_has_roles.model_id', $roleUserIds->all())
-            ->select('model_has_roles.model_id', 'role_has_permissions.permission_id')
-            ->get()
-            ->groupBy(fn ($row) => (string) $row->model_id)
-            ->map(fn ($rows) => $rows->pluck('permission_id')->map(fn ($id) => (int) $id)->all());
-
-        DB::table('model_has_permissions')
-            ->where('model_type', User::class)
-            ->whereIn('model_id', $roleUserIds->all())
-            ->get(['model_id', 'permission_id'])
-            ->each(function ($row) use ($roleGrantedPermissionIdsByUser) {
-                $modelId = (string) $row->model_id;
-                $permissionId = (int) $row->permission_id;
-
-                if (in_array($permissionId, $roleGrantedPermissionIdsByUser->get($modelId, []), true)) {
-                    return;
-                }
-
-                DB::table('model_has_permissions')
-                    ->where('model_type', User::class)
-                    ->where('model_id', $modelId)
-                    ->where('permission_id', $permissionId)
-                    ->delete();
-            });
-
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        return $this->assignmentService->syncRolePermissions($role, $permissionIdentifiers);
     }
 
     private function extractContextData(array &$data): array

@@ -48,3 +48,13 @@ it('pairs direct Staff routes with their operation permission before row policy 
         ->toContain("->middleware('permission:staff.terminate')")
         ->toContain("Route::post('staff/{staff}/terminate', [StaffController::class, 'destroy'])");
 });
+
+it('keeps account activation out of generic Staff profile updates', function () {
+    $request = file_get_contents(app_path('Http/Requests/Staff/UpdateStaffRequest.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/StaffController.php'));
+    $update = substr($controller, strpos($controller, 'public function update('), strpos($controller, 'public function destroy(') - strpos($controller, 'public function update('));
+
+    expect($request)->toContain("'status' => ['prohibited']")
+        ->and($update)->not->toContain("\$userData['is_active']")
+        ->and($controller)->toContain('Staff context terminated; the User remains available for other authorized contexts.');
+});

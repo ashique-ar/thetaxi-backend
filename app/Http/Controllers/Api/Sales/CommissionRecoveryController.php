@@ -25,13 +25,23 @@ class CommissionRecoveryController extends Controller
             'recovery_kind' => ['nullable', Rule::in(['cash_decrease', 'reporting_fx'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $query = SalesCommissionRecoveryCase::query()->with('decision');
+        $query = SalesCommissionRecoveryCase::query()->with([
+            'decision', 'beneficiarySalesProfile:id,company_id,sales_code',
+        ]);
         $profileIds = $this->profileIds($request);
         if ($profileIds !== null) $query->whereIn('beneficiary_sales_profile_id', $profileIds);
-        return response()->json(['status' => 'success', 'data' => $query
+        $cases = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['recovery_kind'] ?? null, fn ($q, $kind) => $q->where('recovery_kind', $kind))
-            ->latest('opened_at')->paginate($request->integer('per_page', 25))]);
+            ->latest('opened_at')->paginate($request->integer('per_page', 25));
+        $cases->getCollection()->each(static function (SalesCommissionRecoveryCase $case): void {
+            $profile = $case->beneficiarySalesProfile;
+            $case->setAttribute('beneficiary_sales_code',
+                $profile?->company_id === $case->company_id ? $profile->sales_code : null);
+            $case->unsetRelation('beneficiarySalesProfile');
+        });
+
+        return response()->json(['status' => 'success', 'data' => $cases]);
     }
 
     public function previewDecision(

@@ -15,6 +15,8 @@ it('governs manual target drafts and approvals as idempotent maker-checker comma
         ->toContain('Target maker and approver must be different users.')
         ->toContain('The target version is stale; refresh the target history before approval.')
         ->toContain('The Sales performance period is locked; reopen it before approving a replacement target.')
+        ->toContain('A target can only be drafted for a currently active Sales Profile.')
+        ->toContain('The Sales Profile must belong to current Staff in this legal entity.')
         ->toContain("DB::table('companies')->whereKey(\$data['company_id'])->lockForUpdate()")
         ->toContain("->whereDate('period_start', \$start)->whereDate('period_end', \$end)->max('version') + 1")
         ->toContain('sales.performance.target_draft_created')

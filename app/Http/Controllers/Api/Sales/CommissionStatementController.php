@@ -49,13 +49,50 @@ class CommissionStatementController extends Controller
         return response()->json(['status' => 'success', 'data' => $query->firstOrFail()]);
     }
 
-    public function managementContext(Request $request): JsonResponse
+    public function profileOptions(Request $request): JsonResponse
     {
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
         $companyIds = $this->actorCompanyIds($request);
-        $profiles = SalesProfile::query()->with('staff:id,code,staff_type')->whereIn('company_id', $companyIds)
-            ->activeAt(now())->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
-            ->orderBy('sales_code')->get(['id', 'company_id', 'staff_id', 'sales_code']);
-        return response()->json(['status' => 'success', 'data' => ['profiles' => $profiles]]);
+        if (! empty($data['company_id'])) {
+            abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422,
+                'Select an available legal entity.');
+            $this->assertManagementCompany($request, $data['company_id']);
+        }
+
+        $query = SalesProfile::query()
+            ->select('sales_profiles.*', 'company.name as company_name')
+            ->join('companies as company', 'company.id', '=', 'sales_profiles.company_id')
+            ->with(['staff:id,user_id,code', 'staff.user:id,first_name,last_name'])
+            ->whereIn('sales_profiles.company_id', $companyIds)
+            ->whereNull('company.deleted_at')
+            ->activeAt(now())
+            ->configured()
+            ->where('sales_profiles.commission_eligible', true)
+            ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
+            ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where('sales_profiles.company_id', $companyId));
+        if (! empty($data['selected_id'])) $query->where('sales_profiles.id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%'.addcslashes($data['search'], '%_\\').'%';
+            $query->where(fn ($profiles) => $profiles->where('sales_profiles.sales_code', 'like', $term)
+                ->orWhereHas('staff', fn ($staff) => $staff->where('code', 'like', $term)
+                    ->orWhereHas('user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)))
+                ->orWhere('company.name', 'like', $term));
+        }
+
+        $rows = $query->orderBy('sales_profiles.sales_code')->orderBy('sales_profiles.id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn (SalesProfile $profile) => [
+            'value' => (string) $profile->id,
+            'label' => trim($profile->sales_code.' — '.($profile->staff?->user?->first_name.' '.$profile->staff?->user?->last_name)),
+            'metadata' => ['company' => $profile->company_name],
+            'status' => $profile->status,
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function schedule(Request $request, CommissionCycleResolver $cycles, CommissionBusinessCalendarService $calendars): JsonResponse

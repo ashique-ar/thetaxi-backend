@@ -75,6 +75,11 @@ class CommissionPlanResolver
             || $assignment->created_by === $assignment->approved_by || ! $assignment->approved_at) {
             return ['correction_allowed' => false, 'blocker' => 'The winning plan assignment lacks maker-checker approval evidence.', 'write_performed' => false];
         }
+        $family = $assignment->planFamily;
+        if (! $family || $family->company_id !== $attribution->company_id
+            || $family->status !== 'approved' || $family->commission_category !== $attribution->commission_category) {
+            return ['correction_allowed' => false, 'blocker' => 'The winning plan family does not reconcile to the attribution legal entity and category.', 'write_performed' => false];
+        }
         $snapshot = [
             'attribution_id' => $attribution->id,
             'attribution_version' => $attribution->version,
@@ -93,6 +98,14 @@ class CommissionPlanResolver
         return [
             'correction_allowed' => true,
             'blocker' => null,
+            'secured_at' => $attribution->secured_at->toIso8601String(),
+            'plan_family_reference' => ['code' => $family->code, 'name' => $family->name],
+            'assignment_reference' => [
+                'scope_type' => $assignment->scope_type,
+                'precedence' => (int) $assignment->precedence,
+                'effective_from' => $assignment->effective_from->toIso8601String(),
+                'effective_until' => $assignment->effective_until?->toIso8601String(),
+            ],
             'frozen_correction_snapshot' => $snapshot,
             'correction_checksum' => hash('sha256', CanonicalJson::encode($snapshot)),
             'prohibited_approver_ids' => [$assignment->created_by, $assignment->approved_by],
@@ -180,7 +193,9 @@ class CommissionPlanResolver
             ->where('sales_commission_plan_assignments.effective_from', '<=', $attribution->secured_at)
             ->where(fn ($q) => $q->whereNull('sales_commission_plan_assignments.effective_until')
                 ->orWhere('sales_commission_plan_assignments.effective_until', '>', $attribution->secured_at))
-            ->whereHas('planFamily', fn ($q) => $q->where('status', 'approved')
+            ->with('planFamily:id,company_id,code,name,commission_category,status')
+            ->whereHas('planFamily', fn ($q) => $q->where('company_id', $attribution->company_id)
+                ->where('status', 'approved')
                 ->where('commission_category', $attribution->commission_category))
             ->where(function ($q) use ($profile, $staff) {
                 $q->where('scope_type', 'company')

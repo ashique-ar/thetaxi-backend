@@ -67,7 +67,8 @@ it('resolves readable assignment references inside the tenant and creates the in
 it('detects duplicate identity evidence and requires a different authorized checker', function () {
     [$maker,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);
     $first=Staff::factory()->create(['company_id'=>$company->id,'code'=>'DUP-001']);
-    $second=Staff::factory()->create(['company_id'=>$company->id,'code'=>'DUP-002']);
+    $second=Staff::factory()->former()->create(['company_id'=>$company->id,'code'=>'DUP-002']);
+    $notCandidate=Staff::factory()->create(['company_id'=>$company->id,'code'=>'NOT-CANDIDATE']);
     $fingerprint=hash('sha256','same-reviewed-nic');
     DB::table('staff')->whereIn('id',[$first->id,$second->id])->update(['nic_fingerprint'=>$fingerprint]);
 
@@ -77,6 +78,14 @@ it('detects duplicate identity evidence and requires a different authorized chec
         ->assertJsonPath('data.created',0)->assertJsonPath('data.pending',1);
     $review=actingAs($maker,'api')->getJson('/api/hr/people/duplicate-reviews')->assertOk()->json('data.data.0');
     expect($review['match_kind'])->toBe('nic_fingerprint')->and($review['safe_candidate_snapshot'][0])->not->toHaveKey('nic');
+    $optionsUrl='/api/hr/people/duplicate-reviews/'.$review['id'].'/candidate-options';
+    $candidateOptions=actingAs($maker,'api')->getJson($optionsUrl.'?search=DUP-001&per_page=50')->assertOk()
+        ->assertJsonCount(1,'data.data')->assertJsonPath('data.data.0.value',$first->id)->assertJsonPath('data.data.0.status','active');
+    expect(array_keys($candidateOptions->json('data.data.0')))->toBe(['value','label','metadata','status'])
+        ->and($candidateOptions->json('data.data.0.label'))->toContain('DUP-001');
+    actingAs($maker,'api')->getJson($optionsUrl.'?selected_id='.$second->id)->assertOk()->assertJsonPath('data.data.0.value',$second->id)->assertJsonPath('data.data.0.status','former');
+    actingAs($maker,'api')->getJson($optionsUrl.'?selected_id='.$notCandidate->id)->assertOk()->assertJsonCount(0,'data.data');
+    actingAs($maker,'api')->getJson($optionsUrl.'?per_page=51')->assertUnprocessable();
     actingAs($maker,'api')->postJson('/api/hr/people/duplicate-reviews/'.$review['id'].'/decide',[
         'expected_version'=>$review['version'],'disposition'=>'canonical_selected','canonical_staff_id'=>$first->id,'reason'=>'Reviewed as one legacy identity.',
     ])->assertForbidden();
@@ -104,5 +113,6 @@ it('does not expose or decide another legal entity duplicate review', function (
     $service=app(\App\Services\Hr\PeopleCoreMigrationService::class);$service->detectDuplicates($other->id,$actor->id);
     $review=\App\Models\Hr\HrPeopleDuplicateReview::where('company_id',$other->id)->sole();
     $rows=actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews')->assertOk()->json('data.data');expect($rows)->toBe([]);
+    actingAs($actor,'api')->getJson('/api/hr/people/duplicate-reviews/'.$review->id.'/candidate-options')->assertNotFound();
     actingAs($actor,'api')->postJson('/api/hr/people/duplicate-reviews/'.$review->id.'/decide',['expected_version'=>1,'disposition'=>'keep_separate','reason'=>'Cross tenant denial proof.'])->assertNotFound();
 });

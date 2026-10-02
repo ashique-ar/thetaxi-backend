@@ -36,3 +36,20 @@ it('renders register relationships from bounded response labels without a raw St
         ->not->toContain('safetyHandlerOptions()')
         ->and($routes)->not->toContain("Route::get('handler-options', [SafetyController::class, 'handlerOptions'])");
 });
+
+it('uses company-scoped managed location choices for every Safety creation form', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/SafetyController.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $root = base_path('../portal-thetaxi/src/app/modules/hr-relations/components/');
+    $report = file_get_contents($root.'safety-report/safety-report.component.html');
+    $hazard = file_get_contents($root.'safety-registers/dialogs/hazard-form-dialog.component.ts');
+    $inspection = file_get_contents($root.'safety-registers/dialogs/inspection-form-dialog.component.ts');
+
+    expect($routes)->toContain("Route::get('location-options', [SafetyController::class, 'locationOptions'])")
+        ->and($controller)->toContain("where('company_id', \$actor->company_id)")
+        ->toContain("private function assertLocation(string \$company, string \$code)")
+        ->and($report)->toContain('endpoint="/hr/safety/location-options"')
+        ->and($hazard)->toContain('endpoint="/hr/safety/location-options"')
+        ->and($inspection)->toContain('endpoint="/hr/safety/location-options"')
+        ->not->toContain('formControlName="location_code">');
+});

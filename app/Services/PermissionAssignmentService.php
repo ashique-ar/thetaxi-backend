@@ -97,10 +97,31 @@ class PermissionAssignmentService
             $this->normalizePermissionNames($permissionIdentifiers)
         );
 
-        DB::transaction(function () use ($user, $permissions) {
+        $added = $removed = [];
+        DB::transaction(function () use ($user, $permissions, &$added, &$removed): void {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $permissionIds = $permissions->pluck('id')->unique()->all();
+            $previous = DB::table('user_direct_permission_grants as grants')
+                ->join('permissions', 'permissions.id', '=', 'grants.permission_id')
+                ->where('grants.user_id', $user->id)->pluck('permissions.name')->all();
+            $desired = $permissions->pluck('name')->all();
+            $added = array_values(array_diff($desired, $previous));
+            $removed = array_values(array_diff($previous, $desired));
+            $contextOwnedIds = DB::table('user_context_permission_grants as grants')
+                ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+                ->where('user_contexts.user_id', $user->id)
+                ->where('user_contexts.is_active', true)
+                ->pluck('grants.permission_id')->unique();
+
+            $removedDirectIds = DB::table('user_direct_permission_grants')
+                ->where('user_id', $user->id)
+                ->when($permissionIds->isNotEmpty(), fn ($query) => $query->whereNotIn('permission_id', $permissionIds))
+                ->pluck('permission_id')
+                ->diff($contextOwnedIds);
             DB::table('model_has_permissions')
                 ->where('model_type', User::class)
                 ->where('model_id', $user->id)
+                ->whereIn('permission_id', $removedDirectIds)
                 ->delete();
 
             foreach ($permissions as $permission) {
@@ -110,11 +131,98 @@ class PermissionAssignmentService
                     'model_id' => $user->id,
                 ]);
             }
+
+            DB::table('user_direct_permission_grants')->where('user_id', $user->id)
+                ->when($permissionIds->isNotEmpty(), fn ($query) => $query->whereNotIn('permission_id', $permissionIds))
+                ->delete();
+            foreach ($permissionIds as $permissionId) {
+                DB::table('user_direct_permission_grants')->updateOrInsert(
+                    ['user_id' => $user->id, 'permission_id' => $permissionId],
+                    ['created_at' => now(), 'updated_at' => now()]
+                );
+            }
+
+            $this->logDirectPermissionChange($user, 'direct_permission_grants_synced', $added, $removed);
         });
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         return $permissions;
+    }
+
+    public function grantDirectUserPermissions(User $user, array $permissionIdentifiers): Collection
+    {
+        $permissions = $this->registry->ensureCanonicalPermissions(
+            $this->normalizePermissionNames($permissionIdentifiers)
+        );
+
+        $added = [];
+        DB::transaction(function () use ($user, $permissions, &$added): void {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $existing = DB::table('user_direct_permission_grants as grants')
+                ->join('permissions', 'permissions.id', '=', 'grants.permission_id')
+                ->where('grants.user_id', $user->id)->pluck('permissions.name')->all();
+            $added = array_values(array_diff($permissions->pluck('name')->all(), $existing));
+            foreach ($permissions as $permission) {
+                DB::table('model_has_permissions')->updateOrInsert([
+                    'permission_id' => $permission->id,
+                    'model_type' => User::class,
+                    'model_id' => $user->id,
+                ]);
+                DB::table('user_direct_permission_grants')->updateOrInsert(
+                    ['user_id' => $user->id, 'permission_id' => $permission->id],
+                    ['created_at' => now(), 'updated_at' => now()]
+                );
+            }
+            $this->logDirectPermissionChange($user, 'direct_permission_grants_added', $added, []);
+        });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        return $permissions;
+    }
+
+    public function revokeDirectUserPermissions(User $user, array $permissionIdentifiers): void
+    {
+        $names = $this->normalizePermissionNames($permissionIdentifiers);
+        $removed = [];
+        DB::transaction(function () use ($user, $names, &$removed): void {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $permissionIds = Permission::query()->whereIn('name', $names)->pluck('id');
+            $removed = DB::table('model_has_permissions as grants')
+                ->join('permissions', 'permissions.id', '=', 'grants.permission_id')
+                ->where('grants.model_type', User::class)
+                ->where('grants.model_id', $user->id)
+                ->whereIn('grants.permission_id', $permissionIds)
+                ->pluck('permissions.name')->all();
+            DB::table('user_direct_permission_grants')->where('user_id', $user->id)
+                ->whereIn('permission_id', $permissionIds)->delete();
+
+            $contextOwnedIds = DB::table('user_context_permission_grants as grants')
+                ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+                ->where('user_contexts.user_id', $user->id)
+                ->where('user_contexts.is_active', true)
+                ->whereIn('grants.permission_id', $permissionIds)->pluck('grants.permission_id')->unique();
+            DB::table('model_has_permissions')
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->whereIn('permission_id', $permissionIds)
+                ->when($contextOwnedIds->isNotEmpty(), fn ($query) => $query->whereNotIn('permission_id', $contextOwnedIds))
+                ->delete();
+            $this->logDirectPermissionChange($user, 'direct_permission_grants_revoked', [], $removed);
+        });
+
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
+    }
+
+    private function logDirectPermissionChange(User $user, string $event, array $added, array $removed): void
+    {
+        if (!$added && !$removed) {
+            return;
+        }
+
+        activity('user-access')->causedBy(request()->user())->performedOn($user)
+            ->withProperties(['added' => $added, 'removed' => $removed])
+            ->log($event);
     }
 
     private function ensurePermissionsForGuard(array $permissionNames, string $guard): Collection

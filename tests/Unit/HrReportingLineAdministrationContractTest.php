@@ -55,3 +55,21 @@ it('adds retained event history and refuses destructive rollback after use', fun
         ->toContain('Refusing to remove retained HR reporting-line history.')
         ->toContain("Schema::dropIfExists('hr_reporting_line_events')");
 });
+
+it('uses a bounded tenant-scoped Staff selector for both reporting-line references', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/ReportingLineController.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/reporting-line-administration/reporting-line-create-dialog.component.ts'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-people/components/reporting-line-administration/reporting-line-administration.component.ts'));
+
+    expect($controller)
+        ->toContain('public function staffSelectorOptions(Request $request): JsonResponse')
+        ->toContain("'selected_id' => ['nullable', 'uuid']")
+        ->toContain("'max:50'")
+        ->toContain("where('staff.company_id', \$companyId)")
+        ->and($routes)->toContain("reporting-line-staff-selector-options', [ReportingLineController::class, 'staffSelectorOptions'])->middleware('permission:hr.reporting-lines.manage')")
+        ->and($dialog)->toContain('formControlName="member_staff_id" endpoint="/hr/organization/reporting-line-staff-selector-options"')
+        ->toContain('formControlName="manager_staff_id" endpoint="/hr/organization/reporting-line-staff-selector-options"')
+        ->not->toContain('data.options')
+        ->and($component)->not->toContain('loadOptions()');
+});

@@ -3,6 +3,8 @@
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Auth\Middleware\Authenticate;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\DB;
+use App\Models\User;
 use App\Http\Middleware\PermissionMiddleware;
 use App\Services\PermissionAssignmentService;
 use Spatie\Permission\Models\Permission;
@@ -12,7 +14,7 @@ use Spatie\Permission\PermissionRegistrar;
 use function Pest\Laravel\putJson;
 
 beforeEach(function () {
-    foreach (['role_has_permissions', 'model_has_roles', 'model_has_permissions', 'roles', 'permissions'] as $table) {
+    foreach (['user_direct_permission_grants', 'user_context_permission_grants', 'role_has_permissions', 'model_has_roles', 'model_has_permissions', 'roles', 'permissions'] as $table) {
         Schema::dropIfExists($table);
     }
 
@@ -50,6 +52,20 @@ beforeEach(function () {
         $table->unsignedBigInteger('permission_id');
         $table->unsignedBigInteger('role_id');
         $table->primary(['permission_id', 'role_id'], 'role_has_permissions_permission_id_role_id_primary');
+    });
+
+    Schema::create('user_context_permission_grants', function (Blueprint $table) {
+        $table->uuid('user_context_id');
+        $table->unsignedBigInteger('permission_id');
+        $table->timestamps();
+        $table->primary(['user_context_id', 'permission_id']);
+    });
+
+    Schema::create('user_direct_permission_grants', function (Blueprint $table) {
+        $table->uuid('user_id');
+        $table->unsignedBigInteger('permission_id');
+        $table->timestamps();
+        $table->primary(['user_id', 'permission_id']);
     });
 
     app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -112,3 +128,29 @@ it('does not write role permissions for an unresolved role model', function () {
         ['addons.view'],
     );
 })->throws(\InvalidArgumentException::class, 'Cannot sync permissions for an unsaved role.');
+
+it('preserves untracked legacy direct grants when a role loses the same permission', function () {
+    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
+    $permission = Permission::create(['name' => 'addons.view', 'guard_name' => 'web']);
+    $user = User::factory()->create();
+    DB::table('role_has_permissions')->insert(['role_id' => $role->id, 'permission_id' => $permission->id]);
+    DB::table('model_has_roles')->insert([
+        'role_id' => $role->id,
+        'model_type' => User::class,
+        'model_id' => $user->id,
+    ]);
+    DB::table('model_has_permissions')->insert([
+        'permission_id' => $permission->id,
+        'model_type' => User::class,
+        'model_id' => $user->id,
+    ]);
+    putJson("/api/roles/{$role->id}/permissions/sync", ['permissions' => []])->assertOk();
+
+    $this->assertDatabaseHas('model_has_permissions', [
+        'permission_id' => $permission->id,
+        'model_type' => User::class,
+        'model_id' => $user->id,
+    ]);
+});

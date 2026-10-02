@@ -27,4 +27,14 @@ class SalesBookingAttribution extends BaseModel
     {
         return $this->belongsTo(Booking::class);
     }
+
+    public function acquisitionProfile(): BelongsTo
+    {
+        return $this->belongsTo(SalesProfile::class, 'acquisition_sales_profile_id')->withTrashed();
+    }
+
+    public function collectionProfile(): BelongsTo
+    {
+        return $this->belongsTo(SalesProfile::class, 'collection_sales_profile_id')->withTrashed();
+    }
 }

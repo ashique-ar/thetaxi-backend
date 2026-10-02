@@ -4178,9 +4178,7 @@ class BookingFlowService
         ];
     }
 
-    /**
-     * Search for specific vehicles by name, license plate, or ID
-     */
+    /** Search specific vehicles by readable name or registration details. */
     public function searchSpecificVehicles(array $params): array
     {
         $searchTerm = trim((string) ($params['search_term'] ?? ''));
@@ -4200,9 +4198,6 @@ class BookingFlowService
                     $q->whereRaw('LOWER(title) LIKE ?', [$searchPattern])
                         ->orWhereRaw('LOWER(license_plate) LIKE ?', [$searchPattern])
                         ->orWhereRaw('LOWER(registration_no) LIKE ?', [$searchPattern]);
-                    if (Uuid::isValid($searchTerm)) {
-                        $q->orWhere('id', $searchTerm);
-                    }
                 });
             });
 
@@ -4271,9 +4266,7 @@ class BookingFlowService
         return $vehicles->toArray();
     }
 
-    /**
-     * Search for specific drivers by name, license, or ID
-     */
+    /** Search specific drivers by readable name, license or code. */
     public function searchSpecificDrivers(array $params): array
     {
         $searchTerm = trim((string) ($params['search_term'] ?? ''));
@@ -4294,9 +4287,6 @@ class BookingFlowService
                             ->orWhereRaw('LOWER(last_name) LIKE ?', [$searchPattern])
                             ->orWhereRaw('LOWER(phone) LIKE ?', [$searchPattern]);
                     });
-                if (Uuid::isValid($searchTerm)) {
-                    $q->orWhere('id', $searchTerm);
-                }
             });
         }
 
@@ -8906,35 +8896,33 @@ class BookingFlowService
             $search = trim((string) $filters['search']);
 
             $query->where(function ($itemQuery) use ($search) {
-                $itemQuery->where('booking_items.id', 'like', "%{$search}%")
-                    ->orWhere('booking_items.booking_id', 'like', "%{$search}%")
-                    ->orWhereHas('booking', function ($bookingQuery) use ($search) {
-                        $bookingQuery->where('booking_number', 'like', "%{$search}%")
-                            ->orWhere('invoice_number', 'like', "%{$search}%")
-                            ->orWhere('confirmation_number', 'like', "%{$search}%")
-                            ->orWhereHas('customer.user', function ($userQuery) use ($search) {
-                                $userQuery->where('first_name', 'like', "%{$search}%")
-                                    ->orWhere('last_name', 'like', "%{$search}%")
-                                    ->orWhere('email', 'like', "%{$search}%")
-                                    ->orWhere('phone', 'like', "%{$search}%");
-                            })
-                            ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
-                                $corporateQuery->where('name', 'like', "%{$search}%");
-                            })
-                            ->orWhereExists(function ($employeeUserQuery) use ($search) {
-                                $employeeUserQuery->selectRaw('1')
-                                    ->from('users')
-                                    // Support both the legacy varchar and current UUID employee columns.
-                                    ->whereRaw('users.id::text = bookings.employee_id::text')
-                                    ->whereNull('users.deleted_at')
-                                    ->where(function ($identityQuery) use ($search) {
-                                        $identityQuery->where('users.first_name', 'like', "%{$search}%")
-                                            ->orWhere('users.last_name', 'like', "%{$search}%")
-                                            ->orWhere('users.email', 'like', "%{$search}%")
-                                            ->orWhere('users.phone', 'like', "%{$search}%");
-                                    });
-                            });
-                    })
+                $itemQuery->whereHas('booking', function ($bookingQuery) use ($search) {
+                    $bookingQuery->where('booking_number', 'like', "%{$search}%")
+                        ->orWhere('invoice_number', 'like', "%{$search}%")
+                        ->orWhere('confirmation_number', 'like', "%{$search}%")
+                        ->orWhereHas('customer.user', function ($userQuery) use ($search) {
+                            $userQuery->where('first_name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
+                            $corporateQuery->where('name', 'like', "%{$search}%");
+                        })
+                        ->orWhereExists(function ($employeeUserQuery) use ($search) {
+                            $employeeUserQuery->selectRaw('1')
+                                ->from('users')
+                                // Support both the legacy varchar and current UUID employee columns.
+                                ->whereRaw('users.id::text = bookings.employee_id::text')
+                                ->whereNull('users.deleted_at')
+                                ->where(function ($identityQuery) use ($search) {
+                                    $identityQuery->where('users.first_name', 'like', "%{$search}%")
+                                        ->orWhere('users.last_name', 'like', "%{$search}%")
+                                        ->orWhere('users.email', 'like', "%{$search}%")
+                                        ->orWhere('users.phone', 'like', "%{$search}%");
+                                });
+                        });
+                })
                     ->orWhereHas('serviceType', function ($serviceTypeQuery) use ($search) {
                         $serviceTypeQuery->where('name', 'like', "%{$search}%");
                     })

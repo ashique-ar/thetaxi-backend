@@ -28,8 +28,7 @@ class UserService
             $search = trim((string) $filters['search']);
             $query->where(function ($q) use ($search) {
                 $digits = preg_replace('/\D+/', '', $search);
-                $q->whereLikeInsensitive('id', $search)
-                  ->orWhereLikeInsensitive('first_name', $search)
+                $q->whereLikeInsensitive('first_name', $search)
                   ->orWhereLikeInsensitive('last_name', $search)
                   ->orWhereLikeInsensitive('email', $search)
                   ->orWhereLikeInsensitive('phone', $search)
@@ -40,9 +39,7 @@ class UserService
                           ->orWhereLikeInsensitive('guard_name', $search);
                   })
                   ->orWhereHas('contexts', function ($contextQuery) use ($search) {
-                      $contextQuery->whereLikeInsensitive('id', $search)
-                          ->orWhereLikeInsensitive('context_type', $search)
-                          ->orWhereLikeInsensitive('context_id', $search);
+                      $contextQuery->whereLikeInsensitive('context_type', $search);
                   });
                 if (strlen($digits) >= 4) {
                     $phoneSearch = strlen($digits) >= 9 ? substr($digits, -9) : $digits;
@@ -225,12 +222,7 @@ class UserService
 
             // Assign permissions if provided
             if (isset($userData['permissions'])) {
-                $user->givePermissionTo($userData['permissions']);
-            }
-
-            // Handle context-based role and permission assignment
-            if (isset($userData['context_type'])) {
-                $this->assignContextPermissions($user, $userData['context_type']);
+                app(PermissionAssignmentService::class)->grantDirectUserPermissions($user, $userData['permissions']);
             }
 
             DB::commit();
@@ -281,12 +273,7 @@ class UserService
 
             // Update permissions if provided
             if (isset($userData['permissions'])) {
-                $user->syncPermissions($userData['permissions']);
-            }
-
-            // Handle context-based role and permission assignment
-            if (isset($userData['context_type'])) {
-                $this->assignContextPermissions($user, $userData['context_type']);
+                app(PermissionAssignmentService::class)->syncDirectUserPermissions($user, $userData['permissions']);
             }
 
             DB::commit();
@@ -502,59 +489,4 @@ class UserService
         ];
     }
 
-    /**
-     * Assign context-based permissions
-     *
-     * @param User $user
-     * @param string $contextType
-     * @return void
-     */
-    private function assignContextPermissions(User $user, string $contextType): void
-    {
-        // Map context types to default permissions
-        $contextPermissionMap = [
-            'customer' => [
-                'bookings.view',
-                'bookings.create',
-                'profile.view',
-                'profile.edit',
-            ],
-            'driver' => [
-                'bookings.view',
-                'assignments.view',
-                'profile.view',
-                'profile.edit',
-            ],
-            'vehicle_owner' => [
-                'vehicles.view',
-                'vehicles.create',
-                'vehicles.edit',
-                'bookings.view',
-                'profile.view',
-                'profile.edit',
-            ],
-            'staff' => [
-                'bookings.view',
-                'bookings.edit',
-                'customers.view',
-                'vehicles.view',
-                'reports.view',
-            ],
-            'agent' => [
-                'bookings.view',
-                'bookings.create',
-                'customers.view',
-                'reports.view',
-            ],
-        ];
-
-        $permissions = $contextPermissionMap[$contextType] ?? [];
-        
-        foreach ($permissions as $permissionName) {
-            $permission = \Spatie\Permission\Models\Permission::where('name', $permissionName)->first();
-            if ($permission && !$user->hasPermissionTo($permissionName)) {
-                $user->givePermissionTo($permissionName);
-            }
-        }
-    }
 }

@@ -16,7 +16,11 @@ it('requires a complete approved closed-month alert contract without inferred th
         ->and($controller)
         ->toContain("'rules.evaluation.schedule.local_time' => ['required', 'date_format:H:i']")
         ->toContain("'rules.evaluation.owner_user_id' => ['required', 'uuid', 'exists:users,id']")
-        ->and($performance)->toContain('active internal Staff user in the selected legal entity');
+        ->and($performance)
+        ->toContain('active internal Staff user with an active Staff context in the selected legal entity')
+        ->toContain('activeAlertOwnerIdentity(')
+        ->toContain("where('is_active', true)")
+        ->toContain("where('context_type', 'staff')");
 });
 
 it('evaluates the policy frozen by period close on its due schedule exactly once', function () {

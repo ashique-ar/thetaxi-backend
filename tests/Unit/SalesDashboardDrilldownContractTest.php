@@ -155,10 +155,19 @@ it('drills an outstanding schedule to source-currency allocations and governed L
         ->toContain('schedule.lkr_amount * ({$outstandingExpression}) / {$sourceExpression}')
         ->toContain("->whereIn('attribution.collection_sales_profile_id', \$authorizedIds)")
         ->toContain("'balance_equation' => 'scheduled source amount - net source allocations = outstanding source amount'")
-        ->toContain("'booking_payment_receipt_id', 'amount', 'allocated_at'")
+        ->toContain("->get([\n            'amount', 'allocated_at',\n        ])")
+        ->not->toContain("'id', 'booking_payment_receipt_id', 'amount', 'allocated_at'")
         ->and($routes)
         ->toContain("Route::get('schedules/{schedule}/facts', [SalesDashboardController::class, 'scheduleFacts'])")
         ->toContain("->whereUuid('schedule')->middleware('permission:sales.performance.view')");
+});
+
+it('shows an authorized schedule booking reference instead of allocation identifiers', function () {
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-performance/sales-performance.component.html'));
+
+    expect($template)
+        ->toContain('drill.schedule.booking_number', 'Booking reference unavailable')
+        ->not->toContain('allocation.booking_payment_receipt_id');
 });
 
 it('drills current KPI flows to authorized signed facts before pagination', function () {

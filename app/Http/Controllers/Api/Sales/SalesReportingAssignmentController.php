@@ -167,7 +167,11 @@ class SalesReportingAssignmentController extends Controller
 
     private function supportsAssignmentInterval(SalesProfile $profile, array $data): bool
     {
-        return $profile->status === 'active'
+        return DB::table('staff')->where('id', $profile->staff_id)->whereNull('deleted_at')
+            ->where(fn ($employment) => $employment->whereNull('employment_ended_at')
+                ->orWhere('employment_ended_at', '>=', $data['effective_until'] ?? '9999-12-31'))
+            ->exists()
+            && $profile->status === 'active'
             && preg_match('/^[A-Z]{3}$/', (string) $profile->reporting_currency) === 1
             && ($profile->acquisition_eligible || $profile->collection_eligible || $profile->commission_eligible)
             && $profile->effective_from->lte($data['effective_from'])

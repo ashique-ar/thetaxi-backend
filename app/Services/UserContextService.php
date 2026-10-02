@@ -14,6 +14,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Role;
+use Spatie\Permission\PermissionRegistrar;
 
 class UserContextService
 {
@@ -64,6 +65,7 @@ class UserContextService
         DB::beginTransaction();
 
         try {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $selectedContextId = $contextData['context_id'] ?? $contextData['selected_context_id'] ?? null;
             unset($contextData['context_id'], $contextData['selected_context_id']);
 
@@ -337,37 +339,41 @@ class UserContextService
      */
     public function assignRolesToContext(User $user, $userContext, array $roles): void
     {
-        foreach ($roles as $roleSpec) {
-            $roleModel = null;
+        DB::transaction(function () use ($user, $userContext, $roles): void {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $userContext = UserContext::query()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            foreach ($roles as $roleSpec) {
+                $roleModel = null;
 
-            if (is_numeric($roleSpec)) {
-                $roleModel = Role::find((int) $roleSpec);
-            } else {
-                $roleModel = Role::where('name', (string) $roleSpec)->first();
+                if (is_numeric($roleSpec)) {
+                    $roleModel = Role::find((int) $roleSpec);
+                } else {
+                    $roleModel = Role::where('name', (string) $roleSpec)->first();
+                }
+
+                if (!$roleModel) {
+                    continue;
+                }
+
+                $exists = DB::table('user_context_roles')
+                    ->where('user_context_id', $userContext->id)
+                    ->where('role_id', $roleModel->id)
+                    ->exists();
+
+                if (!$exists) {
+                    DB::table('user_context_roles')->insert([
+                        'user_context_id' => $userContext->id,
+                        'role_id' => $roleModel->id,
+                        'created_at' => now(),
+                        'updated_at' => now(),
+                    ]);
+                }
+
+                if ($userContext->is_active && !$user->hasRole($roleModel->name)) {
+                    $user->assignRole($roleModel->name);
+                }
             }
-
-            if (!$roleModel || !$userContext?->id) {
-                continue;
-            }
-
-            $exists = DB::table('user_context_roles')
-                ->where('user_context_id', $userContext->id)
-                ->where('role_id', $roleModel->id)
-                ->exists();
-
-            if (!$exists) {
-                DB::table('user_context_roles')->insert([
-                    'user_context_id' => $userContext->id,
-                    'role_id' => $roleModel->id,
-                    'created_at' => now(),
-                    'updated_at' => now(),
-                ]);
-            }
-
-            if (!$user->hasRole($roleModel->name)) {
-                $user->assignRole($roleModel->name);
-            }
-        }
+        });
     }
 
     /**
@@ -380,19 +386,22 @@ class UserContextService
     {
         $actorUserId ??= $user->id;
 
-        foreach (collect($roles) as $role) {
-            if (!$role instanceof Role || ($role->auto_assign_contexts ?? true) === false) {
-                continue;
-            }
+        DB::transaction(function () use ($user, $roles, $actorUserId): void {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            foreach (collect($roles) as $role) {
+                if (!$role instanceof Role || ($role->auto_assign_contexts ?? true) === false) {
+                    continue;
+                }
 
-            foreach ($this->getContextTypesForRole($role) as $contextType) {
-                $context = $this->resolveOrCreateContextForRole($user, $contextType, $actorUserId);
+                foreach ($this->getContextTypesForRole($role) as $contextType) {
+                    $context = $this->resolveOrCreateContextForRole($user, $contextType, $actorUserId);
 
-                if ($context) {
-                    $this->assignRolesToContext($user, $context, [$role->id]);
+                    if ($context) {
+                        $this->assignRolesToContext($user, $context, [$role->id]);
+                    }
                 }
             }
-        }
+        });
     }
 
     /**
@@ -400,13 +409,15 @@ class UserContextService
      */
     public function revokeRolesFromContext(User $user, UserContext $userContext): void
     {
-        $assigned = DB::table('user_context_roles')
-            ->where('user_context_id', $userContext->id)
-            ->get();
+        DB::transaction(function () use ($user, $userContext): void {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $userContext = UserContext::query()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $assigned = DB::table('user_context_roles')->where('user_context_id', $userContext->id)->get();
 
-        foreach ($assigned as $row) {
-            $this->revokeRoleFromContext($user, $userContext, $row->role_id);
-        }
+            foreach ($assigned as $row) {
+                $this->revokeRoleFromContext($user, $userContext, $row->role_id);
+            }
+        });
     }
 
     /**
@@ -414,52 +425,64 @@ class UserContextService
      */
     public function revokeRoleFromContext(User $user, UserContext $userContext, int $roleId): void
     {
-        $role = Role::find($roleId);
-        if (!$role) {
-            return;
-        }
+        DB::transaction(function () use ($user, $userContext, $roleId): void {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $userContext = UserContext::query()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $role = Role::find($roleId);
+            if (!$role) {
+                return;
+            }
 
-        DB::table('user_context_roles')
-            ->where('user_context_id', $userContext->id)
-            ->where('role_id', $roleId)
-            ->delete();
+            DB::table('user_context_roles')
+                ->where('user_context_id', $userContext->id)
+                ->where('role_id', $roleId)
+                ->delete();
 
-        $other = DB::table('user_context_roles as ucr')
-            ->join('user_contexts as uc', 'ucr.user_context_id', '=', 'uc.id')
-            ->where('uc.user_id', $user->id)
-            ->where('uc.is_active', true)
-            ->where('ucr.role_id', $roleId)
-            ->exists();
+            $other = DB::table('user_context_roles as ucr')
+                ->join('user_contexts as uc', 'ucr.user_context_id', '=', 'uc.id')
+                ->where('uc.user_id', $user->id)
+                ->where('uc.is_active', true)
+                ->where('ucr.role_id', $roleId)
+                ->exists();
 
-        if (!$other && $user->hasRole($role->name)) {
-            $user->removeRole($role->name);
-        }
+            if (!$other && $user->hasRole($role->name)) {
+                $user->removeRole($role->name);
+            }
+        });
     }
 
     /**
      * Deactivate a specific context.
      */
-    public function deactivateContext(User $user, string $contextType): bool
+    public function deactivateContext(User $user, string $contextType, ?string $contextId = null, ?string $actorUserId = null): bool
     {
-        $contexts = $user->contexts()
-            ->where('context_type', $contextType)
-            ->where('is_active', true)
-            ->get();
-
-        if ($contexts->isEmpty()) {
-            return false;
-        }
-
         DB::beginTransaction();
 
         try {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $contexts = $user->contexts()
+                ->where('context_type', $contextType)
+                ->when($contextId, fn($query, $id) => $query->where('context_id', $id))
+                ->where('is_active', true)
+                ->lockForUpdate()
+                ->get();
+            if ($contexts->isEmpty()) {
+                DB::commit();
+                return false;
+            }
+
             foreach ($contexts as $context) {
                 $context->is_active = false;
+                if ($actorUserId) {
+                    $context->updated_user_id = $actorUserId;
+                }
                 $context->save();
                 $this->suspendGlobalRolesForContext($user, $context);
+                $this->removeContextPermissionGrants($user, $context, $actorUserId);
             }
 
             DB::commit();
+            app(PermissionRegistrar::class)->forgetCachedPermissions();
             return true;
         } catch (\Exception $e) {
             DB::rollBack();
@@ -487,6 +510,48 @@ class UserContextService
             if (!$usedByAnotherActiveContext && $user->hasRole($role->name)) {
                 $user->removeRole($role->name);
             }
+        }
+    }
+
+    private function removeContextPermissionGrants(User $user, UserContext $context, ?string $actorUserId): void
+    {
+        $permissionIds = DB::table('user_context_permission_grants')
+            ->where('user_context_id', $context->id)->pluck('permission_id');
+        $permissionNames = DB::table('permissions')->whereIn('id', $permissionIds)->pluck('name', 'id');
+        DB::table('user_context_permission_grants')->where('user_context_id', $context->id)->delete();
+        $removed = [];
+
+        foreach ($permissionIds as $permissionId) {
+            $shared = DB::table('user_context_permission_grants as grants')
+                ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+                ->where('user_contexts.user_id', $user->id)
+                ->where('user_contexts.is_active', true)
+                ->where('grants.permission_id', $permissionId)
+                ->exists();
+            $explicit = DB::table('user_direct_permission_grants')
+                ->where('user_id', $user->id)->where('permission_id', $permissionId)->exists();
+
+            if (!$shared && !$explicit) {
+                $deleted = DB::table('model_has_permissions')
+                    ->where('model_type', User::class)
+                    ->where('model_id', $user->id)
+                    ->where('permission_id', $permissionId)
+                    ->delete();
+                if ($deleted) {
+                    $removed[] = $permissionNames[$permissionId] ?? (string) $permissionId;
+                }
+            }
+        }
+
+        if ($permissionIds->isNotEmpty()) {
+            $actor = $actorUserId ? User::query()->find($actorUserId) : null;
+            activity('user-access')->causedBy($actor ?? $user)->performedOn($user)
+                ->withProperties([
+                    'context_id' => $context->id,
+                    'context_type' => $context->context_type,
+                    'released_context_defaults' => $permissionNames->values()->all(),
+                    'direct_permissions_removed' => $removed,
+                ])->log('context_default_permission_sources_released');
         }
     }
 

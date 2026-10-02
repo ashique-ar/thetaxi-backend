@@ -141,6 +141,7 @@ class VehicleController extends Controller
     public function show(Vehicle $vehicle): JsonResponse
     {
         $vehicle->load([
+            'defaultDriver.user',
             'owner.driver.user',
             'owner.paymentMethods',
             'ownerPaymentMethod',

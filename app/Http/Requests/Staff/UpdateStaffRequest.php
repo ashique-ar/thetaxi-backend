@@ -22,7 +22,7 @@ class UpdateStaffRequest extends FormRequest
             'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],
             'phone' => ['sometimes', 'nullable', 'string', 'max:30'],
-            'status' => ['sometimes', 'in:active,inactive,on_leave'],
+            'status' => ['prohibited'],
             'user_id' => ['sometimes', 'nullable', 'exists:users,id'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['sometimes', 'numeric', 'min:0', 'max:100'],

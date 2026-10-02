@@ -31,17 +31,57 @@ class ActingAppointmentController extends Controller
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
-    public function references(Request $request): JsonResponse
+    public function referenceOptions(Request $request): JsonResponse
     {
         $this->enabled();
         $companyId = $this->access->actorCompanyId($request->user());
-        $authorizedStaff = $this->access->scope(Staff::query()->select('staff.id'), $request->user());
-        $date = $request->validate(['effective_at' => ['nullable', 'date']])['effective_at'] ?? now()->toDateString();
-        $staff = DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')->where('staff.company_id', $companyId)->whereIn('staff.id', $authorizedStaff)->whereNull('staff.employment_ended_at')->whereExists(fn ($query) => $query->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('status', 'active'))
-            ->select(['staff.id', 'staff.code as employee_number', 'users.first_name', 'users.last_name'])->orderBy('staff.code')->limit(100)->get();
-        $positions = DB::table('hr_positions')->where('company_id', $companyId)->where('status', 'active')->where('effective_from', '<=', $date)->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', $date))
-            ->select(['id', 'organization_unit_id', 'position_number', 'title', 'headcount_limit'])->orderBy('position_number')->limit(100)->get();
-        return response()->json(['status' => 'success', 'data' => ['staff' => $staff, 'positions' => $positions, 'reference_limit' => 100]]);
+        $data = $request->validate([
+            'record_type' => ['required', Rule::in(['staff', 'position'])],
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'exclude_id' => ['nullable', 'uuid'],
+            'effective_from' => ['nullable', 'date'],
+            'effective_until' => ['nullable', 'date'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $from = $data['effective_from'] ?? now()->toDateString();
+        $until = $data['effective_until'] ?? null;
+        $query = $data['record_type'] === 'staff'
+            ? DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
+                ->where('staff.company_id', $companyId)->whereIn('staff.id', $this->access->scope(Staff::query()->select('staff.id'), $request->user()))
+                ->whereNull('staff.employment_ended_at')->whereExists(fn ($spell) => $spell->selectRaw('1')->from('hr_employment_spells')->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('hr_employment_spells.company_id', $companyId)->where('hr_employment_spells.status', 'active'))
+            : DB::table('hr_positions')->where('company_id', $companyId)->where('status', 'active')
+                ->where('effective_from', '<=', $from)->where(fn ($range) => $until === null
+                    ? $range->whereNull('effective_until')
+                    : $range->whereNull('effective_until')->orWhere('effective_until', '>=', $until));
+        $idColumn = $data['record_type'] === 'staff' ? 'staff.id' : 'hr_positions.id';
+        if (! empty($data['exclude_id'])) $query->where($idColumn, '<>', $data['exclude_id']);
+        if (! empty($data['selected_id'])) $query->where($idColumn, $data['selected_id']);
+        else {
+            $search = trim((string) ($data['search'] ?? ''));
+            if ($search !== '') {
+                if ($data['record_type'] === 'staff') {
+                    $query->where(fn ($matches) => $matches->whereRaw("LOWER(COALESCE(users.first_name, '')) LIKE ?", ['%' . mb_strtolower($search) . '%'])->orWhereRaw("LOWER(COALESCE(users.last_name, '')) LIKE ?", ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(staff.code) LIKE ?', ['%' . mb_strtolower($search) . '%']));
+                } else {
+                    $query->where(fn ($matches) => $matches->whereRaw('LOWER(hr_positions.title) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(hr_positions.position_number) LIKE ?', ['%' . mb_strtolower($search) . '%']));
+                }
+            }
+        }
+        $columns = $data['record_type'] === 'staff'
+            ? ['staff.id', 'staff.code as code', 'users.first_name', 'users.last_name']
+            : ['hr_positions.id', 'hr_positions.position_number as code', 'hr_positions.title as name', 'hr_positions.organization_unit_id'];
+        $rows = $query->select($columns)->orderBy('code')->orderBy($idColumn)->paginate((int) ($data['per_page'] ?? 25));
+        $rows->getCollection()->transform(fn ($row) => [
+            'value' => (string) $row->id,
+            'label' => $data['record_type'] === 'staff'
+                ? (trim(($row->first_name ?? '') . ' ' . ($row->last_name ?? '')) ?: 'Unnamed Staff') . ' · ' . $row->code
+                : $row->code . ' · ' . $row->name,
+            'metadata' => $data['record_type'] === 'position' ? ['title' => $row->name] : [],
+            'status' => 'active',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function store(Request $request): JsonResponse

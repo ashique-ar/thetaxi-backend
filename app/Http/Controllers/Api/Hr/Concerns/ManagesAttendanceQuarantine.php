@@ -44,11 +44,65 @@ trait ManagesAttendanceQuarantine
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
 
+    public function quarantineMappingOptions(Request $request, string $itemId): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->first();
+        abort_unless($item, 404);
+        $companyId = $this->authorizedCompanyId($request, $item->company_id);
+        abort_unless($item->status === 'open', 409, 'Only open quarantine items can be resolved.');
+        $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
+        abort_unless($event && $event->company_id === $companyId, 409, 'Quarantine and raw event legal entities must match.');
+        abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where('company_id', $companyId)->exists(), 409, 'The event device must belong to the quarantine legal entity.');
+
+        $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
+        $search = trim((string) ($data['search'] ?? ''));
+        $query = DB::table('hr_attendance_person_mappings as mapping')
+            ->join('staff', 'staff.id', '=', 'mapping.staff_id')
+            ->leftJoin('users', 'users.id', '=', 'staff.user_id')
+            ->where('mapping.company_id', $companyId)
+            ->where('staff.company_id', $companyId)
+            ->where('mapping.enrollment_status', 'verified')
+            ->where('mapping.provider_person_id', $event->provider_person_id)
+            ->where(fn ($builder) => $builder->whereNull('mapping.device_id')->orWhere('mapping.device_id', $event->device_id))
+            ->whereDate('mapping.effective_from', '<=', $occurred)
+            ->where(fn ($builder) => $builder->whereNull('mapping.effective_until')->orWhereDate('mapping.effective_until', '>', $occurred))
+            ->when($data['selected_id'] ?? null, fn ($builder, $id) => $builder->where('mapping.id', $id))
+            ->when($search !== '', fn ($builder) => $builder->where(fn ($match) => $match
+                ->whereLikeInsensitive('staff.code', $search)
+                ->orWhereLikeInsensitive('mapping.employee_number_snapshot', $search)
+                ->orWhereLikeInsensitive('mapping.provider_person_id', $search)
+                ->orWhereLikeInsensitive('users.first_name', $search)
+                ->orWhereLikeInsensitive('users.last_name', $search)))
+            ->select('mapping.id', 'mapping.employee_number_snapshot', 'mapping.provider_person_id', 'staff.code as staff_code', 'users.first_name', 'users.last_name')
+            ->orderBy('staff.code');
+        $options = $query->paginate((int) ($data['per_page'] ?? 25));
+        $options->setCollection($options->getCollection()->map(function ($mapping) {
+            $name = trim(($mapping->first_name ?? '').' '.($mapping->last_name ?? ''));
+
+            return [
+                'value' => (string) $mapping->id,
+                'label' => trim(($mapping->staff_code ? $mapping->staff_code.' · ' : '').($name ?: $mapping->employee_number_snapshot ?: $mapping->provider_person_id)),
+                'metadata' => ['provider_person_id' => $mapping->provider_person_id, 'employee_number' => $mapping->employee_number_snapshot],
+                'status' => 'verified',
+            ];
+        }));
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
     public function resolveQuarantine(Request $request, string $itemId): JsonResponse
     {
         $data = $request->validate(['person_mapping_id' => ['required', 'uuid', 'exists:hr_attendance_person_mappings,id'], 'reason' => ['required', 'string', 'max:2000']]);
 
         return DB::transaction(function () use ($request, $itemId, $data) {
+            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])->lockForUpdate()->first();
+            abort_unless($mapping, 404);
             $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->lockForUpdate()->first();
             abort_unless($item, 404);
             $this->authorizedCompanyId($request, $item->company_id);
@@ -56,8 +110,10 @@ trait ManagesAttendanceQuarantine
                 return response()->json(['status' => 'success', 'data' => $item]);
             }
             $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
-            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])->first();
-            abort_unless($event && $mapping && $mapping->company_id === $item->company_id, 422, 'Event, mapping, and quarantine legal entities must match.');
+            abort_unless($event && $event->company_id === $item->company_id && $mapping && $mapping->company_id === $item->company_id, 422, 'Event, mapping, and quarantine legal entities must match.');
+            abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where('company_id', $item->company_id)->exists(), 422, 'The event device must belong to the quarantine legal entity.');
+            $staff = DB::table('staff')->where('id', $mapping->staff_id)->lockForUpdate()->first();
+            abort_unless($staff && $staff->company_id === $item->company_id, 422, 'The mapping Staff member must belong to the quarantine legal entity.');
             abort_unless($mapping->enrollment_status === 'verified', 422, 'Only a verified mapping can resolve quarantined evidence.');
             abort_unless($mapping->provider_person_id === $event->provider_person_id, 422, 'The provider person does not match the selected mapping.');
             abort_unless($mapping->device_id === null || $mapping->device_id === $event->device_id, 422, 'The event device does not match the selected mapping.');

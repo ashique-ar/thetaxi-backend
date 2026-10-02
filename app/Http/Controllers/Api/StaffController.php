@@ -46,14 +46,11 @@ class StaffController extends Controller
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search, $canSearchSensitivePersonal) {
-                $query->whereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
-                    ->orWhereLikeInsensitive('staff_type', $search)
+                $query->whereLikeInsensitive('staff_type', $search)
                     ->orWhereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('city', $search)
                     ->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->whereLikeInsensitive('id', $search)
-                            ->orWhereLikeInsensitive('first_name', $search)
+                        $userQuery->whereLikeInsensitive('first_name', $search)
                             ->orWhereLikeInsensitive('last_name', $search)
                             ->orWhereLikeInsensitive('email', $search)
                             ->orWhereLikeInsensitive('phone', $search);
@@ -241,7 +238,6 @@ class StaffController extends Controller
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
         $userData = collect($data)->only(['first_name', 'last_name', 'email', 'phone'])->all();
-        if (array_key_exists('status', $data)) $userData['is_active'] = $data['status'] === 'active';
         unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status'], $data['user_id']);
         $staff = DB::transaction(function () use ($staff, $data, $userData): Staff {
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);

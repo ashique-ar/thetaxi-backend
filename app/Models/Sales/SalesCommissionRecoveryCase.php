@@ -3,6 +3,7 @@
 namespace App\Models\Sales;
 
 use App\Models\BaseModel;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
 class SalesCommissionRecoveryCase extends BaseModel
@@ -45,6 +46,11 @@ class SalesCommissionRecoveryCase extends BaseModel
     public function decision(): HasOne
     {
         return $this->hasOne(SalesCommissionRecoveryDecision::class, 'recovery_case_id');
+    }
+
+    public function beneficiarySalesProfile(): BelongsTo
+    {
+        return $this->belongsTo(SalesProfile::class, 'beneficiary_sales_profile_id')->withTrashed();
     }
 
     protected static function booted(): void

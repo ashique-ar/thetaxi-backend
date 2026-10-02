@@ -58,7 +58,7 @@ class StaffIdentityService
                     $actor->id,
                 ));
 
-            $this->contextService->deactivateContext($user, 'staff');
+            $this->contextService->deactivateContext($user, 'staff', null, $actor->id);
             $lockedStaff->paymentMethodChanges()->where('status', 'pending')->update([
                 'status' => 'cancelled',
                 'review_notes' => 'Cancelled automatically when the Staff context was terminated.',

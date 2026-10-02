@@ -550,22 +550,7 @@ class User extends Authenticatable
      */
     public function switchToCustomerContext()
     {
-        if (! $this->customerContext()) {
-            // Create customer record if user doesn't have one
-            $customer = Customer::create([
-                'user_id' => $this->id,
-                'created_user_id' => $this->id,
-            ]);
-
-            // Create context
-            UserContext::create([
-                'user_id' => $this->id,
-                'context_type' => 'customer',
-                'context_id' => $customer->id,
-                'is_active' => true,
-                'created_user_id' => $this->id,
-            ]);
-        }
+        app(\App\Services\UserContextService::class)->switchContext($this, 'customer');
 
         return $this->customerContext();
     }

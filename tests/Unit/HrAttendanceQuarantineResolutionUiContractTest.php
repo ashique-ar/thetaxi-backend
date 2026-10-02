@@ -1,27 +1,29 @@
 <?php
 
-it('adds the missing person-mapping list endpoint so quarantine resolution can select a verified mapping', function () {
+it('provides an item-scoped eligible mapping selector for quarantine resolution', function () {
     $controller = hr_attendance_device_controller_source();
 
     expect($controller)
-        ->toContain('public function mappings(Request $request): JsonResponse')
-        ->toContain("'status' => ['nullable', Rule::in(['pending', 'verified'])]")
-        ->toContain("->where('company_id', \$companyId)");
+        ->toContain('public function quarantineMappingOptions(Request $request, string $itemId): JsonResponse')
+        ->toContain("->where('mapping.enrollment_status', 'verified')")
+        ->toContain("->where('mapping.provider_person_id', \$event->provider_person_id)")
+        ->toContain("->lockForUpdate()->first()");
 });
 
-it('exposes the mapping list under the existing devices-view permission rather than minting a new one', function () {
+it('exposes item-scoped options under the existing quarantine-resolution permission', function () {
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($routes)->toContain("Route::get('person-mappings', [AttendanceDeviceController::class, 'mappings'])->middleware('permission:hr.attendance.devices.view');");
+    expect($routes)->toContain("Route::get('quarantine/{itemId}/mapping-options', [AttendanceDeviceController::class, 'quarantineMappingOptions'])->whereUuid('itemId')->middleware('permission:hr.attendance.quarantine.resolve');");
 });
 
-it('wires the mapping list into the Angular attendance service and gates the resolve action on the existing quarantine.resolve permission', function () {
-    $service = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/services/hr-attendance.service.ts'));
+it('uses the shared managed-record selector and gates resolution on the existing permission', function () {
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-exceptions/attendance-exceptions.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-exceptions/attendance-exceptions.component.html'));
 
-    expect($service)->toContain('personMappings(params: any = {})')->toContain("this.makeGetCall('/hr/attendance/person-mappings', params)");
     expect($component)
         ->toContain("this.auth.hasPermission('hr.attendance.quarantine.resolve')")
-        ->toContain('this.api.personMappings({per_page:200})')
-        ->toContain('if(!this.canResolve()');
+        ->toContain('if (!this.canResolve()');
+    expect($template)
+        ->toContain('<app-ui-managed-record-select')
+        ->toContain("'/hr/attendance/quarantine/' + row.id + '/mapping-options'");
 });

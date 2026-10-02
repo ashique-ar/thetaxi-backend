@@ -269,12 +269,15 @@ class BookingLifecycleController extends Controller
         $request->validate([
             'booking_id' => 'required|string',
             'booking_item_id' => 'nullable|string',
-            'inspector_id' => 'nullable|exists:users,id',
+            'inspector_id' => 'nullable|uuid',
         ]);
 
         try {
             DB::beginTransaction();
             $inspectorId = $request->input('inspector_id') ?: Auth::id();
+            if ($request->filled('inspector_id')) {
+                $this->lifecycleService->assertAvailableInspector($request->user(), $inspectorId);
+            }
 
             $qc = $this->lifecycleService->startQCInspection(
                 $request->booking_id,
@@ -289,6 +292,9 @@ class BookingLifecycleController extends Controller
                 'data' => $qc,
                 'message' => 'QC inspection started successfully'
             ]);
+        } catch (ValidationException $e) {
+            DB::rollBack();
+            throw $e;
         } catch (\Exception $e) {
             DB::rollBack();
             Log::error('Error starting QC inspection', [
@@ -563,10 +569,16 @@ class BookingLifecycleController extends Controller
     /**
      * Get available inspectors
      */
-    public function getAvailableInspectors(): JsonResponse
+    public function getAvailableInspectors(Request $request): JsonResponse
     {
+        $filters = $request->validate([
+            'search' => 'nullable|string|max:120',
+            'selected_id' => 'nullable|uuid',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:50',
+        ]);
         try {
-            $inspectors = $this->lifecycleService->getAvailableInspectors();
+            $inspectors = $this->lifecycleService->getAvailableInspectors($request->user(), $filters);
 
             return response()->json([
                 'status' => 'success',

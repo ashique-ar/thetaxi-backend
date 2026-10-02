@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Services\Hr\PeopleAccessService;
 use App\Services\Hr\ReportingLineAdministrationService;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -62,18 +63,40 @@ class ReportingLineController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $search = trim((string) ($data['search'] ?? ''));
-        $query = DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
+        $query = $this->staffOptionsQuery($companyId, $search);
+
+        return response()->json(['status' => 'success', 'data' => $query->paginate((int) ($data['per_page'] ?? 50))]);
+    }
+
+    public function staffSelectorOptions(Request $request): JsonResponse
+    {
+        $this->enabled();
+        $companyId = $this->access->actorCompanyId($request->user());
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
+        $query = $this->staffOptionsQuery($companyId, trim((string) ($data['search'] ?? '')), $data['selected_id'] ?? null);
+        $options = $query->paginate((int) ($data['per_page'] ?? 25));
+        $options->setCollection($options->getCollection()->map(fn ($staff) => [
+            'value' => (string) $staff->id,
+            'label' => (trim(($staff->first_name ?? '').' '.($staff->last_name ?? '')) ?: 'Staff member').($staff->employee_number ? ' · '.$staff->employee_number : ''),
+            'status' => 'active',
+        ]));
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
+    private function staffOptionsQuery(string $companyId, string $search, ?string $selectedId = null): Builder
+    {
+        return DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $companyId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
             ->whereExists(fn ($employment) => $employment->selectRaw('1')->from('hr_employment_spells')
                 ->whereColumn('hr_employment_spells.staff_id', 'staff.id')->where('hr_employment_spells.status', 'active')->whereNull('hr_employment_spells.terminated_at'))
+            ->when($selectedId, fn ($q, $id) => $q->where('staff.id', $id))
             ->when($search !== '', fn ($q) => $q->where(fn ($match) => $match
                 ->whereRaw('LOWER(staff.code) LIKE ?', ['%'.mb_strtolower($search).'%'])
                 ->orWhereRaw('LOWER(users.first_name) LIKE ?', ['%'.mb_strtolower($search).'%'])
                 ->orWhereRaw('LOWER(users.last_name) LIKE ?', ['%'.mb_strtolower($search).'%'])))
             ->select(['staff.id', 'staff.code as employee_number', 'users.first_name', 'users.last_name'])
             ->orderBy('staff.code')->orderBy('staff.id');
-
-        return response()->json(['status' => 'success', 'data' => $query->paginate((int) ($data['per_page'] ?? 50))]);
     }
 
     public function store(Request $request): JsonResponse

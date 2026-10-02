@@ -8,6 +8,7 @@ use App\Services\Hr\Leave\LeaveWorkflowService;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\Ess\HrDomainRequestProjectionService;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,24 +17,191 @@ use Illuminate\Validation\Rule;
 
 class WorkforceController extends Controller
 {
-    public function references(Request $r, StaffAccessService $access): JsonResponse
+    public function references(Request $r): JsonResponse
     {
         $companyId = $this->company($r, $r->input('company_id'));
-        $staff = $access->scope(Staff::query(), $r->user())
-            ->where('staff.company_id', $companyId)
-            ->whereNull('staff.employment_ended_at')
-            ->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->orderBy('users.first_name')
-            ->orderBy('users.last_name')
-            ->get(['staff.id', 'staff.company_id', 'staff.code', 'staff.staff_type', 'users.first_name', 'users.last_name', 'users.email']);
-
         return response()->json(['status' => 'success', 'data' => [
             'company_id' => $companyId,
-            'staff' => $staff,
-            'leave_types' => DB::table('hr_leave_types')->where('company_id', $companyId)->where('status', 'active')->orderBy('name')->get(['id', 'code', 'name', 'unit']),
-            'leave_policies' => DB::table('hr_leave_policies')->where('company_id', $companyId)->where('status', 'approved')->orderBy('code')->get(['id', 'leave_type_id', 'code', 'version']),
-            'work_request_policies' => DB::table('hr_work_request_policies')->where('company_id', $companyId)->where('status', 'approved')->orderBy('request_kind')->orderBy('code')->get(['id', 'request_kind', 'code', 'version']),
         ]]);
+    }
+
+    public function leaveTypeOptions(Request $r): JsonResponse
+    {
+        $d = $r->validate([
+            'company_id' => ['nullable', 'uuid'], 'status' => ['nullable', 'string', 'max:30'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        if (empty($d['company_id'])) return response()->json(['status' => 'success', 'data' => []]);
+        $companyId = $this->company($r, $d['company_id']);
+        $q = DB::table('hr_leave_types')->where('company_id', $companyId)
+            ->when($d['status'] ?? null, fn ($types, $status) => $types->where('status', $status));
+        if (isset($d['selected_id'])) $q->where('id', $d['selected_id']);
+        elseif (!empty($d['search'])) {
+            $term = '%'.strtolower(addcslashes(trim($d['search']), '%_\\')).'%';
+            $q->where(fn ($types) => $types->whereRaw('LOWER(code) LIKE ?', [$term])->orWhereRaw('LOWER(name) LIKE ?', [$term]));
+        }
+        $q->select(['id', 'code', 'name', 'category', 'unit', 'paid', 'status'])->orderBy('name')->orderBy('code')->orderBy('id');
+        $map = fn ($type) => [
+            'value' => (string) $type->id,
+            'label' => $type->name.' - '.$type->code,
+            'metadata' => ['category' => $type->category, 'unit' => $type->unit, 'paid' => (string) $type->paid],
+            'status' => $type->status,
+        ];
+        if (isset($d['selected_id'])) return response()->json(['status' => 'success', 'data' => $q->limit(1)->get()->map($map)->values()]);
+        $rows = $q->paginate($d['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function leavePolicyOptions(Request $r, StaffAccessService $access): JsonResponse
+    {
+        $d = $r->validate([
+            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'],
+            'start_date' => ['nullable', 'date'], 'end_date' => ['nullable', 'date'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        if (empty($d['company_id']) || empty($d['staff_id']) || empty($d['start_date']) || empty($d['end_date']) || $d['end_date'] < $d['start_date']) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+        $companyId = $this->company($r, $d['company_id']);
+        $staff = Staff::query()->whereKey($d['staff_id'])->where('company_id', $companyId)->whereNull('employment_ended_at')->firstOrFail();
+        $access->authorize($r->user(), $staff, 'view');
+
+        $q = DB::table('hr_leave_policies as policy')
+            ->join('hr_leave_policy_assignments as assignment', function ($join) use ($d, $companyId) {
+                $join->on('assignment.policy_id', '=', 'policy.id')
+                    ->where('assignment.company_id', $companyId)->where('assignment.staff_id', $d['staff_id'])
+                    ->whereNotNull('assignment.approved_at')->whereDate('assignment.effective_from', '<=', $d['start_date'])
+                    ->where(fn ($dates) => $dates->whereNull('assignment.effective_until')->orWhereDate('assignment.effective_until', '>', $d['end_date']));
+            })
+            ->join('hr_leave_types as type', function ($join) use ($companyId) {
+                $join->on('type.id', '=', 'policy.leave_type_id')->where('type.company_id', $companyId);
+            })
+            ->where('policy.company_id', $companyId)->where('policy.status', 'approved')
+            ->whereDate('policy.effective_from', '<=', $d['start_date'])
+            ->where(fn ($dates) => $dates->whereNull('policy.effective_until')->orWhereDate('policy.effective_until', '>', $d['end_date']));
+        if (isset($d['selected_id'])) $q->where('policy.id', $d['selected_id']);
+        elseif (!empty($d['search'])) {
+            $term = '%'.mb_strtolower(trim($d['search'])).'%';
+            $q->where(fn ($match) => $match->whereRaw('LOWER(policy.code) LIKE ?', [$term])
+                ->orWhereRaw('LOWER(type.name) LIKE ?', [$term])->orWhereRaw('LOWER(type.code) LIKE ?', [$term]));
+        }
+        $q->select(['policy.id', 'policy.code', 'policy.version', 'type.code as type_code', 'type.name as type_name', 'type.unit'])
+            ->distinct()->orderBy('type.name')->orderBy('policy.code')->orderByDesc('policy.version')->orderBy('policy.id');
+        $map = fn ($policy) => [
+            'value' => (string) $policy->id,
+            'label' => $policy->type_name.' · '.$policy->code.' v'.$policy->version,
+            'metadata' => ['leave_type_code' => $policy->type_code, 'unit' => $policy->unit],
+            'status' => 'active',
+        ];
+        if (isset($d['selected_id'])) return response()->json(['status' => 'success', 'data' => $q->limit(1)->get()->map($map)->values()]);
+        $rows = $q->paginate($d['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function leaveAssignmentPolicyOptions(Request $r): JsonResponse
+    {
+        $d = $r->validate([
+            'company_id' => ['nullable', 'uuid'], 'effective_from' => ['nullable', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        if (empty($d['company_id']) || empty($d['effective_from'])) return response()->json(['status' => 'success', 'data' => []]);
+        $companyId = $this->company($r, $d['company_id']);
+        $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', function ($join) use ($companyId) {
+            $join->on('type.id', '=', 'policy.leave_type_id')->where('type.company_id', $companyId);
+        })
+            ->where('policy.company_id', $companyId)->where('policy.status', 'approved')->whereDate('policy.effective_from', '<=', $d['effective_from'])
+            ->when(isset($d['effective_until']), fn ($policies) => $policies->where(fn ($dates) => $dates->whereNull('policy.effective_until')->orWhereDate('policy.effective_until', '>=', $d['effective_until'])),
+                fn ($policies) => $policies->whereNull('policy.effective_until'));
+        if (isset($d['selected_id'])) $q->where('policy.id', $d['selected_id']);
+        elseif (!empty($d['search'])) {
+            $term = '%'.strtolower(addcslashes(trim($d['search']), '%_\\')).'%';
+            $q->where(fn ($match) => $match->whereRaw('LOWER(policy.code) LIKE ?', [$term])->orWhereRaw('LOWER(type.name) LIKE ?', [$term])->orWhereRaw('LOWER(type.code) LIKE ?', [$term]));
+        }
+        $q->select(['policy.id', 'policy.code', 'policy.version', 'type.code as type_code', 'type.name as type_name'])
+            ->orderBy('type.name')->orderBy('policy.code')->orderByDesc('policy.version')->orderBy('policy.id');
+        $map = fn ($policy) => ['value' => (string) $policy->id, 'label' => $policy->type_name.' · '.$policy->code.' v'.$policy->version, 'metadata' => ['leave_type_code' => $policy->type_code], 'status' => 'approved'];
+        if (isset($d['selected_id'])) return response()->json(['status' => 'success', 'data' => $q->limit(1)->get()->map($map)->values()]);
+        $rows = $q->paginate($d['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function workRequestPolicyOptions(Request $r, StaffAccessService $access): JsonResponse
+    {
+        $d = $r->validate([
+            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'],
+            'request_kind' => ['nullable', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])],
+            'starts_at' => ['nullable', 'date'], 'ends_at' => ['nullable', 'date'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        if (empty($d['company_id']) || empty($d['staff_id']) || empty($d['request_kind']) || empty($d['starts_at']) || empty($d['ends_at'])) {
+            return response()->json(['status' => 'success', 'data' => []]);
+        }
+        $starts = CarbonImmutable::parse($d['starts_at']);
+        $ends = CarbonImmutable::parse($d['ends_at']);
+        if (!$ends->gt($starts)) return response()->json(['status' => 'success', 'data' => []]);
+        $companyId = $this->company($r, $d['company_id']);
+        $staff = Staff::query()->whereKey($d['staff_id'])->where('company_id', $companyId)->whereNull('employment_ended_at')->firstOrFail();
+        $access->authorize($r->user(), $staff, 'view');
+
+        $start = $starts->toDateString();
+        $end = $ends->toDateString();
+        $q = DB::table('hr_work_request_policies')->where('company_id', $companyId)
+            ->where('request_kind', $d['request_kind'])->where('status', 'approved')
+            ->whereDate('effective_from', '<=', $start)
+            ->where(fn ($dates) => $dates->whereNull('effective_until')->orWhereDate('effective_until', '>', $end));
+        if (isset($d['selected_id'])) $q->where('id', $d['selected_id']);
+        elseif (!empty($d['search'])) $q->whereRaw('LOWER(code) LIKE ?', ['%'.strtolower(addcslashes(trim($d['search']), '%_\\')).'%']);
+        $q->select(['id', 'code', 'version', 'request_kind', 'effective_from', 'effective_until'])
+            ->orderBy('code')->orderByDesc('version')->orderBy('id');
+        $map = fn ($policy) => [
+            'value' => (string) $policy->id,
+            'label' => $policy->code.' v'.$policy->version.' - '.$policy->request_kind,
+            'metadata' => ['request_kind' => $policy->request_kind, 'effective_from' => $policy->effective_from, 'effective_until' => $policy->effective_until],
+            'status' => 'active',
+        ];
+        if (isset($d['selected_id'])) return response()->json(['status' => 'success', 'data' => $q->limit(1)->get()->map($map)->values()]);
+        $rows = $q->paginate($d['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function staffOptions(Request $r, StaffAccessService $access): JsonResponse
+    {
+        $data = $r->validate([
+            'company_id' => ['required', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->company($r, $data['company_id']);
+        abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+        $query = $access->scope(Staff::query()->with('user:id,first_name,last_name,email')
+            ->where('company_id', $companyId)->whereNull('employment_ended_at'), $r->user());
+        if (! empty($data['selected_id'])) {
+            $query->whereKey($data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = '%'.addcslashes($data['search'], '%_\\').'%';
+            $query->where(fn ($staff) => $staff->where('code', 'like', $term)
+                ->orWhereHas('user', fn ($user) => $user->where('first_name', 'like', $term)
+                    ->orWhere('last_name', 'like', $term)->orWhere('email', 'like', $term)));
+        }
+        $rows = $query->orderBy('code')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(function (Staff $staff) {
+            $name = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? ''));
+            return [
+                'value' => (string) $staff->id,
+                'label' => $name !== '' ? $name.' · '.$staff->code : $staff->code,
+                'metadata' => ['code' => $staff->code, 'email' => $staff->user?->email],
+                'status' => 'active',
+            ];
+        });
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function leaveRequests(Request $r, StaffAccessService $access): JsonResponse
@@ -156,8 +324,9 @@ class WorkforceController extends Controller
     {
         $staffIds = $access->scope(Staff::query(), $r->user())->select('id');
         $q = DB::table('hr_leave_policy_assignments as assignment')->join('hr_leave_policies as policy', 'policy.id', '=', 'assignment.policy_id')
+            ->leftJoin('staff', 'staff.id', '=', 'assignment.staff_id')->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->whereIn('assignment.staff_id', $staffIds)
-            ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at'])
+            ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name'])
             ->when($r->staff_id, fn($b, $v) => $b->where('assignment.staff_id', $v))->latest('assignment.created_at');
         return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
     }
@@ -193,9 +362,12 @@ class WorkforceController extends Controller
         $this->company($r, $d['company_id']);
         return DB::transaction(function () use ($r, $d) {
             DB::table('companies')->where('id', $d['company_id'])->lockForUpdate()->first();
-            foreach (['staff' => 'staff_id', 'hr_leave_policies' => 'policy_id'] as $table => $field)
-                abort_unless(DB::table($table)->where('id', $d[$field])->where('company_id', $d['company_id'])->exists(), 422, 'Policy assignment references must share one legal entity.');
-            $leaveType = DB::table('hr_leave_policies')->where('id', $d['policy_id'])->value('leave_type_id');
+            abort_unless(DB::table('staff')->where('id', $d['staff_id'])->where('company_id', $d['company_id'])->whereNull('employment_ended_at')->exists(), 422, 'Staff must be active in the selected legal entity.');
+            $policy = DB::table('hr_leave_policies')->where('id', $d['policy_id'])->where('company_id', $d['company_id'])->where('status', 'approved')
+                ->whereDate('effective_from', '<=', $d['effective_from'])
+                ->where(fn ($dates) => isset($d['effective_until']) ? $dates->whereNull('effective_until')->orWhereDate('effective_until', '>=', $d['effective_until']) : $dates->whereNull('effective_until'))->first();
+            abort_unless($policy, 422, 'An approved policy must cover the full assignment period.');
+            $leaveType = $policy->leave_type_id;
             $sameTypePolicies = DB::table('hr_leave_policies')->where('leave_type_id', $leaveType)->select('id');
             $overlap = DB::table('hr_leave_policy_assignments')->where('staff_id', $d['staff_id'])->whereIn('policy_id', $sameTypePolicies)->whereDate('effective_from', '<', $d['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $d['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping policy assignment exists for this leave type.');
@@ -205,7 +377,12 @@ class WorkforceController extends Controller
     }
     public function approveLeaveAssignment(Request $r, string $id): JsonResponse
     {
-        return $this->approveConfig($r, 'hr_leave_policy_assignments', $id);
+        return $this->approveConfig($r, 'hr_leave_policy_assignments', $id, function ($row) {
+            $covered = DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('status', 'approved')
+                ->whereDate('effective_from', '<=', $row->effective_from)
+                ->where(fn ($dates) => $row->effective_until ? $dates->whereNull('effective_until')->orWhereDate('effective_until', '>=', $row->effective_until) : $dates->whereNull('effective_until'))->exists();
+            abort_unless($covered, 409, 'The approved policy must cover the full assignment period.');
+        });
     }
 
     public function workRequests(Request $r, StaffAccessService $access): JsonResponse
@@ -309,10 +486,10 @@ class WorkforceController extends Controller
         return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
     }
 
-    private function approveConfig(Request $r, string $table, string $id): JsonResponse
+    private function approveConfig(Request $r, string $table, string $id, ?callable $validate = null): JsonResponse
     {
         $this->enabled();
-        return DB::transaction(function () use ($r, $table, $id) {
+        return DB::transaction(function () use ($r, $table, $id, $validate) {
             $row = DB::table($table)->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404);
             $this->company($r, $row->company_id);
@@ -321,6 +498,7 @@ class WorkforceController extends Controller
                 abort_unless($row->status === 'pending_approval', 409, 'Only pending configuration may be approved.');
             else
                 abort_if($row->approved_at, 409, 'This assignment is already approved.');
+            if ($validate) $validate($row);
             $update = ['approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()];
             if (property_exists($row, 'status'))
                 $update['status'] = 'approved';

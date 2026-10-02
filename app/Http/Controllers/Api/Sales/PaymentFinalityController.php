@@ -60,13 +60,13 @@ class PaymentFinalityController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($q) => $q->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')
             ->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => [
             'value' => (string) $company->id,
             'label' => $company->name,
-            'metadata' => ['city' => $company->city],
-            'status' => 'active',
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'status' => $company->is_active ? 'active' : 'inactive',
         ]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }

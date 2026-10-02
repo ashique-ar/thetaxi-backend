@@ -14,6 +14,8 @@ class AccountActivityTest extends TestCase
 
     public function test_deleted_customer_activity_keeps_actor_and_can_be_restored(): void
     {
+        $ui = file_get_contents(base_path('../portal-thetaxi/src/app/modules/customer/components/account-activity/account-activity.component.ts'));
+        $this->assertStringNotContainsString('{{ row.account_id }}', $ui);
         activity()->enableLogging();
         $admin = User::create([
             'first_name' => 'Audit',
@@ -37,6 +39,21 @@ class AccountActivityTest extends TestCase
         $this->actingAs($admin, 'api')->deleteJson("/api/customers/{$customer->id}")->assertOk();
         $this->actingAs($admin, 'api')->getJson('/api/account-activities?event=deleted')
             ->assertOk()->assertJsonPath('data.data.0.actor.id', $admin->id);
+        $this->actingAs($admin, 'api')->getJson("/api/account-activities?event=deleted&search={$customer->id}")
+            ->assertOk()->assertJsonPath('data.total', 0);
+        $driverViewer = User::create([
+            'first_name' => 'Driver',
+            'last_name' => 'Viewer',
+            'email' => 'driver-viewer@example.test',
+            'password' => bcrypt('password'),
+            'is_active' => true,
+        ]);
+        Permission::findOrCreate('drivers.view', 'api');
+        $driverViewer->givePermissionTo('drivers.view');
+        $this->actingAs($driverViewer, 'api')->getJson('/api/account-activities?event=deleted')
+            ->assertOk()->assertJsonPath('data.total', 0);
+        $this->actingAs($driverViewer, 'api')->getJson('/api/account-activities?account_type=customer')
+            ->assertForbidden();
         $this->actingAs($admin, 'api')->postJson("/api/account-activities/customers/{$customer->id}/restore")
             ->assertOk();
 

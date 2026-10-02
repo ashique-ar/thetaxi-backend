@@ -19,7 +19,8 @@ class LeaveWorkflowService
             return $existing;
         }
         return DB::transaction(function () use ($data, $actorUserId, $checksum) {
-            DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+            $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+            abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
             $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
             abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
             abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');

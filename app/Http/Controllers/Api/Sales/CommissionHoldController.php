@@ -33,7 +33,7 @@ class CommissionHoldController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $query = SalesCommissionDecision::query()->whereIn('status', ['held', 'shadow_held'])
-            ->with(['holdRelease' => fn ($q) => $q->select([
+            ->with(['booking:id,booking_number', 'holdRelease' => fn ($q) => $q->select([
                 'id', 'commission_decision_id', 'release_kind', 'receipt_finality_event_id',
                 'original_hold_code', 'formula_kind', 'commission_amount_lkr',
                 'calculation_explanation', 'calculation_checksum', 'release_reason', 'released_at',

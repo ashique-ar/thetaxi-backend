@@ -36,9 +36,121 @@ class CommissionConfigurationController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => ['city' => $company->city], 'status' => 'active']);
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'status' => $company->is_active ? 'active' : 'inactive']);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function referenceOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'record_type' => ['required', Rule::in(['sales_profile', 'employee', 'plan_family', 'cycle_version', 'approved_calendar', 'draft_calendar'])],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $this->assertCompanyScope($request, $data['company_id']);
+        if ($data['record_type'] === 'plan_family') {
+            $query = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->where('status', 'approved');
+            if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+            elseif (! empty($data['search'])) {
+                $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+                $query->where(fn ($match) => $match->where('code', 'like', $term)
+                    ->orWhere('name', 'like', $term)->orWhere('commission_category', 'like', $term));
+            }
+            $rows = $query->orderBy('code')->orderBy('id')->paginate($data['per_page'] ?? 25);
+            $rows->getCollection()->transform(fn ($family) => [
+                'value' => (string) $family->id, 'label' => $family->code . ' · ' . $family->name,
+                'metadata' => ['category' => $family->commission_category], 'status' => $family->status,
+            ]);
+            return response()->json(['status' => 'success', 'data' => $rows]);
+        }
+        if ($data['record_type'] === 'cycle_version') {
+            $query = SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->where('status', 'approved');
+            if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+            elseif (! empty($data['search'])) {
+                $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+                $query->where(fn ($match) => $match->where('code', 'like', $term)->orWhere('timezone', 'like', $term));
+            }
+            $rows = $query->orderBy('code')->orderByDesc('version')->orderBy('id')->paginate($data['per_page'] ?? 25);
+            $rows->getCollection()->transform(fn ($cycle) => [
+                'value' => (string) $cycle->id, 'label' => $cycle->code . ' v' . $cycle->version,
+                'metadata' => ['timezone' => $cycle->timezone, 'effective_from' => (string) $cycle->effective_from], 'status' => $cycle->status,
+            ]);
+            return response()->json(['status' => 'success', 'data' => $rows]);
+        }
+        if (in_array($data['record_type'], ['approved_calendar', 'draft_calendar'], true)) {
+            $status = $data['record_type'] === 'approved_calendar' ? 'approved' : 'draft';
+            $query = SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->where('status', $status);
+            if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+            elseif (! empty($data['search'])) {
+                $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+                $query->where(fn ($match) => $match->where('code', 'like', $term)
+                    ->orWhere('name', 'like', $term)->orWhere('timezone', 'like', $term));
+            }
+            $rows = $query->orderBy('code')->orderByDesc('effective_from')->orderBy('id')->paginate($data['per_page'] ?? 25);
+            $rows->getCollection()->transform(fn ($calendar) => [
+                'value' => (string) $calendar->id, 'label' => $calendar->code . ' · ' . $calendar->timezone,
+                'metadata' => ['name' => $calendar->name, 'effective_from' => (string) $calendar->effective_from], 'status' => $calendar->status,
+            ]);
+            return response()->json(['status' => 'success', 'data' => $rows]);
+        }
+        $query = $data['record_type'] === 'sales_profile'
+            ? SalesProfile::query()->with('staff.user')->where('company_id', $data['company_id'])->activeAt(now())
+                ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
+            : Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
+                ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
+        if (! empty($data['selected_id'])) $query->whereKey($data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(function ($match) use ($term, $data) {
+                $match->when($data['record_type'] === 'sales_profile', fn ($profile) => $profile->where('sales_code', 'like', $term))
+                    ->when($data['record_type'] === 'employee', fn ($staff) => $staff->where('code', 'like', $term))
+                    ->orWhereHas($data['record_type'] === 'sales_profile' ? 'staff.user' : 'user', fn ($user) => $user
+                        ->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term));
+            });
+        }
+        $rows = $query->orderBy($data['record_type'] === 'sales_profile' ? 'sales_code' : 'code')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(function ($row) use ($data) {
+            $staff = $data['record_type'] === 'sales_profile' ? $row->staff : $row;
+            $name = trim((string) ($staff?->user?->first_name . ' ' . $staff?->user?->last_name));
+            return ['value' => (string) $row->id,
+                'label' => $data['record_type'] === 'sales_profile' ? $row->sales_code : ($name ?: $staff->code),
+                'metadata' => ['staff_code' => $staff?->code, 'staff_category' => $staff?->staff_type], 'status' => 'active'];
+        });
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function versionOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $this->assertCompanyScope($request, $data['company_id']);
+        $query = DB::table('sales_commission_plan_versions as version')
+            ->join('sales_commission_plan_families as family', 'family.id', '=', 'version.plan_family_id')
+            ->where('family.company_id', $data['company_id']);
+        if (! empty($data['selected_id'])) $query->where('version.id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($match) => $match->where('family.code', 'like', $term)
+                ->orWhere('family.name', 'like', $term)->orWhere('version.formula_kind', 'like', $term));
+        }
+        $rows = $query->select([
+            'version.id', 'version.version', 'version.formula_kind', 'version.effective_from', 'version.status',
+            'family.code as family_code', 'family.name as family_name',
+        ])->orderBy('family.code')->orderByDesc('version.version')->orderBy('version.id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($row) => [
+            'value' => (string) $row->id,
+            'label' => $row->family_code . ' v' . $row->version . ' · ' . str_replace('_', ' ', $row->formula_kind),
+            'metadata' => ['family' => $row->family_name, 'effective_from' => (string) $row->effective_from],
+            'status' => $row->status,
+        ]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -48,30 +160,31 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $data['company_id']);
         $familyIds = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->select('id');
         $versionIds = SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->select('id');
+        $assignments = SalesCommissionPlanAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
+        $overrides = SalesCommissionStaffOverride::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
+        $cycleAssignments = SalesCommissionCycleAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get();
+        $profiles = SalesProfile::query()->with('staff')->where('company_id', $data['company_id'])
+            ->whereIn('id', $assignments->concat($cycleAssignments)->pluck('sales_profile_id')->filter()->unique())->get()->keyBy('id');
+        $staff = Staff::query()->where('company_id', $data['company_id'])->whereNull('deleted_at')
+            ->whereIn('id', $assignments->concat($cycleAssignments)->pluck('staff_id')->merge($overrides->pluck('staff_id'))->filter()->unique())->get()->keyBy('id');
+        foreach ($assignments->concat($cycleAssignments)->concat($overrides) as $row) {
+            $row->setAttribute('target_label', $row->sales_profile_id
+                ? (($profile = $profiles->get($row->sales_profile_id)) ? trim($profile->sales_code . ' · ' . ($profile->staff?->code ?? '')) : null)
+                : (($person = $staff->get($row->staff_id)) ? trim($person->code . ' · ' . $person->staff_type) : null));
+        }
         return response()->json(['status' => 'success', 'data' => [
             'families' => SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->orderBy('code')->get(),
             'versions' => SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->orderByDesc('effective_from')->get(),
             'tiers' => SalesCommissionPlanTier::query()->whereIn('plan_version_id', $versionIds)->orderBy('sequence')->get(),
-            'assignments' => SalesCommissionPlanAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get(),
-            'overrides' => SalesCommissionStaffOverride::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get(),
+            'assignments' => $assignments,
+            'overrides' => $overrides,
             'cycles' => SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('version')->get(),
-            'cycle_assignments' => SalesCommissionCycleAssignment::query()->where('company_id', $data['company_id'])->orderByDesc('effective_from')->get(),
+            'cycle_assignments' => $cycleAssignments,
             'business_calendars' => SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('effective_from')->get(),
             'business_calendar_dates' => SalesCommissionBusinessCalendarDate::query()
                 ->whereIn('calendar_id', SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->select('id'))
                 ->orderBy('calendar_date')->get(),
             'references' => [
-                'profiles' => DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
-                    ->where('profile.company_id', $data['company_id'])->where('profile.status', 'active')
-                    ->where('profile.effective_from', '<=', now())
-                    ->where(fn ($q) => $q->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                    ->where(fn ($q) => $q->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
-                    ->whereNull('staff.deleted_at')
-                    ->select(['profile.id', 'profile.staff_id', 'profile.sales_code', 'staff.code as staff_code', 'staff.staff_type'])
-                    ->orderBy('profile.sales_code')->get(),
-                'staff' => DB::table('staff')->where('company_id', $data['company_id'])
-                    ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->whereNull('deleted_at')
-                    ->select(['id', 'code', 'staff_type', 'employment_ended_at'])->orderBy('code')->get(),
                 'staff_categories' => DB::table('staff')->where('company_id', $data['company_id'])
                     ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->whereNull('deleted_at')
                     ->whereNotNull('staff_type')->distinct()->orderBy('staff_type')->pluck('staff_type'),
@@ -189,6 +302,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $assignment->company_id);
         $assignment = $this->approveDraft($assignment, $request, 'plan assignment', function ($locked) {
             DB::table('companies')->where('id', $locked->company_id)->lockForUpdate()->first();
+            $this->validateScopedTarget($locked->only(['company_id', 'scope_type', 'staff_category', 'sales_profile_id', 'staff_id']));
             $family = SalesCommissionPlanFamily::query()->findOrFail($locked->plan_family_id);
             abort_unless($family->status === 'approved', 422, 'The assigned family is not approved.');
             $overlap = SalesCommissionPlanAssignment::query()->where('company_id', $locked->company_id)
@@ -411,7 +525,10 @@ class CommissionConfigurationController extends Controller
             abort_if($present !== in_array($field, $expected, true), 422, 'Provide only the target that matches the selected scope.');
         }
         if (! empty($data['sales_profile_id'])) {
-            abort_unless(SalesProfile::query()->whereKey($data['sales_profile_id'])->where('company_id', $data['company_id'])->activeAt(now())->exists(), 422, 'Sales Profile must be active in this legal entity.');
+            abort_unless(SalesProfile::query()->whereKey($data['sales_profile_id'])->where('company_id', $data['company_id'])->activeAt(now())
+                ->whereHas('staff', fn ($staff) => $staff->whereNull('deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
+                ->exists(), 422, 'Sales Profile and Staff must be active in this legal entity.');
         }
         if (! empty($data['staff_id'])) {
             abort_unless($this->activeStaffExists($data['staff_id'], $data['company_id']), 422, 'Staff must be active in this legal entity.');

@@ -6,8 +6,10 @@ use App\Models\Agent\Agent;
 use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Staff;
+use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class SyncAllContexts extends Command
 {
@@ -121,43 +123,39 @@ class SyncAllContexts extends Command
                     continue;
                 }
 
-                // Check if context already exists
-                $existingContext = UserContext::where('user_id', $record->user_id)
-                    ->where('context_type', $contextType)
-                    ->first();
+                $changed = $dryRun
+                    ? !UserContext::where('user_id', $record->user_id)->where('context_type', $contextType)->exists() || $force
+                    : DB::transaction(function () use ($record, $contextType, $force): bool {
+                        $user = User::query()->whereKey($record->user_id)->lockForUpdate()->firstOrFail();
+                        $context = UserContext::where('user_id', $user->id)
+                            ->where('context_type', $contextType)
+                            ->lockForUpdate()
+                            ->first();
 
-                if ($existingContext && !$force) {
-                    $skipped++;
-                    $progressBar->advance();
-                    continue;
-                }
-
-                if ($existingContext && $force) {
-                    if (!$dryRun) {
-                        $existingContext->update([
-                            'context_id' => $record->id,
-                            'is_active' => $record->is_active ?? true,
-                        ]);
-                    }
-                    $created++;
-                } else {
-                    // Create new context
-                    if (!$dryRun) {
-                        UserContext::create([
-                            'user_id' => $record->user_id,
-                            'context_type' => $contextType,
-                            'context_id' => $record->id,
-                            'is_active' => $record->is_active ?? true,
-                        ]);
-
-                        // Assign corresponding role if not already assigned
-                        $roleName = $this->getRoleForContext($contextType);
-                        if ($roleName && !$record->user->hasRole($roleName)) {
-                            $record->user->assignRole($roleName);
+                        if ($context && !$force) {
+                            return false;
                         }
-                    }
-                    $created++;
-                }
+
+                        if ($context) {
+                            $context->update(['context_id' => $record->id, 'is_active' => $record->is_active ?? true]);
+                        } else {
+                            $context = UserContext::create([
+                                'user_id' => $user->id,
+                                'context_type' => $contextType,
+                                'context_id' => $record->id,
+                                'is_active' => $record->is_active ?? true,
+                            ]);
+
+                            $roleName = $this->getRoleForContext($contextType);
+                            if ($roleName) {
+                                app(\App\Services\UserContextService::class)->assignRolesToContext($user, $context, [$roleName]);
+                            }
+                        }
+
+                        return true;
+                    });
+
+                $changed ? $created++ : $skipped++;
 
             } catch (\Exception $e) {
                 $this->newLine();

@@ -10,6 +10,26 @@ use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 class SafetyController extends Controller
 {
+    public function locationOptions(Request $request): JsonResponse
+    {
+        $this->enabled();
+        $actor = $this->actor($request);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'string', 'max:80'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = DB::table('hr_employment_assignments')->where('company_id', $actor->company_id)
+            ->whereNotNull('location_code')->where('location_code', '<>', '');
+        if (! empty($data['selected_id'])) $query->where('location_code', $data['selected_id']);
+        elseif (! empty($data['search'])) $query->whereLike('location_code', '%' . trim($data['search']) . '%');
+        $rows = $query->select('location_code')->distinct()->orderBy('location_code')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($row) => [
+            'value' => $row->location_code, 'label' => $row->location_code, 'metadata' => [], 'status' => 'active',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
     public function ppeEmployeeOptions(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
@@ -157,6 +177,7 @@ class SafetyController extends Controller
                 abort_unless($existing->company_id === $a->company_id && $existing->created_by === $r->user()->id && hash_equals($existing->hazard_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => $existing]);
             }
+            $this->assertLocation($a->company_id, $d['location_code']);
             if (!empty($d['owner_staff_id'])) {
                 Staff::query()->whereKey($d['owner_staff_id'])->where('company_id', $a->company_id)->lockForUpdate()->first();
                 $this->activeStaff($d['owner_staff_id'], $a->company_id);
@@ -220,6 +241,7 @@ class SafetyController extends Controller
         $occurred = CarbonImmutable::createFromFormat('Y-m-d\\TH:i', $d['occurred_at'], $d['source_timezone'])->utc();
         abort_if($occurred->isFuture(), 422, 'Incident occurrence cannot be in the future.');
         return DB::transaction(function () use ($r, $a, $d, $reporter, $occurred) {
+            $this->assertLocation($a->company_id, $d['location_code']);
             do {
                 $number = 'SAF-' . now()->format('Ymd') . '-' . strtoupper(Str::random(8)); } while (DB::table('hr_safety_incidents')->where('incident_number', $number)->exists());
             $id = (string) Str::uuid();
@@ -371,6 +393,7 @@ class SafetyController extends Controller
                 abort_unless($existing->company_id === $a->company_id && $existing->created_by === $r->user()->id && hash_equals($existing->checklist_checksum, $expected), 409, 'Safety register retry conflicts with the original request.');
                 return response()->json(['status' => 'success', 'data' => $existing]);
             }
+            $this->assertLocation($a->company_id, $d['location_code']);
             abort_if(CarbonImmutable::parse($d['scheduled_for'])->startOfDay()->lessThan(today()), 422, 'Inspection date must be today or later.');
             Staff::query()->whereKey($d['lead_staff_id'])->where('company_id', $a->company_id)->lockForUpdate()->first();
             $lead = $this->activeStaff($d['lead_staff_id'], $a->company_id);
@@ -543,6 +566,11 @@ class SafetyController extends Controller
         $row = DB::table('hr_safety_incidents')->where('id', $id)->where('company_id', $a->company_id)->first();
         abort_unless($row, 404);
         return $row;
+    }
+
+    private function assertLocation(string $company, string $code): void
+    {
+        abort_unless(DB::table('hr_employment_assignments')->where('company_id', $company)->where('location_code', $code)->exists(), 422, 'Select a configured work location in your legal entity.');
     }
 
     private function actor(Request $r): Staff

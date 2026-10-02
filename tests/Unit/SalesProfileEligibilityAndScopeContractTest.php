@@ -44,6 +44,22 @@ it('serves searchable paged Profile options from the same manage scope used by m
         ->toContain("\$payload['can_manage'] = \$canManage;");
 });
 
+it('serves bounded exact-hydrated reporting choices and removes page-bound assignment selectors', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
+    $routes = file_get_contents(base_path('routes/api.php'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-profile-administration/sales-profile-administration.component.html'));
+    $logic = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-profile-administration/sales-profile-administration.component.ts'));
+
+    expect($routes)->toContain("Route::get('reporting-profile-options', [SalesProfileController::class, 'reportingProfileOptions'])")
+        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
+        ->toContain("'selected_id' => ['nullable', 'uuid']")
+        ->toContain("'sales.profiles.manage-team'")
+        ->toContain("'staff_code' => \$profile->staff?->code")
+        ->and($component)->toContain('endpoint="/sales/reporting-profile-options"')
+        ->not->toContain('activeProfiles()')
+        ->and($logic)->not->toContain('profileOptions:');
+});
+
 it('resolves eligibility and reporting currency from the versioned profile state effective at the business event time', function () {
     $eligibility = file_get_contents(app_path('Services/Sales/SalesProfileEligibilityService.php'));
     $attribution = file_get_contents(app_path('Services/Sales/BookingAttributionService.php'));

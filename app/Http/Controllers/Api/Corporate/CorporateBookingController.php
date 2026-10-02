@@ -122,6 +122,127 @@ class CorporateBookingController extends Controller
         ], 201);
     }
 
+    public function bookingEmployeeOptions(Request $request): JsonResponse
+    {
+        $actor = $request->attributes->get('corporate_employee');
+        $user = $request->user();
+        $canCreate = $user?->can('create_bookings')
+            || CorporatePortalPermission::allows($request, 'create_bookings');
+        $canCreateForOthers = $user?->can('create_bookings_for_others')
+            || CorporatePortalPermission::allows($request, 'create_bookings_for_others');
+
+        if (!$actor || !$canCreate || !$canCreateForOthers) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'You are not authorized to book for another employee.',
+            ], 403);
+        }
+
+        $codes = $request->input('employee_codes', []);
+        $codes = is_string($codes) ? explode(',', $codes) : (is_array($codes) ? $codes : []);
+        $request->merge(['employee_codes' => array_values(array_filter(array_map(
+            fn ($code) => is_string($code) ? trim($code) : $code,
+            $codes
+        ), fn ($code) => $code !== ''))]);
+        $validated = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'employee_codes' => ['sometimes', 'array', 'max:100'],
+            'employee_codes.*' => ['string', 'max:50'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+
+        $employees = CorporateEmployee::query()
+            ->where('corporate_id', $request->corporate_id)
+            ->where('is_active', true)
+            ->where('id', '!=', $actor->id)
+            ->with([
+                'user:id,first_name,last_name,email,phone',
+                'department:id,name',
+                'division:id,name',
+            ])
+            ->when(!empty($validated['selected_id']) || !empty($validated['employee_codes']), fn ($query) => $query->with('activeLocations'))
+            ->when(!empty($validated['employee_codes']), fn ($query) => $query->whereIn('employee_code', $validated['employee_codes']))
+            ->when(!empty($validated['selected_id']), fn ($query) => $query->whereKey($validated['selected_id']))
+            ->when(!empty($validated['search']), function ($query) use ($validated) {
+                $search = '%' . trim($validated['search']) . '%';
+                $query->where(function ($query) use ($search) {
+                    $query->where('employee_code', 'like', $search)
+                        ->orWhereHas('user', fn ($userQuery) => $userQuery
+                            ->where('first_name', 'like', $search)
+                            ->orWhere('last_name', 'like', $search)
+                            ->orWhere('email', 'like', $search))
+                        ->orWhereHas('department', fn ($departmentQuery) => $departmentQuery->where('name', 'like', $search))
+                        ->orWhereHas('division', fn ($divisionQuery) => $divisionQuery->where('name', 'like', $search));
+                });
+            })
+            ->orderBy('employee_code')
+            ->orderBy('id')
+            ->paginate(!empty($validated['employee_codes'])
+                ? count($validated['employee_codes'])
+                : ($validated['per_page'] ?? 25));
+
+        $options = $employees->getCollection()->map(function (CorporateEmployee $employee) use ($validated, $request) {
+            $includeRecord = !empty($validated['selected_id']) || !empty($validated['employee_codes']);
+            $name = trim(($employee->user?->first_name ?? '') . ' ' . ($employee->user?->last_name ?? ''));
+            $record = $includeRecord ? [
+                'id' => (string) $employee->id,
+                'user_id' => (string) $employee->user_id,
+                'corporate_id' => (string) $request->corporate_id,
+                'name' => $name,
+                'employee_code' => $employee->employee_code,
+                'phone' => $employee->user?->phone,
+                'department_id' => $employee->department_id ? (string) $employee->department_id : null,
+                'division_id' => $employee->division_id ? (string) $employee->division_id : null,
+                'locations' => $employee->activeLocations->map(fn ($location) => [
+                    'id' => (string) $location->id,
+                    'label' => $location->label,
+                    'address' => $location->address,
+                    'latitude' => $location->latitude,
+                    'longitude' => $location->longitude,
+                    'city' => $location->city,
+                    'country' => $location->country,
+                    'place_id' => $location->place_id,
+                    'is_default_pickup' => (bool) $location->is_default_pickup,
+                    'is_default_dropoff' => (bool) $location->is_default_dropoff,
+                    'is_active' => (bool) $location->is_active,
+                ])->values(),
+                'user' => $employee->user ? [
+                    'id' => (string) $employee->user->id,
+                    'first_name' => $employee->user->first_name,
+                    'last_name' => $employee->user->last_name,
+                    'email' => $employee->user->email,
+                    'phone' => $employee->user->phone,
+                ] : null,
+            ] : null;
+
+            return [
+                'value' => (string) $employee->id,
+                'label' => $name ?: ($employee->employee_code ?: 'Corporate employee'),
+                'metadata' => array_filter([
+                    'Employee code' => $employee->employee_code,
+                    'Department' => $employee->department?->name,
+                    'Division' => $employee->division?->name,
+                    'Email' => $employee->user?->email,
+                ]),
+                'status' => $employee->is_active ? 'active' : 'inactive',
+                'record' => $record,
+            ];
+        })->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'data' => $options,
+                'current_page' => $employees->currentPage(),
+                'last_page' => $employees->lastPage(),
+                'per_page' => $employees->perPage(),
+                'total' => $employees->total(),
+            ],
+        ]);
+    }
+
     public function bookingEmployees(Request $request): JsonResponse
     {
         $actor = $request->attributes->get('corporate_employee');
@@ -142,11 +263,7 @@ class CorporateBookingController extends Controller
             ->where('corporate_id', $request->corporate_id)
             ->where('is_active', true)
             ->where('id', '!=', $actor->id)
-            ->with([
-                'user:id,first_name,last_name,email',
-                'department:id,name',
-                'division:id,name',
-            ])
+            ->with(['user:id,first_name,last_name,email', 'department:id,name', 'division:id,name'])
             ->orderBy('employee_code')
             ->get()
             ->map(fn (CorporateEmployee $employee) => [
@@ -160,10 +277,7 @@ class CorporateBookingController extends Controller
             ])
             ->values();
 
-        return response()->json([
-            'status' => 'success',
-            'data' => ['employees' => $employees],
-        ]);
+        return response()->json(['status' => 'success', 'data' => ['employees' => $employees]]);
     }
 
     public function show(Request $request, string $id): JsonResponse

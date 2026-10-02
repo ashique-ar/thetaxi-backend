@@ -45,6 +45,12 @@ class VehicleResource extends JsonResource
             'owner' => new VehicleOwnerResource($this->whenLoaded('owner')),
             'vehicle_group_id' => $this->vehicle_group_id ?? null,
             'default_driver_id' => $this->default_driver_id ?? null,
+            'default_driver' => $this->whenLoaded('defaultDriver', function () {
+                $driver = $this->defaultDriver;
+                $name = $driver?->user ? trim($driver->user->first_name . ' ' . $driver->user->last_name) : null;
+
+                return $driver ? ['name' => $name !== '' ? $name : null, 'code' => $driver->code] : null;
+            }),
             'active_commission' => $this->whenLoaded('activeCommission'),
             'group' => new VehicleGroupResource($this->whenLoaded('group')),
             'contract_type' => new VehicleContractTypeResource($this->whenLoaded('contractType')),

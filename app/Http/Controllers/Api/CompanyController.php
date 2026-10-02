@@ -16,7 +16,7 @@ class CompanyController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:companies.view')->only(['index', 'show']);
+        $this->middleware('permission:companies.view')->only(['index', 'show', 'options', 'option']);
         $this->middleware('permission:companies.create')->only(['store']);
         $this->middleware('permission:companies.edit')->only(['update']);
         $this->middleware('permission:companies.delete')->only(['destroy']);
@@ -51,6 +51,33 @@ class CompanyController extends Controller
         return CompanyResource::collection(
             $q->paginate(min(max((int) $request->integer('per_page', 15), 1), 100))
         );
+    }
+
+    public function options(Request $request): JsonResponse
+    {
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
+        $query = Company::query()
+            ->where('is_active', true)
+            ->select(['id', 'name', 'is_active', 'is_default']);
+
+        if (!empty($data['search'])) {
+            $query->whereLikeInsensitive('name', trim($data['search']));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Legal entity options loaded',
+            'data' => $query->orderBy('name')->limit(25)->get(),
+        ]);
+    }
+
+    public function option(Company $company): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Legal entity loaded',
+            'data' => $company->only(['id', 'name', 'is_active', 'is_default']),
+        ]);
     }
 
     public function stats(): JsonResponse

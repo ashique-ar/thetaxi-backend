@@ -956,7 +956,7 @@ class SalesDashboardController extends Controller
         $lastPage = max(1, (int) ceil($total / $perPage));
         $page = min((int) ($data['page'] ?? 1), $lastPage);
         $allocationRows = $allocations->forPage($page, $perPage)->get([
-            'id', 'booking_payment_receipt_id', 'amount', 'allocated_at',
+            'amount', 'allocated_at',
         ]);
 
         return response()->json(['status' => 'success', 'data' => [

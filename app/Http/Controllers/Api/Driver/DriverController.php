@@ -82,9 +82,7 @@ class DriverController extends Controller
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
             $q->where(function ($query) use ($search) {
-                $query->whereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
-                    ->orWhereLikeInsensitive('code', $search)
+                $query->whereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('license_no', $search)
                     ->orWhereLikeInsensitive('license_type', $search)
@@ -96,13 +94,11 @@ class DriverController extends Controller
                     ->orWhereLikeInsensitive('medical_conditions', $search)
                     ->orWhereLikeInsensitive('emergency_contact_name', $search)
                     ->orWhereLikeInsensitive('emergency_contact_phone', $search)
-                    ->orWhereLikeInsensitive('current_device_uuid', $search)
                     ->orWhereLikeInsensitive('availability_status', $search)
                     ->orWhereLikeInsensitive('current_latitude', $search)
                     ->orWhereLikeInsensitive('current_longitude', $search)
                     ->orWhereHas('devices', function ($deviceQuery) use ($search) {
-                        $deviceQuery->whereLikeInsensitive('device_uuid', $search)
-                            ->orWhereLikeInsensitive('device_name', $search)
+                        $deviceQuery->whereLikeInsensitive('device_name', $search)
                             ->orWhereLikeInsensitive('device_model', $search)
                             ->orWhereLikeInsensitive('device_manufacturer', $search)
                             ->orWhereLikeInsensitive('platform', $search)
@@ -111,20 +107,17 @@ class DriverController extends Controller
                             ->orWhereLikeInsensitive('app_build', $search);
                     })
                     ->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->whereLikeInsensitive('id', $search)
-                            ->orWhereLikeInsensitive('first_name', $search)
+                        $userQuery->whereLikeInsensitive('first_name', $search)
                             ->orWhereLikeInsensitive('last_name', $search)
                             ->orWhereLikeInsensitive('email', $search)
                             ->orWhereLikeInsensitive('phone', $search);
                     })
                     ->orWhereHas('licenseType', function ($licenseTypeQuery) use ($search) {
-                        $licenseTypeQuery->whereLikeInsensitive('id', $search)
-                            ->orWhereLikeInsensitive('name', $search)
+                        $licenseTypeQuery->whereLikeInsensitive('name', $search)
                             ->orWhereLikeInsensitive('description', $search);
                     })
                     ->orWhereHas('defaultVehicle', function ($vehicleQuery) use ($search) {
-                        $vehicleQuery->whereLikeInsensitive('id', $search)
-                            ->orWhereLikeInsensitive('title', $search)
+                        $vehicleQuery->whereLikeInsensitive('title', $search)
                             ->orWhereLikeInsensitive('license_plate', $search)
                             ->orWhereLikeInsensitive('registration_no', $search);
                     });
@@ -415,14 +408,10 @@ class DriverController extends Controller
                 'properties' => ['old' => $driver->getAttributes()],
             ]);
             $driver->disableLogging();
-            \App\Models\UserContext::where('user_id', $driver->user_id)
-                ->where('context_type', 'driver')
-                ->where('context_id', $driver->id)
-                ->where('is_active', true)
-                ->update([
-                    'is_active' => false,
-                    'updated_user_id' => request()->user()?->id,
-                ]);
+            $user = User::query()->whereKey($driver->user_id)->lockForUpdate()->first();
+            if ($user) {
+                $this->contextService->deactivateContext($user, 'driver', $driver->id, request()->user()?->id);
+            }
 
             $driver->delete();
         });

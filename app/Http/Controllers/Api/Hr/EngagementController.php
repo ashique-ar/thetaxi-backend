@@ -16,18 +16,29 @@ class EngagementController extends Controller
     public function audienceOptions(Request $request): JsonResponse
     {
         $actor=$this->actor($request);
-        $data=$request->validate(['record_type'=>['required',Rule::in(['staff','organization_unit'])],'search'=>['nullable','string','max:120'],'selected_ids'=>['nullable','array','max:200'],'selected_ids.*'=>['uuid','distinct'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
+        $data=$request->validate(['record_type'=>['required',Rule::in(['staff','organization_unit','location','staff_type'])],'search'=>['nullable','string','max:120'],'selected_ids'=>['nullable','array','max:200'],'selected_ids.*'=>['string','max:100','distinct'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
+        if(in_array($data['record_type'],['staff','organization_unit'],true))$request->validate(['selected_ids.*'=>['uuid','distinct']]);
         $term=trim((string)($data['search']??''));$selected=$data['selected_ids']??[];
         if($data['record_type']==='staff'){
             $query=DB::table('staff')->leftJoin('users','users.id','=','staff.user_id')->where('staff.company_id',$actor->company_id)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
                 ->when($selected,fn($q)=>$q->whereIn('staff.id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(staff.code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.first_name) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(users.last_name) LIKE ?',['%'.mb_strtolower($term).'%'])))
                 ->select(['staff.id','staff.code','staff.staff_type','users.first_name','users.last_name'])->orderBy('users.first_name')->orderBy('users.last_name')->orderBy('staff.id');
             $map=fn($row)=>['value'=>(string)$row->id,'label'=>trim(trim(($row->first_name??'').' '.($row->last_name??'')).' · '.($row->code?:'No Staff code')),'metadata'=>['staff_type'=>$row->staff_type],'status'=>'active'];
-        }else{
+        }elseif($data['record_type']==='organization_unit'){
             $query=DB::table('hr_organization_units')->where('company_id',$actor->company_id)->where('status','active')
                 ->when($selected,fn($q)=>$q->whereIn('id',$selected))->when($term!==''&&!$selected,fn($q)=>$q->where(fn($m)=>$m->whereRaw('LOWER(code) LIKE ?',['%'.mb_strtolower($term).'%'])->orWhereRaw('LOWER(name) LIKE ?',['%'.mb_strtolower($term).'%'])))
                 ->select(['id','code','name','unit_type','status'])->orderBy('name')->orderBy('id');
             $map=fn($row)=>['value'=>(string)$row->id,'label'=>$row->name.' · '.$row->code,'metadata'=>['unit_type'=>$row->unit_type],'status'=>$row->status];
+        }elseif($data['record_type']==='location'){
+            $query=DB::table('hr_employment_assignments')->where('company_id',$actor->company_id)->whereNotNull('location_code')->where('location_code','<>','')
+                ->when($selected,fn($q)=>$q->whereIn('location_code',$selected))->when($term!==''&&!$selected,fn($q)=>$q->whereLike('location_code','%'.$term.'%'))
+                ->select('location_code')->distinct()->orderBy('location_code');
+            $map=fn($row)=>['value'=>$row->location_code,'label'=>$row->location_code,'metadata'=>[],'status'=>'active'];
+        }else{
+            $query=DB::table('staff')->where('company_id',$actor->company_id)->whereNull('deleted_at')->whereNull('employment_ended_at')->whereNotNull('staff_type')->where('staff_type','<>','')
+                ->when($selected,fn($q)=>$q->whereIn('staff_type',$selected))->when($term!==''&&!$selected,fn($q)=>$q->whereLike('staff_type','%'.$term.'%'))
+                ->select('staff_type')->distinct()->orderBy('staff_type');
+            $map=fn($row)=>['value'=>$row->staff_type,'label'=>$row->staff_type,'metadata'=>[],'status'=>'active'];
         }
         if($selected)return response()->json(['status'=>'success','data'=>$query->get()->map($map)->values()]);
         $rows=$query->paginate((int)($data['per_page']??25));$rows->getCollection()->transform($map);return response()->json(['status'=>'success','data'=>$rows]);
@@ -241,7 +252,34 @@ class EngagementController extends Controller
 
     public function recognitionNominees(Request $request): JsonResponse
     {
-        $actor = $this->actor($request); $rows = DB::table('staff as s')->join('users as u', 'u.id', '=', 's.user_id')->where('s.company_id', $actor->company_id)->whereNull('s.employment_ended_at')->whereNull('s.deleted_at')->where('u.is_active', true)->select(['s.id', 's.code', 'u.first_name', 'u.last_name'])->orderBy('u.first_name')->orderBy('u.last_name')->get(); return response()->json(['status' => 'success', 'data' => $rows]);
+        $actor = $this->actor($request);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = DB::table('staff as s')->join('users as u', 'u.id', '=', 's.user_id')
+            ->where('s.company_id', $actor->company_id)->where('s.id', '<>', $actor->id)
+            ->whereNull('s.employment_ended_at')->whereNull('s.deleted_at')->where('u.is_active', true);
+        if (isset($data['selected_id'])) {
+            $query->where('s.id', $data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = trim($data['search']);
+            $query->where(fn ($match) => $match->whereLikeInsensitive('s.code', $term)
+                ->orWhereLikeInsensitive('u.first_name', $term)->orWhereLikeInsensitive('u.last_name', $term));
+        }
+        $query->select(['s.id', 's.code', 'u.first_name', 'u.last_name'])
+            ->orderBy('u.first_name')->orderBy('u.last_name')->orderBy('s.id');
+        $map = fn ($staff) => [
+            'value' => (string) $staff->id,
+            'label' => trim(trim($staff->first_name . ' ' . $staff->last_name) . ($staff->code ? ' · ' . $staff->code : '')) ?: 'Unnamed colleague',
+            'metadata' => ['staff_code' => $staff->code], 'status' => 'active',
+        ];
+        if (isset($data['selected_id'])) {
+            return response()->json(['status' => 'success', 'data' => $query->limit(1)->get()->map($map)->values()]);
+        }
+        $rows = $query->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function recognitionNominations(Request $request): JsonResponse
@@ -274,8 +312,29 @@ class EngagementController extends Controller
 
     public function wellnessPrograms(Request $request): JsonResponse
     {
-        $actor = $this->actor($request); $query = DB::table('hr_wellness_programs')->where('company_id', $actor->company_id)->where('status', 'active')->whereDate('starts_at', '<=', now())->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now())); $this->audience($query, $actor);
-        return response()->json(['status' => 'success', 'data' => $query->select(['id', 'code', 'name', 'description', 'starts_at', 'ends_at'])->orderBy('name')->get()]);
+        $actor = $this->actor($request);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = DB::table('hr_wellness_programs')->where('company_id', $actor->company_id)
+            ->where('status', 'active')->whereDate('starts_at', '<=', now())
+            ->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()));
+        $this->audience($query, $actor);
+        if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($match) => $match->whereLike('code', $term)->orWhereLike('name', $term));
+        }
+        $rows = $query->select(['id', 'code', 'name', 'starts_at', 'ends_at'])
+            ->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($row) => [
+            'value' => (string) $row->id, 'label' => $row->name,
+            'metadata' => ['code' => $row->code, 'starts_at' => $row->starts_at, 'ends_at' => $row->ends_at],
+            'status' => 'active',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function requestWellnessReferral(Request $request): JsonResponse
@@ -305,12 +364,68 @@ class EngagementController extends Controller
 
     public function wellnessHandlerOptions(Request $request): JsonResponse
     {
-        $actor=$this->actor($request);$data=$request->validate(['company_id'=>['required','uuid'],'search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'per_page'=>['nullable','integer','min:1','max:50']]);
-        abort_unless($data['company_id']===$actor->company_id,403,'Wellness handlers are outside your legal entity.');
-        $query=Staff::query()->with('user:id,first_name,last_name,is_active')->where('company_id',$actor->company_id)->whereNull('employment_ended_at')->whereHas('user',fn($q)=>$q->where('is_active',true));
-        if(isset($data['selected_id']))$query->whereKey($data['selected_id']);else{$search=trim((string)($data['search']??''));if($search!=='')$query->where(fn($q)=>$q->whereLikeInsensitive('code',$search)->orWhereHas('user',fn($u)=>$u->whereLikeInsensitive('first_name',$search)->orWhereLikeInsensitive('last_name',$search)));}
-        $rows=$query->orderBy('code')->get()->filter(fn($staff)=>$staff->user?->can('hr.wellness.case.manage'))->take((int)($data['per_page']??25))->values()->map(fn($staff)=>['value'=>(string)$staff->id,'label'=>trim(($staff->user?->first_name??'').' '.($staff->user?->last_name??''))?:($staff->code?:'Unavailable Staff record'),'metadata'=>['staff_code'=>$staff->code],'status'=>'active']);
-        return response()->json(['status'=>'success','data'=>$rows]);
+        $actor = $this->actor($request);
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        abort_unless($data['company_id'] === $actor->company_id, 403, 'Wellness handlers are outside your legal entity.');
+
+        $query = Staff::query()->with('user:id,first_name,last_name,is_active')
+            ->where('company_id', $actor->company_id)->whereNull('employment_ended_at')
+            ->whereHas('user', fn ($user) => $user->where('is_active', true)->permission('hr.wellness.case.manage'));
+        if (isset($data['selected_id'])) {
+            $query->whereKey($data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = trim($data['search']);
+            $query->where(fn ($match) => $match->whereLikeInsensitive('code', $term)
+                ->orWhereHas('user', fn ($user) => $user->whereLikeInsensitive('first_name', $term)->orWhereLikeInsensitive('last_name', $term)));
+        }
+        $map = fn ($staff) => [
+            'value' => (string) $staff->id,
+            'label' => trim(($staff->user?->first_name ?? '') . ' ' . ($staff->user?->last_name ?? '')) ?: ($staff->code ?: 'Unavailable Staff record'),
+            'metadata' => ['staff_code' => $staff->code], 'status' => 'active',
+        ];
+
+        if (isset($data['selected_id'])) {
+            return response()->json(['status' => 'success', 'data' => $query->orderBy('code')->limit(1)->get()->map($map)->values()]);
+        }
+
+        $rows = $query->orderBy('code')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function wellnessFollowupOptions(Request $request, string $id): JsonResponse
+    {
+        $actor = $this->actor($request);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $referral = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->first();
+        abort_unless($referral, 404);
+        activity('hr-wellness-sensitive-access')->causedBy($request->user())->withProperties([
+            'referral_id' => $id, 'company_id' => $referral->company_id, 'ip' => $request->ip(),
+        ])->log('restricted_wellness_followup_options_viewed');
+
+        $query = DB::table('hr_wellness_followups')->where('referral_id', $id)->where('status', 'scheduled');
+        if (!empty($data['selected_id'])) $query->where('id', $data['selected_id']);
+        elseif (!empty($data['search'])) {
+            $search = trim($data['search']);
+            $term = '%' . addcslashes($search, '%_\\') . '%';
+            $query->where(fn ($match) => $match->whereRaw('LOWER(timezone) LIKE ?', [mb_strtolower($term)])
+                ->when(preg_match('/^\d{4}-\d{2}-\d{2}$/', $search), fn ($date) => $date->orWhereDate('due_at', $search)));
+        }
+        $query->select(['id', 'due_at', 'timezone'])->orderBy('due_at')->orderBy('id');
+        $map = fn ($row) => ['value' => (string) $row->id,
+            'label' => \Illuminate\Support\Carbon::parse($row->due_at)->setTimezone($row->timezone)->format('Y-m-d H:i') . ' · ' . $row->timezone,
+            'metadata' => ['due_at' => $row->due_at, 'timezone' => $row->timezone], 'status' => 'scheduled'];
+        if (!empty($data['selected_id'])) return response()->json(['status' => 'success', 'data' => $query->limit(1)->get()->map($map)->values()]);
+        $rows = $query->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform($map);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function wellnessReferral(Request $request, string $id): JsonResponse
@@ -403,6 +518,10 @@ class EngagementController extends Controller
         if($staffIds)abort_unless(DB::table('staff')->whereIn('id',$staffIds)->where('company_id',$companyId)->whereNull('deleted_at')->whereNull('employment_ended_at')->count()===count($staffIds),422,'Every audience Staff member must be active in your legal entity.');
         $unitIds=array_values(array_unique($audience['organization_unit_ids']));
         if($unitIds)abort_unless(DB::table('hr_organization_units')->whereIn('id',$unitIds)->where('company_id',$companyId)->where('status','active')->count()===count($unitIds),422,'Every audience organization unit must be active in your legal entity.');
+        $staffTypes=array_values(array_unique($audience['staff_types']));
+        if($staffTypes)abort_unless(DB::table('staff')->where('company_id',$companyId)->whereNull('deleted_at')->whereNull('employment_ended_at')->whereIn('staff_type',$staffTypes)->distinct()->pluck('staff_type')->count()===count($staffTypes),422,'Every audience Staff type must be active in your legal entity.');
+        $locations=array_values(array_unique($audience['location_codes']));
+        if($locations)abort_unless(DB::table('hr_employment_assignments')->where('company_id',$companyId)->whereIn('location_code',$locations)->distinct()->pluck('location_code')->count()===count($locations),422,'Every audience location must be configured in your legal entity.');
     }
 
     private function assertQuestions(array $questions): void

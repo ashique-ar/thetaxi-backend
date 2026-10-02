@@ -53,6 +53,13 @@ class SalesPerformanceService
             DB::table('companies')->whereKey($data['company_id'])->lockForUpdate()->firstOrFail();
             $profile = SalesProfile::query()->lockForUpdate()->findOrFail($data['sales_profile_id']);
             abort_unless($profile->company_id === $data['company_id'], 422, 'Target and Sales Profile legal entities must match.');
+            abort_unless($profile->status === 'active' && $profile->effective_from?->lte(now())
+                && (! $profile->effective_until || $profile->effective_until->gt(now())), 422,
+                'A target can only be drafted for a currently active Sales Profile.');
+            $staff = Staff::query()->whereKey($profile->staff_id)->where('company_id', $profile->company_id)
+                ->whereNull('deleted_at')->where(fn ($employment) => $employment->whereNull('employment_ended_at')
+                    ->orWhere('employment_ended_at', '>', now()))->lockForUpdate()->first();
+            abort_unless($staff, 422, 'The Sales Profile must belong to current Staff in this legal entity.');
             $start = CarbonImmutable::parse($data['period_start']);
             $end = CarbonImmutable::parse($data['period_end']);
             abort_unless($start->isStartOfMonth() && $end->isSameDay($start->endOfMonth()), 422, 'Sales targets must be defined for a complete calendar month.');
@@ -909,12 +916,11 @@ class SalesPerformanceService
     public function storeAlertPolicy(array $data, string $actorUserId): SalesAlertPolicyVersion
     {
         $data['rules'] = $this->alertPolicyContract->normalize($data['rules']);
-        abort_unless(Staff::query()->where('company_id', $data['company_id'])
-            ->where('user_id', $data['rules']['evaluation']['owner_user_id'])
-            ->where(fn($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->exists(), 422, 'The alert owner must be an active internal Staff user in the selected legal entity.');
         return DB::transaction(function () use ($data, $actorUserId) {
-            DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
+            DB::table('companies')->whereKey($data['company_id'])->lockForUpdate()->firstOrFail();
+            abort_unless($this->activeAlertOwnerIdentity(
+                $data['company_id'], $data['rules']['evaluation']['owner_user_id'], true,
+            ), 422, 'The alert owner must be an active internal Staff user with an active Staff context in the selected legal entity.');
             $version = (int) SalesAlertPolicyVersion::query()->where('company_id', $data['company_id'])->lockForUpdate()->max('version') + 1;
             return SalesAlertPolicyVersion::create($data + [
                 'version' => $version,
@@ -923,6 +929,24 @@ class SalesPerformanceService
                 'rules_checksum' => hash('sha256', CanonicalJson::encode($data['rules'])),
             ]);
         });
+    }
+
+    private function activeAlertOwnerIdentity(string $companyId, string $userId, bool $lock = false): bool
+    {
+        $staffQuery = DB::table('staff')->where('company_id', $companyId)->where('user_id', $userId)
+            ->whereNull('deleted_at')->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
+        if ($lock) $staffQuery->lockForUpdate();
+        $staff = $staffQuery->first(['id']);
+        if (! $staff) return false;
+
+        $userQuery = DB::table('users')->where('id', $userId)->where('is_active', true)->whereNull('deleted_at');
+        if ($lock) $userQuery->lockForUpdate();
+        if (! $userQuery->first(['id'])) return false;
+
+        $contextQuery = DB::table('user_contexts')->where('user_id', $userId)->where('context_type', 'staff')
+            ->where('context_id', $staff->id)->where('is_active', true)->whereNull('deleted_at');
+        if ($lock) $contextQuery->lockForUpdate();
+        return (bool) $contextQuery->first(['id']);
     }
 
     public function approveAlertPolicy(SalesAlertPolicyVersion $policy, string $actorUserId): SalesAlertPolicyVersion
@@ -1363,10 +1387,8 @@ class SalesPerformanceService
             'The frozen Sales snapshot alert-policy lineage is invalid.'
         );
         $rules = $this->alertPolicyContract->normalize($policy->rules);
-        abort_unless(Staff::query()->where('company_id', $snapshot->company_id)
-            ->where('user_id', $rules['evaluation']['owner_user_id'])
-            ->where(fn($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->exists(), 409, 'The frozen alert policy owner is no longer an active internal Staff user in this legal entity.');
+        abort_unless($this->activeAlertOwnerIdentity($snapshot->company_id, $rules['evaluation']['owner_user_id']), 409,
+            'The frozen alert policy owner is no longer an active internal Staff user with an active Staff context in this legal entity.');
         $timezone = $this->policySettings->businessTimezone((string) $snapshot->company_id);
         abort_unless(
             is_string($timezone) && in_array($timezone, \DateTimeZone::listIdentifiers(), true),
@@ -1394,6 +1416,9 @@ class SalesPerformanceService
             DB::table('companies')->whereKey($snapshot->company_id)->lockForUpdate()->firstOrFail();
             $snapshot = SalesKpiSnapshot::query()->with('rows')->lockForUpdate()->findOrFail($snapshot->id);
             $context = $this->alertEvaluationContext($snapshot);
+            abort_unless($this->activeAlertOwnerIdentity(
+                $snapshot->company_id, $context['rules']['evaluation']['owner_user_id'], true,
+            ), 409, 'The alert owner became inactive before evaluation.');
             $policy = $context['policy'];
             $rules = $context['rules'];
             $dueAt = $context['due_at'];
