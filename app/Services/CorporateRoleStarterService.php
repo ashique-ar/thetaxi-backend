@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use App\Models\Corporate\Corporate;
+use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Support\Facades\DB;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
@@ -89,17 +91,18 @@ class CorporateRoleStarterService
                     })
                     ->where('user_contexts.context_type', 'corporate')
                     ->where('corporate_employees.corporate_id', $corporate->id)
-                    ->pluck('user_contexts.id');
+                    ->whereNull('user_contexts.deleted_at')
+                    ->whereNull('corporate_employees.deleted_at')
+                    ->select('user_contexts.id', 'user_contexts.user_id')
+                    ->lockForUpdate()
+                    ->get();
 
-                foreach ($contexts as $contextId) {
-                    DB::table('user_context_roles')->where([
-                        'role_id' => $legacyRole->id,
-                        'user_context_id' => $contextId,
-                    ])->delete();
-                    DB::table('user_context_roles')->updateOrInsert([
-                        'role_id' => $role->id,
-                        'user_context_id' => $contextId,
-                    ]);
+                foreach ($contexts as $row) {
+                    $user = User::query()->whereKey($row->user_id)->lockForUpdate()->firstOrFail();
+                    $context = UserContext::query()->whereKey($row->id)->lockForUpdate()->firstOrFail();
+                    $contextRoles = app(UserContextService::class);
+                    $contextRoles->revokeRoleFromContext($user, $context, (int) $legacyRole->id);
+                    $contextRoles->assignRolesToContext($user, $context, [(int) $role->id]);
                     $migrated++;
                 }
             }

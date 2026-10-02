@@ -47,6 +47,10 @@ class AdminUserSeeder extends Seeder
         if ($apiAdminRole) {
             $admin->assignRole($apiAdminRole);
         }
+        app(\App\Services\UserService::class)->syncDirectRoleGrants(
+            $admin,
+            collect([$webAdminRole, $apiAdminRole])->filter()
+        );
 
 
         $this->command->info('Admin user created successfully!');

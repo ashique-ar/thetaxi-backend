@@ -914,13 +914,7 @@ class CorporateDynamicPricingSeeder extends Seeder
             $context->deleted_at = null;
             $context->save();
             $role = Role::firstOrCreate(['name' => $roleName, 'guard_name' => 'api']);
-            DB::table('user_context_roles')->updateOrInsert(
-                ['user_context_id' => $context->id, 'role_id' => $role->id],
-                ['created_at' => now(), 'updated_at' => now()]
-            );
-            if (!$user->hasRole($role)) {
-                $user->assignRole($role);
-            }
+            app(\App\Services\UserContextService::class)->assignRolesToContext($user, $context, [$role->id]);
             $users[$roleName] = $user;
         }
 

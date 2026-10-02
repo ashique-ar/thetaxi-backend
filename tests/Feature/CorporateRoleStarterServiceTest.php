@@ -2,16 +2,18 @@
 
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\User;
 use App\Models\UserContext;
 use App\Services\CorporateRoleStarterService;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 beforeEach(function () {
     activity()->disableLogging();
-    foreach (['user_context_roles', 'role_has_permissions', 'permissions', 'roles', 'user_contexts', 'corporate_employees', 'corporates'] as $table) {
+    foreach (['activity_log', 'user_direct_role_grants', 'model_has_roles', 'users', 'user_context_roles', 'role_has_permissions', 'permissions', 'roles', 'user_contexts', 'corporate_employees', 'corporates'] as $table) {
         Schema::dropIfExists($table);
     }
     Schema::create('corporates', function (Blueprint $table) {
@@ -21,6 +23,10 @@ beforeEach(function () {
     Schema::create('corporate_employees', function (Blueprint $table) {
         $table->uuid('id')->primary(); $table->uuid('user_id'); $table->uuid('corporate_id');
         $table->boolean('is_active')->default(true); $table->timestamps(); $table->softDeletes();
+    });
+    Schema::create('users', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->softDeletes();
     });
     Schema::create('user_contexts', function (Blueprint $table) {
         $table->uuid('id')->primary(); $table->uuid('user_id'); $table->string('context_type');
@@ -41,6 +47,21 @@ beforeEach(function () {
     Schema::create('user_context_roles', function (Blueprint $table) {
         $table->bigIncrements('id'); $table->uuid('user_context_id'); $table->unsignedInteger('role_id');
         $table->timestamps(); $table->unique(['user_context_id', 'role_id']);
+    });
+    Schema::create('model_has_roles', function (Blueprint $table) {
+        $table->unsignedInteger('role_id'); $table->string('model_type'); $table->uuid('model_id');
+        $table->primary(['role_id', 'model_id', 'model_type']);
+    });
+    Schema::create('user_direct_role_grants', function (Blueprint $table) {
+        $table->uuid('user_id'); $table->unsignedInteger('role_id');
+        $table->primary(['user_id', 'role_id']);
+    });
+    Schema::create('activity_log', function (Blueprint $table) {
+        $table->bigIncrements('id'); $table->string('log_name')->nullable(); $table->text('description');
+        $table->string('subject_type')->nullable(); $table->uuid('subject_id')->nullable();
+        $table->string('causer_type')->nullable(); $table->uuid('causer_id')->nullable();
+        $table->json('properties')->nullable(); $table->string('event')->nullable();
+        $table->uuid('batch_uuid')->nullable(); $table->timestamps();
     });
 });
 
@@ -71,6 +92,7 @@ it('creates four separate roles per corporate and preserves changed permissions'
 it('moves a legacy shared assignment to the matching company role', function () {
     $corporate = Corporate::create(['name' => 'Legacy Company', 'contact_email' => 'legacy@example.test', 'is_active' => true]);
     $userId = (string) Str::uuid();
+    DB::table('users')->insert(['id' => $userId]);
     $employee = CorporateEmployee::create(['corporate_id' => $corporate->id, 'user_id' => $userId, 'is_active' => true]);
     $context = UserContext::create([
         'user_id' => $userId,
@@ -80,11 +102,21 @@ it('moves a legacy shared assignment to the matching company role', function () 
     ]);
     $legacy = Role::findOrCreate('Corporate_Employee', 'api');
     $context->roles()->sync([$legacy->id]);
+    DB::table('model_has_roles')->insert([
+        'role_id' => $legacy->id, 'model_type' => User::class, 'model_id' => $userId,
+    ]);
 
+    activity()->enableLogging();
     $result = app(CorporateRoleStarterService::class)->provision($corporate);
     $context->refresh();
 
     expect($result['assignments_migrated'])->toBe(1)
         ->and($context->roles)->toHaveCount(1)
         ->and($context->roles->first()->name)->toBe('Corporate_'.$corporate->id.'_Employee');
+    $this->assertDatabaseHas('model_has_roles', [
+        'role_id' => $legacy->id, 'model_type' => User::class, 'model_id' => $userId,
+    ]);
+    $this->assertDatabaseHas('activity_log', [
+        'log_name' => 'user-access', 'subject_id' => $userId, 'description' => 'context_roles_assigned',
+    ]);
 });

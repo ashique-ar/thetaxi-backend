@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\DB;
 
 class AssignAdminRole extends Command
 {
@@ -34,9 +35,6 @@ class AssignAdminRole extends Command
             return 1;
         }
 
-        // Remove existing roles
-        $user->roles()->detach();
-        
         // Get API admin role
         $role = Role::where('name', 'admin')->where('guard_name', 'api')->first();
         
@@ -45,8 +43,11 @@ class AssignAdminRole extends Command
             return 1;
         }
 
-        $user->assignRole($role);
-        app(\App\Services\UserService::class)->syncDirectRoleGrants($user, collect([$role]));
+        DB::transaction(function () use ($user, $role): void {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $user->syncRoles([$role]);
+            app(\App\Services\UserService::class)->syncDirectRoleGrants($user, collect([$role]));
+        });
         
         $this->info('API admin role assigned successfully!');
         $this->info('User now has roles: ' . implode(', ', $user->getRoleNames()->toArray()));

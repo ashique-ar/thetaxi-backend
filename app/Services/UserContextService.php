@@ -342,6 +342,7 @@ class UserContextService
         DB::transaction(function () use ($user, $userContext, $roles): void {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             $userContext = UserContext::query()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $added = $unverifiedExistingGlobal = [];
             foreach ($roles as $roleSpec) {
                 $roleModel = null;
 
@@ -361,17 +362,38 @@ class UserContextService
                     ->exists();
 
                 if (!$exists) {
+                    $globalRoleExists = DB::table('model_has_roles')->where('role_id', $roleModel->id)
+                        ->where('model_type', User::class)->where('model_id', $user->id)->exists();
+                    $hasOtherContextSource = DB::table('user_context_roles')->where('role_id', $roleModel->id)
+                        ->where('user_context_id', '!=', $userContext->id)->whereIn('user_context_id', function ($query) use ($user) {
+                            $query->select('id')->from('user_contexts')->where('user_id', $user->id);
+                        })->exists();
+                    $hasDirectSource = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+                        ->where('role_id', $roleModel->id)->exists();
                     DB::table('user_context_roles')->insert([
                         'user_context_id' => $userContext->id,
                         'role_id' => $roleModel->id,
                         'created_at' => now(),
                         'updated_at' => now(),
                     ]);
+                    $added[] = (int) $roleModel->id;
+                    if ($globalRoleExists && !$hasOtherContextSource && !$hasDirectSource) {
+                        $unverifiedExistingGlobal[] = (int) $roleModel->id;
+                    }
                 }
 
                 if ($userContext->is_active && !$user->hasRole($roleModel->name)) {
                     $user->assignRole($roleModel->name);
                 }
+            }
+            if ($added) {
+                activity('user-access')->causedBy(request()->user())->performedOn($user)
+                    ->withProperties([
+                        'user_context_id' => $userContext->id,
+                        'role_ids' => $added,
+                        'unverified_existing_global_role_ids' => $unverifiedExistingGlobal,
+                    ])
+                    ->log('context_roles_assigned');
             }
         });
     }
@@ -427,16 +449,23 @@ class UserContextService
     {
         DB::transaction(function () use ($user, $userContext, $roleId): void {
             $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-            $userContext = UserContext::query()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
+            $userContext = UserContext::withTrashed()->whereKey($userContext->id)->where('user_id', $user->id)->lockForUpdate()->firstOrFail();
             $role = Role::find($roleId);
             if (!$role) {
                 return;
             }
+            $unverifiedOrigin = $this->hasUnverifiedContextRoleOrigin($user, $roleId);
 
-            DB::table('user_context_roles')
+            $deleted = DB::table('user_context_roles')
                 ->where('user_context_id', $userContext->id)
                 ->where('role_id', $roleId)
                 ->delete();
+
+            if ($deleted) {
+                activity('user-access')->causedBy(request()->user())->performedOn($user)
+                    ->withProperties(['user_context_id' => $userContext->id, 'role_id' => $roleId])
+                    ->log('context_role_revoked');
+            }
 
             $other = DB::table('user_context_roles as ucr')
                 ->join('user_contexts as uc', 'ucr.user_context_id', '=', 'uc.id')
@@ -447,10 +476,133 @@ class UserContextService
 
             $direct = DB::table('user_direct_role_grants')
                 ->where('user_id', $user->id)->where('role_id', $roleId)->exists();
-            if (!$other && !$direct && $user->hasRole($role->name)) {
+            if (!$other && !$direct && !$unverifiedOrigin && $user->hasRole($role->name)) {
                 $user->removeRole($role->name);
             }
         });
+    }
+
+    /** Revoke verified direct and context sources while retaining ambiguous global grants. */
+    public function revokeAllSourcesForRoles(User $user, array $roleIds): array
+    {
+        return DB::transaction(function () use ($user, $roleIds): array {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $directRoleIds = [];
+            $preserved = [];
+            $removeGlobal = [];
+
+            foreach (array_unique(array_map('intval', $roleIds)) as $roleId) {
+                $role = Role::find($roleId);
+                if (!$role) {
+                    continue;
+                }
+
+                $hasDirect = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+                    ->where('role_id', $roleId)->exists();
+                $contextIds = DB::table('user_context_roles')->where('role_id', $roleId)
+                    ->whereIn('user_context_id', function ($query) use ($user) {
+                        $query->select('id')->from('user_contexts')->where('user_id', $user->id);
+                    })->pluck('user_context_id');
+                $unverified = $contextIds->isEmpty()
+                    ? !$hasDirect
+                    : $this->hasUnverifiedContextRoleOrigin($user, $roleId);
+
+                foreach (UserContext::withTrashed()->where('user_id', $user->id)->whereIn('id', $contextIds)->get() as $context) {
+                    $this->revokeRoleFromContext($user, $context, $roleId);
+                }
+
+                if ($hasDirect) {
+                    $directRoleIds[] = $roleId;
+                }
+                if ($unverified && DB::table('model_has_roles')->where('model_type', User::class)
+                    ->where('model_id', $user->id)->where('role_id', $roleId)->exists()) {
+                    $preserved[] = $role->name;
+                    activity('user-access')->causedBy(request()->user())->performedOn($user)
+                        ->withProperties(['role_id' => $roleId])
+                        ->log('role_revocation_preserved_unverified');
+                } else {
+                    $removeGlobal[] = $roleId;
+                }
+            }
+
+            if ($directRoleIds) {
+                app(UserService::class)->revokeDirectRoleGrants($user, $directRoleIds);
+            }
+            DB::table('model_has_roles')->where('model_type', User::class)
+                ->where('model_id', $user->id)->whereIn('role_id', $removeGlobal)->delete();
+
+            return array_values(array_unique($preserved));
+        });
+    }
+
+    public function detachDirectCorporateRole(User $user, int $roleId): string
+    {
+        return DB::transaction(function () use ($user, $roleId): string {
+            $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+            $role = Role::findOrFail($roleId);
+            $hasDirect = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+                ->where('role_id', $roleId)->exists();
+            if ($hasDirect) {
+                app(UserService::class)->revokeDirectRoleGrants($user, [$roleId]);
+            }
+
+            $global = DB::table('model_has_roles')->where('model_type', User::class)
+                ->where('model_id', $user->id)->where('role_id', $roleId)->exists();
+            if (!$global) {
+                return $hasDirect ? 'detached' : 'unchanged';
+            }
+
+            $activeContexts = DB::table('user_context_roles as grants')
+                ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+                ->where('user_contexts.user_id', $user->id)->where('user_contexts.is_active', true)
+                ->whereNull('user_contexts.deleted_at')->where('grants.role_id', $roleId)
+                ->pluck('user_contexts.id');
+            if ($activeContexts->isNotEmpty()) {
+                if ($hasDirect) {
+                    activity('user-access')->causedBy(request()->user())->performedOn($user)
+                        ->withProperties(['role_id' => $roleId, 'user_context_ids' => $activeContexts->all()])
+                        ->log('direct_role_detached_context_role_retained');
+                }
+                return $hasDirect ? 'retained_direct' : 'retained';
+            }
+
+            if (!$hasDirect) {
+                return 'unverified';
+            }
+
+            $user->removeRole($role);
+
+            return 'detached';
+        });
+    }
+
+    public function hasUnverifiedContextRoleOrigin(User $user, int $roleId): bool
+    {
+        $contextIds = DB::table('user_context_roles as grants')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)->where('grants.role_id', $roleId)
+            ->pluck('grants.user_context_id');
+        if ($contextIds->isEmpty()) {
+            return true;
+        }
+
+        $events = DB::table('activity_log')->where('log_name', 'user-access')
+            ->where('subject_type', User::class)->where('subject_id', $user->id)
+            ->where('description', 'context_roles_assigned')->get(['properties']);
+        foreach ($contextIds as $contextId) {
+            $tracked = $events->contains(function ($event) use ($contextId, $roleId): bool {
+                $properties = json_decode($event->properties, true) ?: [];
+                return (string) ($properties['user_context_id'] ?? '') === (string) $contextId
+                    && in_array($roleId, array_map('intval', $properties['role_ids'] ?? []), true)
+                    && array_key_exists('unverified_existing_global_role_ids', $properties)
+                    && !in_array($roleId, array_map('intval', $properties['unverified_existing_global_role_ids'] ?? []), true);
+            });
+            if (!$tracked) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -511,7 +663,7 @@ class UserContextService
 
             $direct = DB::table('user_direct_role_grants')
                 ->where('user_id', $user->id)->where('role_id', $roleId)->exists();
-            if (!$usedByAnotherActiveContext && !$direct && $user->hasRole($role->name)) {
+            if (!$usedByAnotherActiveContext && !$direct && !$this->hasUnverifiedContextRoleOrigin($user, (int) $roleId) && $user->hasRole($role->name)) {
                 $user->removeRole($role->name);
             }
         }

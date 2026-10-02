@@ -527,21 +527,23 @@ class UserController extends Controller
         $contextTypes = DB::table('user_context_roles as grants')
             ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
             ->where('user_contexts.user_id', $user->id)->whereIn('grants.role_id', $roleIds)
-            ->select('grants.role_id', 'user_contexts.context_type')->get()->groupBy('role_id');
+            ->select('grants.role_id', 'grants.user_context_id', 'user_contexts.context_type')->get()->groupBy('role_id');
         
         return response()->json([
             'status' => 'success',
             'data' => [
-                'roles' => $roles->map(function ($role) use ($directRoleIds, $contextTypes) {
+                'roles' => $roles->map(function ($role) use ($user, $directRoleIds, $contextTypes) {
                     $sources = [];
                     if ($directRoleIds->contains($role->id)) {
                         $sources[] = 'Direct grant';
                     }
-                    foreach ($contextTypes->get($role->id, collect())->pluck('context_type')->unique() as $contextType) {
+                    $contextGrants = $contextTypes->get($role->id, collect());
+                    foreach ($contextGrants->pluck('context_type')->unique() as $contextType) {
                         $sources[] = ucfirst(str_replace('_', ' ', $contextType)).' context';
                     }
-                    if (!$directRoleIds->contains($role->id)) {
-                        $sources[] = 'Legacy direct origin unverified';
+                    if (!$directRoleIds->contains($role->id)
+                        && ($contextGrants->isEmpty() || $this->contextService->hasUnverifiedContextRoleOrigin($user, (int) $role->id))) {
+                        $sources[] = 'Prior role origin unverified';
                     }
 
                     return [
@@ -1009,32 +1011,16 @@ class UserController extends Controller
                 ], 422);
             }
 
-            DB::transaction(function () use ($user, $roleIds) {
-                User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
-                DB::table('model_has_roles')
-                    ->where('model_type', User::class)
-                    ->where('model_id', $user->id)
-                    ->whereIn('role_id', $roleIds)
-                    ->delete();
-
-                $this->userService->revokeDirectRoleGrants($user, $roleIds);
-
-                DB::table('user_context_roles')
-                    ->whereIn('role_id', $roleIds)
-                    ->whereIn('user_context_id', function ($query) use ($user) {
-                        $query->select('id')
-                            ->from('user_contexts')
-                            ->where('user_id', $user->id);
-                    })
-                    ->delete();
-
-            });
+            $preservedRoles = $this->contextService->revokeAllSourcesForRoles($user, $roleIds);
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
             
             return response()->json([
                 'status' => 'success',
-                'message' => 'Roles revoked successfully'
+                'message' => $preservedRoles
+                    ? 'Some roles were retained because their earlier assignment source could not be verified.'
+                    : 'Roles revoked successfully',
+                'data' => ['preserved_roles' => $preservedRoles],
             ]);
         } catch (\Exception $e) {
             return response()->json([

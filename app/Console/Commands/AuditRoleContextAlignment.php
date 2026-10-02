@@ -56,7 +56,6 @@ class AuditRoleContextAlignment extends Command
             'role_without_context' => [],
             'context_without_role' => [],
             'inactive_context_with_role' => [],
-            'legacy_role_names' => [],
         ];
 
         $progressBar = $this->output->createProgressBar($users->count());
@@ -161,7 +160,6 @@ class AuditRoleContextAlignment extends Command
                 ['Roles without contexts', count($issues['role_without_context'])],
                 ['Contexts without roles', count($issues['context_without_role'])],
                 ['Inactive contexts with roles', count($issues['inactive_context_with_role'])],
-                ['Legacy role names', count($issues['legacy_role_names'])],
             ]
         );
 
@@ -203,14 +201,6 @@ class AuditRoleContextAlignment extends Command
             $this->newLine();
         }
 
-        if (!empty($issues['legacy_role_names'])) {
-            $this->warn('=== Legacy Role Names ===');
-            $this->table(
-                ['Email', 'Legacy Role'],
-                array_map(fn($i) => [$i['email'], $i['role']], $issues['legacy_role_names'])
-            );
-            $this->newLine();
-        }
     }
 
     /**
@@ -220,8 +210,7 @@ class AuditRoleContextAlignment extends Command
     {
         return count($issues['role_without_context']) > 0
             || count($issues['context_without_role']) > 0
-            || count($issues['inactive_context_with_role']) > 0
-            || count($issues['legacy_role_names']) > 0;
+            || count($issues['inactive_context_with_role']) > 0;
     }
 
     /**
@@ -239,48 +228,46 @@ class AuditRoleContextAlignment extends Command
      */
     private function fixContextWithoutRole(User $user, string $contextType, string $expectedRole): void
     {
-        if (!$user->hasRole($expectedRole)) {
-            $user->assignRole($expectedRole);
-            $this->info("✓ Assigned role '{$expectedRole}' to {$user->email}");
+        $role = Role::query()->where('name', $expectedRole)->where('guard_name', 'api')->first();
+        $contexts = $user->contexts()->where('context_type', $contextType)->where('is_active', true)->get();
+        if (!$role || $contexts->isEmpty()) {
+            $this->warn("Cannot repair '{$expectedRole}' for {$user->email}: role or active {$contextType} context is missing.");
+            return;
         }
-    }
 
+        foreach ($contexts as $context) {
+            app(\App\Services\UserContextService::class)->assignRolesToContext($user, $context, [$role->id]);
+        }
+        $this->info("Assigned '{$expectedRole}' through the {$contextType} context for {$user->email}");
+    }
     /**
      * Fix inactive context with role
      */
     private function fixInactiveContextWithRole(User $user, string $roleName): void
     {
-        // Check if user has other active contexts that justify keeping the role
-        $activeContexts = $user->contexts()->where('is_active', true)->get();
-        $shouldKeepRole = false;
+        $role = Role::query()->where('name', $roleName)->where('guard_name', 'api')->first();
+        if (!$role) {
+            return;
+        }
 
-        foreach ($activeContexts as $context) {
-            if ($this->getExpectedRole($context->context_type) === $roleName) {
-                $shouldKeepRole = true;
-                break;
+        $contexts = $user->contexts()->where('is_active', false)->get();
+        foreach ($contexts as $context) {
+            if ($this->getExpectedRole($context->context_type) !== $roleName
+                || !DB::table('user_context_roles')->where('user_context_id', $context->id)->where('role_id', $role->id)->exists()) {
+                continue;
             }
-        }
 
-        if (!$shouldKeepRole) {
-            $user->removeRole($roleName);
-            $this->info("✓ Removed role '{$roleName}' from {$user->email} (no active contexts)");
-        }
-    }
+            $direct = DB::table('user_direct_role_grants')->where('user_id', $user->id)->where('role_id', $role->id)->exists();
+            $unverified = app(\App\Services\UserContextService::class)
+                ->hasUnverifiedContextRoleOrigin($user, (int) $role->id);
+            if (!$direct && $unverified) {
+                $this->warn("Preserved '{$roleName}' for {$user->email}; its historical direct origin is unverified.");
+                continue;
+            }
 
-    /**
-     * Fix legacy role name
-     */
-    private function fixLegacyRoleName(User $user, string $legacyRole): void
-    {
-        $newRole = 'vehicle_owner';
-        
-        if ($user->hasRole($legacyRole)) {
-            $user->removeRole($legacyRole);
-            $user->assignRole($newRole);
-            $this->info("✓ Updated role from '{$legacyRole}' to '{$newRole}' for {$user->email}");
+            app(\App\Services\UserContextService::class)->revokeRoleFromContext($user, $context, (int) $role->id);
         }
     }
-
     /**
      * Get expected role for a context type
      */

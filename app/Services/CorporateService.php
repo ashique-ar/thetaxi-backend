@@ -563,7 +563,12 @@ class CorporateService
                 ->lockForUpdate()
                 ->first();
             if ($userContext) {
-                $userContext->roles()->sync([$role->id]);
+                $contextRoles = app(UserContextService::class);
+                if ($userContext->roles()->pluck('roles.id')->map(fn ($id) => (int) $id)->all() !== [(int) $role->id]) {
+                    $user = User::findOrFail($employee->user_id);
+                    $contextRoles->revokeRolesFromContext($user, $userContext);
+                    $contextRoles->assignRolesToContext($user, $userContext, [$role->id]);
+                }
             }
 
             $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [

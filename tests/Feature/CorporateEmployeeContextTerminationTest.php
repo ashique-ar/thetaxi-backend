@@ -6,6 +6,7 @@ use App\Models\User;
 use App\Models\UserContext;
 use App\Services\CorporateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -61,4 +62,26 @@ it('toggles and deletes only the selected CorporateEmployee context for a shared
     $this->assertDatabaseHas('user_contexts', ['id' => $secondContext->id, 'is_active' => true]);
     $this->assertDatabaseHas('user_contexts', ['id' => $customerContext->id, 'is_active' => true]);
     $this->assertDatabaseHas('user_contexts', ['id' => $driverContext->id, 'is_active' => true]);
+});
+
+it('assigns corporate roles through the context source and audit service', function () {
+    $user = User::factory()->create();
+    $corporate = Corporate::create(['name' => 'Role assignment company']);
+    $employee = CorporateEmployee::create(['user_id' => $user->id, 'corporate_id' => $corporate->id, 'is_active' => true]);
+    $context = UserContext::create([
+        'user_id' => $user->id,
+        'context_type' => 'corporate',
+        'context_id' => $employee->id,
+        'is_active' => true,
+    ]);
+
+    app(CorporateService::class)->assignEmployeeRole($employee, 'Corporate_Employee');
+
+    $roleId = DB::table('user_context_roles')->where('user_context_id', $context->id)->value('role_id');
+    $this->assertDatabaseHas('model_has_roles', [
+        'role_id' => $roleId, 'model_type' => User::class, 'model_id' => $user->id,
+    ]);
+    $this->assertDatabaseHas('activity_log', [
+        'log_name' => 'user-access', 'subject_id' => $user->id, 'description' => 'context_roles_assigned',
+    ]);
 });
