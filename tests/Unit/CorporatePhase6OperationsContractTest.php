@@ -4,7 +4,6 @@ use App\Http\Controllers\Api\Corporate\CorporateBookingController;
 use App\Services\BookingObservabilityService;
 use App\Services\CorporateBookingService;
 
-uses(Tests\TestCase::class);
 
 it('creates an audited replacement decision while retaining the prior contractual distances', function () {
     $controller = new CorporateBookingController(

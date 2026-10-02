@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('returns edit permissions inside the canonical edit payload', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Booking/Traits/BookingSubmissionTrait.php'));

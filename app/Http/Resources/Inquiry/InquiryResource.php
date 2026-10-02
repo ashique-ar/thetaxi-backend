@@ -4,6 +4,7 @@
 namespace App\Http\Resources\Inquiry;
 
 use App\Models\InquiryForm;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\Resources\Json\JsonResource;
 
 class InquiryResource extends JsonResource
@@ -16,6 +17,14 @@ class InquiryResource extends JsonResource
         $formId = $payload['form_id'] ?? null;
         $formName = $payload['form_name'] ?? ($formId ? InquiryForm::withInactive()->withTrashed()->find($formId)?->name : null);
         $serviceSlug = $cms?->slug ?? $legacy?->slug ?? ($payload['service_slug'] ?? null);
+        if ($this->assigned_to && ! $request->attributes->has('inquiry_default_company_id')) {
+            $request->attributes->set('inquiry_default_company_id', app(SingleCompanyScope::class)->defaultCompany()?->id);
+        }
+        $companyId = $request->attributes->get('inquiry_default_company_id');
+        $assignedStaff = $this->assignedUser?->staff;
+        $assignedLabel = $this->assigned_to && $companyId && $assignedStaff?->company_id === $companyId
+            ? trim(($this->assignedUser->first_name ?? '') . ' ' . ($this->assignedUser->last_name ?? ''))
+            : null;
 
         return [
             'id'           => $this->id,
@@ -30,6 +39,7 @@ class InquiryResource extends JsonResource
             'inquiry_type' => $this->inquiry_type,
             'source' => $this->source,
             'assigned_to' => $this->assigned_to,
+            'assigned_label' => $this->assigned_to ? ($assignedLabel ?: 'Unavailable assignee') : 'Unassigned',
             'cms_content_id' => $this->cms_content_id,
             'inquiry_service_page_id' => $this->inquiry_service_page_id,
             'service_title' => $cms?->title ?? $legacy?->name ?? ($payload['service_title'] ?? null),

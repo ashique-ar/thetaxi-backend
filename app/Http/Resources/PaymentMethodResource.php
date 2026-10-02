@@ -8,6 +8,10 @@ class PaymentMethodResource extends JsonResource
 {
     public function toArray($request): array
     {
+        if ($this->resource->isStaffOwned()) {
+            return (new StaffPaymentMethodResource($this->resource))->toArray($request);
+        }
+
         return [
             'id' => $this->id,
             'payable_type' => $this->payable_type,

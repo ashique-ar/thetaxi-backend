@@ -31,7 +31,7 @@ Schedule::command('maintenance:check-scheduled')
 Schedule::command('bookings:process-payment-schedules')
     ->dailyAt('07:00')
     ->withoutOverlapping();
-    
+
 //until we go for production will comment this out if not corporates will aget mails
 // Schedule::command('corporate:generate-monthly-billing --months=12 --issue')
 //     ->dailyAt('05:30')
@@ -51,6 +51,55 @@ Schedule::call(fn() => app(\App\Services\FinancialAccountSettlementService::clas
     ->dailyAt('00:05')
     ->name('mark-overdue-account-settlements')
     ->withoutOverlapping();
+Schedule::command('sales:process-tasks')
+    ->everyFiveMinutes()
+    ->withoutOverlapping();
+
+Schedule::command('sales:project-effective-changes')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+Schedule::command('sales:expire-profile-exports')
+    ->dailyAt('02:00')
+    ->withoutOverlapping();
+
+if (config('sales.features.performance_alert_evaluations')) {
+    Schedule::command('sales:process-performance-alerts --commit')
+        ->everyFifteenMinutes()
+        ->withoutOverlapping();
+}
+
+Schedule::command('foundation:publish-outbox-events --commit')
+    ->everyMinute()
+    ->withoutOverlapping();
+
+if (config('hr.features.leave_overtime') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-leave-accruals --commit')
+        ->dailyAt('00:30')
+        ->withoutOverlapping();
+}
+if (config('hr.features.employee_self_service') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-scheduled-exits --commit')->dailyAt('00:45')->withoutOverlapping();
+}
+if (config('hr.features.engagement_analytics') && config('hr.system_user_id')) {
+    Schedule::command('hr:process-report-schedules --commit')->everyFifteenMinutes()->withoutOverlapping();
+    Schedule::command('hr:expire-report-artifacts --commit')->dailyAt('02:15')->withoutOverlapping();
+    Schedule::command('hr:process-notifications --commit')->everyMinute()->withoutOverlapping();
+}
+if (config('hr.features.attendance_ingestion')) {
+    Schedule::command('hr:hikvision-sync --lookback-minutes=15')->everyFiveMinutes()->withoutOverlapping(10);
+    Schedule::command('hr:hikvision-sync --days=2')->dailyAt('01:30')->withoutOverlapping(30);
+    Schedule::command('hr:hikvision-people-sync')->everyFifteenMinutes()->withoutOverlapping(15);
+    Schedule::command('hr:hikvision-monitor')->everyFiveMinutes()->withoutOverlapping(5);
+}
+if (config('hr.features.attendance_results')) {
+    Schedule::command('hr:attendance-calculate --days=2')->everyFifteenMinutes()->withoutOverlapping(15);
+    Schedule::command('hr:attendance-calculate --days=31')->dailyAt('02:00')->withoutOverlapping(30);
+}
+if (config('hr.features.physical_access_commands')) {
+    Schedule::command('hr:hikvision-access-deliver')->everyMinute()->withoutOverlapping(5);
+}
+Schedule::command('hr:hikvision-maintenance')->everyMinute()->withoutOverlapping(5);
 
 Schedule::command('vehicles:process-lease-schedules')
     ->dailyAt('07:15')

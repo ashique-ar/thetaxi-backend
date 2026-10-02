@@ -20,7 +20,7 @@ class UpdateUserRequest extends FormRequest
         
         return [
             'first_name' => ['sometimes', 'string', 'max:255'],
-            'last_name' => ['sometimes', 'string', 'max:255'],
+            'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'email' => [
                 'sometimes',
                 'string',

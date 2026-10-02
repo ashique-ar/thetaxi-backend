@@ -422,11 +422,17 @@ class CorporateBookingService
 
     private function applyCorporateRequestStatus(Booking $booking, bool $requiresApproval, ?string $actorId): void
     {
-        $seriesQuery = $booking->recurring_series_id
+        // Fetched (not query-builder-mass-updated) so every sibling occurrence's
+        // update goes through Eloquent's created/updated events — a mass
+        // `Builder::update()` bypasses those events entirely, silently skipping
+        // BookingSalesObserver and any other model-event consumer for every
+        // sibling row in the recurring series.
+        $siblings = $booking->recurring_series_id
             ? Booking::query()
                 ->where('recurring_series_id', $booking->recurring_series_id)
                 ->where('id', '!=', $booking->id)
-            : null;
+                ->get()
+            : collect();
 
         if ($requiresApproval) {
             $attributes = [
@@ -441,7 +447,7 @@ class CorporateBookingService
             ];
 
             $booking->update($attributes);
-            $seriesQuery?->update($attributes);
+            $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
 
             BookingApproval::firstOrCreate(
                 [
@@ -456,26 +462,20 @@ class CorporateBookingService
                 ]
             );
 
-            if ($seriesQuery) {
-                Booking::query()
-                    ->where('recurring_series_id', $booking->recurring_series_id)
-                    ->where('id', '!=', $booking->id)
-                    ->pluck('id')
-                    ->each(function ($bookingId) use ($actorId, $booking) {
-                        BookingApproval::firstOrCreate(
-                            [
-                                'booking_id' => $bookingId,
-                                'status' => BookingApproval::STATUS_PENDING,
-                            ],
-                            [
-                                'requested_by' => $actorId,
-                                'override_reasons' => $booking->override_reasons ?? [],
-                                'justification' => $booking->approval_justification,
-                                'priority' => $booking->approval_priority ?? 'normal',
-                            ]
-                        );
-                    });
-            }
+            $siblings->each(function (Booking $sibling) use ($actorId, $booking) {
+                BookingApproval::firstOrCreate(
+                    [
+                        'booking_id' => $sibling->id,
+                        'status' => BookingApproval::STATUS_PENDING,
+                    ],
+                    [
+                        'requested_by' => $actorId,
+                        'override_reasons' => $booking->override_reasons ?? [],
+                        'justification' => $booking->approval_justification,
+                        'priority' => $booking->approval_priority ?? 'normal',
+                    ]
+                );
+            });
 
             return;
         }
@@ -492,7 +492,7 @@ class CorporateBookingService
         ];
 
         $booking->update($attributes);
-        $seriesQuery?->update($attributes);
+        $siblings->each(fn (Booking $sibling) => $sibling->update($attributes));
     }
 
     // ─── Booking Queries & Filters ────────────────────────────────────

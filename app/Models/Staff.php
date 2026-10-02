@@ -3,8 +3,13 @@
 
 namespace App\Models;
 
+use App\Casts\EncryptedStaffIdentityValue;
+use App\Casts\EncryptedStaffDateValue;
 use App\Models\BaseModel;
+use App\Models\Hr\HrEmploymentAssignment;
+use App\Models\Hr\HrEmploymentSpell;
 use App\Traits\UUID;
+use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * App\Models\Staff
@@ -47,6 +52,7 @@ class Staff extends BaseModel
      */
     protected $fillable = [
         'user_id',
+        'company_id',
         'staff_type',
         'collection_commission_enabled',
         'collection_commission_rate',
@@ -59,13 +65,6 @@ class Staff extends BaseModel
         'country_id',
         'state_id',
         'city',
-        'gender',
-        'postal_code',
-        'department',
-        'position',
-        'joining_date',
-        'reporting_to',
-        'emergency_contact',
         'created_user_id',
         'updated_user_id'
     ];
@@ -76,12 +75,10 @@ class Staff extends BaseModel
      * @var array<string, string>
      */
     protected $casts = [
-        'dob' => 'date',
-        'license_expiry' => 'date',
+        'dob' => EncryptedStaffDateValue::class,
+        'license_expiry' => EncryptedStaffDateValue::class,
         'collection_commission_enabled' => 'boolean',
         'collection_commission_rate' => 'decimal:2',
-        'joining_date' => 'date',
-        'emergency_contact' => 'array',
     ];
 
     // Relations
@@ -104,6 +101,11 @@ class Staff extends BaseModel
     public function country()
     {
         return $this->belongsTo(Country::class);
+    }
+
+    public function company()
+    {
+        return $this->belongsTo(Company::class);
     }
 
     /**
@@ -145,5 +147,20 @@ class Staff extends BaseModel
     public function documents()
     {
         return $this->morphMany(Document::class, 'documentable');
+    }
+
+    public function paymentMethodChanges()
+    {
+        return $this->hasMany(StaffPaymentMethodChange::class);
+    }
+
+    public function employmentSpells()
+    {
+        return $this->hasMany(HrEmploymentSpell::class);
+    }
+
+    public function employmentAssignments()
+    {
+        return $this->hasMany(HrEmploymentAssignment::class);
     }
 }

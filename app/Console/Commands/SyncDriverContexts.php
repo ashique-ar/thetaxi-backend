@@ -62,45 +62,35 @@ class SyncDriverContexts extends Command
                     continue;
                 }
 
-                // Check if context already exists
-                $existingContext = UserContext::where('user_id', $driver->user_id)
-                    ->where('context_type', 'driver')
-                    ->first();
+                $changed = $dryRun
+                    ? !UserContext::where('user_id', $driver->user_id)->where('context_type', 'driver')->exists() || $force
+                    : DB::transaction(function () use ($driver, $force): bool {
+                        $user = User::query()->whereKey($driver->user_id)->lockForUpdate()->firstOrFail();
+                        $context = UserContext::where('user_id', $user->id)
+                            ->where('context_type', 'driver')
+                            ->lockForUpdate()
+                            ->first();
 
-                if ($existingContext && !$force) {
-                    $skipped++;
-                    $progressBar->advance();
-                    continue;
-                }
-
-                if ($existingContext && $force) {
-                    $this->newLine();
-                    $this->info("Updating existing context for driver {$driver->id}");
-                    
-                    if (!$dryRun) {
-                        $existingContext->update([
-                            'context_id' => $driver->id,
-                            'is_active' => $driver->is_active ?? true,
-                        ]);
-                    }
-                    $created++;
-                } else {
-                    // Create new context
-                    if (!$dryRun) {
-                        UserContext::create([
-                            'user_id' => $driver->user_id,
-                            'context_type' => 'driver',
-                            'context_id' => $driver->id,
-                            'is_active' => $driver->is_active ?? true,
-                        ]);
-
-                        // Assign corresponding role if not already assigned
-                        if (!$driver->user->hasRole('driver')) {
-                            $driver->user->assignRole('driver');
+                        if ($context && !$force) {
+                            return false;
                         }
-                    }
-                    $created++;
-                }
+
+                        if ($context) {
+                            $context->update(['context_id' => $driver->id, 'is_active' => $driver->is_active ?? true]);
+                        } else {
+                            $context = UserContext::create([
+                                'user_id' => $user->id,
+                                'context_type' => 'driver',
+                                'context_id' => $driver->id,
+                                'is_active' => $driver->is_active ?? true,
+                            ]);
+                            app(\App\Services\UserContextService::class)->assignRolesToContext($user, $context, ['driver']);
+                        }
+
+                        return true;
+                    });
+
+                $changed ? $created++ : $skipped++;
 
             } catch (\Exception $e) {
                 $this->newLine();

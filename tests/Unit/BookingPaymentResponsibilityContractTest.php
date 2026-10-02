@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('projects the contractual payer separately from booking origin', function () {
     $service = file_get_contents(app_path('Services/BookingPaymentLedgerService.php'));

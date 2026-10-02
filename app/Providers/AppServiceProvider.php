@@ -20,13 +20,18 @@ use App\Models\Corporate\Corporate;
 use App\Models\Customer;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
+use App\Models\Staff;
 use App\Observers\DriverObserver;
 use App\Observers\BookingPaymentObserver;
+use App\Observers\BookingSalesObserver;
 use App\Policies\BookingPolicy;
 use App\Policies\CorporatePolicy;
 use App\Policies\CustomerPolicy;
 use App\Policies\DriverPolicy;
 use App\Policies\VehiclePolicy;
+use App\Policies\StaffPolicy;
+use App\Contracts\Foundation\DomainEventPublisher;
+use App\Services\Foundation\DomainOutboxService;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -43,6 +48,7 @@ class AppServiceProvider extends ServiceProvider
         // Payment gateway bindings
         $this->app->singleton(WebXPayGateway::class, fn ($app) => new WebXPayGateway($app->make(WebXPayService::class)));
         $this->app->singleton(PaymentGatewayManager::class, fn ($app) => new PaymentGatewayManager($app));
+        $this->app->singleton(DomainEventPublisher::class, DomainOutboxService::class);
     }
 
     /**
@@ -82,6 +88,9 @@ class AppServiceProvider extends ServiceProvider
         // Register model observers
         Driver::observe(DriverObserver::class);
         Booking::observe(BookingPaymentObserver::class);
+        if (config('sales.features.sales_profiles', false) === true) {
+            Booking::observe(BookingSalesObserver::class);
+        }
 
         // Register policies
         Gate::policy(Booking::class, BookingPolicy::class);
@@ -89,6 +98,7 @@ class AppServiceProvider extends ServiceProvider
         Gate::policy(Customer::class, CustomerPolicy::class);
         Gate::policy(Driver::class, DriverPolicy::class);
         Gate::policy(Vehicle::class, VehiclePolicy::class);
+        Gate::policy(Staff::class, StaffPolicy::class);
 
         // Load broadcast channel authorization routes
         require base_path('routes/channels.php');

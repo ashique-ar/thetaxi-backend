@@ -35,6 +35,9 @@ beforeEach(function () {
     Schema::dropIfExists('cms_contents');
     Schema::dropIfExists('cms_content_types');
     Schema::dropIfExists('inquiry_forms');
+    Schema::dropIfExists('hr_employment_spells');
+    Schema::dropIfExists('staff');
+    Schema::dropIfExists('companies');
     Schema::dropIfExists('users');
 
     Schema::create('users', function (Blueprint $table): void {
@@ -42,8 +45,33 @@ beforeEach(function () {
         $table->string('first_name')->nullable();
         $table->string('last_name')->nullable();
         $table->string('email')->nullable();
+        $table->boolean('is_active')->default(true);
         $table->timestamps();
         $table->softDeletes();
+    });
+    Schema::create('companies', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->string('name');
+        $table->boolean('is_active')->default(true);
+        $table->boolean('is_default')->default(false);
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('staff', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->uuid('user_id');
+        $table->uuid('company_id');
+        $table->string('code');
+        $table->timestamp('employment_ended_at')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('hr_employment_spells', function (Blueprint $table): void {
+        $table->uuid('id')->primary();
+        $table->uuid('staff_id');
+        $table->uuid('company_id');
+        $table->string('status');
+        $table->timestamp('terminated_at')->nullable();
     });
 
     Schema::create('inquiry_forms', function (Blueprint $table): void {
@@ -242,9 +270,17 @@ it('persists a CMS inquiry with exact source and form metadata and invokes exist
         'id' => $assigneeId, 'first_name' => 'Agent', 'last_name' => 'One',
         'email' => 'agent@example.com', 'created_at' => now(), 'updated_at' => now(),
     ]);
+    $companyId = (string) Str::uuid();
+    $staffId = (string) Str::uuid();
+    DB::table('companies')->insert(['id' => $companyId, 'name' => 'Default company', 'is_active' => true, 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('staff')->insert(['id' => $staffId, 'user_id' => $assigneeId, 'company_id' => $companyId, 'code' => 'ST-1', 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('hr_employment_spells')->insert(['id' => (string) Str::uuid(), 'staff_id' => $staffId, 'company_id' => $companyId, 'status' => 'active']);
     $operator = (object) ['id' => $assigneeId];
     $assignRequest = Request::create('/api/inquiries/'.$inquiry->id.'/assign', 'PUT', ['assigned_to' => $assigneeId]);
     $assignRequest->setUserResolver(fn () => $operator);
+    $optionsRequest = Request::create('/api/inquiries/assignee-options', 'GET', ['selected_id' => $assigneeId]);
+    $optionsRequest->setUserResolver(fn () => $operator);
+    expect($admin->assigneeOptions($optionsRequest)->getData(true)['data']['data'][0]['label'])->toBe('Agent One · ST-1');
     $admin->assign($assignRequest, $inquiry);
     $statusRequest = Request::create('/api/inquiries/'.$inquiry->id.'/status', 'PUT', ['status' => 'in_progress']);
     $statusRequest->setUserResolver(fn () => $operator);

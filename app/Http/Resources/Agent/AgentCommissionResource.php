@@ -12,6 +12,7 @@ class AgentCommissionResource extends JsonResource
             'id'         => $this->id,
             'agent_id'   => $this->agent_id,
             'booking_id' => $this->booking_id,
+            'booking_number' => $this->whenLoaded('booking', fn ($booking) => $booking?->booking_number),
             'amount'     => $this->amount,
             'paid'       => $this->paid,
             'paid_at'    => $this->paid_at,

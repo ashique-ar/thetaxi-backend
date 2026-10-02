@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Inquiry;
 use App\Models\InquiryForm;
+use App\Services\SingleCompanyScope;
 use App\Models\Website\CmsContent;
 use App\Http\Requests\Inquiry\CreateInquiryRequest;
 use App\Http\Requests\Inquiry\UpdateInquiryRequest;
@@ -13,12 +14,13 @@ use App\Http\Resources\Inquiry\InquiryResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class InquiryController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions']);
+        $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions']);
         $this->middleware('permission:inquiries.create')->only(['store']);
         $this->middleware('permission:inquiries.edit')->only(['update', 'assign', 'updateStatus', 'respond', 'markRead']);
         $this->middleware('permission:inquiries.delete')->only(['destroy']);
@@ -33,7 +35,6 @@ class InquiryController extends Controller
                 ->whereHas('cmsServices')->orderBy('name')->get(['id', 'name']),
             'workflows' => Inquiry::distinct()->whereNotNull('inquiry_type')->pluck('inquiry_type'),
             'statuses' => Inquiry::distinct()->whereNotNull('status')->pluck('status'),
-            'assignees' => Inquiry::distinct()->whereNotNull('assigned_to')->pluck('assigned_to'),
         ]]);
     }
 
@@ -50,7 +51,7 @@ class InquiryController extends Controller
             'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $q = Inquiry::with(['cmsContent', 'inquiryServicePage']);
+        $q = Inquiry::with(['cmsContent', 'inquiryServicePage', 'assignedUser.staff']);
         if ($request->filled('search')) {
             $term = '%'.$filters['search'].'%';
             $q->where(fn ($query) => $query->where('subject', 'like', $term)
@@ -91,7 +92,7 @@ class InquiryController extends Controller
 
     public function show(Inquiry $inquiry): JsonResponse
     {
-        $inquiry->load(['cmsContent', 'inquiryServicePage']);
+        $inquiry->load(['cmsContent', 'inquiryServicePage', 'assignedUser.staff']);
         return response()->json([
             'status' => 'success',
             'data' => ['inquiry' => new InquiryResource($inquiry)]
@@ -123,20 +124,75 @@ class InquiryController extends Controller
     public function assign(Request $request, Inquiry $inquiry): JsonResponse
     {
         $data = $request->validate([
-            'assigned_to' => ['required', 'uuid', 'exists:users,id'],
+            'assigned_to' => ['required', 'uuid'],
         ]);
-
-        $inquiry->update([
-            'assigned_to' => $data['assigned_to'],
-            'status' => $inquiry->status ?: 'open',
-            'updated_user_id' => $request->user()->id,
-        ]);
+        $companyId = $this->assignmentCompany($request);
+        DB::transaction(function () use ($inquiry, $data, $request, $companyId): void {
+            abort_unless(app(SingleCompanyScope::class)->defaultCompany()?->id === $companyId, 409, 'Default company changed; retry assignment.');
+            $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
+            abort_unless($this->eligibleAssignees($companyId)->where('users.id', $data['assigned_to'])->lockForUpdate()->first(['users.id']), 422, 'Select an active Staff assignee.');
+            $locked->update([
+                'assigned_to' => $data['assigned_to'],
+                'status' => $locked->status ?: 'open',
+                'updated_user_id' => $request->user()->id,
+            ]);
+        });
 
         return response()->json([
             'status' => 'success',
             'message' => 'Inquiry assigned',
-            'data' => ['inquiry' => new InquiryResource($inquiry)]
+            'data' => ['inquiry' => new InquiryResource($inquiry->fresh()->load('assignedUser.staff'))]
         ]);
+    }
+
+    public function assigneeOptions(Request $request): JsonResponse
+    {
+        $companyId = $this->assignmentCompany($request);
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $query = $this->eligibleAssignees($companyId);
+        if (! empty($data['selected_id'])) {
+            $query->where('users.id', $data['selected_id']);
+        } elseif (! empty($data['search'])) {
+            $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+            $query->where(fn ($q) => $q->where('users.first_name', 'like', $term)
+                ->orWhere('users.last_name', 'like', $term)
+                ->orWhere('staff.code', 'like', $term));
+        }
+        $rows = $query->select(['users.id', 'users.first_name', 'users.last_name', 'staff.code'])
+            ->orderBy('users.first_name')->orderBy('users.last_name')->paginate($data['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn ($row) => [
+            'value' => (string) $row->id,
+            'label' => trim($row->first_name . ' ' . $row->last_name) . ' · ' . $row->code,
+            'status' => 'active',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    private function assignmentCompany(Request $request): string
+    {
+        $company = app(SingleCompanyScope::class)->defaultCompany();
+        abort_unless($company, 409, 'Set one active default company before using Inquiry Staff options.');
+        abort_unless($this->eligibleAssignees($company->id)->where('users.id', $request->user()->id)->exists(), 403);
+
+        return $company->id;
+    }
+
+    private function eligibleAssignees(string $companyId)
+    {
+        return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
+            ->where('staff.company_id', $companyId)
+            ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->whereNull('users.deleted_at')->where('users.is_active', true)
+            ->whereExists(fn ($q) => $q->selectRaw('1')->from('hr_employment_spells')
+                ->whereColumn('hr_employment_spells.staff_id', 'staff.id')
+                ->whereColumn('hr_employment_spells.company_id', 'staff.company_id')
+                ->where('hr_employment_spells.status', 'active')->whereNull('hr_employment_spells.terminated_at'));
     }
 
     public function updateStatus(Request $request, Inquiry $inquiry): JsonResponse

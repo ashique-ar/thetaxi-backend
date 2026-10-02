@@ -1,5 +1,7 @@
 <?php
+
 // app/Http/Requests/Staff/CreateStaffRequest.php
+
 namespace App\Http\Requests\Staff;
 
 use App\Models\Staff;
@@ -10,21 +12,25 @@ use Illuminate\Validation\Validator;
 
 class CreateStaffRequest extends FormRequest
 {
-
-
     public function rules()
     {
         return [
-            'user_id' => ['nullable', 'exists:users,id'],
+            'user_id' => [
+                'nullable',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('is_active', true)),
+                Rule::unique('staff', 'user_id'),
+            ],
             'first_name' => ['nullable', 'string', 'max:255'],
             'last_name' => ['nullable', 'string', 'max:255'],
             'email' => ['nullable', 'email', 'max:255', Rule::unique('users', 'email')->ignore($this->input('user_id'))],
             'phone' => ['required', 'string', 'max:30'],
             'status' => ['nullable', 'in:active,inactive,on_leave'],
-            'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
             'staff_type' => ['nullable', 'string', 'max:100'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['required_if:collection_commission_enabled,true', 'numeric', 'min:0', 'max:100'],
+            'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],
+            'employee_number_override_reason' => ['nullable', 'required_with:code', 'string', 'max:2000'],
             'nic' => ['nullable', 'string', 'max:20'],
             'dob' => ['nullable', 'date'],
             'license_no' => ['nullable', 'string', 'max:100'],
@@ -32,7 +38,15 @@ class CreateStaffRequest extends FormRequest
             'address' => ['nullable', 'string'],
             'country_id' => ['nullable', 'exists:countries,id'],
             'state_id' => ['nullable', 'exists:states,id'],
-            'city' => ['nullable', 'string'],
+            'city' => ['nullable', 'string', 'max:255'],
+            'joined_at' => ['nullable', 'date'],
+            'service_date' => ['nullable', 'date'],
+            'confirmation_date' => ['nullable', 'date', 'after_or_equal:joined_at'],
+            'employment_type_id' => ['nullable', 'uuid', 'exists:hr_employment_types,id'],
+            'position_id' => ['nullable', 'uuid', 'exists:hr_positions,id'],
+            'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'],
+            'manager_staff_id' => ['nullable', 'uuid', 'exists:staff,id'],
+            'recruitment_application_id' => ['nullable', 'uuid', 'exists:hr_candidate_applications,id'],
             'gender' => ['nullable', 'string', 'max:30'],
             'postal_code' => ['nullable', 'string', 'max:20'],
             'department' => ['nullable', 'string', 'max:100'],

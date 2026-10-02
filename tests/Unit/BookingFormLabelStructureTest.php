@@ -2,7 +2,6 @@
 
 use Illuminate\Support\Str;
 
-uses(Tests\TestCase::class);
 
 it('keeps booking field labels outside bordered controls in both public themes', function () {
     $fieldTemplate = file_get_contents(resource_path('views/components/dynamic-form-field.blade.php'));

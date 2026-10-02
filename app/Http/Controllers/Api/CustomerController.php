@@ -44,13 +44,11 @@ class CustomerController extends Controller
             $search = trim((string) $request->get('search'));
             $q->where(function ($builder) use ($search) {
                 $builder->whereHas('user', function ($query) use ($search) {
-                    $query->whereLikeInsensitive('id', $search)
-                        ->orWhereLikeInsensitive('first_name', $search)
+                    $query->whereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
                         ->orWhereLikeInsensitive('email', $search)
                         ->orWhereLikeInsensitive('phone', $search);
-                })->orWhereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
+                })
                     ->orWhereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('passport_number', $search)
@@ -125,13 +123,11 @@ class CustomerController extends Controller
         $customers = Customer::with('user')
             ->when($search !== '', function ($query) use ($search) {
                 $query->whereHas('user', function ($userQuery) use ($search) {
-                    $userQuery->whereLikeInsensitive('id', $search)
-                        ->orWhereLikeInsensitive('first_name', $search)
+                    $userQuery->whereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
                         ->orWhereLikeInsensitive('email', $search)
                         ->orWhereLikeInsensitive('phone', $search);
-                })->orWhereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
+                })
                     ->orWhereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('passport_number', $search)
@@ -350,11 +346,10 @@ class CustomerController extends Controller
                 'properties' => ['old' => $customer->getAttributes()],
             ]);
             $customer->disableLogging();
-            $user = User::find($customer->user_id);
-            \App\Models\UserContext::where('user_id', $customer->user_id)
-                ->where('context_type', 'customer')
-                ->where('context_id', $customer->id)
-                ->update(['is_active' => false, 'updated_user_id' => request()->user()->id]);
+            $user = User::query()->whereKey($customer->user_id)->lockForUpdate()->first();
+            if ($user) {
+                $this->contextService->deactivateContext($user, 'customer', $customer->id, request()->user()?->id);
+            }
             $customer->delete();
 
             if ($user && !$user->contexts()->where('is_active', true)->exists()) {
@@ -375,7 +370,7 @@ class CustomerController extends Controller
     public function getCustomerBookings(Customer $customer): JsonResponse
     {
         $bookings = $customer->bookings()
-            ->with(['vehicle', 'driver.user', 'bookingStatus'])
+            ->select(['booking_number', 'booking_date', 'total_actual', 'total_estimated', 'status'])
             ->latest()
             ->paginate(15);
 
@@ -424,6 +419,7 @@ class CustomerController extends Controller
             [
                 'id' => 1,
                 'booking_id' => 'B001',
+                'booking_number' => 'B001',
                 'rating' => 5,
                 'comment' => 'Excellent service!',
                 'created_at' => now()->subDays(2)
@@ -431,6 +427,7 @@ class CustomerController extends Controller
             [
                 'id' => 2,
                 'booking_id' => 'B002',
+                'booking_number' => 'B002',
                 'rating' => 4,
                 'comment' => 'Good experience overall',
                 'created_at' => now()->subDays(7)
@@ -635,13 +632,11 @@ class CustomerController extends Controller
             $search = trim((string) $request->get('search'));
             $query->where(function ($builder) use ($search) {
                 $builder->whereHas('user', function ($userQuery) use ($search) {
-                    $userQuery->whereLikeInsensitive('id', $search)
-                        ->orWhereLikeInsensitive('first_name', $search)
+                    $userQuery->whereLikeInsensitive('first_name', $search)
                         ->orWhereLikeInsensitive('last_name', $search)
                         ->orWhereLikeInsensitive('email', $search)
                         ->orWhereLikeInsensitive('phone', $search);
-                })->orWhereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
+                })
                     ->orWhereLikeInsensitive('code', $search)
                     ->orWhereLikeInsensitive('nic', $search)
                     ->orWhereLikeInsensitive('passport_number', $search)
@@ -775,6 +770,7 @@ class CustomerController extends Controller
                 'id' => 1,
                 'customer_name' => 'John Doe',
                 'booking_id' => 'B001',
+                'booking_number' => 'B001',
                 'rating' => 5,
                 'comment' => 'Excellent service!',
                 'created_at' => now()->subDays(1)
@@ -783,6 +779,7 @@ class CustomerController extends Controller
                 'id' => 2,
                 'customer_name' => 'Jane Smith',
                 'booking_id' => 'B002',
+                'booking_number' => 'B002',
                 'rating' => 4,
                 'comment' => 'Good experience',
                 'created_at' => now()->subDays(2)

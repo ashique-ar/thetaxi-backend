@@ -8,7 +8,7 @@ use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
 
 beforeEach(function () {
-    foreach (['role_has_permissions', 'model_has_roles', 'model_has_permissions', 'roles', 'permissions'] as $table) {
+    foreach (['user_direct_permission_grants', 'user_context_permission_grants', 'role_has_permissions', 'model_has_roles', 'model_has_permissions', 'roles', 'permissions'] as $table) {
         Schema::dropIfExists($table);
     }
 
@@ -46,6 +46,20 @@ beforeEach(function () {
         $table->unsignedBigInteger('permission_id');
         $table->unsignedBigInteger('role_id');
         $table->primary(['permission_id', 'role_id']);
+    });
+
+    Schema::create('user_context_permission_grants', function (Blueprint $table) {
+        $table->uuid('user_context_id');
+        $table->unsignedBigInteger('permission_id');
+        $table->timestamps();
+        $table->primary(['user_context_id', 'permission_id']);
+    });
+
+    Schema::create('user_direct_permission_grants', function (Blueprint $table) {
+        $table->uuid('user_id');
+        $table->unsignedBigInteger('permission_id');
+        $table->timestamps();
+        $table->primary(['user_id', 'permission_id']);
     });
 
     app(PermissionRegistrar::class)->forgetCachedPermissions();

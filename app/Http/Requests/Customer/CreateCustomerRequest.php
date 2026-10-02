@@ -105,7 +105,6 @@ class CreateCustomerRequest extends FormRequest
     {
         return [
             'first_name.required' => 'First name is required.',
-            'last_name.required' => 'Last name is required.',
             'email.required' => 'Email address is required.',
             'email.email' => 'Please provide a valid email address.',
             'phone.required' => 'Phone number is required.',

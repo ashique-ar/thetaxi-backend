@@ -10,8 +10,6 @@ use App\Services\VehicleLeaseAccountingService;
 use Illuminate\Support\Carbon;
 use Tests\TestCase;
 
-uses(TestCase::class);
-
 afterEach(function () {
     Carbon::setTestNow();
 });

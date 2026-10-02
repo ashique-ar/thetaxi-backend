@@ -1141,6 +1141,8 @@ class MobileAssignmentService
             'included_hours' => $package->default_duration_hours,
             'included_minutes' => ((int) $package->default_duration_hours * 60)
                 + (int) $package->default_duration_minutes,
+            'charges_extra_hours' => (bool) $package->charges_extra_hours,
+            'charges_extra_km' => (bool) $package->charges_extra_km,
             'rate_type' => $package->rate_type,
             'snapshot' => false,
         ];

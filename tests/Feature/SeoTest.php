@@ -1,8 +1,11 @@
 <?php
 
 use function Pest\Laravel\get;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Http;
+
+uses(RefreshDatabase::class);
 
 beforeEach(function () {
     // Ensure database seeded for known content like 'corporate-transfers'
@@ -43,6 +46,7 @@ it('respects explicit canonical_url on inquiry pages', function () {
     $page = \App\Models\InquiryServicePage::create([
         'name' => 'SEO Canonical Test',
         'slug' => 'seo-canonical-test',
+        'code' => 'seo-canonical-test',
         'status' => 'published',
         'is_active' => true,
         'canonical_url' => 'https://example.com/custom-canonical'

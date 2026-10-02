@@ -5,7 +5,6 @@ use App\Services\CorporateContractualDistanceCalculator;
 use App\Services\CorporateDistancePolicyResolver;
 use App\Services\GoogleMapsService;
 
-uses(Tests\TestCase::class);
 
 function contractualCalculatorPolicy(array $attributes = []): CorporateDistancePricingPolicy
 {

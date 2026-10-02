@@ -9,7 +9,7 @@ class CreatePaymentMethodRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'payable_type' => ['required', 'string', 'in:vehicle_owner,driver,customer,staff'],
+            'payable_type' => ['required', 'string', 'in:vehicle_owner,driver,customer'],
             'payable_id' => ['required', 'uuid'],
             'method_type' => ['required', 'string', 'in:cash,bank_transfer,cheque,card,wallet,online,other'],
             'label' => ['nullable', 'string', 'max:120'],

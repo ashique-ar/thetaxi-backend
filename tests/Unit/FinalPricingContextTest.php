@@ -6,7 +6,6 @@ use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 
-uses(Tests\TestCase::class);
 
 function invokePrivateMethod(object $target, string $method, array $arguments = []): mixed
 {

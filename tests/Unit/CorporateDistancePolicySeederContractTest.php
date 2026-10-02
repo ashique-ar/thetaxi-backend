@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('keeps pilot policy seeding opt-in and disabled', function () {
     $source = file_get_contents(database_path('seeders/CorporateDistancePricingPolicySeeder.php'));

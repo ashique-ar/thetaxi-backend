@@ -19,7 +19,6 @@ use App\Services\Sms\SmsSegmentCalculator;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 
-uses(Tests\TestCase::class);
 
 it('fills SMS identity tokens from business settings', function (): void {
     $websiteSettings = Mockery::mock(\App\Services\WebsiteSettingsService::class);
@@ -633,10 +632,10 @@ it('calculates GSM and Unicode SMS segments at multipart boundaries', function (
 
     expect($calculator->calculate(str_repeat('A', 160))['segments'])->toBe(1)
         ->and($calculator->calculate(str_repeat('A', 161))['segments'])->toBe(2)
-        ->and($calculator->calculate(str_repeat('අ', 70))['segments'])->toBe(1)
-        ->and($calculator->calculate(str_repeat('අ', 71))['segments'])->toBe(2)
+        ->and($calculator->calculate(str_repeat('à¶…', 70))['segments'])->toBe(1)
+        ->and($calculator->calculate(str_repeat('à¶…', 71))['segments'])->toBe(2)
         ->and($calculator->calculate('Hello')['encoding'])->toBe('gsm7')
-        ->and($calculator->calculate('ආයුබෝවන්')['encoding'])->toBe('unicode');
+        ->and($calculator->calculate('à¶†à¶ºà·”à¶¶à·à·€à¶±à·Š')['encoding'])->toBe('unicode');
 });
 
 it('matches delivery callbacks only by exact provider identity and redacts secrets', function (): void {

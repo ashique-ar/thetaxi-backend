@@ -1,66 +1,76 @@
 <?php
+
 // app/Http/Controllers/Api/StaffController.php
+
 namespace App\Http\Controllers\Api;
 
 use App\Support\SriLankanNic;
 
 use App\Http\Controllers\Controller;
-use App\Models\Staff;
-use App\Models\User;
 use App\Http\Requests\Staff\CreateStaffRequest;
 use App\Http\Requests\Staff\UpdateStaffRequest;
 use App\Http\Resources\StaffResource;
-use Illuminate\Http\Request;
+use App\Models\Staff;
+use App\Models\Sales\SalesProfile;
+use App\Models\User;
+use App\Services\UserContextService;
+use App\Services\StaffIdentityService;
+use App\Services\StaffAccessService;
+use App\Services\Hr\PeopleCoreService;
+use App\Services\Hr\StaffDefaultCompanyService;
+use App\Services\Hr\Recruitment\RecruitmentConversionService;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use App\Services\PaymentMethodSyncService;
-use App\Services\UserContextService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class StaffController extends Controller
 {
-    public function __construct(private UserContextService $contextService)
-    {
-        $this->middleware('permission:staff.view')->only(['index','show']);
-        $this->middleware('permission:staff.create')->only(['store']);
-        $this->middleware('permission:staff.edit')->only(['update']);
-        $this->middleware('permission:staff.delete')->only(['destroy']);
-    }
+    private const SENSITIVE_PERSONAL_FIELDS = ['nic', 'dob', 'license_no', 'license_expiry', 'address'];
+
+    public function __construct(
+        private readonly UserContextService $contextService,
+        private readonly StaffIdentityService $identityService,
+        private readonly StaffAccessService $accessService,
+        private readonly PeopleCoreService $peopleCore,
+        private readonly StaffDefaultCompanyService $defaultCompany,
+        private readonly RecruitmentConversionService $recruitmentConversion,
+    ) {}
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = Staff::with(['user', 'country', 'state', 'paymentMethods']);
+        $q = $this->accessService->scope(Staff::with(['user', 'company', 'country', 'state']), $request->user());
+        $canSearchSensitivePersonal = $request->user()->can('staff-sensitive-personal.view');
         if ($request->filled('search')) {
             $search = trim((string) $request->get('search'));
-            $q->where(function ($query) use ($search) {
-                $query->whereLikeInsensitive('id', $search)
-                    ->orWhereLikeInsensitive('user_id', $search)
-                    ->orWhereLikeInsensitive('staff_type', $search)
+            $q->where(function ($query) use ($search, $canSearchSensitivePersonal) {
+                $query->whereLikeInsensitive('staff_type', $search)
                     ->orWhereLikeInsensitive('code', $search)
-                    ->orWhereLikeInsensitive('nic', $search)
-                    ->orWhereLikeInsensitive('license_no', $search)
-                    ->orWhereLikeInsensitive('address', $search)
                     ->orWhereLikeInsensitive('city', $search)
                     ->orWhereHas('user', function ($userQuery) use ($search) {
-                        $userQuery->whereLikeInsensitive('id', $search)
-                            ->orWhereLikeInsensitive('first_name', $search)
+                        $userQuery->whereLikeInsensitive('first_name', $search)
                             ->orWhereLikeInsensitive('last_name', $search)
                             ->orWhereLikeInsensitive('email', $search)
                             ->orWhereLikeInsensitive('phone', $search);
                     });
+                if ($canSearchSensitivePersonal) {
+                    $query->orWhere('license_no_fingerprint', hash('sha256', mb_strtolower(trim($search))))
+                        ->orWhere('nic_fingerprint', hash('sha256', mb_strtolower(trim($search))));
+                }
             });
         }
 
-        if ($request->filled('role_id')) {
-            $q->where('staff_type', $request->get('role_id'));
+        if ($request->filled('staff_type') || $request->filled('role_id')) {
+            $q->where('staff_type', $request->get('staff_type', $request->get('role_id')));
         }
 
         if ($request->filled('status')) {
             $q->whereHas('user', fn ($query) => $query->where('is_active', $request->get('status') === 'active'));
         }
 
-        $sortable = ['employee_id', 'name', 'nic', 'role', 'email', 'status', 'created_at'];
+        $sortable = ['employee_id', 'name', 'role', 'email', 'status', 'created_at'];
         $sortBy = in_array($request->get('sort_by'), $sortable, true) ? $request->get('sort_by') : null;
         $sortDirection = strtolower($request->get('sort_direction', 'asc')) === 'desc' ? 'desc' : 'asc';
 
@@ -71,9 +81,6 @@ class StaffController extends Controller
             case 'name':
                 $q->orderBy(User::select('first_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection)
                     ->orderBy(User::select('last_name')->whereColumn('users.id', 'staff.user_id'), $sortDirection);
-                break;
-            case 'nic':
-                $q->orderBy('nic', $sortDirection);
                 break;
             case 'role':
                 $q->orderBy('staff_type', $sortDirection);
@@ -96,7 +103,7 @@ class StaffController extends Controller
         );
     }
 
-    public function roles(): JsonResponse
+    public function types(): JsonResponse
     {
         $roles = Staff::query()
             ->select('staff_type')
@@ -117,96 +124,172 @@ class StaffController extends Controller
         ]);
     }
 
+    public function availableUsers(Request $request): JsonResponse
+    {
+        abort_unless($request->user()->can('staff.create-all'), 403, 'Creating Staff for another User requires Staff create-all permission.');
+        $search = trim((string) $request->get('search', ''));
+
+        $users = User::query()
+            ->select(['id', 'first_name', 'last_name', 'email', 'phone'])
+            ->where('is_active', true)
+            ->whereNotExists(fn ($query) => $query
+                ->selectRaw('1')
+                ->from('staff')
+                ->whereColumn('staff.user_id', 'users.id'))
+            ->whereDoesntHave('contexts', fn ($query) => $query
+                ->where('context_type', 'staff')
+                ->where('is_active', true))
+            ->when($search !== '', function ($query) use ($search) {
+                $query->where(function ($userQuery) use ($search) {
+                    $userQuery->whereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search)
+                        ->orWhereLikeInsensitive('phone', $search);
+                });
+            })
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->limit(50)
+            ->get()
+            ->map(fn (User $user) => [
+                'id' => $user->id,
+                'name' => trim($user->first_name.' '.$user->last_name),
+                'email' => $user->email,
+                'phone' => $user->phone,
+            ])
+            ->values();
+
+        return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
     public function store(CreateStaffRequest $request): JsonResponse
     {
-        $data = $request->validated();
+        $data = $this->defaultCompany->apply($request->validated());
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
         $data['created_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
-        $staff = DB::transaction(function () use ($data) {
-            $user = !empty($data['user_id'])
-                ? User::findOrFail($data['user_id'])
-                : User::create([
+        $staff = DB::transaction(function () use ($request, $data): Staff {
+            $user = ! empty($data['user_id'])
+                ? User::query()->findOrFail($data['user_id'])
+                : User::query()->create([
                     'first_name' => $data['first_name'] ?? null,
                     'last_name' => $data['last_name'] ?? null,
-                    'email' => !empty($data['email']) ? strtolower(trim($data['email'])) : null,
-                    'phone' => $data['phone'] ?? null,
+                    'email' => ! empty($data['email']) ? strtolower(trim($data['email'])) : null,
+                    'phone' => $data['phone'],
                     'password' => bcrypt(Str::random(12)),
-                    'email_verified_at' => !empty($data['email']) ? now() : null,
+                    'email_verified_at' => ! empty($data['email']) ? now() : null,
                     'is_active' => ($data['status'] ?? 'active') === 'active',
                 ]);
+            abort_unless(
+                $user->id === $request->user()->id || $request->user()->can('staff.create-all'),
+                403,
+                'Creating Staff for another User requires Staff create-all permission.'
+            );
+            $contextData = $this->restrictSensitivePersonalFields($data, $user->id, $request->user());
+            $contextData = array_intersect_key($contextData, array_flip((new Staff())->getFillable()));
+            $context = $this->contextService->switchContext($user, 'staff', $contextData, $data['created_user_id']);
+            $staff = Staff::query()->findOrFail($context->context_id);
+            $staff = $this->peopleCore->initializeStaff($staff, $data, $data['created_user_id']);
+            $this->recruitmentConversion->complete($data['recruitment_application_id'] ?? null, $staff, $data['created_user_id']);
 
-            $contextData = collect($data)->only([
-                'staff_type', 'collection_commission_enabled', 'collection_commission_rate',
-                'code', 'nic', 'dob', 'license_no', 'license_expiry', 'address',
-                'country_id', 'state_id', 'city', 'created_user_id',
-                'gender', 'postal_code', 'department', 'position', 'joining_date', 'reporting_to', 'emergency_contact',
-            ])->all();
-            $context = $this->contextService->switchContext($user, 'staff', $contextData);
-
-            return Staff::findOrFail($context->context_id);
+            return $staff;
         });
 
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
 
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Staff created',
-            'data'=>['staff'=>new StaffResource($staff)]
-        ],201);
+            'status' => 'success',
+            'message' => 'Staff created',
+            'data' => ['staff' => new StaffResource($staff)],
+        ], 201);
     }
 
-    public function show(Staff $staff): JsonResponse
+    public function show(Request $request, Staff $staff): JsonResponse
     {
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $this->accessService->authorize($request->user(), $staff, 'view');
+        $staff->load(['user', 'company', 'country', 'state']);
+        $viewer = $request->user();
+        if ($viewer->id !== $staff->user_id && $viewer->can('staff-sensitive-personal.view')) {
+            activity('staff-sensitive-data')
+                ->causedBy($viewer)
+                ->performedOn($staff)
+                ->withProperties(['ip' => $request->ip()])
+                ->log('staff_personal_details_viewed');
+        }
 
         return response()->json([
-            'status'=>'success',
-            'data'=>['staff'=>new StaffResource($staff)]
+            'status' => 'success',
+            'data' => ['staff' => new StaffResource($staff)],
         ]);
     }
 
     public function update(UpdateStaffRequest $request, Staff $staff): JsonResponse
     {
-        $data = $request->validated();
+        $this->accessService->authorize($request->user(), $staff, 'edit');
+        $data = $this->defaultCompany->apply($request->validated());
         if ($dob = SriLankanNic::dateOfBirth($data['nic'] ?? null)) $data['dob'] = $dob;
+        $data = $this->restrictSensitivePersonalFields($data, $staff->user_id, $request->user());
         $data['updated_user_id'] = $request->user()->id;
         $paymentMethods = $data['payment_methods'] ?? null;
         unset($data['payment_methods']);
         $userData = collect($data)->only(['first_name', 'last_name', 'email', 'phone'])->all();
-        if (array_key_exists('status', $data)) {
-            $userData['is_active'] = $data['status'] === 'active';
-        }
-        unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status']);
-        if ($userData !== []) {
-            $staff->user()->update($userData);
-        }
-        $staff->update($data);
+        unset($data['first_name'], $data['last_name'], $data['email'], $data['phone'], $data['status'], $data['user_id']);
+        $staff = DB::transaction(function () use ($staff, $data, $userData): Staff {
+            $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
+            if ($userData !== []) $staff->user()->update($userData);
+            $staff->update($data);
 
+            return $staff;
+        });
         if ($paymentMethods !== null) {
             app(PaymentMethodSyncService::class)->syncMany($staff, $paymentMethods, $request->user()->id);
         }
-
-        $staff->load(['user', 'country', 'state', 'paymentMethods']);
+        $staff->load(['user', 'company', 'country', 'state', 'paymentMethods']);
 
         return response()->json([
-            'status'=>'success',
-            'message'=>'Staff updated',
-            'data'=>['staff'=>new StaffResource($staff)]
+            'status' => 'success',
+            'message' => 'Staff updated',
+            'data' => ['staff' => new StaffResource($staff)],
         ]);
     }
 
-    public function destroy(Staff $staff): JsonResponse
+    public function destroy(Request $request, Staff $staff): JsonResponse
     {
-        $staff->delete();
-        return response()->json([
-            'status'=>'success',
-            'message'=>'Staff deleted'
+        $this->accessService->authorize($request->user(), $staff, 'terminate');
+        $data = $request->validate([
+            'reason' => ['required', 'string', 'max:2000', 'not_regex:/^\s*$/'],
+            'idempotency_key' => ['required', 'uuid'],
         ]);
+        $result = $this->identityService->terminate(
+            $staff,
+            $request->user(),
+            $data['reason'],
+            $data['idempotency_key'],
+        );
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Staff context terminated; the User remains available for other authorized contexts.',
+            'data' => $result,
+        ]);
+    }
+
+    /**
+     * Drop nic/dob/license/address from a create or update payload unless the
+     * actor is the Staff owner or holds staff-sensitive-personal.view, so a
+     * generic-scope editor can never blindly overwrite fields they cannot see.
+     */
+    private function restrictSensitivePersonalFields(array $data, ?string $ownerUserId, User $actor): array
+    {
+        if ($ownerUserId === $actor->id || $actor->can('staff-sensitive-personal.view')) {
+            return $data;
+        }
+
+        return array_diff_key($data, array_flip(self::SENSITIVE_PERSONAL_FIELDS));
     }
 }

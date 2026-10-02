@@ -35,6 +35,19 @@ it('does not require pricing context for vehicle conflict availability', functio
         ->not->toContain("\$params['service_type_id']");
 });
 
+it('searches available vehicles and drivers by readable references instead of UUIDs', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $vehicles = Str::between($source, 'public function searchSpecificVehicles(', 'public function searchSpecificDrivers(');
+    $drivers = Str::between($source, 'public function searchSpecificDrivers(', 'private function checkVehicleTimeConflicts(');
+
+    expect($vehicles)
+        ->toContain('LOWER(title)', 'LOWER(license_plate)', 'LOWER(registration_no)')
+        ->not->toContain('Uuid::isValid', "orWhere('id'")
+        ->and($drivers)
+        ->toContain('LOWER(license_no)', 'LOWER(code)', 'LOWER(first_name)', 'LOWER(phone)')
+        ->not->toContain('Uuid::isValid', "orWhere('id'");
+});
+
 it('uses authoritative vehicle enforcement consistently in group and specific availability', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
     $groupAnalysis = Str::between(

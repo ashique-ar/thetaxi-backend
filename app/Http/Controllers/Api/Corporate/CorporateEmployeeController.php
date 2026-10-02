@@ -68,6 +68,58 @@ class CorporateEmployeeController extends Controller
         ]);
     }
 
+    public function referenceOptions(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'record_type' => ['required', 'string', 'in:department,division'],
+            'department_id' => ['nullable', 'uuid'],
+            'selected_id' => ['nullable', 'uuid'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $perPage = (int) ($filters['per_page'] ?? 25);
+        $selectedId = $filters['selected_id'] ?? null;
+
+        if ($filters['record_type'] === 'department') {
+            $query = CorporateDepartment::where('corporate_id', $request->corporate_id)
+                ->when($selectedId, fn ($query) => $query->whereKey($selectedId), fn ($query) => $query->where('is_active', true))
+                ->when($filters['search'] ?? null, fn ($query, $search) => $query->where('name', 'like', '%'.$search.'%'))
+                ->orderBy('name');
+
+            $options = $query->paginate($perPage)->through(fn ($department) => [
+                'value' => (string) $department->id,
+                'label' => $department->name,
+                'metadata' => ['status' => $department->is_active ? 'Active' : 'Inactive'],
+            ]);
+        } else {
+            $departmentId = $filters['department_id'] ?? null;
+            $department = $departmentId
+                ? CorporateDepartment::where('corporate_id', $request->corporate_id)->find($departmentId)
+                : null;
+
+            if (!$department) {
+                return response()->json(['status' => 'success', 'data' => ['data' => []]]);
+            }
+
+            $query = CorporateDivision::where('department_id', $department->id)
+                ->when($selectedId, fn ($query) => $query->whereKey($selectedId), fn ($query) => $query->where('is_active', true))
+                ->when($filters['search'] ?? null, fn ($query, $search) => $query->where('name', 'like', '%'.$search.'%'))
+                ->orderBy('name');
+
+            $options = $query->paginate($perPage)->through(fn ($division) => [
+                'value' => (string) $division->id,
+                'label' => $division->name,
+                'metadata' => [
+                    'department' => $department->name,
+                    'status' => $division->is_active ? 'Active' : 'Inactive',
+                ],
+            ]);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $options]);
+    }
+
     public function store(StoreEmployeeRequest $request): JsonResponse
     {
         $corporate = Corporate::findOrFail($request->corporate_id);
@@ -198,7 +250,7 @@ class CorporateEmployeeController extends Controller
             'division_id'    => ['nullable', 'uuid', 'exists:corporate_divisions,id'],
             'employee_code'  => ['nullable', 'string', 'max:50'],
             'first_name'     => ['sometimes', 'string', 'max:255'],
-            'last_name'      => ['sometimes', 'string', 'max:255'],
+            'last_name'      => ['sometimes', 'nullable', 'string', 'max:255'],
             'phone'          => ['nullable', 'string', 'max:50'],
             'role'           => ['nullable', 'string', 'max:255'],
             'locations' => ['nullable', 'array'],

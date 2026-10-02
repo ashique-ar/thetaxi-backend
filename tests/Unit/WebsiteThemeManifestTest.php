@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('keeps Theme 03 and Theme 04 unreleased by default', function () {
     expect(config('website_themes.themes.theme-03.released'))->toBeFalse()

@@ -12,7 +12,6 @@ use App\Services\Driver\MobileAssignmentService;
 use App\Services\Driver\NotificationTriggerService;
 use App\Services\Driver\TripTrackingService;
 
-uses(Tests\TestCase::class);
 
 it('does not serialize eager-loaded internal relations into driver assignment payloads', function () {
     $assignment = new DriverAssignment([

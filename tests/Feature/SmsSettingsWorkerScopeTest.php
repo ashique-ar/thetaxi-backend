@@ -147,16 +147,26 @@ it('keeps SMS retention disabled and read-only until explicitly authorized', fun
         ->and($schedule)->toContain("Schedule::command('sms:apply-retention --execute')");
 });
 
-it('separates campaign marketing consent from essential transactional automation', function () {
+it('binds consented customer campaigns to the sole managed default company', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sms/SmsManagementController.php'));
     $smsService = file_get_contents(app_path('Services/Sms/SmsService.php'));
     $automationService = file_get_contents(app_path('Services/Sms/SmsAutomationService.php'));
+    $campaignPage = file_get_contents(base_path('../portal-thetaxi/src/app/modules/admin/system/sms/pages/sms-campaigns-page.component.html'));
+    $campaignComponent = file_get_contents(base_path('../portal-thetaxi/src/app/modules/admin/system/sms/pages/sms-campaigns-page.component.ts'));
+    $companyScope = file_get_contents(app_path('Services/SingleCompanyScope.php'));
+    $migration = file_get_contents(database_path('migrations/2026_09_24_000001_add_company_to_sms_campaigns.php'));
 
     expect($controller)->toContain("'in:manual,customers'")
         ->and($controller)->toContain("'required_if:audience_type,manual', 'accepted'")
-        ->and($smsService)->toContain("->where('marketing_consent', true)")
-        ->and($smsService)->toContain("'consent_revalidated_at' => now()->toIso8601String()")
-        ->and($smsService)->toContain("array_intersect(\$recipients, \$currentlyConsented)")
+        ->and($controller)->toContain("'audience_filters' => ['prohibited']")
+        ->and($controller)->toContain("Staff::query()->where('user_id'", "\$data['company_id'] = \$company->id")
+        ->and($companyScope)->toContain("->where('is_active', true)->limit(2)", "\$active->count() === 1 && \$active->first()->is_default")
+        ->and($migration)->toContain("foreignUuid('company_id')->nullable()", "whereNotNull('company_id')->exists()")
+        ->and($smsService)->toContain("'company_id' => \$company->id", "array_intersect(\$recipients, \$currentlyConsented)", "->where('marketing_consent', true)")
+        ->and($smsService)->not->toContain("whereIn('id', \$filters['ids'])")
+        ->and($campaignPage)->not->toContain('Optional Customer IDs', 'audience_ids_text')
+        ->and($campaignComponent)->toContain("value: 'customers'", "company_name")
+        ->not->toContain('audience_ids_text', "payload['audience_filters']")
         ->and($automationService)->not->toContain('marketing_consent');
 });
 

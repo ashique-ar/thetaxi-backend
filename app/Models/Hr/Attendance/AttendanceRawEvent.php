@@ -1,0 +1,4 @@
+<?php
+namespace App\Models\Hr\Attendance;
+use App\Models\BaseModel;
+class AttendanceRawEvent extends BaseModel{protected $table='hr_attendance_raw_events';protected $fillable=['company_id','connector_id','device_id','ingestion_request_id','staff_id','person_mapping_id','provider_event_id','provider_person_id','employee_number','occurred_at','source_timezone','source_utc_offset_minutes','event_kind','direction','authentication_method','verification_result','encrypted_raw_payload','payload_checksum','mapping_status','received_at'];protected $hidden=['encrypted_raw_payload'];protected $casts=['occurred_at'=>'immutable_datetime','received_at'=>'datetime','encrypted_raw_payload'=>'encrypted:array'];protected static function booted():void{static::updating(fn()=>throw new \LogicException('Raw attendance evidence is immutable.'));static::deleting(fn()=>throw new \LogicException('Raw attendance evidence cannot be deleted.'));}}

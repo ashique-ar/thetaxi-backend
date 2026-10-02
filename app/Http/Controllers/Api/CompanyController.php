@@ -10,12 +10,13 @@ use App\Http\Resources\Company\CompanyResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
+use Illuminate\Support\Facades\DB;
 
 class CompanyController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:companies.view')->only(['index', 'show']);
+        $this->middleware('permission:companies.view')->only(['index', 'show', 'options', 'option']);
         $this->middleware('permission:companies.create')->only(['store']);
         $this->middleware('permission:companies.edit')->only(['update']);
         $this->middleware('permission:companies.delete')->only(['destroy']);
@@ -52,6 +53,33 @@ class CompanyController extends Controller
         );
     }
 
+    public function options(Request $request): JsonResponse
+    {
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
+        $query = Company::query()
+            ->where('is_active', true)
+            ->select(['id', 'name', 'is_active', 'is_default']);
+
+        if (!empty($data['search'])) {
+            $query->whereLikeInsensitive('name', trim($data['search']));
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Legal entity options loaded',
+            'data' => $query->orderBy('name')->limit(25)->get(),
+        ]);
+    }
+
+    public function option(Company $company): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Legal entity loaded',
+            'data' => $company->only(['id', 'name', 'is_active', 'is_default']),
+        ]);
+    }
+
     public function stats(): JsonResponse
     {
         $totalCompanies = Company::count();
@@ -71,7 +99,20 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['created_user_id'] = $request->user()->id;
-        $company = Company::create($data);
+        $company = DB::transaction(function () use ($data) {
+            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+
+            $makeDefault = ($data['is_default'] ?? false)
+                || ! Company::query()->where('is_default', true)->exists();
+
+            abort_if($makeDefault && ! ($data['is_active'] ?? true), 422, 'The default Staff company must remain active.');
+
+            if ($makeDefault) {
+                DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
+            }
+
+            return Company::create(array_merge($data, ['is_default' => $makeDefault]));
+        });
 
         return response()->json([
             'status' => 'success',
@@ -92,7 +133,33 @@ class CompanyController extends Controller
     {
         $data = $request->validated();
         $data['updated_user_id'] = $request->user()->id;
-        $company->update($data);
+        $company = DB::transaction(function () use ($company, $data) {
+            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+
+            $makeDefault = (bool) ($data['is_default'] ?? $company->is_default);
+
+            abort_if(
+                $company->is_default && ! $makeDefault,
+                422,
+                'Select another active company as default before removing this default.'
+            );
+            abort_if(
+                $makeDefault && array_key_exists('is_active', $data) && ! $data['is_active'],
+                422,
+                'The default Staff company must remain active.'
+            );
+
+            if ($makeDefault) {
+                DB::table('companies')
+                    ->whereNull('deleted_at')
+                    ->where('id', '!=', $company->id)
+                    ->update(['is_default' => false]);
+            }
+
+            $company->update(array_merge($data, ['is_default' => $makeDefault]));
+
+            return $company->fresh();
+        });
 
         return response()->json([
             'status' => 'success',
@@ -103,6 +170,7 @@ class CompanyController extends Controller
 
     public function destroy(Company $company): JsonResponse
     {
+        abort_if($company->is_default, 422, 'Select another active company as default before deleting this company.');
         $company->delete();
 
         return response()->json([

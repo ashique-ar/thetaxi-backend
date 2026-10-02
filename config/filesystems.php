@@ -38,6 +38,24 @@ return [
             'report' => false,
         ],
 
+        'hr_private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/hr-private'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
+        'sales_private' => [
+            'driver' => 'local',
+            'root' => storage_path('app/sales-private'),
+            'serve' => false,
+            'visibility' => 'private',
+            'throw' => true,
+            'report' => true,
+        ],
+
         'public' => [
             'driver' => 'local',
             'root' => storage_path('app/public'),

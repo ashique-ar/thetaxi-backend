@@ -4,7 +4,6 @@ use App\Services\BookingOperationsHealthMonitor;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
-uses(Tests\TestCase::class);
 
 beforeEach(function () {
     Cache::flush();

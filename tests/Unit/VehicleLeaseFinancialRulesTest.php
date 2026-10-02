@@ -5,8 +5,6 @@ use App\Services\VehicleLeaseService;
 use Illuminate\Validation\ValidationException;
 use Tests\TestCase;
 
-uses(TestCase::class);
-
 function validateVehicleLeaseTerms(array $overrides = []): void
 {
     $terms = array_merge([

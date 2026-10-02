@@ -376,7 +376,7 @@ class CorporateService
             );
 
             // Check if a user with this email already exists
-            $user = User::where('email', $data['email'])->first();
+            $user = User::where('email', $data['email'])->lockForUpdate()->first();
             $isExistingUser = $user !== null;
 
             if (!$user) {
@@ -389,6 +389,7 @@ class CorporateService
                     'is_active'  => true,
                 ]);
             }
+            $user = $this->lockContextUser($user->id) ?? $user;
 
             $employee = CorporateEmployee::updateOrCreate(
                 [
@@ -434,6 +435,9 @@ class CorporateService
     public function updateEmployee(CorporateEmployee $employee, array $data): CorporateEmployee
     {
         return DB::transaction(function () use ($employee, $data) {
+            $user = $this->lockContextUser($employee->user_id);
+            $employee = CorporateEmployee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
+
             if (array_key_exists('department_id', $data) || array_key_exists('division_id', $data)) {
                 $departmentId = $data['department_id'] ?? $employee->department_id;
                 $divisionId = array_key_exists('division_id', $data) ? $data['division_id'] : $employee->division_id;
@@ -464,8 +468,8 @@ class CorporateService
                 $employee->update($employeeUpdates);
             }
 
-            if (!empty($userUpdates) && $employee->user) {
-                $employee->user->update($userUpdates);
+            if (!empty($userUpdates) && $user) {
+                $user->update($userUpdates);
             }
 
             if (!empty($data['role'])) {
@@ -494,13 +498,17 @@ class CorporateService
     public function toggleEmployeeStatus(CorporateEmployee $employee): CorporateEmployee
     {
         return DB::transaction(function () use ($employee) {
+            $this->lockContextUser($employee->user_id);
+            $employee = CorporateEmployee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $employee->is_active = !$employee->is_active;
             $employee->save();
 
             // Also toggle the associated UserContext
             $userContext = UserContext::withInactive()
                 ->where('context_type', 'corporate')
+                ->where('user_id', $employee->user_id)
                 ->where('context_id', $employee->id)
+                ->lockForUpdate()
                 ->first();
             if ($userContext) {
                 $userContext->is_active = $employee->is_active;
@@ -521,9 +529,13 @@ class CorporateService
     public function deleteEmployee(CorporateEmployee $employee): void
     {
         DB::transaction(function () use ($employee) {
+            $this->lockContextUser($employee->user_id);
+            $employee = CorporateEmployee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
             $userContext = UserContext::withInactive()
                 ->where('context_type', 'corporate')
+                ->where('user_id', $employee->user_id)
                 ->where('context_id', $employee->id)
+                ->lockForUpdate()
                 ->first();
             if ($userContext) {
                 $userContext->delete();
@@ -540,16 +552,29 @@ class CorporateService
 
     public function assignEmployeeRole(CorporateEmployee $employee, string $roleName): void
     {
-        $role = $this->resolveCorporateRole($roleName, $employee->corporate_id);
+        DB::transaction(function () use ($employee, $roleName): void {
+            $this->lockContextUser($employee->user_id);
+            $employee = CorporateEmployee::query()->whereKey($employee->id)->lockForUpdate()->firstOrFail();
+            $role = $this->resolveCorporateRole($roleName, $employee->corporate_id);
+            $userContext = UserContext::withInactive()
+                ->where('user_id', $employee->user_id)
+                ->where('context_type', 'corporate')
+                ->where('context_id', $employee->id)
+                ->lockForUpdate()
+                ->first();
+            if ($userContext) {
+                $userContext->roles()->sync([$role->id]);
+            }
 
-        $userContext = $employee->userContext;
-        if ($userContext) {
-            $userContext->roles()->sync([$role->id]);
-        }
+            $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [
+                'role' => $roleName,
+            ]);
+        });
+    }
 
-        $this->logAudit('assign_role', 'CorporateEmployee', $employee->id, [
-            'role' => $roleName,
-        ]);
+    private function lockContextUser(string $userId): ?User
+    {
+        return User::query()->whereKey($userId)->lockForUpdate()->first();
     }
 
     private function resolveCorporateRole(string $roleName, string $corporateId): Role

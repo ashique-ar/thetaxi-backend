@@ -2,6 +2,8 @@
 
 namespace Database\Seeders;
 
+use App\Models\Company;
+use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
@@ -14,7 +16,26 @@ class StaffSeeder extends Seeder
      */
     public function run(): void
     {
-        
+        // The default Company (created by CompanySeeder) that seeded Staff rows are
+        // attached to. Without it we still create the User accounts below, but skip
+        // the Staff linkage so HR modules (which require staff.company_id) stay empty
+        // rather than pointing at the wrong legal entity.
+        $company = Company::where('is_default', true)->whereNull('deleted_at')->first();
+        if (!$company) {
+            $this->command->warn('StaffSeeder: no default Company found. User accounts will be created, but Staff records (and HR linkage) will be skipped. Run CompanySeeder first.');
+        }
+
+        // If Staff records already exist for the default company, this is a
+        // real/populated database — don't inject 13 fake demo employees alongside
+        // real staff. The HR seeders that need "an active staff user" for audit
+        // ownership (HrOrganizationDefaultsSeeder, HrLeaveTypesSeeder, etc.) attach
+        // to whichever real Staff rows already exist.
+        if ($company && Staff::where('company_id', $company->id)->whereNull('deleted_at')->exists()) {
+            $this->command->info('StaffSeeder skipped: Staff records already exist for the default company.');
+            $this->printSystemUserHint();
+            return;
+        }
+
         $staffMembers = [
             [
                 'first_name' => 'Thilini',
@@ -148,12 +169,18 @@ class StaffSeeder extends Seeder
             ]
         ];
 
+        $sequence = 0;
         foreach ($staffMembers as $staffData) {
+            $sequence++;
             $roleName = $staffData['role'];
             unset($staffData['role']);
 
-            // Create user
-            $user = User::firstOrCreate($staffData);
+            // Create user. Matched on email alone (not the whole row): password is
+            // Hash::make()'d above with a fresh random salt on every seeder run, so
+            // matching on the full attribute set would never find the existing row
+            // on a re-run and would instead try (and fail, on the unique email
+            // index) to insert a duplicate.
+            $user = User::firstOrCreate(['email' => $staffData['email']], $staffData);
 
             // Assign role if it exists
             $role = Role::where('name', $roleName)->where('guard_name', 'api')->first();
@@ -169,10 +196,46 @@ class StaffSeeder extends Seeder
                     $this->command->info("Assigned default 'operator' role to {$user->first_name} {$user->last_name}");
                 }
             }
+
+            // Every staff user also needs a Staff record: the HR module, the legacy
+            // driver/booking screens and Spatie role checks all key off `staff`, not
+            // `users`, once a person is a company employee.
+            if ($company) {
+                $staff = Staff::firstOrCreate(
+                    ['user_id' => $user->id],
+                    [
+                        'company_id' => $company->id,
+                        'staff_type' => $roleName,
+                        'code' => sprintf('STF-%04d', $sequence),
+                        'employment_ended_at' => null,
+                    ]
+                );
+                $this->command->info("Staff record ready for {$user->first_name} {$user->last_name} ({$staff->code})");
+            }
         }
 
         $this->command->info('Staff data seeded successfully!');
         $this->command->info('Created 13 staff members with different roles');
         $this->command->info('All staff have password: staff123');
+
+        $this->printSystemUserHint();
+    }
+
+    /**
+     * config/hr.php's `system_user_id` (env: HR_SYSTEM_USER_ID) attributes
+     * automated HR actions — e.g. the Hikvision sync commands — to a real
+     * User rather than leaving actor_user_id null. It has no default because
+     * the right user id differs per install, so print the seeded admin
+     * user's UUID here as a copy-pasteable hint rather than hardcoding it
+     * into config.
+     */
+    private function printSystemUserHint(): void
+    {
+        $admin = User::where('email', 'nimal.admin@casons.lk')->first()
+            ?? User::role('admin', 'api')->first();
+
+        if ($admin) {
+            $this->command->info("Set HR_SYSTEM_USER_ID={$admin->id} in your .env for automated HR actor attribution (e.g. the Hikvision sync commands).");
+        }
     }
 }

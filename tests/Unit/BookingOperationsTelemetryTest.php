@@ -5,7 +5,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\Response;
 
-uses(Tests\TestCase::class);
 
 it('publishes server timing and alerts when a booking request misses its target', function () {
     config()->set('booking_observability.performance.read_target_ms', -1);

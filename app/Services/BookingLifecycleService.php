@@ -20,6 +20,7 @@ use App\Models\AuditLog;
 use App\Notifications\BookingLifecycleNotification;
 use App\Services\InvoiceService;
 use App\Models\User;
+use App\Models\Staff;
 use App\Enums\BookingLifecycleStatus;
 use App\Enums\DispatchStatus;
 use App\Enums\TripPhase;
@@ -30,6 +31,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Collection;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Validation\ValidationException;
 use Carbon\Carbon;
 
@@ -4133,94 +4135,69 @@ class BookingLifecycleService
     /**
      * Get available inspectors for QC
      */
-    public function getAvailableInspectors(): array
+    public function getAvailableInspectors(User $actor, array $filters = []): LengthAwarePaginator
     {
-        try {
-            $baseQuery = User::query();
-
-            // Prefer explicit boolean active flag if available.
-            if (Schema::hasColumn('users', 'is_active')) {
-                $baseQuery->where('is_active', true);
-            } elseif (Schema::hasColumn('users', 'status')) {
-                $baseQuery->where(function ($statusQuery) {
-                    $statusQuery
-                        ->whereIn('status', ['active', 'enabled', 'approved'])
-                        ->orWhereNull('status');
-                });
-            }
-
-            $selectColumns = ['id', 'email'];
-            if (Schema::hasColumn('users', 'first_name')) {
-                $selectColumns[] = 'first_name';
-            }
-            if (Schema::hasColumn('users', 'last_name')) {
-                $selectColumns[] = 'last_name';
-            }
-            if (Schema::hasColumn('users', 'name')) {
-                $selectColumns[] = 'name';
-            }
-
-            $orderColumn = Schema::hasColumn('users', 'first_name')
-                ? 'first_name'
-                : (Schema::hasColumn('users', 'name') ? 'name' : 'email');
-
-            $inspectorsQuery = clone $baseQuery;
-            if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
-                $inspectorsQuery->whereHas('roles', function ($roleQuery) {
-                    $roleQuery->whereIn('name', [
-                        'qc_inspector',
-                        'admin',
-                        'operations_manager',
-                    ]);
-                });
-            }
-
-            $inspectors = $inspectorsQuery
-                ->select($selectColumns)
-                ->orderBy($orderColumn)
-                ->get();
-
-            // Fallback 1: any active user with a role assignment.
-            if ($inspectors->isEmpty() && Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
-                $fallbackRoleQuery = clone $baseQuery;
-                $inspectors = $fallbackRoleQuery
-                    ->whereHas('roles')
-                    ->select($selectColumns)
-                    ->orderBy($orderColumn)
-                    ->get();
-            }
-
-            // Fallback 2: any active user.
-            if ($inspectors->isEmpty()) {
-                $fallbackAllQuery = clone $baseQuery;
-                $inspectors = $fallbackAllQuery
-                    ->select($selectColumns)
-                    ->orderBy($orderColumn)
-                    ->get();
-            }
-
-            return $inspectors->map(function (User $user) {
-                $name = trim((string) (
-                    ($user->first_name ?? '') . ' ' . ($user->last_name ?? '')
-                ));
-
-                if ($name === '') {
-                    $name = (string) ($user->name ?? $user->email ?? 'Unknown Inspector');
-                }
-
-                return [
-                    'id' => $user->id,
-                    'name' => $name,
-                    'email' => $user->email,
-                ];
-            })->toArray();
-        } catch (\Throwable $exception) {
-            Log::warning('Unable to load available inspectors', [
-                'error' => $exception->getMessage(),
-            ]);
-
-            return [];
+        $query = $this->availableQcInspectorStaff($actor);
+        $selectedId = $filters['selected_id'] ?? null;
+        if ($selectedId) {
+            $query->where('user_id', $selectedId);
+        } elseif (! empty($filters['search'])) {
+            $term = '%'.addcslashes(trim($filters['search']), '%_\\').'%';
+            $query->where(fn ($staff) => $staff->where('code', 'like', $term)
+                ->orWhereHas('user', fn ($user) => $user->where('first_name', 'like', $term)->orWhere('last_name', 'like', $term)));
         }
+
+        $page = $query->with(['user:id,first_name,last_name', 'company:id,name'])->orderBy('code')->orderBy('id')
+            ->paginate(min(50, max(1, (int) ($filters['per_page'] ?? 25))), ['id', 'user_id', 'company_id', 'code'], 'page', max(1, (int) ($filters['page'] ?? 1)));
+        $page->getCollection()->transform(function (Staff $staff) {
+            $name = trim(($staff->user->first_name ?? '').' '.($staff->user->last_name ?? ''));
+
+            return [
+                'value' => (string) $staff->user_id,
+                'label' => $name !== '' ? $name : ($staff->code ?: 'Unnamed Staff member'),
+                'metadata' => ['staff_code' => $staff->code, 'company' => $staff->company?->name],
+                'status' => 'active',
+            ];
+        });
+
+        return $page;
+    }
+
+    public function assertAvailableInspector(User $actor, string $userId): void
+    {
+        $staff = $this->availableQcInspectorStaff($actor)->where('user_id', $userId)->lockForUpdate()->first();
+        if (! $staff) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'inspector_id' => ['The selected inspector is no longer active or available in your Staff scope.'],
+            ]);
+        }
+        if (! User::query()->whereKey($userId)->where('is_active', true)->lockForUpdate()->first()) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'inspector_id' => ['The selected inspector is no longer active or available in your Staff scope.'],
+            ]);
+        }
+    }
+
+    private function availableQcInspectorStaff(User $actor): \Illuminate\Database\Eloquent\Builder
+    {
+        $query = app(StaffAccessService::class)->scope(
+            Staff::query()->whereNotNull('company_id')->whereNotNull('user_id')->whereNull('employment_ended_at')->whereHas('company'),
+            $actor
+        )->whereHas('user', fn ($user) => $user->where('is_active', true));
+
+        if (Schema::hasTable('roles') && Schema::hasTable('model_has_roles')) {
+            $qualified = (clone $query)->whereHas('user.roles', fn ($roles) => $roles->whereIn('name', ['qc_inspector', 'admin', 'operations_manager']));
+            if ($qualified->exists()) {
+                return $qualified;
+            }
+
+            $assigned = (clone $query)->whereHas('user.roles');
+            if ($assigned->exists()) {
+                return $assigned;
+            }
+        }
+
+        return $query;
     }
 
     /**

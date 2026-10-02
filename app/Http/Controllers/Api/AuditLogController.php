@@ -25,7 +25,6 @@ class AuditLogController extends Controller
             user_id::text as user_id,
             action,
             entity,
-            entity_id::text as entity_id,
             timestamp,
             details::text as details,
             created_at
@@ -35,7 +34,6 @@ class AuditLogController extends Controller
             causer_id::text as user_id,
             COALESCE(event, description) as action,
             subject_type as entity,
-            subject_id::text as entity_id,
             created_at as timestamp,
             properties::text as details,
             created_at
@@ -60,10 +58,6 @@ class AuditLogController extends Controller
                 $builder->whereRaw('LOWER(action) LIKE ?', ['%'.Str::lower($search).'%'])
                     ->orWhereRaw('LOWER(entity) LIKE ?', ['%'.Str::lower($search).'%'])
                     ->orWhereIn('user_id', $matchingUserIds);
-
-                if (Str::isUuid($search)) {
-                    $builder->orWhere('entity_id', $search);
-                }
             });
         }
 
@@ -156,7 +150,6 @@ class AuditLogController extends Controller
                 'user_id' => $log->user_id,
                 'action' => $log->action,
                 'entity' => class_basename($log->entity),
-                'entity_id' => $log->entity_id,
                 'timestamp' => Carbon::parse($log->timestamp)->toISOString(),
                 'details' => $log->details ? json_decode($log->details, true) : null,
                 'created_at' => Carbon::parse($log->created_at)->toISOString(),
@@ -187,7 +180,6 @@ class AuditLogController extends Controller
             'user_id' => $log->user_id,
             'action' => $log->action,
             'entity' => $log->entity,
-            'entity_id' => $log->entity_id,
             'timestamp' => optional($log->timestamp)->toISOString(),
             'details' => $log->details,
             'created_at' => optional($log->created_at)->toISOString(),

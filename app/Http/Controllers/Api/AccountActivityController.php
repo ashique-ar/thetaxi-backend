@@ -29,17 +29,25 @@ class AccountActivityController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
 
+        $canViewCustomers = $request->user()->can('customers.view');
+        $canViewDrivers = $request->user()->can('drivers.view');
+        abort_if(($data['account_type'] ?? null) === 'customer' && ! $canViewCustomers, 403);
+        abort_if(($data['account_type'] ?? null) === 'driver' && ! $canViewDrivers, 403);
+
         $types = match ($data['account_type'] ?? null) {
             'customer' => [Customer::class],
             'driver' => [Driver::class],
-            default => [Customer::class, Driver::class],
+            default => array_values(array_filter([
+                $canViewCustomers ? Customer::class : null,
+                $canViewDrivers ? Driver::class : null,
+            ])),
         };
 
-        $profileQuery = ($data['account_type'] ?? null) === 'driver'
-            ? Driver::withTrashed()->select('user_id')
-            : (($data['account_type'] ?? null) === 'customer'
-                ? Customer::withTrashed()->select('user_id')
-                : Customer::withTrashed()->select('user_id')->union(Driver::withTrashed()->select('user_id')));
+        $profileQuery = match ($types) {
+            [Customer::class] => Customer::withTrashed()->select('user_id'),
+            [Driver::class] => Driver::withTrashed()->select('user_id'),
+            default => Customer::withTrashed()->select('user_id')->union(Driver::withTrashed()->select('user_id')),
+        };
 
         $query = Activity::query()
             ->where(function (Builder $query) use ($types, $profileQuery) {
@@ -48,10 +56,30 @@ class AccountActivityController extends Controller
             })
             ->when($data['event'] ?? null, fn (Builder $query, string $event) => $query->where('event', $event))
             ->when($data['search'] ?? null, function (Builder $query, string $search) {
-                $query->where(function (Builder $query) use ($search) {
+                $users = User::withTrashed()->where(function (Builder $query) use ($search) {
+                    $query->whereLikeInsensitive('first_name', $search)
+                        ->orWhereLikeInsensitive('last_name', $search)
+                        ->orWhereLikeInsensitive('email', $search);
+                })->select('id');
+                $customers = Customer::withTrashed()->where(function (Builder $query) use ($search, $users) {
+                    $query->whereLikeInsensitive('code', $search)
+                        ->orWhereIn('user_id', $users);
+                })->select('id');
+                $drivers = Driver::withTrashed()->where(function (Builder $query) use ($search, $users) {
+                    $query->whereLikeInsensitive('code', $search)
+                        ->orWhereIn('user_id', $users);
+                })->select('id');
+
+                $query->where(function (Builder $query) use ($search, $users, $customers, $drivers) {
                     $query->whereLikeInsensitive('description', $search)
-                        ->orWhereLikeInsensitive('subject_id', $search)
-                        ->orWhereLikeInsensitive('causer_id', $search);
+                        ->orWhereIn('causer_id', $users)
+                        ->orWhere(function (Builder $query) use ($users) {
+                            $query->where('subject_type', User::class)->whereIn('subject_id', $users);
+                        })->orWhere(function (Builder $query) use ($customers) {
+                            $query->where('subject_type', Customer::class)->whereIn('subject_id', $customers);
+                        })->orWhere(function (Builder $query) use ($drivers) {
+                            $query->where('subject_type', Driver::class)->whereIn('subject_id', $drivers);
+                        });
                 });
             })
             ->latest('created_at')

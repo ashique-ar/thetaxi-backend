@@ -137,6 +137,11 @@ class Booking extends BaseModel
         return $this->hasMany(BookingPaymentReceipt::class, 'booking_id');
     }
 
+    public function salesAttribution()
+    {
+        return $this->hasOne(\App\Models\Sales\SalesBookingAttribution::class, 'booking_id');
+    }
+
     /**
      * The attributes that are mass assignable.
      *
@@ -159,6 +164,7 @@ class Booking extends BaseModel
         'payment_reference',
         'created_user_id',
         'commission_owner_staff_id',
+        'sales_opportunity_id',
         'updated_user_id',
 
         // Service details (booking-level, not item-specific)

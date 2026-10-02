@@ -2352,6 +2352,8 @@ class BookingFlowService
             'rate_type' => $servicePackage->rate_type,
             'default_duration_hours' => $servicePackage->default_duration_hours,
             'default_duration_minutes' => $servicePackage->default_duration_minutes,
+            'charges_extra_hours' => (bool) $servicePackage->charges_extra_hours,
+            'charges_extra_km' => (bool) $servicePackage->charges_extra_km,
         ];
     }
 
@@ -4176,9 +4178,7 @@ class BookingFlowService
         ];
     }
 
-    /**
-     * Search for specific vehicles by name, license plate, or ID
-     */
+    /** Search specific vehicles by readable name or registration details. */
     public function searchSpecificVehicles(array $params): array
     {
         $searchTerm = trim((string) ($params['search_term'] ?? ''));
@@ -4198,9 +4198,6 @@ class BookingFlowService
                     $q->whereRaw('LOWER(title) LIKE ?', [$searchPattern])
                         ->orWhereRaw('LOWER(license_plate) LIKE ?', [$searchPattern])
                         ->orWhereRaw('LOWER(registration_no) LIKE ?', [$searchPattern]);
-                    if (Uuid::isValid($searchTerm)) {
-                        $q->orWhere('id', $searchTerm);
-                    }
                 });
             });
 
@@ -4269,9 +4266,7 @@ class BookingFlowService
         return $vehicles->toArray();
     }
 
-    /**
-     * Search for specific drivers by name, license, or ID
-     */
+    /** Search specific drivers by readable name, license or code. */
     public function searchSpecificDrivers(array $params): array
     {
         $searchTerm = trim((string) ($params['search_term'] ?? ''));
@@ -4292,9 +4287,6 @@ class BookingFlowService
                             ->orWhereRaw('LOWER(last_name) LIKE ?', [$searchPattern])
                             ->orWhereRaw('LOWER(phone) LIKE ?', [$searchPattern]);
                     });
-                if (Uuid::isValid($searchTerm)) {
-                    $q->orWhere('id', $searchTerm);
-                }
             });
         }
 
@@ -4693,19 +4685,6 @@ class BookingFlowService
 
             // Resolve Service Package information
             $servicePackageInfo = $this->getServicePackageInformation($calculationInputs);
-            if ($servicePackageInfo) {
-                $calculationInputs['package_id'] = (string) $servicePackageInfo['id'];
-                $calculationInputs['service_package_id'] = (string) $servicePackageInfo['id'];
-                $calculationInputs['package_included_km'] = (float) (
-                    $servicePackageInfo['max_km_per_package']
-                    ?? $servicePackageInfo['max_km_per_day']
-                    ?? 0
-                );
-                $calculationInputs['package_included_hours'] = (float) ($servicePackageInfo['default_duration_hours'] ?? 0)
-                    + ((float) ($servicePackageInfo['default_duration_minutes'] ?? 0) / 60);
-                $calculationInputs['package_has_hour_limit'] = $calculationInputs['package_included_hours'] > 0 ? 1 : 0;
-                $this->assertSelectedPackagePricingConfigured($calculationInputs, $serviceTypeId);
-            }
 
             // Resolve district pricing adjustment
             $districtInfo = null;
@@ -5273,6 +5252,20 @@ class BookingFlowService
             'contractual_route' => $contractual['contractual_route'] ?? null,
             'contractual_movement_charge' => $movementCharge ?: null,
             'formula_evaluation' => $calculationResult['formula_evaluation'] ?? null,
+            'package_info' => $servicePackageInfo ? [
+                'id' => (string) $servicePackageInfo['id'],
+                'name' => $servicePackageInfo['name'] ?? null,
+                'code' => $servicePackageInfo['code'] ?? null,
+                'description' => data_get($servicePackageInfo, 'service_package.description'),
+                'max_km_per_day' => $servicePackageInfo['max_km_per_day'] ?? null,
+                'max_km_per_package' => $servicePackageInfo['max_km_per_package'] ?? null,
+                'default_duration_hours' => $servicePackageInfo['default_duration_hours'] ?? 0,
+                'default_duration_minutes' => $servicePackageInfo['default_duration_minutes'] ?? 0,
+                'charges_extra_hours' => (bool) ($servicePackageInfo['charges_extra_hours'] ?? false),
+                'charges_extra_km' => (bool) ($servicePackageInfo['charges_extra_km'] ?? true),
+                'rate_type' => $servicePackageInfo['rate_type'] ?? null,
+                'snapshotted_at' => now()->toIso8601String(),
+            ] : null,
             'calculation_metadata' => [
                 'definition_used' => $calculationResult['definition_id'] ?? null,
                 'variables_used' => $calculationResult['variables_used'] ?? [],
@@ -8903,35 +8896,33 @@ class BookingFlowService
             $search = trim((string) $filters['search']);
 
             $query->where(function ($itemQuery) use ($search) {
-                $itemQuery->where('booking_items.id', 'like', "%{$search}%")
-                    ->orWhere('booking_items.booking_id', 'like', "%{$search}%")
-                    ->orWhereHas('booking', function ($bookingQuery) use ($search) {
-                        $bookingQuery->where('booking_number', 'like', "%{$search}%")
-                            ->orWhere('invoice_number', 'like', "%{$search}%")
-                            ->orWhere('confirmation_number', 'like', "%{$search}%")
-                            ->orWhereHas('customer.user', function ($userQuery) use ($search) {
-                                $userQuery->where('first_name', 'like', "%{$search}%")
-                                    ->orWhere('last_name', 'like', "%{$search}%")
-                                    ->orWhere('email', 'like', "%{$search}%")
-                                    ->orWhere('phone', 'like', "%{$search}%");
-                            })
-                            ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
-                                $corporateQuery->where('name', 'like', "%{$search}%");
-                            })
-                            ->orWhereExists(function ($employeeUserQuery) use ($search) {
-                                $employeeUserQuery->selectRaw('1')
-                                    ->from('users')
-                                    // Support both the legacy varchar and current UUID employee columns.
-                                    ->whereRaw('users.id::text = bookings.employee_id::text')
-                                    ->whereNull('users.deleted_at')
-                                    ->where(function ($identityQuery) use ($search) {
-                                        $identityQuery->where('users.first_name', 'like', "%{$search}%")
-                                            ->orWhere('users.last_name', 'like', "%{$search}%")
-                                            ->orWhere('users.email', 'like', "%{$search}%")
-                                            ->orWhere('users.phone', 'like', "%{$search}%");
-                                    });
-                            });
-                    })
+                $itemQuery->whereHas('booking', function ($bookingQuery) use ($search) {
+                    $bookingQuery->where('booking_number', 'like', "%{$search}%")
+                        ->orWhere('invoice_number', 'like', "%{$search}%")
+                        ->orWhere('confirmation_number', 'like', "%{$search}%")
+                        ->orWhereHas('customer.user', function ($userQuery) use ($search) {
+                            $userQuery->where('first_name', 'like', "%{$search}%")
+                                ->orWhere('last_name', 'like', "%{$search}%")
+                                ->orWhere('email', 'like', "%{$search}%")
+                                ->orWhere('phone', 'like', "%{$search}%");
+                        })
+                        ->orWhereHas('corporateAccount', function ($corporateQuery) use ($search) {
+                            $corporateQuery->where('name', 'like', "%{$search}%");
+                        })
+                        ->orWhereExists(function ($employeeUserQuery) use ($search) {
+                            $employeeUserQuery->selectRaw('1')
+                                ->from('users')
+                                // Support both the legacy varchar and current UUID employee columns.
+                                ->whereRaw('users.id::text = bookings.employee_id::text')
+                                ->whereNull('users.deleted_at')
+                                ->where(function ($identityQuery) use ($search) {
+                                    $identityQuery->where('users.first_name', 'like', "%{$search}%")
+                                        ->orWhere('users.last_name', 'like', "%{$search}%")
+                                        ->orWhere('users.email', 'like', "%{$search}%")
+                                        ->orWhere('users.phone', 'like', "%{$search}%");
+                                });
+                        });
+                })
                     ->orWhereHas('serviceType', function ($serviceTypeQuery) use ($search) {
                         $serviceTypeQuery->where('name', 'like', "%{$search}%");
                     })

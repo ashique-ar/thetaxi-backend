@@ -11,8 +11,11 @@ class Document extends BaseModel
     protected $fillable = [
         'documentable_type',
         'documentable_id',
+        'employment_spell_id',
         'document_type',
         'document_number',
+        'upload_idempotency_key',
+        'upload_request_checksum',
         'expiry_date',
         'disk',
         'path',
@@ -21,6 +24,11 @@ class Document extends BaseModel
         'file_type',
         'status',
         'verification_notes',
+        'classification',
+        'version',
+        'supersedes_id',
+        'retention_until',
+        'legal_hold',
         'verified_at',
         'verified_by',
         'created_user_id',
@@ -36,6 +44,9 @@ class Document extends BaseModel
         'expiry_date' => 'date',
         'verified_at' => 'datetime',
         'file_size' => 'integer',
+        'version' => 'integer',
+        'retention_until' => 'datetime',
+        'legal_hold' => 'boolean',
         'last_reminded_on' => 'date',
         'metadata' => 'array',
     ];
@@ -60,7 +71,7 @@ class Document extends BaseModel
 
     protected static function booted(): void
     {
-        static::deleting(function (Document $document): void {
+        static::forceDeleted(function (Document $document): void {
             if ($document->path) Storage::disk($document->disk)->delete($document->path);
         });
     }

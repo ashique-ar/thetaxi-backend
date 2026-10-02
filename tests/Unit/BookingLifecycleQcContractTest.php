@@ -1,6 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
 
 it('accepts and projects persisted item-scoped QC findings', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Booking/BookingLifecycleController.php'));

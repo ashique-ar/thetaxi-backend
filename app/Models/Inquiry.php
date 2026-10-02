@@ -125,6 +125,11 @@ class Inquiry extends BaseModel
         return $this->belongsTo(User::class, 'updated_user_id');
     }
 
+    public function assignedUser()
+    {
+        return $this->belongsTo(User::class, 'assigned_to')->withTrashed();
+    }
+
     /**
      * Generate inquiry number (INQxxxxxx)
      */

@@ -895,7 +895,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Last Name *</label>
-                            <input type="text" class="form-control" name="last_name" required>
+                            <input type="text" class="form-control" name="last_name">
                         </div>
                         <div class="col-md-6">
                             <label class="form-label">Email *</label>

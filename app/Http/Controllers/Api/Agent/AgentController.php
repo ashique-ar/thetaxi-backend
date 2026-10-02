@@ -157,7 +157,11 @@ class AgentController extends Controller
     {
         $allowedRelations = ['user', 'apis', 'commissions'];
         $requestedRelations = array_filter(explode(',', (string) $request->query('include')));
-        $agent->load(array_values(array_intersect($allowedRelations, $requestedRelations ?: ['user'])));
+        $relations = array_values(array_intersect($allowedRelations, $requestedRelations ?: ['user']));
+        if (in_array('commissions', $relations, true)) {
+            $relations[array_search('commissions', $relations, true)] = 'commissions.booking';
+        }
+        $agent->load($relations);
 
         return response()->json([
             'status'=>'success',

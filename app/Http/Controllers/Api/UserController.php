@@ -399,23 +399,34 @@ class UserController extends Controller
             ->select('permissions.*')
             ->get();
 
-        $directNames = $directPermissions->pluck('name')->unique();
+        $contextPermissionIds = DB::table('user_context_permission_grants as grants')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)
+            ->where('user_contexts.is_active', true)
+            ->pluck('grants.permission_id')->unique();
+        $explicitPermissionIds = DB::table('user_direct_permission_grants')
+            ->where('user_id', $user->id)->pluck('permission_id')->unique();
+        $contextNames = $directPermissions->whereIn('id', $contextPermissionIds)->pluck('name')->unique();
+        $directNames = $directPermissions->filter(fn ($permission) =>
+            !$contextPermissionIds->contains($permission->id) || $explicitPermissionIds->contains($permission->id)
+        )->pluck('name')->unique();
         $roleNames = $rolePermissions->pluck('name')->unique();
         $permissions = $directPermissions->merge($rolePermissions)->unique('name')->values();
         
         return response()->json([
             'status' => 'success',
             'data' => [
-                'permissions' => $permissions->map(function ($permission) use ($directNames, $roleNames) {
+                'permissions' => $permissions->map(function ($permission) use ($directNames, $contextNames, $roleNames) {
                     return [
                         'id' => $permission->id,
                         'name' => $permission->name,
                         'guard_name' => $permission->guard_name,
                         'source' => $directNames->contains($permission->name)
                             ? 'direct grant'
-                            : 'role',
+                            : ($contextNames->contains($permission->name) ? 'context default' : 'role'),
                         'sources' => array_values(array_filter([
                             $directNames->contains($permission->name) ? 'direct grant' : null,
+                            $contextNames->contains($permission->name) ? 'context default' : null,
                             $roleNames->contains($permission->name) ? 'role' : null,
                             $permission->guard_name !== config('permissions.canonical_guard', 'api') ? 'legacy' : null,
                         ])),
@@ -443,20 +454,7 @@ class UserController extends Controller
         ]);
 
         try {
-            $permissions = $this->permissionAssignmentService
-                ->syncDirectUserPermissions($user, array_values(array_unique(array_merge(
-                    $user->permissions()->pluck('name')->all(),
-                    $request->permissions
-                ))));
-
-            foreach ($permissions as $permission) {
-                DB::table('model_has_permissions')->updateOrInsert([
-                    'permission_id' => $permission->id,
-                    'model_type' => User::class,
-                    'model_id' => $user->id,
-                ]);
-            }
-            app(PermissionRegistrar::class)->forgetCachedPermissions();
+            $this->permissionAssignmentService->grantDirectUserPermissions($user, $request->permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -488,13 +486,7 @@ class UserController extends Controller
         ]);
 
         try {
-            $remove = $this->permissionAssignmentService->normalizePermissionNames($request->permissions);
-            $permissions = collect($user->permissions()->pluck('name')->all())
-                ->reject(fn ($permission) => in_array($permission, $remove, true))
-                ->values()
-                ->all();
-
-            $this->permissionAssignmentService->syncDirectUserPermissions($user, $permissions);
+            $this->permissionAssignmentService->revokeDirectUserPermissions($user, $request->permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -660,21 +652,25 @@ class UserController extends Controller
         ]);
 
         try {
-            $context = $user->contexts()->where('id', $contextId)->first();
-            if (!$context) {
+            $activeContexts = DB::transaction(function () use ($user, $contextId, $request): ?\Illuminate\Support\Collection {
+                $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                $context = $user->contexts()->whereKey($contextId)->first();
+                if (!$context) {
+                    return null;
+                }
+
+                $this->contextService->assignRolesToContext($user, $context, $request->roles);
+                if ($context->is_active && $request->boolean('auto_assign_permissions', true)) {
+                    $this->assignContextBasedPermissions($user, $context);
+                }
+
+                return $user->getActiveContexts()->map(function ($ctx) {
+                    return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(fn($role) => ['id' => $role->id, 'name' => $role->name, 'display_name' => $role->display_name ?? $role->name])]);
+                });
+            });
+            if ($activeContexts === null) {
                 return response()->json(['status' => 'error', 'message' => 'Context not found'], 404);
             }
-
-            $this->contextService->assignRolesToContext($user, $context, $request->roles);
-
-            // Auto-assign context-based permissions if requested
-            if ($request->boolean('auto_assign_permissions', true)) {
-                $this->assignContextBasedPermissions($user, $context->context_type);
-            }
-
-            $activeContexts = $user->getActiveContexts()->map(function($ctx){
-                return array_merge($ctx->toArray(), ['roles' => $ctx->roles()->get()->map(function($r){ return ['id' => $r->id, 'name' => $r->name, 'display_name' => $r->display_name ?? $r->name]; })]);
-            });
 
             return response()->json(['status' => 'success', 'message' => 'Roles assigned', 'data' => ['contexts' => $activeContexts]]);
         } catch (\Exception $e) {
@@ -689,7 +685,7 @@ class UserController extends Controller
      * @param string $contextType
      * @return void
      */
-    private function assignContextBasedPermissions(User $user, string $contextType): void
+    private function assignContextBasedPermissions(User $user, \App\Models\UserContext $context): void
     {
         // Map context types to default permissions
         $contextPermissionMap = [
@@ -728,17 +724,64 @@ class UserController extends Controller
             ],
         ];
 
-        $permissions = $contextPermissionMap[$contextType] ?? [];
+        $permissions = $contextPermissionMap[$context->context_type] ?? [];
         
+        $granted = [];
         foreach ($permissions as $permissionName) {
             $permission = \Spatie\Permission\Models\Permission::where('name', $permissionName)->first();
-            if ($permission && !$user->hasPermissionTo($permissionName)) {
+            if (!$permission) {
+                continue;
+            }
+
+            $alreadyDirect = DB::table('model_has_permissions')
+                ->where('permission_id', $permission->id)
+                ->where('model_type', User::class)
+                ->where('model_id', $user->id)
+                ->exists();
+            $alreadyOwned = DB::table('user_context_permission_grants')
+                ->where('user_context_id', $context->id)
+                ->where('permission_id', $permission->id)->exists();
+            if ($alreadyOwned) {
+                continue;
+            }
+
+            $hasTrackedSource = DB::table('user_direct_permission_grants')
+                ->where('user_id', $user->id)->where('permission_id', $permission->id)->exists()
+                || DB::table('user_context_permission_grants as grants')
+                    ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+                    ->where('user_contexts.user_id', $user->id)
+                    ->where('user_contexts.is_active', true)
+                    ->where('grants.permission_id', $permission->id)->exists();
+
+            if ($hasTrackedSource) {
+                DB::table('user_context_permission_grants')->insert([
+                    'user_context_id' => $context->id,
+                    'permission_id' => $permission->id,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $granted[] = $permissionName;
+                continue;
+            }
+
+            if (!$alreadyDirect && !$user->hasPermissionTo($permissionName)) {
                 DB::table('model_has_permissions')->updateOrInsert([
                     'permission_id' => $permission->id,
                     'model_type' => User::class,
                     'model_id' => $user->id,
                 ]);
+                DB::table('user_context_permission_grants')->updateOrInsert(
+                    ['user_context_id' => $context->id, 'permission_id' => $permission->id],
+                    ['created_at' => now(), 'updated_at' => now()]
+                );
+                $granted[] = $permissionName;
             }
+        }
+
+        if ($granted) {
+            activity('user-access')->causedBy(request()->user())->performedOn($user)
+                ->withProperties(['context_id' => $context->id, 'context_type' => $context->context_type, 'permissions' => $granted])
+                ->log('context_default_permissions_granted');
         }
         
         app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -788,7 +831,7 @@ class UserController extends Controller
         ]);
 
         try {
-            $success = $this->contextService->deactivateContext($user, $request->get('context_type'));
+            $success = $this->contextService->deactivateContext($user, $request->get('context_type'), null, $request->user()?->id);
 
             if ($success) {
                 return response()->json([
@@ -827,11 +870,12 @@ class UserController extends Controller
             $contextType = $request->get('context_type');
             $contextData = $request->get('context_data', []);
 
-            // Use switchContext to create/activate the context
-            $userContext = $this->contextService->switchContext($user, $contextType, $contextData);
-
-            // Auto-assign context-based permissions
-            $this->assignContextBasedPermissions($user, $contextType);
+            $userContext = DB::transaction(function () use ($user, $contextType, $contextData): \App\Models\UserContext {
+                $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                $context = $this->contextService->switchContext($user, $contextType, $contextData);
+                $this->assignContextBasedPermissions($user, $context);
+                return $context;
+            });
 
             return response()->json([
                 'status' => 'success',
@@ -881,15 +925,18 @@ class UserController extends Controller
                 ], 422);
             }
 
-            foreach ($roleIds as $roleId) {
-                DB::table('model_has_roles')->updateOrInsert([
-                    'role_id' => $roleId,
-                    'model_type' => User::class,
-                    'model_id' => $user->id,
-                ]);
-            }
+            DB::transaction(function () use ($roleIds, $rolesToAssign, $user, $request): void {
+                User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                foreach ($roleIds as $roleId) {
+                    DB::table('model_has_roles')->updateOrInsert([
+                        'role_id' => $roleId,
+                        'model_type' => User::class,
+                        'model_id' => $user->id,
+                    ]);
+                }
 
-            $this->contextService->syncContextsForAssignedRoles($user, $rolesToAssign, $request->user()?->id);
+                $this->contextService->syncContextsForAssignedRoles($user, $rolesToAssign, $request->user()?->id);
+            });
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
             
@@ -924,11 +971,9 @@ class UserController extends Controller
 
         try {
             $guards = $this->resolveGuards($request);
-            $rolesToRevoke = Role::whereIn('name', $request->roles)
+            $roleIds = Role::whereIn('name', $request->roles)
                 ->whereIn('guard_name', $guards)
-                ->with('permissions:id,name,guard_name')
-                ->get();
-            $roleIds = $rolesToRevoke->pluck('id')->all();
+                ->pluck('id')->all();
 
             if (empty($roleIds)) {
                 return response()->json([
@@ -937,7 +982,8 @@ class UserController extends Controller
                 ], 422);
             }
 
-            DB::transaction(function () use ($user, $roleIds, $rolesToRevoke) {
+            DB::transaction(function () use ($user, $roleIds) {
+                User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
                 DB::table('model_has_roles')
                     ->where('model_type', User::class)
                     ->where('model_id', $user->id)
@@ -953,35 +999,6 @@ class UserController extends Controller
                     })
                     ->delete();
 
-                $revokedPermissionIds = $rolesToRevoke
-                    ->flatMap(fn ($role) => $role->permissions)
-                    ->pluck('id')
-                    ->unique()
-                    ->values();
-
-                if ($revokedPermissionIds->isEmpty()) {
-                    return;
-                }
-
-                $remainingRolePermissionIds = Permission::query()
-                    ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
-                    ->join('model_has_roles', 'role_has_permissions.role_id', '=', 'model_has_roles.role_id')
-                    ->where('model_has_roles.model_type', User::class)
-                    ->where('model_has_roles.model_id', $user->id)
-                    ->pluck('permissions.id')
-                    ->unique();
-
-                $permissionIdsToRemove = $revokedPermissionIds
-                    ->diff($remainingRolePermissionIds)
-                    ->values();
-
-                if ($permissionIdsToRemove->isNotEmpty()) {
-                    DB::table('model_has_permissions')
-                        ->where('model_type', User::class)
-                        ->where('model_id', $user->id)
-                        ->whereIn('permission_id', $permissionIdsToRemove->all())
-                        ->delete();
-                }
             });
 
             app(PermissionRegistrar::class)->forgetCachedPermissions();
@@ -1037,7 +1054,7 @@ class UserController extends Controller
     {
         $request->validate([
             'first_name' => ['required', 'string', 'max:255'],
-            'last_name' => ['required', 'string', 'max:255'],
+            'last_name' => ['nullable', 'string', 'max:255'],
             'phone' => ['nullable', 'string', 'max:20'],
             'timezone' => ['nullable', 'string'],
             'language' => ['nullable', 'string', 'max:5'],
