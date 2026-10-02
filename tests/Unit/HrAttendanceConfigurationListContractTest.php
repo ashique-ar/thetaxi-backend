@@ -46,3 +46,18 @@ it('wires the full calendar/shift/policy/roster read+write set into a new Angula
         ->toContain("['calendars', 'shifts', 'policies', 'rosters']")
         ->toContain('attendanceConfigurationSection');
 });
+
+it('keeps approved attendance policies read-only in both Laravel and Angular', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.html'));
+    $dialog = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/policy-edit-dialog.component.ts'));
+
+    expect($controller)->toContain("in_array(\$locked->status, ['draft', 'pending_approval'], true)");
+    expect($component)
+        ->toContain('canEditPolicy(row: any)')
+        ->toContain("this.canManageConfig() && ['draft', 'pending_approval'].includes(row.status)");
+    expect($template)->toContain('*ngIf="canEditPolicy(row)"');
+    expect($dialog)->not->toContain('company_id');
+    expect($dialog)->not->toContain('UiLegalEntitySelectComponent');
+});

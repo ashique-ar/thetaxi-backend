@@ -235,9 +235,7 @@ class RoleController extends Controller
         ]);
 
         try {
-            $current = $role->permissions()->pluck('name')->all();
-            $permissions = array_values(array_unique(array_merge($current, $request->permissions)));
-            $this->syncRolePermissions($role, $permissions);
+            $this->assignmentService->grantRolePermissions($role, $request->permissions);
             
             return response()->json([
                 'status' => 'success',
@@ -267,12 +265,7 @@ class RoleController extends Controller
         ]);
 
         try {
-            $remove = $this->assignmentService->normalizePermissionNames($request->permissions);
-            $permissions = collect($role->permissions()->pluck('name')->all())
-                ->reject(fn ($permission) => in_array($permission, $remove, true))
-                ->values()
-                ->all();
-            $this->syncRolePermissions($role, $permissions);
+            $this->assignmentService->revokeRolePermissions($role, $request->permissions);
             
             return response()->json([
                 'status' => 'success',

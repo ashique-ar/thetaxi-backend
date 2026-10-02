@@ -46,6 +46,7 @@ class AssignAdminRole extends Command
         }
 
         $user->assignRole($role);
+        app(\App\Services\UserService::class)->syncDirectRoleGrants($user, collect([$role]));
         
         $this->info('API admin role assigned successfully!');
         $this->info('User now has roles: ' . implode(', ', $user->getRoleNames()->toArray()));

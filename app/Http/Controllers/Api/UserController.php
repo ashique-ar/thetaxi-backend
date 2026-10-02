@@ -191,11 +191,18 @@ class UserController extends Controller
         $users = User::whereIn('id', $data['user_ids'])->get();
         DB::transaction(function () use ($users, $data) {
             foreach ($users as $user) {
+                if ($data['action'] === 'assign_role') {
+                    $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
+                    $roles = Role::query()->where('name', $data['role'])->get();
+                    $user->syncRoles($roles);
+                    $this->userService->syncDirectRoleGrants($user, $roles);
+                    continue;
+                }
+
                 match ($data['action']) {
                     'activate' => $user->update(['is_active' => true]),
                     'deactivate' => $user->update(['is_active' => false]),
                     'delete' => $user->delete(),
-                    'assign_role' => $user->syncRoles([$data['role']]),
                 };
             }
         });
@@ -515,15 +522,33 @@ class UserController extends Controller
             ->where('model_has_roles.model_id', $user->id)
             ->select('roles.*')
             ->get();
+        $roleIds = $roles->pluck('id');
+        $directRoleIds = DB::table('user_direct_role_grants')->where('user_id', $user->id)->whereIn('role_id', $roleIds)->pluck('role_id');
+        $contextTypes = DB::table('user_context_roles as grants')
+            ->join('user_contexts', 'user_contexts.id', '=', 'grants.user_context_id')
+            ->where('user_contexts.user_id', $user->id)->whereIn('grants.role_id', $roleIds)
+            ->select('grants.role_id', 'user_contexts.context_type')->get()->groupBy('role_id');
         
         return response()->json([
             'status' => 'success',
             'data' => [
-                'roles' => $roles->map(function ($role) {
+                'roles' => $roles->map(function ($role) use ($directRoleIds, $contextTypes) {
+                    $sources = [];
+                    if ($directRoleIds->contains($role->id)) {
+                        $sources[] = 'Direct grant';
+                    }
+                    foreach ($contextTypes->get($role->id, collect())->pluck('context_type')->unique() as $contextType) {
+                        $sources[] = ucfirst(str_replace('_', ' ', $contextType)).' context';
+                    }
+                    if (!$directRoleIds->contains($role->id)) {
+                        $sources[] = 'Legacy direct origin unverified';
+                    }
+
                     return [
                         'id' => $role->id,
                         'name' => $role->name,
                         'guard_name' => $role->guard_name,
+                        'sources' => $sources,
                         'created_at' => $role->created_at,
                     ];
                 })
@@ -935,6 +960,8 @@ class UserController extends Controller
                     ]);
                 }
 
+                $this->userService->grantDirectRoleGrants($user, $rolesToAssign);
+
                 $this->contextService->syncContextsForAssignedRoles($user, $rolesToAssign, $request->user()?->id);
             });
 
@@ -989,6 +1016,8 @@ class UserController extends Controller
                     ->where('model_id', $user->id)
                     ->whereIn('role_id', $roleIds)
                     ->delete();
+
+                $this->userService->revokeDirectRoleGrants($user, $roleIds);
 
                 DB::table('user_context_roles')
                     ->whereIn('role_id', $roleIds)

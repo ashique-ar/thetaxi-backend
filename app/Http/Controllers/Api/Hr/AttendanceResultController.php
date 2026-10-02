@@ -55,11 +55,11 @@ class AttendanceResultController extends Controller
             ->whereDate('work_date', '<=', $data['to'])
             ->groupBy('staff_id', 'work_date');
         $rows = DB::table('hr_attendance_daily_results as result')
-            ->joinSub($latest, 'latest', fn ($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
             ->join('staff', 'staff.id', '=', 'result.staff_id')
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->join('companies', 'companies.id', '=', 'staff.company_id')
-            ->when($data['status'] ?? null, fn ($query, $status) => $query->where('result.day_status', $status));
+            ->when($data['status'] ?? null, fn($query, $status) => $query->where('result.day_status', $status));
 
         $aggregates = "count(*) as days, count(distinct result.staff_id) as staff_count, sum(case when result.day_status = 'present' then 1 else 0 end) as present_days, sum(case when result.day_status = 'absent' then 1 else 0 end) as absent_days, sum(case when result.day_status in ('incomplete', 'insufficient_hours') then 1 else 0 end) as exception_days, coalesce(sum(result.worked_minutes), 0) as worked_minutes, coalesce(sum(result.late_minutes), 0) as late_minutes, coalesce(sum(result.early_leave_minutes), 0) as early_leave_minutes, coalesce(sum(result.payable_minutes), 0) as payable_minutes";
         $summary = (clone $rows)->selectRaw($aggregates)->first();
@@ -72,22 +72,25 @@ class AttendanceResultController extends Controller
         };
         $grouped = $groupedQuery->get();
 
-        return response()->json(['status' => 'success', 'data' => [
-            'summary' => [
-                'days' => (int) ($summary->days ?? 0),
-                'staff_count' => (int) ($summary->staff_count ?? 0),
-                'present_days' => (int) ($summary->present_days ?? 0),
-                'absent_days' => (int) ($summary->absent_days ?? 0),
-                'exception_days' => (int) ($summary->exception_days ?? 0),
-                'worked_minutes' => (int) ($summary->worked_minutes ?? 0),
-                'late_minutes' => (int) ($summary->late_minutes ?? 0),
-                'early_leave_minutes' => (int) ($summary->early_leave_minutes ?? 0),
-                'payable_minutes' => (int) ($summary->payable_minutes ?? 0),
-            ],
-            'groups' => $grouped,
-            'filters' => $data,
-            'generated_at' => now()->toIso8601String(),
-        ]]);
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'summary' => [
+                    'days' => (int) ($summary->days ?? 0),
+                    'staff_count' => (int) ($summary->staff_count ?? 0),
+                    'present_days' => (int) ($summary->present_days ?? 0),
+                    'absent_days' => (int) ($summary->absent_days ?? 0),
+                    'exception_days' => (int) ($summary->exception_days ?? 0),
+                    'worked_minutes' => (int) ($summary->worked_minutes ?? 0),
+                    'late_minutes' => (int) ($summary->late_minutes ?? 0),
+                    'early_leave_minutes' => (int) ($summary->early_leave_minutes ?? 0),
+                    'payable_minutes' => (int) ($summary->payable_minutes ?? 0),
+                ],
+                'groups' => $grouped,
+                'filters' => $data,
+                'generated_at' => now()->toIso8601String(),
+            ]
+        ]);
     }
 
     public function calculate(Request $request, AttendanceResultService $service): JsonResponse
@@ -188,10 +191,11 @@ class AttendanceResultController extends Controller
         $to = CarbonImmutable::today($data['timezone']);
         $from = $to->subDays(30)->max(CarbonImmutable::parse($data['effective_from'], $data['timezone']));
         $recalculated = 0;
-        $rosters = DB::table('hr_roster_assignments')->where('shift_id', $shiftId)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $to)->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $from))->get();
+        $rosters = DB::table('hr_roster_assignments')->where('shift_id', $shiftId)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $to)->where(fn($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $from))->get();
         foreach ($rosters as $roster) {
             for ($date = $from; $date->lessThanOrEqualTo($to); $date = $date->addDay()) {
-                if ($date->lt(CarbonImmutable::parse($roster->effective_from)) || ($roster->effective_until && $date->gte(CarbonImmutable::parse($roster->effective_until)))) continue;
+                if ($date->lt(CarbonImmutable::parse($roster->effective_from)) || ($roster->effective_until && $date->gte(CarbonImmutable::parse($roster->effective_until))))
+                    continue;
                 try {
                     $results->calculate($row->company_id, $roster->staff_id, $date->toDateString(), $request->user()->id);
                     $recalculated++;
@@ -216,8 +220,14 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $this->sameCompany($request, $data['company_id']);
         $id = (string) Str::uuid();
-        DB::table('hr_attendance_policies')->insert($this->json($data, ['rules']) + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($id)], 201);
+        return DB::transaction(function () use ($request, $data, $id) {
+            $this->sameCompany($request, $data['company_id']);
+            DB::table('hr_attendance_policies')->insert($this->json($data, ['rules']) + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            activity('hr-attendance')->causedBy($request->user())
+                ->withProperties(['policy_id' => $id, 'company_id' => $data['company_id'], 'fields' => array_keys($data)])
+                ->log('attendance_policy_created');
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($id)], 201);
+        });
     }
 
     public function updatePolicy(Request $request, string $policyId): JsonResponse
@@ -227,8 +237,17 @@ class AttendanceResultController extends Controller
         abort_unless($row, 404);
         $this->sameCompany($request, $row->company_id);
         $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where('company_id', $row->company_id)->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        DB::table('hr_attendance_policies')->where('id', $policyId)->update($this->json($data, ['rules']) + ['updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($policyId)]);
+        return DB::transaction(function () use ($request, $policyId, $data) {
+            $locked = DB::table('hr_attendance_policies')->where('id', $policyId)->lockForUpdate()->first();
+            abort_unless($locked, 404);
+            $this->sameCompany($request, $locked->company_id);
+            abort_unless(in_array($locked->status, ['draft', 'pending_approval'], true), 409, 'Approved attendance policies cannot be changed.');
+            DB::table('hr_attendance_policies')->where('id', $policyId)->update($this->json($data, ['rules']) + ['updated_at' => now()]);
+            activity('hr-attendance')->causedBy($request->user())
+                ->withProperties(['policy_id' => $policyId, 'changed_fields' => array_keys($data)])
+                ->log('attendance_policy_updated');
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($policyId)]);
+        });
     }
 
     public function approvePolicy(Request $request, string $policyId): JsonResponse
@@ -241,7 +260,8 @@ class AttendanceResultController extends Controller
             abort_if($row->created_by === $request->user()->id, 409, 'Policy creator cannot approve the same policy.');
             abort_unless($row->status === 'pending_approval', 409, 'Only a pending policy may be approved.');
             DB::table('hr_attendance_policies')->where('id', $policyId)->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($policyId)]); });
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_policies')->find($policyId)]);
+        });
     }
 
     public function rosters(Request $request, StaffAccessService $access): JsonResponse
@@ -265,7 +285,8 @@ class AttendanceResultController extends Controller
             abort_if($overlap, 409, 'An overlapping roster already exists.');
             $id = (string) Str::uuid();
             DB::table('hr_roster_assignments')->insert($data + ['id' => $id, 'created_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($id)], 201); });
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($id)], 201);
+        });
     }
 
     public function updateRoster(Request $request, string $rosterId): JsonResponse
@@ -275,13 +296,15 @@ class AttendanceResultController extends Controller
             $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->lockForUpdate()->first();
             abort_unless($row, 404);
             $this->sameCompany($request, $row->company_id);
+            DB::table('companies')->where('id', $row->company_id)->lockForUpdate()->first();
             $data = $request->validate(['staff_id' => ['required', 'uuid'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
             foreach (['staff' => 'staff_id', 'hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
                 abort_unless(DB::table($table)->where('id', $data[$field])->where('company_id', $row->company_id)->exists(), 422, 'Roster references must belong to one legal entity.');
             $overlap = DB::table('hr_roster_assignments')->where('staff_id', $data['staff_id'])->where('id', '!=', $rosterId)->whereDate('effective_from', '<', $data['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping roster already exists.');
             DB::table('hr_roster_assignments')->where('id', $rosterId)->update($data + ['approved_by' => null, 'approved_at' => null, 'created_by' => $request->user()->id, 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($rosterId)]); });
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($rosterId)]);
+        });
     }
 
     /**
@@ -329,16 +352,23 @@ class AttendanceResultController extends Controller
             $this->sameCompany($request, $row->company_id);
             abort_if($row->created_by === $request->user()->id, 409, 'Roster creator cannot approve the same roster.');
             abort_if($row->approved_at, 409, 'Roster is already approved.');
+            $calendar = DB::table('hr_work_calendars')->where('id', $row->calendar_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
+            $shift = DB::table('hr_shift_definitions')->where('id', $row->shift_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
+            $policy = DB::table('hr_attendance_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
+            abort_unless($calendar?->status === 'active' && $shift?->status === 'active' && $policy?->status === 'approved', 422, 'Roster requires an active calendar and shift and an approved policy.');
             DB::table('hr_roster_assignments')->where('id', $rosterId)->update(['approved_by' => $request->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($rosterId)]); });
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_roster_assignments')->find($rosterId)]);
+        });
     }
 
-    public function requestCorrection(Request $request, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
+    public function requestCorrection(Request $request, StaffAccessService $access, HrDomainRequestProjectionService $projection, AttendanceResultService $results): JsonResponse
     {
         $this->writes();
         $data = $request->validate(['staff_id' => ['required', 'uuid'], 'work_date' => ['required', 'date'], 'correction_type' => ['required', Rule::in(['missing_punch', 'wrong_direction', 'wrong_status', 'worked_minutes', 'payable_minutes'])], 'requested_values' => ['required', 'array'], 'reason' => ['required', 'string', 'max:2000'], 'evidence_references' => ['nullable', 'array'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data['requested_values'] = $results->validateCorrectionValues($data['requested_values']);
         $staff = Staff::query()->findOrFail($data['staff_id']);
         $access->authorize($request->user(), $staff, 'view');
+        ksort($data['requested_values']);
         $checksum = hash('sha256', json_encode(['staff_id' => $data['staff_id'], 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'requested_values' => $data['requested_values'], 'reason' => $data['reason'], 'evidence_references' => $data['evidence_references'] ?? null], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         if ($existing = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first()) {
             abort_unless(hash_equals($existing->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
@@ -347,10 +377,21 @@ class AttendanceResultController extends Controller
         }
         $current = AttendanceDailyResult::query()->where('staff_id', $staff->id)->whereDate('work_date', $data['work_date'])->latest('result_version')->first();
         $id = (string) Str::uuid();
-        DB::table('hr_attendance_correction_requests')->insert($this->json($data, ['requested_values', 'evidence_references']) + ['id' => $id, 'company_id' => $staff->company_id, 'current_result_id' => $current?->id, 'status' => 'pending_approval', 'request_checksum' => $checksum, 'requested_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        $row = DB::table('hr_attendance_correction_requests')->find($id);
+        [$row, $inserted] = DB::transaction(function () use ($data, $id, $staff, $current, $checksum, $request) {
+            $inserted = DB::table('hr_attendance_correction_requests')->insertOrIgnore($this->json($data, ['requested_values', 'evidence_references']) + ['id' => $id, 'company_id' => $staff->company_id, 'current_result_id' => $current?->id, 'status' => 'pending_approval', 'request_checksum' => $checksum, 'requested_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            $row = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first();
+            abort_unless($row, 409, 'Correction request could not be recorded. Retry with the same idempotency key.');
+            abort_unless(hash_equals($row->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
+            if ($inserted) {
+                activity('hr-attendance')->causedBy($request->user())
+                    ->withProperties(['correction_id' => $id, 'company_id' => $staff->company_id, 'staff_id' => $staff->id, 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'request_checksum' => $checksum, 'changed_fields' => array_keys($data['requested_values'])])
+                    ->log('attendance_correction_requested');
+            }
+
+            return [$row, $inserted];
+        });
         $projection->attendanceCorrection($row, $request->user()->id);
-        return response()->json(['status' => 'success', 'data' => $row], 201);
+        return response()->json(['status' => 'success', 'data' => $row], $inserted ? 201 : 200);
     }
 
     public function corrections(Request $request, StaffAccessService $access): JsonResponse
@@ -387,7 +428,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'resolved', 'superseded'])], 'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])]]);
         $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
-        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', 'result.id', '=', 'exception.daily_result_id')->join('staff', 'staff.id', '=', 'exception.staff_id')->join('users', 'users.id', '=', 'staff.user_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
+        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->join('staff', fn($join) => $join->on('staff.id', '=', 'exception.staff_id')->on('staff.company_id', '=', 'exception.company_id'))->join('users', 'users.id', '=', 'staff.user_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
 
@@ -399,8 +440,15 @@ class AttendanceResultController extends Controller
             abort_unless($row, 404);
             $this->sameCompany($request, $row->company_id);
             abort_unless($row->status === 'open', 409, 'Only open exceptions may be resolved.');
+            $staff = DB::table('staff')->where('id', $row->staff_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
+            $result = DB::table('hr_attendance_daily_results')->where('id', $row->daily_result_id)->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)->first();
+            abort_unless($staff && $result, 422, 'Exception Staff and result must match its legal entity.');
             DB::table('hr_attendance_exceptions')->where('id', $exceptionId)->update(['status' => 'resolved', 'resolved_at' => now(), 'resolved_by' => $request->user()->id, 'resolution_note' => $data['resolution_note'], 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_exceptions')->find($exceptionId)]); });
+            activity('hr-attendance')->causedBy($request->user())
+                ->withProperties(['exception_id' => $exceptionId, 'company_id' => $row->company_id, 'staff_id' => $row->staff_id, 'daily_result_id' => $row->daily_result_id, 'exception_type' => $row->exception_type])
+                ->log('attendance_exception_resolved');
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_exceptions')->find($exceptionId)]);
+        });
     }
 
     public function periods(Request $request): JsonResponse
@@ -413,15 +461,20 @@ class AttendanceResultController extends Controller
     public function storePeriod(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'timezone' => ['required', 'timezone']]);
-        $this->sameCompany($request, $data['company_id']);
-        return DB::transaction(function () use ($data) {
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'timezone' => ['required', 'timezone']]);
+        $data['company_id'] = $this->actorCompany($request, $data['company_id'] ?? null);
+        return DB::transaction(function () use ($request, $data) {
+            $this->sameCompany($request, $data['company_id']);
             DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
             $overlap = DB::table('hr_attendance_periods')->where('company_id', $data['company_id'])->whereDate('period_start', '<=', $data['period_end'])->whereDate('period_end', '>=', $data['period_start'])->exists();
             abort_if($overlap, 409, 'Attendance periods cannot overlap.');
             $id = (string) Str::uuid();
             DB::table('hr_attendance_periods')->insert($data + ['id' => $id, 'status' => 'open', 'version' => 1, 'created_at' => now(), 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->find($id)], 201); });
+            activity('hr-attendance')->causedBy($request->user())
+                ->withProperties(['period_id' => $id, 'company_id' => $data['company_id'], 'period_start' => $data['period_start'], 'period_end' => $data['period_end'], 'timezone' => $data['timezone']])
+                ->log('attendance_period_created');
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->find($id)], 201);
+        });
     }
 
     public function transitionPeriod(Request $request, string $periodId): JsonResponse
@@ -435,15 +488,20 @@ class AttendanceResultController extends Controller
             abort_unless($row->version === $data['expected_version'], 409, 'Attendance period version is stale.');
             $next = ['open' => ['review' => 'reviewed'], 'reviewed' => ['lock' => 'locked'], 'locked' => ['reopen' => 'open']][$row->status][$data['action']] ?? null;
             abort_unless($next, 409, 'Invalid attendance period transition.');
-            if ($data['action'] === 'reopen')
+            if ($data['action'] === 'reopen') {
                 abort_unless($request->user()->can('hr.attendance.periods.reopen'), 403, 'Reopening attendance periods requires separate authority.');
+            } else {
+                abort_unless($request->user()->can('hr.attendance.periods.manage'), 403, 'Attendance period management authority is required.');
+            }
             if ($next === 'locked') {
                 abort_unless($row->reviewed_by !== $request->user()->id, 409, 'The period reviewer cannot lock the same period.');
                 $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', 'result.id', '=', 'exception.daily_result_id')->where('exception.company_id', $row->company_id)->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
-                abort_if($open, 409, 'High-severity attendance exceptions must be resolved before lock.'); }$version = $row->version + 1;
+                abort_if($open, 409, 'High-severity attendance exceptions must be resolved before lock.');
+            }$version = $row->version + 1;
             DB::table('hr_attendance_periods')->where('id', $periodId)->update(['status' => $next, 'version' => $version, 'reviewed_at' => $next === 'reviewed' ? now() : $row->reviewed_at, 'reviewed_by' => $next === 'reviewed' ? $request->user()->id : $row->reviewed_by, 'locked_at' => $next === 'locked' ? now() : ($next === 'open' ? null : $row->locked_at), 'locked_by' => $next === 'locked' ? $request->user()->id : ($next === 'open' ? null : $row->locked_by), 'state_reason' => $data['reason'], 'updated_at' => now()]);
             DB::table('hr_attendance_period_events')->insert(['id' => (string) Str::uuid(), 'period_id' => $periodId, 'event_type' => $data['action'], 'from_status' => $row->status, 'to_status' => $next, 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id, 'occurred_at' => now(), 'version' => $version, 'created_at' => now(), 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->find($periodId)]); });
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_periods')->find($periodId)]);
+        });
     }
 
     private function sameCompany(Request $request, string $companyId): void

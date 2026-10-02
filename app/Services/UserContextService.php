@@ -445,7 +445,9 @@ class UserContextService
                 ->where('ucr.role_id', $roleId)
                 ->exists();
 
-            if (!$other && $user->hasRole($role->name)) {
+            $direct = DB::table('user_direct_role_grants')
+                ->where('user_id', $user->id)->where('role_id', $roleId)->exists();
+            if (!$other && !$direct && $user->hasRole($role->name)) {
                 $user->removeRole($role->name);
             }
         });
@@ -507,7 +509,9 @@ class UserContextService
                 ->where('ucr.role_id', $roleId)
                 ->exists();
 
-            if (!$usedByAnotherActiveContext && $user->hasRole($role->name)) {
+            $direct = DB::table('user_direct_role_grants')
+                ->where('user_id', $user->id)->where('role_id', $roleId)->exists();
+            if (!$usedByAnotherActiveContext && !$direct && $user->hasRole($role->name)) {
                 $user->removeRole($role->name);
             }
         }

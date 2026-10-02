@@ -36,6 +36,7 @@ class DetachLegacyCorporateGlobalRoles extends Command
                         if (in_array($role->name, self::DEFAULT_ROLES, true)
                             || str_starts_with($role->name, 'Corporate_')) {
                             $user->removeRole($role);
+                            app(\App\Services\UserService::class)->revokeDirectRoleGrants($user, [$role->id]);
                             $removed++;
                         }
                     }

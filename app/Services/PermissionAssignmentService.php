@@ -52,10 +52,21 @@ class PermissionAssignmentService
 
         $permissionNames = $this->normalizePermissionNames($permissionIdentifiers);
         $permissions = $this->permissionsForGuard($permissionNames, $role->guard_name);
+        $added = $removed = [];
 
-        DB::transaction(function () use ($role, $permissions) {
+        DB::transaction(function () use ($role, $permissions, &$added, &$removed) {
+            $lockedRole = Role::query()->whereKey($role->getKey())->lockForUpdate()->firstOrFail();
+            $previous = DB::table('role_has_permissions as grants')
+                ->join('permissions', 'permissions.id', '=', 'grants.permission_id')
+                ->where('grants.role_id', $lockedRole->id)
+                ->where('permissions.guard_name', $lockedRole->guard_name)
+                ->pluck('permissions.name')->all();
+            $desired = $permissions->pluck('name')->all();
+            $added = array_values(array_diff($desired, $previous));
+            $removed = array_values(array_diff($previous, $desired));
+
             DB::table('role_has_permissions')
-                ->where('role_id', $role->id)
+                ->where('role_id', $lockedRole->id)
                 ->delete();
 
             $permissions
@@ -63,11 +74,22 @@ class PermissionAssignmentService
                 ->unique()
                 ->each(fn ($permissionId) => DB::table('role_has_permissions')->insert([
                     'permission_id' => $permissionId,
-                    'role_id' => $role->id,
+                    'role_id' => $lockedRole->id,
                 ]));
+
+            if ($added || $removed) {
+                activity('role-access')->causedBy(request()->user())->performedOn($lockedRole)
+                    ->withProperties(['added' => $added, 'removed' => $removed])
+                    ->log('role_permissions_synced');
+            }
         });
 
-        app(PermissionRegistrar::class)->forgetCachedPermissions();
+        $clearPermissionCache = fn () => app(PermissionRegistrar::class)->forgetCachedPermissions();
+        if (DB::transactionLevel() > 0) {
+            DB::afterCommit($clearPermissionCache);
+        } else {
+            $clearPermissionCache();
+        }
 
         return Permission::query()
             ->join('role_has_permissions', 'permissions.id', '=', 'role_has_permissions.permission_id')
@@ -78,17 +100,41 @@ class PermissionAssignmentService
             ->get();
     }
 
+    public function grantRolePermissions(Role $role, array $permissionIdentifiers): Collection
+    {
+        $names = $this->normalizePermissionNames($permissionIdentifiers);
+
+        return DB::transaction(function () use ($role, $names) {
+            $lockedRole = Role::query()->whereKey($role->getKey())->lockForUpdate()->firstOrFail();
+            $current = $lockedRole->permissions()->pluck('name');
+
+            return $this->syncRolePermissions($lockedRole, $current->merge($names)->unique()->values()->all());
+        });
+    }
+
+    public function revokeRolePermissions(Role $role, array $permissionIdentifiers): Collection
+    {
+        $names = $this->normalizePermissionNames($permissionIdentifiers);
+
+        return DB::transaction(function () use ($role, $names) {
+            $lockedRole = Role::query()->whereKey($role->getKey())->lockForUpdate()->firstOrFail();
+            $current = $lockedRole->permissions()->pluck('name');
+            $remaining = $current->reject(fn ($name) => in_array($name, $names, true))->values();
+
+            return $this->syncRolePermissions($lockedRole, $remaining->all());
+        });
+    }
+
     public function applyTemplate(Role $role, string $templateKey, string $mode = 'merge'): Collection
     {
         $template = collect($this->registry->templates())->firstWhere('key', $templateKey);
         abort_if(!$template, 422, 'Selected permission template is invalid.');
 
         $templatePermissions = $template['permissions'] ?? [];
-        $permissions = $mode === 'replace'
-            ? $templatePermissions
-            : collect($role->permissions()->pluck('name'))->merge($templatePermissions)->unique()->values()->all();
 
-        return $this->syncRolePermissions($role, $permissions);
+        return $mode === 'replace'
+            ? $this->syncRolePermissions($role, $templatePermissions)
+            : $this->grantRolePermissions($role, $templatePermissions);
     }
 
     public function syncDirectUserPermissions(User $user, array $permissionIdentifiers): Collection

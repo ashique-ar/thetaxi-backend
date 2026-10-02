@@ -201,6 +201,7 @@ class UserService
                 $defaultRole = Role::with('permissions')->where('name', 'customer')->first();
                 if ($defaultRole) {
                     $user->assignRole($defaultRole);
+                    $this->grantDirectRoleGrants($user, collect([$defaultRole]));
                 }
             }
 
@@ -208,6 +209,7 @@ class UserService
                 $role = Role::with('permissions')->find($userData['role_id']);
                 if ($role) {
                     $user->assignRole($role);
+                    $this->grantDirectRoleGrants($user, collect([$role]));
                 }
             }
 
@@ -218,6 +220,7 @@ class UserService
                     ->get();
 
                 $user->assignRole($roles);
+                $this->grantDirectRoleGrants($user, $roles);
             }
 
             // Assign permissions if provided
@@ -245,6 +248,7 @@ class UserService
     {
         DB::beginTransaction();
         try {
+            User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
             // Hash password if provided
             if (isset($userData['password'])) {
                 $userData['password'] = Hash::make($userData['password']);
@@ -262,12 +266,14 @@ class UserService
                     ->get();
 
                 $user->syncRoles($roles);
+                $this->syncDirectRoleGrants($user, $roles);
             }
 
             if (isset($userData['role_id'])) {
                 $role = Role::with('permissions')->find($userData['role_id']);
                 if ($role) {
                     $user->assignRole($role);
+                    $this->grantDirectRoleGrants($user, collect([$role]));
                 }
             }
 
@@ -281,6 +287,50 @@ class UserService
         } catch (\Exception $e) {
             DB::rollBack();
             throw $e;
+        }
+    }
+
+    public function grantDirectRoleGrants(User $user, \Illuminate\Support\Collection $roles): void
+    {
+        $ids = $roles->pluck('id')->all();
+        $existing = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+            ->whereIn('role_id', $ids)->pluck('role_id')->all();
+        $added = array_values(array_diff($ids, $existing));
+        foreach ($roles->whereIn('id', $added) as $role) {
+            DB::table('user_direct_role_grants')->updateOrInsert(
+                ['user_id' => $user->id, 'role_id' => $role->id],
+                ['created_at' => now(), 'updated_at' => now()]
+            );
+        }
+        $this->logDirectRoleGrantChange($user, $added, []);
+    }
+
+    public function syncDirectRoleGrants(User $user, \Illuminate\Support\Collection $roles): void
+    {
+        $roleIds = $roles->pluck('id')->all();
+        $removed = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+            ->when($roleIds, fn ($query) => $query->whereNotIn('role_id', $roleIds))
+            ->pluck('role_id')->all();
+        DB::table('user_direct_role_grants')->where('user_id', $user->id)
+            ->when($roleIds, fn ($query) => $query->whereNotIn('role_id', $roleIds))->delete();
+        $this->grantDirectRoleGrants($user, $roles);
+        $this->logDirectRoleGrantChange($user, [], $removed);
+    }
+
+    public function revokeDirectRoleGrants(User $user, array $roleIds): void
+    {
+        $removed = DB::table('user_direct_role_grants')->where('user_id', $user->id)
+            ->whereIn('role_id', $roleIds)->pluck('role_id')->all();
+        DB::table('user_direct_role_grants')->where('user_id', $user->id)->whereIn('role_id', $roleIds)->delete();
+        $this->logDirectRoleGrantChange($user, [], $removed);
+    }
+
+    private function logDirectRoleGrantChange(User $user, array $added, array $removed): void
+    {
+        if ($added || $removed) {
+            activity('user-access')->causedBy(request()->user())->performedOn($user)
+                ->withProperties(['added_role_ids' => $added, 'removed_role_ids' => $removed])
+                ->log('direct_role_grants_changed');
         }
     }
 

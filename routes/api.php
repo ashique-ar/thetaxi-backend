@@ -1046,7 +1046,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('exceptions/{exceptionId}/resolve', [AttendanceResultController::class, 'resolveException'])->whereUuid('exceptionId')->middleware('permission:hr.attendance.exceptions.resolve');
         Route::get('periods', [AttendanceResultController::class, 'periods'])->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
         Route::post('periods', [AttendanceResultController::class, 'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
-        Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage');
+        Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
     });
     Route::prefix('hr/workforce')->group(function () {
         Route::get('references', [WorkforceController::class, 'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');

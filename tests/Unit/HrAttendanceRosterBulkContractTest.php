@@ -30,3 +30,15 @@ it('wires the bulk roster form into the existing Angular attendance configuratio
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-attendance/components/attendance-configuration/attendance-configuration.component.html'));
     expect($template)->toContain('formControlName="staff_ids"')->toContain('[multiple]="true"')->toContain('[alwaysShowSearch]="true"');
 });
+
+it('serializes roster edits with create and bulk overlap checks', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
+    $update = substr($controller, strpos($controller, 'public function updateRoster('));
+    $update = substr($update, 0, strpos($update, 'public function storeRosterBulk('));
+
+    expect($update)
+        ->toContain("DB::table('companies')->where('id', \$row->company_id)->lockForUpdate()->first();")
+        ->toContain("->where('id', '!=', \$rosterId)")
+        ->toContain("abort_if(\$overlap, 409, 'An overlapping roster already exists.')");
+    expect(strpos($update, 'lockForUpdate'))->toBeLessThan(strpos($update, '$overlap ='));
+});

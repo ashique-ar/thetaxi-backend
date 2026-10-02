@@ -109,6 +109,57 @@ it('syncs a role to only the requested permissions', function () {
     ]);
 });
 
+it('merges role grants and revokes against the locked current permission set', function () {
+    $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
+
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
+    $view = Permission::create(['name' => 'bookings.view', 'guard_name' => 'web']);
+    $edit = Permission::create(['name' => 'bookings.edit', 'guard_name' => 'web']);
+    $role->givePermissionTo($view);
+
+    $this->postJson("/api/roles/{$role->id}/permissions", ['permissions' => ['bookings.edit']])->assertOk();
+
+    expect($role->fresh()->permissions()->pluck('name')->sort()->values()->all())
+        ->toBe(['bookings.edit', 'bookings.view']);
+
+    $this->deleteJson("/api/roles/{$role->id}/permissions", ['permissions' => ['bookings.view']])->assertOk();
+
+    expect($role->fresh()->permissions()->pluck('name')->all())->toBe(['bookings.edit']);
+    $this->assertDatabaseHas('activity_log', [
+        'log_name' => 'role-access',
+        'subject_id' => $role->id,
+        'description' => 'role_permissions_synced',
+    ]);
+});
+
+it('clears the permission cache only after a role permission transaction commits', function () {
+    $role = Role::create(['name' => 'operations', 'guard_name' => 'web']);
+    $view = Permission::create(['name' => 'bookings.view', 'guard_name' => 'web']);
+    $edit = Permission::create(['name' => 'bookings.edit', 'guard_name' => 'web']);
+    $role->givePermissionTo($view);
+
+    $registrar = \Mockery::mock(PermissionRegistrar::class)->makePartial();
+    $registrar->shouldReceive('forgetCachedPermissions')->once()->passthru();
+    app()->instance(PermissionRegistrar::class, $registrar);
+    $assignment = app(PermissionAssignmentService::class);
+
+    DB::beginTransaction();
+    $assignment->syncRolePermissions($role, ['bookings.edit']);
+    $registrar->shouldNotHaveReceived('forgetCachedPermissions');
+    DB::rollBack();
+    $this->assertDatabaseHas('role_has_permissions', ['role_id' => $role->id, 'permission_id' => $view->id]);
+
+    DB::beginTransaction();
+    $assignment->syncRolePermissions($role, ['bookings.edit']);
+    $registrar->shouldNotHaveReceived('forgetCachedPermissions');
+    DB::commit();
+    $registrar->shouldHaveReceived('forgetCachedPermissions')->once();
+    $this->assertDatabaseHas('role_has_permissions', [
+        'role_id' => $role->id,
+        'permission_id' => $edit->id,
+    ]);
+});
+
 it('rejects permissions that do not exist for the role guard', function () {
     $this->withoutMiddleware([Authenticate::class, PermissionMiddleware::class]);
 
