@@ -7,6 +7,7 @@ use App\Models\UserContext;
 use App\Services\UserContextService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
 uses(RefreshDatabase::class);
@@ -45,6 +46,12 @@ it('deactivates ended Staff contexts during a forced all-context sync', function
         'context_id' => $staff->id,
         'is_active' => true,
     ]);
+    $staleContext = UserContext::create([
+        'user_id' => $user->id,
+        'context_type' => 'staff',
+        'context_id' => (string) Str::uuid(),
+        'is_active' => true,
+    ]);
     $role = Role::firstOrCreate(['name' => 'former-staff-sync-role', 'guard_name' => 'api']);
     app(UserContextService::class)->assignRolesToContext($user, $context, [$role->id]);
     $actor = User::factory()->create();
@@ -56,6 +63,7 @@ it('deactivates ended Staff contexts during a forced all-context sync', function
     Artisan::call('contexts:sync-all', ['--force' => true]);
 
     expect($context->fresh()->is_active)->toBeFalse()
+        ->and($staleContext->fresh()->is_active)->toBeFalse()
         ->and($staff->fresh()->employment_ended_at)->not->toBeNull()
         ->and($user->fresh()->hasRole($role))->toBeFalse();
     $this->assertDatabaseHas('activity_log', [

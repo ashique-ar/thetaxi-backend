@@ -136,24 +136,30 @@ class SyncAllContexts extends Command
                             ->first();
 
                         if ($contextType === 'staff' && $record->employment_ended_at) {
-                            if (!$context || !$context->is_active) {
+                            $activeContexts = UserContext::query()
+                                ->where('user_id', $user->id)
+                                ->where('context_type', 'staff')
+                                ->where('is_active', true)
+                                ->lockForUpdate()
+                                ->get();
+                            if ($activeContexts->isEmpty()) {
                                 return false;
                             }
 
                             $actor = User::query()->find(config('hr.system_user_id'));
                             abort_unless($actor, 409, 'HR_SYSTEM_USER_ID must identify an existing system actor.');
-                            app(\App\Services\UserContextService::class)->deactivateContext(
+                            $deactivated = app(\App\Services\UserContextService::class)->deactivateContext(
                                 $user,
                                 'staff',
-                                $record->id,
+                                null,
                                 $actor->id
                             );
+                            abort_unless($deactivated, 409, 'Staff contexts changed during synchronization.');
                             activity('user-access')->causedBy($actor)->performedOn($user)
                                 ->withProperties([
-                                    'user_context_id' => $context->id,
                                     'context_type' => 'staff',
                                     'staff_id' => $record->id,
-                                    'employment_ended_at' => $record->employment_ended_at,
+                                    'user_context_count' => $activeContexts->count(),
                                     'source_command' => 'contexts:sync-all',
                                 ])->log('former_staff_context_deactivated_by_sync');
 
