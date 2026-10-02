@@ -163,7 +163,11 @@ class CustomerSeeder extends Seeder
             
             // Assign customer role
             if ($customerRole) {
+                $hadRole = $user->hasRole($customerRole);
                 $user->assignRole($customerRole);
+                if (!$hadRole) {
+                    app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$customerRole]));
+                }
             }
 
             // Create customer profile

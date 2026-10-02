@@ -3,8 +3,10 @@
 namespace App\Http\Controllers\Api\Booking\Traits;
 
 use App\Http\Resources\Booking\BookingFlowResource;
+use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -536,11 +538,38 @@ trait BookingSubmissionTrait
         $request->validate([
             'customer_id' => 'required|string|exists:customers,id',
             'booking_items' => 'required|array|min:1',
+            'send_quotation_sms' => ['sometimes', 'boolean'],
+            'send_quotation_email' => ['sometimes', 'boolean'],
         ]);
 
         try {
             $params = $this->bookingFlowService->normalizeCorporateEmployeeReferences($request->all());
             $booking = $this->bookingFlowService->requestBookingQuotation($params);
+
+            $sendSms = filter_var($params['send_quotation_sms'] ?? false, FILTER_VALIDATE_BOOL);
+            $booking->notification_sms = $sendSms;
+            $booking->save();
+            if ($sendSms) {
+                app(SmsAutomationService::class)->queueWebsiteQuotationRequested($booking);
+            }
+
+            if (filter_var($params['send_quotation_email'] ?? false, FILTER_VALIDATE_BOOL)) {
+                try {
+                    $booking->loadMissing('customer.user', 'bookingItems.vehicleGroup', 'bookingItems.serviceType');
+                    $email = $booking->customer?->user?->email;
+                    if ($email) {
+                        app(\App\Services\MailDispatchService::class)->sendToCustomer(
+                            $email,
+                            new QuotationRequestMail($booking)
+                        );
+                    }
+                } catch (\Throwable $e) {
+                    Log::error('Staff quotation email failed', [
+                        'booking_id' => $booking->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
 
             return response()->json([
                 'status' => 'success',

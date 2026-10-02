@@ -173,7 +173,11 @@ class DriverSeeder extends Seeder
             
             // Assign driver role
             if ($driverRole) {
+                $hadRole = $user->hasRole($driverRole);
                 $user->assignRole($driverRole);
+                if (!$hadRole) {
+                    app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$driverRole]));
+                }
             }
 
             // Create or update driver profile

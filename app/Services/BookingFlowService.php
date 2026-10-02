@@ -12707,6 +12707,10 @@ class BookingFlowService
     {
         return DB::transaction(function () use ($params) {
             $booking = $this->saveBookingDraft($params);
+            if (!str_starts_with((string) $booking->booking_number, 'QT')) {
+                $booking->booking_number = Booking::generateQuotationNumber();
+            }
+            $booking->payment_status = 'not_required';
             $workflowData = is_array($booking->workflow_data) ? $booking->workflow_data : [];
 
             $booking->status = 'quotation_requested';

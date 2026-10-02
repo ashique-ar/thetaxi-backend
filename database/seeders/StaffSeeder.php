@@ -185,14 +185,22 @@ class StaffSeeder extends Seeder
             // Assign role if it exists
             $role = Role::where('name', $roleName)->where('guard_name', 'api')->first();
             if ($role) {
+                $hadRole = $user->hasRole($role);
                 $user->assignRole($role);
+                if (!$hadRole) {
+                    app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$role]));
+                }
                 $this->command->info("Assigned role '{$roleName}' to {$user->first_name} {$user->last_name}");
             } else {
                 $this->command->warn("Role '{$roleName}' not found for {$user->first_name} {$user->last_name}");
                 // Assign a default operator role if the specific role doesn't exist
                 $operatorRole = Role::where('name', 'operator')->where('guard_name', 'api')->first();
                 if ($operatorRole) {
+                    $hadRole = $user->hasRole($operatorRole);
                     $user->assignRole($operatorRole);
+                    if (!$hadRole) {
+                        app(\App\Services\UserService::class)->grantDirectRoleGrants($user, collect([$operatorRole]));
+                    }
                     $this->command->info("Assigned default 'operator' role to {$user->first_name} {$user->last_name}");
                 }
             }
