@@ -123,14 +123,32 @@ class SyncAllContexts extends Command
                     continue;
                 }
 
+                $contextQuery = UserContext::where('user_id', $record->user_id)->where('context_type', $contextType);
                 $changed = $dryRun
-                    ? !UserContext::where('user_id', $record->user_id)->where('context_type', $contextType)->exists() || $force
+                    ? ($contextType === 'staff' && $record->employment_ended_at
+                        ? (clone $contextQuery)->where('is_active', true)->exists()
+                        : !$contextQuery->exists() || $force)
                     : DB::transaction(function () use ($record, $contextType, $force): bool {
                         $user = User::query()->whereKey($record->user_id)->lockForUpdate()->firstOrFail();
                         $context = UserContext::where('user_id', $user->id)
                             ->where('context_type', $contextType)
                             ->lockForUpdate()
                             ->first();
+
+                        if ($contextType === 'staff' && $record->employment_ended_at) {
+                            if (!$context || !$context->is_active) {
+                                return false;
+                            }
+
+                            app(\App\Services\UserContextService::class)->deactivateContext(
+                                $user,
+                                'staff',
+                                $record->id,
+                                $user->id
+                            );
+
+                            return true;
+                        }
 
                         if ($context && !$force) {
                             return false;
