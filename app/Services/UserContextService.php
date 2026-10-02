@@ -37,6 +37,21 @@ class UserContextService
         'customer' => ['customer'],
         'driver' => ['driver'],
         'staff' => ['staff'],
+        'accountant' => ['staff'],
+        'admin-mkt' => ['staff'],
+        'data-entry' => ['staff'],
+        'driver-coordinator' => ['staff'],
+        'fleet-manager' => ['staff'],
+        'hr-integration-adapter' => ['staff'],
+        'hr-manager' => ['staff'],
+        'hr-notification-adapter' => ['staff'],
+        'hr-officer' => ['staff'],
+        'hr-safety-integration-adapter' => ['staff'],
+        'management' => ['staff'],
+        'rep-marketing' => ['staff'],
+        'sales-manager' => ['staff'],
+        'salesperson' => ['staff'],
+        'sub-admin' => ['staff'],
         'agent' => ['agent'],
         'vehicle-owner' => ['vehicle_owner'],
         'vehicle_owner' => ['vehicle_owner'],
@@ -375,10 +390,10 @@ class UserContextService
                     ->where('user_context_id', $userContext->id)
                     ->where('role_id', $roleModel->id)
                     ->exists();
+                $globalRoleExists = DB::table('model_has_roles')->where('role_id', $roleModel->id)
+                    ->where('model_type', User::class)->where('model_id', $user->id)->exists();
 
                 if (!$exists) {
-                    $globalRoleExists = DB::table('model_has_roles')->where('role_id', $roleModel->id)
-                        ->where('model_type', User::class)->where('model_id', $user->id)->exists();
                     $hasOtherContextSource = DB::table('user_context_roles')->where('role_id', $roleModel->id)
                         ->where('user_context_id', '!=', $userContext->id)->whereIn('user_context_id', function ($query) use ($user) {
                             $query->select('id')->from('user_contexts')->where('user_id', $user->id);
@@ -397,7 +412,7 @@ class UserContextService
                     }
                 }
 
-                if ($userContext->is_active && !$user->hasRole($roleModel->name)) {
+                if ($userContext->is_active && !$globalRoleExists && !$user->hasRole($roleModel->name)) {
                     $user->assignRole($roleModel->name);
                 }
             }

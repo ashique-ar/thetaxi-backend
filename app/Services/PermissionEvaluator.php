@@ -30,6 +30,10 @@ class PermissionEvaluator
             return $this->userHasAnyForInternalContext($user, $permissions);
         }
 
+        if ($contextType === 'staff' && ! $this->hasActiveStaffIdentity($user, $contextId)) {
+            return false;
+        }
+
         // Corporate permissions belong to the selected employee context. A user
         // may be an admin in one company and an ordinary employee in another.
         if ($contextType !== 'corporate' && $this->userHasAny($user, $permissions)) {
@@ -158,25 +162,39 @@ class PermissionEvaluator
             ->values();
     }
 
-    private function hasActiveStaffIdentity(User $user): bool
+    private function hasActiveStaffIdentity(User $user, ?string $contextId = null): bool
     {
         if ($user->roles()->whereIn('name', ['admin', 'super-admin'])->exists()) {
             return true;
         }
 
-        return $user->contexts()
+        $contexts = $user->contexts()
             ->where('context_type', 'staff')
-            ->where('is_active', true)
-            ->whereIn('context_id', function ($staff) use ($user) {
-                $staff->select('id')
-                    ->from('staff')
-                    ->where('user_id', $user->id)
-                    ->whereNull('deleted_at')
-                    ->where(fn ($employment) => $employment
-                        ->whereNull('employment_ended_at')
-                        ->orWhere('employment_ended_at', '>', now()));
-            })
-            ->exists();
+            ->where('is_active', true);
+        $allContexts = clone $contexts;
+        $hasSelectedContext = $contextId && Str::isUuid($contextId);
+
+        if ($hasSelectedContext) {
+            $contexts->where(function ($query) use ($contextId) {
+                $query->where('id', $contextId)->orWhere('context_id', $contextId);
+            });
+        }
+
+        $activeStaff = function ($staff) use ($user) {
+            $staff->select('id')
+                ->from('staff')
+                ->where('user_id', $user->id)
+                ->whereNull('deleted_at')
+                ->where(fn ($employment) => $employment
+                    ->whereNull('employment_ended_at')
+                    ->orWhere('employment_ended_at', '>', now()));
+        };
+
+        if (!(clone $contexts)->whereIn('context_id', $activeStaff)->exists()) {
+            return false;
+        }
+
+        return $hasSelectedContext || !(clone $allContexts)->whereNotIn('context_id', $activeStaff)->exists();
     }
 
     public function userHas(User $user, string $permission): bool

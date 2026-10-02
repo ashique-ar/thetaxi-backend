@@ -260,7 +260,9 @@ trait ManagesDevicePeopleMapping
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $companyId)
             ->whereNull('staff.deleted_at')
-            ->whereNull('staff.employment_ended_at')
+            ->where(fn ($employment) => $employment
+                ->whereNull('staff.employment_ended_at')
+                ->orWhere('staff.employment_ended_at', '>', now()))
             ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('staff.id', $id))
             ->when($data['selected_ids'] ?? null, fn ($query, $ids) => $query->whereIn('staff.id', $ids))
             ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {

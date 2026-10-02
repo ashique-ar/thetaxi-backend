@@ -973,6 +973,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
     Route::prefix('hr/attendance')->group(function () {
+        Route::get('company-options', [AttendanceResultController::class, 'companyOptions'])->middleware('permission:hr.attendance.results.view|hr.attendance.corrections.request');
         Route::get('device-options', [AttendanceDeviceController::class, 'deviceOptions'])->middleware('permission:hr.attendance.devices.view');
         Route::get('devices', [AttendanceDeviceController::class, 'index'])->middleware('permission:hr.attendance.devices.view');
         Route::post('connectors', [AttendanceDeviceController::class, 'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
@@ -1969,6 +1970,7 @@ Route::middleware(['auth:api'])->group(function () {
         // Driver status and location endpoints (place specific routes before resource registration)
         Route::get('drivers/locations', [DriverController::class, 'locations']);
         Route::get('drivers/realtime-status', [DriverController::class, 'realTimeStatus']);
+        Route::get('drivers/list-summary', [DriverController::class, 'listSummary']);
         Route::get('drivers/with-status', [\App\Http\Controllers\Api\Admin\BookingAssignmentController::class, 'driversWithStatus']);
         Route::get('driver-assignments/dashboard-stats', [DriverController::class, 'driverAssignmentDashboardStats']);
         Route::get('driver-assignments/active', [DriverController::class, 'activeDriverAssignments']);

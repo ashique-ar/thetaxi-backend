@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Api\Hr\Concerns;
 
 use App\Models\Staff;
+use App\Models\Company;
 use Illuminate\Http\Request;
 
 /**
@@ -13,11 +14,29 @@ trait AuthorizesAttendanceRequests
 {
     private function authorizedCompanyId(Request $request, ?string $requestedCompanyId): string
     {
-        $actorCompanyId = Staff::query()->where('user_id', $request->user()->id)->value('company_id');
-        abort_unless($actorCompanyId, 403, 'The authenticated user has no staff legal-entity context.');
-        abort_if($requestedCompanyId && $requestedCompanyId !== $actorCompanyId, 403, 'Attendance data is outside your legal entity.');
+        $actorCompanyIds = $this->authorizedCompanyIds($request);
+        abort_unless($actorCompanyIds->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
+        if ($requestedCompanyId) {
+            abort_unless($actorCompanyIds->contains($requestedCompanyId), 403, 'Attendance data is outside your legal entity.');
+        } else {
+            abort_unless($actorCompanyIds->count() === 1, 403, 'Select an authorized Staff legal entity for attendance access.');
+        }
 
-        return $actorCompanyId;
+        return $requestedCompanyId ?: (string) $actorCompanyIds->first();
+    }
+
+    private function authorizedCompanyIds(Request $request)
+    {
+        $staffCompanyIds = Staff::query()
+            ->where('user_id', $request->user()->id)
+            ->whereNotNull('company_id')
+            ->where(fn ($employment) => $employment
+                ->whereNull('employment_ended_at')
+                ->orWhere('employment_ended_at', '>', now()))
+            ->select('company_id');
+
+        return Company::query()->where('is_active', true)->whereIn('id', $staffCompanyIds)
+            ->distinct()->orderBy('name')->pluck('id');
     }
 
     private function requireAttendanceWrites(): void

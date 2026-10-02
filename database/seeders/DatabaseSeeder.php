@@ -26,6 +26,7 @@ class DatabaseSeeder extends Seeder
             // default Company created by CompanySeeder.
             CompanySeeder::class,
             StaffSeeder::class,
+            StaffRoleContextSeeder::class,
 
             // HR module defaults. Each is idempotent and safe to re-run; order
             // matters because later seeders look up rows created by earlier

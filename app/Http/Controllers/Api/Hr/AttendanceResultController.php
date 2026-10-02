@@ -3,7 +3,9 @@
 namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Hr\Concerns\AuthorizesAttendanceRequests;
 use App\Models\Hr\Attendance\AttendanceDailyResult;
+use App\Models\Company;
 use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceResultService;
 use App\Services\StaffAccessService;
@@ -17,10 +19,28 @@ use Illuminate\Validation\Rule;
 
 class AttendanceResultController extends Controller
 {
+    use AuthorizesAttendanceRequests;
+
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
+        $companies = Company::query()->whereIn('id', $this->authorizedCompanyIds($request))
+            ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->whereKey($id))
+            ->when(! empty($data['search']), fn ($query) => $query->whereLikeInsensitive('name', trim($data['search'])))
+            ->orderBy('name')->limit(25)->get(['id', 'name']);
+
+        return response()->json(['status' => 'success', 'data' => $companies->map(fn ($company) => [
+            'value' => (string) $company->id,
+            'label' => $company->name,
+            'status' => 'active',
+        ])->values()]);
+    }
+
     public function index(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
+        $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
         $latest = DB::table('hr_attendance_daily_results')->selectRaw('staff_id, work_date, max(result_version) as result_version')->whereIn('staff_id', clone $staffIds)->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('work_date', '<=', $v))->groupBy('staff_id', 'work_date');
         $query = DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
             ->select(['result.id', 'result.staff_id', 'result.work_date', 'result.result_version', 'result.day_status', 'result.scheduled_start_at', 'result.scheduled_end_at', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.early_leave_minutes', 'result.payable_minutes', 'result.source_kind', 'result.calculated_at', 'result.result_checksum'])
@@ -40,6 +60,7 @@ class AttendanceResultController extends Controller
     public function report(Request $request, StaffAccessService $access): JsonResponse
     {
         $data = $request->validate([
+            'company_id' => ['nullable', 'uuid'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])],
@@ -47,7 +68,8 @@ class AttendanceResultController extends Controller
         ]);
         abort_if(CarbonImmutable::parse($data['from'])->diffInDays(CarbonImmutable::parse($data['to'])) > 366, 422, 'Attendance reports are limited to a 367-day range.');
 
-        $staffIds = $access->scope(Staff::query(), $request->user())->select('id');
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
+        $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->select('id');
         $latest = DB::table('hr_attendance_daily_results')
             ->selectRaw('staff_id, work_date, max(result_version) as result_version')
             ->whereIn('staff_id', clone $staffIds)
@@ -364,14 +386,15 @@ class AttendanceResultController extends Controller
     public function requestCorrection(Request $request, StaffAccessService $access, HrDomainRequestProjectionService $projection, AttendanceResultService $results): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['staff_id' => ['required', 'uuid'], 'work_date' => ['required', 'date'], 'correction_type' => ['required', Rule::in(['missing_punch', 'wrong_direction', 'wrong_status', 'worked_minutes', 'payable_minutes'])], 'requested_values' => ['required', 'array'], 'reason' => ['required', 'string', 'max:2000'], 'evidence_references' => ['nullable', 'array'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'work_date' => ['required', 'date'], 'correction_type' => ['required', Rule::in(['missing_punch', 'wrong_direction', 'wrong_status', 'worked_minutes', 'payable_minutes'])], 'requested_values' => ['required', 'array'], 'reason' => ['required', 'string', 'max:2000'], 'evidence_references' => ['nullable', 'array'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data['company_id'] = $this->actorCompany($request, $data['company_id'] ?? null);
         $data['requested_values'] = $results->validateCorrectionValues($data['requested_values']);
-        $staff = Staff::query()->findOrFail($data['staff_id']);
+        $staff = Staff::query()->where('company_id', $data['company_id'])->findOrFail($data['staff_id']);
         $access->authorize($request->user(), $staff, 'view');
         ksort($data['requested_values']);
         $checksum = hash('sha256', json_encode(['staff_id' => $data['staff_id'], 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'requested_values' => $data['requested_values'], 'reason' => $data['reason'], 'evidence_references' => $data['evidence_references'] ?? null], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         if ($existing = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first()) {
-            abort_unless(hash_equals($existing->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
+            abort_unless($existing->company_id === $data['company_id'] && hash_equals($existing->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
             $projection->attendanceCorrection($existing, $request->user()->id);
             return response()->json(['status' => 'success', 'data' => $existing]);
         }
@@ -381,7 +404,7 @@ class AttendanceResultController extends Controller
             $inserted = DB::table('hr_attendance_correction_requests')->insertOrIgnore($this->json($data, ['requested_values', 'evidence_references']) + ['id' => $id, 'company_id' => $staff->company_id, 'current_result_id' => $current?->id, 'status' => 'pending_approval', 'request_checksum' => $checksum, 'requested_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
             $row = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first();
             abort_unless($row, 409, 'Correction request could not be recorded. Retry with the same idempotency key.');
-            abort_unless(hash_equals($row->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
+            abort_unless($row->company_id === $data['company_id'] && hash_equals($row->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
             if ($inserted) {
                 activity('hr-attendance')->causedBy($request->user())
                     ->withProperties(['correction_id' => $id, 'company_id' => $staff->company_id, 'staff_id' => $staff->id, 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'request_checksum' => $checksum, 'changed_fields' => array_keys($data['requested_values'])])
@@ -396,8 +419,9 @@ class AttendanceResultController extends Controller
 
     public function corrections(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved', 'rejected'])]]);
-        $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved', 'rejected'])]]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
+        $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
         $query = DB::table('hr_attendance_correction_requests')->whereIn('staff_id', $staffIds)->select(['id', 'staff_id', 'work_date', 'correction_type', 'requested_values', 'reason', 'status', 'requested_by', 'decided_by', 'decided_at', 'decision_note', 'created_at'])->when($data['status'] ?? null, fn($q, $v) => $q->where('status', $v))->latest('created_at');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
@@ -426,8 +450,9 @@ class AttendanceResultController extends Controller
 
     public function exceptions(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'resolved', 'superseded'])], 'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])]]);
-        $staffIds = $access->scope(Staff::query(), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'resolved', 'superseded'])], 'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])]]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
+        $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
         $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->join('staff', fn($join) => $join->on('staff.id', '=', 'exception.staff_id')->on('staff.company_id', '=', 'exception.company_id'))->join('users', 'users.id', '=', 'staff.user_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
@@ -506,15 +531,11 @@ class AttendanceResultController extends Controller
 
     private function sameCompany(Request $request, string $companyId): void
     {
-        $actorCompany = Staff::query()->where('user_id', $request->user()->id)->value('company_id');
-        abort_unless($actorCompany && $actorCompany === $companyId, 403, 'Attendance data is outside your legal entity.');
+        $this->authorizedCompanyId($request, $companyId);
     }
     private function actorCompany(Request $request, ?string $requestedCompanyId): string
     {
-        $actorCompany = Staff::query()->where('user_id', $request->user()->id)->value('company_id');
-        abort_unless($actorCompany, 403, 'The authenticated user has no staff legal-entity context.');
-        abort_if($requestedCompanyId && $requestedCompanyId !== $actorCompany, 403, 'Attendance data is outside your legal entity.');
-        return $actorCompany;
+        return $this->authorizedCompanyId($request, $requestedCompanyId);
     }
     private function writes(): void
     {
