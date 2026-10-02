@@ -102,6 +102,15 @@ class PermissionEvaluator
 
     public function rolesForInternalContext(User $user): Collection
     {
+        $adminRoles = $user->roles()
+            ->with('permissions')
+            ->whereIn('name', ['admin', 'super-admin'])
+            ->get();
+
+        if ($adminRoles->isNotEmpty()) {
+            return $adminRoles;
+        }
+
         if (! $this->hasActiveStaffIdentity($user)) {
             return collect();
         }
@@ -151,6 +160,10 @@ class PermissionEvaluator
 
     private function hasActiveStaffIdentity(User $user): bool
     {
+        if ($user->roles()->whereIn('name', ['admin', 'super-admin'])->exists()) {
+            return true;
+        }
+
         return $user->contexts()
             ->where('context_type', 'staff')
             ->where('is_active', true)

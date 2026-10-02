@@ -94,7 +94,7 @@ class SyncAllContexts extends Command
             $this->info('Run without --dry-run to apply changes.');
         }
 
-        return Command::SUCCESS;
+        return $totalErrors > 0 ? Command::FAILURE : Command::SUCCESS;
     }
 
     /**
@@ -140,12 +140,22 @@ class SyncAllContexts extends Command
                                 return false;
                             }
 
+                            $actor = User::query()->find(config('hr.system_user_id'));
+                            abort_unless($actor, 409, 'HR_SYSTEM_USER_ID must identify an existing system actor.');
                             app(\App\Services\UserContextService::class)->deactivateContext(
                                 $user,
                                 'staff',
                                 $record->id,
-                                $user->id
+                                $actor->id
                             );
+                            activity('user-access')->causedBy($actor)->performedOn($user)
+                                ->withProperties([
+                                    'user_context_id' => $context->id,
+                                    'context_type' => 'staff',
+                                    'staff_id' => $record->id,
+                                    'employment_ended_at' => $record->employment_ended_at,
+                                    'source_command' => 'contexts:sync-all',
+                                ])->log('former_staff_context_deactivated_by_sync');
 
                             return true;
                         }
