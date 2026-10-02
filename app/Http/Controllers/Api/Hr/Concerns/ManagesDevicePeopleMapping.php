@@ -26,9 +26,7 @@ trait ManagesDevicePeopleMapping
 {
     public function devicePeople(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
         $adapter = $providers->adapterFor($device);
         $position = 0;
         $people = [];
@@ -61,9 +59,7 @@ trait ManagesDevicePeopleMapping
     {
         $this->requireAttendanceWrites();
         $data = $request->validate(['staff_id' => ['required', 'uuid']]);
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can receive Staff users.');
         $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->firstOrFail();
         abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
@@ -92,9 +88,7 @@ trait ManagesDevicePeopleMapping
             'display_name' => ['nullable', 'string', 'max:32'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can synchronize Staff users.');
         $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->firstOrFail();
         $mappingExists = DB::table('hr_attendance_person_mappings')
@@ -139,7 +133,7 @@ trait ManagesDevicePeopleMapping
         $this->requireAttendanceWrites();
         $data = $request->validate(['enabled' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000']]);
         [$device, $mapping] = $this->mappedIdentity($request, $deviceId, $employeeNumber);
-        $staff = Staff::query()->findOrFail($mapping->staff_id);
+        $staff = Staff::query()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->firstOrFail();
         abort_if($data['enabled'] && filled($staff->employment_ended_at), 422, 'Former Staff cannot be enabled on an attendance terminal.');
 
         try {
@@ -171,9 +165,7 @@ trait ManagesDevicePeopleMapping
     public function bulkMapping(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
         $data = $request->validate(['commit' => ['required', 'boolean'], 'rows' => ['required', 'array', 'min:1', 'max:100'], 'rows.*.provider_person_id' => ['required', 'string', 'max:160'], 'rows.*.staff_id' => ['required', 'uuid', 'distinct']]);
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
         $position = 0;
         $people = [];
         do {
@@ -219,7 +211,7 @@ trait ManagesDevicePeopleMapping
     public function mappingCandidates(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid'],
             'record_type' => ['nullable', Rule::in(['staff', 'calendar', 'shift', 'policy'])],
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
@@ -304,9 +296,9 @@ trait ManagesDevicePeopleMapping
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
-            'staff_id' => ['required', 'uuid', 'exists:staff,id'],
-            'device_id' => ['nullable', 'uuid', 'exists:hr_attendance_devices,id'],
+            'company_id' => ['required', 'uuid'],
+            'staff_id' => ['required', 'uuid'],
+            'device_id' => ['nullable', 'uuid'],
             'provider_person_id' => ['required', 'string', 'max:160'],
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
@@ -318,10 +310,11 @@ trait ManagesDevicePeopleMapping
 
         return DB::transaction(function () use ($request, $data) {
             DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
-            $staff = Staff::query()->findOrFail($data['staff_id']);
-            abort_unless($staff->company_id === $data['company_id'], 422, 'Staff and mapping legal entities must match.');
+            $staff = Staff::query()->where('company_id', $data['company_id'])->lockForUpdate()->find($data['staff_id']);
+            abort_unless($staff, 404);
             if (! empty($data['device_id'])) {
-                abort_unless(AttendanceDevice::query()->whereKey($data['device_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Device and mapping legal entities must match.');
+                $device = AttendanceDevice::query()->where('company_id', $data['company_id'])->find($data['device_id']);
+                abort_unless($device, 404);
             }
             $overlapping = $this->mappingOverlapQuery($data)->lockForUpdate()->get();
             abort_if($overlapping->isNotEmpty() && blank($data['reason'] ?? null), 422, 'A reason is required when changing an existing portal mapping.');
@@ -372,14 +365,15 @@ trait ManagesDevicePeopleMapping
         $this->requireAttendanceWrites();
 
         return DB::transaction(function () use ($request, $mappingId) {
-            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->lockForUpdate()->first();
+            $companyIds = $this->authorizedCompanyIds($request);
+            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
+                ->whereIn('company_id', $companyIds)->lockForUpdate()->first();
             abort_unless($mapping, 404);
-            $this->authorizedCompanyId($request, $mapping->company_id);
             if ($mapping->enrollment_status === 'verified') {
                 return response()->json(['status' => 'success', 'data' => ['mapping' => $mapping, 'resolved_quarantine_count' => 0]]);
             }
             abort_unless($mapping->enrollment_status === 'pending', 409, 'Only pending mappings may be activated.');
-            DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->update([
+            DB::table('hr_attendance_person_mappings')->where('id', $mappingId)->where('company_id', $mapping->company_id)->update([
                 'enrollment_status' => 'verified',
                 'last_verified_at' => now(),
                 'verified_by' => $request->user()->id,

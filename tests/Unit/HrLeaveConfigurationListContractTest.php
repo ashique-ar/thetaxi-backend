@@ -14,7 +14,10 @@ it('scopes policy assignments through the same self/team/all StaffAccessService 
     $method = substr($controller, strpos($controller, 'function leavePolicyAssignments('));
     $method = substr($method, 0, strpos($method, 'public function storeLeaveType'));
 
-    expect($method)->toContain("\$staffIds = \$access->scope(Staff::query(), \$r->user())->select('id');");
+    expect($method)
+        ->toContain("\$companyId = \$this->company(\$r, \$r->input('company_id'));")
+        ->toContain("->where('company_id', \$companyId)->select('id')")
+        ->toContain("->where('assignment.company_id', \$companyId)");
 });
 
 it('gates type/policy lists to either the manage or approve permission so an approve-only checker can still see pending policies', function () {

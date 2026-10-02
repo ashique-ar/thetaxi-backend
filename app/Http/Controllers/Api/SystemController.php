@@ -4,11 +4,14 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\Log;
+use App\Models\User;
 
 class SystemController extends Controller
 {
@@ -96,6 +99,87 @@ class SystemController extends Controller
             'status' => 'success',
             'message' => 'Application caches cleared successfully.',
         ]);
+    }
+
+    public function manageCacheClear(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'clear_laravel' => ['required', 'boolean'],
+            'clear_portal' => ['required', 'boolean'],
+            'scope' => ['required', 'in:all,selected'],
+            'user_ids' => ['required_if:scope,selected', 'array', 'min:1', 'max:500'],
+            'user_ids.*' => ['uuid', 'exists:users,id'],
+            'clear_storage' => ['sometimes', 'boolean'],
+        ]);
+
+        abort_unless($data['clear_laravel'] || $data['clear_portal'], 422, 'Select at least one platform.');
+        abort_if(($data['clear_storage'] ?? false) && !$data['clear_portal'], 422, 'Storage clearing is available for portal clients only.');
+
+        if ($data['clear_laravel']) {
+            Artisan::call('optimize:clear');
+        }
+
+        $requestCount = 0;
+        if ($data['clear_portal']) {
+            $userIds = $data['scope'] === 'all' ? [null] : array_values(array_unique($data['user_ids']));
+            foreach ($userIds as $userId) {
+                DB::table('client_cache_clear_requests')->insert([
+                    'user_id' => $userId,
+                    'clear_storage' => (bool) ($data['clear_storage'] ?? false),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+                $requestCount++;
+            }
+        }
+
+        Log::info('Admin requested cache clearing', [
+            'actor_id' => $request->user()?->id,
+            'clear_laravel' => (bool) $data['clear_laravel'],
+            'clear_portal' => (bool) $data['clear_portal'],
+            'scope' => $data['scope'],
+            'user_count' => $data['scope'] === 'all' ? 'all' : count($data['user_ids'] ?? []),
+            'clear_storage' => (bool) ($data['clear_storage'] ?? false),
+        ]);
+
+        return response()->json([
+            'status' => 'success',
+            'message' => 'Selected cache clear has been queued.',
+            'data' => ['portal_requests' => $requestCount],
+        ]);
+    }
+
+    public function cacheClearUserOptions(): JsonResponse
+    {
+        $users = User::query()
+            ->orderBy('first_name')
+            ->orderBy('last_name')
+            ->limit(500)
+            ->get(['id', 'first_name', 'last_name', 'email'])
+            ->map(fn (User $user) => [
+                'id' => (string) $user->id,
+                'name' => trim(($user->first_name ?? '') . ' ' . ($user->last_name ?? '')) ?: $user->email,
+                'email' => $user->email,
+            ]);
+
+        return response()->json(['status' => 'success', 'data' => $users]);
+    }
+
+    public function pendingClientCacheClears(Request $request): JsonResponse
+    {
+        $globalAfter = max(0, (int) $request->query('global_after', 0));
+        $userAfter = max(0, (int) $request->query('user_after', 0));
+        $userId = (string) $request->user()->id;
+
+        $clears = DB::table('client_cache_clear_requests')
+            ->where(function ($query) use ($globalAfter, $userAfter, $userId) {
+                $query->where(fn ($q) => $q->whereNull('user_id')->where('id', '>', $globalAfter))
+                    ->orWhere(fn ($q) => $q->where('user_id', $userId)->where('id', '>', $userAfter));
+            })
+            ->orderBy('id')
+            ->get(['id', 'user_id', 'clear_storage']);
+
+        return response()->json(['status' => 'success', 'data' => $clears]);
     }
 
     public function optimizeDatabase(): JsonResponse

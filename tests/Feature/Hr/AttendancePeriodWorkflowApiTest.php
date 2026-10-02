@@ -12,7 +12,7 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('derives the period company, versions transitions, and separates manage from reopen permission', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin, $company] = hr_seed_admin_actor([], true);
     config(['hr.features.attendance_results' => true]);
     $periodPayload = ['period_start' => '2026-06-01', 'period_end' => '2026-06-30', 'timezone' => 'Asia/Colombo'];
 
@@ -45,6 +45,8 @@ it('derives the period company, versions transitions, and separates manage from 
         return $user;
     };
     $manager = $actorWith('hr.attendance.periods.manage');
+    actingAs($manager, 'api')->getJson('/api/hr/attendance/company-options')
+        ->assertOk()->assertJsonPath('data.0.value', $company->id);
     $adminStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $now = now();
     $resultId = (string) Str::uuid();

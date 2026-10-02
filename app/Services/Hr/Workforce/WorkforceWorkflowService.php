@@ -4,15 +4,57 @@ namespace App\Services\Hr\Workforce;
 
 use App\Models\Hr\PayrollInputFact;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class WorkforceWorkflowService
 {
-    public function submitWorkRequest(array$data,string$actor):object
+    public function submitWorkRequest(array $data, string $actor): object
     {
-        $this->enabled();$checksum=hash('sha256',json_encode($data,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR));if($row=DB::table('hr_work_requests')->where('idempotency_key',$data['idempotency_key'])->first()){abort_unless(hash_equals($row->request_checksum,$checksum),409,'Work-request idempotency key was reused with different evidence.');return$row;}
-        $starts=CarbonImmutable::parse($data['starts_at']);$ends=CarbonImmutable::parse($data['ends_at']);abort_unless($ends->gt($starts),422,'Work request end must be after start.');$minutes=$starts->diffInMinutes($ends);return DB::transaction(function()use($data,$actor,$checksum,$minutes){$staff=DB::table('staff')->where('id',$data['staff_id'])->lockForUpdate()->first();abort_unless($staff&&$staff->company_id===$data['company_id']&&$staff->employment_ended_at===null&&$staff->deleted_at===null,422,'Staff is no longer active in this legal entity.');$policy=DB::table('hr_work_request_policies')->where('id',$data['policy_id'])->where('company_id',$data['company_id'])->where('request_kind',$data['request_kind'])->where('status','approved')->whereDate('effective_from','<=',CarbonImmutable::parse($data['starts_at']))->where(fn($q)=>$q->whereNull('effective_until')->orWhereDate('effective_until','>',CarbonImmutable::parse($data['ends_at'])))->first();abort_unless($policy,422,'No approved work-request policy covers this interval.');$rules=json_decode($policy->rules,true,512,JSON_THROW_ON_ERROR);abort_if($minutes>(int)($rules['maximum_request_minutes']??10080),422,'Requested duration exceeds the policy cap.');$overlap=DB::table('hr_work_requests')->where('staff_id',$data['staff_id'])->whereIn('status',['pending_approval','approved'])->where('starts_at','<',$data['ends_at'])->where('ends_at','>',$data['starts_at'])->exists();abort_if($overlap,409,'An active work request overlaps this interval.');$id=(string)Str::uuid();$snapshot=['policy_id'=>$policy->id,'policy_version'=>$policy->version,'rules'=>$rules,'requested'=>$data];DB::table('hr_work_requests')->insert(['id'=>$id,'company_id'=>$data['company_id'],'staff_id'=>$data['staff_id'],'policy_id'=>$policy->id,'request_kind'=>$data['request_kind'],'starts_at'=>$data['starts_at'],'ends_at'=>$data['ends_at'],'requested_minutes'=>$minutes,'rate_category'=>$data['rate_category']??($rules['default_rate_category']??null),'settlement_kind'=>$data['settlement_kind']??($rules['default_settlement_kind']??null),'status'=>'pending_approval','reason'=>$data['reason'],'request_snapshot'=>json_encode($snapshot,JSON_THROW_ON_ERROR),'request_checksum'=>$checksum,'idempotency_key'=>$data['idempotency_key'],'requested_by'=>$actor,'created_at'=>now(),'updated_at'=>now()]);$this->event($id,'submitted',null,'pending_approval',$data['reason'],$snapshot,$actor);return DB::table('hr_work_requests')->find($id);});
+        $this->enabled();
+        $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+        if ($existing = $this->existingWorkRequest($data['idempotency_key'], $checksum, $actor)) return $existing;
+
+        $starts = CarbonImmutable::parse($data['starts_at']);
+        $ends = CarbonImmutable::parse($data['ends_at']);
+        abort_unless($ends->gt($starts), 422, 'Work request end must be after start.');
+        $minutes = $starts->diffInMinutes($ends);
+
+        try {
+            return DB::transaction(function () use ($data, $actor, $checksum, $minutes) {
+                $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+                abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
+                if ($existing = DB::table('hr_work_requests')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
+                    return $this->matchingWorkRequest($existing, $checksum, $actor);
+                }
+
+                $policy = DB::table('hr_work_request_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('request_kind', $data['request_kind'])->where('status', 'approved')->whereDate('effective_from', '<=', $starts)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $ends))->first();
+                abort_unless($policy, 422, 'No approved work-request policy covers this interval.');
+                $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
+                abort_if($minutes > (int) ($rules['maximum_request_minutes'] ?? 10080), 422, 'Requested duration exceeds the policy cap.');
+                $overlap = DB::table('hr_work_requests')->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->where('starts_at', '<', $data['ends_at'])->where('ends_at', '>', $data['starts_at'])->exists();
+                abort_if($overlap, 409, 'An active work request overlaps this interval.');
+
+                $id = (string) Str::uuid();
+                $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'requested' => $data];
+                DB::table('hr_work_requests')->insert([
+                    'id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'policy_id' => $policy->id,
+                    'request_kind' => $data['request_kind'], 'starts_at' => $data['starts_at'], 'ends_at' => $data['ends_at'],
+                    'requested_minutes' => $minutes, 'rate_category' => $data['rate_category'] ?? ($rules['default_rate_category'] ?? null),
+                    'settlement_kind' => $data['settlement_kind'] ?? ($rules['default_settlement_kind'] ?? null), 'status' => 'pending_approval',
+                    'reason' => $data['reason'], 'request_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+                    'request_checksum' => $checksum, 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actor,
+                    'created_at' => now(), 'updated_at' => now(),
+                ]);
+                $this->event($id, 'submitted', null, 'pending_approval', $data['reason'], $snapshot, $actor);
+                return DB::table('hr_work_requests')->find($id);
+            });
+        } catch (QueryException $e) {
+            if (! in_array($e->errorInfo[0] ?? null, ['23000', '23505'], true)) throw $e;
+            if ($existing = $this->existingWorkRequest($data['idempotency_key'], $checksum, $actor)) return $existing;
+            throw $e;
+        }
     }
 
     public function decideWorkRequest(string$id,string$action,string$note,string$actor):object
@@ -32,6 +74,18 @@ class WorkforceWorkflowService
 
     private function creditTimeOff(object$row,array$snapshot,string$actor):void{$type=$snapshot['rules']['time_off_leave_type_id']??null;abort_unless($type,422,'Time-off settlement requires a configured leave type.');$account=DB::table('hr_leave_balance_accounts')->where('staff_id',$row->staff_id)->where('leave_type_id',$type)->lockForUpdate()->first();abort_unless($account,422,'Time-off balance account is not configured.');$payload=['work_request_id'=>$row->id,'minutes'=>$row->requested_minutes,'rules'=>$snapshot];DB::table('hr_leave_balance_entries')->insert(['id'=>(string)Str::uuid(),'account_id'=>$account->id,'leave_request_id'=>null,'entry_type'=>'time_off_credit','minutes'=>$row->requested_minutes,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'source_type'=>'work_request','source_id'=>$row->id,'reason'=>'Approved overtime converted to time off','rule_snapshot'=>json_encode($snapshot,JSON_THROW_ON_ERROR),'entry_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'posted_by'=>$actor,'posted_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);}
     private function fact(object$row,string$kind,int$minutes,array$snapshot,string$actor):void{$payload=['row'=>$row,'kind'=>$kind,'minutes'=>$minutes,'snapshot'=>$snapshot];PayrollInputFact::create(['company_id'=>$row->company_id,'staff_id'=>$row->staff_id,'fact_kind'=>$kind,'effective_date'=>CarbonImmutable::parse($row->ends_at)->toDateString(),'quantity_minutes'=>$minutes,'rate_category'=>$row->rate_category,'source_type'=>'work_request','source_id'=>$row->id,'status'=>'staged','source_snapshot'=>$snapshot,'fact_checksum'=>hash('sha256',json_encode($payload,JSON_UNESCAPED_SLASHES|JSON_THROW_ON_ERROR)),'created_by'=>$actor]);}
+    private function existingWorkRequest(string $key, string $checksum, string $actor): ?object
+    {
+        $existing = DB::table('hr_work_requests')->where('idempotency_key', $key)->first();
+        return $existing ? $this->matchingWorkRequest($existing, $checksum, $actor) : null;
+    }
+
+    private function matchingWorkRequest(object $existing, string $checksum, string $actor): object
+    {
+        abort_unless($existing->requested_by === $actor && hash_equals((string) $existing->request_checksum, $checksum), 409, 'Work-request idempotency key was reused with different evidence or actor.');
+        return $existing;
+    }
+
     private function event(string$id,string$type,?string$from,string$to,string$reason,array$snapshot,string$actor):void{DB::table('hr_work_request_events')->insert(['id'=>(string)Str::uuid(),'work_request_id'=>$id,'event_type'=>$type,'from_status'=>$from,'to_status'=>$to,'reason'=>$reason,'snapshot'=>json_encode($snapshot,JSON_THROW_ON_ERROR),'actor_user_id'=>$actor,'occurred_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);}
     private function enabled():void{abort_unless(config('hr.features.leave_overtime',false),409,'Leave, overtime, and timesheet writes are not enabled.');}
 }

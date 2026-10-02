@@ -17,6 +17,18 @@ use Illuminate\Validation\Rule;
 
 class WorkforceController extends Controller
 {
+    public function companyOptions(Request $r): JsonResponse
+    {
+        $data = $r->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
+        $companies = DB::table('companies')->whereIn('id', $this->authorizedCompanyIds($r))
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
+            ->when(! empty($data['search']), fn ($q) => $q->whereLikeInsensitive('name', trim($data['search'])))
+            ->orderBy('name')->limit(25)->get(['id', 'name']);
+        return response()->json(['status' => 'success', 'data' => $companies->map(fn ($company) => [
+            'value' => (string) $company->id, 'label' => $company->name, 'status' => 'active',
+        ])->values()]);
+    }
+
     public function references(Request $r): JsonResponse
     {
         $companyId = $this->company($r, $r->input('company_id'));
@@ -238,9 +250,7 @@ class WorkforceController extends Controller
     public function decideLeave(Request $r, string $id, LeaveWorkflowService $service, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['action' => ['required', Rule::in(['approve', 'reject'])], 'reason' => ['required', 'string', 'max:2000']]);
-        $row = DB::table('hr_leave_requests')->find($id);
-        abort_unless($row, 404);
-        $this->company($r, $row->company_id);
+        $this->leaveRequestForCompany($r, $id);
         $row = $service->decide($id, $d['action'], $d['reason'], $r->user()->id, $r->user()->can('hr.leave.approve.override'));
         $projection->leave($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
@@ -248,8 +258,7 @@ class WorkforceController extends Controller
     public function cancelLeave(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['reason' => ['required', 'string', 'max:2000']]);
-        $row = DB::table('hr_leave_requests')->find($id);
-        abort_unless($row, 404);
+        $row = $this->leaveRequestForStaff($r, $id, $access);
         $access->authorize($r->user(), Staff::query()->findOrFail($row->staff_id), 'view');
         abort_unless($row->requested_by === $r->user()->id || $r->user()->can('hr.leave.approve'), 403, 'Only the requester or an authorized leave approver may cancel this request.');
         $row = $service->cancel($id, $d['reason'], $r->user()->id);
@@ -259,8 +268,7 @@ class WorkforceController extends Controller
     public function confirmLeaveReturn(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['actual_return_date' => ['required', 'date'], 'notes' => ['nullable', 'string', 'max:2000']]);
-        $row = DB::table('hr_leave_requests')->find($id);
-        abort_unless($row, 404);
+        $row = $this->leaveRequestForStaff($r, $id, $access);
         $access->authorize($r->user(), Staff::query()->findOrFail($row->staff_id), 'view');
         abort_unless($row->requested_by === $r->user()->id || $r->user()->can('hr.leave.approve'), 403, 'Only the requester or an authorized leave approver may confirm a return to work.');
         $row = $service->confirmReturn($id, $d['actual_return_date'], $d['notes'] ?? null, $r->user()->id);
@@ -270,8 +278,7 @@ class WorkforceController extends Controller
     public function extendLeave(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['end_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000']]);
-        $row = DB::table('hr_leave_requests')->find($id);
-        abort_unless($row, 404);
+        $row = $this->leaveRequestForStaff($r, $id, $access);
         $access->authorize($r->user(), Staff::query()->findOrFail($row->staff_id), 'view');
         abort_unless($row->requested_by === $r->user()->id || $r->user()->can('hr.leave.approve'), 403, 'Only the requester or an authorized leave approver may extend this request.');
         $row = $service->extend($id, $d['end_date'], $d['reason'], $r->user()->id);
@@ -281,8 +288,7 @@ class WorkforceController extends Controller
     public function recallLeave(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['recall_date' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000']]);
-        $row = DB::table('hr_leave_requests')->find($id);
-        abort_unless($row, 404);
+        $row = $this->leaveRequestForStaff($r, $id, $access);
         $access->authorize($r->user(), Staff::query()->findOrFail($row->staff_id), 'view');
         $row = $service->recall($id, $d['recall_date'], $d['reason'], $r->user()->id);
         $projection->leave($row, $r->user()->id);
@@ -322,10 +328,11 @@ class WorkforceController extends Controller
     }
     public function leavePolicyAssignments(Request $r, StaffAccessService $access): JsonResponse
     {
-        $staffIds = $access->scope(Staff::query(), $r->user())->select('id');
+        $companyId = $this->company($r, $r->input('company_id'));
+        $staffIds = $access->scope(Staff::query(), $r->user())->where('company_id', $companyId)->select('id');
         $q = DB::table('hr_leave_policy_assignments as assignment')->join('hr_leave_policies as policy', 'policy.id', '=', 'assignment.policy_id')
             ->leftJoin('staff', 'staff.id', '=', 'assignment.staff_id')->leftJoin('users', 'users.id', '=', 'staff.user_id')
-            ->whereIn('assignment.staff_id', $staffIds)
+            ->where('assignment.company_id', $companyId)->whereIn('assignment.staff_id', $staffIds)
             ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name'])
             ->when($r->staff_id, fn($b, $v) => $b->where('assignment.staff_id', $v))->latest('assignment.created_at');
         return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
@@ -404,9 +411,7 @@ class WorkforceController extends Controller
     public function decideWork(Request $r, string $id, WorkforceWorkflowService $service, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['action' => ['required', Rule::in(['approve', 'reject'])], 'decision_note' => ['required', 'string', 'max:2000']]);
-        $row = DB::table('hr_work_requests')->find($id);
-        abort_unless($row, 404);
-        $this->company($r, $row->company_id);
+        $this->workRequestForCompany($r, $id);
         $row = $service->decideWorkRequest($id, $d['action'], $d['decision_note'], $r->user()->id);
         $projection->work($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
@@ -507,10 +512,53 @@ class WorkforceController extends Controller
     }
     private function company(Request $r, ?string $id): string
     {
-        $actor = Staff::query()->where('user_id', $r->user()->id)->value('company_id');
-        abort_unless($actor && (!$id || $actor === $id), 403, 'Workforce data is outside your legal entity.');
-        return $actor;
+        $allowed = $this->authorizedCompanyIds($r);
+        abort_unless($allowed->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
+        if ($id) {
+            abort_unless($allowed->contains($id), 403, 'Workforce data is outside your legal entity.');
+            return $id;
+        }
+        $actorCompany = Staff::query()->where('user_id', $r->user()->id)->whereIn('company_id', $allowed)->value('company_id');
+        return (string) ($actorCompany ?: $allowed->first());
     }
+
+    private function authorizedCompanyIds(Request $r)
+    {
+        if ($r->user()->can('staff.view-all')) {
+            return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id');
+        }
+        $companyId = Staff::query()->where('user_id', $r->user()->id)->whereNotNull('company_id')
+            ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+            ->value('company_id');
+        return $companyId
+            ? DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->pluck('id')
+            : collect();
+    }
+
+    private function leaveRequestForCompany(Request $r, string $id): object
+    {
+        $row = DB::table('hr_leave_requests')->where('id', $id)
+            ->whereIn('company_id', $this->authorizedCompanyIds($r))->first();
+        abort_unless($row, 404);
+        return $row;
+    }
+
+    private function workRequestForCompany(Request $r, string $id): object
+    {
+        $row = DB::table('hr_work_requests')->where('id', $id)
+            ->whereIn('company_id', $this->authorizedCompanyIds($r))->first();
+        abort_unless($row, 404);
+        return $row;
+    }
+
+    private function leaveRequestForStaff(Request $r, string $id, StaffAccessService $access): object
+    {
+        $staffIds = $access->scope(Staff::query(), $r->user())->select('id');
+        $row = DB::table('hr_leave_requests')->where('id', $id)->whereIn('staff_id', $staffIds)->first();
+        abort_unless($row, 404);
+        return $row;
+    }
+
     private function enabled(): void
     {
         abort_unless(config('hr.features.leave_overtime', false), 409, 'Leave, overtime, and timesheet writes are not enabled.');

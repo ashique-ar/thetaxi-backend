@@ -52,9 +52,10 @@ trait ManagesAttendanceQuarantine
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->first();
+        $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
+            ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
         abort_unless($item, 404);
-        $companyId = $this->authorizedCompanyId($request, $item->company_id);
+        $companyId = $item->company_id;
         abort_unless($item->status === 'open', 409, 'Only open quarantine items can be resolved.');
         $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
         abort_unless($event && $event->company_id === $companyId, 409, 'Quarantine and raw event legal entities must match.');
@@ -98,17 +99,18 @@ trait ManagesAttendanceQuarantine
 
     public function resolveQuarantine(Request $request, string $itemId): JsonResponse
     {
-        $data = $request->validate(['person_mapping_id' => ['required', 'uuid', 'exists:hr_attendance_person_mappings,id'], 'reason' => ['required', 'string', 'max:2000']]);
+        $data = $request->validate(['person_mapping_id' => ['required', 'uuid'], 'reason' => ['required', 'string', 'max:2000']]);
 
         return DB::transaction(function () use ($request, $itemId, $data) {
-            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])->lockForUpdate()->first();
-            abort_unless($mapping, 404);
-            $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->lockForUpdate()->first();
+            $item = DB::table('hr_attendance_quarantine_items')->where('id', $itemId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
             abort_unless($item, 404);
-            $this->authorizedCompanyId($request, $item->company_id);
             if ($item->status === 'resolved') {
                 return response()->json(['status' => 'success', 'data' => $item]);
             }
+            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])
+                ->where('company_id', $item->company_id)->lockForUpdate()->first();
+            abort_unless($mapping, 404);
             $event = DB::table('hr_attendance_raw_events')->where('id', $item->raw_event_id)->first();
             abort_unless($event && $event->company_id === $item->company_id && $mapping && $mapping->company_id === $item->company_id, 422, 'Event, mapping, and quarantine legal entities must match.');
             abort_unless(! $event->device_id || DB::table('hr_attendance_devices')->where('id', $event->device_id)->where('company_id', $item->company_id)->exists(), 422, 'The event device must belong to the quarantine legal entity.');
@@ -119,7 +121,7 @@ trait ManagesAttendanceQuarantine
             abort_unless($mapping->device_id === null || $mapping->device_id === $event->device_id, 422, 'The event device does not match the selected mapping.');
             $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
             abort_unless($occurred >= $mapping->effective_from && ($mapping->effective_until === null || $occurred < $mapping->effective_until), 422, 'The mapping was not effective when the event occurred.');
-            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->update([
+            DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->where('company_id', $item->company_id)->update([
                 'status' => 'resolved', 'resolved_staff_id' => $mapping->staff_id, 'resolved_mapping_id' => $mapping->id,
                 'resolved_by' => $request->user()->id, 'resolved_at' => now(), 'resolution_reason' => $data['reason'], 'updated_at' => now(),
             ]);

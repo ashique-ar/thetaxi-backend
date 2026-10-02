@@ -5,6 +5,7 @@ namespace App\Services\Hr\Leave;
 use App\Models\Hr\Leave\LeaveBalanceEntry;
 use App\Models\Hr\PayrollInputFact;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -14,48 +15,55 @@ class LeaveWorkflowService
     {
         $this->enabled();
         $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        if ($existing = DB::table('hr_leave_requests')->where('idempotency_key', $data['idempotency_key'])->first()) {
-            abort_unless(hash_equals($existing->request_checksum, $checksum), 409, 'Leave idempotency key was reused with different evidence.');
-            return $existing;
+        if ($existing = $this->existingSubmission($data['idempotency_key'], $checksum, $actorUserId)) return $existing;
+        try {
+            return DB::transaction(function () use ($data, $actorUserId, $checksum) {
+                $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+                abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
+                if ($existing = DB::table('hr_leave_requests')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
+                    return $this->matchingSubmission($existing, $checksum, $actorUserId);
+                }
+                $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
+                abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
+                abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
+                $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
+                $days = $this->days($data, $rules);
+                $minutes = array_sum(array_column($days, 'minutes'));
+                abort_if($minutes <= 0, 422, 'The request contains no eligible leave time.');
+                abort_if(count($days) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The request exceeds the policy consecutive-day limit.');
+                $notice = (int) ($rules['minimum_notice_days'] ?? 0);
+                abort_if(now()->startOfDay()->addDays($notice)->gt(CarbonImmutable::parse($data['start_date'])), 422, 'The leave policy notice period is not met.');
+                $blackouts = $rules['blackout_dates'] ?? [];
+                abort_if(collect($days)->contains(fn($day) => in_array($day['date'], $blackouts, true)), 422, 'The request includes a policy blackout date.');
+                if (($rules['coverage_required'] ?? false) && empty($data['coverage_snapshot']))
+                    abort(422, 'Coverage details are required for this leave policy.');
+                if ($minutes > (int) ($rules['supporting_document_after_minutes'] ?? PHP_INT_MAX) && empty($data['private_evidence']))
+                    abort(422, 'Supporting evidence is required for this leave duration.');
+                if (!($rules['allow_during_probation'] ?? true)) {
+                    $spell = DB::table('hr_employment_spells')->where('staff_id', $data['staff_id'])->where('status', 'active')->latest('joined_at')->first();
+                    abort_if($spell && $spell->confirmation_date && CarbonImmutable::parse($data['start_date'])->lt(CarbonImmutable::parse($spell->confirmation_date)), 422, 'This leave type is not available before confirmation.');
+                }
+                $account = $this->account($data['company_id'], $data['staff_id'], $policy->leave_type_id, $data['unit']);
+                $balance = $this->balance($account->id, $data['start_date']);
+                $negative = (int) ($rules['negative_balance_limit_minutes'] ?? 0);
+                abort_if($balance - $minutes < -$negative, 409, 'Insufficient available leave balance.');
+                $overlap = DB::table('hr_leave_requests')->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
+                abort_if($overlap, 409, 'An active leave request overlaps this interval.');
+                $id = (string) Str::uuid();
+                $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'balance_before_minutes' => $balance, 'calculated_days' => $days];
+                DB::table('hr_leave_requests')->insert(['id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'leave_type_id' => $policy->leave_type_id, 'policy_id' => $policy->id, 'start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'unit' => $data['unit'], 'requested_minutes' => $minutes, 'reserved_minutes' => $minutes, 'status' => 'pending_approval', 'reason' => $data['reason'], 'calculation_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'coverage_snapshot' => json_encode($data['coverage_snapshot'] ?? null, JSON_THROW_ON_ERROR), 'private_evidence' => isset($data['private_evidence']) ? encrypt($data['private_evidence']) : null, 'request_checksum' => $checksum, 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actorUserId, 'current_approver_staff_id' => $data['approver_staff_id'] ?? null, 'approval_level' => 1, 'created_at' => now(), 'updated_at' => now()]);
+                foreach ($days as $day)
+                    DB::table('hr_leave_request_days')->insert(['id' => (string) Str::uuid(), 'leave_request_id' => $id, 'leave_date' => $day['date'], 'minutes' => $day['minutes'], 'day_kind' => $day['kind'], 'rule_evidence' => json_encode($day, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
+                $this->entry($account->id, $id, 'reservation', -$minutes, $data['start_date'], 'leave_request', $id, 'Leave request reservation', $snapshot, $actorUserId);
+                $this->event($id, 'submitted', null, 'pending_approval', $data['reason'], $snapshot, $actorUserId);
+                return DB::table('hr_leave_requests')->find($id);
+            });
+        } catch (QueryException $e) {
+            if (! in_array($e->errorInfo[0] ?? null, ['23000', '23505'], true)) throw $e;
+            $existing = $this->existingSubmission($data['idempotency_key'], $checksum, $actorUserId);
+            if ($existing) return $existing;
+            throw $e;
         }
-        return DB::transaction(function () use ($data, $actorUserId, $checksum) {
-            $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
-            abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
-            $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
-            abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
-            abort_unless(DB::table('hr_leave_policy_assignments')->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
-            $rules = json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
-            $days = $this->days($data, $rules);
-            $minutes = array_sum(array_column($days, 'minutes'));
-            abort_if($minutes <= 0, 422, 'The request contains no eligible leave time.');
-            abort_if(count($days) > (int) ($rules['maximum_consecutive_days'] ?? 366), 422, 'The request exceeds the policy consecutive-day limit.');
-            $notice = (int) ($rules['minimum_notice_days'] ?? 0);
-            abort_if(now()->startOfDay()->addDays($notice)->gt(CarbonImmutable::parse($data['start_date'])), 422, 'The leave policy notice period is not met.');
-            $blackouts = $rules['blackout_dates'] ?? [];
-            abort_if(collect($days)->contains(fn($day) => in_array($day['date'], $blackouts, true)), 422, 'The request includes a policy blackout date.');
-            if (($rules['coverage_required'] ?? false) && empty($data['coverage_snapshot']))
-                abort(422, 'Coverage details are required for this leave policy.');
-            if ($minutes > (int) ($rules['supporting_document_after_minutes'] ?? PHP_INT_MAX) && empty($data['private_evidence']))
-                abort(422, 'Supporting evidence is required for this leave duration.');
-            if (!($rules['allow_during_probation'] ?? true)) {
-                $spell = DB::table('hr_employment_spells')->where('staff_id', $data['staff_id'])->where('status', 'active')->latest('joined_at')->first();
-                abort_if($spell && $spell->confirmation_date && CarbonImmutable::parse($data['start_date'])->lt(CarbonImmutable::parse($spell->confirmation_date)), 422, 'This leave type is not available before confirmation.');
-            }
-            $account = $this->account($data['company_id'], $data['staff_id'], $policy->leave_type_id, $data['unit']);
-            $balance = $this->balance($account->id, $data['start_date']);
-            $negative = (int) ($rules['negative_balance_limit_minutes'] ?? 0);
-            abort_if($balance - $minutes < -$negative, 409, 'Insufficient available leave balance.');
-            $overlap = DB::table('hr_leave_requests')->where('staff_id', $data['staff_id'])->whereIn('status', ['pending_approval', 'approved'])->whereDate('start_date', '<=', $data['end_date'])->whereDate('end_date', '>=', $data['start_date'])->exists();
-            abort_if($overlap, 409, 'An active leave request overlaps this interval.');
-            $id = (string) Str::uuid();
-            $snapshot = ['policy_id' => $policy->id, 'policy_version' => $policy->version, 'rules' => $rules, 'balance_before_minutes' => $balance, 'calculated_days' => $days];
-            DB::table('hr_leave_requests')->insert(['id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'], 'leave_type_id' => $policy->leave_type_id, 'policy_id' => $policy->id, 'start_date' => $data['start_date'], 'end_date' => $data['end_date'], 'unit' => $data['unit'], 'requested_minutes' => $minutes, 'reserved_minutes' => $minutes, 'status' => 'pending_approval', 'reason' => $data['reason'], 'calculation_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'coverage_snapshot' => json_encode($data['coverage_snapshot'] ?? null, JSON_THROW_ON_ERROR), 'private_evidence' => isset($data['private_evidence']) ? encrypt($data['private_evidence']) : null, 'request_checksum' => $checksum, 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actorUserId, 'current_approver_staff_id' => $data['approver_staff_id'] ?? null, 'approval_level' => 1, 'created_at' => now(), 'updated_at' => now()]);
-            foreach ($days as $day)
-                DB::table('hr_leave_request_days')->insert(['id' => (string) Str::uuid(), 'leave_request_id' => $id, 'leave_date' => $day['date'], 'minutes' => $day['minutes'], 'day_kind' => $day['kind'], 'rule_evidence' => json_encode($day, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
-            $this->entry($account->id, $id, 'reservation', -$minutes, $data['start_date'], 'leave_request', $id, 'Leave request reservation', $snapshot, $actorUserId);
-            $this->event($id, 'submitted', null, 'pending_approval', $data['reason'], $snapshot, $actorUserId);
-            return DB::table('hr_leave_requests')->find($id);
-        });
     }
 
     /**
@@ -328,6 +336,16 @@ class LeaveWorkflowService
     {
         $payload = compact('account', 'request', 'type', 'minutes', 'date', 'sourceType', 'sourceId', 'reason', 'snapshot', 'expiresOn');
         return LeaveBalanceEntry::create(['account_id' => $account, 'leave_request_id' => $request, 'entry_type' => $type, 'minutes' => $minutes, 'effective_date' => $date, 'expires_on' => $expiresOn, 'source_type' => $sourceType, 'source_id' => $sourceId, 'reason' => $reason, 'rule_snapshot' => $snapshot, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'posted_by' => $actor, 'posted_at' => now()]);
+    }
+    private function existingSubmission(string $key, string $checksum, string $actorUserId): ?object
+    {
+        $existing = DB::table('hr_leave_requests')->where('idempotency_key', $key)->first();
+        return $existing ? $this->matchingSubmission($existing, $checksum, $actorUserId) : null;
+    }
+    private function matchingSubmission(object $existing, string $checksum, string $actorUserId): object
+    {
+        abort_unless($existing->requested_by === $actorUserId && hash_equals((string) $existing->request_checksum, $checksum), 409, 'Leave idempotency key was reused with different evidence or actor.');
+        return $existing;
     }
     private function event(string $id, string $type, ?string $from, string $to, string $reason, array $snapshot, string $actor): void
     {

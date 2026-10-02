@@ -317,6 +317,9 @@ Route::prefix('utility')->group(function () {
 
 Route::middleware(['auth:api'])->group(function () {
 
+    Route::get('system/client-cache-clears', [SystemController::class, 'pendingClientCacheClears'])
+        ->middleware('throttle:30,1');
+
     // Customer requests are always owned by the authenticated customer's
     // active context; this route does not accept a client-selected owner.
     Route::get('customer-portal/bookings', [CustomerPortalBookingController::class, 'index'])
@@ -973,8 +976,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
     Route::prefix('hr/attendance')->group(function () {
-        Route::get('company-options', [AttendanceResultController::class, 'companyOptions'])->middleware('permission:hr.attendance.results.view|hr.attendance.corrections.request');
-        Route::get('device-options', [AttendanceDeviceController::class, 'deviceOptions'])->middleware('permission:hr.attendance.devices.view');
+        Route::get('company-options', [AttendanceResultController::class, 'companyOptions'])->middleware('permission:hr.attendance.results.view|hr.attendance.corrections.request|hr.attendance.periods.manage|hr.attendance.periods.reopen|hr.attendance.devices.view|hr.attendance.devices.manage|hr.attendance.access.request|hr.attendance.maintenance.execute|hr.attendance.config.manage|hr.attendance.config.approve');
+        Route::get('device-options', [AttendanceDeviceController::class, 'deviceOptions'])->middleware('permission:hr.attendance.devices.view|hr.attendance.devices.manage');
         Route::get('devices', [AttendanceDeviceController::class, 'index'])->middleware('permission:hr.attendance.devices.view');
         Route::post('connectors', [AttendanceDeviceController::class, 'storeConnector'])->middleware('permission:hr.attendance.devices.manage');
         Route::post('devices', [AttendanceDeviceController::class, 'storeDevice'])->middleware('permission:hr.attendance.devices.manage');
@@ -1050,6 +1053,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
     });
     Route::prefix('hr/workforce')->group(function () {
+        Route::get('company-options', [WorkforceController::class, 'companyOptions'])->middleware('permission:hr.leave.view|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.config.manage|hr.work-requests.config.approve');
         Route::get('references', [WorkforceController::class, 'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('staff-options', [WorkforceController::class, 'staffOptions'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('leave-policy-options', [WorkforceController::class, 'leavePolicyOptions'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve');
@@ -1476,6 +1480,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('system/info', [SystemController::class, 'info']);
         Route::get('system/stats', [SystemController::class, 'stats']);
         Route::get('system/performance', [SystemController::class, 'performance']);
+        Route::get('system/cache-clear-users', [SystemController::class, 'cacheClearUserOptions']);
         Route::post('system/clear-cache', [SystemController::class, 'clearCache']);
         Route::post('system/optimize-database', [SystemController::class, 'optimizeDatabase']);
         Route::apiResource('audit-logs', AuditLogController::class)->only(['index', 'show']);
@@ -1569,6 +1574,7 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     Route::middleware(['permission:system.manage'])->group(function () {
+        Route::post('system/manage-cache-clear', [SystemController::class, 'manageCacheClear']);
         Route::get('system/backups', [SystemBackupController::class, 'index']);
         Route::post('system/backups', [SystemBackupController::class, 'store']);
         Route::get('system/backups/{backup}', [SystemBackupController::class, 'show']);

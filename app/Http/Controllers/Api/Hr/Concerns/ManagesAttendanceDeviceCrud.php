@@ -26,9 +26,8 @@ trait ManagesAttendanceDeviceCrud
     public function probe(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
         $this->requireAttendanceWrites();
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $data = $request->validate(['company_id' => ['required', 'uuid']]);
+        $device = $this->authorizedDevice($request, $deviceId, $data['company_id']);
         abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
 
         try {
@@ -65,10 +64,8 @@ trait ManagesAttendanceDeviceCrud
     public function sync(Request $request, string $deviceId, DirectAttendanceSyncService $sync): JsonResponse
     {
         $this->requireAttendanceWrites();
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
-        $data = $request->validate(['days' => ['nullable', 'integer', 'min:1', 'max:31']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'days' => ['nullable', 'integer', 'min:1', 'max:31']]);
+        $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
         $to = CarbonImmutable::now();
         $days = (int) ($data['days'] ?? 2);
 
@@ -97,13 +94,14 @@ trait ManagesAttendanceDeviceCrud
 
     public function deviceOptions(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, null);
         $data = $request->validate([
+            'company_id' => ['nullable', 'uuid'],
             'search' => ['nullable', 'string', 'max:100'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $devices = AttendanceDevice::query()->where('company_id', $companyId);
 
         if (! empty($data['selected_id'])) {
@@ -186,7 +184,7 @@ trait ManagesAttendanceDeviceCrud
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['required', 'uuid'],
             'name' => ['required', 'string', 'max:255'],
             'topology' => ['required', Rule::in(['direct_isapi', 'hikcentral', 'provider_push', 'approved_csv', 'local_connector'])],
             'allowed_ip_cidrs' => ['nullable', 'string', 'max:2000'],
@@ -212,9 +210,9 @@ trait ManagesAttendanceDeviceCrud
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
-            'connector_id' => ['nullable', 'uuid', 'exists:hr_attendance_connectors,id'],
-            'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'],
+            'company_id' => ['required', 'uuid'],
+            'connector_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
             'provider' => ['required', 'string', 'max:60'],
             'integration_mode' => ['required', Rule::in(['direct_isapi', 'hikcentral', 'provider_push', 'approved_csv', 'local_connector'])],
             'model' => ['nullable', 'string', 'max:120'],
@@ -227,10 +225,10 @@ trait ManagesAttendanceDeviceCrud
         ]);
         $this->authorizedCompanyId($request, $data['company_id']);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->whereKey($data['connector_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Connector and device legal entities must match.');
+            abort_unless(AttendanceConnector::query()->where('company_id', $data['company_id'])->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Organization unit and device legal entities must match.');
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $data['company_id'])->exists(), 404);
         }
 
         if ($data['integration_mode'] === 'direct_isapi') {
@@ -287,12 +285,10 @@ trait ManagesAttendanceDeviceCrud
     public function updateDevice(Request $request, string $deviceId): JsonResponse
     {
         $this->requireAttendanceWrites();
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
         $data = $request->validate([
-            'connector_id' => ['nullable', 'uuid', 'exists:hr_attendance_connectors,id'],
-            'organization_unit_id' => ['nullable', 'uuid', 'exists:hr_organization_units,id'],
+            'connector_id' => ['nullable', 'uuid'],
+            'organization_unit_id' => ['nullable', 'uuid'],
             'model' => ['nullable', 'string', 'max:120'],
             'firmware' => ['nullable', 'string', 'max:100'],
             'site_code' => ['required', 'string', 'max:80'],
@@ -302,10 +298,10 @@ trait ManagesAttendanceDeviceCrud
             'status' => ['required', Rule::in(['active', 'inactive'])],
         ]);
         if (! empty($data['connector_id'])) {
-            abort_unless(AttendanceConnector::query()->whereKey($data['connector_id'])->where('company_id', $device->company_id)->exists(), 422, 'Connector and device legal entities must match.');
+            abort_unless(AttendanceConnector::query()->where('company_id', $device->company_id)->whereKey($data['connector_id'])->exists(), 404);
         }
         if (! empty($data['organization_unit_id'])) {
-            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $device->company_id)->exists(), 422, 'Organization unit and device legal entities must match.');
+            abort_unless(DB::table('hr_organization_units')->where('id', $data['organization_unit_id'])->where('company_id', $device->company_id)->exists(), 404);
         }
         // encrypted_configuration (which may hold the ISAPI password) is never sent back to the
         // client by health()/index(), so a client-supplied value only ever carries the fields the
@@ -322,9 +318,7 @@ trait ManagesAttendanceDeviceCrud
     public function destroyDevice(Request $request, string $deviceId): JsonResponse
     {
         $this->requireAttendanceWrites();
-        $device = AttendanceDevice::query()->find($deviceId);
-        abort_unless($device, 404);
-        $this->authorizedCompanyId($request, $device->company_id);
+        $device = $this->authorizedDevice($request, $deviceId);
 
         // Soft deletion removes the terminal from operational selection and all
         // schedulers while retaining its UUID for raw events, mappings, access

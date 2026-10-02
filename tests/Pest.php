@@ -114,9 +114,12 @@ function hr_attendance_device_method_slice(string $fromNeedle, ?string $toNeedle
  *
  * @return array{0: \App\Models\User, 1: \App\Models\Company}
  */
-function hr_seed_admin_actor(array $companyAttributes = []): array
+function hr_seed_admin_actor(array $companyAttributes = [], bool $scopeToStaffCompanies = false): array
 {
     (new \Database\Seeders\AllPermissionsSeeder())->run();
+    if ($scopeToStaffCompanies) {
+        \Spatie\Permission\Models\Role::findByName('admin', 'api')->revokePermissionTo('staff.view-all');
+    }
 
     $company = \App\Models\Company::create(array_merge([
         'name' => 'Hr Feature Test Co',

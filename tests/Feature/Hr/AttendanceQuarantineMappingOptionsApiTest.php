@@ -13,7 +13,7 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('offers only event-eligible mappings and resolves without changing the raw event', function () {
-    [$admin, $company] = hr_seed_admin_actor();
+    [$admin, $company] = hr_seed_admin_actor([], true);
     $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $connector = AttendanceConnector::factory()->create(['company_id' => $company->id, 'created_user_id' => $admin->id]);
     $device = AttendanceDevice::factory()->create(['company_id' => $company->id, 'connector_id' => $connector->id, 'created_user_id' => $admin->id]);
@@ -64,6 +64,12 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
         'effective_from' => '2026-01-01', 'created_by' => $admin->id, 'verified_by' => $admin->id,
         'last_verified_at' => $now, 'created_at' => $now, 'updated_at' => $now,
     ]);
+    $foreignItemId = (string) Str::uuid();
+    DB::table('hr_attendance_quarantine_items')->insert([
+        'id' => $foreignItemId, 'company_id' => $foreign->id, 'raw_event_id' => $eventId,
+        'reason_code' => 'unmatched_identity', 'details' => 'Foreign item.', 'status' => 'open',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
 
     $url = "/api/hr/attendance/quarantine/{$itemId}/mapping-options";
     actingAs($admin, 'api')->getJson($url.'?search='.$staff->code.'&per_page=50')->assertOk()
@@ -72,6 +78,7 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
         ->assertJsonPath('data.data.0.status', 'verified');
     actingAs($admin, 'api')->getJson($url.'?selected_id='.$eligibleId)->assertOk()->assertJsonPath('data.data.0.value', $eligibleId);
     actingAs($admin, 'api')->getJson($url.'?selected_id='.$foreignMappingId)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($admin, 'api')->getJson("/api/hr/attendance/quarantine/{$foreignItemId}/mapping-options")->assertNotFound();
     actingAs($admin, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
 
     $before = DB::table('hr_attendance_raw_events')->where('id', $eventId)->first();
@@ -79,6 +86,12 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
     actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
         'person_mapping_id' => $invalidId, 'reason' => 'Should be rejected.',
     ])->assertUnprocessable();
+    actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
+        'person_mapping_id' => $foreignMappingId, 'reason' => 'Foreign mapping must be hidden.',
+    ])->assertNotFound();
+    actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
+        'person_mapping_id' => (string) Str::uuid(), 'reason' => 'Missing mapping must be hidden.',
+    ])->assertNotFound();
     actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
         'person_mapping_id' => $eligibleId, 'reason' => 'Reviewed against the device record.',
     ])->assertOk();

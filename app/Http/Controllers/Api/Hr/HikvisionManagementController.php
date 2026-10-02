@@ -3,8 +3,8 @@
 namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
+use App\Http\Controllers\Api\Hr\Concerns\AuthorizesAttendanceRequests;
 use App\Models\Hr\Attendance\AttendanceDevice;
-use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceProviderManager;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
@@ -29,11 +29,17 @@ use Illuminate\Validation\Rule;
  */
 class HikvisionManagementController extends Controller
 {
+    use AuthorizesAttendanceRequests;
+
     public function groups(Request $r): JsonResponse
     {
-        $company = $this->company($r);
+        $data = $r->validate(['company_id' => ['required', 'uuid'], 'device_id' => ['nullable', 'uuid']]);
+        $company = $this->authorizedCompanyId($r, $data['company_id']);
+        if (! empty($data['device_id'])) {
+            abort_unless(AttendanceDevice::query()->whereKey($data['device_id'])->where('company_id', $company)->exists(), 404);
+        }
 
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_access_groups')->where('company_id', $company)->orderBy('name')->get()]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_access_groups')->where('company_id', $company)->when($data['device_id'] ?? null, fn ($query, $id) => $query->where('device_id', $id))->orderBy('name')->get()]);
     }
 
     public function storeGroup(Request $r): JsonResponse
@@ -56,7 +62,7 @@ class HikvisionManagementController extends Controller
         $maintenance = $adapter->maintenanceCapabilities($device);
         $cap = array_merge((array) $device->capabilities, ['physical_access' => $access, 'maintenance' => $maintenance, 'device_configuration' => ['time' => true, 'safe_settings' => array_keys($settings)]]);
         $device->update(['capabilities' => $cap]);
-        $alerts = DB::table('hr_attendance_device_alerts')->where('device_id', $id)->latest('detected_at')->limit(50)->get();
+        $alerts = DB::table('hr_attendance_device_alerts')->where('company_id', $device->company_id)->where('device_id', $id)->latest('detected_at')->limit(50)->get();
 
         return response()->json(['status' => 'success', 'data' => ['time' => $time, 'settings' => $settings, 'access_capabilities' => $access, 'maintenance_capabilities' => $maintenance, 'alerts' => $alerts]]);
     }
@@ -112,7 +118,7 @@ class HikvisionManagementController extends Controller
 
     public function alerts(Request $r): JsonResponse
     {
-        $company = $this->company($r);
+        $company = $this->authorizedCompanyId($r, $r->input('company_id'));
 
         return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_alerts')->where('company_id', $company)->latest('detected_at')->paginate($r->integer('per_page', 50))]);
     }
@@ -120,28 +126,48 @@ class HikvisionManagementController extends Controller
     public function resolveAlert(Request $r, string $id): JsonResponse
     {
         $d = $r->validate(['note' => ['required', 'string', 'max:2000']]);
-        $company = $this->company($r);
-        $row = DB::table('hr_attendance_device_alerts')->where('id', $id)->where('company_id', $company)->first();
-        abort_unless($row, 404);
-        DB::table('hr_attendance_device_alerts')->where('id', $id)->update(['status' => 'resolved', 'resolved_at' => now(), 'resolved_by' => $r->user()->id, 'resolution_note' => $d['note'], 'updated_at' => now()]);
+        return DB::transaction(function () use ($r, $id, $d): JsonResponse {
+            $row = DB::table('hr_attendance_device_alerts')->where('id', $id)
+                ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();
+            abort_unless($row, 404);
+            $company = $row->company_id;
+            abort_unless($row->status === 'open', 409, 'Only open device alerts may be resolved.');
+            DB::table('hr_attendance_device_alerts')->where('id', $id)->where('company_id', $company)->update([
+                'status' => 'resolved',
+                'resolved_at' => now(),
+                'resolved_by' => $r->user()->id,
+                'resolution_note' => $d['note'],
+                'updated_at' => now(),
+            ]);
+            activity('hr-attendance')->causedBy($r->user())
+                ->withProperties(['alert_id' => $id, 'company_id' => $company, 'device_id' => $row->device_id, 'alert_type' => $row->alert_type])
+                ->log('attendance_device_alert_resolved');
 
-        return response()->json(['status' => 'success']);
+            return response()->json(['status' => 'success']);
+        });
     }
 
     public function retryCommand(Request $r, string $id): JsonResponse
     {
         $d = $r->validate(['reason' => ['required', 'string', 'max:2000']]);
-        $company = $this->company($r);
-        $row = DB::table('hr_attendance_access_commands')->where('id', $id)->where('company_id', $company)->first();
-        abort_unless($row && in_array($row->status, ['dead_letter', 'retry_pending'], true), 409, 'Only failed access commands can be retried.');
-        DB::table('hr_attendance_access_commands')->where('id', $id)->update(['status' => 'retry_pending', 'next_attempt_at' => now(), 'failure_message' => 'Manual retry: '.$d['reason'], 'updated_at' => now()]);
+        return DB::transaction(function () use ($r, $id, $d): JsonResponse {
+            $row = DB::table('hr_attendance_access_commands')->where('id', $id)
+                ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();
+            abort_unless($row, 404);
+            $company = $row->company_id;
+            abort_unless(in_array($row->status, ['dead_letter', 'retry_pending'], true), 409, 'Only failed access commands can be retried.');
+            DB::table('hr_attendance_access_commands')->where('id', $id)->where('company_id', $company)->update(['status' => 'retry_pending', 'next_attempt_at' => now(), 'failure_message' => 'Manual retry: '.$d['reason'], 'updated_at' => now()]);
 
-        return response()->json(['status' => 'success']);
+            return response()->json(['status' => 'success']);
+        });
     }
 
     public function maintenanceCommands(Request $r): JsonResponse
     {
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $this->company($r))->latest('requested_at')->paginate($r->integer('per_page', 50))]);
+        $data = $r->validate(['company_id' => ['required', 'uuid']]);
+        $company = $this->authorizedCompanyId($r, $data['company_id']);
+
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $company)->latest('requested_at')->paginate($r->integer('per_page', 50))]);
     }
 
     public function requestReboot(Request $r, string $id): JsonResponse
@@ -152,46 +178,54 @@ class HikvisionManagementController extends Controller
         abort_unless(hash_equals($device->site_code, $data['typed_confirmation']), 422, 'Type the exact device site code to confirm the reboot request.');
         $probeAt = data_get($device->capabilities, 'last_identity_probe_at');
         abort_unless($probeAt && CarbonImmutable::parse($probeAt)->gte(now()->subMinutes(10)), 409, 'Run a successful device identity test within ten minutes before requesting reboot.');
-        if ($existing = DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $device->company_id)->where('idempotency_key', $data['idempotency_key'])->first()) {
-            return response()->json(['status' => 'success', 'data' => $existing]);
-        }
-        $commandId = (string) Str::uuid();
-        DB::table('hr_attendance_device_maintenance_commands')->insert(['id' => $commandId, 'company_id' => $device->company_id, 'device_id' => $device->id, 'command_type' => 'reboot', 'status' => 'pending_approval', 'reason' => $data['reason'], 'typed_confirmation' => $data['typed_confirmation'], 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $r->user()->id, 'requested_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+        return DB::transaction(function () use ($r, $device, $data): JsonResponse {
+            DB::table('companies')->where('id', $device->company_id)->lockForUpdate()->first();
+            $existing = DB::table('hr_attendance_device_maintenance_commands')->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($existing) {
+                abort_unless(
+                    $existing->company_id === $device->company_id
+                    && $existing->device_id === $device->id
+                    && $existing->command_type === 'reboot'
+                    && $existing->reason === $data['reason']
+                    && $existing->typed_confirmation === $data['typed_confirmation']
+                    && $existing->requested_by === $r->user()->id,
+                    409,
+                    'Idempotency key was reused for a different reboot request.'
+                );
 
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->find($commandId)], 201);
+                return response()->json(['status' => 'success', 'data' => $existing]);
+            }
+            $commandId = (string) Str::uuid();
+            DB::table('hr_attendance_device_maintenance_commands')->insert(['id' => $commandId, 'company_id' => $device->company_id, 'device_id' => $device->id, 'command_type' => 'reboot', 'status' => 'pending_approval', 'reason' => $data['reason'], 'typed_confirmation' => $data['typed_confirmation'], 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $r->user()->id, 'requested_at' => now(), 'created_at' => now(), 'updated_at' => now()]);
+
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->find($commandId)], 201);
+        });
     }
 
     public function approveReboot(Request $r, string $id): JsonResponse
     {
         abort_unless(config('hr.features.hikvision_maintenance_commands'), 409, 'Restricted Hikvision maintenance is not enabled for this deployment.');
         return DB::transaction(function () use ($r, $id) {
-            $command = DB::table('hr_attendance_device_maintenance_commands')->where('id', $id)->lockForUpdate()->first();
-            abort_unless($command && $command->company_id === $this->company($r), 404);
+            $command = DB::table('hr_attendance_device_maintenance_commands')->where('id', $id)
+                ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();
+            abort_unless($command, 404);
+            $company = $command->company_id;
             abort_if($command->requested_by === $r->user()->id, 409, 'The reboot requester cannot approve the same command.');
             abort_unless($command->status === 'pending_approval', 409, 'Only a pending reboot may be approved.');
-            $device = AttendanceDevice::query()->findOrFail($command->device_id);
+            $device = AttendanceDevice::query()->where('company_id', $company)->findOrFail($command->device_id);
             abort_unless((bool) data_get($device->capabilities, 'maintenance.reboot'), 409, 'Reboot capability is no longer verified for this terminal.');
             $probeAt = data_get($device->capabilities, 'last_identity_probe_at');
             abort_unless($probeAt && CarbonImmutable::parse($probeAt)->gte(now()->subMinutes(10)), 409, 'Repeat the device identity test before approving reboot.');
-            DB::table('hr_attendance_device_maintenance_commands')->where('id', $id)->update(['status' => 'approved_pending_execution', 'approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
+            DB::table('hr_attendance_device_maintenance_commands')->where('id', $id)->where('company_id', $company)->update(['status' => 'approved_pending_execution', 'approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
 
             return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->find($id)]);
         });
     }
 
-    private function company(Request $r): string
-    {
-        $id = Staff::query()->where('user_id', $r->user()->id)->value('company_id');
-        abort_unless($id, 403);
-
-        return $id;
-    }
-
     private function device(Request $r, string $id): AttendanceDevice
     {
-        $d = AttendanceDevice::query()->find($id);
+        $d = AttendanceDevice::query()->whereIn('company_id', $this->authorizedCompanyIds($r))->find($id);
         abort_unless($d, 404);
-        abort_unless($d->company_id === $this->company($r), 403);
 
         return $d;
     }

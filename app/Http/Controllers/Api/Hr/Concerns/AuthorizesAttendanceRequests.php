@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Hr\Concerns;
 
 use App\Models\Staff;
 use App\Models\Company;
+use App\Models\Hr\Attendance\AttendanceDevice;
 use Illuminate\Http\Request;
 
 /**
@@ -27,6 +28,10 @@ trait AuthorizesAttendanceRequests
 
     private function authorizedCompanyIds(Request $request)
     {
+        if ($request->user()->can('staff.view-all')) {
+            return Company::query()->where('is_active', true)->orderBy('name')->pluck('id');
+        }
+
         $staffCompanyIds = Staff::query()
             ->where('user_id', $request->user()->id)
             ->whereNotNull('company_id')
@@ -37,6 +42,17 @@ trait AuthorizesAttendanceRequests
 
         return Company::query()->where('is_active', true)->whereIn('id', $staffCompanyIds)
             ->distinct()->orderBy('name')->pluck('id');
+    }
+
+    private function authorizedDevice(Request $request, string $deviceId, ?string $companyId = null): AttendanceDevice
+    {
+        $companyIds = $companyId
+            ? collect([$this->authorizedCompanyId($request, $companyId)])
+            : $this->authorizedCompanyIds($request);
+        $device = AttendanceDevice::query()->whereIn('company_id', $companyIds)->find($deviceId);
+        abort_unless($device, 404);
+
+        return $device;
     }
 
     private function requireAttendanceWrites(): void
