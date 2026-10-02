@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Traits\UUID;
+use App\Traits\HasIsActive;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Spatie\Permission\Models\Role;
@@ -15,7 +16,7 @@ use Spatie\Permission\Models\Role;
  */
 class UserContext extends Model
 {
-    use UUID, SoftDeletes;
+    use UUID, SoftDeletes, HasIsActive;
 
     protected $fillable = [
         'user_id',

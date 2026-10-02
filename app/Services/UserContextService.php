@@ -80,6 +80,11 @@ class UserContextService
             $existingContext = $existingContextQuery->first();
 
             if ($existingContext) {
+                abort_if(
+                    $this->staffContextRequiresRehire($existingContext),
+                    409,
+                    'Former Staff access can only be restored through an approved rehire.'
+                );
                 $this->restoreOrCreateContextModel($user, $existingContext, $contextData);
 
                 $rolesToAssign = !empty($contextData['roles'])
@@ -105,6 +110,11 @@ class UserContextService
             $inactiveContext = $inactiveContextQuery->latest('updated_at')->first();
 
             if ($inactiveContext) {
+                abort_if(
+                    $this->staffContextRequiresRehire($inactiveContext),
+                    409,
+                    'Former Staff access can only be restored through an approved rehire.'
+                );
                 $this->restoreOrCreateContextModel($user, $inactiveContext, $contextData);
                 $inactiveContext->update(['is_active' => true]);
 
@@ -172,6 +182,11 @@ class UserContextService
             ->where('is_active', false)
             ->pluck('context_type')
             ->toArray();
+        $inactiveStaffContext = $user->contexts()
+            ->where('context_type', 'staff')
+            ->where('is_active', false)
+            ->latest('updated_at')
+            ->first();
 
         if (($user->hasRole(['customer', 'staff', 'admin']) || in_array('customer', $inactiveContextTypes, true)) && !in_array('customer', $activeContextTypes, true)) {
             $contexts[] = [
@@ -203,7 +218,7 @@ class UserContextService
             ];
         }
 
-        if (($user->hasRole(['staff', 'admin']) || in_array('staff', $inactiveContextTypes, true)) && !in_array('staff', $activeContextTypes, true)) {
+        if (($user->hasRole(['staff', 'admin']) || in_array('staff', $inactiveContextTypes, true)) && !in_array('staff', $activeContextTypes, true) && (!$inactiveStaffContext || !$this->staffContextRequiresRehire($inactiveStaffContext))) {
             $contexts[] = [
                 'value' => 'staff',
                 'label' => 'Staff',
@@ -784,6 +799,17 @@ class UserContextService
             default:
                 throw new Exception("Invalid context type: {$contextType}");
         }
+    }
+
+    private function staffContextRequiresRehire(UserContext $context): bool
+    {
+        if ($context->context_type !== 'staff') {
+            return false;
+        }
+
+        $staff = Staff::withTrashed()->find($context->context_id);
+
+        return !$staff || $staff->trashed() || $staff->employment_ended_at !== null;
     }
 
     private function restoreOrCreateContextModel(

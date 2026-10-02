@@ -69,12 +69,12 @@ class StaffIdentityService
 
             $employmentSpell = $this->peopleCore->closeEmployment($lockedStaff, $reason, $actor->id);
 
-            $lockedStaff->update([
+            $lockedStaff->forceFill([
                 'employment_ended_at' => now(),
                 'termination_reason' => $reason,
                 'terminated_by' => $actor->id,
                 'updated_user_id' => $actor->id,
-            ]);
+            ])->save();
             $lockedStaff->delete();
 
             // Passport tokens are not context-scoped. Revoke existing tokens so

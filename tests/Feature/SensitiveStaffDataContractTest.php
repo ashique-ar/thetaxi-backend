@@ -94,3 +94,11 @@ it('terminates only the staff context and retains other user contexts', function
         ->and($portalService)->toContain('{ reason, idempotency_key: idempotencyKey }')
         ->not->toContain("\$user->update(['is_active' => false])");
 });
+
+it('persists former employee fields through trusted lifecycle writes', function () {
+    $termination = file_get_contents(app_path('Services/StaffIdentityService.php'));
+    $rehire = file_get_contents(app_path('Services/Hr/PeopleCoreService.php'));
+
+    expect($termination)->toContain("\$lockedStaff->forceFill([")
+        ->and($rehire)->toContain("\$staff->forceFill(['employment_ended_at'=>null");
+});

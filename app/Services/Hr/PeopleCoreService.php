@@ -97,7 +97,7 @@ class PeopleCoreService
             abort_unless($staff->company_id===$case->company_id,409,'The rehire case and employee legal entity do not match.');
             abort_if(HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->exists(),409,'Employee already has an active employment spell.');
             $this->assertEmploymentType($assignment['employment_type_id']??null,$case->company_id);
-            $staff->restore(); $staff->update(['employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId]);
+            $staff->restore(); $staff->forceFill(['employment_ended_at'=>null,'termination_reason'=>null,'terminated_by'=>null,'updated_user_id'=>$actorUserId])->save();
             $rehireDate=$case->proposed_rehire_date->toDateString();
             $spell=HrEmploymentSpell::create(['staff_id'=>$staff->id,'company_id'=>$case->company_id,'employment_type_id'=>$assignment['employment_type_id']??null,'spell_number'=>(int)HrEmploymentSpell::query()->where('staff_id',$staff->id)->max('spell_number')+1,'joined_at'=>$rehireDate,'service_date'=>$rehireDate,'rehire_date'=>$rehireDate,'status'=>'active','gratuity_service_start'=>$rehireDate,'gratuity_service_decision'=>$case->prior_service_decisions['gratuity']??'New gratuity-service clock required.','prior_service_decisions'=>$case->prior_service_decisions,'created_user_id'=>$actorUserId]);
             if (!empty($assignment['position_id'])||!empty($assignment['organization_unit_id'])) $this->createAssignment($staff,$spell,$assignment,$actorUserId,'rehire');
