@@ -17,9 +17,9 @@ it('requires a selected legal entity when the actor has Staff identities in mult
     Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
 
     $options = actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertOk();
-    expect(collect($options->json('data'))->pluck('value')->all())
-        ->toContain($otherCompany->id)
-        ->not->toContain($unassignedCompany->id);
+    $companyIds = collect($options->json('data'))->pluck('value')->all();
+    expect($companyIds)->toContain($otherCompany->id);
+    expect($companyIds)->not->toContain($unassignedCompany->id);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/periods')
         ->assertForbidden()
