@@ -785,6 +785,12 @@ class UserContextService
                 );
 
             case 'staff':
+                $existingStaff = Staff::withTrashed()->where('user_id', $user->id)->first();
+                abort_if(
+                    $existingStaff && ($existingStaff->trashed() || $existingStaff->employment_ended_at !== null),
+                    409,
+                    'Former Staff access can only be restored through an approved rehire.'
+                );
                 $contextData = $this->defaultStaffCompany->apply($contextData);
 
                 return Staff::firstOrCreate(
@@ -908,6 +914,11 @@ class UserContextService
             ->first();
 
         if ($context) {
+            abort_if(
+                $this->staffContextRequiresRehire($context),
+                409,
+                'Former Staff access can only be restored through an approved rehire.'
+            );
             return $context;
         }
 
