@@ -43,9 +43,13 @@ it('fails closed when collection history has missing or conflicting company owne
         ->toContain("'booking_payment_receipts'")
         ->toContain("'booking_payment_adjustments'")
         ->toContain("'booking_commercial_value_adjustments'")
+        ->toContain("'booking_collection_work_items' => 'assigned_sales_profile_id'")
+        ->toContain("'booking_collection_submissions' => 'submitted_by_sales_profile_id'")
         ->toContain("whereNull('company_id')->orWhere('company_id', '!=', \$companyId)")
         ->and($scheduleController)->toContain('companyIntegrity->assertConsistent')
         ->and($paymentAdjustmentController)->toContain('companyIntegrity->assertConsistent')
         ->and($attributionController)->toContain('collectionCompanyIntegrity->assertConsistent')
-        ->and($rollingScheduleService)->toContain('companyIntegrity->assertConsistent');
+        ->and($rollingScheduleService)->toContain('companyIntegrity->assertConsistent')
+        ->and(file_get_contents(app_path('Services/Sales/CollectionScheduleWorkflowService.php')))
+        ->toContain('companyIntegrity->assertConsistent');
 });

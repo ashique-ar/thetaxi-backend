@@ -147,7 +147,6 @@ class CollectionScheduleWorkflowController extends Controller
     {
         $this->assertBookingManagementScope($request, $booking);
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
-        $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
         $scheduleColumns = ['schedule.id', 'schedule.sequence', 'schedule.label', 'schedule.period_start', 'schedule.period_end', 'schedule.due_date', 'schedule.source_amount', 'schedule.source_currency', 'schedule.lkr_amount', 'schedule.schedule_kind', 'schedule.is_collection_target_eligible', 'schedule.notes', 'schedule.status', 'schedule.revision_number'];
         if (Schema::hasColumn('booking_payment_schedules', 'booking_payment_schedule_rule_id')) {
             $scheduleColumns = [...$scheduleColumns, 'schedule.booking_payment_schedule_rule_id', 'schedule.rule_occurrence_number'];
@@ -260,6 +259,8 @@ class CollectionScheduleWorkflowController extends Controller
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('due_at', '<=', $to))
             ->orderBy('due_at')->paginate($request->integer('per_page', 25));
 
+        $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
+
         $rows->setCollection($rows->getCollection()->map(function ($row) use ($canViewCustomerContact): array {
             $schedule = $row->paymentSchedule;
             $scheduledAmount = round((float) ($schedule?->source_amount ?? $schedule?->amount ?? 0), 4);
@@ -343,6 +344,7 @@ class CollectionScheduleWorkflowController extends Controller
         }
         $rows = $query->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->latest('received_at')->paginate($request->integer('per_page', 25));
+        $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
         $rows->setCollection($rows->getCollection()->map(fn ($row) => [
             'id' => $row->id, 'company_id' => $row->company_id, 'booking_id' => $row->booking_id,
             'booking_number' => $row->booking?->booking_number, 'booking_payment_schedule_id' => $row->booking_payment_schedule_id,
@@ -387,6 +389,18 @@ class CollectionScheduleWorkflowController extends Controller
         if ($profileIds !== null) {
             $query->whereIn($column, $profileIds);
         }
+    }
+
+    private function assertCollectionPageCompanyIntegrity($rows): void
+    {
+        $bookingIds = $rows->pluck('booking_id')->unique()->values()->all();
+        if ($bookingIds === []) {
+            return;
+        }
+
+        $companyByBookingId = array_fill_keys($bookingIds, null);
+        $companies = SalesBookingAttribution::query()->whereIn('booking_id', $bookingIds)->pluck('company_id', 'booking_id')->all();
+        $this->companyIntegrity->assertMany(array_replace($companyByBookingId, $companies));
     }
 
     private function assertBookingManagementScope(Request $request, Booking $booking): void

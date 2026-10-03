@@ -23,6 +23,7 @@ class CollectionScheduleWorkflowService
     public function __construct(
         private readonly DomainEventPublisher $events,
         private readonly BookingPaymentLedgerService $ledger,
+        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {}
 
     public function previewFutureUnpaidRevision(Booking $booking, array $data): array
@@ -184,9 +185,10 @@ class CollectionScheduleWorkflowService
     {
         return DB::transaction(function () use ($booking, $profile, $data) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
-            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             abort_unless($this->collectionProfileAt($attribution, now()) === $profile->id, 403, 'This booking is outside your current collection portfolio.');
             abort_unless($attribution->company_id === $profile->company_id, 403, 'The booking belongs to another legal entity.');
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
 
             $checksum = $this->checksum($booking->id, $data);
             $duplicate = BookingCollectionSubmission::query()
@@ -198,7 +200,8 @@ class CollectionScheduleWorkflowService
 
             if (! empty($data['booking_payment_schedule_id'])) {
                 $validSchedule = BookingPaymentSchedule::query()
-                    ->where('booking_id', $booking->id)->whereKey($data['booking_payment_schedule_id'])->exists();
+                    ->where('booking_id', $booking->id)->whereKey($data['booking_payment_schedule_id'])
+                    ->whereNull('superseded_at')->where('status', '!=', 'superseded')->exists();
                 abort_unless($validSchedule, 422, 'The selected installment belongs to another booking or is no longer active.');
             }
             if (! empty($data['evidence_file_id'])) {
@@ -228,7 +231,13 @@ class CollectionScheduleWorkflowService
     public function verify(BookingCollectionSubmission $submission, array $data, string $actorUserId): BookingCollectionSubmission
     {
         return DB::transaction(function () use ($submission, $data, $actorUserId) {
+            $booking = Booking::query()->whereKey($submission->booking_id)->lockForUpdate()->firstOrFail();
             $submission = BookingCollectionSubmission::query()->lockForUpdate()->findOrFail($submission->id);
+            abort_unless((string) $submission->booking_id === (string) $booking->id, 409, 'The collection submission booking changed; reload before deciding.');
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            abort_unless($submission->company_id === $attribution->company_id, 409,
+                'The collection submission company does not match the booking attribution; reconcile its ownership before continuing.');
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             if ($submission->status === 'verified') {
                 return $submission;
             }
@@ -245,7 +254,6 @@ class CollectionScheduleWorkflowService
                 return $submission;
             }
 
-            $booking = Booking::query()->findOrFail($submission->booking_id);
             if ($submission->source_currency !== 'LKR' && empty($data['fx_rate_to_lkr'])) {
                 throw ValidationException::withMessages([
                     'fx_rate_to_lkr' => ['Accounts must provide the approved LKR rate for a non-LKR collection.'],

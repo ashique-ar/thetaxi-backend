@@ -160,7 +160,7 @@ class RollingPaymentScheduleService
         $this->assertEnabled((string) $companyId);
 
         return DB::transaction(function () use ($booking, $data, $actorUserId): array {
-            Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $rule = BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             abort_unless($attribution->company_id === $rule->company_id, 409,
