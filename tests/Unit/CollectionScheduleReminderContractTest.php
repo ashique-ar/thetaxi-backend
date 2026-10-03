@@ -12,6 +12,7 @@ it('keeps handler reminders durable, scoped, and retry safe', function (): void 
         ->toContain('$workItem->assigned_sales_profile_id')
         ->toContain('DB::transaction')
         ->toContain('lockForUpdate')
+        ->toContain('companyIntegrity->assertConsistent($booking, (string) $companyId)')
         ->toContain("'message' => 'Review the assigned collection task in the Sales workspace.'")
         ->and($migration)
         ->toContain("\$table->string('idempotency_key', 190)->unique()")

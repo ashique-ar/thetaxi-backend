@@ -1,6 +1,6 @@
 # Sales collection schedule runbook
 
-This runbook covers creation/revision of payment schedules, open-ended rolling-horizon generation, allocation correction, overdue escalation, and customer communication. It does not authorize production access, migration execution, customer messaging, financial adjustment, or historical repair.
+This runbook covers creation/revision of payment schedules, open-ended rolling-horizon generation, allocation correction, overdue escalation, customer communication, and the scoped legacy collection-company repair tool. It does not authorize production access, migration execution, customer messaging, or financial adjustment.
 
 ## Ownership and severity
 
@@ -45,3 +45,20 @@ This runbook covers creation/revision of payment schedules, open-ended rolling-h
 - Accounts/Collections communicates operational impact; Sales Operations confirms handler/contract facts; Privacy approves any customer/contact disclosure. Use no customer message until the policy is approved.
 - Before activation, rollback is feature disable plus reviewed migration rollback only when evidence tables are empty. Once rule/occurrence evidence exists, schema rollback is intentionally refused; pause the rule and use append-only correction/reconciliation.
 - After Severity 1 or repeated Severity 2 incidents, complete a post-incident review covering trigger, detection, authorization, data/privacy impact, retry behavior, reconciliation, corrective source work, and prevention owner/date.
+
+## Legacy collection-company repair
+
+- The payment-ledger exception preview requires an authorized legal entity and accepts a booking number filter; it returns readable booking references only, is capped per category, and never repairs missing receipt, FX, finality, or component facts.
+- Missing receipt components may be repaired only from the receipt's recorded purpose, with restricted evidence attached to that receipt, a reason, and an idempotency key. Component eligibility is derived by the existing ledger rule; unsupported purposes remain held. Identical retries must reconcile the stored request and audit checksums.
+- Legacy paid-receipt repair derives the opening amount from the booking and requires restricted evidence attached to that same booking, source payment facts, and a reason. Retries succeed only when the stored request, evidence, immutable audit checksums, and current ledger state match. Missing or non-LKR booking currency stays held until Finance approves a conversion basis. Repair never backfills commission, and migration rollback is refused after repair evidence exists.
+- Receipt and component repair evidence IDs, reasons, and checksums remain available to restricted audit/replay checks and stay out of normal model serialization.
+- Component repair is append-only. Never delete or rewrite a repaired component; a later conflicting source fact remains held for Finance disposition before any correction path is used. Migration rollback is refused after repair evidence exists.
+- Start with the read-only mismatch report. Missing booking attribution, cross-company or unresolved Sales Profile references, and repairs without a verified current entity remain held for separate review; never infer ownership from the ledger row.
+- Receipt finality events and collection reminder deliveries are immutable history. Their company mismatches are reported as held, block collection writes and repair for that booking, and require an approved historical disposition; do not rewrite these rows through the company repair tool.
+- Use the deterministic counts by issue and source table to compare each scoped report before and after a repair. Do not combine financial values across different record types or currencies.
+- Preview, repair, and rollback recheck the caller's authorized company while booking attribution is locked. If attribution changed after the initial scope check, refresh the authorized review instead of retrying the stale request.
+- For an eligible booking, an authorized Accounts/Collections user reviews the checksum-bound preview, confirms it changes only collection `company_id` values to the booking's established entity, attaches restricted evidence to that booking/entity, and records a reason before applying.
+- Reconcile the booking and collection ledger after repair. The repair history retains actor, evidence, reason, before/after checksums, and idempotency evidence.
+- Identical retries succeed only when the expected source-row count and every matching domain audit event/checksum still reconcile; otherwise the replay is held for audit review.
+- To reverse a repair, review the rollback preview and proceed only when every current source row still matches its recorded after-state checksum. Attach restricted booking/entity evidence and a reason. The rollback restores the prior company values and deliberately returns the mismatch to the report for separate disposition.
+- Repairs predating the stored after-state checksum cannot be rolled back through this tool. Do not manually rewrite their company or Profile references. Schema rollback is refused while repair or rollback evidence exists.

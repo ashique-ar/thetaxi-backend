@@ -28,7 +28,7 @@ it('requires panel membership, not a recruitment department permission, to submi
     $method = substr($method, 0, strpos($method, 'public function interviewFeedback('));
 
     expect($method)
-        ->toContain("abort_unless(\$staffId&&in_array(\$staffId,\$panel,true),403")
+        ->toContain("abort_unless(in_array(\$staffId,\$panel,true),403")
         ->toContain("Feedback was already submitted for this interview.")
         ->not->toContain("hr.recruitment.manage");
 });
@@ -66,5 +66,24 @@ it('scopes myInterviews to panel membership via whereJsonContains without a comp
     $method = substr($controller, strpos($controller, 'public function myInterviews('));
     $method = substr($method, 0, strpos($method, 'public function storeInterviewFeedback('));
 
-    expect($method)->toContain("whereJsonContains('panel_staff_ids',\$staffId)");
+    expect($method)
+        ->toContain("\$staffId=\$this->actor(\$r)->id")
+        ->toContain("whereJsonContains('panel_staff_ids',\$staffId)");
+});
+
+it('uses the selected active Staff identity for Recruitment company and interview authorization', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/RecruitmentController.php'));
+    $interviews = substr($controller, strpos($controller, 'public function interviews('));
+    $interviews = substr($interviews, 0, strpos($interviews, 'public function interviewPanelOptions('));
+    $myInterviews = substr($controller, strpos($controller, 'public function myInterviews('));
+    $myInterviews = substr($myInterviews, 0, strpos($myInterviews, 'public function storeInterviewFeedback('));
+    $feedback = substr($controller, strpos($controller, 'public function storeInterviewFeedback('));
+    $feedback = substr($feedback, 0, strpos($feedback, 'public function interviewFeedback('));
+
+    expect($controller)
+        ->toContain('private function actor(Request$r):Staff{return app(StaffAccessService::class)->currentActorStaff($r->user());}')
+        ->toContain('$actor=$this->actor($r)->company_id')
+        ->and($interviews)->toContain('$staffId=$this->actor($r)->id')
+        ->and($myInterviews)->toContain('$staffId=$this->actor($r)->id')
+        ->and($feedback)->toContain('$staffId=$this->actor($r)->id');
 });

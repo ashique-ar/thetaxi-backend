@@ -89,6 +89,34 @@ it('keeps company selection for staff.view-all users who have no Staff record', 
     expect($response->json('data.0.value'))->toBe($second->id);
     actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$second->id)
         ->assertOk()->assertJsonPath('data.company_id', $second->id);
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+        ->assertOk()->assertJsonPath('data.company_id', $second->id);
+});
+
+it('does not guess a Workforce company when several authorized entities have no default', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    $user = User::factory()->create();
+    $role = Role::create(['name' => 'workforce_no_default_scope_tester', 'guard_name' => 'api']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
+    $user->assignRole($role);
+    Company::create(['name' => 'Workforce Choice A', 'is_default' => false]);
+    $selected = Company::create(['name' => 'Workforce Choice B', 'is_default' => false]);
+
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$selected->id)
+        ->assertOk()->assertJsonPath('data.company_id', $selected->id);
+});
+
+it('uses the sole authorized Workforce company when no default exists', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    $user = User::factory()->create();
+    $role = Role::create(['name' => 'workforce_single_company_scope_tester', 'guard_name' => 'api']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
+    $user->assignRole($role);
+    $company = Company::create(['name' => 'Single Workforce Choice', 'is_default' => false]);
+
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+        ->assertOk()->assertJsonPath('data.company_id', $company->id);
 });
 
 it('hides Leave decision requests outside the approver legal entity as not found', function () {

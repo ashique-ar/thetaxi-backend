@@ -27,8 +27,23 @@ class CommissionDisputeService
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($line->statement_id);
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
             abort_if(in_array($statement->status, ['paid', 'void'], true), 422, 'Paid or void statements cannot accept a new dispute.');
-            $duplicate = SalesCommissionDispute::query()->where('idempotency_key', $data['idempotency_key'])->first();
-            if ($duplicate) return $duplicate;
+            $requestChecksum = hash('sha256', json_encode([
+                'statement_id' => (string) $statement->id,
+                'statement_line_id' => (string) $line->id,
+                'raised_by_staff_id' => $staffId,
+                'category' => $data['category'],
+                'reason' => $data['reason'],
+                'evidence_file_id' => $data['evidence_file_id'] ?? null,
+                'contested_amount_lkr' => (string) $data['contested_amount_lkr'],
+                'idempotency_key' => $data['idempotency_key'],
+            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            $duplicate = SalesCommissionDispute::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+            if ($duplicate) {
+                abort_unless($duplicate->request_payload_checksum
+                    && hash_equals($duplicate->request_payload_checksum, $requestChecksum), 409,
+                    'This dispute key is already bound to different or unverified facts.');
+                return $duplicate;
+            }
             abort_if(SalesCommissionDispute::query()->where('statement_line_id', $line->id)->where('status', 'open')->exists(), 422, 'This line already has an open dispute.');
             $amount = round((float) $data['contested_amount_lkr'], 4);
             abort_if($amount > max(0, (float) $line->net_lkr), 422, 'Contested amount exceeds the positive statement-line amount.');
@@ -44,7 +59,7 @@ class CommissionDisputeService
                 'category' => $data['category'], 'reason' => $data['reason'],
                 'evidence_file_id' => $data['evidence_file_id'] ?? null, 'contested_amount_lkr' => $amount,
                 'status' => 'open', 'raised_at' => now(), 'response_due_at' => now()->addDays($responseDays),
-                'idempotency_key' => $data['idempotency_key'],
+                'idempotency_key' => $data['idempotency_key'], 'request_payload_checksum' => $requestChecksum,
             ]);
             $fromVersion = $statement->state_version;
             $statement->update(['contested_hold_lkr' => round((float) $statement->contested_hold_lkr + $amount, 4), 'state_version' => $fromVersion + 1]);
@@ -71,7 +86,8 @@ class CommissionDisputeService
                 return $dispute;
             }
             abort_unless($dispute->status === 'open', 422, 'Only an open dispute can be resolved.');
-            abort_if($dispute->raised_by_staff_id === DB::table('staff')->where('user_id', $actorUserId)->value('id'), 403, 'A claimant cannot resolve their own dispute.');
+            abort_if(DB::table('staff')->where('user_id', $actorUserId)->where('id', $dispute->raised_by_staff_id)->exists(), 403,
+                'A claimant cannot resolve their own dispute.');
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($dispute->statement_id);
             $dispute->update([
                 'status' => 'resolved', 'reviewed_by' => $actorUserId, 'resolved_at' => now(),

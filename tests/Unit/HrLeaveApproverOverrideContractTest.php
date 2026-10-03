@@ -12,8 +12,9 @@ it('lets an authorized override actor decide a leave request assigned to a diffe
     $service = file_get_contents(app_path('Services/Hr/Leave/LeaveWorkflowService.php'));
 
     expect($service)
-        ->toContain('public function decide(string $requestId, string $action, string $reason, string $actorUserId, bool $overrideAuthorized = false): object')
-        ->toContain('if ($row->current_approver_staff_id && $actorStaff !== $row->current_approver_staff_id) {')
+        ->toContain('public function decide(string $requestId, string $action, string $reason, string $actorUserId, string $actorStaffId, bool $overrideAuthorized = false): object')
+        ->toContain("\$snapshot['decision_actor_staff_id'] = \$actorStaffId;")
+        ->toContain('if ($row->current_approver_staff_id && $actorStaffId !== $row->current_approver_staff_id) {')
         ->toContain("abort_unless(\$overrideAuthorized, 403, 'This leave request is assigned to a different approver.');")
         ->toContain('$overrideUsed = true;')
         ->toContain("\$snapshot['hr_override'] = ['assigned_approver_staff_id' => \$row->current_approver_staff_id, 'overridden_by' => \$actorUserId];");
@@ -34,7 +35,8 @@ it('requires the caller to hold the override permission separately from the base
     $routes = file_get_contents(base_path('routes/api.php'));
 
     expect($controller)
-        ->toContain("\$row = \$service->decide(\$id, \$d['action'], \$d['reason'], \$r->user()->id, \$r->user()->can('hr.leave.approve.override'));")
+        ->toContain("\$row = \$service->decide(\$id, \$d['action'], \$d['reason'], \$r->user()->id, \$actorStaff->id, \$r->user()->can('hr.leave.approve.override'));")
+        ->and($controller)->toContain("\$actorStaff = \$access->currentActorStaff(\$r->user());")
         ->and($routes)
         ->toContain("Route::post('leave/requests/{id}/decide', [WorkforceController::class,'decideLeave'])->whereUuid('id')->middleware('permission:hr.leave.approve');");
 });

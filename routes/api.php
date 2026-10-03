@@ -132,6 +132,7 @@ use App\Http\Controllers\Api\Sales\CommissionStatementController;
 use App\Http\Controllers\Api\Sales\PaymentFinalityController;
 use App\Http\Controllers\Api\Sales\PaymentLedgerReconciliationController;
 use App\Http\Controllers\Api\Sales\SalesBookingAttributionController;
+use App\Http\Controllers\Api\Sales\SalesCollectionCompanyRepairController;
 use App\Http\Controllers\Api\Sales\SalesCrmController;
 use App\Http\Controllers\Api\Sales\SalesDashboardController;
 use App\Http\Controllers\Api\Sales\SalesEvidenceController;
@@ -382,7 +383,7 @@ Route::middleware(['auth:api'])->group(function () {
             });
         }
 
-        if ($fallbackContext !== '' && ! (clone $query)->exists()) {
+        if ($fallbackContext !== '' && !(clone $query)->exists()) {
             $fallbackOwnerType = (string) $request->input('fallback_owner_type', '');
             $fallbackOwnerId = (string) $request->input('fallback_owner_id', '');
             $query = ServiceType::query()
@@ -577,6 +578,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('attribution-administration-context', [SalesBookingAttributionController::class, 'administrationContext'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-company-options', [SalesBookingAttributionController::class, 'companyOptions'])->middleware('permission:sales.attributions.view');
         Route::get('attribution-profile-options', [SalesBookingAttributionController::class, 'profileOptions'])->middleware('permission:sales.attributions.correct');
+        Route::get('collection-company-mismatches', [SalesCollectionCompanyRepairController::class, 'index'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('collection-company-repair-company-options', [SalesCollectionCompanyRepairController::class, 'companyOptions'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('collection-company-repairs', [SalesCollectionCompanyRepairController::class, 'history'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::post('collection-company-repairs/preview', [SalesCollectionCompanyRepairController::class, 'preview'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::post('collection-company-repairs', [SalesCollectionCompanyRepairController::class, 'apply'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::post('collection-company-repairs/rollback-preview', [SalesCollectionCompanyRepairController::class, 'rollbackPreview'])->middleware('permission:sales.payment-ledger.reconcile');
+        Route::post('collection-company-repairs/rollback', [SalesCollectionCompanyRepairController::class, 'rollback'])->middleware('permission:sales.payment-ledger.reconcile');
         Route::post('attributions/dry-run', [SalesBookingAttributionController::class, 'dryRun'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/historical-batch', [SalesBookingAttributionController::class, 'applyHistoricalBatch'])->middleware('permission:sales.attributions.correct');
         Route::post('attributions/{attribution}/transfer-handler', [SalesBookingAttributionController::class, 'transferHandler'])
@@ -628,13 +636,13 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('bookings/{booking}/collection-submissions', [CollectionScheduleWorkflowController::class, 'submit'])
             ->whereUuid('booking')->middleware('permission:sales.collections.submit');
         Route::post('evidence-files', [SalesEvidenceController::class, 'store'])
-            ->middleware('permission:sales.collections.submit|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
+            ->middleware('permission:sales.collections.submit|sales.payment-ledger.reconcile|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
         Route::get('evidence-files', [SalesEvidenceController::class, 'index'])
-            ->middleware('permission:sales.collections.submit|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
+            ->middleware('permission:sales.collections.submit|sales.payment-ledger.reconcile|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
         Route::get('evidence-file-options', [SalesEvidenceController::class, 'options'])
-            ->middleware('permission:sales.collections.submit|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
+            ->middleware('permission:sales.collections.submit|sales.payment-ledger.reconcile|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-payouts.pay|sales.commission-payouts.reverse');
         Route::get('evidence-files/{evidence}/download', [SalesEvidenceController::class, 'download'])
-            ->whereUuid('evidence')->middleware('permission:sales.collections.submit|sales.collections.verify|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-disputes.resolve|sales.commission-payouts.pay|sales.commission-payouts.reverse|sales.commission-accounting.acknowledge');
+            ->whereUuid('evidence')->middleware('permission:sales.collections.submit|sales.collections.verify|sales.payment-ledger.reconcile|sales.payment-finality.transition|sales.commission-disputes.raise|sales.commission-disputes.resolve|sales.commission-payouts.pay|sales.commission-payouts.reverse|sales.commission-accounting.acknowledge');
         Route::get('collection-submissions', [CollectionScheduleWorkflowController::class, 'submissions'])
             ->middleware('permission:sales.collections.view');
         Route::post('collection-submissions/{submission}/verify', [CollectionScheduleWorkflowController::class, 'verify'])
@@ -654,6 +662,12 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('payment-receipts/{receipt}/finality', [PaymentFinalityController::class, 'transition'])
             ->whereUuid('receipt')->middleware('permission:sales.payment-finality.transition');
         Route::get('payment-ledger/reconciliation-preview', [PaymentLedgerReconciliationController::class, 'preview'])
+            ->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('payment-ledger/receipt-component-options', [PaymentLedgerReconciliationController::class, 'receiptComponentOptions'])
+            ->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('payment-ledger/legacy-receipt-booking-options', [PaymentLedgerReconciliationController::class, 'legacyReceiptBookingOptions'])
+            ->middleware('permission:sales.payment-ledger.reconcile');
+        Route::get('payment-ledger/legacy-receipt-repair-history', [PaymentLedgerReconciliationController::class, 'legacyReceiptRepairHistory'])
             ->middleware('permission:sales.payment-ledger.reconcile');
         Route::post('bookings/{booking}/payment-ledger/repair-legacy', [PaymentLedgerReconciliationController::class, 'repairLegacyBooking'])
             ->whereUuid('booking')->middleware('permission:sales.payment-ledger.reconcile');
@@ -1029,7 +1043,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('calendars', [AttendanceResultController::class, 'storeCalendar'])->middleware('permission:hr.attendance.config.manage');
         Route::put('calendars/{calendarId}', [AttendanceResultController::class, 'updateCalendar'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
         Route::post('calendars/{calendarId}/days', [AttendanceResultController::class, 'storeCalendarDay'])->whereUuid('calendarId')->middleware('permission:hr.attendance.config.manage');
-        Route::put('calendars/{calendarId}/days/{dayId}', [AttendanceResultController::class, 'updateCalendarDay'])->whereUuid(['calendarId','dayId'])->middleware('permission:hr.attendance.config.manage');
+        Route::put('calendars/{calendarId}/days/{dayId}', [AttendanceResultController::class, 'updateCalendarDay'])->whereUuid(['calendarId', 'dayId'])->middleware('permission:hr.attendance.config.manage');
         Route::get('shifts', [AttendanceResultController::class, 'shifts'])->middleware('permission:hr.attendance.config.manage|hr.attendance.config.approve');
         Route::post('shifts', [AttendanceResultController::class, 'storeShift'])->middleware('permission:hr.attendance.config.manage');
         Route::put('shifts/{shiftId}', [AttendanceResultController::class, 'updateShift'])->whereUuid('shiftId')->middleware('permission:hr.attendance.config.manage');
@@ -2408,7 +2422,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view');
             Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
-            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType',['customer','corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
+            Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
             Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/dispute', [FinancialSettlementController::class, 'disputeDriverCash'])->middleware('permission:bookings.update');
             Route::post('driver-cash/{receipt}/resolve-dispute', [FinancialSettlementController::class, 'resolveDriverCashDispute'])->middleware('permission:bookings.update');

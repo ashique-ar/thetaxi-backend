@@ -4,20 +4,15 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Booking\BookingCollectionCommission;
-use App\Models\Booking\CollectionCommissionPayout;
 use App\Models\Sales\SalesCommissionDecision;
 use App\Models\Sales\SalesProfile;
-use App\Models\Staff;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\ValidationException;
-use App\Services\Sales\SalesPolicySettingsService;
 
 class CollectionCommissionController extends Controller
 {
-    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
-
     public function me(Request $request): JsonResponse
     {
         $request->query->remove('staff_id');
@@ -67,62 +62,9 @@ class CollectionCommissionController extends Controller
         ]));
     }
 
-    public function markPaid(Request $request): JsonResponse
+    public function markPaid(): JsonResponse
     {
-        abort_if(config('sales.features.commission_accrual', false), 409,
-            'Direct commission payment is disabled. Generate, approve, and pay a commission statement through the Finance workflow.');
-        $data = $request->validate([
-            'commission_ids' => ['required', 'array', 'min:1'],
-            'commission_ids.*' => ['uuid', 'exists:booking_collection_commissions,id'],
-            'paid_at' => ['required', 'date', 'before_or_equal:now'],
-            'payment_reference' => ['required', 'string', 'max:120', 'unique:collection_commission_payouts,payment_reference'],
-            'notes' => ['nullable', 'string', 'max:1000'],
-        ]);
-        $payout = DB::transaction(function () use ($data, $request) {
-            $commissions = BookingCollectionCommission::query()
-                ->whereIn('id', $data['commission_ids'])
-                ->lockForUpdate()
-                ->get();
-            if ($commissions->count() !== count(array_unique($data['commission_ids']))) {
-                throw ValidationException::withMessages(['commission_ids' => ['One or more commissions no longer exist.']]);
-            }
-            if ($commissions->contains(fn ($commission) => $commission->status !== 'earned')) {
-                throw ValidationException::withMessages(['commission_ids' => ['Only outstanding earned commissions can be paid. Refresh and select again.']]);
-            }
-            if ($commissions->pluck('staff_id')->unique()->count() !== 1) {
-                throw ValidationException::withMessages(['commission_ids' => ['Create a separate payout for each staff member.']]);
-            }
-            $companyIds = Staff::query()->whereIn('id', $commissions->pluck('staff_id'))->pluck('company_id')->filter()->unique();
-            abort_unless($companyIds->count() === 1, 422, 'Legacy commissions must resolve to one legal entity before direct payment.');
-            abort_if($this->policySettings->featureEnabled((string) $companyIds->first(), 'payouts'), 409,
-                'Direct commission payment is disabled for this legal entity. Use the approved statement payout workflow.');
-            $payout = CollectionCommissionPayout::create([
-                'payout_number' => 'CCP-' . now()->format('YmdHis') . '-' . strtoupper(substr((string) \Illuminate\Support\Str::uuid(), 0, 6)),
-                'period_start' => \Illuminate\Support\Carbon::parse($commissions->min('earned_at'))->toDateString(),
-                'period_end' => \Illuminate\Support\Carbon::parse($commissions->max('earned_at'))->toDateString(),
-                'total_amount' => round((float) $commissions->sum('commission_amount'), 2),
-                'status' => 'paid',
-                'paid_at' => $data['paid_at'],
-                'payment_reference' => $data['payment_reference'],
-                'notes' => $data['notes'] ?? null,
-                'paid_by' => $request->user()->id,
-            ]);
-            $commissions->each->update([
-                    'status' => 'paid',
-                    'paid_at' => $data['paid_at'],
-                    'paid_by' => $request->user()->id,
-                    'payout_id' => $payout->id,
-                    'payment_reference' => $data['payment_reference'],
-                    'notes' => $data['notes'] ?? null,
-                ]);
-            return $payout;
-        });
-
-        return response()->json([
-            'status' => 'success',
-            'message' => 'Collection commission payout recorded.',
-            'data' => $payout,
-        ]);
+        abort(409, 'Legacy direct commission payouts are disabled. Use the approved commission statement Finance workflow.');
     }
 
     private function newEngineIndex(Request $request): JsonResponse
@@ -152,20 +94,21 @@ class CollectionCommissionController extends Controller
 
     private function scopeLegacyQuery($query, Request $request): void
     {
-        $staff = Staff::query()->where('user_id', $request->user()->id)->firstOrFail();
         if ($request->attributes->get('legacy_commission_self_only', false)) {
+            $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
             $query->where('staff_id', $staff->id);
             return;
         }
         if ($request->user()->can('collection-commissions.view-all')) return;
+        $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
         $staffIds = [$staff->id];
         if ($request->user()->can('collection-commissions.view-team')) {
-            $profile = SalesProfile::query()->where('staff_id', $staff->id)->activeAt(now())->first();
+            $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->first();
             if ($profile) {
                 $profileIds = DB::table('sales_reporting_assignments')->where('manager_sales_profile_id', $profile->id)
                     ->where('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                     ->pluck('member_sales_profile_id');
-                $staffIds = array_merge($staffIds, SalesProfile::query()->whereIn('id', $profileIds)->pluck('staff_id')->all());
+                $staffIds = array_merge($staffIds, SalesProfile::query()->whereIn('id', $profileIds)->where('company_id', $staff->company_id)->pluck('staff_id')->all());
             }
         }
         $query->whereIn('staff_id', array_values(array_unique($staffIds)));
@@ -173,20 +116,21 @@ class CollectionCommissionController extends Controller
 
     private function scopeDecisionQuery($query, Request $request): void
     {
-        $staff = Staff::query()->where('user_id', $request->user()->id)->firstOrFail();
         if ($request->attributes->get('legacy_commission_self_only', false)) {
+            $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
             $query->where('beneficiary_staff_id', $staff->id);
             return;
         }
         if ($request->user()->can('collection-commissions.view-all')) return;
+        $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
         $ids = [$staff->id];
         if ($request->user()->can('collection-commissions.view-team')) {
-            $profile = SalesProfile::query()->where('staff_id', $staff->id)->activeAt(now())->first();
+            $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->first();
             if ($profile) {
                 $memberProfileIds = DB::table('sales_reporting_assignments')->where('manager_sales_profile_id', $profile->id)
                     ->where('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                     ->pluck('member_sales_profile_id');
-                $ids = array_merge($ids, SalesProfile::query()->whereIn('id', $memberProfileIds)->pluck('staff_id')->all());
+                $ids = array_merge($ids, SalesProfile::query()->whereIn('id', $memberProfileIds)->where('company_id', $staff->company_id)->pluck('staff_id')->all());
             }
         }
         $query->whereIn('beneficiary_staff_id', array_values(array_unique($ids)));
@@ -205,18 +149,10 @@ class CollectionCommissionController extends Controller
             ->log('legacy_collection_commissions_read');
 
         $payload = $response->getData(true);
-        $visibleStaffIds = collect(data_get($payload, 'data.data', []))->pluck('staff_id')->filter()->unique();
-        $companyIds = Staff::query()->whereIn('id', $visibleStaffIds)->pluck('company_id')->filter()->unique();
-        if ($companyIds->isEmpty()) {
-            $companyIds = Staff::query()->where('user_id', $request->user()->id)->whereNull('deleted_at')
-                ->pluck('company_id')->filter()->unique();
-        }
-        $tenantPayoutEnabled = $companyIds->contains(fn ($companyId) => $this->policySettings->featureEnabled((string) $companyId, 'payouts'));
         $payload['compatibility'] = [
             'deprecated' => true,
             'successor' => '/api/sales/commission-statements',
-            'direct_payment_available' => ! config('sales.features.commission_accrual', false)
-                && ! $tenantPayoutEnabled,
+            'direct_payment_available' => false,
         ];
         $response->setData($payload);
         $response->headers->set('Deprecation', 'true');

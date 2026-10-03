@@ -114,12 +114,11 @@ class CommissionPayoutService
                 'Commission payouts are not activated for this legal entity.');
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');
-            if (! empty($data['evidence_file_id'])) {
-                abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
-                    ->where('domain', 'sales')->where('company_id', $original->company_id)->whereNull('deleted_at')
-                    ->where('subject_type', 'commission_payout')->where('subject_id', $original->id)->exists(), 422,
-                    'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');
-            }
+            abort_unless(! empty($data['evidence_file_id']), 422, 'Payout-reversal evidence is required.');
+            abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+                ->where('domain', 'sales')->where('company_id', $original->company_id)->whereNull('deleted_at')
+                ->where('subject_type', 'commission_payout')->where('subject_id', $original->id)->exists(), 422,
+                'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');
             $allocations = SalesCommissionPayoutAllocation::query()->where('payout_id', $original->id)->lockForUpdate()->get();
             $reversal = SalesCommissionPayout::create([
                 'company_id' => $original->company_id, 'staff_id' => $original->staff_id,
@@ -160,16 +159,41 @@ class CommissionPayoutService
     {
         return DB::transaction(function () use ($payout, $data, $actorUserId) {
             $payout = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($payout->id);
-            $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->first();
-            if ($duplicate) return $duplicate;
+            $eventType = $payout->status === 'reversal' ? 'payout_reversal' : 'payout';
+            $checksum = $this->checksum([
+                'company_id' => (string) $payout->company_id,
+                'payout_id' => (string) $payout->id,
+                'event_type' => $eventType,
+                ...$data,
+            ]);
+            $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+            if ($duplicate) {
+                abort_unless($duplicate->request_payload_checksum
+                    && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
+                    'This accounting-delivery key is already bound to different or unverified facts.');
+                return $duplicate;
+            }
+            abort_if($payout->accounting_status === 'delivered', 409,
+                'Accounting delivery is already accepted; its status cannot be overwritten.');
+            if ($data['status'] === 'accepted') {
+                abort_if(SalesCommissionAccountingDelivery::query()->where('payout_id', $payout->id)
+                    ->where('event_type', $eventType)->where('external_reference', $data['external_reference'])->exists(), 409,
+                    'This external accounting reference is already recorded; retry with its original request key.');
+            }
             $delivery = SalesCommissionAccountingDelivery::create([
                 'company_id' => $payout->company_id, 'payout_id' => $payout->id,
-                'event_type' => $payout->status === 'reversal' ? 'payout_reversal' : 'payout',
+                'event_type' => $eventType,
                 'status' => $data['status'], 'external_reference' => $data['external_reference'] ?? null,
                 'message' => $data['message'] ?? null, 'idempotency_key' => $data['idempotency_key'],
-                'recorded_by' => $actorUserId, 'recorded_at' => now(),
+                'recorded_by' => $actorUserId, 'recorded_at' => now(), 'request_payload_checksum' => $checksum,
             ]);
             $payout->update(['accounting_status' => $data['status'] === 'accepted' ? 'delivered' : 'delivery_failed']);
+            $this->events->record('sales', $payout->company_id, 'commission_accounting_delivery', $delivery->id,
+                'sales.commission.accounting_delivery_recorded', 1, 1, [
+                    'payout_id' => $payout->id, 'event_type' => $eventType, 'status' => $delivery->status,
+                    'external_reference' => $delivery->external_reference,
+                    'request_payload_checksum' => $checksum,
+                ], $delivery->recorded_at, $data['idempotency_key']);
             return $delivery;
         });
     }

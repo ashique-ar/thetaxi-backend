@@ -25,7 +25,8 @@ class TenantDecisionController extends Controller
     {
         $d = $r->validate(['search' => 'nullable|string|max:120', 'selected_id' => 'nullable|uuid', 'page' => 'nullable|integer|min:1', 'per_page' => 'nullable|integer|min:1|max:50']);
         $ids = $r->user()->can('tenant-decisions.manage-all') ? null : DB::table('staff')->where('user_id', $r->user()->id)->whereNull('deleted_at')->whereNull('employment_ended_at')->pluck('company_id');
-        $q = DB::table('companies')->whereNull('deleted_at')->when($d['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id));
+        $q = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
+            ->when($d['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id));
         if ($ids !== null)
             $q->whereIn('id', $ids);
         if (empty($d['selected_id']) && ! empty($d['search'])) {

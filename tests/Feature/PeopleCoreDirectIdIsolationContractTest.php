@@ -31,6 +31,15 @@ it('revalidates rehire company and active non-self manager in controller and tra
         ->toContain("abort_unless(\$staff->company_id===\$case->company_id");
 });
 
+it('serializes rehire preparation before checking and creating an idempotent case', function () {
+    $service = file_get_contents(app_path('Services/Hr/PeopleCoreService.php'));
+
+    expect($service)
+        ->toContain('return DB::transaction(function () use ($staff, $data, $actorUserId)')
+        ->toContain('Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail()')
+        ->toContain("where('idempotency_key',\$data['idempotency_key'])->lockForUpdate()->first()");
+});
+
 it('never copies decrypted NIC into the plaintext rehire snapshot', function () {
     $service = file_get_contents(app_path('Services/Hr/PeopleCoreService.php'));
 

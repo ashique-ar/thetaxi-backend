@@ -74,26 +74,26 @@ class LeaveWorkflowService
      * checks, and every override is recorded on the decision event/snapshot
      * for audit rather than silently applied.
      */
-    public function decide(string $requestId, string $action, string $reason, string $actorUserId, bool $overrideAuthorized = false): object
+    public function decide(string $requestId, string $action, string $reason, string $actorUserId, string $actorStaffId, bool $overrideAuthorized = false): object
     {
         $this->enabled();
-        return DB::transaction(function () use ($requestId, $action, $reason, $actorUserId, $overrideAuthorized) {
+        return DB::transaction(function () use ($requestId, $action, $reason, $actorUserId, $actorStaffId, $overrideAuthorized) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
             abort_if($row->requested_by === $actorUserId, 409, 'The leave requester cannot decide the same request.');
             abort_unless($row->status === 'pending_approval', 409, 'Only pending leave may be decided.');
             abort_unless(in_array($action, ['approve', 'reject'], true), 422, 'Unsupported leave decision.');
-            $actorStaff = DB::table('staff')->where('user_id', $actorUserId)->value('id');
             $overrideUsed = false;
             $delegateUsed = false;
-            if ($row->current_approver_staff_id && $actorStaff !== $row->current_approver_staff_id) {
-                $delegateUsed = DB::table('hr_approval_delegations')->where('delegator_staff_id', $row->current_approver_staff_id)->where('delegate_staff_id', $actorStaff)->where('status', 'approved')->whereDate('effective_from', '<=', now())->whereDate('effective_until', '>=', now())->get(['request_types'])->contains(fn($delegation) => in_array('leave', json_decode($delegation->request_types, true), true));
+            $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
+            $snapshot['decision_actor_staff_id'] = $actorStaffId;
+            if ($row->current_approver_staff_id && $actorStaffId !== $row->current_approver_staff_id) {
+                $delegateUsed = DB::table('hr_approval_delegations')->where('delegator_staff_id', $row->current_approver_staff_id)->where('delegate_staff_id', $actorStaffId)->where('status', 'approved')->whereDate('effective_from', '<=', now())->whereDate('effective_until', '>=', now())->get(['request_types'])->contains(fn($delegation) => in_array('leave', json_decode($delegation->request_types, true), true));
                 if (!$delegateUsed) {
                     abort_unless($overrideAuthorized, 403, 'This leave request is assigned to a different approver.');
                     $overrideUsed = true;
                 }
             }
-            $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
             if ($overrideUsed)
                 $snapshot['hr_override'] = ['assigned_approver_staff_id' => $row->current_approver_staff_id, 'overridden_by' => $actorUserId];
             if ($delegateUsed)

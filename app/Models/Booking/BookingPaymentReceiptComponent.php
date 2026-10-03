@@ -10,6 +10,10 @@ class BookingPaymentReceiptComponent extends BaseModel
     protected $fillable = [
         'receipt_id', 'component_type', 'source_amount', 'lkr_amount', 'is_allocatable',
         'is_collection_target_eligible', 'is_commission_eligible', 'allocated_source_amount', 'adjusted_source_amount',
+        'repair_idempotency_key', 'repair_request_checksum', 'repair_before_checksum', 'repair_evidence_file_id', 'repair_reason',
+    ];
+    protected $hidden = [
+        'repair_idempotency_key', 'repair_request_checksum', 'repair_before_checksum', 'repair_evidence_file_id', 'repair_reason',
     ];
 
     protected $casts = [

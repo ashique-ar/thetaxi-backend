@@ -3,11 +3,13 @@
 namespace App\Console\Commands;
 
 use App\Models\Booking\BookingCollectionWorkItem;
+use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentSchedule;
 use App\Models\Booking\BookingPaymentScheduleRule;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\CollectionWorkAgingService;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use Illuminate\Console\Command;
 use Illuminate\Notifications\DatabaseNotification;
 use Illuminate\Support\Facades\DB;
@@ -23,6 +25,7 @@ class ProcessBookingPaymentSchedules extends Command
         private readonly CollectionWorkAgingService $aging,
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesPolicySettingsService $policySettings,
+        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {
         parent::__construct();
     }
@@ -54,32 +57,47 @@ class ProcessBookingPaymentSchedules extends Command
             ->whereDate('due_date', '<=', $today->copy()->addDays(90)->toDateString())
             ->chunkById(200, function ($schedules) use ($dryRun, $today, &$progressed, &$dispatched): void {
                 foreach ($schedules as $schedule) {
-                    $workItem = BookingCollectionWorkItem::query()
-                        ->where('booking_payment_schedule_id', $schedule->id)
-                        ->first();
-                    if (! $workItem) {
+                    $state = DB::transaction(function () use ($schedule, $today, $dryRun): ?array {
+                        $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
+                        $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                            ->lockForUpdate()->value('company_id');
+                        if (! $companyId) return null;
+                        $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
+
+                        $lockedSchedule = BookingPaymentSchedule::query()->withSum('allocations', 'amount')
+                            ->lockForUpdate()->findOrFail($schedule->id);
+                        $workItem = BookingCollectionWorkItem::query()
+                            ->where('booking_payment_schedule_id', $lockedSchedule->id)->lockForUpdate()->first();
+                        if (! $workItem) return null;
+
+                        $aging = $this->aging->derive(
+                            (float) ($lockedSchedule->source_amount ?? $lockedSchedule->amount),
+                            (float) ($lockedSchedule->allocations_sum_amount ?? 0),
+                            $lockedSchedule->due_date,
+                            $today,
+                            (int) $workItem->reminder_offset_days,
+                        );
+                        $changed = $workItem->status !== $aging['work_status'];
+                        if ($changed && ! $dryRun) {
+                            $workItem->update([
+                                'status' => $aging['work_status'],
+                                'completed_at' => $aging['work_status'] === 'completed' ? now() : null,
+                            ]);
+                        }
+
+                        return ['schedule' => $lockedSchedule, 'work_item' => $workItem,
+                            'aging' => $aging, 'changed' => $changed];
+                    });
+                    if (! $state) {
                         continue;
                     }
-
-                    $aging = $this->aging->derive(
-                        (float) ($schedule->source_amount ?? $schedule->amount),
-                        (float) ($schedule->allocations_sum_amount ?? 0),
-                        $schedule->due_date,
-                        $today,
-                        (int) $workItem->reminder_offset_days,
-                    );
+                    $schedule = $state['schedule'];
+                    $workItem = $state['work_item'];
+                    $aging = $state['aging'];
                     $outstanding = $aging['outstanding_amount'];
                     $nextStatus = $aging['work_status'];
 
-                    if ($workItem->status !== $nextStatus) {
-                        $progressed++;
-                        if (! $dryRun) {
-                            $workItem->update([
-                                'status' => $nextStatus,
-                                'completed_at' => $nextStatus === 'completed' ? now() : null,
-                            ]);
-                        }
-                    }
+                    if ($state['changed']) $progressed++;
 
                     if ($outstanding <= 0 || ! in_array($nextStatus, ['upcoming', 'overdue'], true)) {
                         continue;
@@ -121,6 +139,11 @@ class ProcessBookingPaymentSchedules extends Command
                     }
 
                     DB::transaction(function () use ($schedule, $workItem, $profile, $user, $outstanding, $reminderType, $idempotencyKey): void {
+                        $booking = Booking::query()->lockForUpdate()->findOrFail($schedule->booking_id);
+                        $companyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                            ->lockForUpdate()->value('company_id');
+                        if (! $companyId) return;
+                        $this->companyIntegrity->assertConsistent($booking, (string) $companyId);
                         $lockedSchedule = BookingPaymentSchedule::query()
                             ->withSum('allocations', 'amount')
                             ->lockForUpdate()

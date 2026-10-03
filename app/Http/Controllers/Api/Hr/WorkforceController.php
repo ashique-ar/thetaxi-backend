@@ -248,11 +248,12 @@ class WorkforceController extends Controller
         $projection->leave($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row], 201);
     }
-    public function decideLeave(Request $r, string $id, LeaveWorkflowService $service, HrDomainRequestProjectionService $projection): JsonResponse
+    public function decideLeave(Request $r, string $id, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
         $d = $r->validate(['action' => ['required', Rule::in(['approve', 'reject'])], 'reason' => ['required', 'string', 'max:2000']]);
         $this->leaveRequestForCompany($r, $id);
-        $row = $service->decide($id, $d['action'], $d['reason'], $r->user()->id, $r->user()->can('hr.leave.approve.override'));
+        $actorStaff = $access->currentActorStaff($r->user());
+        $row = $service->decide($id, $d['action'], $d['reason'], $r->user()->id, $actorStaff->id, $r->user()->can('hr.leave.approve.override'));
         $projection->leave($row, $r->user()->id);
         return response()->json(['status' => 'success', 'data' => $row]);
     }
@@ -519,7 +520,12 @@ class WorkforceController extends Controller
             abort_unless($allowed->contains($id), 403, 'Workforce data is outside your legal entity.');
             return $id;
         }
-        return (string) $allowed->first();
+        if ($allowed->count() === 1) return (string) $allowed->first();
+
+        $defaultCompanyId = DB::table('companies')->whereIn('id', $allowed)
+            ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
+        abort_unless($defaultCompanyId, 422, 'Select an authorized legal entity.');
+        return (string) $defaultCompanyId;
     }
 
     private function authorizedCompanyIds(Request $r)

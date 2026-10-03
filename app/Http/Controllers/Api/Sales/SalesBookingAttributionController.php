@@ -381,8 +381,11 @@ class SalesBookingAttributionController extends Controller
             $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
         }
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)->where('is_default', true)
-            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))->value('id');
+        $authorizedCompanies = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
+            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
+            ->get(['id', 'is_default']);
+        $defaultCompanyId = $authorizedCompanies->firstWhere('is_default', true)?->id
+            ?? ($authorizedCompanies->count() === 1 ? $authorizedCompanies->first()->id : null);
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
             'default_company_id' => $defaultCompanyId,
@@ -403,9 +406,9 @@ class SalesBookingAttributionController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }

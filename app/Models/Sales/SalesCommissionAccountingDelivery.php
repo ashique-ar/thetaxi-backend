@@ -6,7 +6,8 @@ use App\Models\BaseModel;
 
 class SalesCommissionAccountingDelivery extends BaseModel
 {
-    protected $fillable = ['company_id', 'payout_id', 'event_type', 'status', 'external_reference', 'message', 'idempotency_key', 'recorded_by', 'recorded_at'];
+    protected $hidden = ['request_payload_checksum'];
+    protected $fillable = ['company_id', 'payout_id', 'event_type', 'status', 'external_reference', 'message', 'idempotency_key', 'request_payload_checksum', 'recorded_by', 'recorded_at'];
     protected $casts = ['recorded_at' => 'datetime'];
     protected static function booted(): void
     {

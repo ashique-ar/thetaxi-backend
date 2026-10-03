@@ -6,7 +6,7 @@ use App\Models\BaseModel;
 
 class SalesCommissionPayout extends BaseModel
 {
-    protected $hidden = ['payment_account_snapshot'];
+    protected $hidden = ['payment_account_snapshot', 'request_payload_checksum'];
     protected $fillable = [
         'company_id', 'staff_id', 'payout_number', 'amount_lkr', 'payment_method', 'payment_account_snapshot',
         'payment_reference', 'paid_at', 'evidence_file_id', 'status', 'accounting_status', 'paid_by',

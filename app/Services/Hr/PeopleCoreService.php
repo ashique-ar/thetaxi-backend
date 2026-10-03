@@ -67,21 +67,24 @@ class PeopleCoreService
     public function prepareRehire(Staff $staff, array $data, string $actorUserId): HrRehireCase
     {
         abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
-        abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
-        $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->firstOrFail();
-        $checksum=hash('sha256',json_encode(['staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'data'=>$data],JSON_UNESCAPED_SLASHES));
-        if($existing=HrRehireCase::query()->where('idempotency_key',$data['idempotency_key'])->first()){
-            abort_unless(hash_equals($existing->request_payload_checksum,$checksum),409,'This rehire key was already used with different facts.');
-            return $existing;
-        }
-        return HrRehireCase::create([
-            'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
-            'proposed_rehire_date'=>$data['proposed_rehire_date'],
-            'duplicate_match_snapshot'=>['staff_id'=>$staff->id,'user_id'=>$staff->user_id,'employee_number'=>$staff->code,'nic_fingerprint'=>$staff->nic_fingerprint],
-            'eligibility_snapshot'=>$data['eligibility_snapshot'],'prior_service_decisions'=>$data['prior_service_decisions'],
-            'access_reactivation_plan'=>$data['access_reactivation_plan']??null,'benefit_statutory_review'=>$data['benefit_statutory_review']??null,
-            'prepared_by'=>$actorUserId,'idempotency_key'=>$data['idempotency_key'],'request_payload_checksum'=>$checksum,
-        ]);
+        return DB::transaction(function () use ($staff, $data, $actorUserId) {
+            $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
+            $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->lockForUpdate()->firstOrFail();
+            $checksum=hash('sha256',json_encode(['staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'data'=>$data],JSON_UNESCAPED_SLASHES));
+            if($existing=HrRehireCase::query()->where('idempotency_key',$data['idempotency_key'])->lockForUpdate()->first()){
+                abort_unless(hash_equals($existing->request_payload_checksum,$checksum),409,'This rehire key was already used with different facts.');
+                return $existing;
+            }
+            return HrRehireCase::create([
+                'staff_id'=>$staff->id,'company_id'=>$staff->company_id,'prior_spell_id'=>$prior->id,'status'=>'pending_approval',
+                'proposed_rehire_date'=>$data['proposed_rehire_date'],
+                'duplicate_match_snapshot'=>['staff_id'=>$staff->id,'user_id'=>$staff->user_id,'employee_number'=>$staff->code,'nic_fingerprint'=>$staff->nic_fingerprint],
+                'eligibility_snapshot'=>$data['eligibility_snapshot'],'prior_service_decisions'=>$data['prior_service_decisions'],
+                'access_reactivation_plan'=>$data['access_reactivation_plan']??null,'benefit_statutory_review'=>$data['benefit_statutory_review']??null,
+                'prepared_by'=>$actorUserId,'idempotency_key'=>$data['idempotency_key'],'request_payload_checksum'=>$checksum,
+            ]);
+        });
     }
 
     public function approveRehire(HrRehireCase $case, array $assignment, string $actorUserId): HrRehireCase

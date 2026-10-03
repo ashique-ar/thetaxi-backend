@@ -74,7 +74,15 @@ class PayrollStatutoryController extends Controller
     {
         $this->ensureEnabled();
         $data = $request->validate([
-            'total_earnings' => ['required', 'numeric', 'min:0'],
+            'earnings' => ['required', 'array:basic_salary,cost_of_living_allowance,food_allowance,holiday_pay,other_regular_allowances,overtime,bonus,reimbursements'],
+            'earnings.basic_salary' => ['required', 'numeric', 'min:0'],
+            'earnings.cost_of_living_allowance' => ['required', 'numeric', 'min:0'],
+            'earnings.food_allowance' => ['required', 'numeric', 'min:0'],
+            'earnings.holiday_pay' => ['required', 'numeric', 'min:0'],
+            'earnings.other_regular_allowances' => ['required', 'numeric', 'min:0'],
+            'earnings.overtime' => ['required', 'numeric', 'min:0'],
+            'earnings.bonus' => ['required', 'numeric', 'min:0'],
+            'earnings.reimbursements' => ['required', 'numeric', 'min:0'],
             'as_of' => ['nullable', 'date'],
         ]);
         $companyId = $this->access->actorCompanyId($request->user());
@@ -83,7 +91,7 @@ class PayrollStatutoryController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $this->policies
-                ->previewContribution($companyId, (float) $data['total_earnings'], $at)
+                ->previewContribution($companyId, $data['earnings'], $at)
         ]);
     }
 
@@ -129,7 +137,7 @@ class PayrollStatutoryController extends Controller
             'pay_basis' => ['required', Rule::in(['monthly', 'non_monthly'])],
             'wage_amount' => ['required', 'numeric', 'min:0'],
             'completed_years' => ['required', 'integer', 'min:0', 'max:80'],
-            'current_employer_headcount' => ['nullable', 'integer', 'min:0'],
+            'current_employer_headcount' => ['required', 'integer', 'min:0'],
             'as_of' => ['nullable', 'date'],
         ]);
         $companyId = $this->access->actorCompanyId($request->user());
@@ -154,7 +162,7 @@ class PayrollStatutoryController extends Controller
             'employee_epf_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'employer_epf_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'employer_etf_rate_percent' => ['required', 'numeric', 'min:0', 'max:100'],
-            'earnings_basis' => ['required', 'array'],
+            'earnings_basis' => ['required', 'array:include_basic_salary,include_cost_of_living_allowance,include_food_allowance,include_holiday_pay,include_other_regular_allowances,exclude_overtime,exclude_bonus,exclude_reimbursements'],
             'earnings_basis.include_basic_salary' => ['required', 'boolean'],
             'earnings_basis.include_cost_of_living_allowance' => ['required', 'boolean'],
             'earnings_basis.include_food_allowance' => ['required', 'boolean'],
@@ -179,8 +187,8 @@ class PayrollStatutoryController extends Controller
             'non_monthly_daily_wage_multiplier' => ['required', 'numeric', 'min:0.01', 'max:365'],
             'non_monthly_lookback_months' => ['required', 'integer', 'min:1', 'max:36'],
             'payment_deadline_days' => ['required', 'integer', 'min:1', 'max:365'],
-            'tax_exempt_threshold_lkr' => ['nullable', 'numeric', 'min:0'],
-            'tax_rate_above_threshold_percent' => ['nullable', 'numeric', 'min:0', 'max:100'],
+            'tax_exempt_threshold_lkr' => ['required', 'numeric', 'min:0'],
+            'tax_rate_above_threshold_percent' => ['required', 'numeric', 'min:0', 'max:100'],
             'statutory_reference' => ['required', 'string', 'max:255'],
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],

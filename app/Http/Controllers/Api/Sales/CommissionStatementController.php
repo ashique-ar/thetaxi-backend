@@ -9,7 +9,7 @@ use App\Models\Sales\SalesCommissionStatementLine;
 use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Sales\SalesCommissionStatementExport;
 use App\Models\Sales\SalesProfile;
-use App\Models\Staff;
+use App\Services\StaffAccessService;
 use App\Services\Sales\CommissionDisputeService;
 use App\Services\Sales\CommissionBusinessCalendarService;
 use App\Services\Sales\CommissionCycleResolver;
@@ -174,10 +174,8 @@ class CommissionStatementController extends Controller
             'reason' => ['required', 'string', 'max:2000'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'],
             'contested_amount_lkr' => ['required', 'numeric', 'gt:0'], 'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $staffId = Staff::query()->where('user_id', $request->user()->id)
-            ->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->value('id');
-        abort_unless($staffId, 403, 'An active Staff identity is required.');
-        return response()->json(['status' => 'success', 'data' => $disputes->raise($line, $staffId, $data)], 201);
+        $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
+        return response()->json(['status' => 'success', 'data' => $disputes->raise($line, (string) $staff->id, $data)], 201);
     }
 
     public function resolveDispute(Request $request, SalesCommissionDispute $dispute, CommissionDisputeService $disputes): JsonResponse
@@ -212,7 +210,7 @@ class CommissionStatementController extends Controller
         $data = $request->validate([
             'payment_method' => ['required', 'string', 'max:50'], 'payment_reference' => ['required', 'string', 'max:160'],
             'reversed_at' => ['required', 'date', 'before_or_equal:now'],
-            'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'],
+            'evidence_file_id' => ['required', 'uuid', 'exists:domain_evidence_files,id'],
             'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         return response()->json(['status' => 'success', 'data' => $payouts->reverse($payout, $data, (string) $request->user()->id)], 201);
@@ -223,8 +221,8 @@ class CommissionStatementController extends Controller
         $this->assertManagementCompany($request, $payout->company_id);
         $data = $request->validate([
             'status' => ['required', Rule::in(['accepted', 'failed'])],
-            'external_reference' => ['nullable', 'required_if:status,accepted', 'string', 'max:160'],
-            'message' => ['nullable', 'required_if:status,failed', 'string', 'max:2000'],
+            'external_reference' => ['nullable', 'required_if:status,accepted', 'prohibited_if:status,failed', 'string', 'max:160'],
+            'message' => ['nullable', 'required_if:status,failed', 'prohibited_if:status,accepted', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         return response()->json(['status' => 'success', 'data' => $payouts->recordAccountingDelivery(
@@ -274,12 +272,18 @@ class CommissionStatementController extends Controller
     private function applyScope($query, Request $request): void
     {
         if ($request->user()->can('sales.commission-statements.view-all')) return;
-        $profile = SalesProfile::query()->whereHas('staff', fn ($staff) => $staff->where('user_id', $request->user()->id))->activeAt(now())->firstOrFail();
+        $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
+        $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->firstOrFail();
         $ids = [$profile->id];
         if ($request->user()->can('sales.commission-statements.view-team')) {
-            $ids = array_merge($ids, DB::table('sales_reporting_assignments')->where('manager_sales_profile_id', $profile->id)
-                ->where('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', now()))
-                ->pluck('member_sales_profile_id')->all());
+            $ids = array_merge($ids, DB::table('sales_reporting_assignments as reporting')
+                ->join('sales_profiles as member', 'member.id', '=', 'reporting.member_sales_profile_id')
+                ->where('reporting.manager_sales_profile_id', $profile->id)
+                ->where('reporting.company_id', $staff->company_id)->whereNull('reporting.deleted_at')
+                ->where('reporting.effective_from', '<=', now())
+                ->where(fn ($q) => $q->whereNull('reporting.effective_until')->orWhere('reporting.effective_until', '>', now()))
+                ->where('member.company_id', $staff->company_id)
+                ->pluck('reporting.member_sales_profile_id')->all());
         }
         $query->whereIn('sales_profile_id', array_values(array_unique($ids)));
     }
@@ -293,10 +297,9 @@ class CommissionStatementController extends Controller
     private function actorCompanyIds(Request $request): array
     {
         if ($request->user()->can('sales.commission-statements.view-all')) {
-            return DB::table('companies')->pluck('id')->all();
+            return DB::table('companies')->whereNull('deleted_at')->pluck('id')->all();
         }
-        return Staff::query()->where('user_id', $request->user()->id)
-            ->where(fn ($query) => $query->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->pluck('company_id')->filter()->unique()->values()->all();
+        $companyId = app(StaffAccessService::class)->currentActorStaff($request->user())->company_id;
+        return $companyId ? [(string) $companyId] : [];
     }
 }

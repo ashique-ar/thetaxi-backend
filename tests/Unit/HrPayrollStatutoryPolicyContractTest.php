@@ -39,6 +39,7 @@ it('enforces maker-checker approval and effective-period overlap for both statut
     expect($service)->toContain("abort_unless(\$policy->status === 'draft', 422, 'Only a draft EPF/ETF contribution policy can be approved.')")
         ->toContain("abort_if(\$policy->created_by === \$actorUserId, 409, 'The policy preparer cannot approve the same version.')")
         ->toContain("abort_unless(\$policy->status === 'draft', 422, 'Only a draft gratuity policy can be approved.')")
+        ->toContain('An explicit statutory tax threshold and rate are required before approval.')
         ->toContain("->where('status', 'approved')->where('id', '!=', \$policy->id)")
         ->toContain("An approved EPF/ETF contribution policy already overlaps this effective period.")
         ->toContain("An approved gratuity policy already overlaps this effective period.")
@@ -73,7 +74,9 @@ it('computes gratuity from the configured monthly-half-wage or non-monthly daily
         ->toContain("round(\$wageAmount / (float) \$policy->monthly_paid_divisor * \$completedYears, 2)")
         ->toContain("round(\$wageAmount * (float) \$policy->non_monthly_daily_wage_multiplier * \$completedYears, 2)")
         ->toContain('employer_meets_headcount_threshold')
-        ->toContain('$currentEmployerHeadcount >= $policy->minimum_employer_headcount_threshold');
+        ->toContain('$currentEmployerHeadcount >= $policy->minimum_employer_headcount_threshold')
+        ->toContain('gratuityPolicyIsComplete($policy)')
+        ->toContain('Current employer headcount is required to evaluate the approved gratuity policy threshold.');
 });
 
 it('gates the payroll-statutory API behind the existing HR payroll feature flag and dedicated permissions', function () {
@@ -82,6 +85,9 @@ it('gates the payroll-statutory API behind the existing HR payroll feature flag 
 
     expect($controller)->toContain("config('hr.features.payroll', false)")
         ->toContain('HR Payroll is not enabled.')
+        ->toContain("'tax_exempt_threshold_lkr' => ['required', 'numeric', 'min:0']")
+        ->toContain("'tax_rate_above_threshold_percent' => ['required', 'numeric', 'min:0', 'max:100']")
+        ->toContain("'current_employer_headcount' => ['required', 'integer', 'min:0']")
         ->and($routes)->toContain("Route::prefix('hr/payroll')->middleware('ensure.internal')->group")
         ->toContain("permission:hr.payroll.statutory.view")
         ->toContain("permission:hr.payroll.statutory.manage")
@@ -101,4 +107,38 @@ it('registers the new statutory permissions deny-by-default with a maker-checker
     expect($denyBlock)->toContain("'hr.payroll.statutory.view',")
         ->toContain("'hr.payroll.statutory.manage',")
         ->toContain("'hr.payroll.statutory.approve',");
+});
+
+it('does not prefill statutory payroll rates, thresholds, formulas, or earnings coverage in the UI', function () {
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.html'));
+
+    expect($component)
+        ->toContain('employee_epf_rate_percent: [null as number | null')
+        ->toContain('include_basic_salary: [null as boolean | null, Validators.required]')
+        ->toContain('minimum_qualifying_service_years: [null as number | null')
+        ->toContain('tax_exempt_threshold_lkr: [null as number | null, [Validators.required, Validators.min(0)]]')
+        ->toContain('tax_rate_above_threshold_percent: [null as number | null, [Validators.required, Validators.min(0), Validators.max(100)]]')
+        ->toContain('current_employer_headcount: [null as number | null, [Validators.required, Validators.min(0)]]')
+        ->not->toContain('employee_epf_rate_percent: [8', 'employer_epf_rate_percent: [12', 'employer_etf_rate_percent: [3', 'minimum_qualifying_service_years: [5', 'minimum_employer_headcount_threshold: [15', 'monthly_paid_divisor: [2', 'non_monthly_daily_wage_multiplier: [14', 'tax_exempt_threshold_lkr: [5000000', 'tax_rate_above_threshold_percent: [12')
+        ->and($template)
+        ->toContain('formControlName="include_basic_salary"', '[value]="false">Exclude', 'formControlName="exclude_overtime"', 'formControlName="tax_exempt_threshold_lkr" required', 'formControlName="tax_rate_above_threshold_percent" required', 'formControlName="current_employer_headcount" required')
+        ->not->toContain('Current employer headcount (optional)');
+});
+
+it('validates and sends every earnings category required by the approved EPF/ETF basis', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PayrollStatutoryController.php'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.html'));
+
+    foreach (['basic_salary', 'cost_of_living_allowance', 'food_allowance', 'holiday_pay', 'other_regular_allowances', 'overtime', 'bonus', 'reimbursements'] as $field) {
+        expect($controller)->toContain("'earnings.{$field}' => ['required', 'numeric', 'min:0']")
+            ->and($component)->toContain("{$field}: [null as number | null")
+            ->and($template)->toContain("formControlName=\"{$field}\" required");
+    }
+    expect($controller)->toContain("->previewContribution(\$companyId, \$data['earnings'], \$at)")
+        ->and($controller)->not->toContain("'total_earnings' => ['required'")
+        ->and($template)->toContain('preview.assessable_earnings')
+        ->and($component)->toContain('previewEpfEtfContribution({ earnings: this.epfEtfPreviewForm.getRawValue() })')
+        ->and($component)->not->toContain('total_earnings');
 });

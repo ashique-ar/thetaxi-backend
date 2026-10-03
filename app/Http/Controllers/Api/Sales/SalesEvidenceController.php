@@ -138,21 +138,24 @@ class SalesEvidenceController extends Controller
             $subject = DB::table('sales_booking_attributions')->where('booking_id', $id)->first();
             abort_unless($subject, 404);
             if ($upload) {
-                abort_unless($request->user()->can('sales.collections.submit'), 403);
-                $profileIds = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
-                    ->where('staff.user_id', $request->user()->id)->where('profile.status', 'active')
-                    ->where('profile.effective_from', '<=', now())
-                    ->where(fn ($q) => $q->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
-                    ->pluck('profile.id')->all();
-                abort_unless(in_array($subject->collection_sales_profile_id, $profileIds, true), 403, 'The booking is outside your current collection portfolio.');
+                if (! $request->user()->can('sales.payment-ledger.reconcile')) {
+                    abort_unless($request->user()->can('sales.collections.submit'), 403);
+                    $profileIds = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
+                        ->where('staff.user_id', $request->user()->id)->where('profile.status', 'active')
+                        ->where('profile.effective_from', '<=', now())
+                        ->where(fn ($q) => $q->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                        ->pluck('profile.id')->all();
+                    abort_unless(in_array($subject->collection_sales_profile_id, $profileIds, true), 403, 'The booking is outside your current collection portfolio.');
+                }
             } else {
-                abort_unless($uploadedBy === $request->user()->id || $request->user()->can('sales.collections.verify'), 403);
+                abort_unless($uploadedBy === $request->user()->id
+                    || $request->user()->canAny(['sales.collections.verify', 'sales.payment-ledger.reconcile']), 403);
             }
             $companyId = $subject->company_id;
         } elseif ($type === 'booking_payment_receipt') {
             $subject = DB::table('booking_payment_receipts')->where('id', $id)->first();
             abort_unless($subject, 404);
-            abort_unless($request->user()->can('sales.payment-finality.transition'), 403);
+            abort_unless($request->user()->canAny(['sales.payment-finality.transition', 'sales.payment-ledger.reconcile']), 403);
             $companyId = $subject->company_id;
         } elseif ($type === 'commission_statement_line') {
             $subject = DB::table('sales_commission_statement_lines as line')
@@ -181,7 +184,11 @@ class SalesEvidenceController extends Controller
             'booking_payment_receipt' => 'sales.payment-finality.manage-all',
             default => 'sales.commission-statements.view-all',
         };
-        abort_unless($request->user()->can($allScopePermission) || in_array($companyId, $this->actorCompanyIds($request), true),
+        $canManageAllCompanies = $request->user()->can($allScopePermission)
+            || ($type === 'booking_payment_receipt'
+                && $request->user()->can('sales.payment-ledger.reconcile')
+                && $request->user()->can('sales.collections.view-all'));
+        abort_unless($canManageAllCompanies || in_array($companyId, $this->actorCompanyIds($request), true),
             403, 'The evidence subject is outside your legal entity.');
 
         return $companyId;

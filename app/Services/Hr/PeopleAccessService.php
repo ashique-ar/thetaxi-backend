@@ -6,6 +6,7 @@ use App\Models\Hr\HrEmploymentAssignment;
 use App\Models\Hr\HrReportingLine;
 use App\Models\Staff;
 use App\Models\User;
+use App\Services\StaffAccessService;
 use Illuminate\Database\Eloquent\Builder;
 use Symfony\Component\HttpFoundation\Response;
 
@@ -13,7 +14,7 @@ class PeopleAccessService
 {
     public function scope(Builder $query, User $actor): Builder
     {
-        $actorStaff = Staff::query()->where('user_id', $actor->id)->first();
+        $actorStaff = $this->actorStaff($actor);
         abort_unless($actorStaff?->company_id, Response::HTTP_FORBIDDEN, 'An active internal Staff identity is required.');
 
         $query->where('company_id', $actorStaff->company_id);
@@ -61,9 +62,14 @@ class PeopleAccessService
 
     public function actorCompanyId(User $actor): string
     {
-        $actorStaff = Staff::query()->where('user_id', $actor->id)->first();
+        $actorStaff = $this->actorStaff($actor);
         abort_unless($actorStaff?->company_id, Response::HTTP_FORBIDDEN, 'An active internal Staff identity is required.');
 
         return $actorStaff->company_id;
+    }
+
+    private function actorStaff(User $actor): Staff
+    {
+        return app(StaffAccessService::class)->currentActorStaff($actor);
     }
 }

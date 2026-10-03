@@ -11,7 +11,7 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('searches and hydrates only companies in the actors effective attribution scope', function () {
-    [$admin, $company] = hr_seed_admin_actor(['name' => 'Scoped Attribution Company', 'city' => 'Colombo']);
+    [$admin, $company] = hr_seed_admin_actor(['name' => 'Scoped Attribution Company', 'city' => 'Colombo', 'is_default' => false]);
     $staff = Staff::factory()->create(['company_id' => $company->id]);
     UserContext::create(['user_id' => $staff->user_id, 'context_type' => 'staff', 'context_id' => $staff->id,
         'is_active' => true, 'created_user_id' => $admin->id]);
@@ -32,7 +32,8 @@ it('searches and hydrates only companies in the actors effective attribution sco
 
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Attribution Company')
-        ->assertJsonPath('data.data.0.metadata.city', 'Colombo');
+        ->assertJsonPath('data.data.0.metadata.city', 'Colombo')
+        ->assertJsonPath('data.data.0.metadata.is_default', false);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id);
