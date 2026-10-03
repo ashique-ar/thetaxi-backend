@@ -7,7 +7,9 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesPolicySettingsService;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -18,6 +20,7 @@ class BookingPaymentAdjustmentController extends Controller
     public function __construct(
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
+        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {}
 
     public function companyOptions(Request $request): JsonResponse
@@ -34,9 +37,9 @@ class BookingPaymentAdjustmentController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
-            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
+            'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -127,10 +130,10 @@ class BookingPaymentAdjustmentController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
 
-        $this->assertBookingScope($request, $booking);
-        $adjustment = $adjustments->record($booking, $data, $request->user()->id);
-
-        return response()->json(['status' => 'success', 'data' => $adjustment], 201);
+        return $this->withinBookingScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
+            'status' => 'success',
+            'data' => $adjustments->record($scopedBooking, $data, $request->user()->id),
+        ], 201));
     }
 
     public function preview(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments): JsonResponse
@@ -149,25 +152,28 @@ class BookingPaymentAdjustmentController extends Controller
             'reference' => ['required', 'string', 'max:160'],
             'corrects_adjustment_id' => ['nullable', 'uuid'],
         ]);
-        $this->assertBookingScope($request, $booking);
-        return response()->json(['status' => 'success', 'data' => $adjustments->previewReportingFx($booking, $data)]);
+        return $this->withinBookingScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
+            'status' => 'success',
+            'data' => $adjustments->previewReportingFx($scopedBooking, $data),
+        ]));
     }
 
     public function previewFxEstablishment(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments): JsonResponse
     {
         $data = $this->validateFxEstablishment($request);
-        $this->assertBookingScope($request, $booking);
-
-        return response()->json(['status' => 'success', 'data' => $adjustments->previewFxSnapshotEstablishment($booking, $data)]);
+        return $this->withinBookingScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
+            'status' => 'success',
+            'data' => $adjustments->previewFxSnapshotEstablishment($scopedBooking, $data),
+        ]));
     }
 
     public function establishFxSnapshot(Request $request, Booking $booking, BookingPaymentAdjustmentService $adjustments): JsonResponse
     {
         $data = $this->validateFxEstablishment($request, true);
-        $this->assertBookingScope($request, $booking);
-        $adjustment = $adjustments->establishFxSnapshot($booking, $data, $request->user()->id);
-
-        return response()->json(['status' => 'success', 'data' => $adjustment], 201);
+        return $this->withinBookingScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
+            'status' => 'success',
+            'data' => $adjustments->establishFxSnapshot($scopedBooking, $data, $request->user()->id),
+        ], 201));
     }
 
     private function validateFxEstablishment(Request $request, bool $forApply = false): array
@@ -189,12 +195,18 @@ class BookingPaymentAdjustmentController extends Controller
         ]);
     }
 
-    private function assertBookingScope(Request $request, Booking $booking): void
+    private function withinBookingScope(Request $request, Booking $booking, Closure $operation): JsonResponse
     {
-        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
-        $profileIds = $this->profileIds($request, $attribution->company_id);
-        abort_unless($profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true), 403,
-            'Booking is outside your permitted payment-adjustment scope.');
+        return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
+            $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $profileIds = $this->profileIds($request, $attribution->company_id);
+            abort_unless($profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true), 403,
+                'Booking is outside your permitted payment-adjustment scope.');
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
+
+            return $operation($booking);
+        });
     }
 
     private function profileIds(Request $request, ?string $companyId = null): ?array

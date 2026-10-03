@@ -18,7 +18,7 @@ class InquiryResource extends JsonResource
         $formName = $payload['form_name'] ?? ($formId ? InquiryForm::withInactive()->withTrashed()->find($formId)?->name : null);
         $serviceSlug = $cms?->slug ?? $legacy?->slug ?? ($payload['service_slug'] ?? null);
         if ($this->assigned_to && ! $request->attributes->has('inquiry_default_company_id')) {
-            $request->attributes->set('inquiry_default_company_id', app(SingleCompanyScope::class)->defaultCompany()?->id);
+            $request->attributes->set('inquiry_default_company_id', app(SingleCompanyScope::class)->activeDefaultCompany()?->id);
         }
         $companyId = $request->attributes->get('inquiry_default_company_id');
         $assignedStaff = $this->assignedUser?->staff;

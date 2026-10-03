@@ -11,6 +11,7 @@ it('uses a bounded legal-entity selector and never renders a company UUID fallba
         ->toContain("whereIn('id', \$this->actorCompanyIds(\$request))")
         ->toContain("'companies.name as company_name'")
         ->and($component)->toContain('UiManagedRecordSelectComponent')
+        ->toContain('paymentFinalityCompanyOptions({ per_page: 1 })', "option.metadata?.is_default === true", 'companyContextRequestVersion')
         ->and($template)->toContain('endpoint="/sales/payment-finality-company-options"', '{{companyName(row)}}')
         ->not->toContain('companies()', 'companyName(row.company_id)')
         ->and($component)->toContain("row.company_name||'Unavailable legal entity'")

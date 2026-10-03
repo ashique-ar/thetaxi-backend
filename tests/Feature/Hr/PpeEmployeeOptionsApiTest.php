@@ -19,41 +19,40 @@ it('searches and hydrates only active tenant employees with minimal readable out
     $former = Staff::factory()->former()->create(['company_id' => $company->id, 'code' => 'PPE-FORMER']);
     $deleted = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PPE-DELETED']);
     $deleted->delete();
-    $url = '/api/hr/safety/ppe-employee-options?company_id='.$company->id;
+    $url = '/api/hr/safety/ppe-employee-options';
 
-    $response = actingAs($admin, 'api')->getJson($url.'&search=PPE-')->assertOk();
+    $response = actingAs($admin, 'api')->getJson($url.'?search=PPE-')->assertOk();
     $response->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.value', $employee->id)
         ->assertJsonPath('data.data.0.label', 'PPE Employee · PPE-CHOICE');
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
-    actingAs($admin, 'api')->getJson($url.'&selected_id='.$employee->id.'&search=not-a-match')
+    actingAs($admin, 'api')->getJson($url.'?selected_id='.$employee->id.'&search=not-a-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $employee->id);
     foreach ([$foreign, $former, $deleted] as $excluded) {
-        actingAs($admin, 'api')->getJson($url.'&selected_id='.$excluded->id)
+        actingAs($admin, 'api')->getJson($url.'?selected_id='.$excluded->id)
             ->assertOk()->assertJsonCount(0, 'data.data');
     }
-    actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options?company_id='.$otherCompany->id)->assertForbidden();
 });
 
 it('bounds employee search pages and supports an exact selection outside the first page', function () {
     [$admin, $company] = hr_seed_admin_actor();
     $first = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PAGE-PPE-01']);
     $second = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PAGE-PPE-02']);
-    $url = '/api/hr/safety/ppe-employee-options?company_id='.$company->id;
-    actingAs($admin, 'api')->getJson($url.'&search=PAGE-PPE&per_page=1&page=1')
+    $url = '/api/hr/safety/ppe-employee-options';
+    actingAs($admin, 'api')->getJson($url.'?search=PAGE-PPE&per_page=1&page=1')
         ->assertOk()->assertJsonPath('data.total', 2)->assertJsonPath('data.data.0.value', $first->id);
-    actingAs($admin, 'api')->getJson($url.'&search=PAGE-PPE&per_page=1&page=2')
+    actingAs($admin, 'api')->getJson($url.'?search=PAGE-PPE&per_page=1&page=2')
         ->assertOk()->assertJsonPath('data.data.0.value', $second->id);
-    actingAs($admin, 'api')->getJson($url.'&selected_id='.$second->id.'&per_page=1')
+    actingAs($admin, 'api')->getJson($url.'?selected_id='.$second->id.'&per_page=1')
         ->assertOk()->assertJsonPath('data.data.0.value', $second->id);
-    actingAs($admin, 'api')->getJson($url.'&per_page=51')->assertUnprocessable();
-    actingAs($admin, 'api')->getJson($url.'&page=0')->assertUnprocessable();
+    actingAs($admin, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
+    actingAs($admin, 'api')->getJson($url.'?page=0')->assertUnprocessable();
 });
 
 it('rejects a newly terminated selection without writing issuance or audit', function () {
     [$admin, $company] = hr_seed_admin_actor();
     config(['hr.features.relations_safety' => true]);
     $employee = Staff::factory()->create(['company_id' => $company->id]);
-    actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options?company_id='.$company->id.'&selected_id='.$employee->id)
+    actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options?selected_id='.$employee->id)
         ->assertOk()->assertJsonCount(1, 'data.data');
     $employee->update(['employment_ended_at' => now()]);
     $key = (string) Str::uuid();
@@ -72,7 +71,27 @@ it('does not grant employee lookup to an internal employee without Safety manage
         'user_id' => $staff->user_id, 'context_type' => 'staff', 'context_id' => $staff->id,
         'is_active' => true, 'created_user_id' => $admin->id,
     ]);
-    actingAs($staff->user, 'api')->getJson('/api/hr/safety/ppe-employee-options?company_id='.$company->id)->assertForbidden();
+    actingAs($staff->user, 'api')->getJson('/api/hr/safety/ppe-employee-options')->assertForbidden();
+});
+
+it('scopes Safety employee selectors to the selected Staff company without a caller company id', function () {
+    [$admin, $firstCompany] = hr_seed_admin_actor();
+    $firstEmployee = Staff::factory()->create(['company_id' => $firstCompany->id]);
+    $secondCompany = Company::create(['name' => 'Second PPE context']);
+    $secondActorStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
+    $secondEmployee = Staff::factory()->create(['company_id' => $secondCompany->id]);
+    $context = UserContext::create([
+        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondActorStaff->id,
+        'is_active' => true, 'created_user_id' => $admin->id,
+    ]);
+
+    actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options')->assertForbidden();
+    actingAs($admin, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
+    ])->getJson('/api/hr/safety/ppe-employee-options')
+        ->assertOk()->assertJsonCount(2, 'data.data')
+        ->assertJsonMissing(['value' => $firstEmployee->id])
+        ->assertJsonFragment(['value' => $secondEmployee->id]);
 });
 
 it('issues PPE to an eligible employee without login access and retains one audited result on retry', function () {

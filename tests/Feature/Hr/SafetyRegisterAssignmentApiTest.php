@@ -52,7 +52,7 @@ it('revalidates an inspection lead login and permission after selection and audi
     $lead = Staff::factory()->create(['company_id' => $company->id]);
     $lead->user->givePermissionTo('hr.safety.investigate');
     $lead->user->update(['is_active' => true]);
-    actingAs($admin, 'api')->getJson('/api/hr/safety/handler-candidates?company_id='.$company->id.'&record_type=investigator&selected_id='.$lead->id)
+    actingAs($admin, 'api')->getJson('/api/hr/safety/handler-candidates?record_type=investigator&selected_id='.$lead->id)
         ->assertOk()->assertJsonPath('data.data.0.value', $lead->id);
     $payload = ['idempotency_key' => (string) Str::uuid(), 'location_code' => 'WORKSHOP',
         'inspection_type' => 'Routine', 'scheduled_for' => now()->addDay()->toDateString(),

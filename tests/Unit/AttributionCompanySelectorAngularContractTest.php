@@ -7,7 +7,7 @@ it('uses a bounded effective-Sales-scope company selector for attribution operat
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-attribution-operations/sales-attribution-operations.component.html'));
 
     expect($routes)->toContain("Route::get('attribution-company-options', [SalesBookingAttributionController::class, 'companyOptions'])")
-        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "whereNull('deleted_at')")
+        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "whereNull('deleted_at')", "where('is_active', true)", "where('is_default', true)")
         ->and($component)->toContain('UiManagedRecordSelectComponent', 'revision !== this.loadRevision', 'clearFilterState()')
         ->not->toContain('companies = signal', 'response.context?.data?.companies')
         ->and($template)->toContain('endpoint="/sales/attribution-company-options"', 'All permitted entities')

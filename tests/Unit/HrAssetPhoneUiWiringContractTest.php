@@ -21,13 +21,14 @@ it('uses tenant-scoped readable selectors for phone subscription, Staff, and lin
 
     expect($routes)->toContain("Route::get('phone-reference-options', [AssetOperationsController::class, 'phoneReferenceOptions'])->middleware('permission:hr.assets.phone.manage|hr.assets.approve');")
         ->and($controller)->toContain("Rule::in(['subscription','staff','asset_item'])")
-        ->and($controller)->toContain("abort_unless(\$a->company_id===\$d['company_id'],403")
+        ->and($controller)->toContain("private function actor(Request\$r):Staff{return app(\\App\\Services\\StaffAccessService::class)->currentActorStaff(\$r->user());}")
+        ->and($controller)->toContain("'company_id'=>\$a->company_id")
         ->and($controller)->toContain("'per_page'=>['nullable','integer','min:1','max:50']")
         ->and($usage)->toContain('recordType="subscription"')->toContain('recordType="staff"')
-        ->and($usage)->not->toContain('Phone subscription ID')->not->toContain('Staff ID')
+        ->and($usage)->not->toContain('Phone subscription ID')->not->toContain('Staff ID')->not->toContain('[companyId]')
         ->and($subscription)->toContain('recordType="asset_item"')->not->toContain('Linked asset item ID')
-        ->and($subscription)->toContain('company_id: this.data.companyId')
-        ->and($workspace)->toContain("if (!companyId) { this.snack.open('Your legal-entity context is unavailable.'");
+        ->and($subscription)->not->toContain('company_id: this.data.companyId')
+        ->and($workspace)->not->toContain("if (!companyId) { this.snack.open('Your legal-entity context is unavailable.'");
 });
 
 it('limits asset approval selection to readable available inventory of the requested legal entity and type', function () {

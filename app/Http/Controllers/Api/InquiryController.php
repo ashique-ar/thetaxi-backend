@@ -128,7 +128,7 @@ class InquiryController extends Controller
         ]);
         $companyId = $this->assignmentCompany($request);
         DB::transaction(function () use ($inquiry, $data, $request, $companyId): void {
-            abort_unless(app(SingleCompanyScope::class)->defaultCompany()?->id === $companyId, 409, 'Default company changed; retry assignment.');
+            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $companyId, 409, 'Default company changed; retry assignment.');
             $locked = Inquiry::query()->whereKey($inquiry->id)->lockForUpdate()->firstOrFail();
             abort_unless($this->eligibleAssignees($companyId)->where('users.id', $data['assigned_to'])->lockForUpdate()->first(['users.id']), 422, 'Select an active Staff assignee.');
             $locked->update([
@@ -176,7 +176,7 @@ class InquiryController extends Controller
 
     private function assignmentCompany(Request $request): string
     {
-        $company = app(SingleCompanyScope::class)->defaultCompany();
+        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
         abort_unless($company, 409, 'Set one active default company before using Inquiry Staff options.');
         abort_unless($this->eligibleAssignees($company->id)->where('users.id', $request->user()->id)->exists(), 403);
 

@@ -32,8 +32,9 @@ class TenantDecisionController extends Controller
             $term = '%'.addcslashes($d['search'], '%_\\').'%';
             $q->where(fn ($query) => $query->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $q->orderBy('name')->paginate($d['per_page'] ?? 25, ['id', 'name', 'city']);
-        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => (string) $company->name, 'metadata' => ['city' => $company->city], 'status' => 'active']);
+        $rows = $q->orderByDesc('is_default')->orderBy('name')->paginate($d['per_page'] ?? 25, ['id', 'name', 'city', 'is_active', 'is_default']);
+        $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => (string) $company->name,
+            'metadata' => ['city' => $company->city, 'is_default' => (bool) $company->is_default], 'status' => $company->is_active ? 'active' : 'inactive']);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function index(Request $r)

@@ -69,6 +69,7 @@ class SalesPerformanceController extends Controller
             ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
             ->select('company_id')->distinct()->pluck('company_id');
         $companyLabels = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name']);
+        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_default', true)->whereIn('id', $companyIds)->value('id');
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
         if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
@@ -77,6 +78,7 @@ class SalesPerformanceController extends Controller
                 ->orderByDesc('effective_from')->orderByDesc('version')->get();
         }
         return response()->json(['status' => 'success', 'data' => compact('companyLabels', 'policies') + [
+            'default_company_id' => $defaultCompanyId,
             'portfolio_status_policies' => $portfolioStatusPolicies,
         ]]);
     }
@@ -183,7 +185,7 @@ class SalesPerformanceController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')
             ->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => [
             'value' => (string) $company->id,

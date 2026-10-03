@@ -9,7 +9,7 @@ it('uses an explicit bounded Sales-scoped company selector for financial correct
     expect($routes)->toContain("Route::get('payment-adjustment-company-options', [BookingPaymentAdjustmentController::class, 'companyOptions'])")
         ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "'company_id' => ['required', 'uuid', 'exists:companies,id']")
         ->toContain("where('id', \$data['company_id'])->whereNull('deleted_at')->exists()")
-        ->and($component)->toContain('UiManagedRecordSelectComponent', 'revision!==this.candidateLoadRevision', 'clearCandidateState()')
+        ->and($component)->toContain('UiManagedRecordSelectComponent', 'revision!==this.candidateLoadRevision', 'clearCandidateState()', 'paymentAdjustmentCompanyOptions({ per_page: 1 })', "option.metadata?.is_default === true", 'companyContextRequestVersion')
         ->not->toContain('companies = signal', "company_id:this.companyId||undefined")
         ->and($template)->toContain('endpoint="/sales/payment-adjustment-company-options"', 'title="Select a legal entity"')
         ->not->toContain('*ngFor="let company of companies()"');

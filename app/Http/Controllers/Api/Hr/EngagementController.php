@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -577,7 +578,7 @@ class EngagementController extends Controller
         });
     }
 
-    private function actor(Request $request): Staff { return Staff::query()->where('user_id', $request->user()->id)->firstOrFail(); }
+    private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }
     private function company(Request $request, string $companyId): void { abort_unless($this->actor($request)->company_id === $companyId, 403, 'Engagement data is outside your legal entity.'); }
     private function enabled(): void { abort_unless(config('hr.features.engagement_analytics', false), 409, 'HR engagement and analytics writes are not enabled.'); }
 }

@@ -10,11 +10,13 @@ it('applies only a checksum bound scoped historical attribution preview',functio
   ->toContain('Historical attribution batch key was reused with different evidence.');
 });
 
-it('uses only the sole default company for a booking without company evidence and shows review labels', function () {
+it('does not infer historical booking company from the current default and shows review labels', function () {
  $attribution=file_get_contents(app_path('Services/Sales/BookingAttributionService.php'));
  $page=file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-attribution-operations/sales-attribution-operations.component.html'));
 
- expect($attribution)->toContain("app(SingleCompanyScope::class)->defaultCompany()?->id")
+ expect($attribution)->toContain("'company_id' => \$acquisitionProfile?->company_id ?? \$staff?->company_id")
+  ->toContain("'legal_entity_missing' => \$companyId ? null")
+  ->not->toContain('SingleCompanyScope')
   ->toContain("'booking_label' => \$booking->booking_number")
   ->and($page)->toContain('row.booking_label', 'Check each suggested salesperson')
   ->not->toContain('<h3>{{ row.booking_id }}</h3>');

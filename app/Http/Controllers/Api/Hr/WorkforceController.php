@@ -23,9 +23,10 @@ class WorkforceController extends Controller
         $companies = DB::table('companies')->whereIn('id', $this->authorizedCompanyIds($r))
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
             ->when(! empty($data['search']), fn ($q) => $q->whereLikeInsensitive('name', trim($data['search'])))
-            ->orderBy('name')->limit(25)->get(['id', 'name']);
+            ->orderByDesc('is_default')->orderBy('name')->limit(25)->get(['id', 'name', 'is_default']);
         return response()->json(['status' => 'success', 'data' => $companies->map(fn ($company) => [
-            'value' => (string) $company->id, 'label' => $company->name, 'status' => 'active',
+            'value' => (string) $company->id, 'label' => $company->name,
+            'is_default' => (bool) $company->is_default, 'status' => 'active',
         ])->values()]);
     }
 
@@ -518,18 +519,30 @@ class WorkforceController extends Controller
             abort_unless($allowed->contains($id), 403, 'Workforce data is outside your legal entity.');
             return $id;
         }
-        $actorCompany = Staff::query()->where('user_id', $r->user()->id)->whereIn('company_id', $allowed)->value('company_id');
-        return (string) ($actorCompany ?: $allowed->first());
+        return (string) $allowed->first();
     }
 
     private function authorizedCompanyIds(Request $r)
     {
         if ($r->user()->can('staff.view-all')) {
-            return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id');
+            return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->orderByDesc('is_default')->orderBy('name')->pluck('id');
         }
-        $companyId = Staff::query()->where('user_id', $r->user()->id)->whereNotNull('company_id')
-            ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
-            ->value('company_id');
+
+        $type = $r->header('X-Active-Context-Type');
+        $contextId = $r->header('X-Active-Context-Id');
+        $staffQuery = Staff::query()->where('user_id', $r->user()->id)->whereNotNull('company_id')
+            ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
+        if ($type !== null || $contextId !== null) {
+            abort_unless($type === 'staff' && $contextId && Str::isUuid($contextId), 403, 'Select an active Staff context.');
+            $context = DB::table('user_contexts')->where('id', $contextId)->where('user_id', $r->user()->id)
+                ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->first();
+            abort_unless($context, 403, 'Select an active Staff context.');
+            $staffQuery->whereKey($context->context_id);
+        } else {
+            abort_if((clone $staffQuery)->count() > 1, 403, 'Select an active Staff context.');
+        }
+        $companyId = $staffQuery->value('company_id');
+
         return $companyId
             ? DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->pluck('id')
             : collect();

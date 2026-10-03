@@ -5,7 +5,7 @@ it('adds the missing lifecycle template list endpoint so openCase()\'s required 
 
     expect($controller)
         ->toContain('public function templates(Request$r):JsonResponse{')
-        ->toContain("\$companyId=Staff::query()->where('user_id',\$r->user()->id)->value('company_id');")
+        ->toContain('$companyId=app(StaffAccessService::class)->currentActorStaff($r->user())->company_id;')
         ->toContain("'applicability'=>json_decode(\$row->applicability,true,512,JSON_THROW_ON_ERROR),'task_definitions'=>json_decode(\$row->task_definitions,true,512,JSON_THROW_ON_ERROR)");
 });
 

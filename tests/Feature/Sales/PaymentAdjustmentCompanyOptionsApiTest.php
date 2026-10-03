@@ -28,7 +28,7 @@ it('searches and hydrates only companies in the actors effective Sales scope', f
 
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped FX Company')
-        ->assertJsonPath('data.data.0.metadata.city', 'Colombo');
+        ->assertJsonPath('data.data.0.metadata.city', 'Colombo')->assertJsonPath('data.data.0.metadata.is_default', true);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id);

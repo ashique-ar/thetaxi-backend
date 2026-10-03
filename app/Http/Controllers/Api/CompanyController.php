@@ -67,7 +67,7 @@ class CompanyController extends Controller
         return response()->json([
             'status' => 'success',
             'message' => 'Legal entity options loaded',
-            'data' => $query->orderBy('name')->limit(25)->get(),
+            'data' => $query->orderByDesc('is_default')->orderBy('name')->limit(25)->get(),
         ]);
     }
 

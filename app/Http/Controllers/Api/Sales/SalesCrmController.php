@@ -295,18 +295,19 @@ class SalesCrmController extends Controller
     {
         $data = $request->validate([
             'company_id' => ['required', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
-            'opportunity_id' => ['nullable', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
+            'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
             'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
             'phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'booking_activity_id' => ['nullable', 'uuid', 'exists:booking_activities,id'],
             'activity_type' => ['required', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])],
             'direction' => ['nullable', Rule::in(['inbound', 'outbound'])], 'subject' => ['required', 'string', 'max:255'], 'notes' => ['nullable', 'string', 'max:5000'],
             'outcome' => ['nullable', 'string', 'max:80'], 'next_action' => ['nullable', 'string', 'max:2000'], 'next_action_at' => ['nullable', 'date'],
-            'source_system' => ['nullable', 'string', 'max:60'], 'source_reference' => ['nullable', 'string', 'max:160'],
+            'source_system' => ['required', 'string', 'max:60'], 'source_reference' => ['required', 'string', 'max:160'],
             'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'], 'occurred_at' => ['required', 'date', 'before_or_equal:now'],
         ]);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        return response()->json(['status' => 'success', 'data' => $crm->recordActivity($data, (string) $request->user()->id)], 201);
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
+        return response()->json(['status' => 'success', 'data' => $crm->recordActivity($data, (string) $request->user()->id, $authorizedProfileIds)], 201);
     }
 
     public function tasks(Request $request): JsonResponse
@@ -335,9 +336,23 @@ class SalesCrmController extends Controller
     public function createTask(Request $request, SalesCrmService $crm): JsonResponse
     {
         $explicitInstant = 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/';
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'opportunity_id' => ['nullable', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'uuid', 'exists:customers,id'], 'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'], 'title' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:5000'], 'priority' => ['required', Rule::in(['low', 'normal', 'high', 'urgent'])], 'due_at' => ['required', 'date', $explicitInstant], 'remind_at' => ['nullable', 'date', $explicitInstant, 'before_or_equal:due_at'], 'escalate_at' => ['nullable', 'date', $explicitInstant, 'after_or_equal:due_at']]);
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
+            'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'],
+            'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
+            'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'],
+            'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
+            'creation_idempotency_key' => ['required', 'string', 'max:160'],
+            'title' => ['required', 'string', 'max:255'], 'description' => ['nullable', 'string', 'max:5000'],
+            'priority' => ['required', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'due_at' => ['required', 'date', $explicitInstant],
+            'remind_at' => ['nullable', 'date', $explicitInstant, 'before_or_equal:due_at'],
+            'escalate_at' => ['nullable', 'date', $explicitInstant, 'after_or_equal:due_at'],
+        ]);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        return response()->json(['status' => 'success', 'data' => $crm->createTask($data, (string) $request->user()->id)], 201);
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
+        return response()->json(['status' => 'success', 'data' => $crm->createTask($data, (string) $request->user()->id, $authorizedProfileIds)], 201);
     }
 
     public function transitionTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse

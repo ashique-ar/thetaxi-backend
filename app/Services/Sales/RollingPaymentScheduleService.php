@@ -19,7 +19,10 @@ class RollingPaymentScheduleService
 {
     private const HORIZON_MONTHS = 12;
 
-    public function __construct(private readonly SalesPolicySettingsService $policySettings) {}
+    public function __construct(
+        private readonly SalesPolicySettingsService $policySettings,
+        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
+    ) {}
 
     public function createRule(Booking $booking, array $data, string $actorUserId): array
     {
@@ -63,6 +66,7 @@ class RollingPaymentScheduleService
 
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
             abort_unless($attribution?->company_id, 422, 'Resolve Sales attribution and legal entity before creating a rolling rule.');
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             abort_unless($attribution->status === 'active', 422, 'The booking attribution must be active before creating a rolling rule.');
             abort_unless($attribution->commission_category === 'long_term', 422, 'Rolling rules are limited to reviewed long-term bookings.');
             abort_unless($attribution->collection_sales_profile_id, 422, 'Assign the current collection handler before creating a rolling rule.');
@@ -123,7 +127,10 @@ class RollingPaymentScheduleService
                 return $this->result($rule, 0);
             }
             Booking::query()->whereKey($rule->booking_id)->lockForUpdate()->firstOrFail();
-            $attribution = SalesBookingAttribution::query()->where('booking_id', $rule->booking_id)->first();
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $rule->booking_id)->lockForUpdate()->first();
+            abort_unless($attribution?->company_id === $rule->company_id, 409,
+                'The rolling rule company does not match the booking attribution; reconcile its ownership before continuing.');
+            $this->companyIntegrity->assertConsistent($rule->booking, $attribution->company_id);
             $handler = $attribution?->collection_sales_profile_id
                 ? SalesProfile::query()->whereKey($attribution->collection_sales_profile_id)
                     ->where('company_id', $rule->company_id)->eligibleAt('collection', $asOf)->first()
@@ -155,6 +162,10 @@ class RollingPaymentScheduleService
         return DB::transaction(function () use ($booking, $data, $actorUserId): array {
             Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $rule = BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            abort_unless($attribution->company_id === $rule->company_id, 409,
+                'The rolling rule company does not match the booking attribution; reconcile its ownership before continuing.');
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
             $requestChecksum = $this->checksum($booking->id, $data);
             $duplicate = BookingPaymentScheduleRuleEvent::query()
                 ->where('idempotency_key', $data['idempotency_key'])->first();

@@ -5,7 +5,6 @@ namespace App\Http\Controllers\Api\Sms;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Company;
-use App\Models\Staff;
 use App\Models\Sms\SmsCampaign;
 use App\Models\Sms\SmsMessage;
 use App\Services\Sms\SmsService;
@@ -14,6 +13,7 @@ use App\Services\Sms\SmsAutomationService;
 use App\Services\Sms\SmsSettingsService;
 use App\Services\WebsiteSettingsService;
 use App\Services\SingleCompanyScope;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Validator;
@@ -576,10 +576,7 @@ class SmsManagementController extends Controller
     {
         $company = app(SingleCompanyScope::class)->defaultCompany();
         abort_unless($company, 409, 'Set one active default company before managing SMS campaigns.');
-        abort_unless(
-            Staff::query()->where('user_id', $request->user()->id)->where('company_id', $company->id)->exists(),
-            403
-        );
+        abort_unless(app(StaffAccessService::class)->currentActorStaff($request->user())->company_id === $company->id, 403);
 
         return $company;
     }

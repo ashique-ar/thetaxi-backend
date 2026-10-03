@@ -27,6 +27,9 @@ it('searches and hydrates only companies in the actors effective attribution sco
     $deleted = Company::create(['name' => 'Deleted Attribution Company']); $deleted->delete();
     $url = '/api/sales/attribution-company-options';
 
+    actingAs($staff->user, 'api')->getJson('/api/sales/attribution-administration-context')->assertOk()
+        ->assertJsonPath('data.default_company_id', $company->id);
+
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Attribution Company')
         ->assertJsonPath('data.data.0.metadata.city', 'Colombo');

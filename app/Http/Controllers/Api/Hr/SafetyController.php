@@ -2,6 +2,7 @@
 namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Services\StaffAccessService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -34,13 +35,11 @@ class SafetyController extends Controller
     {
         $actor = $this->actor($request);
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'],
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        abort_unless($actor->company_id === $data['company_id'], 403);
         // Match issuance eligibility: employment, not login access, owns PPE.
         $query = Staff::query()->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $actor->company_id)->whereNull('staff.employment_ended_at');
@@ -64,7 +63,6 @@ class SafetyController extends Controller
     {
         $actor = $this->actor($request);
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'],
             'staff_id' => ['required', 'uuid'],
             'issued_at' => ['required', 'date_format:Y-m-d'],
             'search' => ['nullable', 'string', 'max:120'],
@@ -72,7 +70,6 @@ class SafetyController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        abort_unless($actor->company_id === $data['company_id'], 403);
         $this->activeStaff($data['staff_id'], $actor->company_id);
         $query = DB::table('hr_custody_assignments')
             ->where('company_id', $actor->company_id)->where('staff_id', $data['staff_id'])
@@ -104,8 +101,7 @@ class SafetyController extends Controller
     public function handlerCandidates(Request $r): JsonResponse
     {
         $a = $this->actor($r);
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'record_type' => ['required', Rule::in(['investigator', 'action_owner'])], 'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        abort_unless($a->company_id === $d['company_id'], 403, 'Safety handlers are outside your legal entity.');
+        $d = $r->validate(['record_type' => ['required', Rule::in(['investigator', 'action_owner'])], 'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
         $permissions = $d['record_type'] === 'investigator' ? ['hr.safety.investigate', 'hr.safety.manage'] : ['hr.safety.action'];
         $q = Staff::query()->join('users', 'users.id', '=', 'staff.user_id')->where('staff.company_id', $a->company_id)->whereNull('staff.employment_ended_at')->where('users.is_active', true)->where(fn($staff) => $staff->whereHas('user.permissions', fn($p) => $p->whereIn('name', $permissions))->orWhereHas('user.roles.permissions', fn($p) => $p->whereIn('name', $permissions)));
         if (!empty($d['selected_id']))
@@ -575,7 +571,7 @@ class SafetyController extends Controller
 
     private function actor(Request $r): Staff
     {
-        return Staff::query()->where('user_id', $r->user()->id)->firstOrFail();
+        return app(StaffAccessService::class)->currentActorStaff($r->user());
     }
 
     private function company(Request $r, string $id): void

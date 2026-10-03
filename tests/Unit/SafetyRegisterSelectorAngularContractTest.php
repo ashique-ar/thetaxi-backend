@@ -9,14 +9,15 @@ it('uses authorized searchable register assignments without preloaded Staff list
     expect($inspection)->toContain('endpoint="/hr/safety/handler-candidates"', 'recordType="investigator"')
         ->not->toContain('data.investigators', 'MAT_DIALOG_DATA');
     foreach ([$hazard, $inspection] as $source) {
-        expect($source)->toContain('UiManagedRecordSelectComponent', '[companyId]="companyId"', 'idempotency_key: this.idempotencyKey');
+        expect($source)->toContain('UiManagedRecordSelectComponent', 'idempotency_key: this.idempotencyKey')
+            ->not->toContain('[companyId]');
     }
 });
 
 it('uses the confidential fitness employee selector and an internal retry key', function () {
     $ui = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-relations/components/safety-registers/dialogs/fitness-form-dialog.component.ts'));
-    expect($ui)->toContain('endpoint="/hr/safety/fitness-employee-options"', '[companyId]="companyId"', 'idempotency_key: this.idempotencyKey')
-        ->not->toContain('data.staffMembers');
+    expect($ui)->toContain('endpoint="/hr/safety/fitness-employee-options"', 'idempotency_key: this.idempotencyKey')
+        ->not->toContain('data.staffMembers', '[companyId]');
 });
 
 it('renders register relationships from bounded response labels without a raw Staff identifier fallback', function () {

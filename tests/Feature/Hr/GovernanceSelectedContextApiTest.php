@@ -1,0 +1,39 @@
+<?php
+
+use App\Models\Company;
+use App\Models\Staff;
+use App\Models\UserContext;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use function Pest\Laravel\actingAs;
+
+uses(RefreshDatabase::class);
+
+it('limits approval queues to the selected Staff company', function () {
+    [$admin, $firstCompany] = hr_seed_admin_actor();
+    $admin->givePermissionTo(['hr.governance.view', 'hr.engagement.approve']);
+    $secondCompany = Company::create(['name' => 'Second Governance company']);
+    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
+    $context = UserContext::create([
+        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
+        'is_active' => true, 'created_user_id' => $admin->id,
+    ]);
+    $announcementIds = [(string) Str::uuid(), (string) Str::uuid()];
+    foreach ([[$announcementIds[0], $firstCompany->id], [$announcementIds[1], $secondCompany->id]] as [$id, $companyId]) {
+        DB::table('hr_announcements')->insert([
+            'id' => $id, 'company_id' => $companyId, 'title' => 'Pending announcement', 'body' => 'Review required',
+            'audience' => json_encode(['all' => true], JSON_THROW_ON_ERROR), 'priority' => 'normal',
+            'acknowledgement_required' => false, 'publish_at' => now(), 'source_timezone' => 'UTC',
+            'status' => 'pending_approval', 'created_by' => $admin->id,
+            'content_checksum' => hash('sha256', $id), 'created_at' => now(), 'updated_at' => now(),
+        ]);
+    }
+
+    actingAs($admin, 'api')->getJson('/api/hr/governance/queues')->assertForbidden();
+    actingAs($admin, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
+    ])->getJson('/api/hr/governance/queues')->assertOk()
+        ->assertJsonPath('data.counts.announcements', 1)
+        ->assertJsonPath('data.queues.announcements.0.id', $announcementIds[1]);
+});

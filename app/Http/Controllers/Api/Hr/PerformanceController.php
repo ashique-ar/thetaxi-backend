@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Staff;
 use App\Services\Hr\Talent\PerformanceManagementService;
 use App\Services\Hr\Integration\SalesKpiReviewEvidenceService;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -106,7 +107,7 @@ class PerformanceController extends Controller
     }
 
     private function achievementEvent(string$id,string$type,?string$from,?string$to,?string$reason,string$actor):void{DB::table('hr_achievement_events')->insert(['id'=>(string)Str::uuid(),'achievement_id'=>$id,'event_type'=>$type,'from_status'=>$from,'to_status'=>$to,'reason'=>$reason,'actor_user_id'=>$actor,'occurred_at'=>now()]);}
-    private function actor(Request$request):Staff{return Staff::query()->where('user_id',$request->user()->id)->firstOrFail();}
+    private function actor(Request$request):Staff{return app(StaffAccessService::class)->currentActorStaff($request->user());}
     private function company(Request$request,string$id):void{abort_unless($this->actor($request)->company_id===$id,403,'Performance data is outside your legal entity.');}
     private function owns(Request$request,string$table,string$id):void{$company=DB::table($table)->where('id',$id)->value('company_id');abort_unless($company,404);$this->company($request,$company);}
     private function enabled():void{abort_unless(config('hr.features.talent',false),409,'HR talent writes are not enabled.');}

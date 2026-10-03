@@ -12,6 +12,7 @@ use App\Services\Sales\BookingAttributionService;
 use App\Services\Sales\BookingCommercialValueAdjustmentService;
 use App\Services\Sales\CommissionPlanResolver;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Support\Foundation\CanonicalJson;
+use Closure;
 
 class SalesBookingAttributionController extends Controller
 {
@@ -28,6 +30,7 @@ class SalesBookingAttributionController extends Controller
         private readonly BookingCommercialValueAdjustmentService $commercialValueAdjustments,
         private readonly CommissionPlanResolver $commissionPlans,
         private readonly SalesAccessScope $scope,
+        private readonly SalesCollectionCompanyIntegrity $collectionCompanyIntegrity,
     ) {}
 
     public function index(Request $request): JsonResponse
@@ -282,28 +285,26 @@ class SalesBookingAttributionController extends Controller
     {
         $data = $this->validateCommercialValueAdjustment($request);
         abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.adjust-value'), 403);
-        $attribution = $this->scopedAttribution($request, $attribution);
-
-        return response()->json([
+        return $this->withinCommercialAdjustmentScope($request, $attribution, fn (SalesBookingAttribution $scopedAttribution) => response()->json([
             'status' => 'success',
-            'data' => $this->commercialValueAdjustments->preview($attribution->booking, $data),
-        ]);
+            'data' => $this->commercialValueAdjustments->preview($scopedAttribution->booking, $data),
+        ]));
     }
 
     public function applyCommercialValueAdjustment(Request $request, string $attribution): JsonResponse
     {
         $data = $this->validateCommercialValueAdjustment($request, true);
         abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.adjust-value'), 403);
-        $attribution = $this->scopedAttribution($request, $attribution);
-
-        $adjustment = $this->commercialValueAdjustments->apply($attribution->booking, $data, (string) $request->user()->id);
-
-        return response()->json(['status' => 'success', 'data' => $adjustment], 201);
+        return $this->withinCommercialAdjustmentScope($request, $attribution, fn (SalesBookingAttribution $scopedAttribution) => response()->json([
+            'status' => 'success',
+            'data' => $this->commercialValueAdjustments->apply($scopedAttribution->booking, $data, (string) $request->user()->id),
+        ], 201));
     }
 
     public function commercialValueAdjustmentHistory(Request $request, string $attribution): JsonResponse
     {
         $attribution = $this->scopedAttribution($request, $attribution);
+        $this->collectionCompanyIntegrity->assertConsistent($attribution->booking, $attribution->company_id);
         $rows = BookingCommercialValueAdjustment::query()
             ->where('booking_id', $attribution->booking_id)
             ->orderByDesc('effective_at')->orderByDesc('created_at')
@@ -380,13 +381,11 @@ class SalesBookingAttributionController extends Controller
             $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.attributions.view-all');
         }
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
-        $defaultCompany = app(\App\Services\SingleCompanyScope::class)->defaultCompany();
-        if ($defaultCompany && $companyIds !== null && ! in_array($defaultCompany->id, $companyIds, true)) {
-            $defaultCompany = null;
-        }
+        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)->where('is_default', true)
+            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))->value('id');
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
-            'default_company_id' => $defaultCompany?->id,
+            'default_company_id' => $defaultCompanyId,
         ]]);
     }
 
@@ -404,7 +403,7 @@ class SalesBookingAttributionController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']),
             'status' => $company->is_active ? 'active' : 'inactive']);
@@ -511,6 +510,21 @@ class SalesBookingAttributionController extends Controller
         }
 
         return $attribution;
+    }
+
+    private function withinCommercialAdjustmentScope(Request $request, string $attributionId, Closure $operation): JsonResponse
+    {
+        $candidate = SalesBookingAttribution::query()->findOrFail($attributionId);
+
+        return DB::transaction(function () use ($request, $candidate, $operation): JsonResponse {
+            Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()->firstOrFail();
+            $locked = SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $locked->booking_id === (string) $candidate->booking_id, 409, 'The attribution booking changed; reload before adjusting its value.');
+            $scoped = $this->scopedAttribution($request, (string) $locked->id);
+            $this->collectionCompanyIntegrity->assertConsistent($scoped->booking, $scoped->company_id);
+
+            return $operation($scoped);
+        });
     }
 
     private function scopedProfile(Request $request, string $profileId, ?string $companyId = null): SalesProfile

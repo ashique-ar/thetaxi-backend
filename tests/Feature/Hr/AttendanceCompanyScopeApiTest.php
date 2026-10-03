@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\Staff;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -11,36 +12,56 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('requires a selected legal entity when the actor has Staff identities in multiple companies', function () {
-    [$user] = hr_seed_admin_actor([], true);
+    [$user, $company] = hr_seed_admin_actor([], true);
     config(['hr.features.attendance_results' => true]);
     $otherCompany = Company::create(['name' => 'Second Attendance Company']);
     $unassignedCompany = Company::create(['name' => 'Unassigned Attendance Company']);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $actorStaff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $firstContext = UserContext::query()->where('user_id', $user->id)->where('context_id', $actorStaff->id)->firstOrFail();
+    $secondContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
 
-    $options = actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertOk();
-    $companyIds = collect($options->json('data'))->pluck('value')->all();
-    expect($companyIds)->toContain($otherCompany->id);
-    expect($companyIds)->not->toContain($unassignedCompany->id);
+    actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertForbidden();
+    $options = actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
+    ])->getJson('/api/hr/attendance/company-options')->assertOk();
+    expect($options->json('data.0.value'))->toBe($company->id);
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->getJson('/api/hr/attendance/company-options')->assertOk()
+        ->assertJsonCount(1, 'data')->assertJsonPath('data.0.value', $otherCompany->id);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/periods')
         ->assertForbidden()
-        ->assertJsonPath('message', 'Select an authorized Staff legal entity for attendance access.');
+        ->assertJsonPath('message', 'Select an active Staff context.');
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/periods?company_id='.$otherCompany->id)
-        ->assertOk();
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
+    ])->getJson('/api/hr/attendance/periods?company_id='.$otherCompany->id)->assertForbidden();
 
-    actingAs($user, 'api')->postJson('/api/hr/attendance/periods', [
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->postJson('/api/hr/attendance/periods', [
         'company_id' => $otherCompany->id,
         'period_start' => '2026-08-01',
         'period_end' => '2026-08-31',
         'timezone' => 'Asia/Colombo',
     ])->assertCreated()->assertJsonPath('data.company_id', $otherCompany->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/periods?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->getJson('/api/hr/attendance/periods?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonCount(1, 'data');
-    actingAs($user, 'api')->getJson('/api/hr/attendance/periods?company_id='.$unassignedCompany->id)
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->getJson('/api/hr/attendance/periods?company_id='.$unassignedCompany->id)
         ->assertForbidden();
 
-    actingAs($user, 'api')->postJson('/api/hr/attendance/periods', [
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->postJson('/api/hr/attendance/periods', [
         'company_id' => $unassignedCompany->id,
         'period_start' => '2026-09-01',
         'period_end' => '2026-09-30',
@@ -83,17 +104,20 @@ it('keeps results, corrections, and exceptions inside the selected authorized co
     actingAs($user, 'api')->getJson('/api/hr/attendance/results?company_id='.$otherCompany->id)
         ->assertOk()
         ->assertJsonPath('data.total', 1)
-        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id);
+        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id)
+        ->assertJsonPath('data.data.0.staff_code', $otherStaff->code);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/corrections?company_id='.$otherCompany->id)
         ->assertOk()
         ->assertJsonPath('data.total', 1)
-        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id);
+        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id)
+        ->assertJsonPath('data.data.0.staff_code', $otherStaff->code);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/exceptions?company_id='.$otherCompany->id)
         ->assertOk()
         ->assertJsonPath('data.total', 1)
-        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id);
+        ->assertJsonPath('data.data.0.staff_id', $otherStaff->id)
+        ->assertJsonPath('data.data.0.staff_code', $otherStaff->code);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/reports/summary?company_id='.$otherCompany->id.'&from=2026-06-01&to=2026-06-01&group_by=staff')
         ->assertOk()

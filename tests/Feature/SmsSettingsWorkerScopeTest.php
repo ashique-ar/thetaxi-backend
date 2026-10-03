@@ -159,7 +159,7 @@ it('binds consented customer campaigns to the sole managed default company', fun
     expect($controller)->toContain("'in:manual,customers'")
         ->and($controller)->toContain("'required_if:audience_type,manual', 'accepted'")
         ->and($controller)->toContain("'audience_filters' => ['prohibited']")
-        ->and($controller)->toContain("Staff::query()->where('user_id'", "\$data['company_id'] = \$company->id")
+        ->and($controller)->toContain('currentActorStaff($request->user())', '->company_id === $company->id', "\$data['company_id'] = \$company->id")
         ->and($companyScope)->toContain("->where('is_active', true)->limit(2)", "\$active->count() === 1 && \$active->first()->is_default")
         ->and($migration)->toContain("foreignUuid('company_id')->nullable()", "whereNotNull('company_id')->exists()")
         ->and($smsService)->toContain("'company_id' => \$company->id", "array_intersect(\$recipients, \$currentlyConsented)", "->where('marketing_consent', true)")

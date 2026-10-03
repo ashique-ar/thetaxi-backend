@@ -9,6 +9,8 @@ class SalesActivity extends Model
 {
     use HasUuids;
 
+    protected $hidden = ['source_reference'];
+
     protected $fillable = [
         'company_id', 'sales_profile_id', 'opportunity_id', 'customer_id', 'inquiry_id', 'booking_id',
         'phone_call_id', 'booking_activity_id', 'activity_type', 'direction', 'subject', 'notes', 'outcome',

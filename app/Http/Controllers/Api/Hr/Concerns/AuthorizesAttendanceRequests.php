@@ -6,6 +6,8 @@ use App\Models\Staff;
 use App\Models\Company;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 /**
  * Shared legal-entity authorization and feature-flag guards used by every
@@ -29,19 +31,32 @@ trait AuthorizesAttendanceRequests
     private function authorizedCompanyIds(Request $request)
     {
         if ($request->user()->can('staff.view-all')) {
-            return Company::query()->where('is_active', true)->orderBy('name')->pluck('id');
+            return Company::query()->where('is_active', true)->orderByDesc('is_default')->orderBy('name')->pluck('id');
         }
 
-        $staffCompanyIds = Staff::query()
+        $staffQuery = Staff::query()
             ->where('user_id', $request->user()->id)
             ->whereNotNull('company_id')
             ->where(fn ($employment) => $employment
                 ->whereNull('employment_ended_at')
-                ->orWhere('employment_ended_at', '>', now()))
-            ->select('company_id');
+                ->orWhere('employment_ended_at', '>', now()));
 
-        return Company::query()->where('is_active', true)->whereIn('id', $staffCompanyIds)
-            ->distinct()->orderBy('name')->pluck('id');
+        $contextType = $request->header('X-Active-Context-Type');
+        $contextId = $request->header('X-Active-Context-Id');
+        if ($contextType !== null || $contextId !== null) {
+            abort_unless($contextType === 'staff' && $contextId && Str::isUuid($contextId), 403, 'Select an active Staff context.');
+            $context = DB::table('user_contexts')->where('id', $contextId)->where('user_id', $request->user()->id)
+                ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->first();
+            abort_unless($context, 403, 'Select an active Staff context.');
+            $staffQuery->whereKey($context->context_id);
+        } else {
+            abort_if((clone $staffQuery)->count() > 1, 403, 'Select an active Staff context.');
+        }
+
+        $companyId = $staffQuery->value('company_id');
+        abort_unless($companyId, 403, 'The authenticated user has no active Staff legal-entity context.');
+
+        return Company::query()->whereKey($companyId)->where('is_active', true)->pluck('id');
     }
 
     private function authorizedDevice(Request $request, string $deviceId, ?string $companyId = null): AttendanceDevice

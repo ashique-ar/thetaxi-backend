@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -37,6 +38,57 @@ it('offers only companies in the authenticated Staff scope and rejects unrelated
         ->assertOk()->assertJsonPath('data.total', 0);
     actingAs($user, 'api')->getJson('/api/hr/workforce/work-request-policies?company_id='.$unassignedCompany->id)
         ->assertForbidden();
+});
+
+it('uses the selected active Staff context when the user has multiple Staff records', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    $user = User::factory()->create();
+    $role = Role::create(['name' => 'multi_staff_workforce_scope_tester', 'guard_name' => 'api']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-legal-entity']);
+    $user->assignRole($role);
+    $firstCompany = Company::create(['name' => 'First Workforce Company']);
+    $secondCompany = Company::create(['name' => 'Second Workforce Company']);
+    $firstStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $firstCompany->id]);
+    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
+    $firstContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $firstStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
+    $secondContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
+
+    actingAs($user, 'api')->getJson('/api/hr/workforce/company-options')->assertForbidden();
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
+    ])->getJson('/api/hr/workforce/company-options')->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.value', $firstCompany->id);
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
+    ])->getJson('/api/hr/workforce/references?company_id='.$secondCompany->id)->assertForbidden();
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
+    ])->getJson('/api/hr/workforce/references')->assertOk()->assertJsonPath('data.company_id', $secondCompany->id);
+    actingAs($user, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => (string) Str::uuid(),
+    ])->getJson('/api/hr/workforce/company-options')->assertForbidden();
+});
+
+it('keeps company selection for staff.view-all users who have no Staff record', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    $user = User::factory()->create();
+    $role = Role::create(['name' => 'workforce_view_all_scope_tester', 'guard_name' => 'api']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
+    $user->assignRole($role);
+    $first = Company::create(['name' => 'Workforce Admin A']);
+    $second = Company::create(['name' => 'Workforce Admin B', 'is_default' => true]);
+
+    $response = actingAs($user, 'api')->getJson('/api/hr/workforce/company-options')->assertOk();
+    expect(collect($response->json('data'))->pluck('value')->all())->toEqualCanonicalizing([$first->id, $second->id]);
+    expect($response->json('data.0.value'))->toBe($second->id);
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$second->id)
+        ->assertOk()->assertJsonPath('data.company_id', $second->id);
 });
 
 it('hides Leave decision requests outside the approver legal entity as not found', function () {

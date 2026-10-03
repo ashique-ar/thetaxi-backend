@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Hr\Concerns;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceProviderManager;
+use App\Services\StaffAccessService;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Client\ConnectionException;
@@ -286,7 +287,7 @@ trait ManagesDevicePeopleMapping
 
     public function legacyStaffGaps(Request $request): JsonResponse
     {
-        $actor = Staff::query()->where('user_id', $request->user()->id)->firstOrFail();
+        $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
         $rows = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->whereNull('staff.deleted_at')->where(fn ($q) => $q->whereNull('staff.company_id')->orWhereNull('staff.code'))->select('staff.id', 'staff.company_id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->paginate($request->integer('per_page', 100));
 
         return response()->json(['status' => 'success', 'data' => $rows, 'meta' => ['actor_staff_id' => $actor->id]]);

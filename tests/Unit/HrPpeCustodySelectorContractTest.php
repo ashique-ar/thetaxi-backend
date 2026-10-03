@@ -33,6 +33,6 @@ it('searches employees through the PPE permission boundary instead of passing a 
     $ui = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-relations/components/safety-registers/dialogs/ppe-form-dialog.component.ts'));
     $routes = file_get_contents(base_path('routes/api.php'));
     expect($ui)->toContain('endpoint="/hr/safety/ppe-employee-options"', 'label="Employee"')
-        ->not->toContain('data.staffMembers', 'MAT_DIALOG_DATA', '<mat-select');
+        ->not->toContain('data.staffMembers', 'MAT_DIALOG_DATA', '<mat-select', '[companyId]');
     expect($routes)->toContain("Route::get('ppe-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.manage')");
 });

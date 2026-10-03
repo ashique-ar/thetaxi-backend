@@ -14,7 +14,7 @@ it('uses bounded scoped company selectors throughout performance administration 
         ->and(substr_count($template, 'endpoint="/sales/performance/company-options"'))->toBe(7)
         ->and($template)->not->toContain('name="targetFilterCompany"\n            (selectionChange)', '*ngFor="let row of companies()" [value]="row.id"')
         ->and($component)->toContain('UiManagedRecordSelectComponent', "'Unavailable legal entity'", "'Unavailable Sales Profile'")
-        ->toContain('contextRequestVersion', 'companyLabels')
+        ->toContain('contextRequestVersion', 'companyLabels', 'default_company_id', 'selectCompany')
         ->not->toContain('?.name || id', ': id; }', 'companies()[0]', 'data?.companies');
     expect($routes)->toContain("Route::get('performance/profile-options', [SalesPerformanceController::class, 'profileOptions'])")
         ->and($controller)->toContain("'selected_ids' => ['sometimes', 'array', 'max:100']", 'profileOptionsPayload', 'scopeProfiles(', "compact('companyLabels', 'policies')")

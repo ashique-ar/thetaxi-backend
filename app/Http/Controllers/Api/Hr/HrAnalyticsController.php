@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
 use App\Services\Hr\HrAnalyticsSnapshotService;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -87,6 +88,6 @@ class HrAnalyticsController extends Controller
         return response()->json(['status' => 'success', 'data' => $query->select(['s.id', 's.definition_version_id', 'd.metric_code', 'd.name', 's.as_of_date', 's.cutoff_at', 's.filter_snapshot', 's.aggregate_payload', 's.suppression_snapshot', 's.source_checksum', 's.snapshot_checksum', 's.generated_at'])->latest('s.generated_at')->paginate($request->integer('per_page', 50))]);
     }
 
-    private function actor(Request $request): Staff { return Staff::query()->where('user_id', $request->user()->id)->firstOrFail(); }
+    private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }
     private function enabled(): void { abort_unless(config('hr.features.engagement_analytics', false), 409, 'HR engagement and analytics writes are not enabled.'); }
 }

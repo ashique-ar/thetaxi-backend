@@ -10,8 +10,8 @@ class SalesTaskEvent extends Model
     use HasUuids;
 
     protected $fillable = [
-        'task_id', 'event_type', 'from_status', 'to_status', 'from_owner_sales_profile_id',
+        'task_id', 'event_type', 'from_status', 'to_status', 'expected_version', 'from_owner_sales_profile_id',
         'to_owner_sales_profile_id', 'reason', 'idempotency_key', 'actor_user_id', 'occurred_at',
     ];
-    protected $casts = ['occurred_at' => 'datetime'];
+    protected $casts = ['occurred_at' => 'datetime', 'expected_version' => 'integer'];
 }

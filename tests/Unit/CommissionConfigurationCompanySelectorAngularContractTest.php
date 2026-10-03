@@ -10,7 +10,7 @@ it('uses a bounded active-Staff-scoped company selector for commission configura
         ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
         ->toContain("whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())")
         ->toContain("where('id', \$companyId)->whereNull('deleted_at')->exists()")
-        ->and($component)->toContain('UiManagedRecordSelectComponent', 'resetTenantState()', 'revision !== this.loadRevision')->not->toContain('commissionConfigurationContext()', 'companies = signal')
+        ->and($component)->toContain('UiManagedRecordSelectComponent', 'resetTenantState()', 'revision !== this.loadRevision', 'commissionConfigurationCompanyOptions({ per_page: 1 })', "option.metadata?.is_default === true", 'companyContextRequestVersion')->not->toContain('commissionConfigurationContext()', 'companies = signal')
         ->and($template)->toContain('endpoint="/sales/commission-configuration/company-options"', 'title="Select a legal entity"')
         ->not->toContain('*ngFor="let company of companies()"', 'item.row.created_by', '<td>{{row.id}}</td>');
     expect($component)->toContain('Unavailable calendar', 'Unavailable plan family', 'Unavailable Sales Profile', 'Unavailable employee', 'row.code || this.targetLabel(row)');

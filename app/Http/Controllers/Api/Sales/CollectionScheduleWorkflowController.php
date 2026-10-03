@@ -11,9 +11,11 @@ use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
 use App\Services\Sales\CollectionScheduleWorkflowService;
 use App\Services\Sales\CollectionWorkAgingService;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\BookingPaymentLedgerService;
+use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -28,6 +30,7 @@ class CollectionScheduleWorkflowController extends Controller
         private readonly BookingPaymentLedgerService $ledger,
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
+        private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
     ) {}
 
     public function createRollingRule(Request $request, Booking $booking): JsonResponse
@@ -42,12 +45,10 @@ class CollectionScheduleWorkflowController extends Controller
             'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->assertBookingManagementScope($request, $booking);
-
-        return response()->json([
+        return $this->withinBookingManagementScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
             'status' => 'success',
-            'data' => $this->ledger->createRollingScheduleRule($booking, $data, (string) $request->user()->id),
-        ], 201);
+            'data' => $this->ledger->createRollingScheduleRule($scopedBooking, $data, (string) $request->user()->id),
+        ], 201));
     }
 
     public function transitionRollingRule(Request $request, Booking $booking): JsonResponse
@@ -59,12 +60,10 @@ class CollectionScheduleWorkflowController extends Controller
             'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->assertBookingManagementScope($request, $booking);
-
-        return response()->json([
+        return $this->withinBookingManagementScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
             'status' => 'success',
-            'data' => $this->ledger->transitionRollingScheduleRule($booking, $data, (string) $request->user()->id),
-        ]);
+            'data' => $this->ledger->transitionRollingScheduleRule($scopedBooking, $data, (string) $request->user()->id),
+        ]));
     }
 
     public function revise(Request $request, Booking $booking): JsonResponse
@@ -90,12 +89,10 @@ class CollectionScheduleWorkflowController extends Controller
             'items.*.reminder_offset_days' => ['required', 'integer', 'min:0', 'max:90'],
             'items.*.notes' => ['nullable', 'string', 'max:1000'],
         ]);
-        $this->assertBookingManagementScope($request, $booking);
-
-        return response()->json([
+        return $this->withinBookingManagementScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
             'status' => 'success',
-            'data' => $this->workflow->reviseFutureUnpaid($booking, $data, (string) $request->user()->id),
-        ], 201);
+            'data' => $this->workflow->reviseFutureUnpaid($scopedBooking, $data, (string) $request->user()->id),
+        ], 201));
     }
 
     public function previewRevision(Request $request, Booking $booking): JsonResponse
@@ -119,12 +116,10 @@ class CollectionScheduleWorkflowController extends Controller
             'items.*.reminder_offset_days' => ['required', 'integer', 'min:0', 'max:90'],
             'items.*.notes' => ['nullable', 'string', 'max:1000'],
         ]);
-        $this->assertBookingManagementScope($request, $booking);
-
-        return response()->json([
+        return $this->withinBookingManagementScope($request, $booking, fn (Booking $scopedBooking) => response()->json([
             'status' => 'success',
-            'data' => $this->workflow->previewFutureUnpaidRevision($booking, $data),
-        ]);
+            'data' => $this->workflow->previewFutureUnpaidRevision($scopedBooking, $data),
+        ]));
     }
 
     public function scheduleBookings(Request $request): JsonResponse
@@ -151,6 +146,8 @@ class CollectionScheduleWorkflowController extends Controller
     public function schedule(Request $request, Booking $booking): JsonResponse
     {
         $this->assertBookingManagementScope($request, $booking);
+        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->firstOrFail();
+        $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
         $scheduleColumns = ['schedule.id', 'schedule.sequence', 'schedule.label', 'schedule.period_start', 'schedule.period_end', 'schedule.due_date', 'schedule.source_amount', 'schedule.source_currency', 'schedule.lkr_amount', 'schedule.schedule_kind', 'schedule.is_collection_target_eligible', 'schedule.notes', 'schedule.status', 'schedule.revision_number'];
         if (Schema::hasColumn('booking_payment_schedules', 'booking_payment_schedule_rule_id')) {
             $scheduleColumns = [...$scheduleColumns, 'schedule.booking_payment_schedule_rule_id', 'schedule.rule_occurrence_number'];
@@ -166,7 +163,6 @@ class CollectionScheduleWorkflowController extends Controller
         $rule = Schema::hasTable('booking_payment_schedule_rules')
             ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
             : null;
-        $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
         $rollingEnabled = $attribution?->company_id
             && $this->policySettings->featureEnabled((string) $attribution->company_id, 'rolling_payment_schedules')
             && Schema::hasTable('booking_payment_schedule_rules');
@@ -402,6 +398,24 @@ class CollectionScheduleWorkflowController extends Controller
             403,
             'Booking is outside your permitted collection scope.',
         );
+        $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
+    }
+
+    private function withinBookingManagementScope(Request $request, Booking $booking, Closure $operation): JsonResponse
+    {
+        return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
+            $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $profileIds = $this->scheduleProfileIds($request, $attribution->company_id);
+            abort_unless(
+                $profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true),
+                403,
+                'Booking is outside your permitted collection scope.',
+            );
+            $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
+
+            return $operation($booking);
+        });
     }
 
     private function scheduleProfileIds(Request $request, ?string $companyId = null): ?array

@@ -8,7 +8,7 @@ it('keeps tenant decision company choice bounded explicit and stale safe', funct
 
     expect($routes)->toContain("Route::get('company-options', [\\App\\Http\\Controllers\\Api\\Admin\\TenantDecisionController::class, 'companyOptions'])->middleware('permission:tenant-decisions.view')")
         ->and($controller)->toContain("'per_page' => 'nullable|integer|min:1|max:50'", "whereNull('deleted_at')", "whereNull('employment_ended_at')", "where('user_id', $r->user()->id)", "'selected_id' => 'nullable|uuid'", "DB::table('companies')->where('id', $id)->whereNull('deleted_at')->exists()")
-        ->and($component)->toContain('private requestVersion = 0', 'version !== this.requestVersion', 'companyId !== this.companyId')
+        ->and($component)->toContain('private requestVersion = 0', 'version !== this.requestVersion', 'companyId !== this.companyId', 'tenantDecisionCompanyOptions({ per_page: 1 })', "option.metadata?.is_default === true")
         ->not->toContain('this.companies()[0]')
         ->and($template)->toContain('endpoint="/tenant-decisions/company-options"', 'title="Select a legal entity"');
 });

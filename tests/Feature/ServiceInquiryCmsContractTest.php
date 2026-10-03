@@ -273,6 +273,7 @@ it('persists a CMS inquiry with exact source and form metadata and invokes exist
     $companyId = (string) Str::uuid();
     $staffId = (string) Str::uuid();
     DB::table('companies')->insert(['id' => $companyId, 'name' => 'Default company', 'is_active' => true, 'is_default' => true, 'created_at' => now(), 'updated_at' => now()]);
+    DB::table('companies')->insert(['id' => (string) Str::uuid(), 'name' => 'Other active company', 'is_active' => true, 'is_default' => false, 'created_at' => now(), 'updated_at' => now()]);
     DB::table('staff')->insert(['id' => $staffId, 'user_id' => $assigneeId, 'company_id' => $companyId, 'code' => 'ST-1', 'created_at' => now(), 'updated_at' => now()]);
     DB::table('hr_employment_spells')->insert(['id' => (string) Str::uuid(), 'staff_id' => $staffId, 'company_id' => $companyId, 'status' => 'active']);
     $operator = (object) ['id' => $assigneeId];
