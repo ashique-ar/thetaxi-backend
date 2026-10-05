@@ -2,7 +2,8 @@
 
 namespace App\Models\Hr;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableTrackedModel;
+use Spatie\Activitylog\Support\LogOptions;
 
 /**
  * Per-company employee-number *allocation* counter: one row per company
@@ -17,9 +18,19 @@ use App\Models\BaseModel;
  * {@see HrEmployeeNumberAlias}, which is also what the allocator checks
  * against to avoid recycling a formerly-used number.
  */
-class HrEmployeeNumberSequence extends BaseModel
+class HrEmployeeNumberSequence extends NonSoftDeletableTrackedModel
 {
     protected $fillable = ['company_id', 'template', 'prefix', 'suffix', 'start_value', 'next_value', 'padding', 'status', 'version', 'updated_user_id'];
 
     protected $casts = ['start_value' => 'integer', 'next_value' => 'integer', 'padding' => 'integer', 'version' => 'integer'];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['status', 'version'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
+            ->useLogName('HrEmployeeNumberSequence');
+    }
 }

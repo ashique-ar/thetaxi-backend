@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Company;
+use App\Models\Booking\Booking;
+use App\Models\Booking\BookingActivity;
 use App\Models\Sales\SalesActivity;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesMetricFact;
@@ -18,6 +20,8 @@ uses(RefreshDatabase::class);
 
 it('records an authorized opportunity activity once and rejects cross-company references', function () {
     [$actor, $company] = hr_seed_admin_actor(['name' => 'Sales Activity Company']);
+    $actor->givePermissionTo(Permission::findByName('sales.crm.view', 'api'));
+    $actor->givePermissionTo(Permission::findByName('sales.crm.view-all', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage-all', 'api'));
     config()->set('sales.features.crm', true);
@@ -48,9 +52,20 @@ it('records an authorized opportunity activity once and rejects cross-company re
         'opportunity_number' => 'ACTIVITY-OPP-B', 'name' => 'Activity opportunity B',
         'source' => 'manual', 'created_user_id' => $actor->id,
     ]);
+    $booking = Booking::create([
+        'sales_opportunity_id' => $opportunity->id,
+        'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $profile->staff_id,
+        'created_user_id' => $actor->id,
+    ]);
+    $bookingActivity = BookingActivity::create([
+        'company_id' => $company->id, 'booking_id' => $booking->id, 'event_key' => 'test.event',
+        'result_status' => 'logged', 'title' => 'Booking event', 'idempotency_key' => (string) Str::uuid(),
+        'event_at' => now(),
+    ]);
 
     $payload = [
         'company_id' => $company->id, 'sales_profile_id' => $profile->id, 'opportunity_id' => $opportunity->id,
+        'booking_id' => $booking->id, 'booking_activity_id' => $bookingActivity->id,
         'activity_type' => 'call', 'subject' => 'Discussed requirements', 'occurred_at' => now()->toISOString(),
         'source_system' => 'manual', 'source_reference' => (string) Str::uuid(),
     ];
@@ -59,6 +74,7 @@ it('records an authorized opportunity activity once and rejects cross-company re
     actingAs($actor, 'api')->postJson('/api/sales/activities', $payload)->assertCreated();
     expect(SalesActivity::query()->count())->toBe(1)
         ->and(SalesMetricFact::query()->where('source_type', 'sales_activity')->count())->toBe(1);
+    actingAs($actor, 'api')->getJson('/api/sales/activities')->assertUnprocessable();
 
     actingAs($actor, 'api')->postJson('/api/sales/activities', [
         ...$payload, 'subject' => 'Different facts with the same source key',
@@ -67,8 +83,29 @@ it('records an authorized opportunity activity once and rejects cross-company re
         ...$payload, 'opportunity_id' => $otherOpportunity->id, 'source_reference' => (string) Str::uuid(),
     ])->assertUnprocessable();
 
+    $activityStaffId = $profile->staff_id;
+    $foreignStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+    $profile->update(['staff_id' => $foreignStaff->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/activities?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/activities', [
+        ...$payload, 'source_reference' => (string) Str::uuid(),
+    ])->assertUnprocessable();
+    $profile->update(['staff_id' => $activityStaffId]);
+    actingAs($actor, 'api')->getJson('/api/sales/activities?company_id='.$company->id)->assertOk()->assertJsonCount(1, 'data.data');
+
+    $booking->update(['commission_owner_staff_id' => $foreignStaff->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/activities?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/activities', $payload)->assertUnprocessable();
+    $booking->update(['commission_owner_staff_id' => $activityStaffId]);
+    $bookingActivity->update(['company_id' => $otherCompany->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/activities?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/activities', $payload)->assertUnprocessable();
+    $bookingActivity->update(['company_id' => $company->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/activities?company_id='.$company->id)->assertOk()->assertJsonCount(1, 'data.data');
+
     $scopedActor = User::factory()->create();
     $scopedActor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
+    $scopedActor->givePermissionTo(Permission::findByName('sales.crm.view', 'api'));
     $scopedStaff = Staff::factory()->create(['company_id' => $company->id, 'user_id' => $scopedActor->id]);
     UserContext::create([
         'user_id' => $scopedActor->id, 'context_type' => 'staff', 'context_id' => $scopedStaff->id,
@@ -79,6 +116,7 @@ it('records an authorized opportunity activity once and rejects cross-company re
         'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
         'reporting_currency' => 'LKR', 'acquisition_eligible' => true, 'created_user_id' => $actor->id,
     ]);
+    actingAs($scopedActor, 'api')->getJson('/api/sales/activities?company_id='.$otherCompany->id)->assertForbidden();
     actingAs($scopedActor, 'api')->postJson('/api/sales/activities', [
         ...$payload, 'sales_profile_id' => $scopedProfile->id, 'source_reference' => (string) Str::uuid(),
     ])->assertForbidden();

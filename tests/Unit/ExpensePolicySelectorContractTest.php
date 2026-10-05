@@ -7,8 +7,8 @@ it('uses a searchable eligible expense policy selector backed by the submission 
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-talent/components/service-operations/service-operations.component.html'));
 
     expect($routes)->toContain("Route::get('expense-policy-options', [ServiceOperationsController::class, 'expensePolicyOptions'])")
-        ->and($controller)->toContain("where('company_id',$a->company_id)->where('status','approved')")
-        ->toContain("where('id',$d['policy_version_id'])->where('company_id',$a->company_id)")
+        ->and($controller)->toContain('where(\'company_id\',$a->company_id)->where(\'status\',\'approved\')')
+        ->toContain('where(\'id\',$d[\'policy_version_id\'])->where(\'company_id\',$a->company_id)')
         ->toContain("whereDate('effective_from','<=',now())")
         ->toContain("orWhereDate('effective_until','>=',now())")
         ->toContain("'per_page'=>['nullable','integer','min:1','max:50']")

@@ -3,6 +3,7 @@
 namespace App\Models\Hr;
 
 use App\Models\BaseModel;
+use Spatie\Activitylog\Support\LogOptions;
 
 class HrEpfEtfContributionPolicy extends BaseModel
 {
@@ -27,4 +28,18 @@ class HrEpfEtfContributionPolicy extends BaseModel
         'effective_until' => 'datetime',
         'approved_at' => 'datetime',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'company_id', 'version', 'status',
+                'employee_epf_rate_percent', 'employer_epf_rate_percent', 'employer_etf_rate_percent',
+                'earnings_basis', 'statutory_reference', 'effective_from', 'effective_until', 'approved_at',
+            ])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
+            ->useLogName('HrEpfEtfContributionPolicy');
+    }
 }

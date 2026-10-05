@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('searches users by readable identity, role and context type instead of internal IDs', function () {
     $source = file_get_contents(app_path('Services/UserService.php'));
     $search = Str::between($source, "if (!empty(\$filters['search'])) {", "if (!empty(\$filters['role'])) {");

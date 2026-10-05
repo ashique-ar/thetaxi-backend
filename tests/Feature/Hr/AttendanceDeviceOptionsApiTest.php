@@ -3,6 +3,7 @@
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -116,22 +117,27 @@ it('denies attendance selector access after the actor Staff employment ends', fu
 it('uses an explicitly selected company only when the actor has active Staff membership there', function () {
     [$user] = hr_seed_admin_actor([], true);
     $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $otherContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
     $candidate = Staff::factory()->create(['company_id' => $otherCompany->id, 'code' => 'ATT-MEMBER-02']);
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?company_id='.$otherCompany->id)
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherContext->id];
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$otherCompany->id)
         ->assertOk()
         ->assertJsonFragment(['value' => $candidate->id]);
 
     actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates')
         ->assertForbidden()
-        ->assertJsonPath('message', 'Select an authorized Staff legal entity for attendance access.');
+        ->assertJsonPath('message', 'Select an active Staff context.');
 
     $unassignedCompany = App\Models\Company::create(['name' => 'Unassigned Attendance Co']);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?company_id='.$unassignedCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$unassignedCompany->id)
         ->assertForbidden()
         ->assertJsonPath('message', 'Attendance data is outside your legal entity.');
-    actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates?company_id='.Str::uuid())
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.Str::uuid())
         ->assertForbidden()
         ->assertJsonPath('message', 'Attendance data is outside your legal entity.');
 });
@@ -140,7 +146,11 @@ it('allows device viewers to select only companies with active Staff membership'
     [, $company] = hr_seed_admin_actor();
     $viewer = User::factory()->create();
     $viewer->givePermissionTo('hr.attendance.devices.view');
-    Staff::factory()->create(['user_id' => $viewer->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $viewer->id, 'company_id' => $company->id]);
+    UserContext::create([
+        'user_id' => $viewer->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $viewer->id,
+    ]);
 
     actingAs($viewer, 'api')->getJson('/api/hr/attendance/company-options')
         ->assertOk()->assertJsonPath('data.0.value', $company->id);

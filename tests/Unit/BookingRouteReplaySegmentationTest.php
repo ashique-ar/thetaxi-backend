@@ -5,8 +5,6 @@ use App\Services\BookingObservabilityService;
 use App\Services\Driver\RouteEvidenceService;
 use Illuminate\Support\Collection;
 
-uses(Tests\TestCase::class);
-
 it('breaks replay lines around implausible coordinate jumps', function () {
     $points = collect([
         new RoutePoint(['id' => 'point-1', 'latitude' => 6.9271, 'longitude' => 79.8612, 'accuracy' => 5, 'recorded_at' => '2026-09-14 10:00:00']),

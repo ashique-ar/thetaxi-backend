@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('exposes driver scoped password recovery routes', function () {
     $routes = file_get_contents(base_path('routes/api_driver.php'));
 

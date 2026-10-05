@@ -16,8 +16,7 @@ it('applies the dynamic company default server-side while preserving an explicit
     $contextService = file_get_contents(app_path('Services/UserContextService.php'));
 
     expect($service)
-        ->toContain("where('is_default', true)")
-        ->toContain("where('is_active', true)", '->limit(2)', '$defaults->count() === 1')
+        ->toContain('SingleCompanyScope::class', 'activeDefaultCompany()?->id')
         ->toContain("empty(\$staffData['company_id'])")
         ->and($staffController)
         ->toContain('$this->defaultCompany->apply($request->validated())')

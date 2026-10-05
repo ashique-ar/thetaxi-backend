@@ -62,22 +62,24 @@ trait ManagesDevicePeopleMapping
         $data = $request->validate(['staff_id' => ['required', 'uuid']]);
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can receive Staff users.');
-        $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->firstOrFail();
-        abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
-        abort_unless(preg_match('/^[A-Za-z0-9._-]{1,32}$/', $staff->code) === 1, 422, 'The Staff employee code is not supported by this Hikvision terminal.');
-        $name = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
+        return DB::transaction(function () use ($data, $device, $providers) {
+            $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->lockForUpdate()->firstOrFail();
+            abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
+            abort_unless(preg_match('/^[A-Za-z0-9._-]{1,32}$/', $staff->code) === 1, 422, 'The Staff employee code is not supported by this Hikvision terminal.');
+            $name = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
 
-        try {
-            $person = $providers->adapterFor($device)->provisionPerson($device, $staff->code, $name);
-        } catch (ConnectionException $exception) {
-            report($exception);
-            abort(503, 'The Hikvision terminal could not be reached while creating the Staff user.');
-        } catch (RequestException $exception) {
-            report($exception);
-            abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the Staff user provisioning request.');
-        }
+            try {
+                $person = $providers->adapterFor($device)->provisionPerson($device, $staff->code, $name);
+            } catch (ConnectionException $exception) {
+                report($exception);
+                abort(503, 'The Hikvision terminal could not be reached while creating the Staff user.');
+            } catch (RequestException $exception) {
+                report($exception);
+                abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the Staff user provisioning request.');
+            }
 
-        return response()->json(['status' => 'success', 'data' => $person], $person['created'] ? 201 : 200);
+            return response()->json(['status' => 'success', 'data' => $person], $person['created'] ? 201 : 200);
+        });
     }
 
     public function updateDevicePerson(Request $request, string $deviceId, string $employeeNumber, AttendanceProviderManager $providers): JsonResponse
@@ -91,42 +93,44 @@ trait ManagesDevicePeopleMapping
         ]);
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can synchronize Staff users.');
-        $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->firstOrFail();
-        $mappingExists = DB::table('hr_attendance_person_mappings')
-            ->where('company_id', $device->company_id)
-            ->where('staff_id', $staff->id)
-            ->where('provider_person_id', $employeeNumber)
-            ->where('enrollment_status', 'verified')
-            ->where(fn ($query) => $query->where('device_id', $device->id)->orWhereNull('device_id'))
-            ->exists();
-        abort_unless($mappingExists, 422, 'A verified Staff-to-terminal mapping is required before synchronizing this user.');
-        abort_if($data['enabled'] && filled($staff->employment_ended_at), 422, 'Former Staff cannot be enabled on an attendance terminal.');
-        $canonicalName = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
-        $name = trim((string) ($data['display_name'] ?? '')) ?: $canonicalName;
+        return DB::transaction(function () use ($request, $data, $device, $employeeNumber, $providers) {
+            $staff = Staff::withTrashed()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
+            abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
+            $mappingExists = DB::table('hr_attendance_person_mappings')
+                ->where('company_id', $device->company_id)
+                ->where('staff_id', $staff->id)
+                ->where('provider_person_id', $employeeNumber)
+                ->where('enrollment_status', 'verified')
+                ->where(fn ($query) => $query->where('device_id', $device->id)->orWhereNull('device_id'))
+                ->exists();
+            abort_unless($mappingExists, 422, 'A verified Staff-to-terminal mapping is required before synchronizing this user.');
+            $canonicalName = trim(($staff->user?->first_name ?? '').' '.($staff->user?->last_name ?? '')) ?: $staff->code;
+            $name = trim((string) ($data['display_name'] ?? '')) ?: $canonicalName;
 
-        try {
-            $adapter = $providers->adapterFor($device);
-            $before = $this->terminalPerson($adapter, $device, $employeeNumber);
-            $person = $adapter->updatePerson($device, $employeeNumber, $name, (bool) $data['enabled']);
-            $after = $this->terminalPerson($adapter, $device, $employeeNumber);
-            abort_unless($after && $after['display_name'] === $name && (bool) $after['enabled'] === (bool) $data['enabled'], 502, 'Hikvision accepted the update but post-write reconciliation did not match.');
-            DB::table('hr_attendance_device_config_events')->insert([
-                'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'device_id' => $device->id,
-                'action' => 'terminal_person_update', 'before_checksum' => hash('sha256', json_encode($before)),
-                'after_checksum' => hash('sha256', json_encode($after)),
-                'safe_snapshot' => json_encode(['employee_number' => $employeeNumber, 'before_name' => $before['display_name'] ?? null, 'after_name' => $after['display_name'], 'enabled' => $after['enabled']]),
-                'status' => 'completed', 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id,
-                'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
-            ]);
-        } catch (ConnectionException $exception) {
-            report($exception);
-            abort(503, 'The Hikvision terminal could not be reached while synchronizing the Staff user.');
-        } catch (RequestException $exception) {
-            report($exception);
-            abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the Staff user update.');
-        }
+            try {
+                $adapter = $providers->adapterFor($device);
+                $before = $this->terminalPerson($adapter, $device, $employeeNumber);
+                $person = $adapter->updatePerson($device, $employeeNumber, $name, (bool) $data['enabled']);
+                $after = $this->terminalPerson($adapter, $device, $employeeNumber);
+                abort_unless($after && $after['display_name'] === $name && (bool) $after['enabled'] === (bool) $data['enabled'], 502, 'Hikvision accepted the update but post-write reconciliation did not match.');
+                DB::table('hr_attendance_device_config_events')->insert([
+                    'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'device_id' => $device->id,
+                    'action' => 'terminal_person_update', 'before_checksum' => hash('sha256', json_encode($before)),
+                    'after_checksum' => hash('sha256', json_encode($after)),
+                    'safe_snapshot' => json_encode(['employee_number' => $employeeNumber, 'before_name' => $before['display_name'] ?? null, 'after_name' => $after['display_name'], 'enabled' => $after['enabled']]),
+                    'status' => 'completed', 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id,
+                    'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            } catch (ConnectionException $exception) {
+                report($exception);
+                abort(503, 'The Hikvision terminal could not be reached while synchronizing the Staff user.');
+            } catch (RequestException $exception) {
+                report($exception);
+                abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the Staff user update.');
+            }
 
-        return response()->json(['status' => 'success', 'data' => $person]);
+            return response()->json(['status' => 'success', 'data' => $person]);
+        });
     }
 
     public function updateDevicePersonStatus(Request $request, string $deviceId, string $employeeNumber, AttendanceProviderManager $providers): JsonResponse
@@ -134,33 +138,35 @@ trait ManagesDevicePeopleMapping
         $this->requireAttendanceWrites();
         $data = $request->validate(['enabled' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000']]);
         [$device, $mapping] = $this->mappedIdentity($request, $deviceId, $employeeNumber);
-        $staff = Staff::query()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->firstOrFail();
-        abort_if($data['enabled'] && filled($staff->employment_ended_at), 422, 'Former Staff cannot be enabled on an attendance terminal.');
+        return DB::transaction(function () use ($request, $data, $device, $mapping, $employeeNumber, $providers) {
+            $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
+            abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
 
-        try {
-            $adapter = $providers->adapterFor($device);
-            $before = $this->terminalPerson($adapter, $device, $employeeNumber);
-            $result = $adapter->setPersonEnabled($device, $employeeNumber, (bool) $data['enabled']);
-            $after = $this->terminalPerson($adapter, $device, $employeeNumber);
-            abort_unless($after && (bool) $after['enabled'] === (bool) $data['enabled'], 502, 'Hikvision accepted the status update but post-write reconciliation did not match.');
-            abort_unless(($before['display_name'] ?? null) === ($after['display_name'] ?? null), 502, 'The terminal display name changed during a status-only update.');
-            DB::table('hr_attendance_device_config_events')->insert([
-                'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'device_id' => $device->id,
-                'action' => 'terminal_person_status_update', 'before_checksum' => hash('sha256', json_encode($before)),
-                'after_checksum' => hash('sha256', json_encode($after)),
-                'safe_snapshot' => json_encode(['employee_number' => $employeeNumber, 'display_name' => $after['display_name'] ?? null, 'enabled' => $after['enabled']]),
-                'status' => 'completed', 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id,
-                'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
-            ]);
-        } catch (ConnectionException $exception) {
-            report($exception);
-            abort(503, 'The Hikvision terminal could not be reached while changing user status.');
-        } catch (RequestException $exception) {
-            report($exception);
-            abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the status update.');
-        }
+            try {
+                $adapter = $providers->adapterFor($device);
+                $before = $this->terminalPerson($adapter, $device, $employeeNumber);
+                $result = $adapter->setPersonEnabled($device, $employeeNumber, (bool) $data['enabled']);
+                $after = $this->terminalPerson($adapter, $device, $employeeNumber);
+                abort_unless($after && (bool) $after['enabled'] === (bool) $data['enabled'], 502, 'Hikvision accepted the status update but post-write reconciliation did not match.');
+                abort_unless(($before['display_name'] ?? null) === ($after['display_name'] ?? null), 502, 'The terminal display name changed during a status-only update.');
+                DB::table('hr_attendance_device_config_events')->insert([
+                    'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'device_id' => $device->id,
+                    'action' => 'terminal_person_status_update', 'before_checksum' => hash('sha256', json_encode($before)),
+                    'after_checksum' => hash('sha256', json_encode($after)),
+                    'safe_snapshot' => json_encode(['employee_number' => $employeeNumber, 'display_name' => $after['display_name'] ?? null, 'enabled' => $after['enabled']]),
+                    'status' => 'completed', 'reason' => $data['reason'], 'actor_user_id' => $request->user()->id,
+                    'occurred_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+                ]);
+            } catch (ConnectionException $exception) {
+                report($exception);
+                abort(503, 'The Hikvision terminal could not be reached while changing user status.');
+            } catch (RequestException $exception) {
+                report($exception);
+                abort($exception->response->status() === 401 ? 401 : 502, $exception->response->status() === 401 ? 'Hikvision authentication failed.' : 'Hikvision rejected the status update.');
+            }
 
-        return response()->json(['status' => 'success', 'data' => $result]);
+            return response()->json(['status' => 'success', 'data' => $result]);
+        });
     }
 
     public function bulkMapping(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
@@ -191,6 +197,7 @@ trait ManagesDevicePeopleMapping
             return response()->json(['status' => 'success', 'data' => ['preview' => $preview, 'committed' => false]]);
         }
         $result = DB::transaction(function () use ($data, $device, $request) {
+            abort_unless(DB::table('companies')->where('id', $device->company_id)->lockForUpdate()->first(), 404);
             $created = 0;
             $resolved = 0;
             foreach ($data['rows'] as $row) {
@@ -218,6 +225,7 @@ trait ManagesDevicePeopleMapping
             'selected_id' => ['nullable', 'uuid'],
             'selected_ids' => ['nullable', 'array', 'max:200'],
             'selected_ids.*' => ['required', 'uuid', 'distinct'],
+            'include_former' => ['nullable', 'boolean'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
@@ -249,13 +257,14 @@ trait ManagesDevicePeopleMapping
 
             return response()->json(['status' => 'success', 'data' => $records]);
         }
+        $includeFormer = ($data['include_former'] ?? false) && $request->user()->can('hr.attendance.access.request');
         $staff = DB::table('staff')
             ->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $companyId)
-            ->whereNull('staff.deleted_at')
-            ->where(fn ($employment) => $employment
-                ->whereNull('staff.employment_ended_at')
-                ->orWhere('staff.employment_ended_at', '>', now()))
+            ->when(! $includeFormer, fn ($query) => $query->whereNull('staff.deleted_at')
+                ->where(fn ($employment) => $employment
+                    ->whereNull('staff.employment_ended_at')
+                    ->orWhere('staff.employment_ended_at', '>', now())))
             ->when($data['selected_id'] ?? null, fn ($query, $id) => $query->where('staff.id', $id))
             ->when($data['selected_ids'] ?? null, fn ($query, $ids) => $query->whereIn('staff.id', $ids))
             ->when($search !== '', fn ($query) => $query->where(function ($match) use ($search) {
@@ -264,16 +273,17 @@ trait ManagesDevicePeopleMapping
                     ->orWhereLikeInsensitive('users.last_name', $search)
                     ->orWhereLikeInsensitive('users.email', $search);
             }))
-            ->select('staff.id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')
+            ->select('staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.first_name', 'users.last_name', 'users.email')
             ->orderBy('users.first_name')
             ->orderBy('users.last_name');
         $mapStaff = function ($row) {
             $name = trim(($row->first_name ?? '').' '.($row->last_name ?? ''));
+            $ended = $row->deleted_at || ($row->employment_ended_at && CarbonImmutable::parse($row->employment_ended_at)->lte(now()));
             return [
                 'value' => (string) $row->id,
-                'label' => trim(($row->code ? $row->code.' · ' : '').($name ?: 'Staff member')),
+                'label' => trim(($ended ? 'Former Staff · ' : '').($row->code ? $row->code.' · ' : '').($name ?: 'Staff member')),
                 'metadata' => ['code' => $row->code, 'email' => $row->email],
-                'status' => 'active',
+                'status' => $ended ? 'ended' : 'active',
             ];
         };
         if (! empty($data['selected_ids'])) {
@@ -367,6 +377,10 @@ trait ManagesDevicePeopleMapping
 
         return DB::transaction(function () use ($request, $mappingId) {
             $companyIds = $this->authorizedCompanyIds($request);
+            $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
+                ->whereIn('company_id', $companyIds)->first();
+            abort_unless($mapping, 404);
+            abort_unless(DB::table('companies')->where('id', $mapping->company_id)->lockForUpdate()->first(), 404);
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
                 ->whereIn('company_id', $companyIds)->lockForUpdate()->first();
             abort_unless($mapping, 404);

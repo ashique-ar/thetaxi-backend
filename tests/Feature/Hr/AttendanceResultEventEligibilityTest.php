@@ -4,12 +4,42 @@ use App\Models\Hr\Attendance\AttendanceConnector;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Company;
 use App\Models\Staff;
+use App\Models\UserContext;
 use App\Services\Hr\Attendance\AttendanceResultService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Spatie\Permission\Models\Role;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
+
+it('restricts direct attendance calculation to the actor Staff scope within their company', function () {
+    [$actor, $company] = hr_seed_admin_actor();
+    $adminRole = Role::findByName('admin', 'api');
+    foreach (['staff.view-all', 'staff.view-legal-entity', 'staff.view-team'] as $permission) {
+        $adminRole->revokePermissionTo($permission);
+    }
+    $otherStaff = Staff::factory()->create(['company_id' => $company->id]);
+    config(['hr.features.attendance_results' => true]);
+    $context = UserContext::query()->where('user_id', $actor->id)->where('context_type', 'staff')->firstOrFail();
+
+    actingAs($actor, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
+    ])->postJson('/api/hr/attendance/results/calculate', [
+        'company_id' => $company->id, 'staff_id' => $otherStaff->id, 'work_date' => '2026-10-01',
+    ])->assertNotFound();
+
+    expect(DB::table('hr_attendance_daily_results')->where('staff_id', $otherStaff->id)->exists())->toBeFalse();
+});
+
+it('locks the company-scoped Staff row before assigning an attendance result version', function () {
+    $service = file_get_contents(app_path('Services/Hr/Attendance/AttendanceResultService.php'));
+    $staffLock = strpos($service, "DB::table('staff')->where('id', \$staffId)->where('company_id', \$companyId)->lockForUpdate()->first()");
+    $resultLock = strpos($service, "latest('result_version')->lockForUpdate()->first()");
+
+    expect(is_int($staffLock))->toBeTrue()
+        ->and(is_int($resultLock) && $resultLock > $staffLock)->toBeTrue();
+});
 
 it('uses mapped or company-scoped resolved events and ignores quarantined rows', function () {
     [$admin, $company] = hr_seed_admin_actor();
@@ -57,7 +87,7 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
     foreach ([[$mappedOutId, 'out', 'mapped', $staff->id], [$quarantinedInId, 'in', 'quarantined', $staff->id]] as [$id, $direction, $mappingStatus, $eventStaffId]) {
         DB::table('hr_attendance_raw_events')->insert([
             'id' => $id, 'company_id' => $company->id, 'connector_id' => $connector->id, 'device_id' => $device->id, 'ingestion_request_id' => $requestId,
-            'staff_id' => $eventStaffId, 'provider_event_id' => $id, 'provider_person_id' => 'person-1', 'occurred_at' => $direction === 'in' ? '2026-06-01T08:00:00+05:30' : '2026-06-01T17:00:00+05:30',
+            'staff_id' => $eventStaffId, 'provider_event_id' => $id, 'provider_person_id' => 'person-1', 'occurred_at' => $direction === 'in' ? '2026-06-01 02:30:00' : '2026-06-01 11:30:00',
             'source_timezone' => 'Asia/Colombo', 'source_utc_offset_minutes' => 330, 'event_kind' => 'punch', 'direction' => $direction,
             'verification_result' => 'accepted', 'encrypted_raw_payload' => '{}', 'payload_checksum' => str_repeat($direction === 'in' ? 'b' : 'c', 64),
             'mapping_status' => $mappingStatus, 'received_at' => $now, 'created_at' => $now, 'updated_at' => $now,
@@ -69,11 +99,43 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
         'details' => 'Awaiting verified resolution', 'status' => 'open', 'created_at' => $now, 'updated_at' => $now,
     ]);
 
+    $otherCompany = Company::create(['name' => 'Other attendance tenant', 'is_default' => false]);
+    $foreignLeaveTypeId = (string) Str::uuid();
+    DB::table('hr_leave_types')->insert([
+        'id' => $foreignLeaveTypeId, 'company_id' => $otherCompany->id, 'code' => 'FOREIGN-PAID', 'name' => 'Foreign paid leave',
+        'category' => 'annual', 'unit' => 'minutes', 'paid' => true, 'effective_from' => '2026-01-01', 'status' => 'active',
+        'created_by' => $admin->id, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $foreignLeavePolicyId = (string) Str::uuid();
+    DB::table('hr_leave_policies')->insert([
+        'id' => $foreignLeavePolicyId, 'company_id' => $otherCompany->id, 'leave_type_id' => $foreignLeaveTypeId,
+        'code' => 'FOREIGN-PAID', 'version' => 1, 'rules' => '{}', 'effective_from' => '2026-01-01', 'status' => 'approved',
+        'created_by' => $admin->id, 'approved_by' => $admin->id, 'approved_at' => $now, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $foreignLeaveRequestId = (string) Str::uuid();
+    DB::table('hr_leave_requests')->insert([
+        'id' => $foreignLeaveRequestId, 'company_id' => $otherCompany->id, 'staff_id' => $staff->id,
+        'leave_type_id' => $foreignLeaveTypeId, 'policy_id' => $foreignLeavePolicyId, 'start_date' => '2026-06-01',
+        'end_date' => '2026-06-01', 'unit' => 'minutes', 'requested_minutes' => 480, 'reserved_minutes' => 480,
+        'status' => 'approved', 'reason' => 'Foreign tenant fixture', 'calculation_snapshot' => '{}',
+        'request_checksum' => str_repeat('d', 64), 'idempotency_key' => (string) Str::uuid(), 'requested_by' => $admin->id,
+        'decided_at' => $now, 'decided_by' => $admin->id, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    DB::table('hr_leave_request_days')->insert([
+        'id' => (string) Str::uuid(), 'leave_request_id' => $foreignLeaveRequestId, 'leave_date' => '2026-06-01',
+        'minutes' => 480, 'day_kind' => 'full_day', 'rule_evidence' => '{}', 'created_at' => $now, 'updated_at' => $now,
+    ]);
+
     $service = app(AttendanceResultService::class);
     $first = $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id);
     expect($first->worked_minutes)->toBe(0)
+        ->and($first->payable_minutes)->toBe(0)
+        ->and($first->day_status)->toBe('incomplete')
         ->and($first->first_in_at)->toBeNull()
         ->and(DB::table('hr_attendance_daily_result_sources')->where('daily_result_id', $first->id)->pluck('raw_event_id')->all())->toBe([$mappedOutId]);
+    $sameInput = $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id);
+    expect($sameInput->id)->toBe($first->id)
+        ->and((int) $sameInput->result_version)->toBe(1);
 
     $mappingId = (string) Str::uuid();
     DB::table('hr_attendance_person_mappings')->insert([
@@ -92,7 +154,6 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
         ->and($resolved->day_status)->toBe('present')
         ->and($sourceIds)->toContain($mappedOutId, $quarantinedInId);
 
-    $otherCompany = Company::create(['name' => 'Other attendance tenant', 'is_default' => false]);
     $otherCalendarId = (string) Str::uuid();
     DB::table('hr_work_calendars')->insert([
         'id' => $otherCalendarId, 'company_id' => $otherCompany->id, 'code' => 'other', 'name' => 'Other tenant calendar', 'timezone' => 'Asia/Colombo',
@@ -102,4 +163,9 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
     DB::table('hr_roster_assignments')->where('id', $rosterId)->update(['calendar_id' => $otherCalendarId]);
     expect(fn () => $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+
+    DB::table('hr_roster_assignments')->where('id', $rosterId)->update(['calendar_id' => $calendarId]);
+    DB::table('hr_attendance_daily_results')->where('id', $resolved->id)->update(['company_id' => $otherCompany->id]);
+    expect(fn () => $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class, 'The latest attendance result does not belong to the selected legal entity.');
 });

@@ -2,10 +2,10 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class SalesCommissionPlanAssignment extends BaseModel
+class SalesCommissionPlanAssignment extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'plan_family_id', 'scope_type', 'sales_profile_id', 'staff_id', 'staff_category',

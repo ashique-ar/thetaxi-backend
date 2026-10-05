@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('seeds the wedding pickup choices and discounted packages through managed configuration', function (): void {
     $seeder = file_get_contents(database_path('seeders/WeddingHireFormAndPackagesSeeder.php'));
     $pricingSeeder = file_get_contents(database_path('seeders/ComprehensivePricingSeeder.php'));

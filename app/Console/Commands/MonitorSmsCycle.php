@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Services\Sms\SmsService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Console\Command;
 
 class MonitorSmsCycle extends Command
@@ -21,8 +22,24 @@ class MonitorSmsCycle extends Command
     public function handle(): int
     {
         $days = max(1, min(90, (int) $this->option('days')));
-        $health = $this->smsService->getOperationalHealth();
-        $compliance = $this->smsService->getTransactionalComplianceReport($days);
+        $companyId = app(SingleCompanyScope::class)->defaultCompany()?->id;
+        if (! $companyId) {
+            $message = 'Active default company is unavailable; refusing an unscoped SMS report.';
+            if ($this->option('json')) {
+                $this->line(json_encode([
+                    'read_only' => true,
+                    'healthy' => false,
+                    'error' => $message,
+                    'safety' => ['provider_contacted' => false, 'jobs_dispatched' => false, 'records_changed' => false],
+                ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            } else {
+                $this->error($message);
+            }
+
+            return self::FAILURE;
+        }
+        $health = $this->smsService->getOperationalHealth($companyId);
+        $compliance = $this->smsService->getTransactionalComplianceReport($days, $companyId);
         $normalThree = $compliance['customer_normal_three'];
         $admin = $compliance['admin_summaries'];
         $issues = [

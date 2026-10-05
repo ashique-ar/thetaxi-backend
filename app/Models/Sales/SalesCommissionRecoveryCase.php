@@ -2,11 +2,11 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-class SalesCommissionRecoveryCase extends BaseModel
+class SalesCommissionRecoveryCase extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'commission_decision_id', 'entitlement_source_type', 'entitlement_source_id',

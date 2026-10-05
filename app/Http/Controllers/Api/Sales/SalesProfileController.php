@@ -514,7 +514,7 @@ class SalesProfileController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);

@@ -2,19 +2,13 @@
 
 namespace App\Services\Hr;
 
-use App\Models\Company;
+use App\Services\SingleCompanyScope;
 
 class StaffDefaultCompanyService
 {
     public function id(): ?string
     {
-        $defaults = Company::query()
-            ->where('is_active', true)
-            ->where('is_default', true)
-            ->limit(2)
-            ->pluck('id');
-
-        return $defaults->count() === 1 ? (string) $defaults->first() : null;
+        return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
     }
 
     public function apply(array $staffData): array

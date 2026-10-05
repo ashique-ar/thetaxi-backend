@@ -130,9 +130,15 @@ class PayrollStatutoryPolicyService
             throw ValidationException::withMessages(['earnings' => ['The configured earnings basis exceeds the supported numeric range.']]);
         }
 
-        $employeeEpf = round($assessableEarnings * (float) $policy->employee_epf_rate_percent / 100, 2);
-        $employerEpf = round($assessableEarnings * (float) $policy->employer_epf_rate_percent / 100, 2);
-        $employerEtf = round($assessableEarnings * (float) $policy->employer_etf_rate_percent / 100, 2);
+        $employeeEpf = round($assessableEarnings * ((float) $policy->employee_epf_rate_percent / 100), 2);
+        $employerEpf = round($assessableEarnings * ((float) $policy->employer_epf_rate_percent / 100), 2);
+        $employerEtf = round($assessableEarnings * ((float) $policy->employer_etf_rate_percent / 100), 2);
+        $totalEpf = round($employeeEpf + $employerEpf, 2);
+        $netEmployerCost = round($employerEpf + $employerEtf, 2);
+        if (! is_finite($employeeEpf) || ! is_finite($employerEpf) || ! is_finite($employerEtf)
+            || ! is_finite($totalEpf) || ! is_finite($netEmployerCost)) {
+            throw ValidationException::withMessages(['earnings' => ['The calculated contribution exceeds the supported numeric range.']]);
+        }
 
         return [
             'blocked' => false,
@@ -144,8 +150,8 @@ class PayrollStatutoryPolicyService
             'employee_epf_amount' => $employeeEpf,
             'employer_epf_amount' => $employerEpf,
             'employer_etf_amount' => $employerEtf,
-            'total_epf_amount' => round($employeeEpf + $employerEpf, 2),
-            'net_employer_cost' => round($employerEpf + $employerEtf, 2),
+            'total_epf_amount' => $totalEpf,
+            'net_employer_cost' => $netEmployerCost,
             'statutory_reference' => $policy->statutory_reference,
         ];
     }
@@ -218,6 +224,15 @@ class PayrollStatutoryPolicyService
         if (! in_array($payBasis, ['monthly', 'non_monthly'], true)) {
             throw ValidationException::withMessages(['pay_basis' => ['pay_basis must be monthly or non_monthly.']]);
         }
+        if (! is_finite($wageAmount) || $wageAmount < 0) {
+            throw ValidationException::withMessages(['wage_amount' => ['Provide a finite, non-negative wage amount.']]);
+        }
+        if ($completedYears < 0 || $completedYears > 80) {
+            throw ValidationException::withMessages(['completed_years' => ['Completed service years must be between 0 and 80.']]);
+        }
+        if ($currentEmployerHeadcount !== null && $currentEmployerHeadcount < 0) {
+            throw ValidationException::withMessages(['current_employer_headcount' => ['Employer headcount cannot be negative.']]);
+        }
         $policy = $this->resolveEffectiveGratuityPolicy($companyId, $at);
         if (! $policy) {
             return [
@@ -266,13 +281,38 @@ class PayrollStatutoryPolicyService
             ];
         }
 
-        $grossAmount = $payBasis === 'monthly'
-            ? round($wageAmount / (float) $policy->monthly_paid_divisor * $completedYears, 2)
-            : round($wageAmount * (float) $policy->non_monthly_daily_wage_multiplier * $completedYears, 2);
+        if ($payBasis === 'non_monthly') {
+            return [
+                'blocked' => true,
+                'blocker' => 'Non-monthly gratuity is blocked until an authoritative wage-history source is configured.',
+                'policy_id' => $policy->id,
+                'policy_version' => $policy->version,
+                'pay_basis' => $payBasis,
+                'non_monthly_lookback_months' => $policy->non_monthly_lookback_months,
+            ];
+        }
+
+        $grossAmount = round($wageAmount / (float) $policy->monthly_paid_divisor * $completedYears, 2);
+        if (! is_finite($grossAmount)) {
+            return [
+                'blocked' => true,
+                'blocker' => 'The supplied wage exceeds the supported gratuity calculation range.',
+                'policy_id' => $policy->id,
+                'policy_version' => $policy->version,
+            ];
+        }
 
         $taxableAmount = max(0.0, $grossAmount - (float) $policy->tax_exempt_threshold_lkr);
-        $taxAmount = round($taxableAmount * (float) $policy->tax_rate_above_threshold_percent / 100, 2);
+        $taxAmount = round($taxableAmount * ((float) $policy->tax_rate_above_threshold_percent / 100), 2);
         $netAmount = round($grossAmount - $taxAmount, 2);
+        if (! is_finite($taxAmount) || ! is_finite($netAmount)) {
+            return [
+                'blocked' => true,
+                'blocker' => 'The supplied wage exceeds the supported gratuity calculation range.',
+                'policy_id' => $policy->id,
+                'policy_version' => $policy->version,
+            ];
+        }
 
         return [
             'blocked' => false,
@@ -288,6 +328,7 @@ class PayrollStatutoryPolicyService
                 ? null
                 : $currentEmployerHeadcount >= $policy->minimum_employer_headcount_threshold,
             'minimum_employer_headcount_threshold' => $policy->minimum_employer_headcount_threshold,
+            'non_monthly_lookback_months' => $policy->non_monthly_lookback_months,
             'payment_deadline_days' => $policy->payment_deadline_days,
             'statutory_reference' => $policy->statutory_reference,
         ];

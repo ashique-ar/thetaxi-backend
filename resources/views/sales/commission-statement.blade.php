@@ -8,7 +8,7 @@ body{font-family:DejaVu Sans,sans-serif;font-size:10px;color:#222}h1{font-size:1
 <div><strong>Statement:</strong> {{ $statement->statement_number }} (version {{ $statement->version }})</div>
 <div><strong>Period:</strong> {{ $statement->period_start->toDateString() }} to {{ $statement->period_end->toDateString() }}</div>
 <div><strong>Cutoff:</strong> {{ $statement->cutoff_at->timezone($statement->timezone)->toIso8601String() }} ({{ $statement->timezone }})</div>
-<div><strong>Staff ID:</strong> {{ $statement->staff_id }} | <strong>Currency:</strong> {{ $statement->payout_currency }}</div>
+<div><strong>Staff code:</strong> {{ $statement->staff?->code ?? 'Unavailable' }} | <strong>Currency:</strong> {{ $statement->payout_currency }}</div>
 </div>
 <table><thead><tr><th>Type</th><th>Description</th><th>Gross LKR</th><th>Deduction LKR</th><th>Net LKR</th><th>Status</th></tr></thead><tbody>
 @foreach($statement->lines as $line)

@@ -7415,19 +7415,6 @@ class BookingFlowService
             ];
         }
 
-        // If no companies found, add the default fallback location
-        if (empty($locations)) {
-            $locations[] = [
-                'id' => 'default',
-                'name' => 'Company (Main)',
-                'address' => 'Company, Colombo, Sri Lanka',
-                'latitude' => 6.9271,
-                'longitude' => 79.8612,
-                'is_default' => true,
-                'type' => 'company_location'
-            ];
-        }
-
         return $locations;
     }
 

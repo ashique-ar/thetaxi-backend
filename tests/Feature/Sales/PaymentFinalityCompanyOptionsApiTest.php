@@ -39,3 +39,25 @@ it('does not hydrate a deleted legal entity for a new policy', function () {
     actingAs($admin, 'api')->getJson('/api/sales/payment-finality-company-options?selected_id='.$company->id)
         ->assertOk()->assertJsonCount(0, 'data.data');
 });
+
+it('requires one authorized company for policy and receipt lists', function () {
+    [, $company] = hr_seed_admin_actor();
+    $actor = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create([
+        'user_id' => $actor->user_id, 'context_type' => 'staff', 'context_id' => $actor->id,
+        'is_active' => true,
+    ]);
+    $actor->user->givePermissionTo('sales.payment-finality.manage');
+    $actor->user->givePermissionTo('sales.payment-finality.transition');
+    $foreign = Company::create(['name' => 'Other finality company']);
+
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies')->assertUnprocessable();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies?company_id='.$foreign->id)->assertForbidden();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies?company_id='.$company->id)
+        ->assertOk()->assertJsonCount(0, 'data');
+
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts')->assertUnprocessable();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts?company_id='.$foreign->id)->assertForbidden();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts?company_id='.$company->id)
+        ->assertOk()->assertJsonCount(0, 'data.data');
+});

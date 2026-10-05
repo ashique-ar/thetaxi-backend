@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Schema;
 beforeEach(function (): void {
     Schema::create('sms_messages', function (Blueprint $table): void {
         $table->uuid('id')->primary();
+        $table->uuid('company_id')->nullable();
         $table->uuid('booking_id')->nullable();
         $table->string('source')->nullable();
         $table->string('event_key')->nullable();
@@ -24,16 +25,45 @@ beforeEach(function (): void {
     });
 });
 
+it('limits transactional compliance facts to an explicitly selected company', function (): void {
+    $companyId = (string) Illuminate\Support\Str::uuid();
+    $foreignCompanyId = (string) Illuminate\Support\Str::uuid();
+    $now = now();
+    foreach ([$companyId, $foreignCompanyId] as $owner) {
+        DB::table('sms_messages')->insert([
+            'id' => (string) Illuminate\Support\Str::uuid(), 'company_id' => $owner,
+            'source' => 'automation', 'event_key' => 'trip.completed', 'idempotency_key' => (string) $owner,
+            'status' => 'dry_run', 'created_at' => $now, 'updated_at' => $now,
+        ]);
+    }
+    $settings = Mockery::mock(SmsSettingsService::class);
+    $settings->shouldReceive('getSettings')->once()->andReturn([
+        'admin_booking_summary_enabled' => false, 'admin_booking_summary_numbers' => [], 'cost_currency' => 'LKR',
+    ]);
+    $service = new SmsService(
+        Mockery::mock(SmsProviderManager::class),
+        $settings,
+        new SmsSegmentCalculator()
+    );
+
+    $report = $service->getTransactionalComplianceReport(30, $companyId);
+
+    expect($report['optional_messages']['total'])->toBe(1)
+        ->and($report['status_counts'])->toBe(['dry_run' => 1]);
+});
+
 afterEach(function (): void {
     Schema::dropIfExists('sms_messages');
 });
 
 it('separates normal-three compliance, admin costs, optional messages, and unexpected extras', function (): void {
+    $companyId = (string) Illuminate\Support\Str::uuid();
     $now = now();
     $rows = [];
-    $add = function (string $booking, string $event, string $id, int $segments = 1, float $cost = 1.5) use (&$rows, $now): void {
+    $add = function (string $booking, string $event, string $id, int $segments = 1, float $cost = 1.5) use (&$rows, $now, $companyId): void {
         $rows[] = [
             'id' => $id,
+            'company_id' => $companyId,
             'booking_id' => $booking,
             'source' => 'automation',
             'event_key' => $event,
@@ -68,7 +98,7 @@ it('separates normal-three compliance, admin costs, optional messages, and unexp
         new SmsSegmentCalculator()
     );
 
-    $report = $service->getTransactionalComplianceReport();
+    $report = $service->getTransactionalComplianceReport(30, $companyId);
 
     expect($report['customer_normal_three']['bookings_with_extras'])->toBe(1)
         ->and($report['customer_normal_three']['duplicate_event_messages'])->toBe(1)

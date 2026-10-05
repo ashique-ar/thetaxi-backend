@@ -147,7 +147,7 @@ it('keeps SMS retention disabled and read-only until explicitly authorized', fun
         ->and($schedule)->toContain("Schedule::command('sms:apply-retention --execute')");
 });
 
-it('binds consented customer campaigns to the sole managed default company', function () {
+it('binds consented customer campaigns to the active configured default company', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sms/SmsManagementController.php'));
     $smsService = file_get_contents(app_path('Services/Sms/SmsService.php'));
     $automationService = file_get_contents(app_path('Services/Sms/SmsAutomationService.php'));
@@ -160,9 +160,10 @@ it('binds consented customer campaigns to the sole managed default company', fun
         ->and($controller)->toContain("'required_if:audience_type,manual', 'accepted'")
         ->and($controller)->toContain("'audience_filters' => ['prohibited']")
         ->and($controller)->toContain('currentActorStaff($request->user())', '->company_id === $company->id', "\$data['company_id'] = \$company->id")
-        ->and($companyScope)->toContain("->where('is_active', true)->limit(2)", "\$active->count() === 1 && \$active->first()->is_default")
+        ->and($companyScope)->toContain("where('is_active', true)", "where('is_default', true)", 'return $this->activeDefaultCompany();')
         ->and($migration)->toContain("foreignUuid('company_id')->nullable()", "whereNotNull('company_id')->exists()")
-        ->and($smsService)->toContain("'company_id' => \$company->id", "array_intersect(\$recipients, \$currentlyConsented)", "->where('marketing_consent', true)")
+        ->and($smsService)->toContain("'company_id' => \$company->id", "array_intersect(\$recipients, \$currentlyConsented)", 'Customer company ownership is not defined; customer campaigns are unavailable.')
+        ->and($smsService)->not->toContain("Customer::query()->where('marketing_consent', true)")
         ->and($smsService)->not->toContain("whereIn('id', \$filters['ids'])")
         ->and($campaignPage)->not->toContain('Optional Customer IDs', 'audience_ids_text')
         ->and($campaignComponent)->toContain("value: 'customers'", "company_name")
@@ -181,7 +182,9 @@ it('exposes provider-free operational SMS health checks', function () {
         'failure_count',
         'messages_per_booking',
         'low_balance',
-    ])->and($service)->toContain("'health' => \$this->getOperationalHealth()")
+    ])->and($service)->toContain("'health' => \$this->getOperationalHealth(\$companyId)")
+        ->and($service)->toContain('public function getOperationalHealth(string $companyId)', 'public function getTransactionalComplianceReport(int $days, string $companyId)', 'public function reconcileStaleProcessing(int $olderThanMinutes, int $limit, string $companyId)')
+        ->and($service)->toContain("SmsMessage::query()->where('company_id', \$companyId)")
         ->and($service)->toContain("'key' => 'queue_age'")
         ->and($service)->toContain("'key' => 'failure_spike'")
         ->and($service)->toContain("'key' => 'callback_stale'")
@@ -260,8 +263,10 @@ it('provides a provider-free operating-cycle monitor with a failing health exit'
     $command = file_get_contents(app_path('Console/Commands/MonitorSmsCycle.php'));
 
     expect($command)->toContain('sms:monitor-cycle')
-        ->and($command)->toContain('getOperationalHealth()')
-        ->and($command)->toContain('getTransactionalComplianceReport($days)')
+        ->and($command)->toContain('SingleCompanyScope::class')->toContain('defaultCompany()?->id')
+        ->and($command)->toContain('getOperationalHealth($companyId)')
+        ->and($command)->toContain('getTransactionalComplianceReport($days, $companyId)')
+        ->and($command)->toContain('refusing an unscoped SMS report')
         ->and($command)->toContain("'admin_summary_count_mismatch'")
         ->and($command)->toContain("'provider_contacted' => false")
         ->and($command)->toContain('return $healthy ? self::SUCCESS : self::FAILURE')

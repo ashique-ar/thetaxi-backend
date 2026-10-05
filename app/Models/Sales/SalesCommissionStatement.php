@@ -2,10 +2,12 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
+use App\Models\Staff;
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
-class SalesCommissionStatement extends BaseModel
+class SalesCommissionStatement extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'staff_id', 'sales_profile_id', 'cycle_version_id', 'cycle_assignment_id', 'business_calendar_id',
@@ -28,5 +30,6 @@ class SalesCommissionStatement extends BaseModel
         'contested_hold_lkr' => 'decimal:4', 'net_payable_lkr' => 'decimal:4',
         'paid_lkr' => 'decimal:4', 'closing_carry_forward_lkr' => 'decimal:4',
     ];
+    public function staff(): BelongsTo { return $this->belongsTo(Staff::class); }
     public function lines(): HasMany { return $this->hasMany(SalesCommissionStatementLine::class, 'statement_id'); }
 }

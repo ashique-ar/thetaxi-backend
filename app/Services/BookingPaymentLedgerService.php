@@ -1130,6 +1130,9 @@ class BookingPaymentLedgerService
         string $actorUserId
     ): BookingPaymentReceipt {
         return DB::transaction(function () use ($receipt, $toStatus, $reason, $evidenceReference, $idempotencyKey, $actorUserId) {
+            $company = DB::table('companies')->where('id', $receipt->company_id)
+                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Receipt finality requires an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($receipt->booking_id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
             $receipt = BookingPaymentReceipt::query()->lockForUpdate()->findOrFail($receipt->id);

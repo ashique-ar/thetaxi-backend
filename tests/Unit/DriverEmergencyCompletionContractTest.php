@@ -3,8 +3,6 @@
 use App\Http\Requests\Driver\Mobile\EndTripRequest;
 use Illuminate\Support\Facades\Validator;
 
-uses(Tests\TestCase::class);
-
 it('requires genuine final coordinates for normal completion', function () {
     $request = new EndTripRequest();
     $validator = Validator::make([], $request->rules());

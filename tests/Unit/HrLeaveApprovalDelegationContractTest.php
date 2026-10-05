@@ -4,7 +4,9 @@ it('lets an approved leave-type delegate of the assigned approver decide a reque
     $service = file_get_contents(app_path('Services/Hr/Leave/LeaveWorkflowService.php'));
 
     expect($service)
-        ->toContain("\$delegateUsed = DB::table('hr_approval_delegations')->where('delegator_staff_id', \$row->current_approver_staff_id)->where('delegate_staff_id', \$actorStaff)->where('status', 'approved')->whereDate('effective_from', '<=', now())->whereDate('effective_until', '>=', now())->get(['request_types'])->contains(fn(\$delegation) => in_array('leave', json_decode(\$delegation->request_types, true), true));")
+        ->toContain("DB::table('hr_approval_delegations as delegation')", "join('staff as approver'", "approved_by_staff_id", "->on('approver.user_id', '=', 'delegation.approved_by')")
+        ->toContain("where('delegation.company_id', \$row->company_id)", "where('delegation.delegate_staff_id', \$actorStaffId)", "whereNotNull('delegation.approved_at')")
+        ->toContain("in_array('leave', json_decode(\$delegation->request_types, true) ?: [], true)")
         ->toContain('if (!$delegateUsed) {')
         ->toContain("\$snapshot['hr_delegate_decision'] = ['delegator_staff_id' => \$row->current_approver_staff_id, 'decided_by' => \$actorUserId];");
 });

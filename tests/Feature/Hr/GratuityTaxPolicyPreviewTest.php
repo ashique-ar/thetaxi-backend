@@ -2,12 +2,15 @@
 
 use App\Models\Company;
 use App\Models\Hr\HrGratuityPolicy;
+use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use App\Services\Hr\PayrollStatutoryPolicyService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -95,6 +98,86 @@ it('calculates tax only from explicit approved threshold and rate values', funct
         ->and($preview['gross_gratuity_amount_lkr'])->toBe(25000.0)
         ->and($preview['tax_amount_lkr'])->toBe(1500.0)
         ->and($preview['net_gratuity_amount_lkr'])->toBe(23500.0);
+});
+
+it('blocks non-monthly gratuity until an authoritative wage-history source exists', function () {
+    [$service, $company] = approved_gratuity_policy_fixture([
+        'tax_exempt_threshold_lkr' => 10000,
+        'tax_rate_above_threshold_percent' => 10,
+    ]);
+
+    $preview = $service->previewGratuityEntitlement(
+        $company->id,
+        'non_monthly',
+        1000,
+        5,
+        20,
+        CarbonImmutable::now(),
+    );
+
+    expect($preview['blocked'])->toBeTrue()
+        ->and($preview['blocker'])->toBe('Non-monthly gratuity is blocked until an authoritative wage-history source is configured.')
+        ->and($preview['non_monthly_lookback_months'])->toBe(12)
+        ->and($preview)->not->toHaveKey('gross_gratuity_amount_lkr')
+        ->and($preview)->not->toHaveKey('net_gratuity_amount_lkr');
+});
+
+it('accepts a non-monthly API preview without an operator wage and returns no payable amount', function () {
+    [$admin, $company] = hr_seed_admin_actor([], true);
+    $admin->givePermissionTo('hr.payroll.statutory.view');
+    config(['hr.features.payroll' => true]);
+    $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_id', $staff->id)->firstOrFail();
+    HrGratuityPolicy::create([
+        'company_id' => $company->id,
+        'version' => 1,
+        'status' => 'approved',
+        'minimum_qualifying_service_years' => 5,
+        'minimum_employer_headcount_threshold' => 15,
+        'monthly_paid_divisor' => 2,
+        'non_monthly_daily_wage_multiplier' => 14,
+        'non_monthly_lookback_months' => 12,
+        'payment_deadline_days' => 30,
+        'tax_exempt_threshold_lkr' => 10000,
+        'tax_rate_above_threshold_percent' => 10,
+        'statutory_reference' => 'Approved test policy reference',
+        'effective_from' => now()->subDay(),
+        'reason' => 'Test fixture only',
+        'created_by' => User::factory()->create()->id,
+        'approved_by' => User::factory()->create()->id,
+        'approved_at' => now(),
+    ]);
+
+    actingAs($admin, 'api')->withHeaders([
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
+    ])->postJson('/api/hr/payroll/gratuity-policies/preview', [
+        'pay_basis' => 'non_monthly', 'completed_years' => 5, 'current_employer_headcount' => 20,
+    ])->assertOk()
+        ->assertJsonPath('data.blocked', true)
+        ->assertJsonPath('data.blocker', 'Non-monthly gratuity is blocked until an authoritative wage-history source is configured.')
+        ->assertJsonMissingPath('data.gross_gratuity_amount_lkr')
+        ->assertJsonMissingPath('data.net_gratuity_amount_lkr');
+});
+
+it('blocks a gratuity calculation that overflows the supported numeric range', function () {
+    [$service, $company] = approved_gratuity_policy_fixture([
+        'monthly_paid_divisor' => 0.01,
+        'tax_exempt_threshold_lkr' => 0,
+        'tax_rate_above_threshold_percent' => 0,
+    ]);
+
+    $preview = $service->previewGratuityEntitlement(
+        $company->id,
+        'monthly',
+        PHP_FLOAT_MAX,
+        5,
+        20,
+        CarbonImmutable::now(),
+    );
+
+    expect($preview['blocked'])->toBeTrue()
+        ->and($preview['blocker'])->toBe('The supplied wage exceeds the supported gratuity calculation range.')
+        ->and($preview)->not->toHaveKey('net_gratuity_amount_lkr');
 });
 
 it('rejects approval of a draft missing either statutory tax input', function () {

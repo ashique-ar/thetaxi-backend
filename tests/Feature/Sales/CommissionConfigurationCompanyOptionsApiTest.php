@@ -7,6 +7,8 @@ use App\Models\Sales\SalesCommissionPlanFamily;
 use App\Models\Sales\SalesCommissionPlanVersion;
 use App\Models\Sales\SalesCommissionCycleVersion;
 use App\Models\Sales\SalesCommissionBusinessCalendar;
+use App\Models\Sales\SalesCommissionPlanAssignment;
+use App\Models\Sales\SalesCommissionStaffOverride;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use function Pest\Laravel\actingAs;
@@ -168,4 +170,43 @@ it('searches and hydrates formula-preview versions only inside the selected lega
     actingAs($actor->user, 'api')->getJson('/api/sales/commission-configuration/version-options?company_id='.$foreign->id)
         ->assertForbidden();
     actingAs($actor->user, 'api')->getJson($url.'&per_page=51')->assertUnprocessable();
+});
+
+it('returns readable commission targets without employee IDs, approver IDs, or private override reasons', function () {
+    [$admin, $company] = hr_seed_admin_actor(['name' => 'Commission Privacy Company']);
+    $actor = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->user_id, 'context_type' => 'staff', 'context_id' => $actor->id,
+        'is_active' => true, 'created_user_id' => $admin->id]);
+    $actor->user->givePermissionTo('sales.commission-config.view');
+    $employee = Staff::factory()->create(['company_id' => $company->id, 'code' => 'COM-PRIVATE-01']);
+    $family = SalesCommissionPlanFamily::create(['company_id' => $company->id, 'code' => 'COM-PRIVACY', 'name' => 'Privacy Plan',
+        'commission_category' => 'one_time', 'status' => 'draft', 'created_by' => $admin->id]);
+    SalesCommissionPlanAssignment::create(['company_id' => $company->id, 'plan_family_id' => $family->id,
+        'scope_type' => 'employee', 'staff_id' => $employee->id, 'precedence' => 1, 'effective_from' => now(),
+        'status' => 'draft', 'created_by' => $admin->id]);
+    SalesCommissionStaffOverride::create(['company_id' => $company->id, 'staff_id' => $employee->id,
+        'percentage_rate' => 1.25, 'effective_from' => now(), 'reason' => 'Confidential compensation rationale',
+        'status' => 'draft', 'created_by' => $admin->id]);
+
+    $response = actingAs($actor->user, 'api')->getJson('/api/sales/commission-configuration?company_id='.$company->id)->assertOk();
+    $response->assertJsonPath('data.assignments.0.target_type', 'employee')
+        ->assertJsonPath('data.assignments.0.target_label', fn ($label) => str_contains($label, $employee->code))
+        ->assertJsonPath('data.overrides.0.target_type', 'employee')
+        ->assertJsonPath('data.overrides.0.target_label', fn ($label) => str_contains($label, $employee->code))
+        ->assertJsonMissingPath('data.assignments.0.staff_id')
+        ->assertJsonMissingPath('data.assignments.0.created_by')
+        ->assertJsonMissingPath('data.assignments.0.company_id')
+        ->assertJsonMissingPath('data.overrides.0.staff_id')
+        ->assertJsonMissingPath('data.overrides.0.created_by')
+        ->assertJsonMissingPath('data.overrides.0.approved_by')
+        ->assertJsonMissingPath('data.overrides.0.reason');
+    $actor->user->givePermissionTo('sales.commission-config.approve');
+    actingAs($actor->user, 'api')->getJson('/api/sales/commission-configuration?company_id='.$company->id)
+        ->assertOk()->assertJsonPath('data.overrides.0.reason', 'Confidential compensation rationale');
+    $actor->user->givePermissionTo('sales.commission-config.manage');
+    $write = actingAs($actor->user, 'api')->postJson('/api/sales/commission-staff-overrides', [
+        'company_id' => $company->id, 'staff_id' => $employee->id, 'percentage_rate' => 2.5,
+        'effective_from' => today()->toDateString(), 'reason' => 'Another private compensation rationale',
+    ])->assertCreated();
+    expect(array_keys($write->json('data')))->toBe(['id', 'status']);
 });

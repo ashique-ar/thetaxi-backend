@@ -36,7 +36,7 @@ class CommissionConfigurationController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
@@ -168,22 +168,43 @@ class CommissionConfigurationController extends Controller
         $staff = Staff::query()->where('company_id', $data['company_id'])->whereNull('deleted_at')
             ->whereIn('id', $assignments->concat($cycleAssignments)->pluck('staff_id')->merge($overrides->pluck('staff_id'))->filter()->unique())->get()->keyBy('id');
         foreach ($assignments->concat($cycleAssignments)->concat($overrides) as $row) {
+            $row->setAttribute('target_type', $row->sales_profile_id ? 'sales_profile' : ($row->staff_id ? 'employee' : $row->scope_type));
             $row->setAttribute('target_label', $row->sales_profile_id
                 ? (($profile = $profiles->get($row->sales_profile_id)) ? trim($profile->sales_code . ' · ' . ($profile->staff?->code ?? '')) : null)
                 : (($person = $staff->get($row->staff_id)) ? trim($person->code . ' · ' . $person->staff_type) : null));
         }
+        $families = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->orderBy('code')->get();
+        $versions = SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->orderByDesc('effective_from')->get();
+        $tiers = SalesCommissionPlanTier::query()->whereIn('plan_version_id', $versionIds)->orderBy('sequence')->get();
+        $cycles = SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('version')->get();
+        $calendars = SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('effective_from')->get();
+        $calendarDates = SalesCommissionBusinessCalendarDate::query()
+            ->whereIn('calendar_id', SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->select('id'))
+            ->orderBy('calendar_date')->get();
+        $hideInternal = static fn ($rows, array $extra = []) => $rows->each(
+            fn ($row) => $row->makeHidden(array_merge(['company_id', 'created_by', 'updated_by', 'approved_by', 'approved_at', 'created_at', 'updated_at'], $extra)),
+        );
+        $hideInternal($families);
+        $hideInternal($versions);
+        $hideInternal($tiers);
+        $hideInternal($assignments, ['staff_id', 'sales_profile_id']);
+        $overrideHidden = ['staff_id'];
+        if (! $request->user()->can('sales.commission-config.approve')) $overrideHidden[] = 'reason';
+        $hideInternal($overrides, $overrideHidden);
+        $hideInternal($cycles);
+        $hideInternal($cycleAssignments, ['staff_id', 'sales_profile_id']);
+        $hideInternal($calendars);
+        $hideInternal($calendarDates);
         return response()->json(['status' => 'success', 'data' => [
-            'families' => SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->orderBy('code')->get(),
-            'versions' => SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->orderByDesc('effective_from')->get(),
-            'tiers' => SalesCommissionPlanTier::query()->whereIn('plan_version_id', $versionIds)->orderBy('sequence')->get(),
+            'families' => $families,
+            'versions' => $versions,
+            'tiers' => $tiers,
             'assignments' => $assignments,
             'overrides' => $overrides,
-            'cycles' => SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('version')->get(),
+            'cycles' => $cycles,
             'cycle_assignments' => $cycleAssignments,
-            'business_calendars' => SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->orderBy('code')->orderByDesc('effective_from')->get(),
-            'business_calendar_dates' => SalesCommissionBusinessCalendarDate::query()
-                ->whereIn('calendar_id', SalesCommissionBusinessCalendar::query()->where('company_id', $data['company_id'])->select('id'))
-                ->orderBy('calendar_date')->get(),
+            'business_calendars' => $calendars,
+            'business_calendar_dates' => $calendarDates,
             'references' => [
                 'staff_categories' => DB::table('staff')->where('company_id', $data['company_id'])
                     ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))->whereNull('deleted_at')
@@ -199,14 +220,14 @@ class CommissionConfigurationController extends Controller
             'name' => ['required', 'string', 'max:160'], 'commission_category' => ['required', Rule::in(['one_time', 'long_term'])],
         ]);
         $this->assertCompanyScope($request, $data['company_id']);
-        return response()->json(['status' => 'success', 'data' => SalesCommissionPlanFamily::create($data + ['status' => 'draft', 'created_by' => $request->user()->id])], 201);
+        return $this->confirmation(SalesCommissionPlanFamily::create($data + ['status' => 'draft', 'created_by' => $request->user()->id]), 201);
     }
 
     public function approveFamily(Request $request, SalesCommissionPlanFamily $family): JsonResponse
     {
         $this->assertCompanyScope($request, $family->company_id);
         $family = $this->approveDraft($family, $request, 'plan family', fn () => null);
-        return response()->json(['status' => 'success', 'data' => $family]);
+        return $this->confirmation($family);
     }
 
     public function storeVersion(Request $request, SalesCommissionPlanFamily $family): JsonResponse
@@ -240,7 +261,7 @@ class CommissionConfigurationController extends Controller
             }
             return $version;
         });
-        return response()->json(['status' => 'success', 'data' => $version], 201);
+        return $this->confirmation($version, 201);
     }
 
     public function approveVersion(Request $request, SalesCommissionPlanVersion $version): JsonResponse
@@ -254,7 +275,7 @@ class CommissionConfigurationController extends Controller
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
             abort_if($overlap, 422, 'An approved version overlaps this effective interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $version]);
+        return $this->confirmation($version);
     }
 
     public function preview(Request $request, SalesCommissionPlanVersion $version): JsonResponse
@@ -294,7 +315,7 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $data['company_id']);
         $this->validateAssignmentTargets($data);
         $assignment = SalesCommissionPlanAssignment::create($data + ['precedence' => $this->precedence($data['scope_type']), 'status' => 'draft', 'created_by' => $request->user()->id]);
-        return response()->json(['status' => 'success', 'data' => $assignment], 201);
+        return $this->confirmation($assignment, 201);
     }
 
     public function approveAssignment(Request $request, SalesCommissionPlanAssignment $assignment): JsonResponse
@@ -314,7 +335,7 @@ class CommissionConfigurationController extends Controller
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
             abort_if($overlap, 422, 'An approved assignment already overlaps this scope/category interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $assignment]);
+        return $this->confirmation($assignment);
     }
 
     public function storeOverride(Request $request): JsonResponse
@@ -326,7 +347,7 @@ class CommissionConfigurationController extends Controller
         ]);
         $this->assertCompanyScope($request, $data['company_id']);
         abort_unless($this->activeStaffExists($data['staff_id'], $data['company_id']), 422, 'Staff must be active in this legal entity.');
-        return response()->json(['status' => 'success', 'data' => SalesCommissionStaffOverride::create($data + ['status' => 'draft', 'created_by' => $request->user()->id])], 201);
+        return $this->confirmation(SalesCommissionStaffOverride::create($data + ['status' => 'draft', 'created_by' => $request->user()->id]), 201);
     }
 
     public function approveOverride(Request $request, SalesCommissionStaffOverride $override): JsonResponse
@@ -339,7 +360,7 @@ class CommissionConfigurationController extends Controller
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
             abort_if($overlap, 422, 'An approved Staff override overlaps this interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $override]);
+        return $this->confirmation($override);
     }
 
     public function storeCycle(Request $request): JsonResponse
@@ -362,7 +383,7 @@ class CommissionConfigurationController extends Controller
             $version = (int) SalesCommissionCycleVersion::query()->where('company_id', $data['company_id'])->where('code', $data['code'])->lockForUpdate()->max('version') + 1;
             return SalesCommissionCycleVersion::create($data + ['version' => $version, 'payout_currency' => 'LKR', 'status' => 'draft', 'created_by' => $request->user()->id]);
         });
-        return response()->json(['status' => 'success', 'data' => $cycle], 201);
+        return $this->confirmation($cycle, 201);
     }
 
     public function approveCycle(Request $request, SalesCommissionCycleVersion $cycle): JsonResponse
@@ -383,7 +404,7 @@ class CommissionConfigurationController extends Controller
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
             abort_if($overlap, 422, 'An approved cycle version overlaps this interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $cycle]);
+        return $this->confirmation($cycle);
     }
 
     public function storeBusinessCalendar(Request $request): JsonResponse
@@ -397,9 +418,9 @@ class CommissionConfigurationController extends Controller
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
         $this->assertCompanyScope($request, $data['company_id']);
-        return response()->json(['status' => 'success', 'data' => SalesCommissionBusinessCalendar::create(
+        return $this->confirmation(SalesCommissionBusinessCalendar::create(
             $data + ['status' => 'draft', 'created_by' => $request->user()->id]
-        )], 201);
+        ), 201);
     }
 
     public function storeBusinessCalendarDate(Request $request, SalesCommissionBusinessCalendar $calendar): JsonResponse
@@ -417,9 +438,9 @@ class CommissionConfigurationController extends Controller
         }
         abort_if(SalesCommissionBusinessCalendarDate::query()->where('calendar_id', $calendar->id)
             ->whereDate('calendar_date', $data['calendar_date'])->exists(), 422, 'A calendar exception already exists for this date.');
-        return response()->json(['status' => 'success', 'data' => SalesCommissionBusinessCalendarDate::create(
+        return $this->confirmation(SalesCommissionBusinessCalendarDate::create(
             $data + ['calendar_id' => $calendar->id, 'created_by' => $request->user()->id]
-        )], 201);
+        ), 201);
     }
 
     public function approveBusinessCalendar(Request $request, SalesCommissionBusinessCalendar $calendar): JsonResponse
@@ -434,7 +455,7 @@ class CommissionConfigurationController extends Controller
                 ->exists();
             abort_if($overlap, 422, 'An approved business-calendar version overlaps this interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $calendar]);
+        return $this->confirmation($calendar);
     }
 
     public function destroyBusinessCalendarDate(Request $request, SalesCommissionBusinessCalendarDate $calendarDate): JsonResponse
@@ -462,7 +483,7 @@ class CommissionConfigurationController extends Controller
         $cycle = SalesCommissionCycleVersion::query()->findOrFail($data['cycle_version_id']);
         abort_unless($cycle->company_id === $data['company_id'], 422, 'Cycle belongs to another legal entity.');
         $assignment = SalesCommissionCycleAssignment::create($data + ['precedence' => $this->precedence($data['scope_type']), 'status' => 'draft', 'created_by' => $request->user()->id]);
-        return response()->json(['status' => 'success', 'data' => $assignment], 201);
+        return $this->confirmation($assignment, 201);
     }
 
     public function approveCycleAssignment(Request $request, SalesCommissionCycleAssignment $assignment): JsonResponse
@@ -480,7 +501,7 @@ class CommissionConfigurationController extends Controller
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
             abort_if($overlap, 422, 'An approved cycle assignment overlaps this scope interval.');
         });
-        return response()->json(['status' => 'success', 'data' => $assignment]);
+        return $this->confirmation($assignment);
     }
 
     private function validateTiers(array $tiers): void
@@ -564,6 +585,14 @@ class CommissionConfigurationController extends Controller
         $min = (float) $tier->minimum_lkr; $max = $tier->maximum_lkr !== null ? (float) $tier->maximum_lkr : null;
         return ($tier->minimum_inclusive ? $basis >= $min : $basis > $min)
             && ($max === null || ($tier->maximum_inclusive ? $basis <= $max : $basis < $max));
+    }
+    private function confirmation(object $row, int $httpStatus = 200): JsonResponse
+    {
+        $data = ['id' => (string) $row->id];
+        foreach (['status', 'version'] as $field) {
+            if (isset($row->{$field})) $data[$field] = $row->{$field};
+        }
+        return response()->json(['status' => 'success', 'data' => $data], $httpStatus);
     }
     private function assertCompanyScope(Request $request, string $companyId): void
     {

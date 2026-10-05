@@ -68,14 +68,17 @@ class SalesPerformanceController extends Controller
             ->whereHas('staff', fn ($query) => $query->where(fn ($active) => $active->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($ids !== null, fn ($query) => $query->whereIn('id', $ids))
             ->select('company_id')->distinct()->pluck('company_id');
-        $companyLabels = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name']);
-        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_default', true)->whereIn('id', $companyIds)->value('id');
+        $companyLabels = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name', 'is_active'])
+            ->map(fn ($company) => ['id' => $company->id, 'name' => $company->name, 'is_active' => (bool) $company->is_active]);
+        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)->where('is_default', true)->whereIn('id', $companyIds)->value('id');
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
         if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
             || $request->user()->can('sales.performance.portfolio-status-policies.approve'))) {
             $portfolioStatusPolicies = SalesPortfolioStatusPolicyVersion::query()->whereIn('company_id', $companyIds)
-                ->orderByDesc('effective_from')->orderByDesc('version')->get();
+                ->orderByDesc('effective_from')->orderByDesc('version')->get([
+                    'id', 'company_id', 'version', 'active_booking_statuses', 'effective_from', 'effective_until', 'status', 'reason',
+                ]);
         }
         return response()->json(['status' => 'success', 'data' => compact('companyLabels', 'policies') + [
             'default_company_id' => $defaultCompanyId,
@@ -185,7 +188,7 @@ class SalesPerformanceController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')
             ->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => [
             'value' => (string) $company->id,
@@ -385,7 +388,32 @@ class SalesPerformanceController extends Controller
         if (config('sales.features.performance_alert_actions', false) && ! ($data['include_snoozed'] ?? false)) {
             $query->where(fn ($q) => $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now()));
         }
-        return response()->json(['status' => 'success', 'data' => $query->orderByRaw("CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")->latest('detected_at')->paginate($request->integer('per_page', 25))]);
+        $page = $query->orderByRaw("CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
+            ->latest('detected_at')->paginate($request->integer('per_page', 25));
+        $page->setCollection($page->getCollection()->map(function (SalesPerformanceAlert $alert): array {
+            $row = [
+                'id' => $alert->id,
+                'alert_type' => $alert->alert_type, 'severity' => $alert->severity,
+                'status' => $alert->status, 'explanation' => $alert->explanation,
+                'detected_at' => $alert->detected_at, 'acknowledged_at' => $alert->acknowledged_at,
+                'resolved_at' => $alert->resolved_at,
+            ];
+            if (config('sales.features.performance_alert_evaluations', false)) {
+                $row['threshold_snapshot'] = $alert->threshold_snapshot;
+                $row['comparison_snapshot'] = $alert->comparison_snapshot;
+            }
+            if (config('sales.features.performance_alert_actions', false)) {
+                $row += [
+                    'event_version' => $alert->event_version, 'snoozed_until' => $alert->snoozed_until,
+                    'escalation_level' => $alert->escalation_level, 'escalated_at' => $alert->escalated_at,
+                    'last_action_at' => $alert->last_action_at,
+                ];
+            }
+
+            return $row;
+        }));
+
+        return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function reconcileAlert(
@@ -415,9 +443,9 @@ class SalesPerformanceController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $action = ['open' => 'reopen', 'acknowledged' => 'acknowledge', 'resolved' => 'resolve'][$data['to_status']];
-        return response()->json(['status' => 'success', 'data' => $performance->actOnAlert(
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->actOnAlert(
             $alert, $action, $data['expected_version'], $data['note'], $data['idempotency_key'], (string) $request->user()->id,
-        )]);
+        ))]);
     }
 
     public function actOnAlert(Request $request, SalesPerformanceAlert $alert, SalesPerformanceService $performance): JsonResponse
@@ -430,10 +458,10 @@ class SalesPerformanceController extends Controller
             'snoozed_until' => ['nullable', 'required_if:action,snooze', 'date', 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        return response()->json(['status' => 'success', 'data' => $performance->actOnAlert(
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->actOnAlert(
             $alert, $data['action'], $data['expected_version'], $data['reason'], $data['idempotency_key'],
             (string) $request->user()->id, $data['snoozed_until'] ?? null,
-        )]);
+        ))]);
     }
 
     public function escalateAlert(Request $request, SalesPerformanceAlert $alert, SalesPerformanceService $performance): JsonResponse
@@ -444,9 +472,9 @@ class SalesPerformanceController extends Controller
             'expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        return response()->json(['status' => 'success', 'data' => $performance->actOnAlert(
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->actOnAlert(
             $alert, 'escalate', $data['expected_version'], $data['reason'], $data['idempotency_key'], (string) $request->user()->id,
-        )]);
+        ))]);
     }
 
     public function createAlertPolicy(Request $request, SalesPerformanceService $performance): JsonResponse
@@ -494,13 +522,13 @@ class SalesPerformanceController extends Controller
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
         $this->assertCompanyWideScope($request, $data['company_id']);
-        return response()->json(['status' => 'success', 'data' => $performance->storeAlertPolicy($data, (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->storeAlertPolicy($data, (string) $request->user()->id))], 201);
     }
 
     public function approveAlertPolicy(Request $request, SalesAlertPolicyVersion $policy, SalesPerformanceService $performance): JsonResponse
     {
         $this->assertCompanyWideScope($request, $policy->company_id);
-        return response()->json(['status' => 'success', 'data' => $performance->approveAlertPolicy($policy, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->approveAlertPolicy($policy, (string) $request->user()->id))]);
     }
 
     public function portfolioStatusPolicies(Request $request): JsonResponse
@@ -511,7 +539,9 @@ class SalesPerformanceController extends Controller
         ]);
         $this->assertCompanyWideScope($request, $data['company_id']);
         $rows = SalesPortfolioStatusPolicyVersion::query()->where('company_id', $data['company_id'])
-            ->orderByDesc('version')->paginate((int) ($data['per_page'] ?? 25));
+            ->orderByDesc('version')->paginate((int) ($data['per_page'] ?? 25), [
+                'id', 'company_id', 'version', 'active_booking_statuses', 'effective_from', 'effective_until', 'status', 'reason',
+            ]);
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -530,7 +560,7 @@ class SalesPerformanceController extends Controller
         $this->assertCompanyWideScope($request, $data['company_id']);
 
         return response()->json(['status' => 'success',
-            'data' => $policies->createPolicy($data, (string) $request->user()->id)], 201);
+            'data' => $this->writeConfirmation($policies->createPolicy($data, (string) $request->user()->id))], 201);
     }
 
     public function approvePortfolioStatusPolicy(
@@ -542,7 +572,7 @@ class SalesPerformanceController extends Controller
         $this->assertCompanyWideScope($request, $policy->company_id);
 
         return response()->json(['status' => 'success',
-            'data' => $policies->approvePolicy($policy, (string) $request->user()->id, $data['idempotency_key'])]);
+            'data' => $this->writeConfirmation($policies->approvePolicy($policy, (string) $request->user()->id, $data['idempotency_key']))]);
     }
 
     private function assertCompanyScope(Request $request, string $companyId): void
@@ -550,6 +580,15 @@ class SalesPerformanceController extends Controller
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         if ($ids === null) return;
         abort_unless(SalesProfile::query()->whereIn('id', $ids)->where('company_id', $companyId)->exists(), 403, 'Sales performance administration is outside your legal entity or team scope.');
+    }
+
+    private function writeConfirmation(object $row): array
+    {
+        return [
+            'id' => (string) $row->id,
+            'status' => (string) $row->status,
+            'version' => (int) ($row->event_version ?? $row->version),
+        ];
     }
 
     private function assertCompanyWideScope(Request $request, string $companyId): void

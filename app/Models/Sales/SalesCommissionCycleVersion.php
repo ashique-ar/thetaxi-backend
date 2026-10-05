@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionCycleVersion extends BaseModel
+class SalesCommissionCycleVersion extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'code', 'version', 'timezone', 'business_calendar_id', 'earning_period_rule', 'cutoff_day',

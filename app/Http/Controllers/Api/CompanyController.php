@@ -101,11 +101,13 @@ class CompanyController extends Controller
         $data['created_user_id'] = $request->user()->id;
         $company = DB::transaction(function () use ($data) {
             DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+            $willBeActive = (bool) ($data['is_active'] ?? true);
+            $data['is_active'] = $willBeActive;
 
             $makeDefault = ($data['is_default'] ?? false)
-                || ! Company::query()->where('is_default', true)->exists();
+                || ! Company::query()->where('is_default', true)->where('is_active', true)->exists();
 
-            abort_if($makeDefault && ! ($data['is_active'] ?? true), 422, 'The default Staff company must remain active.');
+            abort_if($makeDefault && ! $willBeActive, 422, 'The default Staff company must remain active.');
 
             if ($makeDefault) {
                 DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
@@ -135,16 +137,19 @@ class CompanyController extends Controller
         $data['updated_user_id'] = $request->user()->id;
         $company = DB::transaction(function () use ($company, $data) {
             DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+            $lockedCompany = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
 
-            $makeDefault = (bool) ($data['is_default'] ?? $company->is_default);
+            $makeDefault = (bool) ($data['is_default'] ?? $lockedCompany->is_default);
+            $willBeActive = (bool) ($data['is_active'] ?? $lockedCompany->is_active);
+            $data['is_active'] = $willBeActive;
 
             abort_if(
-                $company->is_default && ! $makeDefault,
+                $lockedCompany->is_default && ! $makeDefault,
                 422,
                 'Select another active company as default before removing this default.'
             );
             abort_if(
-                $makeDefault && array_key_exists('is_active', $data) && ! $data['is_active'],
+                $makeDefault && ! $willBeActive,
                 422,
                 'The default Staff company must remain active.'
             );
@@ -152,13 +157,13 @@ class CompanyController extends Controller
             if ($makeDefault) {
                 DB::table('companies')
                     ->whereNull('deleted_at')
-                    ->where('id', '!=', $company->id)
+                    ->where('id', '!=', $lockedCompany->id)
                     ->update(['is_default' => false]);
             }
 
-            $company->update(array_merge($data, ['is_default' => $makeDefault]));
+            $lockedCompany->update(array_merge($data, ['is_default' => $makeDefault]));
 
-            return $company->fresh();
+            return $lockedCompany->fresh();
         });
 
         return response()->json([
@@ -170,8 +175,12 @@ class CompanyController extends Controller
 
     public function destroy(Company $company): JsonResponse
     {
-        abort_if($company->is_default, 422, 'Select another active company as default before deleting this company.');
-        $company->delete();
+        DB::transaction(function () use ($company): void {
+            DB::table('companies')->whereNull('deleted_at')->lockForUpdate()->get(['id']);
+            $lockedCompany = Company::query()->whereKey($company->id)->lockForUpdate()->firstOrFail();
+            abort_if($lockedCompany->is_default, 422, 'Select another active company as default before deleting this company.');
+            $lockedCompany->delete();
+        });
 
         return response()->json([
             'status' => 'success',

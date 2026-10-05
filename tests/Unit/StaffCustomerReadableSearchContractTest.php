@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('searches Staff and Customer records by readable fields instead of raw identities', function () {
     $staffSource = file_get_contents(app_path('Http/Controllers/Api/StaffController.php'));
     $staffIndex = Str::between($staffSource, 'public function index(Request $request)', 'public function store(');

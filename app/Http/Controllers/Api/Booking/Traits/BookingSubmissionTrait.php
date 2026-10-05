@@ -560,7 +560,7 @@ trait BookingSubmissionTrait
                     if ($email) {
                         app(\App\Services\MailDispatchService::class)->sendToCustomer(
                             $email,
-                            new QuotationRequestMail($booking)
+                            new QuotationRequestMail($booking, staffRequested: true)
                         );
                     }
                 } catch (\Throwable $e) {

@@ -15,6 +15,7 @@ use App\Models\Sales\SalesCommissionStatementAdjustment;
 use App\Models\Sales\SalesProfile;
 use Carbon\Carbon;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -37,15 +38,25 @@ class CommissionStatementService
     {
         abort_unless($this->policySettings->featureEnabled((string) $profile->company_id, 'statements'), 409,
             'Commission statement generation is not activated for this legal entity.');
-        return DB::transaction(function () use ($profile, $data, $actorUserId) {
+        $scope = null;
+        $facts = null;
+        try {
+            return DB::transaction(function () use ($profile, $data, $actorUserId, &$scope, &$facts) {
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
+            $scope = ['company_id' => $profile->company_id, 'staff_id' => $profile->staff_id];
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
             $duplicate = SalesCommissionStatement::query()->where('generation_idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
-                abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum), 422,
+                abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
+                    && (string) $duplicate->sales_profile_id === (string) $profile->id
+                    && (string) $duplicate->company_id === (string) $profile->company_id
+                    && (string) $duplicate->staff_id === (string) $profile->staff_id, 422,
                     'This statement generation key was already used with different facts.');
                 return $duplicate->load('lines');
             }
+            $staff = $profile->staff()->lockForUpdate()->first();
+            abort_unless($this->commissionStatementEligible($profile, $staff), 422,
+                'The Sales Profile must belong to active Staff in the same legal entity.');
             $facts = $this->facts($profile, $data, true);
             $existing = SalesCommissionStatement::query()
                 ->where('company_id', $profile->company_id)->where('staff_id', $profile->staff_id)
@@ -96,7 +107,27 @@ class CommissionStatementService
                     'closing_carry_forward_lkr' => (string) $statement->closing_carry_forward_lkr,
                 ], now(), $data['idempotency_key']);
             return $statement->load('lines');
-        });
+            });
+        } catch (QueryException $exception) {
+            $duplicate = SalesCommissionStatement::query()
+                ->where('generation_idempotency_key', $data['idempotency_key'])->first();
+            if (! $duplicate && $scope && $facts) {
+                $periodConflict = SalesCommissionStatement::query()
+                    ->where('company_id', $scope['company_id'])->where('staff_id', $scope['staff_id'])
+                    ->where('cycle_version_id', $facts['cycle']->id)
+                    ->whereDate('period_start', $facts['period_start'])->whereDate('period_end', $facts['period_end'])
+                    ->where('status', '!=', 'void')->exists();
+                if ($periodConflict) {
+                    throw ValidationException::withMessages(['period_start' => ['A non-void statement already exists for this Staff/cycle period.']]);
+                }
+            }
+            if (! $duplicate) throw $exception;
+            $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
+            abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum), 422,
+                'This statement generation key was already used with different facts.');
+
+            return $duplicate->load('lines');
+        }
     }
 
     public function transition(SalesCommissionStatement $statement, string $toStatus, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesCommissionStatement
@@ -104,7 +135,12 @@ class CommissionStatementService
         return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId) {
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($statement->id);
             $duplicate = SalesCommissionStatementEvent::query()->where('statement_id', $statement->id)->where('idempotency_key', $key)->first();
-            if ($duplicate) return $statement;
+            if ($duplicate) {
+                abort_unless($duplicate->from_version === $expectedVersion && $duplicate->to_status === $toStatus
+                    && $duplicate->reason === $reason && $duplicate->actor_user_id === $actorUserId, 409,
+                    'This statement transition key was already used with different facts.');
+                return $statement;
+            }
             abort_unless($statement->state_version === $expectedVersion, 409, 'Statement changed; refresh before continuing.');
             $allowed = ['draft' => ['pending_approval', 'void'], 'pending_approval' => ['draft', 'approved', 'void'], 'approved' => ['void'], 'partially_paid' => [], 'paid' => [], 'void' => []];
             abort_unless(in_array($toStatus, $allowed[$statement->status] ?? [], true), 422, 'The requested statement transition is not allowed.');
@@ -140,6 +176,8 @@ class CommissionStatementService
     private function facts(SalesProfile $profile, array $data, bool $lockSources): array
     {
         $profile->loadMissing('staff');
+        abort_unless(SalesProfile::query()->commissionStatementEligible()->whereKey($profile->id)->exists(), 422,
+            'The Sales Profile must belong to active Staff in the same legal entity.');
         $periodStart = CarbonImmutable::parse($data['period_start'])->startOfDay();
         $periodEnd = CarbonImmutable::parse($data['period_end'])->endOfDay();
         abort_if($periodEnd->lt($periodStart), 422, 'Statement period is invalid.');
@@ -289,6 +327,21 @@ class CommissionStatementService
             'net_payable_lkr' => max(0, $balance), 'closing_carry_forward_lkr' => min(0, $balance),
             'lines' => $lines, 'write_performed' => false,
         ];
+    }
+
+    private function commissionStatementEligible(SalesProfile $profile, $staff): bool
+    {
+        return $profile->status === 'active'
+            && $profile->commission_eligible === true
+            && $profile->effective_from !== null
+            && $profile->effective_from->lte(now())
+            && ($profile->effective_until === null || $profile->effective_until->gt(now()))
+            && $profile->reporting_currency !== null
+            && $profile->staff_category_snapshot !== null
+            && $staff !== null
+            && (string) $staff->company_id === (string) $profile->company_id
+            && $staff->deleted_at === null
+            && ($staff->employment_ended_at === null || CarbonImmutable::parse($staff->employment_ended_at)->gt(now()));
     }
 
     private function line(string $type, string $sourceType, ?string $sourceId, string $description, float $gross, float $deduction, float $net, string $status, ?string $hold, array $snapshot): array

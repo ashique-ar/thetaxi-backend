@@ -2,6 +2,8 @@
 
 use App\Models\User;
 use App\Models\UserContext;
+use App\Models\Company;
+use App\Models\Staff;
 use App\Services\PermissionAssignmentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -11,6 +13,43 @@ use Spatie\Permission\PermissionRegistrar;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
+
+it('uses the default company for Staff context creation instead of caller-supplied company IDs', function () {
+    [$admin, $default] = hr_seed_admin_actor(['name' => 'Default Staff context company']);
+    $foreign = Company::create(['name' => 'Caller supplied Staff context company', 'is_active' => true, 'is_default' => false]);
+    $managedUser = User::factory()->create();
+
+    actingAs($admin, 'api')->postJson('/api/users/'.$managedUser->id.'/contexts/activate', [
+        'context_type' => 'staff',
+        'context_data' => ['company_id' => $foreign->id],
+    ])->assertOk();
+
+    expect(Staff::query()->where('user_id', $managedUser->id)->value('company_id'))->toBe($default->id);
+
+    $self = User::factory()->create();
+    actingAs($self, 'api')->postJson('/api/user-context/switch', [
+        'context_type' => 'staff',
+        'context_data' => ['company_id' => $foreign->id],
+    ])->assertOk();
+
+    expect(Staff::query()->where('user_id', $self->id)->value('company_id'))->toBe($default->id);
+});
+
+it('fails closed when a new Staff context has no active default company', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    Company::create(['name' => 'Non-default context company', 'is_active' => true, 'is_default' => false]);
+    $admin = User::factory()->create();
+    $admin->givePermissionTo('users.edit');
+    $target = User::factory()->create();
+
+    actingAs($admin, 'api')->postJson('/api/users/'.$target->id.'/contexts/activate', [
+        'context_type' => 'staff',
+        'context_data' => ['company_id' => Company::query()->value('id')],
+    ])->assertUnprocessable();
+
+    expect(Staff::query()->where('user_id', $target->id)->exists())->toBeFalse()
+        ->and(UserContext::query()->where('user_id', $target->id)->where('context_type', 'staff')->exists())->toBeFalse();
+});
 
 it('preserves untracked legacy direct permissions when syncing explicit grants', function () {
     $user = User::factory()->create();

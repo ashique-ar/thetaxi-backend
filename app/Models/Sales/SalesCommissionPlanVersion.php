@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionPlanVersion extends BaseModel
+class SalesCommissionPlanVersion extends NonSoftDeletableModel
 {
     protected $fillable = [
         'plan_family_id', 'version', 'formula_kind', 'eligible_basis', 'percentage_rate', 'fixed_amount_lkr',

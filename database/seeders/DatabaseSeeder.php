@@ -45,6 +45,7 @@ class DatabaseSeeder extends Seeder
             CustomerCodeSettingsSeeder::class,
             StaffCodeSettingsSeeder::class,
             DriverCodeSettingsSeeder::class,
+            QuotationSmsTemplateSeeder::class,
             CorporateStaffTransportStarterSeeder::class,
             CorporateReferenceSequenceSeeder::class,
 

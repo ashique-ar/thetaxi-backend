@@ -42,20 +42,21 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'status' => ['nullable', Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
-        $latest = DB::table('hr_attendance_daily_results')->selectRaw('staff_id, work_date, max(result_version) as result_version')->whereIn('staff_id', clone $staffIds)->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('work_date', '<=', $v))->groupBy('staff_id', 'work_date');
-        $query = DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+        $latest = DB::table('hr_attendance_daily_results')->selectRaw('company_id, staff_id, work_date, max(result_version) as result_version')->where('company_id', $companyId)->whereIn('staff_id', clone $staffIds)->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('work_date', '<=', $v))->groupBy('company_id', 'staff_id', 'work_date');
+        $query = DB::table('hr_attendance_daily_results as result')->joinSub($latest, 'latest', fn($join) => $join->on('latest.company_id', '=', 'result.company_id')->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->where('result.company_id', $companyId)
             ->join('staff as subject_staff', fn($join) => $join->on('subject_staff.id', '=', 'result.staff_id')->on('subject_staff.company_id', '=', 'result.company_id'))
             ->join('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
-            ->select(['result.id', 'result.staff_id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'result.work_date', 'result.result_version', 'result.day_status', 'result.scheduled_start_at', 'result.scheduled_end_at', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.early_leave_minutes', 'result.payable_minutes', 'result.source_kind', 'result.calculated_at', 'result.result_checksum'])
+            ->select(['subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'result.work_date', 'result.result_version', 'result.day_status', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.payable_minutes', 'result.source_kind'])
             ->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '<=', $v))->when($data['status'] ?? null, fn($q, $v) => $q->where('result.day_status', $v))->orderByDesc('result.work_date')->orderBy('result.staff_id');
         $page = $query->paginate($request->integer('per_page', 50));
         $companyIds = Staff::query()->whereIn('id', clone $staffIds)->distinct()->pluck('company_id');
         $readiness = [
-            'mapped_event_count' => DB::table('hr_attendance_raw_events')->whereIn('staff_id', clone $staffIds)->where('mapping_status', 'mapped')->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '<=', $v))->count(),
+            'mapped_event_count' => DB::table('hr_attendance_raw_events')->where('company_id', $companyId)->whereIn('staff_id', clone $staffIds)->where('mapping_status', 'mapped')->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('occurred_at', '<=', $v))->count(),
             'active_calendar_count' => DB::table('hr_work_calendars')->whereIn('company_id', $companyIds)->where('status', 'active')->count(),
             'active_shift_count' => DB::table('hr_shift_definitions')->whereIn('company_id', $companyIds)->where('status', 'active')->count(),
             'approved_policy_count' => DB::table('hr_attendance_policies')->whereIn('company_id', $companyIds)->where('status', 'approved')->count(),
-            'approved_roster_count' => DB::table('hr_roster_assignments')->whereIn('staff_id', clone $staffIds)->whereNotNull('approved_at')->count(),
+            'approved_roster_count' => DB::table('hr_roster_assignments')->where('company_id', $companyId)->whereIn('staff_id', clone $staffIds)->whereNotNull('approved_at')->count(),
         ];
         return response()->json(['status' => 'success', 'data' => $page, 'meta' => ['readiness' => $readiness, 'filters' => ['from' => $data['from'] ?? null, 'to' => $data['to'] ?? null, 'status' => $data['status'] ?? null]]]);
     }
@@ -74,16 +75,18 @@ class AttendanceResultController extends Controller
         $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->select('id');
         $latest = DB::table('hr_attendance_daily_results')
-            ->selectRaw('staff_id, work_date, max(result_version) as result_version')
+            ->selectRaw('company_id, staff_id, work_date, max(result_version) as result_version')
+            ->where('company_id', $companyId)
             ->whereIn('staff_id', clone $staffIds)
             ->whereDate('work_date', '>=', $data['from'])
             ->whereDate('work_date', '<=', $data['to'])
-            ->groupBy('staff_id', 'work_date');
+            ->groupBy('company_id', 'staff_id', 'work_date');
         $rows = DB::table('hr_attendance_daily_results as result')
-            ->joinSub($latest, 'latest', fn($join) => $join->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
-            ->join('staff', 'staff.id', '=', 'result.staff_id')
+            ->joinSub($latest, 'latest', fn($join) => $join->on('latest.company_id', '=', 'result.company_id')->on('latest.staff_id', '=', 'result.staff_id')->on('latest.work_date', '=', 'result.work_date')->on('latest.result_version', '=', 'result.result_version'))
+            ->where('result.company_id', $companyId)
+            ->join('staff', fn ($join) => $join->on('staff.id', '=', 'result.staff_id')->on('staff.company_id', '=', 'result.company_id'))
             ->join('users', 'users.id', '=', 'staff.user_id')
-            ->join('companies', 'companies.id', '=', 'staff.company_id')
+            ->join('companies', 'companies.id', '=', 'result.company_id')
             ->when($data['status'] ?? null, fn($query, $status) => $query->where('result.day_status', $status));
 
         $aggregates = "count(*) as days, count(distinct result.staff_id) as staff_count, sum(case when result.day_status = 'present' then 1 else 0 end) as present_days, sum(case when result.day_status = 'absent' then 1 else 0 end) as absent_days, sum(case when result.day_status in ('incomplete', 'insufficient_hours') then 1 else 0 end) as exception_days, coalesce(sum(result.worked_minutes), 0) as worked_minutes, coalesce(sum(result.late_minutes), 0) as late_minutes, coalesce(sum(result.early_leave_minutes), 0) as early_leave_minutes, coalesce(sum(result.payable_minutes), 0) as payable_minutes";
@@ -95,7 +98,18 @@ class AttendanceResultController extends Controller
             'staff' => $groupedQuery->selectRaw("result.staff_id as key, concat(coalesce(staff.code || ' · ', ''), users.first_name, ' ', users.last_name) as label, {$aggregates}")->groupBy('result.staff_id', 'staff.code', 'users.first_name', 'users.last_name')->orderBy('users.first_name')->orderBy('users.last_name'),
             'company' => $groupedQuery->selectRaw("staff.company_id as key, companies.name as label, {$aggregates}")->groupBy('staff.company_id', 'companies.name')->orderBy('companies.name'),
         };
-        $grouped = $groupedQuery->get();
+        $grouped = $groupedQuery->get()->map(static fn (object $row): array => [
+            'label' => $row->label,
+            'days' => (int) $row->days,
+            'staff_count' => (int) $row->staff_count,
+            'present_days' => (int) $row->present_days,
+            'absent_days' => (int) $row->absent_days,
+            'exception_days' => (int) $row->exception_days,
+            'worked_minutes' => (int) $row->worked_minutes,
+            'late_minutes' => (int) $row->late_minutes,
+            'early_leave_minutes' => (int) $row->early_leave_minutes,
+            'payable_minutes' => (int) $row->payable_minutes,
+        ]);
 
         return response()->json([
             'status' => 'success',
@@ -112,18 +126,28 @@ class AttendanceResultController extends Controller
                     'payable_minutes' => (int) ($summary->payable_minutes ?? 0),
                 ],
                 'groups' => $grouped,
-                'filters' => $data,
+                'filters' => [
+                    'from' => $data['from'],
+                    'to' => $data['to'],
+                    'status' => $data['status'] ?? null,
+                    'group_by' => $data['group_by'],
+                ],
                 'generated_at' => now()->toIso8601String(),
             ]
         ]);
     }
 
-    public function calculate(Request $request, AttendanceResultService $service): JsonResponse
+    public function calculate(Request $request, AttendanceResultService $service, StaffAccessService $access): JsonResponse
     {
         $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'], 'work_date' => ['required', 'date']]);
-        $this->sameCompany($request, $data['company_id']);
-        abort_unless(Staff::query()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->exists(), 422, 'Staff and calculation legal entities must match.');
-        return response()->json(['status' => 'success', 'data' => $service->calculate($data['company_id'], $data['staff_id'], $data['work_date'], $request->user()->id)]);
+        $companyId = $this->actorCompany($request, $data['company_id']);
+        abort_unless(
+            $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->whereKey($data['staff_id'])->exists(),
+            404,
+            'Attendance Staff record is outside your authorized scope.'
+        );
+
+        return response()->json(['status' => 'success', 'data' => $service->calculate($companyId, $data['staff_id'], $data['work_date'], $request->user()->id)]);
     }
 
     public function calendars(Request $request): JsonResponse
@@ -381,38 +405,10 @@ class AttendanceResultController extends Controller
         });
     }
 
-    public function requestCorrection(Request $request, StaffAccessService $access, HrDomainRequestProjectionService $projection, AttendanceResultService $results): JsonResponse
+    public function requestCorrection(): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'work_date' => ['required', 'date'], 'correction_type' => ['required', Rule::in(['missing_punch', 'wrong_direction', 'wrong_status', 'worked_minutes', 'payable_minutes'])], 'requested_values' => ['required', 'array'], 'reason' => ['required', 'string', 'max:2000'], 'evidence_references' => ['nullable', 'array'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        $data['company_id'] = $this->actorCompany($request, $data['company_id'] ?? null);
-        $data['requested_values'] = $results->validateCorrectionValues($data['requested_values']);
-        $staff = Staff::query()->where('company_id', $data['company_id'])->findOrFail($data['staff_id']);
-        $access->authorize($request->user(), $staff, 'view');
-        ksort($data['requested_values']);
-        $checksum = hash('sha256', json_encode(['staff_id' => $data['staff_id'], 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'requested_values' => $data['requested_values'], 'reason' => $data['reason'], 'evidence_references' => $data['evidence_references'] ?? null], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        if ($existing = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first()) {
-            abort_unless($existing->company_id === $data['company_id'] && hash_equals($existing->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
-            $projection->attendanceCorrection($existing, $request->user()->id);
-            return response()->json(['status' => 'success', 'data' => $existing]);
-        }
-        $current = AttendanceDailyResult::query()->where('staff_id', $staff->id)->whereDate('work_date', $data['work_date'])->latest('result_version')->first();
-        $id = (string) Str::uuid();
-        [$row, $inserted] = DB::transaction(function () use ($data, $id, $staff, $current, $checksum, $request) {
-            $inserted = DB::table('hr_attendance_correction_requests')->insertOrIgnore($this->json($data, ['requested_values', 'evidence_references']) + ['id' => $id, 'company_id' => $staff->company_id, 'current_result_id' => $current?->id, 'status' => 'pending_approval', 'request_checksum' => $checksum, 'requested_by' => $request->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-            $row = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first();
-            abort_unless($row, 409, 'Correction request could not be recorded. Retry with the same idempotency key.');
-            abort_unless($row->company_id === $data['company_id'] && hash_equals($row->request_checksum, $checksum), 409, 'Correction idempotency key was reused with different evidence.');
-            if ($inserted) {
-                activity('hr-attendance')->causedBy($request->user())
-                    ->withProperties(['correction_id' => $id, 'company_id' => $staff->company_id, 'staff_id' => $staff->id, 'work_date' => $data['work_date'], 'correction_type' => $data['correction_type'], 'request_checksum' => $checksum, 'changed_fields' => array_keys($data['requested_values'])])
-                    ->log('attendance_correction_requested');
-            }
-
-            return [$row, $inserted];
-        });
-        $projection->attendanceCorrection($row, $request->user()->id);
-        return response()->json(['status' => 'success', 'data' => $row], $inserted ? 201 : 200);
+        abort(409, 'Attendance correction submission is unavailable until the correction-type-to-field mapping is approved.');
     }
 
     public function corrections(Request $request, StaffAccessService $access): JsonResponse
@@ -423,10 +419,19 @@ class AttendanceResultController extends Controller
         $query = DB::table('hr_attendance_correction_requests as correction')
             ->leftJoin('staff as subject_staff', fn($join) => $join->on('subject_staff.id', '=', 'correction.staff_id')->on('subject_staff.company_id', '=', 'correction.company_id'))
             ->leftJoin('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
+            ->where('correction.company_id', $companyId)
             ->whereIn('correction.staff_id', $staffIds)
-            ->select(['correction.id', 'correction.staff_id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'correction.work_date', 'correction.correction_type', 'correction.requested_values', 'correction.reason', 'correction.status', 'correction.requested_by', 'correction.decided_by', 'correction.decided_at', 'correction.decision_note', 'correction.created_at'])
+            ->select(['correction.id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'correction.work_date', 'correction.correction_type', 'correction.reason', 'correction.status', 'correction.requested_by'])
             ->when($data['status'] ?? null, fn($q, $v) => $q->where('correction.status', $v))->latest('correction.created_at');
-        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
+        $rows = $query->paginate($request->integer('per_page', 50));
+        $rows->getCollection()->transform(function ($row) use ($request) {
+            $row->is_requester = (string) $row->requested_by === (string) $request->user()->id;
+            unset($row->requested_by);
+
+            return $row;
+        });
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
     public function approveCorrection(Request $request, string $correctionId, AttendanceResultService $service, HrDomainRequestProjectionService $projection): JsonResponse
@@ -446,9 +451,14 @@ class AttendanceResultController extends Controller
         $row = DB::table('hr_attendance_correction_requests')->where('id', $correctionId)
             ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
         abort_unless($row, 404);
-        $result = $service->rejectCorrection($correctionId, $request->user()->id, $data['decision_note']);
+        $result = $service->rejectCorrection($correctionId, (string) $row->company_id, (string) $request->user()->id, $data['decision_note']);
         $projection->attendanceCorrection($result, $request->user()->id);
-        return response()->json(['status' => 'success', 'data' => $result]);
+        return response()->json(['status' => 'success', 'data' => [
+            'id' => $result->id,
+            'status' => $result->status,
+            'decided_at' => $result->decided_at,
+            'decision_note' => $result->decision_note,
+        ]]);
     }
 
     public function exceptions(Request $request, StaffAccessService $access): JsonResponse
@@ -456,7 +466,7 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['open', 'resolved', 'superseded'])], 'severity' => ['nullable', Rule::in(['low', 'medium', 'high'])]]);
         $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
-        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->join('staff', fn($join) => $join->on('staff.id', '=', 'exception.staff_id')->on('staff.company_id', '=', 'exception.company_id'))->join('users', 'users.id', '=', 'staff.user_id')->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'exception.staff_id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status', 'exception.evidence', 'exception.resolved_at', 'exception.resolution_note'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
+        $query = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->join('staff', fn($join) => $join->on('staff.id', '=', 'exception.staff_id')->on('staff.company_id', '=', 'exception.company_id'))->join('users', 'users.id', '=', 'staff.user_id')->where('exception.company_id', $companyId)->whereIn('exception.staff_id', $staffIds)->select(['exception.id', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name', 'result.work_date', 'exception.exception_type', 'exception.severity', 'exception.status'])->when($data['status'] ?? null, fn($q, $v) => $q->where('exception.status', $v))->when($data['severity'] ?? null, fn($q, $v) => $q->where('exception.severity', $v))->latest('result.work_date');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
     }
 
@@ -467,15 +477,28 @@ class AttendanceResultController extends Controller
             $row = DB::table('hr_attendance_exceptions')->where('id', $exceptionId)
                 ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
             abort_unless($row, 404);
+            if ($row->status === 'resolved' && (string) $row->resolved_by === (string) $request->user()->id
+                && hash_equals((string) $row->resolution_note, $data['resolution_note'])) {
+                return response()->json(['status' => 'success', 'data' => [
+                    'id' => $exceptionId,
+                    'status' => 'resolved',
+                    'resolved_at' => CarbonImmutable::parse($row->resolved_at)->toISOString(),
+                ]]);
+            }
             abort_unless($row->status === 'open', 409, 'Only open exceptions may be resolved.');
             $staff = DB::table('staff')->where('id', $row->staff_id)->where('company_id', $row->company_id)->lockForUpdate()->first();
             $result = DB::table('hr_attendance_daily_results')->where('id', $row->daily_result_id)->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)->first();
             abort_unless($staff && $result, 422, 'Exception Staff and result must match its legal entity.');
-            DB::table('hr_attendance_exceptions')->where('id', $exceptionId)->update(['status' => 'resolved', 'resolved_at' => now(), 'resolved_by' => $request->user()->id, 'resolution_note' => $data['resolution_note'], 'updated_at' => now()]);
+            $resolvedAt = now();
+            DB::table('hr_attendance_exceptions')->where('id', $exceptionId)->update(['status' => 'resolved', 'resolved_at' => $resolvedAt, 'resolved_by' => $request->user()->id, 'resolution_note' => $data['resolution_note'], 'updated_at' => $resolvedAt]);
             activity('hr-attendance')->causedBy($request->user())
                 ->withProperties(['exception_id' => $exceptionId, 'company_id' => $row->company_id, 'staff_id' => $row->staff_id, 'daily_result_id' => $row->daily_result_id, 'exception_type' => $row->exception_type])
                 ->log('attendance_exception_resolved');
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_exceptions')->find($exceptionId)]);
+            return response()->json(['status' => 'success', 'data' => [
+                'id' => $exceptionId,
+                'status' => 'resolved',
+                'resolved_at' => $resolvedAt->toISOString(),
+            ]]);
         });
     }
 
@@ -523,7 +546,7 @@ class AttendanceResultController extends Controller
             }
             if ($next === 'locked') {
                 abort_unless($row->reviewed_by !== $request->user()->id, 409, 'The period reviewer cannot lock the same period.');
-                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', 'result.id', '=', 'exception.daily_result_id')->where('exception.company_id', $row->company_id)->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
+                $open = DB::table('hr_attendance_exceptions as exception')->join('hr_attendance_daily_results as result', fn($join) => $join->on('result.id', '=', 'exception.daily_result_id')->on('result.company_id', '=', 'exception.company_id')->on('result.staff_id', '=', 'exception.staff_id'))->where('exception.company_id', $row->company_id)->where('exception.status', 'open')->where('exception.severity', 'high')->whereBetween('result.work_date', [$row->period_start, $row->period_end])->exists();
                 abort_if($open, 409, 'High-severity attendance exceptions must be resolved before lock.');
             }$version = $row->version + 1;
             DB::table('hr_attendance_periods')->where('id', $periodId)->update(['status' => $next, 'version' => $version, 'reviewed_at' => $next === 'reviewed' ? now() : $row->reviewed_at, 'reviewed_by' => $next === 'reviewed' ? $request->user()->id : $row->reviewed_by, 'locked_at' => $next === 'locked' ? now() : ($next === 'open' ? null : $row->locked_at), 'locked_by' => $next === 'locked' ? $request->user()->id : ($next === 'open' ? null : $row->locked_by), 'state_reason' => $data['reason'], 'updated_at' => now()]);

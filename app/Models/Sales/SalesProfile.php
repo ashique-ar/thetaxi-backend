@@ -51,6 +51,16 @@ class SalesProfile extends BaseModel
                 ->orWhere('commission_eligible', true));
     }
 
+    public function scopeCommissionStatementEligible(Builder $query): Builder
+    {
+        return $query->activeAt(now())->configured()->where('commission_eligible', true)
+            ->whereHas('staff', fn (Builder $staff) => $staff
+                ->whereColumn('staff.company_id', 'sales_profiles.company_id')
+                ->whereNull('staff.deleted_at')
+                ->where(fn (Builder $employment) => $employment->whereNull('employment_ended_at')
+                    ->orWhere('employment_ended_at', '>', now())));
+    }
+
     public function scopeEligibleAt(Builder $query, string $eligibility, $at, bool $requireActiveStatus = true): Builder
     {
         $column = match ($eligibility) {

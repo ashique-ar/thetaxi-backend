@@ -44,7 +44,7 @@ class SalesPolicySettingsController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
@@ -55,15 +55,31 @@ class SalesPolicySettingsController extends Controller
     {
         $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
         $this->assertCompany($request, $data['company_id']);
+        $canReviewRationale = $request->user()->can('sales.policy-settings.manage')
+            || $request->user()->can('sales.policy-settings.approve');
+        $policyColumns = [
+            'id', 'policy_kind', 'version', 'status', 'fx_quote_base', 'fx_calculation_mode', 'fx_max_rate_age_hours',
+            'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'approved_at',
+        ];
+        $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
+        $categoryColumns = ['id', 'category_name', 'status'];
+        if ($canReviewRationale) {
+            $policyColumns[] = 'reason';
+            $featureColumns[] = 'reason';
+            $categoryColumns[] = 'reason';
+        }
         $byKind = collect(SalesPolicySettingsService::KINDS)
-            ->mapWithKeys(fn(string $kind) => [$kind => $this->settings->history($data['company_id'], $kind)]);
+            ->mapWithKeys(fn(string $kind) => [$kind => SalesPolicySetting::query()->where('company_id', $data['company_id'])
+                ->where('policy_kind', $kind)->orderByDesc('version')->get($policyColumns)]);
 
         return response()->json([
             'status' => 'success',
             'data' => [
                 'policy_settings' => $byKind,
-                'staff_categories' => SalesStaffCategoryDefinition::query()->where('company_id', $data['company_id'])->orderBy('category_name')->get(),
-                'company_features' => $this->settings->featureHistory($data['company_id']),
+                'staff_categories' => SalesStaffCategoryDefinition::query()->where('company_id', $data['company_id'])
+                    ->orderBy('category_name')->get($categoryColumns),
+                'company_features' => SalesCompanyFeatureSetting::query()->where('company_id', $data['company_id'])
+                    ->orderBy('feature_key')->orderByDesc('version')->get($featureColumns),
                 'deployment_feature_availability' => $this->settings->featureAvailability(),
             ]
         ]);
@@ -86,7 +102,7 @@ class SalesPolicySettingsController extends Controller
         $this->assertCompany($request, $data['company_id']);
         $setting = $this->settings->create($data['company_id'], $data['policy_kind'], $data, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $setting], 201);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($setting)], 201);
     }
 
     public function approve(Request $request, SalesPolicySetting $setting): JsonResponse
@@ -94,7 +110,7 @@ class SalesPolicySettingsController extends Controller
         $this->assertCompany($request, $setting->company_id);
         $updated = $this->settings->approve($setting->id, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $updated]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($updated)]);
     }
 
     public function storeFeature(Request $request): JsonResponse
@@ -108,14 +124,14 @@ class SalesPolicySettingsController extends Controller
         $this->assertCompany($request, $data['company_id']);
         $setting = $this->settings->createFeature($data['company_id'], $data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $setting], 201);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($setting)], 201);
     }
 
     public function approveFeature(Request $request, SalesCompanyFeatureSetting $feature): JsonResponse
     {
         $this->assertCompany($request, $feature->company_id);
 
-        return response()->json(['status' => 'success', 'data' => $this->settings->approveFeature($feature->id, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($this->settings->approveFeature($feature->id, (string) $request->user()->id))]);
     }
 
     public function storeStaffCategory(Request $request): JsonResponse
@@ -128,7 +144,7 @@ class SalesPolicySettingsController extends Controller
         $this->assertCompany($request, $data['company_id']);
         $category = $this->settings->createStaffCategory($data['company_id'], $data['category_name'], $data['reason'] ?? null, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $category], 201);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($category)], 201);
     }
 
     public function approveStaffCategory(Request $request, SalesStaffCategoryDefinition $category): JsonResponse
@@ -136,7 +152,7 @@ class SalesPolicySettingsController extends Controller
         $this->assertCompany($request, $category->company_id);
         $updated = $this->settings->approveStaffCategory($category->id, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $updated]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($updated)]);
     }
 
     public function retireStaffCategory(Request $request, SalesStaffCategoryDefinition $category): JsonResponse
@@ -145,7 +161,15 @@ class SalesPolicySettingsController extends Controller
         $data = $request->validate(['reason' => ['required', 'string', 'max:2000']]);
         $updated = $this->settings->retireStaffCategory($category->id, $data['reason'], (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $updated]);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($updated)]);
+    }
+
+    private function writeConfirmation(object $row): array
+    {
+        $confirmation = ['id' => (string) $row->id, 'status' => (string) $row->status];
+        if (isset($row->version)) $confirmation['version'] = (int) $row->version;
+
+        return $confirmation;
     }
 
     private function assertCompany(Request $request, string $companyId): void

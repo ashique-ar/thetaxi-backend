@@ -35,6 +35,13 @@ it('keeps statutory policy models governance-scoped without generic user-trackin
 
 it('enforces maker-checker approval and effective-period overlap for both statutory policy types', function () {
     $service = file_get_contents(app_path('Services/Hr/PayrollStatutoryPolicyService.php'));
+    $approvalBody = static function (string $start, string $end) use ($service): string {
+        $startAt = strpos($service, $start);
+        $endAt = $startAt === false ? false : strpos($service, $end, $startAt);
+
+        return $startAt === false || $endAt === false ? '' : substr($service, $startAt, $endAt - $startAt);
+    };
+    $companyLock = "DB::table('companies')->where('id', \$companyId)->lockForUpdate()->first();";
 
     expect($service)->toContain("abort_unless(\$policy->status === 'draft', 422, 'Only a draft EPF/ETF contribution policy can be approved.')")
         ->toContain("abort_if(\$policy->created_by === \$actorUserId, 409, 'The policy preparer cannot approve the same version.')")
@@ -44,6 +51,17 @@ it('enforces maker-checker approval and effective-period overlap for both statut
         ->toContain("An approved EPF/ETF contribution policy already overlaps this effective period.")
         ->toContain("An approved gratuity policy already overlaps this effective period.")
         ->toContain('lockForUpdate()->max(\'version\') + 1');
+
+    foreach ([
+        $approvalBody('public function approveEpfEtfPolicy', 'public function resolveEffectiveEpfEtfPolicy'),
+        $approvalBody('public function approveGratuityPolicy', 'public function resolveEffectiveGratuityPolicy'),
+    ] as $body) {
+        $lockAt = strpos($body, $companyLock);
+        $overlapAt = strpos($body, '$overlap =');
+        expect($lockAt)->not->toBeFalse()
+            ->and($overlapAt)->not->toBeFalse()
+            ->and($lockAt)->toBeLessThan($overlapAt);
+    }
 });
 
 it('fails closed on preview when no approved statutory policy is effective and never invents a rate', function () {
@@ -62,21 +80,29 @@ it('fails closed on preview when no approved statutory policy is effective and n
 it('computes EPF/ETF contribution amounts from the resolved policy rates only', function () {
     $service = file_get_contents(app_path('Services/Hr/PayrollStatutoryPolicyService.php'));
 
-    expect($service)->toContain("round(\$totalEarnings * (float) \$policy->employee_epf_rate_percent / 100, 2)")
-        ->toContain("round(\$totalEarnings * (float) \$policy->employer_epf_rate_percent / 100, 2)")
-        ->toContain("round(\$totalEarnings * (float) \$policy->employer_etf_rate_percent / 100, 2)");
+    expect($service)->toContain("round(\$assessableEarnings * ((float) \$policy->employee_epf_rate_percent / 100), 2)")
+        ->toContain("round(\$assessableEarnings * ((float) \$policy->employer_epf_rate_percent / 100), 2)")
+        ->toContain("round(\$assessableEarnings * ((float) \$policy->employer_etf_rate_percent / 100), 2)")
+        ->toContain('! is_finite($totalEpf)')
+        ->toContain('The calculated contribution exceeds the supported numeric range.');
 });
 
-it('computes gratuity from the configured monthly-half-wage or non-monthly daily-wage formula and blocks under the qualifying threshold', function () {
+it('computes monthly gratuity and blocks non-monthly gratuity without wage-history authority', function () {
     $service = file_get_contents(app_path('Services/Hr/PayrollStatutoryPolicyService.php'));
 
     expect($service)->toContain('is below the configured minimum qualifying service')
         ->toContain("round(\$wageAmount / (float) \$policy->monthly_paid_divisor * \$completedYears, 2)")
-        ->toContain("round(\$wageAmount * (float) \$policy->non_monthly_daily_wage_multiplier * \$completedYears, 2)")
         ->toContain('employer_meets_headcount_threshold')
         ->toContain('$currentEmployerHeadcount >= $policy->minimum_employer_headcount_threshold')
+        ->toContain("if (! is_finite(\$wageAmount) || \$wageAmount < 0)")
+        ->toContain("if (\$completedYears < 0 || \$completedYears > 80)")
+        ->toContain("if (\$currentEmployerHeadcount !== null && \$currentEmployerHeadcount < 0)")
         ->toContain('gratuityPolicyIsComplete($policy)')
-        ->toContain('Current employer headcount is required to evaluate the approved gratuity policy threshold.');
+        ->toContain("if (\$payBasis === 'non_monthly')")
+        ->toContain('Non-monthly gratuity is blocked until an authoritative wage-history source is configured.')
+        ->toContain("'non_monthly_lookback_months' => \$policy->non_monthly_lookback_months")
+        ->toContain('Current employer headcount is required to evaluate the approved gratuity policy threshold.')
+        ->not->toContain("round(\$wageAmount * (float) \$policy->non_monthly_daily_wage_multiplier * \$completedYears, 2)");
 });
 
 it('gates the payroll-statutory API behind the existing HR payroll feature flag and dedicated permissions', function () {
@@ -117,13 +143,20 @@ it('does not prefill statutory payroll rates, thresholds, formulas, or earnings 
         ->toContain('employee_epf_rate_percent: [null as number | null')
         ->toContain('include_basic_salary: [null as boolean | null, Validators.required]')
         ->toContain('minimum_qualifying_service_years: [null as number | null')
+        ->toContain('Validators.max(50)', 'Validators.max(100000)', 'Validators.max(12)', 'Validators.max(365)', 'Validators.max(36)')
+        ->toContain("pay_basis: [null as 'monthly' | 'non_monthly' | null, Validators.required]")
+        ->toContain('wage_amount: [null as number | null', 'completed_years: [null as number | null', 'Validators.max(80)')
+        ->toContain('this.epfEtfPreviewForm.valueChanges.subscribe', 'this.gratuityPreviewForm.valueChanges.subscribe', 'revision === this.epfPreviewRevision', 'revision === this.gratuityPreviewRevision')
         ->toContain('tax_exempt_threshold_lkr: [null as number | null, [Validators.required, Validators.min(0)]]')
         ->toContain('tax_rate_above_threshold_percent: [null as number | null, [Validators.required, Validators.min(0), Validators.max(100)]]')
         ->toContain('current_employer_headcount: [null as number | null, [Validators.required, Validators.min(0)]]')
         ->not->toContain('employee_epf_rate_percent: [8', 'employer_epf_rate_percent: [12', 'employer_etf_rate_percent: [3', 'minimum_qualifying_service_years: [5', 'minimum_employer_headcount_threshold: [15', 'monthly_paid_divisor: [2', 'non_monthly_daily_wage_multiplier: [14', 'tax_exempt_threshold_lkr: [5000000', 'tax_rate_above_threshold_percent: [12')
         ->and($template)
         ->toContain('formControlName="include_basic_salary"', '[value]="false">Exclude', 'formControlName="exclude_overtime"', 'formControlName="tax_exempt_threshold_lkr" required', 'formControlName="tax_rate_above_threshold_percent" required', 'formControlName="current_employer_headcount" required')
-        ->not->toContain('Current employer headcount (optional)');
+        ->not->toContain('Current employer headcount (optional)')
+        ->and($template)->toContain('Non-monthly gratuity previews are blocked until an authoritative wage-history source is configured.', 'max="50"', 'max="100000"', 'max="12"', 'max="365"', 'max="36"', 'max="80"')
+        ->not->toContain('average daily wage supplied by the operator', 'Average daily wage for approved lookback (LKR)')
+        ->not->toContain("pay_basis: ['monthly'", 'wage_amount: [0,', 'completed_years: [0,');
 });
 
 it('validates and sends every earnings category required by the approved EPF/ETF basis', function () {
@@ -141,4 +174,28 @@ it('validates and sends every earnings category required by the approved EPF/ETF
         ->and($template)->toContain('preview.assessable_earnings')
         ->and($component)->toContain('previewEpfEtfContribution({ earnings: this.epfEtfPreviewForm.getRawValue() })')
         ->and($component)->not->toContain('total_earnings');
+});
+
+it('returns only confirmation fields from statutory policy writes', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PayrollStatutoryController.php'));
+
+    expect($controller)
+        ->toContain("'status' => \$policy->status", "'version' => \$policy->version", "'effective_from' => \$policy->effective_from")
+        ->toContain('$this->policyActionResponse($policy, 201)', '$this->policyActionResponse($policy)')
+        ->not->toContain("'data' => \$policy");
+});
+
+it('projects statutory policy lists for the portal without returning tenant or user identifiers', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PayrollStatutoryController.php'));
+    $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.ts'));
+    $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/hr-workforce/components/payroll-statutory-configuration/payroll-statutory-configuration.component.html'));
+
+    expect($controller)
+        ->toContain('epfEtfPolicyProjection(', 'gratuityPolicyProjection(')
+        ->toContain("'earnings_basis' => \$policy->earnings_basis", "'statutory_reference' => \$policy->statutory_reference")
+        ->toContain("'tax_exempt_threshold_lkr' => \$policy->tax_exempt_threshold_lkr", "'tax_rate_above_threshold_percent' => \$policy->tax_rate_above_threshold_percent")
+        ->toContain("'can_approve' => \$policy->status === 'draft' && \$policy->created_by !== \$actorUserId")
+        ->not->toContain("'company_id' => \$policy->company_id", "'created_by' => \$policy->created_by", "'approved_by' => \$policy->approved_by")
+        ->and($component)->toContain('row.can_approve === true', 'earningsBasisSummary(row.earnings_basis)')
+        ->and($template)->toContain('row.statutory_reference', 'row.reason', 'row.tax_exempt_threshold_lkr', 'row.tax_rate_above_threshold_percent');
 });

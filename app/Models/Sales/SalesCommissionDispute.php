@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionDispute extends BaseModel
+class SalesCommissionDispute extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'statement_id', 'statement_line_id', 'raised_by_staff_id', 'category', 'reason',

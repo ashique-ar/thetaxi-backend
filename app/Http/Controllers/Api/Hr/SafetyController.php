@@ -3,6 +3,7 @@ namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
 use App\Services\StaffAccessService;
+use App\Support\ObservabilitySanitizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -309,35 +310,49 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         $d = $r->validate(['completion_evidence' => ['required', 'array', 'min:1']]);
-        $action = DB::table('hr_safety_actions')->where('id', $id)->first();
-        abort_unless($action, 404);
-        $owner = Staff::query()->findOrFail($action->owner_staff_id);
-        abort_unless($owner->company_id === $a->company_id, 403);
-        abort_unless($action->owner_staff_id === $a->id || $r->user()->can('hr.safety.manage'), 403);
-        abort_unless($action->status === 'open', 409);
-        DB::table('hr_safety_actions')->where('id', $id)->update(['status' => 'completed_pending_verification', 'completion_evidence' => json_encode($d['completion_evidence'], JSON_THROW_ON_ERROR), 'completed_at' => now(), 'updated_at' => now()]);
-        if ($action->incident_id) {
-            $incident = $this->owned($r, $action->incident_id);
-            $this->event($incident->id, 'corrective_action_completed', $incident->status, $incident->status, ['action_id' => $id], $r->user()->id);
-        }
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)]);
+        return DB::transaction(function () use ($r, $id, $d, $a) {
+            $action = DB::table('hr_safety_actions')->where('id', $id)
+                ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('staff')
+                    ->whereColumn('staff.id', 'hr_safety_actions.owner_staff_id')->where('staff.company_id', $a->company_id))
+                ->lockForUpdate()->first();
+            abort_unless($action, 404);
+            abort_unless($action->owner_staff_id === $a->id || $r->user()->can('hr.safety.manage'), 403);
+            abort_unless($action->status === 'open', 409);
+            DB::table('hr_safety_actions')->where('id', $id)->update(['status' => 'completed_pending_verification', 'completion_evidence' => json_encode($d['completion_evidence'], JSON_THROW_ON_ERROR), 'completed_at' => now(), 'updated_at' => now()]);
+            activity('hr-safety')->causedBy($r->user())->withProperties([
+                'action_id' => $id, 'company_id' => $a->company_id, 'owner_staff_id' => $action->owner_staff_id,
+                'incident_id' => $action->incident_id, 'status' => 'completed_pending_verification',
+            ])->log('safety_action_completed');
+            if ($action->incident_id) {
+                $incident = $this->owned($r, $action->incident_id);
+                $this->event($incident->id, 'corrective_action_completed', $incident->status, $incident->status, ['action_id' => $id], $r->user()->id);
+            }
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)]);
+        });
     }
     public function verifyAction(Request $r, string $id): JsonResponse
     {
         $this->enabled();
-        $action = DB::table('hr_safety_actions')->where('id', $id)->lockForUpdate()->first();
-        abort_unless($action, 404);
-        abort_unless($action->status === 'completed_pending_verification', 409);
         $actor = $this->actor($r);
-        $owner = Staff::query()->findOrFail($action->owner_staff_id);
-        abort_unless($owner->company_id === $actor->company_id, 403);
-        abort_if($action->owner_staff_id === $actor->id, 409, 'Action owner cannot verify the same completion.');
-        DB::table('hr_safety_actions')->where('id', $id)->update(['status' => 'verified', 'verified_by' => $r->user()->id, 'verified_at' => now(), 'updated_at' => now()]);
-        if ($action->incident_id) {
-            $incident = $this->owned($r, $action->incident_id);
-            $this->event($incident->id, 'corrective_action_verified', $incident->status, $incident->status, ['action_id' => $id], $r->user()->id);
-        }
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)]);
+        return DB::transaction(function () use ($r, $id, $actor) {
+            $action = DB::table('hr_safety_actions')->where('id', $id)
+                ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('staff')
+                    ->whereColumn('staff.id', 'hr_safety_actions.owner_staff_id')->where('staff.company_id', $actor->company_id))
+                ->lockForUpdate()->first();
+            abort_unless($action, 404);
+            abort_unless($action->status === 'completed_pending_verification', 409);
+            abort_if($action->owner_staff_id === $actor->id, 409, 'Action owner cannot verify the same completion.');
+            DB::table('hr_safety_actions')->where('id', $id)->update(['status' => 'verified', 'verified_by' => $r->user()->id, 'verified_at' => now(), 'updated_at' => now()]);
+            activity('hr-safety')->causedBy($r->user())->withProperties([
+                'action_id' => $id, 'company_id' => $actor->company_id, 'owner_staff_id' => $action->owner_staff_id,
+                'incident_id' => $action->incident_id, 'status' => 'verified',
+            ])->log('safety_action_verified');
+            if ($action->incident_id) {
+                $incident = $this->owned($r, $action->incident_id);
+                $this->event($incident->id, 'corrective_action_verified', $incident->status, $incident->status, ['action_id' => $id], $r->user()->id);
+            }
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)]);
+        });
     }
     public function closeIncident(Request $r, string $id): JsonResponse
     {
@@ -463,7 +478,13 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         $max = max(1, (int) config('hr.safety_external_max_attempts', 5));
-        $rows = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('i.company_id', $a->company_id)->where('n.attempt_count', '<', $max)->where(fn($q) => $q->where(fn($ready) => $ready->where('n.status', 'approved_pending_delivery')->where('n.available_at', '<=', now()))->orWhere(fn($x) => $x->where('n.status', 'delivering')->where('n.leased_until', '<=', now())))->select(['n.id', 'n.incident_id', 'n.recipient_type', 'n.notification_type', 'n.payload_checksum', 'n.status', 'n.attempt_count', 'n.available_at', 'n.leased_until'])->orderBy('n.available_at')->paginate(min(100, max(1, $r->integer('per_page', 50))));
+        $rows = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')
+            ->where('i.company_id', $a->company_id)
+            ->where(fn ($q) => $q
+                ->where(fn ($ready) => $ready->where('n.status', 'approved_pending_delivery')->where('n.attempt_count', '<', $max)->where('n.available_at', '<=', now()))
+                ->orWhere(fn ($expired) => $expired->where('n.status', 'delivering')->where(fn ($lease) => $lease->whereNull('n.leased_until')->orWhere('n.leased_until', '<=', now()))))
+            ->select(['n.id', 'n.incident_id', 'n.recipient_type', 'n.notification_type', 'n.payload_checksum', 'n.status', 'n.attempt_count', 'n.available_at', 'n.leased_until'])
+            ->orderBy('n.available_at')->paginate(min(100, max(1, $r->integer('per_page', 50))));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function claimExternalNotification(Request $r, string $id): JsonResponse
@@ -471,16 +492,42 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         return DB::transaction(function () use ($r, $a, $id) {
-            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $a->company_id)->select('n.*')->lockForUpdate()->first();
+            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $a->company_id)->select('n.*', 'i.incident_number')->lockForUpdate()->first();
             abort_unless($n, 404);
             $claimable = $n->status === 'approved_pending_delivery' && $n->available_at && now()->greaterThanOrEqualTo($n->available_at);
-            $expired = $n->status === 'delivering' && $n->leased_until && now()->greaterThanOrEqualTo($n->leased_until);
+            $expired = $n->status === 'delivering' && (! $n->leased_until || now()->greaterThanOrEqualTo($n->leased_until));
             abort_unless($claimable || $expired, 409, 'External safety notification is not available for delivery.');
-            abort_if($n->attempt_count >= max(1, (int) config('hr.safety_external_max_attempts', 5)), 409, 'External safety notification attempt limit has been reached.');
+            $maxAttempts = max(1, (int) config('hr.safety_external_max_attempts', 5));
+            if ($n->attempt_count >= $maxAttempts) {
+                $message = 'External safety notification lease expired at the configured attempt limit.';
+                DB::table('hr_safety_external_notifications')->where('id', $id)->update([
+                    'status' => 'failed', 'lease_token' => null, 'leased_until' => null,
+                    'last_error' => $message, 'updated_at' => now(),
+                ]);
+                $this->registerEvent($a->company_id, 'external_notification', $id, 'delivery_failed',
+                    'delivering', 'failed', ['incident_id' => $n->incident_id, 'attempt_count' => $n->attempt_count,
+                        'payload_checksum' => $n->payload_checksum], $r->user()->id);
+
+                return response()->json(['status' => 'error', 'message' => $message], 409);
+            }
+            abort_unless($n->approved_by && $n->approved_by !== $n->prepared_by,
+                409, 'External safety notification requires independent approval.');
+            $payloadSnapshot = json_decode($n->payload_snapshot, true);
+            abort_unless(is_array($payloadSnapshot), 409, 'External safety notification integrity check failed.');
+            $payload = ['incident_id' => $n->incident_id, 'incident_number' => $n->incident_number,
+                'recipient_type' => $n->recipient_type, 'notification_type' => $n->notification_type,
+                'payload' => $payloadSnapshot];
+            abort_unless(hash_equals($n->payload_checksum,
+                hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))),
+                409, 'External safety notification integrity check failed.');
             $token = hash('sha256', Str::random(64) . $n->id . now()->format('U.u'));
             $until = now()->addSeconds(max(30, (int) config('hr.notification_lease_seconds', 120)));
-            DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => 'delivering', 'attempt_count' => $n->attempt_count + 1, 'lease_token' => $token, 'leased_until' => $until, 'updated_at' => now()]);
-            return response()->json(['status' => 'success', 'data' => ['id' => $n->id, 'incident_id' => $n->incident_id, 'recipient_type' => $n->recipient_type, 'notification_type' => $n->notification_type, 'payload_snapshot' => json_decode($n->payload_snapshot, true), 'payload_checksum' => $n->payload_checksum, 'lease_token' => $token, 'leased_until' => $until]]); });
+            $attempt = $n->attempt_count + 1;
+            DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => 'delivering', 'attempt_count' => $attempt, 'lease_token' => $token, 'leased_until' => $until, 'updated_at' => now()]);
+            $this->registerEvent($a->company_id, 'external_notification', $id, 'delivery_attempt_claimed',
+                $n->status, 'delivering', ['incident_id' => $n->incident_id, 'attempt_count' => $attempt,
+                    'payload_checksum' => $n->payload_checksum, 'lease_token_hash' => hash('sha256', $token)], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => ['id' => $n->id, 'incident_id' => $n->incident_id, 'recipient_type' => $n->recipient_type, 'notification_type' => $n->notification_type, 'payload_snapshot' => $payloadSnapshot, 'payload_checksum' => $n->payload_checksum, 'lease_token' => $token, 'leased_until' => $until]]); });
     }
     public function acknowledgeExternalNotification(Request $r, string $id): JsonResponse
     {
@@ -490,27 +537,72 @@ class SafetyController extends Controller
             $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
             $this->company($r, $n->company_id);
+            $leaseHash = hash('sha256', $d['lease_token']);
+            if ($n->status === 'acknowledged') {
+                $prior = DB::table('hr_safety_register_events')->where('company_id', $n->company_id)
+                    ->where('register_type', 'external_notification')->where('register_id', $id)
+                    ->where('event_type', 'delivery_acknowledged')->get()->first(function ($event) use ($leaseHash) {
+                        $details = json_decode($event->safe_details, true) ?: [];
+                        return hash_equals((string) ($details['lease_token_hash'] ?? ''), $leaseHash);
+                    });
+                $details = $prior ? (json_decode($prior->safe_details, true) ?: []) : [];
+                abort_unless($prior && $prior->actor_user_id === $r->user()->id
+                    && hash_equals((string) ($details['payload_checksum'] ?? ''), $d['payload_checksum'])
+                    && hash_equals((string) ($details['external_reference_hash'] ?? ''), hash('sha256', $d['external_reference']))
+                    && hash_equals((string) $n->external_reference, $d['external_reference']),
+                    409, 'External notification acknowledgement replay does not match the completed delivery.');
+
+                return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')
+                    ->select(['id', 'incident_id', 'recipient_type', 'status', 'external_reference', 'acknowledged_at'])->find($id)]);
+            }
             abort_unless($n->status === 'delivering' && $n->leased_until && now()->lessThan($n->leased_until), 409, 'External notification delivery lease is not active.');
             abort_unless(hash_equals((string) $n->lease_token, $d['lease_token']), 409, 'External notification lease mismatch.');
             abort_unless(hash_equals($n->payload_checksum, $d['payload_checksum']), 409, 'Notification checksum mismatch.');
             DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => 'acknowledged', 'lease_token' => null, 'leased_until' => null, 'external_reference' => $d['external_reference'], 'acknowledged_at' => now(), 'updated_at' => now()]);
             DB::table('hr_safety_incidents')->where('id', $n->incident_id)->update([$n->recipient_type . '_status' => 'acknowledged', 'updated_at' => now()]);
+            $this->registerEvent($n->company_id, 'external_notification', $id, 'delivery_acknowledged',
+                'delivering', 'acknowledged', ['incident_id' => $n->incident_id,
+                    'payload_checksum' => $n->payload_checksum, 'lease_token_hash' => $leaseHash,
+                    'external_reference_hash' => hash('sha256', $d['external_reference'])], $r->user()->id);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')->select(['id', 'incident_id', 'recipient_type', 'status', 'external_reference', 'acknowledged_at'])->find($id)]); });
     }
     public function failExternalNotification(Request $r, string $id): JsonResponse
     {
         $this->enabled();
         $d = $r->validate(['payload_checksum' => ['required', 'string', 'size:64'], 'lease_token' => ['required', 'string', 'size:64'], 'message' => ['required', 'string', 'max:4000']]);
-        return DB::transaction(function () use ($r, $id, $d) {
+        $safeMessage = ObservabilitySanitizer::text($d['message']) ?? '';
+        return DB::transaction(function () use ($r, $id, $d, $safeMessage) {
             $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
             $this->company($r, $n->company_id);
+            $leaseHash = hash('sha256', $d['lease_token']);
+            $prior = DB::table('hr_safety_register_events')->where('company_id', $n->company_id)
+                ->where('register_type', 'external_notification')->where('register_id', $id)
+                ->where('event_type', 'delivery_attempt_failed')->get()->first(function ($event) use ($leaseHash) {
+                    $details = json_decode($event->safe_details, true) ?: [];
+                    return hash_equals((string) ($details['lease_token_hash'] ?? ''), $leaseHash);
+                });
+            if ($prior) {
+                $details = json_decode($prior->safe_details, true) ?: [];
+                abort_unless($prior->actor_user_id === $r->user()->id
+                    && hash_equals((string) ($details['payload_checksum'] ?? ''), $d['payload_checksum'])
+                    && hash_equals((string) ($details['message_hash'] ?? ''), hash('sha256', $safeMessage)),
+                    409, 'External notification failure replay does not match the completed attempt.');
+
+                return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')
+                    ->select(['id', 'incident_id', 'recipient_type', 'status', 'attempt_count', 'available_at', 'last_error'])->find($id)]);
+            }
             abort_unless($n->status === 'delivering' && $n->leased_until && now()->lessThan($n->leased_until), 409, 'External notification delivery lease is not active.');
             abort_unless(hash_equals((string) $n->lease_token, $d['lease_token']), 409, 'External notification lease mismatch.');
             abort_unless(hash_equals($n->payload_checksum, $d['payload_checksum']), 409, 'Notification checksum mismatch.');
             $terminal = $n->attempt_count >= max(1, (int) config('hr.safety_external_max_attempts', 5));
             $delay = min(max(1, (int) config('hr.notification_retry_max_minutes', 60)), 2 ** max(0, $n->attempt_count - 1));
-            DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => $terminal ? 'failed' : 'approved_pending_delivery', 'available_at' => $terminal ? $n->available_at : now()->addMinutes($delay), 'lease_token' => null, 'leased_until' => null, 'last_error' => $d['message'], 'updated_at' => now()]);
+            $status = $terminal ? 'failed' : 'approved_pending_delivery';
+            DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => $status, 'available_at' => $terminal ? $n->available_at : now()->addMinutes($delay), 'lease_token' => null, 'leased_until' => null, 'last_error' => $safeMessage, 'updated_at' => now()]);
+            $this->registerEvent($n->company_id, 'external_notification', $id, 'delivery_attempt_failed',
+                'delivering', $status, ['incident_id' => $n->incident_id, 'attempt_count' => $n->attempt_count,
+                    'payload_checksum' => $n->payload_checksum, 'lease_token_hash' => $leaseHash,
+                    'message_hash' => hash('sha256', $safeMessage)], $r->user()->id);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')->select(['id', 'incident_id', 'recipient_type', 'status', 'attempt_count', 'available_at', 'last_error'])->find($id)]); });
     }
 

@@ -5,8 +5,6 @@ use App\Services\Driver\RouteProviderGateway;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
-uses(Tests\TestCase::class);
-
 beforeEach(function () {
     Cache::flush();
     config()->set('route_evidence.estimates_enabled', true);

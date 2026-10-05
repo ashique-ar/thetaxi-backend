@@ -44,11 +44,12 @@ class PayrollStatutoryController extends Controller
         ]);
         $companyId = $this->access->actorCompanyId($request->user());
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $this->policies
-                ->listEpfEtfPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20))
-        ]);
+        $page = $this->policies->listEpfEtfPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20));
+        $page->getCollection()->transform(fn (HrEpfEtfContributionPolicy $policy): array => $this->epfEtfPolicyProjection(
+            $policy, (string) $request->user()->id,
+        ));
+
+        return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function storeEpfEtfPolicy(Request $request): JsonResponse
@@ -58,7 +59,7 @@ class PayrollStatutoryController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->createEpfEtfPolicy($data, $companyId, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $policy], 201);
+        return $this->policyActionResponse($policy, 201);
     }
 
     public function approveEpfEtfPolicy(Request $request, HrEpfEtfContributionPolicy $policy): JsonResponse
@@ -67,7 +68,7 @@ class PayrollStatutoryController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->approveEpfEtfPolicy($policy->id, $companyId, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $policy]);
+        return $this->policyActionResponse($policy);
     }  
 
     public function previewEpfEtfContribution(Request $request): JsonResponse
@@ -104,11 +105,12 @@ class PayrollStatutoryController extends Controller
         ]);
         $companyId = $this->access->actorCompanyId($request->user());
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $this->policies
-                ->listGratuityPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20))
-        ]);
+        $page = $this->policies->listGratuityPolicies($companyId, $data['status'] ?? null, (int) ($data['per_page'] ?? 20));
+        $page->getCollection()->transform(fn (HrGratuityPolicy $policy): array => $this->gratuityPolicyProjection(
+            $policy, (string) $request->user()->id,
+        ));
+
+        return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function storeGratuityPolicy(Request $request): JsonResponse
@@ -118,7 +120,7 @@ class PayrollStatutoryController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->createGratuityPolicy($data, $companyId, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $policy], 201);
+        return $this->policyActionResponse($policy, 201);
     }
 
     public function approveGratuityPolicy(Request $request, HrGratuityPolicy $policy): JsonResponse
@@ -127,7 +129,7 @@ class PayrollStatutoryController extends Controller
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->approveGratuityPolicy($policy->id, $companyId, (string) $request->user()->id);
 
-        return response()->json(['status' => 'success', 'data' => $policy]);
+        return $this->policyActionResponse($policy);
     }
 
     public function previewGratuityEntitlement(Request $request): JsonResponse
@@ -135,7 +137,7 @@ class PayrollStatutoryController extends Controller
         $this->ensureEnabled();
         $data = $request->validate([
             'pay_basis' => ['required', Rule::in(['monthly', 'non_monthly'])],
-            'wage_amount' => ['required', 'numeric', 'min:0'],
+            'wage_amount' => ['required_if:pay_basis,monthly', 'nullable', 'numeric', 'min:0'],
             'completed_years' => ['required', 'integer', 'min:0', 'max:80'],
             'current_employer_headcount' => ['required', 'integer', 'min:0'],
             'as_of' => ['nullable', 'date'],
@@ -148,7 +150,7 @@ class PayrollStatutoryController extends Controller
             'data' => $this->policies->previewGratuityEntitlement(
                 $companyId,
                 $data['pay_basis'],
-                (float) $data['wage_amount'],
+                (float) ($data['wage_amount'] ?? 0),
                 (int) $data['completed_years'],
                 isset($data['current_employer_headcount']) ? (int) $data['current_employer_headcount'] : null,
                 $at,
@@ -175,6 +177,55 @@ class PayrollStatutoryController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'reason' => ['required', 'string', 'max:2000'],
+        ];
+    }
+
+    private function policyActionResponse(object $policy, int $status = 200): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => [
+            'status' => $policy->status,
+            'version' => $policy->version,
+            'effective_from' => $policy->effective_from,
+        ]], $status);
+    }
+
+    private function epfEtfPolicyProjection(HrEpfEtfContributionPolicy $policy, string $actorUserId): array
+    {
+        return [
+            'id' => (string) $policy->id,
+            'version' => $policy->version,
+            'status' => $policy->status,
+            'employee_epf_rate_percent' => $policy->employee_epf_rate_percent,
+            'employer_epf_rate_percent' => $policy->employer_epf_rate_percent,
+            'employer_etf_rate_percent' => $policy->employer_etf_rate_percent,
+            'earnings_basis' => $policy->earnings_basis,
+            'statutory_reference' => $policy->statutory_reference,
+            'effective_from' => $policy->effective_from,
+            'effective_until' => $policy->effective_until,
+            'reason' => $policy->reason,
+            'can_approve' => $policy->status === 'draft' && $policy->created_by !== $actorUserId,
+        ];
+    }
+
+    private function gratuityPolicyProjection(HrGratuityPolicy $policy, string $actorUserId): array
+    {
+        return [
+            'id' => (string) $policy->id,
+            'version' => $policy->version,
+            'status' => $policy->status,
+            'minimum_qualifying_service_years' => $policy->minimum_qualifying_service_years,
+            'minimum_employer_headcount_threshold' => $policy->minimum_employer_headcount_threshold,
+            'monthly_paid_divisor' => $policy->monthly_paid_divisor,
+            'non_monthly_daily_wage_multiplier' => $policy->non_monthly_daily_wage_multiplier,
+            'non_monthly_lookback_months' => $policy->non_monthly_lookback_months,
+            'payment_deadline_days' => $policy->payment_deadline_days,
+            'tax_exempt_threshold_lkr' => $policy->tax_exempt_threshold_lkr,
+            'tax_rate_above_threshold_percent' => $policy->tax_rate_above_threshold_percent,
+            'statutory_reference' => $policy->statutory_reference,
+            'effective_from' => $policy->effective_from,
+            'effective_until' => $policy->effective_until,
+            'reason' => $policy->reason,
+            'can_approve' => $policy->status === 'draft' && $policy->created_by !== $actorUserId,
         ];
     }
 

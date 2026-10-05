@@ -57,6 +57,10 @@ class UserContextController extends Controller
                 $contextData = [];
             }
 
+            if ($contextType === 'staff') {
+                unset($contextData['company_id']);
+            }
+
             if ($contextId) {
                 $contextData['context_id'] = $contextId;
             }
@@ -121,6 +125,11 @@ class UserContextController extends Controller
                 'data' => $contextState,
             ]);
 
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage() ?: 'The selected context is unavailable.',
+            ], $e->getStatusCode());
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',

@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionCycleAssignment extends BaseModel
+class SalesCommissionCycleAssignment extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'cycle_version_id', 'scope_type', 'sales_profile_id', 'staff_id',

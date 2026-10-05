@@ -26,7 +26,10 @@ class CreateStaffRequest extends FormRequest
             'phone' => ['required', 'string', 'max:30'],
             'status' => ['nullable', 'in:active,inactive,on_leave'],
             'staff_type' => ['nullable', 'string', 'max:100'],
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'company_id' => [
+                'nullable', 'uuid',
+                Rule::exists('companies', 'id')->where('is_active', true)->whereNull('deleted_at'),
+            ],
             'collection_commission_enabled' => ['sometimes', 'boolean'],
             'collection_commission_rate' => ['required_if:collection_commission_enabled,true', 'numeric', 'min:0', 'max:100'],
             'code' => ['nullable', 'string', 'max:100', 'unique:staff,code'],

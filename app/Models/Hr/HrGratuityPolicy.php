@@ -3,6 +3,7 @@
 namespace App\Models\Hr;
 
 use App\Models\BaseModel;
+use Spatie\Activitylog\Support\LogOptions;
 
 class HrGratuityPolicy extends BaseModel
 {
@@ -33,4 +34,20 @@ class HrGratuityPolicy extends BaseModel
         'effective_until' => 'datetime',
         'approved_at' => 'datetime',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly([
+                'company_id', 'version', 'status',
+                'minimum_qualifying_service_years', 'minimum_employer_headcount_threshold',
+                'monthly_paid_divisor', 'non_monthly_daily_wage_multiplier', 'non_monthly_lookback_months',
+                'payment_deadline_days', 'tax_exempt_threshold_lkr', 'tax_rate_above_threshold_percent',
+                'statutory_reference', 'effective_from', 'effective_until', 'approved_at',
+            ])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
+            ->useLogName('HrGratuityPolicy');
+    }
 }

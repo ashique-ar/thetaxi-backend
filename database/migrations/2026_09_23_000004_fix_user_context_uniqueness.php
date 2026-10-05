@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
 {
@@ -19,16 +20,23 @@ return new class extends Migration
             self::CONTEXT_UNIQUE_INDEX
         ));
 
-        DB::statement(sprintf(
-            'ALTER TABLE user_contexts DROP CONSTRAINT IF EXISTS %s',
-            self::LEGACY_CONSTRAINT
-        ));
+        Schema::table('user_contexts', fn ($table) => $table->dropUnique(self::LEGACY_CONSTRAINT));
     }
 
     public function down(): void
     {
-        DB::statement(sprintf(
-            'ALTER TABLE user_contexts ADD CONSTRAINT %s UNIQUE (user_id, context_type, is_active)',
+        $duplicates = DB::table('user_contexts')
+            ->select('user_id', 'context_type', 'is_active')
+            ->groupBy('user_id', 'context_type', 'is_active')
+            ->havingRaw('COUNT(*) > 1')
+            ->exists();
+
+        if ($duplicates) {
+            throw new RuntimeException('Cannot restore legacy user context uniqueness while duplicate rows exist.');
+        }
+
+        Schema::table('user_contexts', fn ($table) => $table->unique(
+            ['user_id', 'context_type', 'is_active'],
             self::LEGACY_CONSTRAINT
         ));
 

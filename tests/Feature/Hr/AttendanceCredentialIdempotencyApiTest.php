@@ -26,9 +26,11 @@ it('replays only the same actor and exact credential request without storing the
         'effective_from' => '2026-01-01', 'created_by' => $user->id, 'verified_by' => $user->id,
         'last_verified_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
+    $baselineTransactionLevel = DB::transactionLevel();
     $adapter = Mockery::mock(HikvisionIsapiAdapter::class)->makePartial();
     $adapter->shouldReceive('cardOwner')->once()->andReturn(null);
-    $adapter->shouldReceive('setCard')->once()->andReturnUsing(function () {
+    $adapter->shouldReceive('setCard')->once()->andReturnUsing(function () use ($baselineTransactionLevel) {
+        expect(DB::transactionLevel())->toBeGreaterThan($baselineTransactionLevel);
         expect(DB::table('hr_attendance_credential_events')->where('idempotency_key', 'credential-card-1')->value('status'))->toBe('pending');
         return ['accepted' => true];
     });
@@ -86,6 +88,7 @@ it('blocks card and PIN issuance to former Staff', function () {
     [$user, $company] = hr_seed_admin_actor();
     $former = Staff::factory()->create(['company_id' => $company->id]);
     $former->forceFill(['employment_ended_at' => now()->subDay()])->save();
+    $former->delete();
     $device = AttendanceDevice::factory()->create([
         'company_id' => $company->id, 'provider' => 'hikvision', 'integration_mode' => 'direct_isapi',
         'status' => 'active', 'capabilities' => ['card_management' => true, 'pin_management' => true],
@@ -98,6 +101,8 @@ it('blocks card and PIN issuance to former Staff', function () {
     ]);
     $adapter = Mockery::mock(HikvisionIsapiAdapter::class)->makePartial();
     $adapter->shouldNotReceive('cardOwner')->shouldNotReceive('setCard')->shouldNotReceive('setPin');
+    $adapter->shouldReceive('cards')->once()->andReturn([['card_number' => '12345678', 'card_type' => 'normalCard']]);
+    $adapter->shouldReceive('deleteCard')->once()->andReturn(['accepted' => true]);
     app()->instance(HikvisionIsapiAdapter::class, $adapter);
 
     $url = "/api/hr/attendance/devices/{$device->id}/people/FORMER-EMPLOYEE";
@@ -107,6 +112,38 @@ it('blocks card and PIN issuance to former Staff', function () {
     actingAs($user, 'api')->postJson($url.'/pin', [
         'pin' => '2468', 'reason' => 'Issue PIN', 'idempotency_key' => 'former-pin',
     ])->assertConflict();
+    $fingerprint = hash_hmac('sha256', '12345678', (string) config('app.key'));
+    actingAs($user, 'api')->deleteJson($url.'/cards/'.$fingerprint, [
+        'reason' => 'Remove former Staff card', 'idempotency_key' => 'former-card-revoke',
+    ])->assertOk();
+});
+
+it('rechecks Staff after reserving card issuance and leaves the key held if employment ended meanwhile', function () {
+    [$user, $company] = hr_seed_admin_actor([], true);
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $device = AttendanceDevice::factory()->create([
+        'company_id' => $company->id, 'provider' => 'hikvision', 'integration_mode' => 'direct_isapi',
+        'status' => 'active', 'capabilities' => ['card_management' => true],
+    ]);
+    DB::table('hr_attendance_person_mappings')->insert([
+        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'provider_person_id' => 'EMP-CREDENTIAL-EXIT-RACE', 'employee_number_snapshot' => 'EMP-CREDENTIAL-EXIT-RACE', 'enrollment_status' => 'verified',
+        'effective_from' => '2026-01-01', 'created_by' => $user->id, 'verified_by' => $user->id,
+        'last_verified_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $adapter = Mockery::mock(HikvisionIsapiAdapter::class)->makePartial();
+    $adapter->shouldReceive('cardOwner')->once()->andReturnUsing(function () use ($staff) {
+        $staff->forceFill(['employment_ended_at' => now()->subSecond()])->save();
+        return null;
+    });
+    $adapter->shouldNotReceive('setCard');
+    app()->instance(HikvisionIsapiAdapter::class, $adapter);
+
+    actingAs($user, 'api')->postJson("/api/hr/attendance/devices/{$device->id}/people/EMP-CREDENTIAL-EXIT-RACE/cards", [
+        'card_number' => '12345678', 'card_type' => 'normalCard', 'reason' => 'Issue card', 'idempotency_key' => 'credential-exit-race',
+    ])->assertConflict();
+
+    expect(DB::table('hr_attendance_credential_events')->where('idempotency_key', 'credential-exit-race')->value('status'))->toBe('pending');
 });
 
 it('fails closed when an identical terminal credential request is still pending', function () {

@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('keeps availability conflict joins aligned with booking model scopes', function () {
     $service = file_get_contents(app_path('Services/BookingFlowService.php'));
 

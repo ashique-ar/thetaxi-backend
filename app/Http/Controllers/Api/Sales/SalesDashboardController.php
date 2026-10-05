@@ -337,7 +337,7 @@ class SalesDashboardController extends Controller
             'alert.severity', 'alert.status', 'alert.explanation', 'alert.detected_at', 'alert.assigned_to',
             'owner_staff.code as owner_staff_code'];
         if ($alertEvidenceEnabled) array_push($alertFields,
-            'alert.threshold_snapshot', 'alert.comparison_snapshot', 'alert.policy_contract_snapshot');
+            'alert.threshold_snapshot', 'alert.comparison_snapshot');
         if ($alertActionEvidenceAvailable) array_push($alertFields, 'alert.event_version', 'alert.snoozed_until',
             'alert.escalation_level', 'alert.escalated_at', 'alert.last_action_at');
         $alertsQuery = DB::table('sales_performance_alerts as alert')
@@ -358,7 +358,7 @@ class SalesDashboardController extends Controller
             (int) ($data['alerts_page'] ?? 1), (int) ($data['alerts_per_page'] ?? 10),
             function ($alert) use ($alertEvidenceEnabled) {
                 if (! $alertEvidenceEnabled) return $alert;
-                foreach (['threshold_snapshot', 'comparison_snapshot', 'policy_contract_snapshot'] as $field) {
+                foreach (['threshold_snapshot', 'comparison_snapshot'] as $field) {
                     $alert->{$field} = is_string($alert->{$field}) ? json_decode($alert->{$field}, true) : $alert->{$field};
                 }
                 return $alert;

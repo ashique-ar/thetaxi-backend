@@ -23,12 +23,6 @@ class SalesPolicySettingsService
     // Expose a tenant toggle only after every runtime path for it is company-aware.
     public const FEATURES = ['fx_corrections', 'rolling_payment_schedules', 'enforce_payment_finality', 'statements', 'payouts', 'performance_snapshots', 'performance_alert_evaluations', 'performance_alert_actions', 'crm', 'commission_notifications'];
 
-    public function featureHistory(string $companyId): array
-    {
-        return SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
-            ->orderBy('feature_key')->orderByDesc('version')->get()->all();
-    }
-
     public function featureEnabled(string $companyId, string $feature): bool
     {
         if (!in_array($feature, self::FEATURES, true) || config("sales.features.{$feature}", false) !== true
@@ -95,12 +89,6 @@ class SalesPolicySettingsService
     {
         return SalesPolicySetting::query()->where('company_id', $companyId)->where('policy_kind', $kind)->where('status', 'approved')
             ->orderByDesc('version')->first();
-    }
-
-    public function history(string $companyId, string $kind): array
-    {
-        return SalesPolicySetting::query()->where('company_id', $companyId)->where('policy_kind', $kind)
-            ->orderByDesc('version')->get()->all();
     }
 
     public function fxCorrectionsPolicy(string $companyId): array

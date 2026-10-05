@@ -2,10 +2,10 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
-class SalesCommissionStatementLine extends BaseModel
+class SalesCommissionStatementLine extends NonSoftDeletableModel
 {
     protected $fillable = [
         'statement_id', 'line_type', 'source_type', 'source_id', 'description', 'gross_lkr',

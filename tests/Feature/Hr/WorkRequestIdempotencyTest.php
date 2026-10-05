@@ -50,3 +50,33 @@ it('returns the original work request on retry and rejects key reuse with change
         expect($e->getStatusCode())->toBe(409);
     }
 });
+
+it('ignores an overlapping Work Request owned by another company for the same Staff ID', function () {
+    config(['hr.features.leave_overtime' => true]);
+    $user = User::factory()->create();
+    $company = Company::create(['name' => 'Selected Work Request Company']);
+    $otherCompany = Company::create(['name' => 'Other Work Request Company', 'is_default' => false]);
+    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $policyId = (string) Str::uuid();
+    DB::table('hr_work_request_policies')->insert([
+        'id' => $policyId, 'company_id' => $company->id, 'request_kind' => 'overtime', 'code' => 'OT-SCOPE',
+        'version' => 1, 'rules' => '{}', 'effective_from' => '2026-01-01', 'status' => 'approved',
+        'created_by' => $user->id, 'approved_by' => User::factory()->create()->id, 'approved_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('hr_work_requests')->insert([
+        'id' => (string) Str::uuid(), 'company_id' => $otherCompany->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'request_kind' => 'overtime', 'starts_at' => '2026-11-03T09:00:00+05:30', 'ends_at' => '2026-11-03T10:00:00+05:30',
+        'requested_minutes' => 60, 'status' => 'pending_approval', 'reason' => 'Foreign tenant overlap', 'request_snapshot' => '{}',
+        'request_checksum' => str_repeat('a', 64), 'idempotency_key' => 'foreign-work-request-overlap', 'requested_by' => $user->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    $request = app(WorkforceWorkflowService::class)->submitWorkRequest([
+        'company_id' => $company->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'request_kind' => 'overtime', 'starts_at' => '2026-11-03T09:30:00+05:30', 'ends_at' => '2026-11-03T10:30:00+05:30',
+        'settlement_kind' => 'informational', 'reason' => 'Selected company request.', 'idempotency_key' => 'selected-work-request-overlap',
+    ], $user->id);
+
+    expect($request->company_id)->toBe($company->id)
+        ->and($request->status)->toBe('pending_approval');
+});

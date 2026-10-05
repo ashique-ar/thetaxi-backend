@@ -3,8 +3,6 @@
 use App\Http\Controllers\CheckoutController;
 use App\Models\Booking\Booking;
 
-uses(Tests\TestCase::class);
-
 function webxpayOrderMatchesBooking(Booking $booking, array $verification): bool
 {
     $controller = (new ReflectionClass(CheckoutController::class))->newInstanceWithoutConstructor();

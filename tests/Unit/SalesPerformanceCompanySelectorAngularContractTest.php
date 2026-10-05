@@ -18,7 +18,7 @@ it('uses bounded scoped company selectors throughout performance administration 
         ->not->toContain('?.name || id', ': id; }', 'companies()[0]', 'data?.companies');
     expect($routes)->toContain("Route::get('performance/profile-options', [SalesPerformanceController::class, 'profileOptions'])")
         ->and($controller)->toContain("'selected_ids' => ['sometimes', 'array', 'max:100']", 'profileOptionsPayload', 'scopeProfiles(', "compact('companyLabels', 'policies')")
-        ->and($template)->toContain('UiManagedRecordMultiSelectComponent', 'endpoint="/sales/performance/profile-options"', 'row.profile_label', '*ngIf="target.company_id"', '*ngIf="copy.company_id"')
+        ->and($template)->toContain('app-ui-managed-record-multi-select', 'endpoint="/sales/performance/profile-options"', 'row.profile_label', '*ngIf="target.company_id"', '*ngIf="copy.company_id"')
         ->and($component)->toContain('targetEntryCompanyChanged()', 'copyCompanyChanged()')
         ->and($component)->not->toContain('profiles = signal', 'this.profiles()', 'copyProfiles()', 'targetFilterProfiles()');
     $singleSelector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-select/managed-record-select.component.ts'));

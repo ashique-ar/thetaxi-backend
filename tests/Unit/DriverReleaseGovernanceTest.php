@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('aligns the source release manifest package version and build', function () {
     $pubspec = file_get_contents(base_path('../driver-mobile-app/pubspec.yaml'));
     $gradle = file_get_contents(base_path('../driver-mobile-app/android/app/build.gradle.kts'));

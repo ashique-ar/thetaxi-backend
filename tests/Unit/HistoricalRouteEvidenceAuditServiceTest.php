@@ -5,8 +5,6 @@ use App\Models\DriverAssignment;
 use App\Services\Driver\HistoricalRouteEvidenceAuditService;
 use Illuminate\Database\Eloquent\Collection;
 
-uses(Tests\TestCase::class);
-
 it('detects historical route risks without changing raw evidence or legacy distance', function () {
     $assignment = new DriverAssignment([
         'booking_id' => 'booking-1',

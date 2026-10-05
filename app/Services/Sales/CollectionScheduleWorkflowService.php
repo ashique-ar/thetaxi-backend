@@ -181,11 +181,23 @@ class CollectionScheduleWorkflowService
         });
     }
 
-    public function submit(Booking $booking, SalesProfile $profile, array $data): BookingCollectionSubmission
+    public function submit(Booking $booking, SalesProfile $profile, array $data, string $actorUserId): BookingCollectionSubmission
     {
-        return DB::transaction(function () use ($booking, $profile, $data) {
+        return DB::transaction(function () use ($booking, $profile, $data, $actorUserId) {
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $owner = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
+                ->where('profile.id', $profile->id)->whereNull('profile.deleted_at')->where('profile.status', 'active')
+                ->where('profile.collection_eligible', true)->whereNotNull('profile.reporting_currency')
+                ->whereNotNull('profile.staff_category_snapshot')->where('profile.effective_from', '<=', now())
+                ->where(fn ($query) => $query->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
+                ->where('staff.user_id', $actorUserId)->whereNull('staff.deleted_at')
+                ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
+                ->whereColumn('profile.company_id', 'staff.company_id')->lockForUpdate()
+                ->first(['profile.company_id', 'staff.id as staff_id', 'staff.user_id as staff_user_id', 'staff.company_id as staff_company_id']);
+            abort_unless($owner && (string) $owner->company_id === (string) $profile->company_id
+                && (string) $owner->staff_company_id === (string) $attribution->company_id,
+                403, 'The collection Sales Profile and active Staff owner must match the booking legal entity.');
             abort_unless($this->collectionProfileAt($attribution, now()) === $profile->id, 403, 'This booking is outside your current collection portfolio.');
             abort_unless($attribution->company_id === $profile->company_id, 403, 'The booking belongs to another legal entity.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
@@ -194,7 +206,18 @@ class CollectionScheduleWorkflowService
             $duplicate = BookingCollectionSubmission::query()
                 ->where('booking_id', $booking->id)->where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
-                abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This submission key was already used with different facts.');
+                abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum)
+                    && (string) $duplicate->company_id === (string) $profile->company_id
+                    && (string) $duplicate->submitted_by_sales_profile_id === (string) $profile->id
+                    && (string) $duplicate->submitted_by_staff_id === (string) $owner->staff_id
+                    && (string) $duplicate->submitted_by_user_id === (string) $owner->staff_user_id,
+                    422, 'This submission key was already used with different facts or ownership.');
+                if ($duplicate->evidence_file_id) {
+                    abort_unless(DB::table('domain_evidence_files')->whereKey($duplicate->evidence_file_id)
+                        ->where('domain', 'sales')->where('company_id', $duplicate->company_id)->whereNull('deleted_at')
+                        ->where('subject_type', 'booking')->where('subject_id', $duplicate->booking_id)->exists(),
+                        409, 'The stored collection evidence is no longer active or bound to this booking and legal entity.');
+                }
                 return $duplicate;
             }
 
@@ -216,6 +239,8 @@ class CollectionScheduleWorkflowService
                 'company_id' => $profile->company_id,
                 'booking_id' => $booking->id,
                 'submitted_by_sales_profile_id' => $profile->id,
+                'submitted_by_staff_id' => $owner->staff_id,
+                'submitted_by_user_id' => $owner->staff_user_id,
                 'source_currency' => strtoupper((string) $data['source_currency']),
                 'status' => 'submitted',
                 'request_payload_checksum' => $checksum,
@@ -238,13 +263,28 @@ class CollectionScheduleWorkflowService
             abort_unless($submission->company_id === $attribution->company_id, 409,
                 'The collection submission company does not match the booking attribution; reconcile its ownership before continuing.');
             $this->companyIntegrity->assertConsistent($booking, $attribution->company_id);
-            if ($submission->status === 'verified') {
+            if (in_array($submission->status, ['verified', 'rejected'], true)) {
+                $expectedDecision = $submission->status === 'verified' ? 'verify' : 'reject';
+                abort_unless($data['decision'] === $expectedDecision, 409, 'A decided collection submission cannot be changed by a retry.');
+                abort_unless($submission->verified_by === $actorUserId
+                    && $submission->verified_at !== null
+                    && $submission->verification_notes === ($data['verification_notes'] ?? null),
+                    409, 'This verification retry does not match the original verifier and decision facts.');
+                if ($submission->status === 'verified') {
+                    $receipt = $submission->booking_payment_receipt_id
+                        ? BookingPaymentReceipt::query()->whereKey($submission->booking_payment_receipt_id)->first()
+                        : null;
+                    abort_unless($receipt, 409, 'The verified submission has no available canonical receipt.');
+                    $this->assertCollectionReceiptMatches($booking, $attribution->company_id, $submission, $receipt, $data, $actorUserId);
+                }
+
                 return $submission;
             }
             abort_unless($submission->status === 'submitted', 422, 'Only submitted collection evidence can be verified.');
-            $submitterUserId = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
-                ->where('profile.id', $submission->submitted_by_sales_profile_id)->value('staff.user_id');
-            abort_if($submitterUserId === $actorUserId, 409, 'Collection evidence must be decided by a user other than its submitter.');
+            abort_unless($submission->submitted_by_staff_id && $submission->submitted_by_user_id, 409,
+                'This legacy collection submission has no immutable submitter identity; resolve its history before deciding.');
+            abort_if((string) $submission->submitted_by_user_id === (string) $actorUserId, 409,
+                'Collection evidence must be decided by a user other than its submitter.');
 
             if ($data['decision'] === 'reject') {
                 $submission->update([
@@ -276,23 +316,79 @@ class CollectionScheduleWorkflowService
                 'notes' => trim('Verified collection submission. '.($submission->staff_notes ?? '')),
             ], $actorUserId);
             $receipt = BookingPaymentReceipt::query()->where('idempotency_key', 'collection-submission:'.$submission->id)->firstOrFail();
+            $this->assertCollectionReceiptMatches($booking, $attribution->company_id, $submission, $receipt, $data, $actorUserId);
             $submission->update([
                 'status' => 'verified', 'verification_notes' => $data['verification_notes'] ?? null,
                 'verified_by' => $actorUserId, 'verified_at' => now(), 'booking_payment_receipt_id' => $receipt->id,
             ]);
             if ($submission->booking_payment_schedule_id) {
-                $scheduleStatus = BookingPaymentSchedule::query()
+                $schedule = BookingPaymentSchedule::query()
                     ->whereKey($submission->booking_payment_schedule_id)
-                    ->value('status');
-                BookingCollectionWorkItem::query()->where('booking_payment_schedule_id', $submission->booking_payment_schedule_id)
+                    ->where('booking_id', $booking->id)
+                    ->where('company_id', $attribution->company_id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                BookingCollectionWorkItem::query()->where('booking_payment_schedule_id', $schedule->id)
+                    ->where('booking_id', $booking->id)
+                    ->where('company_id', $attribution->company_id)
                     ->whereIn('status', ['open', 'upcoming', 'due', 'overdue'])
-                    ->update($scheduleStatus === 'paid'
+                    ->update($schedule->status === 'paid'
                         ? ['status' => 'completed', 'completed_at' => now(), 'updated_at' => now()]
                         : ['completed_at' => null, 'updated_at' => now()]);
             }
 
             return $submission;
         });
+    }
+
+    private function assertCollectionReceiptMatches(
+        Booking $booking,
+        string $companyId,
+        BookingCollectionSubmission $submission,
+        BookingPaymentReceipt $receipt,
+        array $verification,
+        string $actorUserId,
+    ): void {
+        $currency = strtoupper((string) $submission->source_currency);
+        $rate = $currency === 'LKR' ? 1.0 : (float) ($verification['fx_rate_to_lkr'] ?? 0);
+        $rateAt = $verification['fx_rate_at'] ?? $submission->received_at;
+        $rateSource = $currency === 'LKR' ? 'identity' : ($verification['fx_source'] ?? null);
+        $checksum = (string) $receipt->request_payload_checksum;
+        $allocationMismatch = DB::table('booking_payment_schedule_allocations as allocation')
+            ->leftJoin('booking_payment_schedules as schedule', 'schedule.id', '=', 'allocation.booking_payment_schedule_id')
+            ->where('allocation.booking_payment_receipt_id', $receipt->id)
+            ->whereNull('allocation.deleted_at')
+            ->where(fn ($query) => $query->whereNull('schedule.id')
+                ->orWhere('schedule.booking_id', '!=', $booking->id)
+                ->orWhereNull('schedule.company_id')
+                ->orWhere('schedule.company_id', '!=', $companyId))
+            ->exists();
+
+        abort_unless(! $allocationMismatch, 409,
+            'The canonical receipt is allocated outside its booking legal entity; reconcile its allocation history before continuing.');
+
+        abort_unless($receipt->booking_id === $booking->id
+            && $receipt->company_id === $companyId
+            && $receipt->idempotency_key === 'collection-submission:'.$submission->id
+            && $receipt->payment_stage === 'account_payment'
+            && $receipt->payment_purpose === 'booking_payment'
+            && $receipt->payment_method === $submission->payment_method
+            && $receipt->received_by === $actorUserId
+            && $receipt->reference === $submission->reference
+            && $receipt->received_via === 'company'
+            && $receipt->provider_event_id === null
+            && $receipt->provider_payload_checksum === null
+            && strtoupper((string) $receipt->source_currency) === $currency
+            && number_format((float) $receipt->source_amount, 4, '.', '') === number_format((float) $submission->source_amount, 4, '.', '')
+            && number_format((float) $receipt->amount, 2, '.', '') === number_format(round((float) $submission->source_amount, 2), 2, '.', '')
+            && number_format((float) $receipt->fx_rate_to_lkr, 10, '.', '') === number_format($rate, 10, '.', '')
+            && number_format((float) $receipt->lkr_amount, 4, '.', '') === number_format(round((float) $submission->source_amount * $rate, 4), 4, '.', '')
+            && (string) ($receipt->fx_source ?? '') === (string) ($rateSource ?? '')
+            && ($receipt->fx_rate_at === null ? null : Carbon::parse($receipt->fx_rate_at)->toDateTimeString())
+                === ($rateAt === null ? null : Carbon::parse($rateAt)->toDateTimeString())
+            && Carbon::parse($receipt->received_at)->equalTo(Carbon::parse($submission->received_at))
+            && preg_match('/^[a-f0-9]{64}$/i', $checksum) === 1,
+            409, 'The canonical receipt does not match the verified collection submission; reconcile its immutable facts before continuing.');
     }
 
     private function ensureWorkItem(BookingPaymentSchedule $schedule, int $reminderDays): void

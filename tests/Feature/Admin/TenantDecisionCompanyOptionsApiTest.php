@@ -77,3 +77,23 @@ it('denies direct decision reads and exact hydration for a deleted legal entity'
     actingAs($admin, 'api')->getJson('/api/tenant-decisions/company-options?selected_id='.$company->id)
         ->assertOk()->assertJsonCount(0, 'data.data');
 });
+
+it('denies direct decision reads and writes for an inactive legal entity', function () {
+    [$admin] = hr_seed_admin_actor();
+    $admin->givePermissionTo(['tenant-decisions.view', 'tenant-decisions.manage', 'tenant-decisions.approve', 'tenant-decisions.manage-all']);
+    $company = Company::create(['name' => 'Inactive Decision Entity', 'is_active' => false, 'is_default' => false]);
+
+    actingAs($admin, 'api')->getJson('/api/tenant-decisions?company_id='.$company->id)->assertNotFound();
+    actingAs($admin, 'api')->postJson('/api/tenant-decisions', [
+        'company_id' => $company->id,
+        'key' => 'company.localization',
+        'value' => ['currency' => 'LKR', 'timezone' => 'Asia/Colombo'],
+        'effective_from' => now()->toDateString(),
+        'reason' => 'Inactive entity must not be configured',
+        'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+    ])->assertNotFound();
+    actingAs($admin, 'api')->postJson('/api/tenant-decisions/company.localization/approve', [
+        'company_id' => $company->id,
+        'idempotency_key' => (string) \Illuminate\Support\Str::uuid(),
+    ])->assertNotFound();
+});

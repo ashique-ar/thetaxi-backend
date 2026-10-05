@@ -4,8 +4,6 @@ use App\Http\Controllers\CheckoutController;
 use App\Models\Booking\Booking;
 use App\Services\WebXPayService;
 
-uses(Tests\TestCase::class);
-
 it('serializes the discounted payable amount passed through checkout for WebXPay', function () {
     config([
         'booking.webxpay.enabled' => true,

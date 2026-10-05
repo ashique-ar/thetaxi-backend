@@ -85,16 +85,23 @@ class SalesEvidenceController extends Controller
 
         $file = $data['file'];
         $id = (string) Str::uuid();
-        $extension = strtolower((string) $file->getClientOriginalExtension());
-        $storedName = $id.($extension !== '' ? '.'.$extension : '');
+        $extension = strtolower((string) $file->guessExtension());
+        abort_unless(preg_match('/^[a-z0-9]{1,10}$/', $extension) === 1, 422, 'The uploaded evidence type could not be safely identified.');
+        $storedName = $id.'.'.$extension;
         $path = $companyId.'/'.now()->format('Y/m').'/'.$storedName;
         $temporaryPath = $file->getRealPath();
         abort_unless(is_string($temporaryPath) && $temporaryPath !== '', 422, 'The uploaded evidence could not be read.');
         $checksum = hash_file('sha256', $temporaryPath);
         abort_unless(is_string($checksum) && strlen($checksum) === 64, 422, 'The uploaded evidence checksum could not be created.');
-        Storage::disk('sales_private')->putFileAs(dirname($path), $file, basename($path));
+        $disk = Storage::disk('sales_private');
 
         try {
+            abort_unless($disk->putFileAs(dirname($path), $file, basename($path)) !== false,
+                500, 'The private evidence object could not be stored.');
+            $storedChecksum = hash_file('sha256', $disk->path($path));
+            abort_unless(is_string($storedChecksum) && hash_equals($checksum, $storedChecksum),
+                500, 'The stored private evidence object does not match its upload checksum.');
+
             DB::transaction(function () use ($request, $data, $companyId, $file, $id, $path, $checksum, $superseded): void {
                 DB::table('domain_evidence_files')->insert([
                     'id' => $id, 'domain' => 'sales', 'company_id' => $companyId,
@@ -110,7 +117,7 @@ class SalesEvidenceController extends Controller
                 $this->audit($request, $companyId, $id, 'sales.evidence.uploaded', $checksum);
             });
         } catch (\Throwable $exception) {
-            Storage::disk('sales_private')->delete($path);
+            $disk->delete($path);
             throw $exception;
         }
 
@@ -121,11 +128,18 @@ class SalesEvidenceController extends Controller
     {
         $row = DB::table('domain_evidence_files')->whereKey($evidence)->where('domain', 'sales')->whereNull('deleted_at')->first();
         abort_unless($row, 404);
-        $this->authorizeSubject($request, $row->subject_type, $row->subject_id, false, $row->uploaded_by);
-        abort_unless(Storage::disk($row->disk)->exists($row->path), 404, 'The private evidence object is unavailable.');
+        $companyId = $this->authorizeSubject($request, $row->subject_type, $row->subject_id, false, $row->uploaded_by);
+        abort_unless(hash_equals((string) $companyId, (string) $row->company_id), 404);
+        $pathPattern = '#^'.preg_quote((string) $companyId, '#').'/\d{4}/(?:0[1-9]|1[0-2])/'.preg_quote((string) $row->id, '#').'(?:\.[a-z0-9]{1,10})?$#i';
+        abort_unless($row->disk === 'sales_private' && preg_match($pathPattern, (string) $row->path) === 1, 404);
+        $disk = Storage::disk('sales_private');
+        abort_unless($disk->exists($row->path), 404, 'The private evidence object is unavailable.');
+        $storedChecksum = hash_file('sha256', $disk->path($row->path));
+        abort_unless(is_string($storedChecksum) && hash_equals((string) $row->file_checksum, $storedChecksum),
+            409, 'The private evidence object failed its integrity check.');
         $this->audit($request, $row->company_id, $row->id, 'sales.evidence.downloaded', $row->file_checksum);
 
-        return Storage::disk($row->disk)->download($row->path, $row->file_name, [
+        return $disk->download($row->path, $row->file_name, [
             'Content-Type' => $row->mime_type ?: 'application/octet-stream',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store, max-age=0',
@@ -141,7 +155,11 @@ class SalesEvidenceController extends Controller
                 if (! $request->user()->can('sales.payment-ledger.reconcile')) {
                     abort_unless($request->user()->can('sales.collections.submit'), 403);
                     $profileIds = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
-                        ->where('staff.user_id', $request->user()->id)->where('profile.status', 'active')
+                        ->where('staff.user_id', $request->user()->id)->whereNull('staff.deleted_at')
+                        ->where(fn ($q) => $q->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
+                        ->whereColumn('profile.company_id', 'staff.company_id')
+                        ->where('profile.collection_eligible', true)->whereNotNull('profile.reporting_currency')
+                        ->whereNotNull('profile.staff_category_snapshot')->whereNull('profile.deleted_at')->where('profile.status', 'active')
                         ->where('profile.effective_from', '<=', now())
                         ->where(fn ($q) => $q->whereNull('profile.effective_until')->orWhere('profile.effective_until', '>', now()))
                         ->pluck('profile.id')->all();

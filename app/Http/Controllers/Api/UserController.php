@@ -896,6 +896,9 @@ class UserController extends Controller
         try {
             $contextType = $request->get('context_type');
             $contextData = $request->get('context_data', []);
+            if ($contextType === 'staff') {
+                unset($contextData['company_id']);
+            }
 
             $userContext = DB::transaction(function () use ($user, $contextType, $contextData): \App\Models\UserContext {
                 $user = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
@@ -912,6 +915,11 @@ class UserController extends Controller
                     'available_contexts' => $this->contextService->getActivatableContexts($user)
                 ]
             ]);
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => $e->getMessage() ?: 'The selected context is unavailable.',
+            ], $e->getStatusCode());
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',

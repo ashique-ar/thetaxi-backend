@@ -26,7 +26,10 @@ it('appends only the newly added days rather than silently stretching the existi
 
     expect($service)
         ->toContain("'reservation', -\$addedMinutes, \$extensionStart, 'leave_extension', \$row->id, 'Leave extension reservation', \$snapshot + ['extended_to' => \$newEndDate]")
-        ->toContain("\$this->event(\$row->id, 'extended', 'approved', 'approved', \$reason, \$snapshot + ['previous_end_date' => \$row->end_date, 'extended_to' => \$newEndDate, 'added_minutes' => \$addedMinutes], \$actorUserId);")
+        ->toContain("\$extensionEventId = (string) Str::uuid();")
+        ->toContain("'leave_extension', \$extensionEventId, ['request' => \$row, 'leave_type' => \$type, 'extension' => \$extensionSnapshot], \$actorUserId, \$row->id)")
+        ->toContain("\$this->event(\$row->id, 'extended', 'approved', 'approved', \$reason, \$snapshot + \$extensionSnapshot, \$actorUserId, \$extensionEventId);")
+        ->toContain('Extension retry does not match the original actor and reason.')
         ->toContain("'end_date' => \$newEndDate, 'requested_minutes' => \$row->requested_minutes + \$addedMinutes, 'reserved_minutes' => \$row->reserved_minutes + \$addedMinutes");
 });
 

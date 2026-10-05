@@ -3,6 +3,7 @@
 namespace App\Console\Commands;
 
 use App\Models\Hr\Attendance\AttendanceDevice;
+use App\Models\Staff;
 use App\Services\Hr\Attendance\AttendanceProviderManager;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
@@ -39,14 +40,48 @@ class SyncHikvisionPeople extends Command
                 ->where(fn ($query) => $query->where('mapping.device_id', $device->id)->orWhereNull('mapping.device_id'))
                 ->whereDate('mapping.effective_from', '<=', $today)
                 ->where(fn ($query) => $query->whereNull('mapping.effective_until')->orWhereDate('mapping.effective_until', '>', $today))
-                ->select(['mapping.provider_person_id', 'staff.employment_ended_at', 'staff.deleted_at'])
+                ->select(['mapping.id as mapping_id', 'mapping.provider_person_id', 'mapping.device_id', 'mapping.staff_id'])
                 ->get()
-                ->unique('provider_person_id');
+                ->groupBy('provider_person_id')
+                ->map(function ($mappings) use ($device) {
+                    $deviceMappings = $mappings->where('device_id', $device->id);
+                    if ($deviceMappings->isNotEmpty()) {
+                        return $deviceMappings->count() === 1 ? $deviceMappings->first() : null;
+                    }
+
+                    $companyMappings = $mappings->whereNull('device_id');
+
+                    return $companyMappings->count() === 1 ? $companyMappings->first() : null;
+                })
+                ->filter()
+                ->values();
 
             foreach ($rows as $row) {
-                $enabled = $row->employment_ended_at === null && $row->deleted_at === null;
                 try {
-                    $providers->adapterFor($device)->setPersonEnabled($device, $row->provider_person_id, $enabled);
+                    DB::transaction(function () use ($device, $row, $today, $providers) {
+                        $company = DB::table('companies')->where('id', $device->company_id)->lockForUpdate()->first();
+                        if (! $company) return;
+                        $mappings = DB::table('hr_attendance_person_mappings')->where('company_id', $device->company_id)
+                            ->where('provider_person_id', $row->provider_person_id)->where('enrollment_status', 'verified')
+                            ->where(fn ($query) => $query->where('device_id', $device->id)->orWhereNull('device_id'))
+                            ->whereDate('effective_from', '<=', $today)
+                            ->where(fn ($query) => $query->whereNull('effective_until')->orWhereDate('effective_until', '>', $today))
+                            ->orderBy('id')->lockForUpdate()->get();
+                        $deviceMappings = $mappings->where('device_id', $device->id);
+                        $mapping = $deviceMappings->isNotEmpty()
+                            ? ($deviceMappings->count() === 1 ? $deviceMappings->first() : null)
+                            : ($mappings->whereNull('device_id')->count() === 1 ? $mappings->whereNull('device_id')->first() : null);
+                        if (! $mapping || $mapping->id !== $row->mapping_id) {
+                            return;
+                        }
+
+                        $staff = Staff::withTrashed()->whereKey($mapping->staff_id)
+                            ->where('company_id', $device->company_id)->lockForUpdate()->first();
+                        if (! $staff) return;
+
+                        $enabled = $staff->employment_ended_at === null && ! $staff->trashed();
+                        $providers->adapterFor($device)->setPersonEnabled($device, $mapping->provider_person_id, $enabled);
+                    });
                 } catch (\Throwable $exception) {
                     report($exception);
                     $failed = true;

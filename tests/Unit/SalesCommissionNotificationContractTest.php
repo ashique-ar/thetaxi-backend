@@ -54,7 +54,7 @@ it('minimizes the delivered payload and retries idempotently through immutable a
 it('exposes only delivery state on the already scoped hold response', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionHoldController.php'));
 
-    expect($controller)->toContain("setAttribute('notification_delivery'")
+    expect($controller)->toContain("'notification_delivery' => \$this->notifications->latestStatus(\$decision->id)")
         ->toContain("'sales.commission-decisions.view-all'")
         ->toContain("'sales.commission-decisions.view-team'")
         ->not->toContain('recipient_user_id');

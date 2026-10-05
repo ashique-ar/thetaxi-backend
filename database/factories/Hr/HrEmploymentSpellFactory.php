@@ -19,8 +19,8 @@ class HrEmploymentSpellFactory extends Factory
      * Define the model's default state.
      *
      * As with {@see \Database\Factories\StaffFactory}, `staff_id` and
-     * `company_id` default independently (a fresh Staff / an existing or
-     * minimal Company) for standalone use. Tests linking a spell to a
+     * `company_id` defaults independently (a fresh Staff / the active
+     * default Company) for standalone use. Tests linking a spell to a
      * specific Staff member should override both to keep them consistent,
      * e.g. `HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $staff->company_id])`.
      *
@@ -32,7 +32,7 @@ class HrEmploymentSpellFactory extends Factory
 
         return [
             'staff_id' => Staff::factory(),
-            'company_id' => fn () => Company::query()->value('id') ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
+            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'employment_type_id' => null,
             'spell_number' => 1,
             'joined_at' => $joinedAt,

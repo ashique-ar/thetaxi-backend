@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionStatementEvent extends BaseModel
+class SalesCommissionStatementEvent extends NonSoftDeletableModel
 {
     protected $fillable = ['statement_id', 'from_version', 'to_version', 'from_status', 'to_status', 'reason', 'idempotency_key', 'actor_user_id', 'occurred_at'];
     protected $casts = ['from_version' => 'integer', 'to_version' => 'integer', 'occurred_at' => 'datetime'];

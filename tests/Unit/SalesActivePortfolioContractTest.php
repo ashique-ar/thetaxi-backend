@@ -26,6 +26,11 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
     $service = file_get_contents(app_path('Services/Sales/SalesPortfolioStatusService.php'));
     $dashboard = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesDashboardController.php'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-performance/sales-performance.component.html'));
+    $portalService = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/services/sales.service.ts'));
+    $portfolioTypeStart = strpos($portalService, 'export interface SalesActivePortfolioDrilldown');
+    $policyTypeStart = strpos($portalService, 'policy: null | {', $portfolioTypeStart);
+    $policyTypeEnd = strpos($portalService, '    };', $policyTypeStart);
+    $policyType = substr($portalService, $policyTypeStart, $policyTypeEnd - $policyTypeStart);
 
     expect($service)
         ->toContain("'historical_reconstruction_required'")
@@ -33,6 +38,8 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
         ->toContain("->whereIn('booking.status', \$statuses)")
         ->toContain("->whereIn('attribution.acquisition_sales_profile_id', \$profileIds)")
         ->toContain("->orWhereIn('attribution.collection_sales_profile_id', \$profileIds)")
+        ->toContain("'policy' => ['version' => (int) \$policy->version]")
+        ->not->toContain("'request_checksum' => \$policy->request_checksum", "'id' => \$policy->id")
         ->toContain("'not_applicable_open_ended'")
         ->toContain("'open_ended_monthly_run_rate_lkr'")
         ->toContain("'open_ended_generated_horizon_lkr'")
@@ -42,5 +49,7 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
         ->and($dashboard)->toContain('public function activePortfolio(')->toContain('dashboardProfileIds(')
         ->and($template)->toContain('Governed active portfolio')
         ->toContain('Open-ended monthly run rate')
-        ->toContain('*hasPermission="\'bookings.view\'"');
+        ->toContain('*hasPermission="\'bookings.view\'"', 'portfolio.policy?.version')
+        ->and($policyType)->toContain('policy: null | {', 'version: number;')
+        ->not->toContain('request_checksum: string;', 'id: string;');
 });

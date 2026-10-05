@@ -5,10 +5,22 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
+
+it('returns the active designated default company for attribution preselection', function () {
+    [$admin, $company] = hr_seed_admin_actor(['name' => 'Default Attribution Company']);
+
+    actingAs($admin, 'api')->getJson('/api/sales/attribution-administration-context')
+        ->assertOk()->assertJsonPath('data.default_company_id', $company->id);
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    actingAs($admin, 'api')->getJson('/api/sales/attribution-administration-context')
+        ->assertOk()->assertJsonPath('data.default_company_id', null);
+});
 
 it('searches and hydrates only companies in the actors effective attribution scope', function () {
     [$admin, $company] = hr_seed_admin_actor(['name' => 'Scoped Attribution Company', 'city' => 'Colombo', 'is_default' => false]);
@@ -28,7 +40,7 @@ it('searches and hydrates only companies in the actors effective attribution sco
     $url = '/api/sales/attribution-company-options';
 
     actingAs($staff->user, 'api')->getJson('/api/sales/attribution-administration-context')->assertOk()
-        ->assertJsonPath('data.default_company_id', $company->id);
+        ->assertJsonPath('data.default_company_id', null);
 
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Attribution Company')
@@ -44,10 +56,10 @@ it('searches and hydrates only companies in the actors effective attribution sco
         ->assertOk()->assertJsonPath('data.data.0.value', $profile->id);
     actingAs($staff->user, 'api')->getJson('/api/sales/attribution-profile-options?purpose=acquisition&cross_company=1&selected_id='.$profile->id)
         ->assertOk()->assertJsonCount(0, 'data.data');
-    $staff->update(['employment_ended_at' => now()]);
-    actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($staff->user, 'api')->getJson($profileUrl.'&selected_id='.$profile->id)->assertForbidden();
     actingAs($staff->user, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
+    DB::table('staff')->where('id', $staff->id)->update(['employment_ended_at' => now()]);
+    actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertForbidden();
+    actingAs($staff->user, 'api')->getJson($profileUrl.'&selected_id='.$profile->id)->assertForbidden();
 });
 
 it('searches and hydrates bounded eligible attribution targets in the requested tenant scope', function () {

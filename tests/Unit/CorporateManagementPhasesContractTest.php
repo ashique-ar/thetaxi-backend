@@ -2,8 +2,6 @@
 
 use Illuminate\Support\Facades\Artisan;
 
-uses(Tests\TestCase::class);
-
 it('keeps management analytics company scoped and separates distance purposes', function () {
     $source = file_get_contents(app_path('Services/CorporateManagementAnalyticsService.php'));
     expect($source)

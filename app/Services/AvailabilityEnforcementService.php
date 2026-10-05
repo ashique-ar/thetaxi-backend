@@ -68,8 +68,7 @@ class AvailabilityEnforcementService
 
     /**
      * Licence expiry check.
-     * Blocking: licence expired before the end of the booking.
-     * Warning: licence expires within the booking period.
+     * Licence expiry is surfaced as a warning so staff can still assign the driver.
      */
     public function checkDriverLicence(Driver $driver, Carbon $bookingEnd): array
     {
@@ -84,12 +83,12 @@ class AvailabilityEnforcementService
         $expiry = Carbon::parse($driver->license_expiry)->endOfDay();
 
         if ($expiry->lt(now())) {
-            $blocking[] = sprintf(
+            $warnings[] = sprintf(
                 'Driver licence expired on %s.',
                 $expiry->format('d M Y')
             );
         } elseif ($expiry->lt($bookingEnd)) {
-            $blocking[] = sprintf(
+            $warnings[] = sprintf(
                 'Driver licence expires on %s, which is before the booking ends on %s.',
                 $expiry->format('d M Y'),
                 $bookingEnd->format('d M Y')
@@ -226,6 +225,14 @@ class AvailabilityEnforcementService
         $blocking = array_merge($blocking, $insuranceResult['blocking_reasons']);
         $warnings = array_merge($warnings,  $insuranceResult['warnings']);
 
+        $revenueLicense = $vehicle->revenueLicenses()->first();
+        if ($revenueLicense?->expiry_date && Carbon::parse($revenueLicense->expiry_date)->endOfDay()->lt($to)) {
+            $warnings[] = sprintf(
+                'Vehicle revenue licence expired on %s.',
+                Carbon::parse($revenueLicense->expiry_date)->format('d M Y')
+            );
+        }
+
         return $this->result(empty($blocking), $blocking, $warnings);
     }
 
@@ -355,9 +362,9 @@ class AvailabilityEnforcementService
         $expiry = Carbon::parse($insurance->{$expiryColumn})->endOfDay();
 
         if ($expiry->lt(now())) {
-            $blocking[] = sprintf('Vehicle insurance expired on %s.', $expiry->format('d M Y'));
+            $warnings[] = sprintf('Vehicle insurance expired on %s.', $expiry->format('d M Y'));
         } elseif ($expiry->lt($bookingEnd)) {
-            $blocking[] = sprintf(
+            $warnings[] = sprintf(
                 'Vehicle insurance expires on %s before the booking ends.',
                 $expiry->format('d M Y')
             );

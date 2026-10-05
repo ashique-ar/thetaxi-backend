@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionRecoveryDecision extends BaseModel
+class SalesCommissionRecoveryDecision extends NonSoftDeletableModel
 {
     protected $fillable = [
         'recovery_case_id', 'decision', 'commission_adjustment_lkr', 'waived_recovery_lkr',

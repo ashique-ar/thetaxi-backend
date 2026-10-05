@@ -32,7 +32,7 @@ use App\Traits\UUID;
  */
 class Company extends BaseModel
 {
-    
+    protected $hidden = ['active_default_guard'];
 
     /**
      * The attributes that are mass assignable.
@@ -144,17 +144,13 @@ class Company extends BaseModel
     }
 
     /**
-     * Get default company location (first company with coordinates)
-     * This is used for calculating delivery/pickup distances
+     * Get the configured active default company, independent of its map coordinates.
      *
      * @return self|null
      */
     public static function getDefaultCompany()
     {
-        return static::where('is_default', true)
-            ->whereNotNull('latitude')
-            ->whereNotNull('longitude')
-            ->first();
+        return app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany();
     }
 
     /**

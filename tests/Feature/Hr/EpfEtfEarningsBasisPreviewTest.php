@@ -100,6 +100,21 @@ it('requires an amount for every earnings category instead of treating missing a
         ->toThrow(ValidationException::class);
 });
 
+it('rejects combined EPF contributions that overflow the supported numeric range', function () {
+    [$service, $company] = approved_epf_etf_policy_fixture([
+        'employee_epf_rate_percent' => 100,
+        'employer_epf_rate_percent' => 100,
+    ]);
+    $earnings = array_fill_keys([
+        'basic_salary', 'cost_of_living_allowance', 'food_allowance', 'holiday_pay',
+        'other_regular_allowances', 'overtime', 'bonus', 'reimbursements',
+    ], 0.0);
+    $earnings['basic_salary'] = PHP_FLOAT_MAX;
+
+    expect(fn () => $service->previewContribution($company->id, $earnings, CarbonImmutable::now()))
+        ->toThrow(ValidationException::class, 'The calculated contribution exceeds the supported numeric range.');
+});
+
 it('returns normalized boolean earnings-basis choices', function () {
     [$service, $company] = approved_epf_etf_policy_fixture(['earnings_basis' => [
         'include_basic_salary' => 1,

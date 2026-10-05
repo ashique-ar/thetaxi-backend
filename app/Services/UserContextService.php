@@ -806,7 +806,18 @@ class UserContextService
                     409,
                     'Former Staff access can only be restored through an approved rehire.'
                 );
-                $contextData = $this->defaultStaffCompany->apply($contextData);
+                $companyId = $existingStaff?->company_id;
+                if (empty($companyId)) {
+                    $contextData = $this->defaultStaffCompany->apply($contextData);
+                    $companyId = $contextData['company_id'] ?? null;
+                }
+                abort_if(empty($companyId), 422, 'Staff context requires an active default or explicit legal entity.');
+                abort_unless(
+                    DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->where('is_active', true)->exists(),
+                    422,
+                    'Staff context requires an active legal entity.'
+                );
+                $contextData['company_id'] = $companyId;
 
                 return Staff::firstOrCreate(
                     ['user_id' => $user->id],
@@ -838,6 +849,9 @@ class UserContextService
         UserContext $userContext,
         array $contextData = []
     ): void {
+        if ($userContext->context_type === 'staff') {
+            unset($contextData['company_id']);
+        }
         $modelClass = match ($userContext->context_type) {
             'customer' => Customer::class,
             'vehicle_owner' => VehicleOwner::class,

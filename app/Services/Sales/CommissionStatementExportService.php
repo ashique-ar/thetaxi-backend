@@ -5,34 +5,55 @@ namespace App\Services\Sales;
 use App\Models\Sales\SalesCommissionStatement;
 use App\Models\Sales\SalesCommissionStatementExport;
 use Barryvdh\DomPDF\Facade\Pdf;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Throwable;
 
 class CommissionStatementExportService
 {
     public function generate(SalesCommissionStatement $statement, string $format, string $key, string $actorUserId): SalesCommissionStatementExport
     {
-        return DB::transaction(function () use ($statement, $format, $key, $actorUserId) {
-            $duplicate = SalesCommissionStatementExport::query()->where('idempotency_key', $key)->first();
-            if ($duplicate) {
-                abort_unless($duplicate->statement_id === $statement->id && $duplicate->format === $format, 422,
-                    'This export key was already used for another statement or format.');
-                return $duplicate;
+        $disk = 'sales_private';
+        $exportPath = null;
+        try {
+            return DB::transaction(function () use ($statement, $format, $key, $actorUserId, $disk, &$exportPath) {
+                $duplicate = SalesCommissionStatementExport::query()->where('idempotency_key', $key)->first();
+                if ($duplicate) {
+                    abort_unless($duplicate->statement_id === $statement->id && $duplicate->format === $format, 422,
+                        'This export key was already used for another statement or format.');
+                    return $duplicate;
+                }
+                $statement = SalesCommissionStatement::query()->with(['lines', 'staff'])->findOrFail($statement->id);
+                $content = $format === 'pdf'
+                    ? Pdf::loadView('sales.commission-statement', ['statement' => $statement])->output()
+                    : $this->csv($statement);
+                $fileName = $statement->statement_number.'.'.$format;
+                $exportId = (string) Str::uuid();
+                $path = 'commission-statements/'.$statement->company_id.'/'.$statement->staff_id.'/'.$exportId.'.'.$format;
+                $exportPath = $path;
+                abort_unless(Storage::disk($disk)->put($path, $content), 500, 'Commission statement export could not be stored.');
+                return SalesCommissionStatementExport::create([
+                    'statement_id' => $statement->id, 'format' => $format, 'disk' => $disk,
+                    'path' => $path, 'file_name' => $fileName, 'file_checksum' => hash('sha256', $content),
+                    'file_size' => strlen($content), 'generated_by' => $actorUserId, 'generated_at' => now(),
+                    'idempotency_key' => $key,
+                ]);
+            });
+        } catch (Throwable $exception) {
+            if ($exportPath && ! DB::table('sales_commission_statement_exports')->where('path', $exportPath)->exists()) {
+                Storage::disk($disk)->delete($exportPath);
             }
-            $statement = SalesCommissionStatement::query()->with('lines')->findOrFail($statement->id);
-            $content = $format === 'pdf'
-                ? Pdf::loadView('sales.commission-statement', ['statement' => $statement])->output()
-                : $this->csv($statement);
-            $fileName = $statement->statement_number.'.'.$format;
-            $path = 'commission-statements/'.$statement->company_id.'/'.$statement->staff_id.'/'.$fileName;
-            Storage::disk('sales_private')->put($path, $content);
-            return SalesCommissionStatementExport::create([
-                'statement_id' => $statement->id, 'format' => $format, 'disk' => 'sales_private',
-                'path' => $path, 'file_name' => $fileName, 'file_checksum' => hash('sha256', $content),
-                'file_size' => strlen($content), 'generated_by' => $actorUserId, 'generated_at' => now(),
-                'idempotency_key' => $key,
-            ]);
-        });
+            if (! $exception instanceof QueryException) throw $exception;
+
+            $duplicate = SalesCommissionStatementExport::query()->where('idempotency_key', $key)->first();
+            if (! $duplicate) throw $exception;
+            abort_unless($duplicate->statement_id === $statement->id && $duplicate->format === $format, 422,
+                'This export key was already used for another statement or format.');
+
+            return $duplicate;
+        }
     }
 
     private function csv(SalesCommissionStatement $statement): string

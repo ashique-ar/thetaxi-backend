@@ -129,7 +129,7 @@ class SalesAccessScope
     ): Builder {
         $ids = $this->profileIds($user, $allPermission, $teamPermission, $companyId);
 
-        return $ids === null ? $query : $query->whereIn('id', $ids);
+        return $ids === null ? $query : $query->whereIn($query->getModel()->qualifyColumn('id'), $ids);
     }
 
     public function assertProfile(

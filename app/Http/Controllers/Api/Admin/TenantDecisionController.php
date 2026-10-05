@@ -17,7 +17,7 @@ class TenantDecisionController extends Controller
     }
     private function scope(Request $r, string $id): void
     {
-        abort_unless(DB::table('companies')->where('id', $id)->whereNull('deleted_at')->exists(), 404, 'Legal entity is unavailable.');
+        abort_unless(DB::table('companies')->where('id', $id)->whereNull('deleted_at')->where('is_active', true)->exists(), 404, 'Legal entity is unavailable.');
         $ids = DB::table('staff')->where('user_id', $r->user()->id)->whereNull('deleted_at')->whereNull('employment_ended_at')->pluck('company_id')->all();
         abort_unless($r->user()->can('tenant-decisions.manage-all') || in_array($id, $ids, true), 403, 'Decision is outside your legal entity.');
     }

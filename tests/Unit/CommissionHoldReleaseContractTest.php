@@ -44,7 +44,7 @@ it('returns permission-aware canonical remediation without exposing unsafe histo
     expect($controller)->toContain("'category' => ['nullable', Rule::in(\$this->remediation->categories())]")
         ->toContain("whereIn('hold_code', \$this->remediation->codesForCategory(\$category))")
         ->toContain("whereNotIn('hold_code', \$this->remediation->knownCodes())")
-        ->toContain("setAttribute('remediation'")
+        ->toContain("'remediation' => Arr::only(")
         ->and($remediation)->toContain("'historical_decision_immutable' => true")
         ->toContain("'action_path' => \$authorized ? \$actionPath : null")
         ->toContain('userHasAnyForInternalContext')

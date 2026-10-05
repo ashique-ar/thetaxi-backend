@@ -24,19 +24,17 @@ class PaymentFinalityController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
             'payment_method' => ['nullable', 'string', 'max:50'],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
         ]);
+        $this->assertCompanyScope($request, $data['company_id']);
         $query = BookingPaymentFinalityPolicy::query()
             ->leftJoin('companies', 'companies.id', '=', 'booking_payment_finality_policies.company_id')
             ->select(['booking_payment_finality_policies.*', 'companies.name as company_name']);
-        if (! $request->user()->can('sales.payment-finality.manage-all')) {
-            $query->whereIn('booking_payment_finality_policies.company_id', $this->actorCompanyIds($request));
-        }
 
         return response()->json(['status' => 'success', 'data' => $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('booking_payment_finality_policies.company_id', $id))
+            ->where('booking_payment_finality_policies.company_id', $data['company_id'])
             ->when($data['payment_method'] ?? null, fn ($q, $method) => $q->where('booking_payment_finality_policies.payment_method', strtolower($method)))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('booking_payment_finality_policies.status', $status))
             ->orderBy('booking_payment_finality_policies.payment_method')->orderByDesc('booking_payment_finality_policies.version')->get()]);
@@ -60,7 +58,7 @@ class PaymentFinalityController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($q) => $q->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')
             ->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => [
             'value' => (string) $company->id,
@@ -85,10 +83,10 @@ class PaymentFinalityController extends Controller
 
     public function receipts(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $this->assertCompanyScope($request, $data['company_id']);
         $query = BookingPaymentReceipt::query()->join('bookings', 'bookings.id', '=', 'booking_payment_receipts.booking_id')
-            ->when(! $request->user()->can('sales.payment-finality.manage-all'), fn ($q) => $q->whereIn('booking_payment_receipts.company_id', $this->actorCompanyIds($request)))
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('booking_payment_receipts.company_id', $id))
+            ->where('booking_payment_receipts.company_id', $data['company_id'])
             ->when($data['finality_status'] ?? null, fn ($q, $status) => $q->where('booking_payment_receipts.finality_status', $status))
             ->select(['booking_payment_receipts.id', 'booking_payment_receipts.company_id', 'booking_payment_receipts.booking_id', 'bookings.booking_number', 'booking_payment_receipts.source_amount', 'booking_payment_receipts.source_currency', 'booking_payment_receipts.lkr_amount', 'booking_payment_receipts.payment_method', 'booking_payment_receipts.reference', 'booking_payment_receipts.received_at', 'booking_payment_receipts.finality_status', 'booking_payment_receipts.finalized_at'])
             ->addSelect([
@@ -146,8 +144,9 @@ class PaymentFinalityController extends Controller
         $this->validatePendingClearancePolicy($data);
 
         $policy = DB::transaction(function () use ($request, $data) {
-            $company = DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->lockForUpdate()->first();
-            abort_unless($company, 422, 'Select an available legal entity.');
+            $company = DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Select an active legal entity.');
             $version = (int) BookingPaymentFinalityPolicy::query()
                 ->where('company_id', $data['company_id'])->where('payment_method', $data['payment_method'])
                 ->lockForUpdate()->max('version') + 1;
@@ -162,7 +161,9 @@ class PaymentFinalityController extends Controller
         $this->assertCompanyScope($request, $policy->company_id);
         abort_unless($policy->status === 'draft', 422, 'Only draft finality policies can be approved.');
         DB::transaction(function () use ($policy, $request): void {
-            DB::table('companies')->where('id', $policy->company_id)->lockForUpdate()->first();
+            $company = DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'The payment-finality policy legal entity is no longer active.');
             $policy = BookingPaymentFinalityPolicy::query()->lockForUpdate()->findOrFail($policy->id);
             abort_unless($policy->status === 'draft', 422, 'Only draft finality policies can be approved.');
             $this->validatePendingClearancePolicy($policy->toArray());

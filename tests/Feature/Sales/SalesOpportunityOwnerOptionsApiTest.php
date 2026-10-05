@@ -4,7 +4,6 @@ use App\Models\Company;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesOpportunity;
-use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -63,8 +62,7 @@ it('searches and hydrates only active scoped opportunity owners for companies wi
     actingAs($admin, 'api')->getJson($url.'?company_id='.$unconfiguredCompany->id)
         ->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($admin, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
-    actingAs($admin, 'api')->getJson('/api/sales/opportunity-administration-context')
-        ->assertOk()->assertJsonMissingPath('data.profiles');
+    actingAs($admin, 'api')->getJson('/api/sales/opportunity-administration-context')->assertNotFound();
 });
 
 it('rejects a forged contextless CRM owner before recording an opportunity', function () {

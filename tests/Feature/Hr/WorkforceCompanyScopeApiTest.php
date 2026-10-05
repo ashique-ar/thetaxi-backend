@@ -107,15 +107,17 @@ it('does not guess a Workforce company when several authorized entities have no 
         ->assertOk()->assertJsonPath('data.company_id', $selected->id);
 });
 
-it('uses the sole authorized Workforce company when no default exists', function () {
+it('requires a configured default or explicit selection for a sole Workforce company', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $role = Role::create(['name' => 'workforce_single_company_scope_tester', 'guard_name' => 'api']);
-    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'hr.payroll-inputs.view', 'staff.view-all']);
     $user->assignRole($role);
     $company = Company::create(['name' => 'Single Workforce Choice', 'is_default' => false]);
 
-    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/payroll-inputs')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$company->id)
         ->assertOk()->assertJsonPath('data.company_id', $company->id);
 });
 

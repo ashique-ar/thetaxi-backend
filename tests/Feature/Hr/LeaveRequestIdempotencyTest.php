@@ -1,5 +1,6 @@
 <?php
 
+use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Leave\LeaveWorkflowService;
@@ -60,4 +61,24 @@ it('returns the committed leave request on retry and rejects changed evidence fo
         ->toThrow(HttpException::class);
     expect(fn () => $service->submit($payload, User::factory()->create()->id))
         ->toThrow(HttpException::class);
+
+    DB::table('hr_leave_policies')->where('id', $policyId)->update([
+        'rules' => json_encode(['minutes_per_day' => 480, 'weekend_days' => ['saturday', 'sunday'], 'negative_balance_limit_minutes' => 1440], JSON_THROW_ON_ERROR),
+    ]);
+    $nextStart = $start->addWeek();
+    $otherCompany = Company::create(['name' => 'Other Leave Request Company', 'is_default' => false]);
+    DB::table('hr_leave_requests')->insert([
+        'id' => (string) Str::uuid(), 'company_id' => $otherCompany->id, 'staff_id' => $staff->id,
+        'leave_type_id' => $typeId, 'policy_id' => $policyId, 'start_date' => $nextStart->toDateString(), 'end_date' => $nextStart->toDateString(),
+        'unit' => 'day', 'requested_minutes' => 480, 'reserved_minutes' => 480, 'status' => 'pending_approval',
+        'reason' => 'Foreign tenant overlap', 'calculation_snapshot' => '{}', 'coverage_snapshot' => 'null',
+        'request_checksum' => str_repeat('c', 64), 'idempotency_key' => 'foreign-leave-overlap', 'requested_by' => $user->id,
+        'approval_level' => 1, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $scopedRequest = $service->submit(array_replace($payload, [
+        'start_date' => $nextStart->toDateString(), 'end_date' => $nextStart->toDateString(),
+        'reason' => 'Selected company leave request.', 'idempotency_key' => 'selected-company-leave-overlap',
+    ]), $user->id);
+    expect($scopedRequest->company_id)->toBe($company->id)
+        ->and($scopedRequest->status)->toBe('pending_approval');
 });

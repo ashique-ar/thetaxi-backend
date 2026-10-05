@@ -384,8 +384,7 @@ class SalesBookingAttributionController extends Controller
         $authorizedCompanies = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->get(['id', 'is_default']);
-        $defaultCompanyId = $authorizedCompanies->firstWhere('is_default', true)?->id
-            ?? ($authorizedCompanies->count() === 1 ? $authorizedCompanies->first()->id : null);
+        $defaultCompanyId = $authorizedCompanies->firstWhere('is_default', true)?->id;
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
             'default_company_id' => $defaultCompanyId,
@@ -406,7 +405,7 @@ class SalesBookingAttributionController extends Controller
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($company) => $company->where('name', 'like', $term)->orWhere('city', 'like', $term));
         }
-        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
+        $rows = $query->select(['id', 'name', 'city', 'is_active', 'is_default'])->orderByDesc('is_active')->orderByDesc('is_default')->orderBy('name')->orderBy('id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
@@ -433,6 +432,9 @@ class SalesBookingAttributionController extends Controller
         $at = isset($data['effective_at']) ? Carbon::parse($data['effective_at']) : now();
         $eligibility = $data['purpose'].'_eligible';
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+        if (($data['cross_company'] ?? false) && ! $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')) {
+            $companyIds = [];
+        }
         $query = SalesProfile::query()
             ->select('sales_profiles.*', 'companies.name as company_name')
             ->join('companies', 'companies.id', '=', 'sales_profiles.company_id')

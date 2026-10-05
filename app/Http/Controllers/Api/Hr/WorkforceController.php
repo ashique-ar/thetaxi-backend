@@ -32,7 +32,17 @@ class WorkforceController extends Controller
 
     public function references(Request $r): JsonResponse
     {
-        $companyId = $this->company($r, $r->input('company_id'));
+        if ($r->filled('company_id')) {
+            $companyId = $this->company($r, $r->input('company_id'));
+        } elseif (! $r->user()->can('staff.view-all')) {
+            $companyId = $this->company($r, null);
+        } else {
+            $allowed = $this->authorizedCompanyIds($r);
+            abort_unless($allowed->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
+            $companyId = DB::table('companies')->whereIn('id', $allowed)
+                ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
+            abort_unless($companyId, 422, 'Select an authorized legal entity.');
+        }
         return response()->json(['status' => 'success', 'data' => [
             'company_id' => $companyId,
         ]]);
@@ -220,21 +230,55 @@ class WorkforceController extends Controller
     public function leaveRequests(Request $r, StaffAccessService $access): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')->whereIn('request.staff_id', $staff)->select(['request.id', 'request.staff_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'type.paid', 'request.start_date', 'request.end_date', 'request.unit', 'request.requested_minutes', 'request.status', 'request.current_approver_staff_id', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at', 'request.created_at'])->when($r->status, fn($b, $v) => $b->where('request.status', $v))->latest('request.created_at');
-        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+        $q = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
+            ->whereIn('request.staff_id', $staff)
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->whereColumn('staff.company_id', 'request.company_id'))
+            ->whereColumn('type.company_id', 'request.company_id')
+            ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->whereColumn('hr_leave_policies.company_id', 'request.company_id')
+                ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
+            ->select(['request.id', 'type.name as leave_type_name', 'request.start_date', 'request.end_date', 'request.requested_minutes', 'request.status', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at'])
+            ->when($r->status, fn ($query, $status) => $query->where('request.status', $status))->latest('request.created_at');
+        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows->getCollection()->transform(fn ($row) => [
+            'id' => $row->id,
+            'leave_type_name' => $row->leave_type_name,
+            'start_date' => $row->start_date,
+            'end_date' => $row->end_date,
+            'requested_minutes' => $row->requested_minutes,
+            'status' => $row->status,
+            'is_mine' => $row->requested_by === $r->user()->id,
+            'actual_return_date' => $row->actual_return_date,
+            'recalled_at' => $row->recalled_at,
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function leaveBalances(Request $r, StaffAccessService $access, LeaveWorkflowService $service): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
         $asOf = $r->date('as_of')?->toDateString() ?? now()->toDateString();
-        $rows = DB::table('hr_leave_balance_accounts as account')->join('hr_leave_types as type', 'type.id', '=', 'account.leave_type_id')->whereIn('account.staff_id', $staff)->select(['account.id', 'account.staff_id', 'type.code', 'type.name', 'account.unit'])->get()->map(fn($row) => (array) $row + ['balance_minutes' => $service->balance($row->id, $asOf), 'as_of' => $asOf]);
+        $rows = DB::table('hr_leave_balance_accounts as account')->join('hr_leave_types as type', 'type.id', '=', 'account.leave_type_id')
+            ->whereIn('account.staff_id', $staff)
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'account.staff_id')->whereColumn('staff.company_id', 'account.company_id'))
+            ->whereColumn('type.company_id', 'account.company_id')
+            ->select(['account.id', 'account.staff_id', 'type.code', 'type.name', 'account.unit'])->get()
+            ->map(fn ($row) => (array) $row + ['balance_minutes' => $service->balance($row->id, $asOf), 'as_of' => $asOf]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function teamCalendar(Request $r, StaffAccessService $access): JsonResponse
     {
         $d = $r->validate(['from' => ['required', 'date'], 'to' => ['required', 'date', 'after_or_equal:from']]);
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        $rows = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')->whereIn('request.staff_id', $staff)->where('request.status', 'approved')->whereDate('request.start_date', '<=', $d['to'])->whereDate('request.end_date', '>=', $d['from'])->select(['request.id', 'request.staff_id', 'request.start_date', 'request.end_date', 'type.name as absence_type', 'type.medical_confidential'])->get()->map(fn($row) => ['id' => $row->id, 'staff_id' => $row->staff_id, 'start_date' => $row->start_date, 'end_date' => $row->end_date, 'absence_type' => $row->medical_confidential ? 'Unavailable' : $row->absence_type]);
+        $rows = DB::table('hr_leave_requests as request')->join('hr_leave_types as type', 'type.id', '=', 'request.leave_type_id')
+            ->whereIn('request.staff_id', $staff)->where('request.status', 'approved')
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'request.staff_id')->whereColumn('staff.company_id', 'request.company_id'))
+            ->whereColumn('type.company_id', 'request.company_id')
+            ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_leave_policies')
+                ->whereColumn('hr_leave_policies.id', 'request.policy_id')->whereColumn('hr_leave_policies.company_id', 'request.company_id')
+                ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
+            ->whereDate('request.start_date', '<=', $d['to'])->whereDate('request.end_date', '>=', $d['from'])
+            ->select(['request.id', 'request.staff_id', 'request.start_date', 'request.end_date', 'type.name as absence_type', 'type.medical_confidential'])
+            ->get()->map(fn ($row) => ['id' => $row->id, 'staff_id' => $row->staff_id, 'start_date' => $row->start_date, 'end_date' => $row->end_date, 'absence_type' => $row->medical_confidential ? 'Unavailable' : $row->absence_type]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function submitLeave(Request $r, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
@@ -377,8 +421,8 @@ class WorkforceController extends Controller
                 ->where(fn ($dates) => isset($d['effective_until']) ? $dates->whereNull('effective_until')->orWhereDate('effective_until', '>=', $d['effective_until']) : $dates->whereNull('effective_until'))->first();
             abort_unless($policy, 422, 'An approved policy must cover the full assignment period.');
             $leaveType = $policy->leave_type_id;
-            $sameTypePolicies = DB::table('hr_leave_policies')->where('leave_type_id', $leaveType)->select('id');
-            $overlap = DB::table('hr_leave_policy_assignments')->where('staff_id', $d['staff_id'])->whereIn('policy_id', $sameTypePolicies)->whereDate('effective_from', '<', $d['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $d['effective_from']))->exists();
+            $sameTypePolicies = DB::table('hr_leave_policies')->where('company_id', $d['company_id'])->where('leave_type_id', $leaveType)->select('id');
+            $overlap = DB::table('hr_leave_policy_assignments')->where('company_id', $d['company_id'])->where('staff_id', $d['staff_id'])->whereIn('policy_id', $sameTypePolicies)->whereDate('effective_from', '<', $d['effective_until'] ?? '9999-12-31')->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $d['effective_from']))->exists();
             abort_if($overlap, 409, 'An overlapping policy assignment exists for this leave type.');
             $id = (string) Str::uuid();
             DB::table('hr_leave_policy_assignments')->insert($d + ['id' => $id, 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
@@ -397,8 +441,26 @@ class WorkforceController extends Controller
     public function workRequests(Request $r, StaffAccessService $access): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        $q = DB::table('hr_work_requests')->whereIn('staff_id', $staff)->select(['id', 'staff_id', 'request_kind', 'starts_at', 'ends_at', 'requested_minutes', 'rate_category', 'settlement_kind', 'status', 'requested_by', 'decided_at', 'created_at'])->when($r->request_kind, fn($b, $v) => $b->where('request_kind', $v))->when($r->status, fn($b, $v) => $b->where('status', $v))->latest('starts_at');
-        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+        $q = DB::table('hr_work_requests')->whereIn('staff_id', $staff)
+            ->whereExists(fn ($scope) => $scope->selectRaw('1')->from('staff')->whereColumn('staff.id', 'hr_work_requests.staff_id')->whereColumn('staff.company_id', 'hr_work_requests.company_id'))
+            ->whereExists(fn ($policy) => $policy->selectRaw('1')->from('hr_work_request_policies')
+                ->whereColumn('hr_work_request_policies.id', 'hr_work_requests.policy_id')->whereColumn('hr_work_request_policies.company_id', 'hr_work_requests.company_id')
+                ->whereColumn('hr_work_request_policies.request_kind', 'hr_work_requests.request_kind'))
+            ->select(['id', 'request_kind', 'starts_at', 'ends_at', 'requested_minutes', 'settlement_kind', 'status', 'requested_by'])
+            ->when($r->request_kind, fn ($query, $kind) => $query->where('request_kind', $kind))
+            ->when($r->status, fn ($query, $status) => $query->where('status', $status))->latest('starts_at');
+        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows->getCollection()->transform(fn ($row) => [
+            'id' => $row->id,
+            'request_kind' => $row->request_kind,
+            'starts_at' => $row->starts_at,
+            'ends_at' => $row->ends_at,
+            'requested_minutes' => $row->requested_minutes,
+            'settlement_kind' => $row->settlement_kind,
+            'status' => $row->status,
+            'is_mine' => $row->requested_by === $r->user()->id,
+        ]);
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function submitWork(Request $r, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
@@ -456,7 +518,23 @@ class WorkforceController extends Controller
     public function timesheets(Request $r, StaffAccessService $access): JsonResponse
     {
         $staff = $access->scope(Staff::query(), $r->user())->select('id');
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_timesheets')->whereIn('staff_id', $staff)->latest('period_start')->paginate($r->integer('per_page', 50))]);
+        $rows = DB::table('hr_timesheets as timesheet')->whereIn('timesheet.staff_id', $staff)
+            ->whereExists(fn ($query) => $query->selectRaw('1')->from('staff')
+                ->whereColumn('staff.id', 'timesheet.staff_id')
+                ->whereColumn('staff.company_id', 'timesheet.company_id'))
+            ->select(['timesheet.id', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
+            ->latest('timesheet.period_start')->paginate($r->integer('per_page', 50));
+        $rows->getCollection()->transform(fn ($row) => [
+            'id' => $row->id,
+            'period_start' => $row->period_start,
+            'period_end' => $row->period_end,
+            'status' => $row->status,
+            'version' => $row->version,
+            'submitted_at' => $row->submitted_at,
+            'can_decide' => $row->submitted_by !== $r->user()->id,
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function saveTimesheet(Request $r, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
@@ -466,7 +544,7 @@ class WorkforceController extends Controller
         abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and timesheet legal entities must match.');
         $row = $service->saveTimesheet($d, $r->user()->id);
         $projection->timesheet($row, $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => $row], 201);
+        return response()->json(['status' => 'success', 'data' => ['id' => $row->id, 'status' => $row->status, 'version' => $row->version]], 201);
     }
     public function transitionTimesheet(Request $r, string $id, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
@@ -484,12 +562,20 @@ class WorkforceController extends Controller
         }
         $row = $service->transitionTimesheet($id, $d['action'], $d['reason'], $r->user()->id);
         $projection->timesheet($row, $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => $row]);
+        return response()->json(['status' => 'success', 'data' => ['id' => $row->id, 'status' => $row->status, 'version' => $row->version]]);
     }
-    public function payrollInputs(Request $r): JsonResponse
+    public function payrollInputs(Request $r, StaffAccessService $access): JsonResponse
     {
-        $company = $this->company($r, $r->input('company_id'));
-        $q = DB::table('hr_payroll_input_facts')->where('company_id', $company)->when($r->staff_id, fn($b, $v) => $b->where('staff_id', $v))->when($r->status, fn($b, $v) => $b->where('status', $v))->latest('effective_date');
+        $data = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid']]);
+        $company = $this->company($r, $data['company_id'] ?? null);
+        $staff = $access->scope(Staff::query()->where('company_id', $company)->select('staff.id'), $r->user());
+        $q = DB::table('hr_payroll_input_facts')->where('company_id', $company)->whereIn('staff_id', $staff)
+            ->when($data['staff_id'] ?? null, fn ($query, $staffId) => $query->where('staff_id', $staffId))
+            ->when($r->status, fn ($query, $status) => $query->where('status', $status))
+            ->latest('effective_date')->select([
+                'id', 'staff_id', 'fact_kind', 'effective_date', 'quantity_minutes',
+                'quantity_units', 'rate_category', 'status', 'created_at', 'updated_at',
+            ]);
         return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
     }
 
@@ -520,7 +606,7 @@ class WorkforceController extends Controller
             abort_unless($allowed->contains($id), 403, 'Workforce data is outside your legal entity.');
             return $id;
         }
-        if ($allowed->count() === 1) return (string) $allowed->first();
+        if ($allowed->count() === 1 && ! $r->user()->can('staff.view-all')) return (string) $allowed->first();
 
         $defaultCompanyId = DB::table('companies')->whereIn('id', $allowed)
             ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');

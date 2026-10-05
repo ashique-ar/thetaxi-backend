@@ -30,7 +30,7 @@ class HrEmploymentAssignmentFactory extends Factory
         return [
             'employment_spell_id' => HrEmploymentSpell::factory(),
             'staff_id' => Staff::factory(),
-            'company_id' => fn () => Company::query()->value('id') ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
+            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'position_id' => null,
             'organization_unit_id' => null,
             'manager_staff_id' => null,

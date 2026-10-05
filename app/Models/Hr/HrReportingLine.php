@@ -2,9 +2,10 @@
 
 namespace App\Models\Hr;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableTrackedModel;
+use Spatie\Activitylog\Support\LogOptions;
 
-class HrReportingLine extends BaseModel
+class HrReportingLine extends NonSoftDeletableTrackedModel
 {
     protected $fillable = [
         'company_id', 'manager_staff_id', 'member_staff_id', 'line_type',
@@ -17,4 +18,14 @@ class HrReportingLine extends BaseModel
         'effective_until' => 'date',
         'version' => 'integer',
     ];
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['company_id', 'line_type', 'status'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->dontLogIfAttributesChangedOnly(['updated_at', 'created_at'])
+            ->useLogName('HrReportingLine');
+    }
 }

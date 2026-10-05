@@ -19,8 +19,8 @@ class StaffFactory extends Factory
      *
      * `company_id` is nullable on the `staff` table itself, but almost every
      * HR feature (People Core scoping, attendance device mapping, etc.)
-     * requires it to be set, so this factory defaults it to an existing
-     * Company row (or creates a minimal one) rather than leaving it null.
+     * requires it, so this factory defaults to the active default Company
+     * (creating one for the fixture when absent) rather than guessing.
      * Tests that need a specific legal entity should still override it
      * explicitly, e.g. `Staff::factory()->create(['company_id' => $company->id])`,
      * so the Staff lands in the same company as the acting user.
@@ -31,7 +31,7 @@ class StaffFactory extends Factory
     {
         return [
             'user_id' => User::factory(),
-            'company_id' => fn () => Company::query()->value('id') ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
+            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'staff_type' => fake()->randomElement(['operator', 'driver-coordinator', 'supervisor', 'agent', 'accountant']),
             'code' => 'STF-'.fake()->unique()->numerify('#####'),
             'nic' => null,

@@ -72,7 +72,8 @@ class SmsManagementController extends Controller
 
     public function overview(Request $request): JsonResponse
     {
-        $overview = $this->smsService->getOverview();
+        $company = $this->campaignCompany($request);
+        $overview = $this->smsService->getOverview($company->id);
         $canManageMessages = $this->canManageMessages($request);
         $overview['recent_messages'] = collect($overview['recent_messages'] ?? [])
             ->map(fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages))
@@ -210,6 +211,7 @@ class SmsManagementController extends Controller
 
     public function send(Request $request): JsonResponse
     {
+        $this->campaignCompany($request);
         $validator = Validator::make($request->all(), [
             'message' => ['required', 'string'],
             'sender_mask' => ['nullable', 'string', 'max:50'],
@@ -243,6 +245,7 @@ class SmsManagementController extends Controller
 
     public function sendTest(Request $request): JsonResponse
     {
+        $this->campaignCompany($request);
         $data = $request->validate([
             'recipient' => ['required', 'string'],
             'message' => ['nullable', 'string'],
@@ -266,7 +269,8 @@ class SmsManagementController extends Controller
 
     public function messages(Request $request): JsonResponse
     {
-        $messages = $this->smsService->getMessages($request->all());
+        $company = $this->campaignCompany($request);
+        $messages = $this->smsService->getMessages($request->all(), $company->id);
         $canManageMessages = $this->canManageMessages($request);
         $messages->setCollection($messages->getCollection()->map(
             fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages)
@@ -286,6 +290,7 @@ class SmsManagementController extends Controller
 
     public function showMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
+        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
         $smsMessage->loadMissing(['booking:id,booking_number', 'bookingItem:id,booking_id,trip_number']);
         return response()->json([
             'status' => 'success',
@@ -298,11 +303,12 @@ class SmsManagementController extends Controller
 
     public function complianceReport(Request $request): JsonResponse
     {
+        $company = $this->campaignCompany($request);
         $data = $request->validate(['days' => ['nullable', 'integer', 'min:1', 'max:365']]);
 
         return response()->json([
             'status' => 'success',
-            'data' => $this->smsService->getTransactionalComplianceReport((int) ($data['days'] ?? 30)),
+            'data' => $this->smsService->getTransactionalComplianceReport((int) ($data['days'] ?? 30), $company->id),
         ]);
     }
 
@@ -378,6 +384,7 @@ class SmsManagementController extends Controller
 
     public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
     {
+        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
         $data = $request->validate(['reason' => ['required', 'string', 'min:3', 'max:500']]);
 
         try {
@@ -504,8 +511,9 @@ class SmsManagementController extends Controller
         }
     }
 
-    public function checkMessageStatus(SmsMessage $smsMessage): JsonResponse
+    public function checkMessageStatus(Request $request, SmsMessage $smsMessage): JsonResponse
     {
+        abort_unless($smsMessage->company_id === $this->campaignCompany($request)->id, 404);
         try {
             return response()->json([
                 'status' => 'success',
@@ -522,6 +530,7 @@ class SmsManagementController extends Controller
 
     public function reconcileProcessing(Request $request): JsonResponse
     {
+        $company = $this->campaignCompany($request);
         $data = $request->validate([
             'older_than_minutes' => ['nullable', 'integer', 'min:5', 'max:1440'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
@@ -532,7 +541,8 @@ class SmsManagementController extends Controller
             'message' => 'Stale processing messages checked against the provider without resending',
             'data' => $this->smsService->reconcileStaleProcessing(
                 (int) ($data['older_than_minutes'] ?? 15),
-                (int) ($data['limit'] ?? 100)
+                (int) ($data['limit'] ?? 100),
+                $company->id,
             ),
         ]);
     }

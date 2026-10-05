@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionBusinessCalendar extends BaseModel
+class SalesCommissionBusinessCalendar extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'code', 'name', 'timezone', 'weekly_working_days', 'effective_from',

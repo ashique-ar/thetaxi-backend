@@ -9,6 +9,7 @@ use App\Models\Sales\SalesCommissionStatement;
 use App\Models\Sales\SalesCommissionStatementEvent;
 use App\Models\Sales\SalesCommissionAccountingDelivery;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
@@ -22,20 +23,23 @@ class CommissionPayoutService
 
     public function pay(array $statementIds, array $data, string $actorUserId): SalesCommissionPayout
     {
-        return DB::transaction(function () use ($statementIds, $data, $actorUserId) {
-            $checksum = $this->checksum(['statement_ids' => array_values($statementIds), ...$data]);
+        $checksum = $this->checksum(['statement_ids' => array_values($statementIds), ...$data]);
+        try {
+            return DB::transaction(function () use ($statementIds, $data, $actorUserId, $checksum) {
             $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout key was already used with different facts.');
                 return $duplicate;
             }
             $statements = SalesCommissionStatement::query()->whereIn('id', $statementIds)
-                ->orderBy('period_end')->lockForUpdate()->get();
+                ->orderBy('id')->lockForUpdate()->get();
             if ($statements->count() !== count(array_unique($statementIds))) {
                 throw ValidationException::withMessages(['statement_ids' => ['One or more statements no longer exist.']]);
             }
             abort_if($statements->pluck('company_id')->unique()->count() !== 1 || $statements->pluck('staff_id')->unique()->count() !== 1,
                 422, 'A payout cannot cross legal entities or Staff beneficiaries.');
+            $this->assertFrozenProfileBeneficiaries($statements);
+            $statements = $statements->sortBy([['period_end', 'asc'], ['id', 'asc']])->values();
             abort_unless($this->policySettings->featureEnabled((string) $statements->first()->company_id, 'payouts'), 409,
                 'Commission payouts are not activated for this legal entity.');
             abort_if($statements->contains(fn ($statement) => ! in_array($statement->status, ['approved', 'partially_paid'], true)),
@@ -97,14 +101,23 @@ class CommissionPayoutService
                     'accounting_delivery_required' => true, 'payroll_adapter_used' => false,
                 ], $payout->paid_at, $data['idempotency_key']);
             return $payout;
-        });
+            });
+        } catch (QueryException $exception) {
+            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
+            if (! $duplicate) throw $exception;
+            abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
+                'This payout key was already used with different facts.');
+
+            return $duplicate;
+        }
     }
 
     public function reverse(SalesCommissionPayout $original, array $data, string $actorUserId): SalesCommissionPayout
     {
-        return DB::transaction(function () use ($original, $data, $actorUserId) {
+        $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
+        try {
+            return DB::transaction(function () use ($original, $data, $actorUserId, $checksum) {
             $original = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($original->id);
-            $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
             $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout reversal key was already used with different facts.');
@@ -120,6 +133,20 @@ class CommissionPayoutService
                 ->where('subject_type', 'commission_payout')->where('subject_id', $original->id)->exists(), 422,
                 'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');
             $allocations = SalesCommissionPayoutAllocation::query()->where('payout_id', $original->id)->lockForUpdate()->get();
+            abort_if($allocations->isEmpty(), 422, 'A payout without statement allocations cannot be reversed.');
+            $statementIds = $allocations->pluck('statement_id')->unique();
+            $statements = SalesCommissionStatement::query()->whereIn('id', $statementIds)->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+            abort_if($statements->count() !== $statementIds->count()
+                || $statements->contains(fn ($statement) => (string) $statement->company_id !== (string) $original->company_id
+                    || (string) $statement->staff_id !== (string) $original->staff_id),
+                422, 'Payout reversal allocations must match the original company and Staff beneficiary.');
+            $this->assertFrozenProfileBeneficiaries($statements);
+            $allocationTotal = round((float) $allocations->sum('amount_lkr'), 4);
+            abort_if($allocations->contains(fn ($allocation) => (float) $allocation->amount_lkr <= 0)
+                || $allocationTotal !== round((float) $original->amount_lkr, 4),
+                422, 'Payout reversal allocations must reconcile to the original payout amount.');
+            abort_if($allocations->contains(fn ($allocation) => (float) $statements->get($allocation->statement_id)->paid_lkr < (float) $allocation->amount_lkr),
+                422, 'Payout reversal allocation exceeds its statement paid balance.');
             $reversal = SalesCommissionPayout::create([
                 'company_id' => $original->company_id, 'staff_id' => $original->staff_id,
                 'payout_number' => 'SCR-'.now()->format('YmdHis').'-'.strtoupper(substr((string) Str::uuid(), 0, 6)),
@@ -132,7 +159,7 @@ class CommissionPayoutService
                 'request_payload_checksum' => $checksum,
             ]);
             foreach ($allocations as $allocation) {
-                $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($allocation->statement_id);
+                $statement = $statements->get($allocation->statement_id);
                 $fromStatus = $statement->status; $fromVersion = $statement->state_version;
                 $newPaid = max(0, round((float) $statement->paid_lkr - (float) $allocation->amount_lkr, 4));
                 $available = max(0, round((float) $statement->net_payable_lkr - (float) $statement->contested_hold_lkr, 4));
@@ -152,13 +179,35 @@ class CommissionPayoutService
                     'payment_reference' => $reversal->payment_reference, 'accounting_delivery_required' => true,
                 ], $reversal->paid_at, $data['idempotency_key']);
             return $reversal;
-        });
+            });
+        } catch (QueryException $exception) {
+            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
+            if (! $duplicate) throw $exception;
+            abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
+                'This payout reversal key was already used with different facts.');
+
+            return $duplicate;
+        }
     }
 
     public function recordAccountingDelivery(SalesCommissionPayout $payout, array $data, string $actorUserId): SalesCommissionAccountingDelivery
     {
-        return DB::transaction(function () use ($payout, $data, $actorUserId) {
+        try {
+            return DB::transaction(function () use ($payout, $data, $actorUserId) {
             $payout = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($payout->id);
+            $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+            if ($duplicate) {
+                $checksum = $this->checksum([
+                    'company_id' => (string) $payout->company_id,
+                    'payout_id' => (string) $payout->id,
+                    'event_type' => $duplicate->event_type,
+                    ...$data,
+                ]);
+                abort_unless($duplicate->request_payload_checksum
+                    && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
+                    'This accounting-delivery key is already bound to different or unverified facts.');
+                return $duplicate;
+            }
             $eventType = $payout->status === 'reversal' ? 'payout_reversal' : 'payout';
             $checksum = $this->checksum([
                 'company_id' => (string) $payout->company_id,
@@ -166,13 +215,6 @@ class CommissionPayoutService
                 'event_type' => $eventType,
                 ...$data,
             ]);
-            $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
-            if ($duplicate) {
-                abort_unless($duplicate->request_payload_checksum
-                    && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
-                    'This accounting-delivery key is already bound to different or unverified facts.');
-                return $duplicate;
-            }
             abort_if($payout->accounting_status === 'delivered', 409,
                 'Accounting delivery is already accepted; its status cannot be overwritten.');
             if ($data['status'] === 'accepted') {
@@ -195,9 +237,35 @@ class CommissionPayoutService
                     'request_payload_checksum' => $checksum,
                 ], $delivery->recorded_at, $data['idempotency_key']);
             return $delivery;
-        });
+            });
+        } catch (QueryException $exception) {
+            $duplicate = SalesCommissionAccountingDelivery::query()
+                ->where('idempotency_key', $data['idempotency_key'])->first();
+            if (! $duplicate) throw $exception;
+            $checksum = $this->checksum([
+                'company_id' => (string) $payout->company_id,
+                'payout_id' => (string) $payout->id,
+                'event_type' => $duplicate->event_type,
+                ...$data,
+            ]);
+            abort_unless($duplicate->request_payload_checksum
+                && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
+                'This accounting-delivery key is already bound to different or unverified facts.');
+
+            return $duplicate;
+        }
     }
 
     private function checksum(array $facts): string
     { return hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)); }
+
+    private function assertFrozenProfileBeneficiaries($statements): void
+    {
+        $profiles = DB::table('sales_profiles')->whereIn('id', $statements->pluck('sales_profile_id')->unique())
+            ->orderBy('id')->lockForUpdate()->get()->keyBy('id');
+        abort_if($statements->contains(fn ($statement) => ! $profiles->has($statement->sales_profile_id)
+            || (string) $profiles->get($statement->sales_profile_id)->company_id !== (string) $statement->company_id
+            || (string) $profiles->get($statement->sales_profile_id)->staff_id !== (string) $statement->staff_id),
+            422, 'Every statement must match its frozen Sales Profile company and Staff beneficiary.');
+    }
 }

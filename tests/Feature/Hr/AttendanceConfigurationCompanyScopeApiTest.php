@@ -6,6 +6,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use App\Models\User;
+use App\Models\UserContext;
 
 use function Pest\Laravel\actingAs;
 
@@ -16,6 +17,11 @@ it('scopes attendance configuration and rosters to the selected authorized compa
     $otherCompany = Company::create(['name' => 'Second Configuration Company']);
     $unassignedCompany = Company::create(['name' => 'Unassigned Configuration Company']);
     $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $otherContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherContext->id];
 
     foreach ([[$company->id, Staff::query()->where('user_id', $user->id)->where('company_id', $company->id)->value('id')], [$otherCompany->id, $otherStaff->id]] as [$companyId, $staffId]) {
         $calendarId = (string) Str::uuid();
@@ -80,43 +86,43 @@ it('scopes attendance configuration and rosters to the selected authorized compa
         'created_at' => now(), 'updated_at' => now(),
     ]);
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/calendars?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/calendars?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/shifts?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/shifts?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/policies?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/policies?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/rosters?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/rosters?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.company_id', $otherCompany->id);
     actingAs($user, 'api')->getJson('/api/hr/attendance/rosters')
-        ->assertUnprocessable();
-    actingAs($user, 'api')->getJson('/api/hr/attendance/rosters?company_id='.$unassignedCompany->id)
+        ->assertForbidden();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/rosters?company_id='.$unassignedCompany->id)
         ->assertForbidden();
 
     config(['hr.features.attendance_results' => true]);
-    actingAs($user, 'api')->getJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days")->assertNotFound();
-    actingAs($user, 'api')->getJson('/api/hr/attendance/calendars/'.Str::uuid().'/days')->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->getJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days")->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/calendars/'.Str::uuid().'/days')->assertNotFound();
     $calendarPayload = [
         'code' => 'PRIVATE', 'name' => 'Changed calendar', 'timezone' => 'Asia/Colombo',
         'weekly_working_days' => ['monday'], 'effective_from' => '2026-01-01', 'status' => 'active',
     ];
-    actingAs($user, 'api')->putJson("/api/hr/attendance/calendars/{$foreignCalendarId}", $calendarPayload)->assertNotFound();
-    actingAs($user, 'api')->putJson('/api/hr/attendance/calendars/'.Str::uuid(), $calendarPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson("/api/hr/attendance/calendars/{$foreignCalendarId}", $calendarPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson('/api/hr/attendance/calendars/'.Str::uuid(), $calendarPayload)->assertNotFound();
     $dayPayload = ['calendar_date' => '2026-10-06', 'day_type' => 'working', 'name' => 'Changed day', 'paid' => true];
-    actingAs($user, 'api')->postJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days", $dayPayload)->assertNotFound();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/calendars/'.Str::uuid().'/days', $dayPayload)->assertNotFound();
-    actingAs($user, 'api')->putJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days/{$foreignDayId}", $dayPayload)->assertNotFound();
-    actingAs($user, 'api')->putJson('/api/hr/attendance/calendars/'.Str::uuid().'/days/'.Str::uuid(), $dayPayload)->assertNotFound();
-    actingAs($user, 'api')->putJson("/api/hr/attendance/shifts/{$foreignShiftId}", [])->assertNotFound();
-    actingAs($user, 'api')->putJson('/api/hr/attendance/shifts/'.Str::uuid(), [])->assertNotFound();
-    actingAs($user, 'api')->putJson("/api/hr/attendance/policies/{$foreignPolicyId}", [])->assertNotFound();
-    actingAs($user, 'api')->putJson('/api/hr/attendance/policies/'.Str::uuid(), [])->assertNotFound();
-    actingAs($user, 'api')->postJson("/api/hr/attendance/policies/{$foreignPolicyId}/approve", [])->assertNotFound();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/policies/'.Str::uuid().'/approve', [])->assertNotFound();
-    actingAs($user, 'api')->putJson("/api/hr/attendance/rosters/{$foreignRosterId}", [])->assertNotFound();
-    actingAs($user, 'api')->putJson('/api/hr/attendance/rosters/'.Str::uuid(), [])->assertNotFound();
-    actingAs($user, 'api')->postJson("/api/hr/attendance/rosters/{$foreignRosterId}/approve", [])->assertNotFound();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/rosters/'.Str::uuid().'/approve', [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days", $dayPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/calendars/'.Str::uuid().'/days', $dayPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson("/api/hr/attendance/calendars/{$foreignCalendarId}/days/{$foreignDayId}", $dayPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson('/api/hr/attendance/calendars/'.Str::uuid().'/days/'.Str::uuid(), $dayPayload)->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson("/api/hr/attendance/shifts/{$foreignShiftId}", [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson('/api/hr/attendance/shifts/'.Str::uuid(), [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson("/api/hr/attendance/policies/{$foreignPolicyId}", [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson('/api/hr/attendance/policies/'.Str::uuid(), [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson("/api/hr/attendance/policies/{$foreignPolicyId}/approve", [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/policies/'.Str::uuid().'/approve', [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson("/api/hr/attendance/rosters/{$foreignRosterId}", [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->putJson('/api/hr/attendance/rosters/'.Str::uuid(), [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson("/api/hr/attendance/rosters/{$foreignRosterId}/approve", [])->assertNotFound();
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/rosters/'.Str::uuid().'/approve', [])->assertNotFound();
     expect(DB::table('hr_work_calendars')->where('id', $foreignCalendarId)->value('name'))->toBe('Private calendar')
         ->and(DB::table('hr_work_calendar_days')->where('id', $foreignDayId)->value('name'))->toBe('Private holiday')
         ->and(DB::table('hr_shift_definitions')->where('id', $foreignShiftId)->value('name'))->toBe('Private shift')
@@ -128,7 +134,11 @@ it('allows configuration approvers to load authorized company options', function
     [, $company] = hr_seed_admin_actor();
     $viewer = User::factory()->create();
     $viewer->givePermissionTo('hr.attendance.config.approve');
-    Staff::factory()->create(['user_id' => $viewer->id, 'company_id' => $company->id]);
+    $staff = Staff::factory()->create(['user_id' => $viewer->id, 'company_id' => $company->id]);
+    UserContext::create([
+        'user_id' => $viewer->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $viewer->id,
+    ]);
 
     actingAs($viewer, 'api')->getJson('/api/hr/attendance/company-options')
         ->assertOk()->assertJsonPath('data.0.value', $company->id);

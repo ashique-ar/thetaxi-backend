@@ -18,10 +18,11 @@ it('scopes lifecycle task completion through its parent case company', function 
     $service = file_get_contents(app_path('Services/Hr/Lifecycle/LifecycleService.php'));
 
     expect($controller)
-        ->toContain("completeTask(\$id,\$d['evidence'],\$r->user()->id,\$this->actorCompanyId(\$r))")
+        ->toContain("completeTask(\$id,\$d['evidence'],\$r->user()->id,\$this->actorCompanyId(\$r),\$d['idempotency_key'])")
         ->and($service)
         ->toContain("join('hr_lifecycle_cases as lifecycle_case'")
-        ->toContain("where('lifecycle_case.company_id', \$companyId)");
+        ->toContain("where('lifecycle_case.company_id', \$companyId)")
+        ->toContain("'completion_checksum' => \$checksum");
 });
 
 it('scopes clearance completion through its parent exit company', function () {

@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('keeps corporate report rows pagination and statistics on one canonical response shape', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateReportController.php'));
     $service = file_get_contents(app_path('Services/CorporateBookingService.php'));

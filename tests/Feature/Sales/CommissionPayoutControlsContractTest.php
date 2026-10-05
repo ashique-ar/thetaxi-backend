@@ -12,6 +12,15 @@ it('binds accounting delivery retries to the payout and exact acknowledgement fa
         ->toContain('sales.commission.accounting_delivery_recorded');
 });
 
+it('recovers concurrent payout, reversal, and accounting-delivery idempotency collisions', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
+
+    expect(substr_count($service, 'catch (QueryException $exception)'))->toBe(3)
+        ->and($service)->toContain('if (! $duplicate) throw $exception;')
+        ->toContain('hash_equals($duplicate->request_payload_checksum, $checksum)')
+        ->toContain('hash_equals($duplicate->request_payload_checksum, $checksum), 409');
+});
+
 it('requires reversal evidence and keeps result-only delivery fields separate', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionStatementController.php'));
     $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));

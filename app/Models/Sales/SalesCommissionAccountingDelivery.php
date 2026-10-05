@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionAccountingDelivery extends BaseModel
+class SalesCommissionAccountingDelivery extends NonSoftDeletableModel
 {
     protected $hidden = ['request_payload_checksum'];
     protected $fillable = ['company_id', 'payout_id', 'event_type', 'status', 'external_reference', 'message', 'idempotency_key', 'request_payload_checksum', 'recorded_by', 'recorded_at'];

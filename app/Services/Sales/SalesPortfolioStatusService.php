@@ -189,10 +189,7 @@ class SalesPortfolioStatusService
 
         return [
             'state' => 'current', 'as_of' => $asOf->toIso8601String(), 'business_timezone' => $timezoneName,
-            'policy' => ['id' => $policy->id, 'version' => $policy->version,
-                'effective_from' => $policy->effective_from->toDateString(),
-                'effective_until' => $policy->effective_until?->toDateString(),
-                'active_booking_statuses' => $statuses, 'request_checksum' => $policy->request_checksum],
+            'policy' => ['version' => (int) $policy->version],
             'summary' => [
                 'active_booking_count' => $total,
                 'fixed_term_count' => (int) ($summaryRow->fixed_term_count ?? 0),

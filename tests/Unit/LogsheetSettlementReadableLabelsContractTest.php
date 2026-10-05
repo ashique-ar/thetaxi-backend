@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('never displays internal IDs in the driver settlement table', function () {
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/logsheet/components/settlement-dashboard/settlement-dashboard.component.html'));
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/logsheet/components/settlement-dashboard/settlement-dashboard.component.ts'));

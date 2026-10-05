@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('renders customer booking history with a readable booking number instead of its UUID', function () {
     $types = file_get_contents(base_path('../portal-thetaxi/src/app/modules/customer/models/customer.types.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/customer/components/customer-detail/customer-detail.component.html'));

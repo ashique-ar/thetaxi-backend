@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('searches audit logs by readable fields without accepting record UUIDs', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/AuditLogController.php'));
     $search = Str::between($controller, "if (\$request->filled('search')) {", "if (\$request->filled('action')) {");

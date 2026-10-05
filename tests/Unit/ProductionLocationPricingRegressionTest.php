@@ -4,8 +4,6 @@ use App\Services\GoogleMapsService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
-uses(Tests\TestCase::class);
-
 it('uses airport coordinates when a local IATA code occupies place_id', function () {
     config()->set('services.google.places_api_key', 'test-key');
     Cache::flush();

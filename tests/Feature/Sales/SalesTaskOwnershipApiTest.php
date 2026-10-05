@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Company;
+use App\Models\Booking\Booking;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
@@ -18,6 +19,8 @@ uses(RefreshDatabase::class);
 
 it('scopes task links and makes create, transition, and transfer commands replay-safe', function () {
     [$actor, $company] = hr_seed_admin_actor(['name' => 'Sales Task Company']);
+    $actor->givePermissionTo(Permission::findByName('sales.crm.view', 'api'));
+    $actor->givePermissionTo(Permission::findByName('sales.crm.view-all', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
     $actor->givePermissionTo(Permission::findByName('sales.crm.manage-all', 'api'));
     config()->set('sales.features.crm', true);
@@ -52,9 +55,15 @@ it('scopes task links and makes create, transition, and transfer commands replay
         'opportunity_number' => 'TASK-OPP-B', 'name' => 'Task opportunity B',
         'source' => 'manual', 'created_user_id' => $actor->id,
     ]);
+    $booking = Booking::create([
+        'sales_opportunity_id' => $opportunity->id,
+        'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $owner->staff_id,
+        'created_user_id' => $actor->id,
+    ]);
 
     $payload = [
         'company_id' => $company->id, 'owner_sales_profile_id' => $owner->id, 'opportunity_id' => $opportunity->id,
+        'booking_id' => $booking->id,
         'creation_idempotency_key' => (string) Str::uuid(), 'title' => 'Call the prospect', 'priority' => 'normal',
         'due_at' => now()->addDay()->toIso8601String(),
     ];
@@ -63,6 +72,7 @@ it('scopes task links and makes create, transition, and transfer commands replay
     actingAs($actor, 'api')->postJson('/api/sales/tasks', $payload)->assertCreated();
     expect(SalesTask::query()->count())->toBe(1)
         ->and(SalesTaskEvent::query()->where('event_type', 'created')->count())->toBe(1);
+    actingAs($actor, 'api')->getJson('/api/sales/tasks')->assertUnprocessable();
 
     actingAs($actor, 'api')->postJson('/api/sales/tasks', [
         ...$payload, 'title' => 'Different task with the same key',
@@ -86,6 +96,7 @@ it('scopes task links and makes create, transition, and transfer commands replay
 
     $scopedActor = User::factory()->create();
     $scopedActor->givePermissionTo(Permission::findByName('sales.crm.manage', 'api'));
+    $scopedActor->givePermissionTo(Permission::findByName('sales.crm.view', 'api'));
     $scopedStaff = Staff::factory()->create(['company_id' => $company->id, 'user_id' => $scopedActor->id]);
     UserContext::create([
         'user_id' => $scopedActor->id, 'context_type' => 'staff', 'context_id' => $scopedStaff->id,
@@ -96,6 +107,7 @@ it('scopes task links and makes create, transition, and transfer commands replay
         'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
         'reporting_currency' => 'LKR', 'acquisition_eligible' => true, 'created_user_id' => $actor->id,
     ]);
+    actingAs($scopedActor, 'api')->getJson('/api/sales/tasks?company_id='.$otherCompany->id)->assertForbidden();
     actingAs($scopedActor, 'api')->postJson('/api/sales/tasks', [
         ...$payload, 'owner_sales_profile_id' => $scopedOwner->id,
         'creation_idempotency_key' => (string) Str::uuid(),
@@ -110,8 +122,32 @@ it('scopes task links and makes create, transition, and transfer commands replay
     actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transfer', [
         ...$transfer, 'reason' => 'Different command',
     ])->assertConflict();
+    $task->update(['owner_sales_profile_id' => $otherOwner->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/tasks?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/tasks', $payload)->assertConflict();
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', [
+        'to_status' => 'open', 'expected_version' => 3, 'reason' => 'Must reject corrupt owner',
+        'idempotency_key' => (string) Str::uuid(),
+    ])->assertConflict();
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transfer', [
+        ...$transfer, 'expected_version' => 3, 'idempotency_key' => (string) Str::uuid(),
+    ])->assertConflict();
+    expect($task->fresh()->state_version)->toBe(3);
+    $task->update(['owner_sales_profile_id' => $scopedOwner->id]);
+    $opportunity->update(['company_id' => $otherCompany->id]);
+    actingAs($actor, 'api')->getJson('/api/sales/tasks?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/tasks', $payload)->assertConflict();
+    $opportunity->update(['company_id' => $company->id]);
     actingAs($actor, 'api')->postJson('/api/sales/tasks', $payload)->assertCreated();
     expect(SalesTaskEvent::query()->where('event_type', 'reassigned')->count())->toBe(1);
+
+    $booking->update(['commission_owner_staff_id' => $otherOwner->staff_id]);
+    actingAs($actor, 'api')->getJson('/api/sales/tasks?company_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', [
+        'to_status' => 'open', 'expected_version' => 3, 'reason' => 'Foreign booking must fail closed',
+        'idempotency_key' => (string) Str::uuid(),
+    ])->assertConflict();
+    $booking->update(['commission_owner_staff_id' => $owner->staff_id]);
 
     $migration = require database_path('migrations/2026_10_03_000001_add_sales_task_write_idempotency.php');
     expect(fn () => $migration->down())->toThrow(RuntimeException::class);

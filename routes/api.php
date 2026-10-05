@@ -9,7 +9,6 @@ use App\Http\Controllers\Api\CollectionCommissionController;
 use App\Http\Controllers\Api\BookingRouteUsageController;
 use App\Http\Controllers\Api\AgreementController;
 use App\Http\Controllers\Api\AuditLogController;
-use App\Http\Controllers\Api\MedicalRecordController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\Agent\AgentController;
 use App\Http\Controllers\Api\Agent\AgentApiController;
@@ -627,11 +626,15 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise', 'sales.feature:rolling_payment_schedules']);
         Route::post('bookings/{booking}/collection-schedule/rolling-rule/transition', [CollectionScheduleWorkflowController::class, 'transitionRollingRule'])
             ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise', 'sales.feature:rolling_payment_schedules']);
+        Route::get('collection-schedule-company-options', [CollectionScheduleWorkflowController::class, 'scheduleCompanyOptions'])
+            ->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-schedule-bookings', [CollectionScheduleWorkflowController::class, 'scheduleBookings'])
             ->middleware('permission:sales.collection-schedules.revise');
         Route::get('bookings/{booking}/collection-schedule', [CollectionScheduleWorkflowController::class, 'schedule'])
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-work-items', [CollectionScheduleWorkflowController::class, 'workItems'])
+            ->middleware('permission:sales.collections.view');
+        Route::get('collection-work-company-options', [CollectionScheduleWorkflowController::class, 'collectionCompanyOptions'])
             ->middleware('permission:sales.collections.view');
         Route::post('bookings/{booking}/collection-submissions', [CollectionScheduleWorkflowController::class, 'submit'])
             ->whereUuid('booking')->middleware('permission:sales.collections.submit');
@@ -652,7 +655,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('payment-finality-context', [PaymentFinalityController::class, 'context'])
             ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve');
         Route::get('payment-finality-company-options', [PaymentFinalityController::class, 'companyOptions'])
-            ->middleware('permission:sales.payment-finality.manage');
+            ->middleware('permission:sales.payment-finality.manage|sales.payment-finality.approve|sales.payment-finality.transition');
         Route::get('payment-finality-receipts', [PaymentFinalityController::class, 'receipts'])
             ->middleware('permission:sales.payment-finality.transition');
         Route::post('payment-finality-policies', [PaymentFinalityController::class, 'store'])
@@ -743,6 +746,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.commission-decisions.view');
         Route::get('commission-earnings/{decision}', [CommissionDecisionController::class, 'show'])
             ->whereUuid('decision')->middleware('permission:sales.commission-decisions.view');
+        Route::get('commission-holds/company-options', [CommissionHoldController::class, 'companyOptions'])
+            ->middleware('permission:sales.commission-decisions.view');
         Route::get('commission-holds', [CommissionHoldController::class, 'index'])
             ->middleware('permission:sales.commission-decisions.view');
         Route::post('commission-earnings/{earning}/release-preview', [CommissionHoldController::class, 'preview'])
@@ -753,6 +758,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('earning')->middleware('permission:sales.commission-decisions.view');
         Route::post('commission-earnings/{earning}/adjustment', [CommissionHoldController::class, 'appendAdjustment'])
             ->whereUuid('earning')->middleware(['permission:sales.commission-decisions.view', 'permission:sales.commission-recoveries.decide']);
+        Route::get('commission-recoveries/company-options', [CommissionRecoveryController::class, 'companyOptions'])
+            ->middleware('permission:sales.commission-recoveries.view');
         Route::get('commission-recoveries', [CommissionRecoveryController::class, 'index'])
             ->middleware('permission:sales.commission-recoveries.view');
         Route::post('commission-refund-reviews/{case}/preview', [CommissionRecoveryController::class, 'previewDecision'])
@@ -763,6 +770,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('case')->middleware('permission:sales.commission-recoveries.view');
         Route::get('commission-statements', [CommissionStatementController::class, 'index'])
             ->middleware('permission:sales.commission-statements.view');
+        Route::get('commission-operations/company-options', [CommissionStatementController::class, 'companyOptions'])
+            ->middleware('permission:sales.commission-statements.view|sales.commission-statements.generate|sales.commission-statements.approve|sales.commission-disputes.resolve|sales.commission-payouts.pay|sales.commission-payouts.reverse|sales.commission-accounting.acknowledge');
         Route::get('commission-statement-profile-options', [CommissionStatementController::class, 'profileOptions'])
             ->middleware('permission:sales.commission-statements.generate');
         Route::get('commission-statement-schedule', [CommissionStatementController::class, 'schedule'])
@@ -795,7 +804,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('export')->middleware('permission:sales.commission-statements.export');
 
         Route::get('opportunities', [SalesCrmController::class, 'opportunities'])->middleware('permission:sales.crm.view');
-        Route::get('opportunity-administration-context', [SalesCrmController::class, 'administrationContext'])->middleware('permission:sales.crm.view');
+        Route::get('opportunity-company-options', [SalesCrmController::class, 'opportunityCompanyOptions'])->middleware('permission:sales.crm.view');
         Route::get('opportunity-owner-options', [SalesCrmController::class, 'opportunityOwnerOptions'])->middleware('permission:sales.crm.manage');
         Route::get('opportunity-source-options', [SalesCrmController::class, 'opportunitySourceOptions'])->middleware('permission:sales.crm.manage');
         Route::get('opportunity-booking-options', [SalesCrmController::class, 'linkableBookingOptions'])->middleware('permission:sales.crm.manage');
@@ -816,8 +825,6 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('task')->middleware('permission:sales.crm.manage');
         Route::post('tasks/{task}/transfer', [SalesCrmController::class, 'transferTask'])
             ->whereUuid('task')->middleware('permission:sales.crm.manage');
-        Route::get('pipeline-forecast', [SalesCrmController::class, 'forecast'])->middleware('permission:sales.crm.view');
-
         Route::get('targets/versions', [SalesPerformanceController::class, 'targets'])->middleware('permission:sales.performance.view');
         Route::post('targets/versions', [SalesPerformanceController::class, 'createTarget'])->middleware('permission:sales.performance.targets.manage');
         Route::post('targets/copy-preview', [SalesPerformanceController::class, 'previewTargetCopy'])
@@ -1118,11 +1125,14 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('my-requests', [EssController::class, 'myRequests'])->middleware('permission:hr.ess.use');
         Route::get('my-requests/{id}', [EssController::class, 'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
         Route::get('approval-inbox', [EssController::class, 'inbox'])->middleware('permission:hr.mss.approve');
+        Route::get('delegations', [EssController::class, 'delegations'])->middleware('permission:hr.mss.approve|hr.mss.delegate|hr.mss.delegations.approve');
+        Route::get('delegate-options', [EssController::class, 'delegationOptions'])->middleware('permission:hr.mss.delegate');
         Route::post('delegations', [EssController::class, 'delegate'])->middleware('permission:hr.mss.delegate');
         Route::post('delegations/{id}/approve', [EssController::class, 'approveDelegation'])->whereUuid('id')->middleware('permission:hr.mss.delegations.approve');
     });
     Route::prefix('hr/recruitment')->group(function () {
         Route::get('requisitions', [RecruitmentController::class, 'requisitions'])->middleware('permission:hr.recruitment.view');
+        Route::get('position-options', [RecruitmentController::class, 'positionOptions'])->middleware('permission:hr.recruitment.manage');
         Route::post('requisitions', [RecruitmentController::class, 'storeRequisition'])->middleware('permission:hr.recruitment.manage');
         Route::post('requisitions/{id}/approve', [RecruitmentController::class, 'approveRequisition'])->whereUuid('id')->middleware('permission:hr.recruitment.approve');
         Route::get('candidates', [RecruitmentController::class, 'candidates'])->middleware('permission:hr.recruitment.view');
@@ -1152,12 +1162,14 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('cases', [LifecycleController::class, 'openCase'])->middleware('permission:hr.lifecycle.manage');
         Route::post('tasks/{id}/complete', [LifecycleController::class, 'completeTask'])->whereUuid('id')->middleware('permission:hr.lifecycle.manage');
         Route::post('probation', [LifecycleController::class, 'startProbation'])->middleware('permission:hr.lifecycle.manage');
+        Route::get('probation', [LifecycleController::class, 'probationCases'])->middleware('permission:hr.lifecycle.approve');
         Route::post('probation/{id}/decide', [LifecycleController::class, 'decideProbation'])->whereUuid('id')->middleware('permission:hr.lifecycle.approve');
         Route::post('custody', [LifecycleController::class, 'assignCustody'])->middleware('permission:hr.lifecycle.manage');
         Route::post('staff/{staffId}/changes', [LifecycleController::class, 'requestChange'])->whereUuid('staffId')->middleware('permission:hr.lifecycle.change.request');
         Route::post('changes/{id}/approve', [LifecycleController::class, 'approveChange'])->whereUuid('id')->middleware('permission:hr.lifecycle.change.approve');
         Route::post('exits', [LifecycleController::class, 'openExit'])->middleware('permission:hr.lifecycle.exit.request');
         Route::post('exits/{id}/approve', [LifecycleController::class, 'approveExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.approve');
+        Route::get('clearance', [LifecycleController::class, 'clearanceItems'])->middleware('permission:hr.lifecycle.clearance');
         Route::post('clearance/{id}/complete', [LifecycleController::class, 'completeClearance'])->whereUuid('id')->middleware('permission:hr.lifecycle.clearance');
         Route::post('exits/{id}/finalize', [LifecycleController::class, 'finalizeExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.finalize');
     });

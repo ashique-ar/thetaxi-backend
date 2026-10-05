@@ -28,35 +28,90 @@ class LifecycleService
             } else {
                 abort_unless(DB::table('hr_candidate_applications')->where('id', $data['application_id'])->where('company_id', $data['company_id'])->exists(), 422, 'The lifecycle application is outside the selected legal entity.');
             }
+            $taskDefinitions = json_decode($template->task_definitions, true, 512, JSON_THROW_ON_ERROR);
+            $ownerIds = collect($taskDefinitions)->pluck('owner_staff_id')->filter(fn ($id) => $id !== null && $id !== '')->unique()->values();
+            foreach ($ownerIds as $ownerId) {
+                abort_unless(Str::isUuid((string) $ownerId), 422, 'Lifecycle task owners must be valid Staff records.');
+            }
+            if ($ownerIds->isNotEmpty()) {
+                $activeOwnerIds = Staff::query()->whereIn('id', $ownerIds)->where('company_id', $data['company_id'])
+                    ->whereNull('employment_ended_at')->lockForUpdate()->pluck('id')->map(fn ($id) => (string) $id);
+                abort_unless($activeOwnerIds->count() === $ownerIds->count(), 422, 'Every lifecycle task owner must be active Staff in the selected legal entity.');
+            }
             $id = (string) Str::uuid();
             DB::table('hr_lifecycle_cases')->insert(['id' => $id, 'company_id' => $data['company_id'], 'staff_id' => $data['staff_id'] ?? null, 'application_id' => $data['application_id'] ?? null, 'template_id' => $template->id, 'case_type' => $template->case_type, 'status' => 'open', 'effective_date' => $data['effective_date'], 'case_snapshot' => json_encode(['template_version' => json_decode($template->task_definitions, true), 'input' => $data], JSON_THROW_ON_ERROR), 'opened_by' => $actor, 'created_at' => now(), 'updated_at' => now()]);
-            foreach (json_decode($template->task_definitions, true, 512, JSON_THROW_ON_ERROR) as $task)
+            foreach ($taskDefinitions as $task)
                 DB::table('hr_lifecycle_tasks')->insert(['id' => (string) Str::uuid(), 'case_id' => $id, 'task_code' => $task['code'], 'title' => $task['title'], 'owner_kind' => $task['owner_kind'] ?? 'hr', 'owner_staff_id' => $task['owner_staff_id'] ?? null, 'due_date' => isset($task['due_days']) ? now()->addDays((int) $task['due_days'])->toDateString() : null, 'dependency_codes' => json_encode($task['depends_on'] ?? [], JSON_THROW_ON_ERROR), 'status' => 'pending', 'created_at' => now(), 'updated_at' => now()]);
             return DB::table('hr_lifecycle_cases')->find($id); });
     }
-    public function completeTask(string $id, array $evidence, string $actor, string $companyId): object
+    public function completeTask(string $id, array $evidence, string $actor, string $companyId, string $key): array
     {
-        return DB::transaction(function () use ($id, $evidence, $actor, $companyId) {
-            $task = DB::table('hr_lifecycle_tasks as task')
-                ->join('hr_lifecycle_cases as lifecycle_case', 'lifecycle_case.id', '=', 'task.case_id')
-                ->where('task.id', $id)
-                ->where('lifecycle_case.company_id', $companyId)
-                ->select('task.*')
-                ->lockForUpdate()
-                ->first();
-            abort_unless($task, 404);
-            abort_unless($task->status === 'pending', 409);
-            $deps = json_decode($task->dependency_codes ?: '[]', true, 512, JSON_THROW_ON_ERROR);
-            if ($deps)
-                abort_if(DB::table('hr_lifecycle_tasks')->where('case_id', $task->case_id)->whereIn('task_code', $deps)->where('status', '!=', 'completed')->exists(), 409, 'Dependent lifecycle tasks are incomplete.');
-            DB::table('hr_lifecycle_tasks')->where('id', $id)->update(['status' => 'completed', 'evidence' => json_encode($evidence, JSON_THROW_ON_ERROR), 'completed_at' => now(), 'completed_by' => $actor, 'updated_at' => now()]);
-            if (!DB::table('hr_lifecycle_tasks')->where('case_id', $task->case_id)->where('status', '!=', 'completed')->exists())
-                DB::table('hr_lifecycle_cases')->where('id', $task->case_id)->update(['status' => 'completed', 'closed_at' => now(), 'closed_by' => $actor, 'updated_at' => now()]);
-            return DB::table('hr_lifecycle_tasks')->find($id); });
+        $checksum = hash('sha256', json_encode([
+            'task_id' => $id, 'company_id' => $companyId, 'actor_id' => $actor, 'evidence' => $evidence,
+        ], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+
+        try {
+            return DB::transaction(function () use ($id, $evidence, $actor, $companyId, $key, $checksum) {
+                $task = DB::table('hr_lifecycle_tasks as task')
+                    ->join('hr_lifecycle_cases as lifecycle_case', 'lifecycle_case.id', '=', 'task.case_id')
+                    ->where('task.id', $id)
+                    ->where('lifecycle_case.company_id', $companyId)
+                    ->select('task.*')
+                    ->lockForUpdate()
+                    ->first();
+                abort_unless($task, 404);
+                if ($task->status === 'completed') {
+                    abort_unless($task->idempotency_key === $key
+                        && $task->completed_by === $actor
+                        && hash_equals((string) $task->completion_checksum, $checksum), 409,
+                        'This lifecycle task was completed with different evidence or context.');
+                    return ['task' => DB::table('hr_lifecycle_tasks')->select(['id', 'status', 'completed_at'])->find($id), 'replayed' => true];
+                }
+                abort_unless($task->status === 'pending', 409);
+                abort_if(DB::table('hr_lifecycle_tasks')->where('idempotency_key', $key)->exists(), 409,
+                    'This lifecycle task key was already used.');
+                $deps = json_decode($task->dependency_codes ?: '[]', true, 512, JSON_THROW_ON_ERROR);
+                if ($deps) {
+                    abort_if(DB::table('hr_lifecycle_tasks')->where('case_id', $task->case_id)->whereIn('task_code', $deps)->where('status', '!=', 'completed')->exists(), 409, 'Dependent lifecycle tasks are incomplete.');
+                }
+                DB::table('hr_lifecycle_tasks')->where('id', $id)->update([
+                    'status' => 'completed', 'evidence' => json_encode($evidence, JSON_THROW_ON_ERROR),
+                    'idempotency_key' => $key, 'completion_checksum' => $checksum,
+                    'completed_at' => now(), 'completed_by' => $actor, 'updated_at' => now(),
+                ]);
+                if (! DB::table('hr_lifecycle_tasks')->where('case_id', $task->case_id)->where('status', '!=', 'completed')->exists()) {
+                    DB::table('hr_lifecycle_cases')->where('id', $task->case_id)->update([
+                        'status' => 'completed', 'closed_at' => now(), 'closed_by' => $actor, 'updated_at' => now(),
+                    ]);
+                }
+                activity('hr-lifecycle')->causedBy(User::query()->findOrFail($actor))->withProperties([
+                    'task_id' => $id, 'case_id' => $task->case_id, 'company_id' => $companyId,
+                ])->log('lifecycle_task_completed');
+                return ['task' => DB::table('hr_lifecycle_tasks')->select(['id', 'status', 'completed_at'])->find($id), 'replayed' => false];
+            });
+        } catch (\Illuminate\Database\QueryException $e) {
+            $existing = DB::table('hr_lifecycle_tasks')->where('idempotency_key', $key)->first();
+            if ($existing) {
+                abort_unless($existing->id === $id && $existing->completed_by === $actor
+                    && hash_equals((string) $existing->completion_checksum, $checksum), 409,
+                    'This lifecycle task key was already used with different evidence or context.');
+                return ['task' => DB::table('hr_lifecycle_tasks')->select(['id', 'status', 'completed_at'])->find($id), 'replayed' => true];
+            }
+            throw $e;
+        }
     }
     public function requestChange(Staff $staff, array $data, string $actor): object
     {
         return DB::transaction(function () use ($staff, $data, $actor) {
+            $ownerStaffId = null;
+            if (! empty($data['approver_staff_id'])) {
+                $owner = Staff::query()->whereKey($data['approver_staff_id'])
+                    ->where('company_id', $staff->company_id)
+                    ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+                    ->lockForUpdate()->first();
+                abort_unless($owner, 422, 'The selected approver must be active Staff in the employee legal entity.');
+                $ownerStaffId = $owner->id;
+            }
             $current = DB::table('hr_employment_assignments')->where('staff_id', $staff->id)->whereNull('effective_until')->lockForUpdate()->first();
             abort_unless($current, 422, 'An active assignment is required.');
             $evidence = ['staff_id' => $staff->id, 'change_type' => $data['change_type'], 'effective_date' => $data['effective_date'], 'proposed_snapshot' => $data['proposed_snapshot'], 'impact_snapshot' => $data['impact_snapshot'], 'reason' => $data['reason']];
@@ -65,7 +120,7 @@ class LifecycleService
                 abort_unless(hash_equals(hash('sha256', json_encode($prior, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), hash('sha256', json_encode($evidence, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))), 409, 'Change key was reused with different evidence.');
                 return $existing; }$id = (string) Str::uuid();
             DB::table('hr_employee_change_requests')->insert(['id' => $id, 'company_id' => $staff->company_id, 'staff_id' => $staff->id, 'change_type' => $data['change_type'], 'effective_date' => $data['effective_date'], 'before_snapshot' => json_encode($current, JSON_THROW_ON_ERROR), 'proposed_snapshot' => json_encode($data['proposed_snapshot'], JSON_THROW_ON_ERROR), 'impact_snapshot' => json_encode($data['impact_snapshot'], JSON_THROW_ON_ERROR), 'status' => 'pending_approval', 'reason' => $data['reason'], 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actor, 'created_at' => now(), 'updated_at' => now()]);
-            $this->requests->register($staff->company_id, $staff->id, $data['change_type'], 'employee_change', $id, 'pending_approval', ucwords(str_replace('_', ' ', $data['change_type'])) . ' request', $data['approver_staff_id'] ?? null, $data['sla_hours'] ?? null, $actor, ['people_core' => true, 'payroll' => config('hr.features.payroll', false)]);
+            $this->requests->register($staff->company_id, $staff->id, $data['change_type'], 'employee_change', $id, 'pending_approval', ucwords(str_replace('_', ' ', $data['change_type'])) . ' request', $ownerStaffId, $data['sla_hours'] ?? null, $actor, ['people_core' => true, 'payroll' => config('hr.features.payroll', false)]);
             return DB::table('hr_employee_change_requests')->find($id); });
     }
     public function approveChange(string $id, string $actor): object
@@ -97,7 +152,7 @@ class LifecycleService
                 $this->clearance($id, $type, $title, null);
             return DB::table('hr_exit_cases')->find($id); });
     }
-    public function completeClearance(string $id, string $resolution, string $actor, string $companyId): object
+    public function completeClearance(string $id, string $resolution, string $actor, string $companyId): array
     {
         return DB::transaction(function () use ($id, $resolution, $actor, $companyId) {
             $item = DB::table('hr_exit_clearance_items as clearance')
@@ -108,14 +163,40 @@ class LifecycleService
                 ->lockForUpdate()
                 ->first();
             abort_unless($item, 404);
+            if ($item->status === 'completed') {
+                abort_unless($item->completed_by === $actor && hash_equals((string) $item->resolution, $resolution), 409,
+                    'This clearance item was completed with different resolution or context.');
+                return ['item' => DB::table('hr_exit_clearance_items')->select(['id', 'status', 'completed_at'])->find($id), 'replayed' => true];
+            }
             abort_unless($item->status === 'pending', 409);
+
             if ($item->custody_assignment_id) {
                 $custody = DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->lockForUpdate()->first();
                 abort_unless($custody, 409, 'The linked custody assignment is outside this lifecycle legal entity.');
                 if (config('hr.features.advanced_assets', false) && $custody?->asset_item_id) {
-                    abort_unless(in_array($custody->status, ['returned', 'recovery_approved', 'exception_approved'], true), 409, 'Complete the governed asset return or approved recovery/exception before clearance.'); } else {
-                    DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->update(['status' => 'returned', 'returned_at' => now(), 'received_by' => $actor, 'updated_at' => now()]); } }DB::table('hr_exit_clearance_items')->where('id', $id)->update(['status' => 'completed', 'resolution' => $resolution, 'completed_at' => now(), 'completed_by' => $actor, 'updated_at' => now()]);
-            return DB::table('hr_exit_clearance_items')->find($id); });
+                    abort_unless(in_array($custody->status, ['returned', 'recovery_approved', 'exception_approved'], true), 409, 'Complete the governed asset return or approved recovery/exception before clearance.');
+                }
+
+                if (! (config('hr.features.advanced_assets', false) && $custody->asset_item_id)) {
+                    DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->update([
+                        'status' => 'returned', 'returned_at' => now(), 'received_by' => $actor, 'updated_at' => now(),
+                    ]);
+                }
+            }
+
+            DB::table('hr_exit_clearance_items')->where('id', $id)->update([
+                'status' => 'completed', 'resolution' => $resolution, 'completed_at' => now(),
+                'completed_by' => $actor, 'updated_at' => now(),
+            ]);
+            activity('hr-lifecycle')->causedBy(User::query()->findOrFail($actor))->withProperties([
+                'clearance_item_id' => $id, 'exit_case_id' => $item->exit_case_id, 'company_id' => $companyId,
+            ])->log('exit_clearance_completed');
+
+            return [
+                'item' => DB::table('hr_exit_clearance_items')->select(['id', 'status', 'completed_at'])->find($id),
+                'replayed' => false,
+            ];
+        });
     }
     public function finalizeExit(string $id, User $actor): array
     {

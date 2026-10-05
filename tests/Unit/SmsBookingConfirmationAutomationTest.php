@@ -644,6 +644,7 @@ it('matches delivery callbacks only by exact provider identity and redacts secre
 
     expect($service)->toContain("where('provider_transaction_id', \$transactionId)")
         ->and($service)->toContain("where('provider_message_id', \$messageId)")
+        ->and($service)->toContain("where('company_id', \$defaultCompanyId)", "if (! \$defaultCompanyId) {\n            return ['updated' => false];")
         ->and($service)->not->toContain("where('normalized_recipient', \$recipient)")
         ->and($service)->toContain('redactProviderPayload')
         ->and($service)->toContain("whereIn('status', ['queued', 'pending', 'failed'])")

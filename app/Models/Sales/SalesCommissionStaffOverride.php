@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionStaffOverride extends BaseModel
+class SalesCommissionStaffOverride extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'staff_id', 'percentage_rate', 'effective_from', 'effective_until',

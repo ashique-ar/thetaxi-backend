@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionPayout extends BaseModel
+class SalesCommissionPayout extends NonSoftDeletableModel
 {
     protected $hidden = ['payment_account_snapshot', 'request_payload_checksum'];
     protected $fillable = [

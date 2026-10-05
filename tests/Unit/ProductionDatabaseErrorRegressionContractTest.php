@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('uses collision-safe inquiry creation on every inquiry write path', function () {
     $model = file_get_contents(app_path('Models/Inquiry.php'));
     $publicController = file_get_contents(app_path('Http/Controllers/InquiryController.php'));

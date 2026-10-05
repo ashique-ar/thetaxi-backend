@@ -48,19 +48,42 @@ class SalesCollectionCompanyRepairService
     {
         return DB::table('sales_collection_company_repairs as repair')
             ->join('bookings as booking', 'booking.id', '=', 'repair.booking_id')
-            ->join('companies as after_company', 'after_company.id', '=', 'repair.after_company_id')
+            ->leftJoin('companies as after_company', function ($join) {
+                $join->on('after_company.id', '=', 'repair.after_company_id')
+                    ->on('after_company.id', '=', 'repair.company_id');
+            })
             ->leftJoin('companies as before_company', 'before_company.id', '=', 'repair.before_company_id')
-            ->join('domain_evidence_files as evidence', 'evidence.id', '=', 'repair.evidence_file_id')
+            ->leftJoin('domain_evidence_files as evidence', function ($join) {
+                $join->on('evidence.id', '=', 'repair.evidence_file_id')
+                    ->on('evidence.company_id', '=', 'repair.company_id')
+                    ->on('evidence.subject_id', '=', 'repair.booking_id')
+                    ->where('evidence.domain', 'sales')->where('evidence.subject_type', 'booking')->whereNull('evidence.deleted_at');
+            })
             ->join('users as actor', 'actor.id', '=', 'repair.performed_by')
-            ->leftJoin('sales_collection_company_repair_rollback_items as rollback_item', 'rollback_item.repair_id', '=', 'repair.id')
-            ->leftJoin('sales_collection_company_repair_rollbacks as rollback', 'rollback.id', '=', 'rollback_item.rollback_id')
-            ->leftJoin('domain_evidence_files as rollback_evidence', 'rollback_evidence.id', '=', 'rollback.evidence_file_id')
+            ->leftJoin('sales_collection_company_repair_rollback_items as rollback_item', function ($join) {
+                $join->on('rollback_item.repair_id', '=', 'repair.id')
+                    ->on('rollback_item.source_table', '=', 'repair.source_table')
+                    ->on('rollback_item.source_record_id', '=', 'repair.source_record_id');
+            })
+            ->leftJoin('sales_collection_company_repair_rollbacks as rollback', function ($join) {
+                $join->on('rollback.id', '=', 'rollback_item.rollback_id')
+                    ->on('rollback.company_id', '=', 'repair.company_id')
+                    ->on('rollback.booking_id', '=', 'repair.booking_id');
+            })
+            ->leftJoin('domain_evidence_files as rollback_evidence', function ($join) {
+                $join->on('rollback_evidence.id', '=', 'rollback.evidence_file_id')
+                    ->on('rollback_evidence.company_id', '=', 'rollback.company_id')
+                    ->on('rollback_evidence.subject_id', '=', 'rollback.booking_id')
+                    ->where('rollback_evidence.domain', 'sales')->where('rollback_evidence.subject_type', 'booking')
+                    ->whereNull('rollback_evidence.deleted_at');
+            })
             ->leftJoin('users as rollback_actor', 'rollback_actor.id', '=', 'rollback.performed_by')
             ->where('repair.company_id', $companyId)
             ->orderByDesc('repair.repaired_at')->orderBy('repair.id')
             ->select([
                 'booking.booking_number', 'repair.source_table', 'repair.reason', 'repair.repaired_at',
-                'before_company.name as company_before', 'after_company.name as company_after',
+                DB::raw("CASE WHEN repair.before_company_id IS NULL THEN 'Unassigned' WHEN repair.before_company_id = repair.company_id THEN before_company.name ELSE 'Another legal entity' END as company_before"),
+                DB::raw("COALESCE(after_company.name, 'Unavailable legal entity record') as company_after"),
                 'evidence.file_name as evidence_name', 'actor.first_name as actor_first_name',
                 'actor.last_name as actor_last_name',
                 'rollback.reason as rollback_reason', 'rollback.rolled_back_at',
@@ -115,10 +138,20 @@ class SalesCollectionCompanyRepairService
             $duplicate = DB::table('sales_collection_company_repair_rollbacks')
                 ->where('company_id', $attribution->company_id)->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
+                abort_unless((string) $duplicate->booking_id === (string) $booking->id
+                    && (string) $duplicate->company_id === (string) $attribution->company_id, 409,
+                    'This rollback key belongs to another booking or legal entity.');
                 abort_unless(hash_equals($duplicate->request_checksum, $requestChecksum), 409,
                     'This rollback key was already used with different facts.');
-                $rollbackItems = DB::table('sales_collection_company_repair_rollback_items')
-                    ->where('rollback_id', $duplicate->id)->get();
+                $rollbackItems = DB::table('sales_collection_company_repair_rollback_items as item')
+                    ->join('sales_collection_company_repairs as repair', function ($join) use ($booking, $attribution): void {
+                        $join->on('repair.id', '=', 'item.repair_id')
+                            ->on('repair.source_table', '=', 'item.source_table')
+                            ->on('repair.source_record_id', '=', 'item.source_record_id')
+                            ->where('repair.booking_id', $booking->id)
+                            ->where('repair.company_id', $attribution->company_id);
+                    })
+                    ->where('item.rollback_id', $duplicate->id)->get('item.*');
                 abort_unless($rollbackItems->count() === (int) $duplicate->record_count, 409,
                     'Original rollback rows are incomplete; replay is held.');
                 $this->assertAuditEvidence($attribution->company_id, $data['idempotency_key'],
@@ -197,12 +230,17 @@ class SalesCollectionCompanyRepairService
             $duplicate = DB::table('sales_collection_company_repairs')->where('company_id', $attribution->company_id)
                 ->where('idempotency_hash', $keyHash)->first();
             if ($duplicate) {
+                abort_unless((string) $duplicate->booking_id === (string) $booking->id
+                    && (string) $duplicate->company_id === (string) $attribution->company_id, 409,
+                    'This repair key belongs to another booking or legal entity.');
                 abort_unless(hash_equals($duplicate->request_checksum, $requestChecksum), 409,
                     'This repair key was already used with different facts.');
                 $repairRows = DB::table('sales_collection_company_repairs')->where('company_id', $attribution->company_id)
                     ->where('idempotency_hash', $keyHash)->get();
                 abort_unless($duplicate->request_record_count !== null
-                    && $repairRows->count() === (int) $duplicate->request_record_count, 409,
+                    && $repairRows->count() === (int) $duplicate->request_record_count
+                    && $repairRows->every(fn ($row) => (string) $row->booking_id === (string) $booking->id
+                        && (string) $row->company_id === (string) $attribution->company_id), 409,
                     'Original transaction rows are incomplete; replay is held.');
                 $this->assertAuditEvidence($attribution->company_id, $data['idempotency_key'],
                     'sales.collection.company_repaired', $repairRows, trim($data['reason']));
@@ -283,6 +321,15 @@ class SalesCollectionCompanyRepairService
 
     private function rollbackSnapshot(Booking $booking, SalesBookingAttribution $attribution, bool $lock = false): array
     {
+        $incomplete = DB::table('sales_collection_company_repairs as repair')
+            ->where('repair.booking_id', $booking->id)->where('repair.company_id', $attribution->company_id)
+            ->whereNull('repair.after_checksum')
+            ->whereNotExists(fn ($scope) => $scope->selectRaw('1')
+                ->from('sales_collection_company_repair_rollback_items as item')->whereColumn('item.repair_id', 'repair.id'))
+            ->exists();
+        abort_if($incomplete, 409,
+            'Historical collection repair checksum is missing; approved historical disposition is required before rollback.');
+
         $query = DB::table('sales_collection_company_repairs as repair')
             ->where('repair.booking_id', $booking->id)->where('repair.company_id', $attribution->company_id)
             ->whereNotNull('repair.after_checksum')

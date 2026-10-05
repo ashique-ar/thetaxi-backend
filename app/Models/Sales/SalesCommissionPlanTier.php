@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionPlanTier extends BaseModel
+class SalesCommissionPlanTier extends NonSoftDeletableModel
 {
     protected $fillable = [
         'plan_version_id', 'sequence', 'minimum_lkr', 'maximum_lkr', 'minimum_inclusive',

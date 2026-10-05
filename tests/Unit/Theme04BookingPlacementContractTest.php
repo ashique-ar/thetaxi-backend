@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('keeps the Theme 4 hero form container aligned and the CMS form full width', function (): void {
     $partial = file_get_contents(resource_path('views/partials/themes/theme-04/booking-form.blade.php'));
     $theme = file_get_contents(public_path('assets/css/themes/theme-04/theme-04.css'));

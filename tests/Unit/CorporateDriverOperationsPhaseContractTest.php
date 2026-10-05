@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('covers the corporate driver scenario matrix through the canonical mobile endpoints', function () {
     $routes = file_get_contents(base_path('routes/api_driver.php'));
     $tracking = file_get_contents(app_path('Services/Driver/TripTrackingService.php'));

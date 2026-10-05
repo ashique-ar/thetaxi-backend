@@ -18,8 +18,8 @@ class AttendanceConnectorFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * `company_id` defaults to an existing Company row (or a minimal one
-     * created on the fly) for standalone use; override it explicitly to
+     * `company_id` defaults to the active default Company (created for the
+     * fixture when absent); override it explicitly to
      * pin the connector to a specific legal entity.
      *
      * @return array<string, mixed>
@@ -27,7 +27,7 @@ class AttendanceConnectorFactory extends Factory
     public function definition(): array
     {
         return [
-            'company_id' => fn () => Company::query()->value('id') ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
+            'company_id' => fn () => Company::getDefaultCompany()?->id ?? Company::create(['name' => 'Factory Test Company', 'is_default' => true])->id,
             'name' => 'Factory Hikvision Connector',
             'topology' => 'direct_isapi',
             'connector_key' => 'ATC-'.strtoupper(Str::random(24)),

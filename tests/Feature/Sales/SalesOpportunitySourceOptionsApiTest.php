@@ -4,6 +4,7 @@ use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
+use App\Models\Company;
 use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -33,6 +34,16 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
         'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
         'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
     ]);
+    $otherCompany = Company::create(['name' => 'Other CRM source company']);
+    $otherUser = User::factory()->create();
+    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
+    UserContext::create(['user_id' => $otherUser->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $admin->id]);
+    SalesProfile::query()->create([
+        'company_id' => $otherCompany->id, 'staff_id' => $otherStaff->id, 'sales_code' => 'OTHER-SOURCE-OWNER',
+        'status' => 'active', 'effective_from' => now()->subDay(), 'staff_category_snapshot' => 'Sales',
+        'reporting_currency' => 'LKR', 'acquisition_eligible' => true,
+    ]);
 
     $insertInquiry = function (string $number, ?string $assignedTo, ?string $createdBy, ?string $deletedAt = null): string {
         $id = (string) Str::uuid();
@@ -47,7 +58,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     $ownInquiry = $insertInquiry('INQ-OWN-001', $manager->id, $admin->id);
     $insertInquiry('INQ-OWN-002', $manager->id, null);
     $linkedInquiry = $insertInquiry('INQ-LINKED-001', $manager->id, null);
-    $foreignInquiry = $insertInquiry('INQ-OTHER-001', $admin->id, $admin->id);
+    $foreignInquiry = $insertInquiry('INQ-OTHER-001', $otherUser->id, $otherUser->id);
     $insertInquiry('INQ-DELETED-001', $manager->id, null, now());
 
     $insertPhoneCall = function (string $name, string $createdBy): string {
@@ -60,7 +71,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     };
     $ownCall = $insertPhoneCall('Scoped caller', $manager->id);
     $linkedCall = $insertPhoneCall('Linked caller', $manager->id);
-    $foreignCall = $insertPhoneCall('Other caller', $admin->id);
+    $foreignCall = $insertPhoneCall('Other caller', $otherUser->id);
     foreach ([['INQ-LINKED-OPP', $linkedInquiry, null], ['CALL-LINKED-OPP', null, $linkedCall]] as [$number, $inquiryId, $callId]) {
         SalesOpportunity::query()->create([
             'company_id' => $company->id, 'owner_sales_profile_id' => $profile->id,
@@ -89,29 +100,38 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     ])->assertUnprocessable();
     expect(SalesOpportunity::query()->count())->toBe(2);
 
-    $url = '/api/sales/opportunity-source-options';
-    $searched = actingAs($manager, 'api')->getJson($url.'?source_type=inquiry&search=INQ-OWN&per_page=1')->assertOk()
+    $url = '/api/sales/opportunity-source-options?company_id='.$company->id;
+    actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?source_type=inquiry')
+        ->assertUnprocessable();
+    $searched = actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&search=INQ-OWN&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $ownInquiry)
         ->assertJsonPath('data.data.0.record', null)
         ->assertJsonPath('data.last_page', 2);
     expect(json_encode($searched->json('data.data.0')))->not->toContain('example.test', 'Do not expose this message.');
 
-    actingAs($manager, 'api')->getJson($url.'?source_type=inquiry&selected_id='.$ownInquiry.'&search=no-match')
+    actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&selected_id='.$ownInquiry.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $ownInquiry)
         ->assertJsonPath('data.data.0.record.email', 'INQ-OWN-001@example.test');
-    actingAs($manager, 'api')->getJson($url.'?source_type=inquiry&selected_id='.$foreignInquiry)
+    actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&selected_id='.$foreignInquiry)
         ->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($manager, 'api')->getJson($url.'?source_type=inquiry&selected_id='.$linkedInquiry)
+    actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&selected_id='.$linkedInquiry)
         ->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($manager, 'api')->getJson($url.'?source_type=phone_call&search=Scoped')
+    actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&search=Scoped')
         ->assertOk()->assertJsonPath('data.data.0.value', $ownCall)
         ->assertJsonPath('data.data.0.record', null);
-    actingAs($manager, 'api')->getJson($url.'?source_type=phone_call&selected_id='.$ownCall)
+    actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&selected_id='.$ownCall)
         ->assertOk()->assertJsonPath('data.data.0.record.summary', 'Private call summary');
-    actingAs($manager, 'api')->getJson($url.'?source_type=phone_call&selected_id='.$foreignCall)
+    actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&selected_id='.$foreignCall)
         ->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($manager, 'api')->getJson($url.'?source_type=phone_call&selected_id='.$linkedCall)
+    actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&selected_id='.$linkedCall)
         ->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($manager, 'api')->getJson($url.'?source_type=other')->assertUnprocessable();
-    actingAs($manager, 'api')->getJson($url.'?source_type=phone_call&per_page=51')->assertUnprocessable();
+    actingAs($manager, 'api')->getJson($url.'&source_type=other')->assertUnprocessable();
+    actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&per_page=51')->assertUnprocessable();
+
+    $ambiguousCompany = Company::create(['name' => 'Ambiguous CRM source company']);
+    Staff::factory()->create(['user_id' => $manager->id, 'company_id' => $ambiguousCompany->id]);
+    actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&selected_id='.$ownInquiry)
+        ->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($manager, 'api')->postJson('/api/sales/opportunities', $duplicatePayload + ['inquiry_id' => $ownInquiry])
+        ->assertForbidden();
 });

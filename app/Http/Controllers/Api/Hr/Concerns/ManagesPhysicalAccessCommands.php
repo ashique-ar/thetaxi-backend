@@ -49,9 +49,9 @@ trait ManagesPhysicalAccessCommands
                     return response()->json(['status' => 'success', 'data' => $existing]);
                 }
 
-                $staff = Staff::query()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->lockForUpdate()->first();
+                $staff = Staff::withTrashed()->whereKey($data['staff_id'])->where('company_id', $data['company_id'])->lockForUpdate()->first();
                 abort_unless($staff, 404);
-                abort_if(in_array($data['command_type'], ['grant', 'restore'], true) && filled($staff->employment_ended_at), 409, 'Former Staff cannot receive physical access.');
+                abort_if(in_array($data['command_type'], ['grant', 'restore'], true) && ($staff->trashed() || filled($staff->employment_ended_at)), 409, 'Former Staff cannot receive physical access.');
                 $device = AttendanceDevice::query()->where('company_id', $data['company_id'])->find($data['device_id']);
                 abort_unless($device, 404);
                 abort_unless(! in_array($data['command_type'], ['grant', 'restore'], true) || filled($data['access_group_code']), 422, 'Grant and restore commands require an access group.');

@@ -50,7 +50,11 @@ trait AuthorizesAttendanceRequests
             abort_unless($context, 403, 'Select an active Staff context.');
             $staffQuery->whereKey($context->context_id);
         } else {
-            abort_if((clone $staffQuery)->count() > 1, 403, 'Select an active Staff context.');
+            $contexts = DB::table('user_contexts')->where('user_id', $request->user()->id)
+                ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')
+                ->limit(2)->get(['context_id']);
+            abort_unless($contexts->count() === 1, 403, 'Select an active Staff context.');
+            $staffQuery->whereKey($contexts->first()->context_id);
         }
 
         $companyId = $staffQuery->value('company_id');

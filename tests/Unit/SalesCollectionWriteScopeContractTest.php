@@ -114,6 +114,11 @@ it('requires a fresh preview, booking-bound evidence and an audit record for com
         ->toContain("if (\$profileCompany !== \$attribution->company_id) \$blocked = true;")
         ->toContain("'source_key_hash' => hash('sha256', \$row['table'].':'.\$row['id'])")
         ->toContain('function history(string $companyId)')
+        ->toContain("->on('evidence.company_id', '=', 'repair.company_id')")
+        ->toContain("->on('rollback.company_id', '=', 'repair.company_id')")
+        ->toContain("->on('rollback_evidence.company_id', '=', 'rollback.company_id')")
+        ->toContain("THEN 'Another legal entity'")
+        ->toContain("COALESCE(after_company.name, 'Unavailable legal entity record')")
         ->toContain('rollback_baseline_available')
         ->and($controller)
         ->toContain("'sales.collections.view-all'")
@@ -142,12 +147,16 @@ it('rolls back only unchanged company repairs with fresh evidence and idempotent
         ->toContain('function rollbackPreview(string $bookingNumber, string $authorizedCompanyId)')
         ->toContain('function rollback(string $bookingNumber, array $data, string $actorUserId, string $authorizedCompanyId)')
         ->toContain("whereNotExists(fn (\$scope) => \$scope->selectRaw('1')")
+        ->toContain("->whereNull('repair.after_checksum')")
+        ->toContain('Historical collection repair checksum is missing; approved historical disposition is required before rollback.')
         ->toContain("'after_checksum' => \$afterChecksum")
         ->toContain("'event_type' => 'sales.collection.company_repair_rolled_back'")
         ->toContain('function assertAuditEvidence(')
         ->toContain('Original transaction audit evidence is missing or inconsistent')
         ->toContain('lockForUpdate()')
         ->toContain('hash_equals($authorizedCompanyId, (string) $attribution->company_id)')
+        ->toContain("->where('repair.booking_id', \$booking->id)")
+        ->toContain("->where('repair.company_id', \$attribution->company_id)")
         ->toContain('The booking legal entity changed; refresh the authorized')
         ->toContain("where('subject_type', 'booking')->where('subject_id', \$booking->id)")
         ->toContain('sales_collection_company_repair_rollback_items')
@@ -166,6 +175,17 @@ it('rolls back only unchanged company repairs with fresh evidence and idempotent
         ->toContain("'collection-company-repairs/rollback-preview'")
         ->toContain("'collection-company-repairs/rollback'")
         ->toContain('permission:sales.payment-ledger.reconcile');
+});
+
+it('replays company repairs only when all repair rows match the booking and legal entity', function () {
+    $repair = file_get_contents(app_path('Services/Sales/SalesCollectionCompanyRepairService.php'));
+
+    expect($repair)
+        ->toContain('(string) $duplicate->booking_id === (string) $booking->id')
+        ->toContain('(string) $duplicate->company_id === (string) $attribution->company_id')
+        ->toContain('$repairRows->every(fn ($row) => (string) $row->booking_id === (string) $booking->id')
+        ->toContain("->where('repair.booking_id', \$booking->id)")
+        ->toContain("->where('repair.company_id', \$attribution->company_id)");
 });
 
 it('scopes payment-ledger reconciliation to an authorized company without returning managed IDs', function (): void {

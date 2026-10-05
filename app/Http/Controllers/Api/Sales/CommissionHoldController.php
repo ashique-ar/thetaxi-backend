@@ -11,6 +11,8 @@ use App\Services\Sales\SalesCommissionNotificationService;
 use App\Services\Sales\SalesAccessScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 
 class CommissionHoldController extends Controller
@@ -23,26 +25,52 @@ class CommissionHoldController extends Controller
         private readonly SalesCommissionNotificationService $notifications,
     ) {}
 
+    public function companyOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyIds = $this->scope->companyIds($request->user(), 'sales.commission-decisions.view-all');
+        $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
+            ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
+            ->select(['id', 'name', 'is_default']);
+        $defaultCompanyId = (clone $query)->where('is_default', true)->value('id');
+        $options = (clone $query)
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
+                $term = '%' . addcslashes($data['search'], '%_\\') . '%';
+                $q->where('name', 'like', $term);
+            })
+            ->orderByDesc('is_default')->orderBy('name')->paginate($data['per_page'] ?? 25);
+        $options->getCollection()->transform(fn ($company) => [
+            'value' => (string) $company->id, 'label' => $company->name,
+            'is_default' => (bool) $company->is_default, 'is_active' => true, 'status' => 'active',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $options, 'default_company_id' => $defaultCompanyId]);
+    }
+
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['nullable', 'uuid'],
+            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
             'hold_code' => ['nullable', 'string', 'max:80'],
             'category' => ['nullable', Rule::in($this->remediation->categories())],
             'resolution' => ['nullable', Rule::in(['open', 'released', 'all'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $query = SalesCommissionDecision::query()->whereIn('status', ['held', 'shadow_held'])
+            ->select([
+                'id', 'booking_id', 'company_id', 'beneficiary_sales_profile_id', 'beneficiary_staff_id',
+                'eligible_lkr_amount', 'status', 'hold_code', 'calculation_explanation', 'decision_at', 'event_version',
+            ])
             ->with(['booking:id,booking_number', 'holdRelease' => fn ($q) => $q->select([
-                'id', 'commission_decision_id', 'release_kind', 'receipt_finality_event_id',
-                'original_hold_code', 'formula_kind', 'commission_amount_lkr',
-                'calculation_explanation', 'calculation_checksum', 'release_reason', 'released_at',
+                'id', 'commission_decision_id', 'release_kind', 'commission_amount_lkr', 'released_at',
             ]), 'holdAdjustment' => fn ($q) => $q->select([
-                'id', 'commission_decision_id', 'adjustment_kind', 'original_hold_code',
-                'commission_adjustment_lkr', 'calculation_checksum', 'reason', 'adjustment_effective_at',
+                'id', 'commission_decision_id', 'commission_adjustment_lkr', 'adjustment_effective_at',
             ]), 'holdResolution' => fn ($q) => $q->select([
-                'id', 'commission_decision_id', 'receipt_finality_event_id', 'resolution_kind',
-                'employment_ended_at', 'original_hold_code', 'resolution_checksum', 'resolved_at',
+                'id', 'commission_decision_id', 'resolution_kind', 'employment_ended_at', 'resolution_checksum', 'resolved_at',
             ])]);
         $this->scope($query, $request, $data['company_id'] ?? null);
         $resolution = $data['resolution'] ?? 'open';
@@ -59,10 +87,22 @@ class CommissionHoldController extends Controller
                 ->whereHas('holdRelease')->orWhereHas('holdAdjustment')->orWhereHas('holdResolution')));
 
         $rows = $query->latest('decision_at')->paginate($request->integer('per_page', 25));
-        $rows->getCollection()->transform(function (SalesCommissionDecision $decision) use ($request) {
-            $decision->setAttribute('remediation', $this->remediation->describe($decision, $request->user()));
-            $decision->setAttribute('notification_delivery', $this->notifications->latestStatus($decision->id));
-            return $decision;
+        $rows->getCollection()->transform(function (SalesCommissionDecision $decision) use ($request): array {
+            return $decision->only([
+                'id', 'eligible_lkr_amount', 'status', 'hold_code', 'calculation_explanation', 'decision_at', 'event_version',
+            ]) + [
+                'booking' => ['booking_number' => $decision->booking?->booking_number],
+                'remediation' => Arr::only($this->remediation->describe($decision, $request->user()), [
+                    'category', 'canonical_owner', 'action_authorized', 'action_path', 'action_label',
+                    'release_preview_applicable', 'linked_adjustment_preview_applicable', 'guidance',
+                ]),
+                'notification_delivery' => $this->notifications->latestStatus($decision->id),
+                'hold_release' => $decision->holdRelease?->only(['release_kind', 'commission_amount_lkr', 'released_at']),
+                'hold_adjustment' => $decision->holdAdjustment?->only(['commission_adjustment_lkr', 'adjustment_effective_at']),
+                'hold_resolution' => $decision->holdResolution?->only([
+                    'resolution_kind', 'employment_ended_at', 'resolution_checksum', 'resolved_at',
+                ]),
+            ];
         });
 
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -83,12 +123,7 @@ class CommissionHoldController extends Controller
         ]);
         $row = $this->scopedDecision($request, $earning);
         $this->holds->release($row->id, $data['expected_version'], $data['reason'], $data['idempotency_key'], $request->user()->id);
-        $earning = $row->fresh()->load(['holdRelease' => fn ($q) => $q->select([
-            'id', 'commission_decision_id', 'release_kind', 'receipt_finality_event_id',
-            'original_hold_code', 'formula_kind', 'commission_amount_lkr',
-            'calculation_explanation', 'calculation_checksum', 'release_reason', 'released_at',
-        ])]);
-        return response()->json(['status' => 'success', 'data' => $earning], 201);
+        return response()->json(['status' => 'success', 'data' => $row->only(['id'])], 201);
     }
 
     public function adjustmentPreview(Request $request, string $earning): JsonResponse
@@ -108,7 +143,7 @@ class CommissionHoldController extends Controller
         $row = $this->scopedDecision($request, $earning);
         $adjustment = $this->adjustments->append($row->id, $data['expected_version'], $data['preview_checksum'],
             $data['reason'], $data['idempotency_key'], (string) $request->user()->id);
-        return response()->json(['status' => 'success', 'data' => $adjustment], 201);
+        return response()->json(['status' => 'success', 'data' => $adjustment->only(['id'])], 201);
     }
 
     private function scopedDecision(Request $request, string $id): SalesCommissionDecision

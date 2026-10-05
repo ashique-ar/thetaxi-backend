@@ -17,7 +17,10 @@ class UpdateStaffRequest extends FormRequest
 
         return [
             'staff_type' => ['sometimes', 'required', 'string', 'max:100'],
-            'company_id' => ['sometimes', 'nullable', 'uuid', 'exists:companies,id'],
+            'company_id' => [
+                'sometimes', 'required', 'uuid',
+                Rule::exists('companies', 'id')->where('is_active', true)->whereNull('deleted_at'),
+            ],
             'first_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'last_name' => ['sometimes', 'nullable', 'string', 'max:255'],
             'email' => ['sometimes', 'nullable', 'email', 'max:255'],

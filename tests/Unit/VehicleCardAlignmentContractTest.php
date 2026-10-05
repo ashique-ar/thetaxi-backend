@@ -1,7 +1,5 @@
 <?php
 
-uses(Tests\TestCase::class);
-
 it('keeps shared vehicle card content in aligned slots for every theme', function (): void {
     $card = file_get_contents(resource_path('views/components/vehicle-card.blade.php'));
     $themeOne = file_get_contents(public_path('assets/css/theme-01.css'));

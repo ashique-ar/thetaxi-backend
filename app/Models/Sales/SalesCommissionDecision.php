@@ -2,12 +2,12 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 use App\Models\Booking\Booking;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasOne;
 
-class SalesCommissionDecision extends BaseModel
+class SalesCommissionDecision extends NonSoftDeletableModel
 {
     protected $fillable = [
         'company_id', 'booking_id', 'root_attribution_id', 'booking_attribution_id', 'receipt_id',

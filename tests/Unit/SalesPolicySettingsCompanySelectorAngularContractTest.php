@@ -10,7 +10,7 @@ it('uses a bounded active-Staff-scoped company selector for governed Sales setti
         ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']")
         ->toContain("whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())")
         ->toContain("where('id', \$companyId)->whereNull('deleted_at')->exists()")
-        ->and($component)->toContain('UiManagedRecordSelectComponent', 'policySettingsCompanyOptions({ per_page: 1 })', "option.metadata?.is_default === true", 'companyContextRequestVersion')->not->toContain('policySettingsContext()', 'companies = signal')
+        ->and($component)->toContain('UiManagedRecordSelectComponent', 'policySettingsCompanyOptions()', 'preselectedCompany(response)', 'companyContextRequestVersion')->not->toContain('policySettingsContext()', 'companies = signal', 'per_page: 1')
         ->and($template)->toContain('endpoint="/sales/policy-settings/company-options"', 'title="Select a legal entity"')
         ->not->toContain('*ngFor="let company of companies()"');
 });

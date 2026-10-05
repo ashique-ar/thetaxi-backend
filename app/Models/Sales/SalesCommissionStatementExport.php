@@ -2,9 +2,9 @@
 
 namespace App\Models\Sales;
 
-use App\Models\BaseModel;
+use App\Models\NonSoftDeletableModel;
 
-class SalesCommissionStatementExport extends BaseModel
+class SalesCommissionStatementExport extends NonSoftDeletableModel
 {
     protected $fillable = [
         'statement_id', 'format', 'disk', 'path', 'file_name', 'file_checksum', 'file_size',
