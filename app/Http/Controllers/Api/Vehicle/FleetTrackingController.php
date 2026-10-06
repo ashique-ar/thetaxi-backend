@@ -227,7 +227,7 @@ class FleetTrackingController extends Controller
         $token = $data['token'] ?? decrypt($existing->token);
         try {
             DB::transaction(function () use ($companyId, $existing, $token, $data, $wialon): void {
-                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'group_mappings' => json_encode([]), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
+                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
                 if ($data['enabled']) {
                     $wialon->validateSelections($companyId, $data['resource_ids'] ?? [], $data['group_ids'] ?? [], $data['unit_ids'] ?? []);
                 }

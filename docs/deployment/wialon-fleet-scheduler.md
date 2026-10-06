@@ -21,7 +21,7 @@ cd "$app_dir"
 php_bin=/usr/bin/php8.5
 test -f artisan && "$php_bin" artisan about
 
-for migration in database/migrations/2026_10_06_00000{1..6}_*.php; do
+for migration in database/migrations/2026_10_06_00000{1..7}_*.php; do
     "$php_bin" artisan migrate --path="$migration" --force
 done
 
