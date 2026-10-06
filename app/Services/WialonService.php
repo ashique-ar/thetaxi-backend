@@ -23,16 +23,8 @@ class WialonService
         return $this->withSession($companyId, function (string $sid) use ($includeUnselected, $integration) {
             $units = $this->searchUnits($sid);
             if ($includeUnselected) return $this->portalUnits($units);
-
-            $selected = array_map('intval', $integration->unit_ids);
-            if ($integration->group_ids) {
-                foreach ($this->searchUnitGroups($sid) as $group) {
-                    if (in_array((int) ($group['id'] ?? 0), array_map('intval', $integration->group_ids), true)) {
-                        $selected = array_merge($selected, array_map('intval', $group['u'] ?? []));
-                    }
-                }
-            }
-            $selected = array_unique($selected);
+            $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
+            $selected = $this->unitIdsFromGroups($groups, $integration->group_ids);
             return $this->portalUnits(array_values(array_filter($units, fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selected, true))));
         });
     }
@@ -70,13 +62,7 @@ class WialonService
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
             return ['units' => $this->searchUnits($sid), 'groups' => $groups];
         });
-        $selectedUnitIds = array_map('intval', $integration->unit_ids);
-        foreach ($catalog['groups'] as $group) {
-            if (in_array((int) ($group['id'] ?? 0), array_map('intval', $integration->group_ids), true)) {
-                $selectedUnitIds = array_merge($selectedUnitIds, array_map('intval', $group['u'] ?? []));
-            }
-        }
-        $selectedUnitIds = array_unique($selectedUnitIds);
+        $selectedUnitIds = $this->unitIdsFromGroups($catalog['groups'], $integration->group_ids);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
         foreach ($units as $unit) {
             if (empty($unit['id'])) continue;
@@ -247,15 +233,14 @@ class WialonService
         return $this->withSession($companyId, fn (string $sid) => $this->searchUnitGroups($sid));
     }
 
-    public function validateSelections(string $companyId, array $resourceIds, array $groupIds, array $unitIds): void
+    public function validateSelections(string $companyId, array $resourceIds, array $groupIds): void
     {
         $available = $this->withSession($companyId, fn (string $sid) => [
             'resource_ids' => array_column($this->searchReportResources($sid), 'id'),
             'group_ids' => array_column($this->searchUnitGroups($sid), 'id'),
-            'unit_ids' => array_column($this->searchUnits($sid), 'id'),
         ]);
         $errors = [];
-        foreach (['resource_ids' => $resourceIds, 'group_ids' => $groupIds, 'unit_ids' => $unitIds] as $field => $selectedIds) {
+        foreach (['resource_ids' => $resourceIds, 'group_ids' => $groupIds] as $field => $selectedIds) {
             $allowedIds = array_map('intval', $available[$field]);
             if (array_diff(array_map('intval', $selectedIds), $allowedIds)) {
                 $errors[$field] = ['One or more selected Wialon items are unavailable to this company token. Refresh the Wialon catalog and select available items.'];
@@ -270,6 +255,18 @@ class WialonService
             'spec' => ['itemsType' => 'avl_unit_group', 'propName' => 'sys_name', 'propValueMask' => '*', 'sortType' => 'sys_name'],
             'force' => 1, 'flags' => 1, 'from' => 0, 'to' => 0,
         ])['items'] ?? [];
+    }
+
+    private function unitIdsFromGroups(array $groups, array $selectedGroupIds): array
+    {
+        $selectedGroupIds = array_map('intval', $selectedGroupIds);
+        $unitIds = [];
+        foreach ($groups as $group) {
+            if (in_array((int) ($group['id'] ?? 0), $selectedGroupIds, true)) {
+                $unitIds = array_merge($unitIds, array_map('intval', $group['u'] ?? []));
+            }
+        }
+        return array_values(array_unique($unitIds));
     }
 
     private function searchUnits(string $sid): array
@@ -289,7 +286,6 @@ class WialonService
         $row = DB::table('wialon_integrations')->where('company_id', $companyId)->where('enabled', true)->first();
         if (!$row || !$row->token) throw new RuntimeException('Wialon is not configured for this company.');
         $row->token = decrypt($row->token);
-        $row->unit_ids = json_decode($row->unit_ids ?: '[]', true) ?: [];
         $row->resource_ids = json_decode($row->resource_ids ?: '[]', true) ?: [];
         $row->group_ids = json_decode($row->group_ids ?: '[]', true) ?: [];
         return (object) $row;
@@ -298,19 +294,11 @@ class WialonService
     private function selectedUnitIds(string $companyId): array
     {
         $integration = $this->integration($companyId);
-        $ids = array_map('intval', $integration->unit_ids);
-        if ($integration->group_ids) {
-            foreach ($this->unitGroups($companyId) as $group) {
-                if (in_array((int) ($group['id'] ?? 0), array_map('intval', $integration->group_ids), true)) {
-                    $ids = array_merge($ids, array_map('intval', $group['u'] ?? []));
-                }
-            }
-        }
-        $ids = array_merge($ids, \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)
-            ->whereNotNull('wialon_unit_id')
-            ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
-        return array_values(array_unique($ids));
+        if (!$integration->group_ids) return [];
+        return $this->withSession($companyId, fn (string $sid) => $this->unitIdsFromGroups(
+            $this->searchUnitGroups($sid),
+            $integration->group_ids
+        ));
     }
 
     private function assertSelectedUnit(string $companyId, int $unitId): void
