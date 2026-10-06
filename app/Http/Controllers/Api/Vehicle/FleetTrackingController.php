@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\Vehicle;
 
 use App\Http\Controllers\Controller;
 use App\Models\Vehicle\Vehicle;
-use App\Models\Vehicle\VehicleGroup;
 use App\Services\WialonService;
 use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
@@ -182,28 +181,26 @@ class FleetTrackingController extends Controller
     {
         $companyId = $this->companyId($request);
         $row = DB::table('wialon_integrations')->where('company_id', $companyId)->first();
-        return response()->json(['status' => 'success', 'data' => ['configured' => (bool) $row, 'enabled' => (bool) ($row->enabled ?? false), 'base_url' => $row->base_url ?? 'https://hst-api.wialon.com', 'resource_ids' => json_decode($row->resource_ids ?? '[]', true) ?: [], 'group_ids' => json_decode($row->group_ids ?? '[]', true) ?: [], 'group_mappings' => json_decode($row->group_mappings ?? '[]', true) ?: [], 'unit_ids' => json_decode($row->unit_ids ?? '[]', true) ?: []]]);
+        return response()->json(['status' => 'success', 'data' => ['configured' => (bool) $row, 'enabled' => (bool) ($row->enabled ?? false), 'base_url' => $row->base_url ?? 'https://hst-api.wialon.com', 'resource_ids' => json_decode($row->resource_ids ?? '[]', true) ?: [], 'group_ids' => json_decode($row->group_ids ?? '[]', true) ?: [], 'unit_ids' => json_decode($row->unit_ids ?? '[]', true) ?: []]]);
     }
 
     public function catalog(Request $request, WialonService $wialon): JsonResponse
     {
         $companyId = $this->companyId($request);
-        try { return response()->json(['status' => 'success', 'data' => ['resources' => $wialon->resources($companyId), 'groups' => $wialon->unitGroups($companyId), 'units' => $wialon->units($companyId, true), 'vehicle_groups' => VehicleGroup::query()->where('is_active', true)->orderBy('name')->get(['id', 'name'])]]); }
+        try { return response()->json(['status' => 'success', 'data' => ['resources' => $wialon->resources($companyId), 'groups' => $wialon->unitGroups($companyId), 'units' => $wialon->units($companyId, true)]]); }
         catch (RuntimeException $error) { return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503); }
     }
 
     public function saveSettings(Request $request, WialonService $wialon): JsonResponse
     {
-        $data = $request->validate(['token' => ['nullable', 'string', 'min:10', 'max:10000'], 'resource_ids' => ['array'], 'resource_ids.*' => ['integer', 'min:1'], 'group_ids' => ['array'], 'group_ids.*' => ['integer', 'min:1'], 'group_mappings' => ['array'], 'group_mappings.*.wialon_group_id' => ['required', 'integer', 'min:1', 'distinct'], 'group_mappings.*.vehicle_group_id' => ['required', 'uuid', Rule::exists('vehicle_groups', 'id')->where(fn ($query) => $query->where('is_active', true)->whereNull('deleted_at'))], 'unit_ids' => ['array'], 'unit_ids.*' => ['integer', 'min:1'], 'enabled' => ['required', 'boolean']]);
-        $selectedGroupIds = array_map('intval', $data['group_ids'] ?? []);
-        abort_unless(collect($data['group_mappings'] ?? [])->every(fn ($mapping) => in_array((int) $mapping['wialon_group_id'], $selectedGroupIds, true)), 422, 'Map vehicle groups only after selecting them for this company.');
+        $data = $request->validate(['token' => ['nullable', 'string', 'min:10', 'max:10000'], 'resource_ids' => ['array'], 'resource_ids.*' => ['integer', 'min:1'], 'group_ids' => ['array'], 'group_ids.*' => ['integer', 'min:1'], 'unit_ids' => ['array'], 'unit_ids.*' => ['integer', 'min:1'], 'enabled' => ['required', 'boolean']]);
         $companyId = $this->companyId($request);
         $existing = DB::table('wialon_integrations')->where('company_id', $companyId)->first();
         abort_unless($existing || $data['token'] ?? false, 422, 'Enter the Wialon token to connect this company.');
         $token = $data['token'] ?? decrypt($existing->token);
         try {
             DB::transaction(function () use ($companyId, $existing, $token, $data, $wialon): void {
-                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'group_mappings' => json_encode(array_values($data['group_mappings'] ?? [])), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
+                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'group_mappings' => json_encode([]), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
                 if ($data['enabled']) {
                     $wialon->validateSelections($companyId, $data['resource_ids'] ?? [], $data['group_ids'] ?? [], $data['unit_ids'] ?? []);
                 }

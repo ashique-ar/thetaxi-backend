@@ -54,7 +54,7 @@ class WialonService
         $created = 0;
         $integration = $this->integration($companyId);
         $catalog = $this->withSession($companyId, function (string $sid) use ($integration) {
-            $groups = $integration->group_ids || $integration->group_mappings ? $this->searchUnitGroups($sid) : [];
+            $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
             return ['units' => $this->searchUnits($sid), 'groups' => $groups];
         });
         $selectedUnitIds = array_map('intval', $integration->unit_ids);
@@ -65,20 +65,6 @@ class WialonService
         }
         $selectedUnitIds = array_unique($selectedUnitIds);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
-        $vehicleGroupByUnit = [];
-        if ($integration->group_mappings) {
-            $activeVehicleGroupIds = \App\Models\Vehicle\VehicleGroup::query()
-                ->whereIn('id', collect($integration->group_mappings)->pluck('vehicle_group_id')->filter()->unique())
-                ->where('is_active', true)->pluck('id')->map(fn ($id) => (string) $id)->all();
-            $groupsById = collect($catalog['groups'])->keyBy(fn ($group) => (int) ($group['id'] ?? 0));
-            foreach ($integration->group_mappings as $mapping) {
-                $wialonGroup = $groupsById->get((int) $mapping['wialon_group_id']);
-                if (!$wialonGroup || !in_array((string) $mapping['vehicle_group_id'], $activeVehicleGroupIds, true)) continue;
-                foreach (array_map('intval', $wialonGroup['u'] ?? []) as $unitId) {
-                    $vehicleGroupByUnit[$unitId] ??= (string) $mapping['vehicle_group_id'];
-                }
-            }
-        }
         foreach ($units as $unit) {
             if (empty($unit['id'])) continue;
             $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
@@ -106,9 +92,6 @@ class WialonService
             if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) continue;
             $vehicle->company_id ??= $companyId;
             $vehicle->wialon_unit_id = (int) $unit['id'];
-            if (isset($vehicleGroupByUnit[(int) $unit['id']]) && ($isNew || !$vehicle->vehicle_group_id)) {
-                $vehicle->vehicle_group_id = $vehicleGroupByUnit[(int) $unit['id']];
-            }
             $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
             $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
             $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
@@ -287,7 +270,6 @@ class WialonService
         $row->unit_ids = json_decode($row->unit_ids ?: '[]', true) ?: [];
         $row->resource_ids = json_decode($row->resource_ids ?: '[]', true) ?: [];
         $row->group_ids = json_decode($row->group_ids ?: '[]', true) ?: [];
-        $row->group_mappings = json_decode($row->group_mappings ?: '[]', true) ?: [];
         return (object) $row;
     }
 
