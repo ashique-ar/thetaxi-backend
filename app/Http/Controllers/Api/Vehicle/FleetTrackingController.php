@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleGroup;
 use App\Services\WialonService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Validation\Rule;
@@ -224,6 +225,16 @@ class FleetTrackingController extends Controller
 
     private function companyId(Request $request): string
     {
-        return (string) app(\App\Services\StaffAccessService::class)->currentActorStaff($request->user())->company_id;
+        if ($request->header('X-Active-Context-Type') === 'internal') {
+            $company = app(SingleCompanyScope::class)->activeDefaultCompany();
+            abort_unless($company, 409, 'An active default company is required to manage fleet settings from the Internal Portal.');
+
+            return (string) $company->id;
+        }
+
+        $companyId = app(\App\Services\StaffAccessService::class)->currentActorStaff($request->user())->company_id;
+        abort_unless($companyId, 403, 'The active Staff context has no company assigned.');
+
+        return (string) $companyId;
     }
 }
