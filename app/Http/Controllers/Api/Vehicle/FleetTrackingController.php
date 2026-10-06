@@ -27,7 +27,7 @@ class FleetTrackingController extends Controller
     public function sync(Request $request, WialonService $wialon): JsonResponse
     {
         try {
-            return response()->json(['status' => 'success', 'data' => ['imported' => $wialon->syncVehicles($this->companyId($request))]]);
+            return response()->json(['status' => 'success', 'data' => ['synced' => $wialon->syncVehicles($this->companyId($request))]]);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
@@ -138,26 +138,53 @@ class FleetTrackingController extends Controller
     {
         $companyId = $this->companyId($request);
         abort_unless(!$vehicle->company_id || (string) $vehicle->company_id === $companyId, 403);
-        $unitRules = ['present', 'nullable', 'integer', Rule::unique('vehicles', 'wialon_unit_id')->where('company_id', $companyId)->ignore($vehicle->id)];
+        $unitRules = ['present', 'nullable', 'integer'];
         if ($request->filled('wialon_unit_id')) {
             try {
-                $unitIds = collect($wialon->units($companyId))->pluck('id')->map(fn ($id) => (string) $id)->all();
+                $unitIds = collect($wialon->units($companyId, true))->pluck('id')->map(fn ($id) => (string) $id)->all();
             } catch (RuntimeException $error) {
                 return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
             }
             $unitRules[] = Rule::in($unitIds);
         }
         $data = $request->validate(['wialon_unit_id' => $unitRules]);
-        $vehicle->wialon_unit_id = $data['wialon_unit_id'] ?? null;
-        if (!$vehicle->wialon_unit_id) {
-            $vehicle->wialon_unique_id = null;
-            $vehicle->wialon_hw_type_id = null;
-            $vehicle->wialon_mileage = null;
-            $vehicle->wialon_last_message_at = null;
-            $vehicle->wialon_last_synced_at = null;
-        }
-        $vehicle->company_id ??= $companyId;
-        $vehicle->save();
+        DB::transaction(function () use ($vehicle, $companyId, $data): void {
+            $unitId = $data['wialon_unit_id'] ?? null;
+            if ($unitId) {
+                $previousVehicle = Vehicle::withTrashed()->withInactive()
+                    ->where('company_id', $companyId)
+                    ->where('wialon_unit_id', (int) $unitId)
+                    ->where('id', '!=', $vehicle->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($previousVehicle) {
+                    if (
+                        !$previousVehicle->trashed()
+                        && ($previousVehicle->is_active || $previousVehicle->created_user_id || $previousVehicle->updated_user_id)
+                    ) {
+                        throw \Illuminate\Validation\ValidationException::withMessages([
+                            'wialon_unit_id' => ['This Wialon unit is linked to a saved vehicle record. Finish that vehicle setup before moving the device.'],
+                        ]);
+                    }
+                    $previousVehicle->wialon_unit_id = null;
+                    $previousVehicle->save();
+                    if (!$previousVehicle->trashed()) {
+                        $previousVehicle->delete();
+                    }
+                }
+            }
+
+            $vehicle->wialon_unit_id = $unitId;
+            if (!$unitId) {
+                $vehicle->wialon_unique_id = null;
+                $vehicle->wialon_hw_type_id = null;
+                $vehicle->wialon_mileage = null;
+                $vehicle->wialon_last_message_at = null;
+                $vehicle->wialon_last_synced_at = null;
+            }
+            $vehicle->company_id ??= $companyId;
+            $vehicle->save();
+        });
         return response()->json(['status' => 'success', 'data' => ['wialon_unit_id' => $vehicle->wialon_unit_id]]);
     }
 
@@ -200,7 +227,7 @@ class FleetTrackingController extends Controller
         $token = $data['token'] ?? decrypt($existing->token);
         try {
             DB::transaction(function () use ($companyId, $existing, $token, $data, $wialon): void {
-                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'group_mappings' => json_encode([]), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
+                DB::table('wialon_integrations')->updateOrInsert(['company_id' => $companyId], ['id' => $existing->id ?? (string) Str::uuid(), 'token' => encrypt($token), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => json_encode(array_values(array_unique($data['resource_ids'] ?? []))), 'group_ids' => json_encode(array_values(array_unique($data['group_ids'] ?? []))), 'unit_ids' => json_encode(array_values(array_unique($data['unit_ids'] ?? []))), 'enabled' => $data['enabled'], 'updated_at' => now(), 'created_at' => $existing->created_at ?? now()]);
                 if ($data['enabled']) {
                     $wialon->validateSelections($companyId, $data['resource_ids'] ?? [], $data['group_ids'] ?? [], $data['unit_ids'] ?? []);
                 }
@@ -208,16 +235,16 @@ class FleetTrackingController extends Controller
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => 'Wialon connection failed; previous settings were kept: '.$error->getMessage()], 503);
         }
-        $imported = 0;
+        $synced = 0;
         $syncError = null;
         if ($data['enabled']) {
             try {
-                $imported = $wialon->syncVehicles($companyId);
+                $synced = $wialon->syncVehicles($companyId);
             } catch (RuntimeException $error) {
                 $syncError = $error->getMessage();
             }
         }
-        return response()->json(['status' => 'success', 'data' => ['configured' => true, 'enabled' => (bool) $data['enabled'], 'imported' => $imported, 'sync_error' => $syncError]]);
+        return response()->json(['status' => 'success', 'data' => ['configured' => true, 'enabled' => (bool) $data['enabled'], 'synced' => $synced, 'sync_error' => $syncError]]);
     }
 
     private function companyId(Request $request): string
