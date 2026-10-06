@@ -49,3 +49,9 @@ COPY docker/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=base /var/www/html/public /var/www/html/public
 
 EXPOSE 80
+
+# Run as a separate one-replica container beside the PHP-FPM app.
+FROM base AS scheduler
+
+USER www-data
+CMD ["php", "artisan", "schedule:work"]

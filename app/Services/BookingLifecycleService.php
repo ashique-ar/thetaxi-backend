@@ -19,6 +19,7 @@ use App\Services\Pricing\PricingContextPolicyService;
 use App\Models\AuditLog;
 use App\Notifications\BookingLifecycleNotification;
 use App\Services\InvoiceService;
+use App\Services\WialonService;
 use App\Models\User;
 use App\Models\Staff;
 use App\Enums\BookingLifecycleStatus;
@@ -550,6 +551,16 @@ class BookingLifecycleService
             $dispatchMileage = (int) ($dispatchData['mileage'] ?? 0);
             if ($dispatchMileage > (int) ($vehicle->current_mileage ?? 0)) {
                 $vehicleUpdates['current_mileage'] = $dispatchMileage;
+                if ($vehicle->wialon_unit_id) {
+                    try {
+                        $vehicleUpdates['wialon_mileage'] = app(WialonService::class)->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $dispatchMileage);
+                    } catch (\Throwable $syncError) {
+                        Log::warning('Dispatch mileage saved locally but Wialon counter sync failed', [
+                            'vehicle_id' => $vehicleId,
+                            'error' => $syncError->getMessage(),
+                        ]);
+                    }
+                }
             }
             $vehicle->update($vehicleUpdates);
 
@@ -904,6 +915,17 @@ class BookingLifecycleService
                         if ($vehicleForMaintenance) {
                             if ($mileageIn > (int) ($vehicleForMaintenance->current_mileage ?? 0)) {
                                 $vehicleForMaintenance->update(['current_mileage' => $mileageIn]);
+                                if ($vehicleForMaintenance->wialon_unit_id) {
+                                    try {
+                                        $vehicleForMaintenance->wialon_mileage = app(WialonService::class)->setMileage((string) $vehicleForMaintenance->company_id, (int) $vehicleForMaintenance->wialon_unit_id, $mileageIn);
+                                        $vehicleForMaintenance->save();
+                                    } catch (\Throwable $syncError) {
+                                        Log::warning('Post-trip mileage saved locally but Wialon counter sync failed', [
+                                            'vehicle_id' => $vehicleId,
+                                            'error' => $syncError->getMessage(),
+                                        ]);
+                                    }
+                                }
                             }
                             $this->availabilityEnforcement->checkPostTripMaintenanceTriggers(
                                 $vehicleForMaintenance,

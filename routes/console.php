@@ -8,6 +8,8 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
+Schedule::command('wialon:sync-fleet')->everyFiveMinutes()->withoutOverlapping();
+
 Schedule::command('sitemap:generate-and-ping')->daily();
 
 // Schedule::command('drivers:process-auto-offline')->everyFiveMinutes();

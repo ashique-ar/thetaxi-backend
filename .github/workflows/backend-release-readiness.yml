@@ -149,3 +149,6 @@ jobs:
 
       - name: Build PHP 8.5 production stage
         run: docker build --target base --tag thetaxi-backend:${{ github.sha }} .
+
+      - name: Build Laravel scheduler stage
+        run: docker build --target scheduler --tag thetaxi-scheduler:${{ github.sha }} .

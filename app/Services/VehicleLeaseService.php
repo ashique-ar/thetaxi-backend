@@ -408,14 +408,19 @@ class VehicleLeaseService
                 'financial_status' => $zeroSettlement ? 'settled' : $lease->financial_status,
                 'financially_settled_at' => $zeroSettlement ? $data['effective_at'] : $lease->financially_settled_at,
             ]);
-            $lease->vehicle()->update([
+            $vehicle = Vehicle::query()->lockForUpdate()->find($lease->vehicle_id);
+            $vehicleUpdates = [
                 'agreement_status' => 'ended',
                 'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value,
-                'handover_mileage' => $data['odometer'] ?? $lease->vehicle?->handover_mileage,
+                'handover_mileage' => $data['odometer'] ?? $vehicle?->handover_mileage,
                 'handover_at' => $data['effective_at'],
                 'handover_location' => $data['location'] ?? null,
                 'handover_notes' => $data['condition_notes'] ?? $data['reason'],
-            ]);
+            ];
+            if (isset($data['odometer']) && (int) $data['odometer'] > (int) ($vehicle?->current_mileage ?? 0)) {
+                $vehicleUpdates['current_mileage'] = (int) $data['odometer'];
+            }
+            $vehicle?->update($vehicleUpdates);
             $this->event($lease, 'released', $from, 'released', [
                 'release_id' => $release->id, 'release_type' => $release->release_type,
                 'outstanding_amount' => $outstanding, 'net_settlement_amount' => $net,
