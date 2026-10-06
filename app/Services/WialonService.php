@@ -98,6 +98,10 @@ class WialonService
                     ->first();
             }
             if (!$vehicle || $vehicle->trashed()) continue;
+            if ($this->isImportedPlaceholder($vehicle, $unit)) {
+                $vehicle->delete();
+                continue;
+            }
 
             $mileage = data_get($unit, 'counters.cnm_km');
             if (!is_numeric($mileage)) {
@@ -122,6 +126,19 @@ class WialonService
             $synced++;
         }
         return $synced;
+    }
+
+    public function isImportedPlaceholder(\App\Models\Vehicle\Vehicle $vehicle, array $unit): bool
+    {
+        return !empty($unit['id'])
+            && (int) $vehicle->wialon_unit_id === (int) $unit['id']
+            && !$vehicle->is_active
+            && !$vehicle->license_plate
+            && !$vehicle->registration_no
+            && !$vehicle->created_user_id
+            && !$vehicle->updated_user_id
+            && $vehicle->availability_status === \App\Enums\VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value
+            && mb_strtolower(trim((string) $vehicle->title)) === mb_strtolower(trim((string) ($unit['nm'] ?? '')));
     }
 
     public function setMileage(string $companyId, int $unitId, int $mileageKm): int
