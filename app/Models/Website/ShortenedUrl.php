@@ -10,6 +10,8 @@ use Illuminate\Database\Eloquent\Concerns\HasUuids;
 
 class ShortenedUrl extends BaseModel
 {
+    protected $useUserTracking = false;
+
     protected $fillable = [
         'short_code',
         'original_url',
