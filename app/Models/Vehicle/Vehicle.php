@@ -93,6 +93,7 @@ class Vehicle extends BaseModel
         'monthly_mileage_limit',
         'excess_mileage_rate',
         'title',
+        'is_active',
         'registration_no',
         'chasis_no',
         'engine_no',

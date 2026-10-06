@@ -46,6 +46,7 @@ class UpdateVehicleRequest extends FormRequest
             'agreement_start_date' => ['sometimes', 'nullable', 'date'],
             'agreement_end_date' => ['sometimes', 'nullable', 'date', 'after_or_equal:agreement_start_date'],
             'agreement_status' => ['sometimes', 'nullable', 'string', 'in:pending,active,ended,cancelled'],
+            'is_active' => ['sometimes', 'boolean'],
             'initial_mileage' => ['prohibited'],
             'current_mileage' => ['prohibited'],
             'handover_mileage' => ['prohibited'],
