@@ -114,8 +114,16 @@ class FleetTrackingController extends Controller
         } catch (RuntimeException $error) {
             $wialonError = $error->getMessage();
         }
-        $vehicles = Vehicle::withInactive()->where('company_id', $companyId)->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_last_message_at', 'wialon_last_synced_at')->orderBy('title')->get();
+        $vehicles = Vehicle::withInactive()
+            ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
+            ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_last_message_at', 'wialon_last_synced_at')
+            ->orderBy('title')
+            ->get();
         $unitById = collect($units)->keyBy(fn (array $unit) => (int) ($unit['id'] ?? 0));
+        $vehicles = $vehicles->reject(fn (Vehicle $vehicle) => $wialon->isImportedPlaceholder(
+            $vehicle,
+            $unitById->get((int) $vehicle->wialon_unit_id, [])
+        ))->values();
         return response()->json(['status' => 'success', 'data' => [
             'units' => $units,
             'wialon_error' => $wialonError,
