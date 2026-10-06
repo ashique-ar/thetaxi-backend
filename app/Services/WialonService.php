@@ -2,7 +2,6 @@
 
 namespace App\Services;
 
-use App\Enums\VehicleAvailabilityStatus;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Client\ConnectionException;
@@ -21,11 +20,15 @@ class WialonService
     public function units(string $companyId, bool $includeUnselected = false): array
     {
         $integration = $includeUnselected ? null : $this->integration($companyId);
-        return $this->withSession($companyId, function (string $sid) use ($includeUnselected, $integration) {
+        return $this->withSession($companyId, function (string $sid) use ($companyId, $includeUnselected, $integration) {
             $units = $this->searchUnits($sid);
             if ($includeUnselected) return $this->portalUnits($units);
 
             $selected = array_map('intval', $integration->unit_ids);
+            $selected = array_merge($selected, \App\Models\Vehicle\Vehicle::withInactive()
+                ->where('company_id', $companyId)
+                ->whereNotNull('wialon_unit_id')
+                ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
             if ($integration->group_ids) {
                 foreach ($this->searchUnitGroups($sid) as $group) {
                     if (in_array((int) ($group['id'] ?? 0), array_map('intval', $integration->group_ids), true)) {
@@ -42,6 +45,17 @@ class WialonService
     {
         return array_values(array_map(static function (array $unit): array {
             $safe = array_intersect_key($unit, array_flip(['id', 'nm', 'netconn']));
+            $kilometers = data_get($unit, 'counters.cnm_km');
+            if (is_numeric($kilometers)) {
+                $safe['mileage_km'] = (int) round((float) $kilometers);
+            } elseif (is_numeric(data_get($unit, 'counters.cnm'))) {
+                $mileage = (float) data_get($unit, 'counters.cnm');
+                $safe['mileage_km'] = (int) round(
+                    in_array((int) ($unit['mu'] ?? 0), [1, 2], true)
+                        ? $mileage * 1.609344
+                        : $mileage
+                );
+            }
             if (isset($unit['pos']) && is_array($unit['pos'])) {
                 $safe['pos'] = array_intersect_key($unit['pos'], array_flip(['t', 'x', 'y', 's']));
             }
@@ -51,7 +65,7 @@ class WialonService
 
     public function syncVehicles(string $companyId): int
     {
-        $created = 0;
+        $synced = 0;
         $integration = $this->integration($companyId);
         $catalog = $this->withSession($companyId, function (string $sid) use ($integration) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
@@ -63,6 +77,10 @@ class WialonService
                 $selectedUnitIds = array_merge($selectedUnitIds, array_map('intval', $group['u'] ?? []));
             }
         }
+        $selectedUnitIds = array_merge($selectedUnitIds, \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->whereNotNull('wialon_unit_id')
+            ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
         $selectedUnitIds = array_unique($selectedUnitIds);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
         foreach ($units as $unit) {
@@ -74,14 +92,13 @@ class WialonService
                 $name = mb_strtolower(trim($unit['nm']));
                 $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
                     ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
+                    ->whereNull('wialon_unit_id')
                     ->where(fn ($query) => $query->whereRaw('LOWER(license_plate) = ?', [$name])
                         ->orWhereRaw('LOWER(registration_no) = ?', [$name]))
                     ->first();
             }
-            if ($vehicle?->trashed()) continue;
+            if (!$vehicle || $vehicle->trashed()) continue;
 
-            $isNew = !$vehicle;
-            $vehicle ??= new \App\Models\Vehicle\Vehicle();
             $mileage = data_get($unit, 'counters.cnm_km');
             if (!is_numeric($mileage)) {
                 $mileage = data_get($unit, 'counters.cnm');
@@ -97,21 +114,14 @@ class WialonService
             $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
             $vehicle->wialon_last_message_at = data_get($unit, 'pos.t') ? now()->setTimestamp((int) $unit['pos']['t']) : $vehicle->wialon_last_message_at;
             $vehicle->wialon_last_synced_at = now();
-            if ($isNew) {
-                $vehicle->title = $unit['nm'] ?? 'Wialon unit ' . $unit['id'];
-                $vehicle->is_active = false;
-                $vehicle->availability_status = VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value;
-            }
-            if (is_numeric($mileage) && $vehicle->initial_mileage === null) {
-                $vehicle->initial_mileage = (int) round($mileage);
-            }
-            if (is_numeric($mileage) && $vehicle->current_mileage === null) {
+            if (is_numeric($mileage)) {
+                $vehicle->initial_mileage ??= (int) round($mileage);
                 $vehicle->current_mileage = (int) round($mileage);
             }
             $vehicle->save();
-            if ($isNew) $created++;
+            $synced++;
         }
-        return $created;
+        return $synced;
     }
 
     public function setMileage(string $companyId, int $unitId, int $mileageKm): int
@@ -284,6 +294,10 @@ class WialonService
                 }
             }
         }
+        $ids = array_merge($ids, \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->whereNotNull('wialon_unit_id')
+            ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
         return array_values(array_unique($ids));
     }
 

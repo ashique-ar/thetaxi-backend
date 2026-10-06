@@ -13,53 +13,21 @@ sudo apt install -y php8.5-cli php8.5-pgsql php8.5-mbstring php8.5-gd php8.5-bcm
 /usr/bin/php8.5 -v
 ```
 
-On the Casons server use `/home/bitnami/htdocs/casons-public`; on the TheTaxi server use `/home/bitnami/htdocs/thetaxi-public`. Run the rest of this block separately on each server, after changing into its path:
+Run the following on each server. Use `/home/bitnami/htdocs/casons-public` on Casons or `/home/bitnami/htdocs/thetaxi-public` on TheTaxi:
 
 ```sh
-cd /home/bitnami/htdocs/casons-public
-app_dir="$(pwd -P)"
+app_dir=/home/bitnami/htdocs/casons-public # use /home/bitnami/htdocs/thetaxi-public on TheTaxi
+cd "$app_dir"
 php_bin=/usr/bin/php8.5
-service_group="$(id -gn bitnami)"
 test -f artisan && "$php_bin" artisan about
 
 for migration in database/migrations/2026_10_06_00000{1..6}_*.php; do
     "$php_bin" artisan migrate --path="$migration" --force
 done
 
-sudo tee /etc/systemd/system/thetaxi-wialon-scheduler.service >/dev/null <<EOF
-[Unit]
-Description=TheTaxi Wialon fleet synchronization scheduler
-After=network.target
-ConditionPathExists=$app_dir/artisan
-
-[Service]
-Type=simple
-User=bitnami
-Group=$service_group
-WorkingDirectory=$app_dir
-ExecStart=$php_bin artisan schedule:work
-Restart=always
-RestartSec=5
-KillSignal=SIGTERM
-TimeoutStopSec=30
-StandardOutput=journal
-StandardError=journal
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=full
-ReadWritePaths=$app_dir/storage $app_dir/bootstrap/cache
-
-[Install]
-WantedBy=multi-user.target
-EOF
-
-sudo systemctl daemon-reload
-sudo systemctl enable thetaxi-wialon-scheduler
-sudo systemctl restart thetaxi-wialon-scheduler
-sudo systemctl status thetaxi-wialon-scheduler
-journalctl -u thetaxi-wialon-scheduler -n 50 --no-pager
+sudo bash deploy/systemd/install-wialon-scheduler.sh "$app_dir" "$php_bin" bitnami
 ```
 
-On the TheTaxi server, change only the `cd` line to `cd /home/bitnami/htdocs/thetaxi-public` before running the block. Use one scheduler per server/database. Configure each company's token, Wialon resources, selected unit groups/units, and TheTaxi vehicle-group mappings in **Vehicles > Live Tracking**. The scheduler syncs selected Wialon units every five minutes. Keep the web runtime on PHP 8.5 as well, because this release's Composer dependencies require PHP 8.5.
+Use one scheduler per server/database. The installer writes the same `thetaxi-wialon-scheduler.service` unit on both hosts, validates the PHP version and app path, and enables it. In **Vehicles > Live Tracking**, save each company's token and optionally select report resources, unit groups, or individual units. Report resources only control report templates; unit groups are a bulk way to include devices for sync. Neither is needed to link a device to a vehicle. The fleet list starts with saved portal vehicles, and selected Wialon units without an active portal vehicle appear in a separate pending list. Link one to an existing vehicle or create its vehicle in the portal; the device name and Wialon mileage are prefilled. The scheduler syncs selected units to linked portal vehicles every five minutes. Keep the web runtime on PHP 8.5 as well, because this release's Composer dependencies require PHP 8.5.
 
-For other hosts using systemd, render `deploy/systemd/thetaxi-wialon-scheduler.service.example` with that host's absolute app path, service user/group, and PHP 8.5 binary. Do not install the example with its placeholders unchanged.
+The install script updates the existing unit in place, so re-running it does not add a second scheduler.
