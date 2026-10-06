@@ -56,6 +56,9 @@ class WialonService
                         : $mileage
                 );
             }
+            if (is_numeric(data_get($unit, 'counters.cneh'))) {
+                $safe['engine_hours'] = (float) data_get($unit, 'counters.cneh');
+            }
             if (isset($unit['pos']) && is_array($unit['pos'])) {
                 $safe['pos'] = array_intersect_key($unit['pos'], array_flip(['t', 'x', 'y', 's']));
             }
