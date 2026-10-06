@@ -20,15 +20,11 @@ class WialonService
     public function units(string $companyId, bool $includeUnselected = false): array
     {
         $integration = $includeUnselected ? null : $this->integration($companyId);
-        return $this->withSession($companyId, function (string $sid) use ($companyId, $includeUnselected, $integration) {
+        return $this->withSession($companyId, function (string $sid) use ($includeUnselected, $integration) {
             $units = $this->searchUnits($sid);
             if ($includeUnselected) return $this->portalUnits($units);
 
             $selected = array_map('intval', $integration->unit_ids);
-            $selected = array_merge($selected, \App\Models\Vehicle\Vehicle::withInactive()
-                ->where('company_id', $companyId)
-                ->whereNotNull('wialon_unit_id')
-                ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
             if ($integration->group_ids) {
                 foreach ($this->searchUnitGroups($sid) as $group) {
                     if (in_array((int) ($group['id'] ?? 0), array_map('intval', $integration->group_ids), true)) {
@@ -80,10 +76,6 @@ class WialonService
                 $selectedUnitIds = array_merge($selectedUnitIds, array_map('intval', $group['u'] ?? []));
             }
         }
-        $selectedUnitIds = array_merge($selectedUnitIds, \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)
-            ->whereNotNull('wialon_unit_id')
-            ->pluck('wialon_unit_id')->map(fn ($id) => (int) $id)->all());
         $selectedUnitIds = array_unique($selectedUnitIds);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
         foreach ($units as $unit) {
