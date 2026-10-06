@@ -9,7 +9,7 @@ sudo apt update
 sudo apt install -y software-properties-common
 sudo add-apt-repository -y ppa:ondrej/php
 sudo apt update
-sudo apt install -y php8.5-cli php8.5-pgsql php8.5-mbstring php8.5-gd php8.5-bcmath php8.5-zip php8.5-redis
+sudo apt install -y php8.5-cli php8.5-curl php8.5-xml php8.5-pgsql php8.5-mbstring php8.5-gd php8.5-bcmath php8.5-zip php8.5-redis
 /usr/bin/php8.5 -v
 ```
 
