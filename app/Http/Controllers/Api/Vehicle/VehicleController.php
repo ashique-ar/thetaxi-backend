@@ -10,6 +10,7 @@ use App\Models\Booking\BookingItem;
 use App\Models\DriverAssignment;
 use App\Models\Service\ServiceType;
 use App\Models\Vehicle\Vehicle;
+use App\Services\WialonService;
 use App\Models\Vehicle\VehicleLease;
 use App\Models\Vehicle\VehicleMaintenanceRecord;
 use App\Models\Vehicle\VehicleMaintenanceSchedule;
@@ -42,6 +43,9 @@ class VehicleController extends Controller
     public function index(Request $request)
     {
         $q = Vehicle::with(['owner.driver.user', 'owner.paymentMethods', 'ownerPaymentMethod', 'grade', 'group.class', 'group.fuelType', 'group.transmission', 'group.category', 'group.make', 'group.model', 'group.grade', 'contractType', 'activeCommission', 'insurances.provider', 'insurances.insuranceType', 'revenueLicenses', 'activeInsurance.provider', 'activeInsurance.insuranceType', 'activeRevenueLicense']);
+        if ($request->filled('is_active')) {
+            $q->withInactive();
+        }
         if ($request->filled('search')) {
             $q->where(function ($query) use ($request) {
                 $query->whereLikeInsensitive('title', $request->search)
@@ -647,7 +651,7 @@ class VehicleController extends Controller
         ]);
     }
 
-    public function recordHandover(Request $request, Vehicle $vehicle): JsonResponse
+    public function recordHandover(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
         $data = $request->validate([
             'handover_mileage' => [
@@ -666,9 +670,20 @@ class VehicleController extends Controller
             'updated_user_id' => $request->user()->id,
         ]);
 
+        $message = 'Vehicle handover recorded';
+        if ($vehicle->wialon_unit_id) {
+            try {
+                $wialonMileage = $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, (int) $data['handover_mileage']);
+                $vehicle->wialon_mileage = $wialonMileage;
+                $vehicle->save();
+            } catch (\RuntimeException $error) {
+                $message .= '; Wialon counter sync failed: ' . $error->getMessage();
+            }
+        }
+
         return response()->json([
             'status' => 'success',
-            'message' => 'Vehicle handover recorded',
+            'message' => $message,
             'data' => ['vehicle' => new VehicleResource($vehicle->fresh())],
         ]);
     }

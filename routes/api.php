@@ -157,6 +157,7 @@ use App\Http\Controllers\Api\Vehicle\VehicleClassController;
 use App\Http\Controllers\Api\Vehicle\VehicleCommissionController;
 use App\Http\Controllers\Api\Vehicle\VehicleContractTypeController;
 use App\Http\Controllers\Api\Vehicle\VehicleController;
+use App\Http\Controllers\Api\Vehicle\FleetTrackingController;
 use App\Http\Controllers\Api\Vehicle\VehicleDiscountController;
 use App\Http\Controllers\Api\Vehicle\VehicleDistanceMultiplierController;
 use App\Http\Controllers\Api\Vehicle\VehicleFinanceProviderController;
@@ -1674,7 +1675,23 @@ Route::middleware(['auth:api'])->group(function () {
     Route::post('/vehicles/{vehicle}/leases', [VehicleLeaseController::class, 'store'])
         ->middleware('permission:vehicle-leases.create');
 
+    Route::get('fleet-tracking/units', [FleetTrackingController::class, 'units'])
+        ->middleware('permission:vehicles.view|vehicles.create|vehicles.edit');
+    Route::get('fleet-tracking/settings', [FleetTrackingController::class, 'settings'])->middleware('permission:vehicles.edit');
+    Route::get('fleet-tracking/catalog', [FleetTrackingController::class, 'catalog'])->middleware('permission:vehicles.edit');
+    Route::put('fleet-tracking/settings', [FleetTrackingController::class, 'saveSettings'])->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
+    Route::post('fleet-tracking/sync', [FleetTrackingController::class, 'sync'])
+        ->middleware('permission:vehicles.create|vehicles.edit')->middleware('throttle:6,1');
+    Route::put('fleet-tracking/vehicles/{vehicle}/link', [FleetTrackingController::class, 'link'])
+        ->middleware('permission:vehicles.edit|vehicles.create');
+    Route::put('fleet-tracking/vehicles/{vehicle}/mileage', [FleetTrackingController::class, 'mileage'])
+        ->middleware('permission:vehicles.edit');
     Route::middleware(['permission:vehicles.view'])->group(function () {
+        Route::get('fleet-tracking', [FleetTrackingController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('fleet-tracking/report-templates', [FleetTrackingController::class, 'reportTemplates'])->middleware('throttle:30,1');
+        Route::post('fleet-tracking/vehicles/{vehicle}/reports', [FleetTrackingController::class, 'runReport'])->middleware('throttle:12,1');
+        Route::get('fleet-tracking/vehicles/{vehicle}/position', [FleetTrackingController::class, 'position'])->middleware('throttle:60,1');
+        Route::get('fleet-tracking/units/{unitId}/messages', [FleetTrackingController::class, 'messages'])->whereNumber('unitId')->middleware('throttle:30,1');
         Route::prefix('vehicles')->group(function () {
             // Vehicle Addons - Extended routes
             Route::prefix('vehicle-addons')->middleware('pricing.context')->group(function () {

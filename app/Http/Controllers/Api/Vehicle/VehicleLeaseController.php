@@ -7,9 +7,12 @@ use App\Models\Vehicle\Vehicle;
 use App\Models\Vehicle\VehicleLease;
 use App\Services\VehicleLeaseAccountingService;
 use App\Services\VehicleLeaseService;
+use App\Services\WialonService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
+use RuntimeException;
 
 class VehicleLeaseController extends Controller
 {
@@ -205,12 +208,12 @@ class VehicleLeaseController extends Controller
         ]);
     }
 
-    public function release(Request $request, VehicleLease $vehicleLease): JsonResponse
+    public function release(Request $request, VehicleLease $vehicleLease, WialonService $wialon): JsonResponse
     {
         $data = $request->validate([
             'release_type' => ['required', Rule::in(['scheduled_return', 'early_termination', 'repossession', 'voluntary_surrender', 'other'])],
             'effective_at' => ['required', 'date', 'before_or_equal:now'],
-            'odometer' => ['nullable', 'integer', 'min:0'],
+            'odometer' => ['nullable', 'integer', 'min:' . (int) ($vehicleLease->vehicle?->current_mileage ?? $vehicleLease->vehicle?->initial_mileage ?? 0)],
             'condition_status' => ['nullable', Rule::in(['excellent', 'good', 'fair', 'damaged'])],
             'location' => ['nullable', 'string', 'max:255'],
             'released_to' => ['nullable', 'string', 'max:255'],
@@ -222,10 +225,30 @@ class VehicleLeaseController extends Controller
             'notes' => ['nullable', 'string', 'max:3000'],
         ]);
 
+        $result = $this->leases->release($vehicleLease, $data, $request->user()->id);
+        $message = 'Vehicle release recorded without removing its lease history.';
+        $vehicle = Vehicle::withInactive()->find($vehicleLease->vehicle_id);
+        if (isset($data['odometer']) && $vehicle?->wialon_unit_id) {
+            try {
+                $vehicle->wialon_mileage = $wialon->setMileage(
+                    (string) $vehicle->company_id,
+                    (int) $vehicle->wialon_unit_id,
+                    max((int) $data['odometer'], (int) ($vehicle->current_mileage ?? 0))
+                );
+                $vehicle->save();
+            } catch (RuntimeException $error) {
+                Log::warning('Vehicle lease release mileage saved locally but Wialon counter sync failed', [
+                    'vehicle_id' => $vehicle->id,
+                    'error' => $error->getMessage(),
+                ]);
+                $message .= ' Wialon counter sync failed: ' . $error->getMessage();
+            }
+        }
+
         return response()->json([
             'status' => 'success',
-            'message' => 'Vehicle release recorded without removing its lease history.',
-            'data' => $this->leases->release($vehicleLease, $data, $request->user()->id),
+            'message' => $message,
+            'data' => $result,
         ]);
     }
 

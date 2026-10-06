@@ -457,7 +457,7 @@ class SalesCrmController extends Controller
                                     ->where(fn ($company) => $company->whereNull('attribution.company_id')
                                         ->orWhereColumn('attribution.company_id', '!=', 'sales_tasks.company_id')));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'task_booking', 'opportunity');
-                        }))));
+                        })));
         if ($ids !== null) $query->whereIn('owner_sales_profile_id', $ids);
         $rows = $query
             ->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where('owner_sales_profile_id', $id))

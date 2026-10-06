@@ -11,6 +11,10 @@ class VehicleResource extends JsonResource
     {
         return [
             'id' => $this->id,
+            'wialon_unit_id' => $this->wialon_unit_id,
+            'wialon_mileage' => $this->wialon_mileage !== null ? (float) $this->wialon_mileage : null,
+            'wialon_last_message_at' => $this->wialon_last_message_at,
+            'wialon_last_synced_at' => $this->wialon_last_synced_at,
             'title' => $this->title ?? null,
             'registration_no' => $this->registration_no ?? $this->license_plate ?? null,
             'chasis_no' => $this->chasis_no ?? null,
