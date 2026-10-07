@@ -89,7 +89,7 @@ class FleetTrackingController extends Controller
         $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:' . WialonService::MAX_COUNTER_KILOMETERS]]);
         $vehicle->current_mileage = $data['mileage_km'];
         $vehicle->save();
-        $message = 'Mileage saved in TheTaxi.';
+        $message = 'Mileage saved in the portal.';
         $wialonSynced = false;
         try {
             $mileage = $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
