@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Hr;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
+use App\Services\StaffAccessService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -253,14 +254,7 @@ class EssController extends Controller
 
     private function currentStaff(Request $r): Staff
     {
-        $contextId = (string) $r->header('X-Active-Context-Id', '');
-        abort_unless($r->header('X-Active-Context-Type') === 'staff' && Str::isUuid($contextId), 403, 'Select an active Staff context.');
-        $context = DB::table('user_contexts')->where('id', $contextId)->where('user_id', $r->user()->id)
-            ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->first();
-        abort_unless($context, 403, 'Select an active Staff context.');
-
-        $staff = Staff::query()->whereKey($context->context_id)->where('user_id', $r->user()->id)
-            ->whereNull('employment_ended_at')->firstOrFail();
+        $staff = app(StaffAccessService::class)->currentActorStaff($r->user());
         abort_unless(DB::table('companies')->where('id', $staff->company_id)
             ->where('is_active', true)->whereNull('deleted_at')->exists(), 403, 'Select an active Staff legal entity.');
 

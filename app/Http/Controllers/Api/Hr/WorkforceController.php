@@ -620,24 +620,22 @@ class WorkforceController extends Controller
             return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->orderByDesc('is_default')->orderBy('name')->pluck('id');
         }
 
+        $contexts = DB::table('user_contexts')->where('user_id', $r->user()->id)
+            ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at');
         $type = $r->header('X-Active-Context-Type');
         $contextId = $r->header('X-Active-Context-Id');
-        $staffQuery = Staff::query()->where('user_id', $r->user()->id)->whereNotNull('company_id')
-            ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
-        if ($type !== null || $contextId !== null) {
-            abort_unless($type === 'staff' && $contextId && Str::isUuid($contextId), 403, 'Select an active Staff context.');
-            $context = DB::table('user_contexts')->where('id', $contextId)->where('user_id', $r->user()->id)
-                ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->first();
-            abort_unless($context, 403, 'Select an active Staff context.');
-            $staffQuery->whereKey($context->context_id);
-        } else {
-            abort_if((clone $staffQuery)->count() > 1, 403, 'Select an active Staff context.');
+        if ($type === 'staff') {
+            abort_unless($contextId && Str::isUuid($contextId), 403, 'Select an active Staff context.');
+            $contexts->where('id', $contextId);
+        } elseif ($type !== null && $type !== 'internal') {
+            abort(403, 'Select an active Staff context.');
         }
-        $companyId = $staffQuery->value('company_id');
 
-        return $companyId
-            ? DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->pluck('id')
-            : collect();
+        return DB::table('companies')->whereIn('id', Staff::query()->where('user_id', $r->user()->id)
+            ->whereIn('id', $contexts->pluck('context_id'))->whereNotNull('company_id')
+            ->where(fn ($q) => $q->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+            ->select('company_id'))
+            ->where('is_active', true)->whereNull('deleted_at')->pluck('id');
     }
 
     private function leaveRequestForCompany(Request $r, string $id): object

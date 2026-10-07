@@ -26,24 +26,28 @@ class StaffAccessService
             return $query;
         }
 
-        $actorStaff = $this->actorStaff($actor);
-        if ($actor->can('staff.view-legal-entity') && $actorStaff?->company_id) {
-            return $query->where('company_id', $actorStaff->company_id);
+        $actorStaff = $this->actorStaffs($actor);
+        if ($actorStaff->isEmpty()) {
+            return $query->whereRaw('1 = 0');
         }
 
-        if ($actor->can('staff.view-team') && $actorStaff) {
+        if ($actor->can('staff.view-legal-entity')) {
+            return $query->whereIn('company_id', $actorStaff->pluck('company_id')->filter()->unique());
+        }
+
+        if ($actor->can('staff.view-team')) {
             $teamIds = StaffScopeAssignment::query()
-                ->where('manager_staff_id', $actorStaff->id)
+                ->whereIn('manager_staff_id', $actorStaff->pluck('id'))
                 ->where('effective_from', '<=', now())
                 ->where(fn ($assignment) => $assignment->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                 ->select('member_staff_id');
 
             return $query->where(fn ($staff) => $staff
-                ->where('id', $actorStaff->id)
+                ->whereIn('id', $actorStaff->pluck('id'))
                 ->orWhereIn('id', $teamIds));
         }
 
-        return $actorStaff ? $query->whereKey($actorStaff->id) : $query->whereRaw('1 = 0');
+        return $query->whereIn('id', $actorStaff->pluck('id'));
     }
 
     public function authorize(User $actor, Staff $staff, string $action): void
@@ -65,43 +69,48 @@ class StaffAccessService
             return true;
         }
 
-        $actorStaff = $this->actorStaff($actor);
+        $actorStaff = $this->actorStaffs($actor);
         $sameLegalEntity = $actor->can("staff.{$action}-legal-entity")
-            && $actorStaff?->company_id
-            && $actorStaff->company_id === $staff->company_id;
+            && $actorStaff->contains(fn (Staff $identity) => $identity->company_id === $staff->company_id);
 
         $teamMember = $actor->can("staff.{$action}-team")
-            && $actorStaff
+            && $actorStaff->isNotEmpty()
             && StaffScopeAssignment::query()
-                ->where('manager_staff_id', $actorStaff->id)
+                ->whereIn('manager_staff_id', $actorStaff->pluck('id'))
                 ->where('member_staff_id', $staff->id)
                 ->where('effective_from', '<=', now())
                 ->where(fn ($assignment) => $assignment->whereNull('effective_until')->orWhere('effective_until', '>', now()))
                 ->exists();
 
-        return $actorStaff?->id === $staff->id || $sameLegalEntity || $teamMember;
+        return $actorStaff->contains('id', $staff->id) || $sameLegalEntity || $teamMember;
     }
 
     private function actorStaff(User $actor): ?Staff
     {
-        $query = Staff::query()->where('user_id', $actor->id)
-            ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()));
+        $staff = $this->actorStaffs($actor);
+
+        return $staff->count() === 1 ? $staff->first() : null;
+    }
+
+    private function actorStaffs(User $actor)
+    {
+        $contexts = DB::table('user_contexts')->where('user_id', $actor->id)
+            ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at');
         $type = request()->header('X-Active-Context-Type');
         $contextId = request()->header('X-Active-Context-Id');
 
-        if ($type !== null || $contextId !== null) {
-            if ($type !== 'staff' || ! $contextId || ! Str::isUuid($contextId)) {
-                return null;
+        if ($type === 'staff') {
+            if (! $contextId || ! Str::isUuid($contextId)) {
+                return collect();
             }
-
-            $context = DB::table('user_contexts')->where('id', $contextId)->where('user_id', $actor->id)
-                ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at')->first();
-
-            return $context ? $query->whereKey($context->context_id)->first() : null;
+            $contexts->where('id', $contextId);
+        } elseif ($type !== null && $type !== 'internal') {
+            return collect();
         }
 
-        $staff = $query->limit(2)->get();
-
-        return $staff->count() === 1 ? $staff->first() : null;
+        $ids = $contexts->pluck('context_id');
+        return Staff::query()->where('user_id', $actor->id)->whereIn('id', $ids)
+            ->where(fn ($employment) => $employment->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now()))
+            ->get();
     }
 }
