@@ -17,6 +17,7 @@ use App\Http\Resources\Driver\RoutePointResource;
 use App\Models\DriverAssignment;
 use App\Models\User;
 use App\Services\Driver\NotificationTriggerService;
+use App\Services\WebsiteSettingsService;
 use App\Services\UserContextService;
 use App\Services\PaymentMethodSyncService;
 use Illuminate\Http\Request;
@@ -31,14 +32,17 @@ class DriverController extends Controller
 {
     private $contextService;
     private NotificationTriggerService $notificationService;
+    private WebsiteSettingsService $websiteSettingsService;
 
     public function __construct(
         UserContextService $contextService,
-        NotificationTriggerService $notificationService
+        NotificationTriggerService $notificationService,
+        WebsiteSettingsService $websiteSettingsService
     )
     {
         $this->contextService = $contextService;
         $this->notificationService = $notificationService;
+        $this->websiteSettingsService = $websiteSettingsService;
         $this->middleware('permission:drivers.view')->only(['index', 'show', 'status', 'activity', 'sessions', 'sessionRoute', 'movementMap', 'locations', 'analytics', 'devices']);
         $this->middleware('permission:drivers.create')->only(['store']);
         $this->middleware('permission:drivers.edit')->only(['update', 'deactivateDevice', 'testNotification', 'sendCustomNotification', 'sendBulkCustomNotifications']);
@@ -149,6 +153,19 @@ class DriverController extends Controller
         if ($request->filled('device_active')) $q->whereHas('devices', fn ($device) => $device->where('is_active', filter_var($request->device_active, FILTER_VALIDATE_BOOLEAN)));
         if ($request->filled('device_platform')) $q->whereHas('devices', fn ($device) => $device->where('platform', $request->device_platform));
         if ($request->filled('app_version')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('app_version', trim($request->app_version)));
+        if ($request->input('app_version_status') === 'outdated') {
+            $latestVersion = trim((string) $this->websiteSettingsService->get('driver_mobile_latest_version', ''));
+            $outdatedVersions = DriverDevice::query()
+                ->where('is_active', true)
+                ->whereNotNull('app_version')
+                ->distinct()
+                ->pluck('app_version')
+                ->filter(fn ($version) => $latestVersion !== ''
+                    && version_compare(ltrim(trim((string) $version), 'vV'), ltrim($latestVersion, 'vV'), '<'))
+                ->all();
+
+            $q->whereHas('activeDevices', fn ($device) => $device->whereIn('app_version', $outdatedVersions));
+        }
         if ($request->filled('device_model')) $q->whereHas('devices', fn ($device) => $device->whereLikeInsensitive('device_model', trim($request->device_model)));
         if ($request->filled('push_enabled')) {
             filter_var($request->push_enabled, FILTER_VALIDATE_BOOLEAN)
