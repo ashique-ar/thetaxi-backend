@@ -98,6 +98,7 @@ class WialonService
                 if (!$vehicle || $vehicle->trashed() || $this->isImportedPlaceholder($vehicle, $unit)) return false;
 
                 if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) return false;
+                $previousTrackerMileage = $vehicle->wialon_mileage;
                 $vehicle->company_id ??= $companyId;
                 $vehicle->wialon_unit_id = $unitId;
                 $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
@@ -110,7 +111,22 @@ class WialonService
                 $mileageAtStart = $hasMileageSnapshot && $portalMileageAtStart[$unitId] !== null
                     ? (int) $portalMileageAtStart[$unitId]
                     : null;
-                if (is_numeric($mileage) && $hasMileageSnapshot && $vehicle->current_mileage === $mileageAtStart) {
+                if (is_numeric($mileage) && $vehicle->wialon_mileage_sync_pending) {
+                    $trackerMileage = (int) round($mileage);
+                    $reportedAt = (int) data_get($unit, 'pos.t', 0);
+                    $counterAdvancedAfterEdit = is_numeric($previousTrackerMileage)
+                        && $trackerMileage > (int) round((float) $previousTrackerMileage)
+                        && $vehicle->wialon_mileage_sync_requested_at
+                        && $reportedAt > $vehicle->wialon_mileage_sync_requested_at->getTimestamp();
+                    if ($vehicle->current_mileage !== null
+                        && ($trackerMileage === $vehicle->current_mileage
+                            || ($counterAdvancedAfterEdit && $trackerMileage >= $vehicle->current_mileage))) {
+                        $vehicle->wialon_mileage_sync_pending = false;
+                        $vehicle->wialon_mileage_sync_requested_at = null;
+                    }
+                }
+                if (is_numeric($mileage) && !$vehicle->wialon_mileage_sync_pending
+                    && $hasMileageSnapshot && $vehicle->current_mileage === $mileageAtStart) {
                     $trackerMileage = (int) round($mileage);
                     if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
                         $vehicle->initial_mileage ??= $trackerMileage;
@@ -144,11 +160,25 @@ class WialonService
         if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
             throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
         }
+        $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->where('wialon_unit_id', $unitId)
+            ->first();
+        $vehicle?->forceFill([
+            'wialon_mileage_sync_pending' => true,
+            'wialon_mileage_sync_requested_at' => now(),
+        ])->save();
+
         $this->assertSelectedUnit($companyId, $unitId);
         $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_mileage_counter', [
             'itemId' => $unitId, 'newValue' => $mileageKm,
         ]));
-        return (int) ($result['cnm'] ?? $mileageKm);
+        $confirmedMileage = (int) ($result['cnm'] ?? $mileageKm);
+        $vehicle?->forceFill([
+            'wialon_mileage' => $confirmedMileage,
+        ])->save();
+
+        return $confirmedMileage;
     }
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array

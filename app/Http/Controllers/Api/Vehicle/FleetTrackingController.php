@@ -99,7 +99,7 @@ class FleetTrackingController extends Controller
         } catch (RuntimeException $error) {
             $message .= ' GPS counter sync failed: ' . $error->getMessage();
         }
-        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced]]);
+        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced, 'wialon_mileage_sync_pending' => true]]);
     }
 
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
@@ -127,7 +127,7 @@ class FleetTrackingController extends Controller
         }
         $vehicles = Vehicle::withInactive()
             ->where(fn($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
-            ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_last_message_at', 'wialon_last_synced_at')
+            ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_mileage_sync_pending', 'wialon_last_message_at', 'wialon_last_synced_at')
             ->orderBy('title')
             ->get();
         $unitById = collect($units)->keyBy(fn(array $unit) => (int) ($unit['id'] ?? 0));
@@ -152,6 +152,7 @@ class FleetTrackingController extends Controller
                         'is_active' => (bool) $vehicle->is_active,
                         'availability_status' => $vehicle->availability_status,
                         'wialon_mileage' => $vehicle->wialon_mileage,
+                        'wialon_mileage_sync_pending' => (bool) $vehicle->wialon_mileage_sync_pending,
                         'wialon_last_message_at' => $vehicle->wialon_last_message_at,
                         'wialon_last_synced_at' => $vehicle->wialon_last_synced_at,
                         'unit' => $unit
