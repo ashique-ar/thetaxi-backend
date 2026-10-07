@@ -230,12 +230,11 @@ class VehicleLeaseController extends Controller
         $vehicle = Vehicle::withInactive()->find($vehicleLease->vehicle_id);
         if (isset($data['odometer']) && $vehicle?->wialon_unit_id) {
             try {
-                $vehicle->wialon_mileage = $wialon->setMileage(
+                $wialon->setMileage(
                     (string) $vehicle->company_id,
                     (int) $vehicle->wialon_unit_id,
                     max((int) $data['odometer'], (int) ($vehicle->current_mileage ?? 0))
                 );
-                $vehicle->save();
             } catch (RuntimeException $error) {
                 Log::warning('Vehicle lease release mileage saved locally but GPS counter sync failed', [
                     'vehicle_id' => $vehicle->id,

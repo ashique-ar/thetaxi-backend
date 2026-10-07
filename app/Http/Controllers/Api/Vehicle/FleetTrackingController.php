@@ -92,9 +92,8 @@ class FleetTrackingController extends Controller
         $message = 'Mileage saved in the portal.';
         $wialonSynced = false;
         try {
-            $mileage = $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
-            $vehicle->wialon_mileage = $mileage;
-            $vehicle->save();
+            $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
+            $vehicle->refresh();
             $wialonSynced = true;
         } catch (RuntimeException $error) {
             $message .= ' GPS counter sync failed: ' . $error->getMessage();
