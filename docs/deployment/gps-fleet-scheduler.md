@@ -33,9 +33,10 @@ php_bin="$(type -P php)"
 sudo bash deploy/systemd/install-gps-scheduler.sh "$app_dir" "$php_bin" bitnami
 ```
 
-Before deploying a release with database changes, run migrations with that same PHP binary:
+Before deploying a release with database changes, inspect the target server's migration state, then apply the pending migrations for that release with the same PHP binary. The earlier loop over `2026_10_06_000001` through `000006` does not cover later fleet schema changes, including `2026_10_06_000007_remove_unused_wialon_group_mappings` and `2026_10_07_000004_add_wialon_mileage_sync_pending_to_vehicles`.
 
 ```bash
+sudo -u bitnami "$php_bin" artisan migrate:status
 sudo -u bitnami "$php_bin" artisan migrate --force
 ```
 
