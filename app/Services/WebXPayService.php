@@ -324,7 +324,7 @@ class WebXPayService
             }
 
             // Step 5: Parse payment response
-            // WebXPay Redirect response: order_id|reference|date_time|status_code|comment|payment_gateway_used
+            // Team sample uses gateway|status|comment; current guide uses status|comment|gateway.
             $responseData = explode('|', $payment);
 
             if (count($responseData) < 5) {
@@ -342,9 +342,18 @@ class WebXPayService
             $orderId = $responseData[0] ?? null;
             $referenceNumber = $responseData[1] ?? null;
             $transactionDateTime = $responseData[2] ?? null;
-            $statusCode = $responseData[3] ?? null;
-            $comment = $responseData[4] ?? '';
-            $paymentGateway = $responseData[5] ?? null;
+            $modernStatusCodes = ['0', '00', '15'];
+            $documentedOrder = in_array($responseData[3] ?? null, $modernStatusCodes, true)
+                || preg_match('/^(approved|success|declined|failed)\b/i', (string) ($responseData[3] ?? '')) === 1;
+            $statusCode = $documentedOrder
+                ? $responseData[3]
+                : ($responseData[4] ?? null);
+            $comment = $documentedOrder
+                ? ($responseData[4] ?? '')
+                : ($responseData[5] ?? '');
+            $paymentGateway = $documentedOrder
+                ? ($responseData[5] ?? null)
+                : ($responseData[3] ?? null);
 
             Log::info('WebXPay payment verified', [
                 'order_id' => $orderId,
@@ -354,8 +363,8 @@ class WebXPayService
                 'custom_fields' => $customData
             ]);
 
-            // Redirect guide: 0/00 are approved; 15 is declined. The gateway
-            // identifier is descriptive and must not be treated as a result code.
+            // The guide defines 0/00 as approved and 15 as declined. Keep the
+            // earlier team sample's 2/Approved spellings for its status field.
             $isSuccessful = in_array($statusCode, ['0', '00', '2'], true)
                 || stripos((string) $statusCode, 'approved') !== false
                 || stripos((string) $statusCode, 'success') !== false;
