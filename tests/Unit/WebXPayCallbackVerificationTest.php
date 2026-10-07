@@ -30,3 +30,14 @@ it('accepts both WebXPay response field orders used by the guide and team sample
         ->and($teamSample['status_code'])->toBe('00')
         ->and($teamSample['payment_gateway'])->toBe('1');
 });
+
+it('records each verified WebXPay callback through one canonical receipt write', function () {
+    $controller = file_get_contents(dirname(__DIR__, 2) . '/app/Http/Controllers/CheckoutController.php');
+    $callback = substr($controller, strpos($controller, 'public function webxpayCallback'), strpos($controller, 'public function webxpayNotify') - strpos($controller, 'public function webxpayCallback'));
+    $notify = substr($controller, strpos($controller, 'public function webxpayNotify'), strpos($controller, 'public function mockGateway') - strpos($controller, 'public function webxpayNotify'));
+
+    expect($callback)->toContain("'idempotency_key' => 'webxpay:'")
+        ->and(substr_count($callback, '$this->recordGatewayReceipt('))->toBe(1)
+        ->and($notify)->toContain('$this->recordVerifiedWebXPayReceipt(')
+        ->and($notify)->not->toContain('$this->recordGatewayReceipt(');
+});

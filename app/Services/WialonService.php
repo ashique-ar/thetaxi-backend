@@ -10,6 +10,8 @@ use RuntimeException;
 
 class WialonService
 {
+    public const MAX_COUNTER_KILOMETERS = 4294967;
+
     private string $baseUrl;
 
     public function __construct()
@@ -31,27 +33,34 @@ class WialonService
 
     private function portalUnits(array $units): array
     {
-        return array_values(array_map(static function (array $unit): array {
-            $safe = array_intersect_key($unit, array_flip(['id', 'nm', 'netconn']));
-            $kilometers = data_get($unit, 'counters.cnm_km');
-            if (is_numeric($kilometers)) {
-                $safe['mileage_km'] = (int) round((float) $kilometers);
-            } elseif (is_numeric(data_get($unit, 'counters.cnm'))) {
-                $mileage = (float) data_get($unit, 'counters.cnm');
-                $safe['mileage_km'] = (int) round(
-                    in_array((int) ($unit['mu'] ?? 0), [1, 2], true)
-                        ? $mileage * 1.609344
-                        : $mileage
-                );
+        return array_values(array_map(function (array $unit): array {
+            $safe = array_intersect_key($unit, array_flip(['id', 'nm']));
+            $netConnection = data_get($unit, 'item.netconn', $unit['netconn'] ?? null);
+            if ($netConnection !== null) {
+                $safe['netconn'] = filter_var($netConnection, FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
             }
-            if (is_numeric(data_get($unit, 'counters.cneh'))) {
-                $safe['engine_hours'] = (float) data_get($unit, 'counters.cneh');
-            }
+            $mileageKm = $this->trackerMileageKm($unit);
+            if ($mileageKm !== null) $safe['mileage_km'] = $mileageKm;
+            $engineHours = data_get($unit, 'cneh', data_get($unit, 'counters.cneh'));
+            if (is_numeric($engineHours)) $safe['engine_hours'] = (float) $engineHours;
             if (isset($unit['pos']) && is_array($unit['pos'])) {
                 $safe['pos'] = array_intersect_key($unit['pos'], array_flip(['t', 'x', 'y', 's']));
             }
             return $safe;
         }, $units));
+    }
+
+    private function trackerMileageKm(array $unit): ?float
+    {
+        $kilometers = data_get($unit, 'mileage_km', data_get($unit, 'counters.cnm_km'));
+        if (is_numeric($kilometers)) return round((float) $kilometers, 2);
+
+        // Wialon Hosting returns cnm at the unit root in km or miles, selected by mu.
+        $counter = data_get($unit, 'cnm', data_get($unit, 'counters.cnm'));
+        if (!is_numeric($counter)) return null;
+
+        $miles = in_array((int) ($unit['mu'] ?? 0), [1, 2], true);
+        return round((float) $counter * ($miles ? 1.609344 : 1), 2);
     }
 
     public function syncVehicles(string $companyId): int
@@ -72,13 +81,7 @@ class WialonService
             if (!$vehicle || $vehicle->trashed()) continue;
             if ($this->isImportedPlaceholder($vehicle, $unit)) continue;
 
-            $mileage = data_get($unit, 'counters.cnm_km');
-            if (!is_numeric($mileage)) {
-                $mileage = data_get($unit, 'counters.cnm');
-                if (is_numeric($mileage) && in_array((int) ($unit['mu'] ?? 0), [1, 2], true)) {
-                    $mileage *= 1.609344;
-                }
-            }
+            $mileage = $this->trackerMileageKm($unit);
             if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) continue;
             $vehicle->company_id ??= $companyId;
             $vehicle->wialon_unit_id = (int) $unit['id'];
@@ -115,6 +118,9 @@ class WialonService
 
     public function setMileage(string $companyId, int $unitId, int $mileageKm): int
     {
+        if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
+            throw new RuntimeException('Wialon accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
+        }
         $this->assertSelectedUnit($companyId, $unitId);
         $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_mileage_counter', [
             'itemId' => $unitId, 'newValue' => $mileageKm,

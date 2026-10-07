@@ -1493,11 +1493,6 @@ class CheckoutController extends Controller
                         'paid_at' => $verificationResult['paid_at'] ?? now(),
                         'confirmed_at' => now(),
                     ]);
-                    $this->recordGatewayReceipt($lockedBooking, [
-                        ...$verificationResult,
-                        'source' => 'webxpay_callback',
-                        'payload' => $verificationResult,
-                    ]);
                     $booking = $lockedBooking;
 
 
@@ -1615,12 +1610,6 @@ class CheckoutController extends Controller
                             'paid_at'                          => $verificationResult['paid_at'] ?? now(),
                             'confirmed_at'                     => now(),
                         ]);
-                        $this->recordGatewayReceipt($booking, [
-                            ...$verificationResult,
-                            'source' => 'webxpay_notify',
-                            'payload' => $verificationResult,
-                        ]);
-
                         $emailBooking = $booking;
                     });
 

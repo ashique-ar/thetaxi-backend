@@ -86,7 +86,7 @@ class FleetTrackingController extends Controller
     {
         abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
         abort_unless($vehicle->wialon_unit_id, 422, 'Link a Wialon unit before changing its odometer.');
-        $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:2147483647']]);
+        $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:' . WialonService::MAX_COUNTER_KILOMETERS]]);
         $vehicle->current_mileage = $data['mileage_km'];
         $vehicle->save();
         $message = 'Mileage saved in TheTaxi.';
