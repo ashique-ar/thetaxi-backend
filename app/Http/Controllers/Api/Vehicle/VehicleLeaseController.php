@@ -237,11 +237,11 @@ class VehicleLeaseController extends Controller
                 );
                 $vehicle->save();
             } catch (RuntimeException $error) {
-                Log::warning('Vehicle lease release mileage saved locally but Wialon counter sync failed', [
+                Log::warning('Vehicle lease release mileage saved locally but GPS counter sync failed', [
                     'vehicle_id' => $vehicle->id,
                     'error' => $error->getMessage(),
                 ]);
-                $message .= ' Wialon counter sync failed: ' . $error->getMessage();
+                $message .= ' GPS counter sync failed: ' . $error->getMessage();
             }
         }
 

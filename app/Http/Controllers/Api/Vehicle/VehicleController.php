@@ -677,7 +677,7 @@ class VehicleController extends Controller
                 $vehicle->wialon_mileage = $wialonMileage;
                 $vehicle->save();
             } catch (\RuntimeException $error) {
-                $message .= '; Wialon counter sync failed: ' . $error->getMessage();
+                $message .= '; GPS counter sync failed: ' . $error->getMessage();
             }
         }
 

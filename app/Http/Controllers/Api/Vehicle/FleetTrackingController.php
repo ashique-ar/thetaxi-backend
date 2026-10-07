@@ -47,7 +47,7 @@ class FleetTrackingController extends Controller
     public function runReport(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
         abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
-        abort_unless($vehicle->wialon_unit_id, 422, 'Link a Wialon unit before running a report.');
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before running a report.');
         $data = $request->validate([
             'resource_id' => ['required', 'integer', 'min:1'],
             'template_id' => ['required', 'integer', 'min:1'],
@@ -59,7 +59,7 @@ class FleetTrackingController extends Controller
         abort_if(($data['offset'] ?? 0) > 0 && !isset($data['table_index']), 422, 'A table is required when requesting another report page.');
         abort_if(($data['offset'] ?? 0) % 500 !== 0, 422, 'Report pages must be requested in 500-row increments.');
         $allowedResources = json_decode(DB::table('wialon_integrations')->where('company_id', $vehicle->company_id)->value('resource_ids') ?: '[]', true) ?: [];
-        abort_unless(in_array((int) $data['resource_id'], array_map('intval', $allowedResources), true), 422, 'Choose a resource enabled in company Wialon settings.');
+        abort_unless(in_array((int) $data['resource_id'], array_map('intval', $allowedResources), true), 422, 'Choose a report resource enabled in company GPS settings.');
         abort_if($data['to'] - $data['from'] > 366 * 86400, 422, 'Report intervals cannot exceed one year.');
         try {
             return response()->json([
@@ -85,11 +85,11 @@ class FleetTrackingController extends Controller
     public function mileage(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
         abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
-        abort_unless($vehicle->wialon_unit_id, 422, 'Link a Wialon unit before changing its odometer.');
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing its odometer.');
         $data = $request->validate(['mileage_km' => ['required', 'integer', 'min:0', 'max:' . WialonService::MAX_COUNTER_KILOMETERS]]);
         $vehicle->current_mileage = $data['mileage_km'];
         $vehicle->save();
-        $message = 'Mileage saved in TheTaxi.';
+        $message = 'Mileage saved in the portal.';
         $wialonSynced = false;
         try {
             $mileage = $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
@@ -97,7 +97,7 @@ class FleetTrackingController extends Controller
             $vehicle->save();
             $wialonSynced = true;
         } catch (RuntimeException $error) {
-            $message .= ' Wialon counter sync failed: ' . $error->getMessage();
+            $message .= ' GPS counter sync failed: ' . $error->getMessage();
         }
         return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced]]);
     }
@@ -190,7 +190,7 @@ class FleetTrackingController extends Controller
                         && ($previousVehicle->is_active || $previousVehicle->created_user_id || $previousVehicle->updated_user_id)
                     ) {
                         throw \Illuminate\Validation\ValidationException::withMessages([
-                            'wialon_unit_id' => ['This Wialon unit is linked to a saved vehicle record. Finish that vehicle setup before moving the device.'],
+                            'wialon_unit_id' => ['This GPS device is linked to a saved vehicle record. Finish that vehicle setup before moving the device.'],
                         ]);
                     }
                     $previousVehicle->wialon_unit_id = null;
@@ -297,7 +297,7 @@ class FleetTrackingController extends Controller
         ]);
         $companyId = $this->companyId($request);
         $existing = DB::table('wialon_integrations')->where('company_id', $companyId)->first();
-        abort_unless($existing || $data['token'] ?? false, 422, 'Enter the Wialon token to connect this company.');
+        abort_unless($existing || $data['token'] ?? false, 422, 'Enter the GPS service token to connect this company.');
         $token = $data['token'] ?? decrypt($existing->token);
         try {
             DB::transaction(function () use ($companyId, $existing, $token, $data, $wialon): void {
@@ -307,7 +307,7 @@ class FleetTrackingController extends Controller
                 }
             });
         } catch (RuntimeException $error) {
-            return response()->json(['status' => 'error', 'message' => 'Wialon connection failed; previous settings were kept: ' . $error->getMessage()], 503);
+            return response()->json(['status' => 'error', 'message' => 'GPS service connection failed; previous settings were kept: ' . $error->getMessage()], 503);
         }
         $synced = 0;
         $syncError = null;

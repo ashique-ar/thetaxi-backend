@@ -9,7 +9,7 @@ use Illuminate\Console\Command;
 class SyncWialonFleet extends Command
 {
     protected $signature = 'wialon:sync-fleet';
-    protected $description = 'Sync selected Wialon units with saved portal vehicles';
+    protected $description = 'Sync selected GPS devices with saved portal vehicles';
 
     public function handle(WialonService $wialon): int
     {
