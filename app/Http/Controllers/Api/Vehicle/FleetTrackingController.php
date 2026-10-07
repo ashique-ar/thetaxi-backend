@@ -212,7 +212,19 @@ class FleetTrackingController extends Controller
             $vehicle->company_id ??= $companyId;
             $vehicle->save();
         });
-        return response()->json(['status' => 'success', 'data' => ['wialon_unit_id' => $vehicle->wialon_unit_id]]);
+        $syncError = null;
+        if ($vehicle->wialon_unit_id) {
+            try {
+                $wialon->syncVehicles($companyId);
+                $vehicle->refresh();
+            } catch (RuntimeException $error) {
+                $syncError = $error->getMessage();
+            }
+        }
+        return response()->json(['status' => 'success', 'data' => [
+            'wialon_unit_id' => $vehicle->wialon_unit_id,
+            'sync_error' => $syncError,
+        ]]);
     }
 
     public function messages(Request $request, int $unitId, WialonService $wialon): JsonResponse
@@ -246,6 +258,31 @@ class FleetTrackingController extends Controller
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }
+    }
+
+    public function addUnitToGroup(Request $request, int $groupId, WialonService $wialon): JsonResponse
+    {
+        $data = $request->validate(['unit_id' => ['required', 'integer', 'min:1']]);
+        $companyId = $this->companyId($request);
+        try {
+            $membership = $wialon->addUnitToGroup($companyId, $groupId, (int) $data['unit_id']);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+
+        $syncError = null;
+        $synced = 0;
+        try {
+            $synced = $wialon->syncVehicles($companyId);
+        } catch (RuntimeException $error) {
+            $syncError = $error->getMessage();
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            ...$membership,
+            'synced' => $synced,
+            'sync_error' => $syncError,
+        ]]);
     }
 
     public function saveSettings(Request $request, WialonService $wialon): JsonResponse

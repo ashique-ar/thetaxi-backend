@@ -324,7 +324,7 @@ class WebXPayService
             }
 
             // Step 5: Parse payment response
-            // Format: order_id|order_reference_number|date_time_transaction|payment_gateway_used|status_code|comment
+            // WebXPay Redirect response: order_id|reference|date_time|status_code|comment|payment_gateway_used
             $responseData = explode('|', $payment);
 
             if (count($responseData) < 5) {
@@ -342,9 +342,9 @@ class WebXPayService
             $orderId = $responseData[0] ?? null;
             $referenceNumber = $responseData[1] ?? null;
             $transactionDateTime = $responseData[2] ?? null;
-            $paymentGateway = $responseData[3] ?? null;
-            $statusCode = $responseData[4] ?? null;
-            $comment = $responseData[5] ?? '';
+            $statusCode = $responseData[3] ?? null;
+            $comment = $responseData[4] ?? '';
+            $paymentGateway = $responseData[5] ?? null;
 
             Log::info('WebXPay payment verified', [
                 'order_id' => $orderId,
@@ -354,14 +354,11 @@ class WebXPayService
                 'custom_fields' => $customData
             ]);
 
-            // Check for approved/success status
-            // statusCode can be: 'Approved..', 'SUCCESS', '2', etc.
-            // paymentGateway can be: '00' (approved), '2', etc.
-            // Both need to indicate success
-            $isSuccessful = (
-                (stripos($statusCode, 'Approved') !== false || in_array($statusCode, ['00', '2'], true)) &&
-                (in_array($paymentGateway, ['00', '2'], true) || stripos($paymentGateway, 'success') !== false)
-            );
+            // Redirect guide: 0/00 are approved; 15 is declined. The gateway
+            // identifier is descriptive and must not be treated as a result code.
+            $isSuccessful = in_array($statusCode, ['0', '00', '2'], true)
+                || stripos((string) $statusCode, 'approved') !== false
+                || stripos((string) $statusCode, 'success') !== false;
 
             return [
                 'success' => $isSuccessful,

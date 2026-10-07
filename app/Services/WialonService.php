@@ -69,20 +69,8 @@ class WialonService
             $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
                 ->where('company_id', $companyId)
                 ->where('wialon_unit_id', (int) $unit['id'])->first();
-            if (!$vehicle && !empty($unit['nm'])) {
-                $name = mb_strtolower(trim($unit['nm']));
-                $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                    ->where(fn ($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
-                    ->whereNull('wialon_unit_id')
-                    ->where(fn ($query) => $query->whereRaw('LOWER(license_plate) = ?', [$name])
-                        ->orWhereRaw('LOWER(registration_no) = ?', [$name]))
-                    ->first();
-            }
             if (!$vehicle || $vehicle->trashed()) continue;
-            if ($this->isImportedPlaceholder($vehicle, $unit)) {
-                $vehicle->delete();
-                continue;
-            }
+            if ($this->isImportedPlaceholder($vehicle, $unit)) continue;
 
             $mileage = data_get($unit, 'counters.cnm_km');
             if (!is_numeric($mileage)) {
@@ -101,7 +89,10 @@ class WialonService
             $vehicle->wialon_last_synced_at = now();
             if (is_numeric($mileage)) {
                 $vehicle->initial_mileage ??= (int) round($mileage);
-                $vehicle->current_mileage = (int) round($mileage);
+                $trackerMileage = (int) round($mileage);
+                if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
+                    $vehicle->current_mileage = $trackerMileage;
+                }
             }
             $vehicle->save();
             $synced++;
@@ -129,6 +120,29 @@ class WialonService
             'itemId' => $unitId, 'newValue' => $mileageKm,
         ]));
         return (int) ($result['cnm'] ?? $mileageKm);
+    }
+
+    public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
+    {
+        $integration = $this->integration($companyId);
+        if (!in_array($groupId, array_map('intval', $integration->group_ids), true)) {
+            throw ValidationException::withMessages(['group_id' => ['Save this Wialon group in company settings before managing its units.']]);
+        }
+
+        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId): array {
+            $groups = $this->searchUnitGroups($sid);
+            $group = collect($groups)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $groupId);
+            if (!$group) throw new RuntimeException('The Wialon group is no longer available to this token.');
+            $unitExists = collect($this->searchUnits($sid))->contains(fn (array $unit) => (int) ($unit['id'] ?? 0) === $unitId);
+            if (!$unitExists) throw new RuntimeException('The Wialon unit is no longer available to this token.');
+
+            $members = array_values(array_unique(array_map('intval', $group['u'] ?? [])));
+            if (!in_array($unitId, $members, true)) {
+                $members[] = $unitId;
+                $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
+            }
+            return ['group_id' => $groupId, 'unit_ids' => $members];
+        });
     }
 
     public function reportTemplates(string $companyId): array
