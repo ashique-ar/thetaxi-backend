@@ -74,6 +74,11 @@ class WialonService
     {
         $synced = 0;
         $integration = $this->integration($companyId);
+        $portalMileageAtStart = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->whereNotNull('wialon_unit_id')
+            ->pluck('current_mileage', 'wialon_unit_id')
+            ->all();
         $catalog = $this->withSession($companyId, function (string $sid) use ($integration) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
             return ['units' => $this->searchUnits($sid), 'groups' => $groups];
@@ -82,30 +87,41 @@ class WialonService
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
         foreach ($units as $unit) {
             if (empty($unit['id'])) continue;
-            $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
-                ->where('company_id', $companyId)
-                ->where('wialon_unit_id', (int) $unit['id'])->first();
-            if (!$vehicle || $vehicle->trashed()) continue;
-            if ($this->isImportedPlaceholder($vehicle, $unit)) continue;
-
+            $unitId = (int) $unit['id'];
             $mileage = $this->trackerMileageKm($unit);
-            if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) continue;
-            $vehicle->company_id ??= $companyId;
-            $vehicle->wialon_unit_id = (int) $unit['id'];
-            $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
-            $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
-            $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
-            $vehicle->wialon_last_message_at = data_get($unit, 'pos.t') ? now()->setTimestamp((int) $unit['pos']['t']) : $vehicle->wialon_last_message_at;
-            $vehicle->wialon_last_synced_at = now();
-            if (is_numeric($mileage)) {
-                $vehicle->initial_mileage ??= (int) round($mileage);
-                $trackerMileage = (int) round($mileage);
-                if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
-                    $vehicle->current_mileage = $trackerMileage;
+            $updated = DB::transaction(function () use ($companyId, $unit, $unitId, $mileage, $portalMileageAtStart): bool {
+                $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
+                    ->where('company_id', $companyId)
+                    ->where('wialon_unit_id', $unitId)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$vehicle || $vehicle->trashed() || $this->isImportedPlaceholder($vehicle, $unit)) return false;
+
+                if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) return false;
+                $vehicle->company_id ??= $companyId;
+                $vehicle->wialon_unit_id = $unitId;
+                $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
+                $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
+                $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
+                $vehicle->wialon_last_message_at = data_get($unit, 'pos.t') ? now()->setTimestamp((int) $unit['pos']['t']) : $vehicle->wialon_last_message_at;
+                $vehicle->wialon_last_synced_at = now();
+
+                $hasMileageSnapshot = array_key_exists($unitId, $portalMileageAtStart);
+                $mileageAtStart = $hasMileageSnapshot && $portalMileageAtStart[$unitId] !== null
+                    ? (int) $portalMileageAtStart[$unitId]
+                    : null;
+                if (is_numeric($mileage) && $hasMileageSnapshot && $vehicle->current_mileage === $mileageAtStart) {
+                    $trackerMileage = (int) round($mileage);
+                    if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
+                        $vehicle->initial_mileage ??= $trackerMileage;
+                        $vehicle->current_mileage = $trackerMileage;
+                    }
                 }
-            }
-            $vehicle->save();
-            $synced++;
+
+                $vehicle->save();
+                return true;
+            });
+            if ($updated) $synced++;
         }
         return $synced;
     }
