@@ -235,7 +235,16 @@ class WialonService
             'newValue' => $mileageKm,
         ]);
 
-        return (int) ($result['cnm'] ?? $mileageKm);
+        $confirmedMileage = filter_var($result['cnm'] ?? null, FILTER_VALIDATE_INT);
+        if (
+            $confirmedMileage === false
+            || $confirmedMileage < 0
+            || $confirmedMileage > self::MAX_COUNTER_KILOMETERS
+        ) {
+            throw new RuntimeException('The GPS service did not confirm the mileage counter update.');
+        }
+
+        return $confirmedMileage;
     }
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
