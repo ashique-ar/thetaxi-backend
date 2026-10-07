@@ -45,6 +45,9 @@ class WialonService
             if (is_numeric($engineHours)) $safe['engine_hours'] = (float) $engineHours;
             if (isset($unit['pos']) && is_array($unit['pos'])) {
                 $safe['pos'] = array_intersect_key($unit['pos'], array_flip(['t', 'x', 'y', 's']));
+                if (is_numeric($safe['pos']['s'] ?? null)) {
+                    $safe['pos']['s'] = round((float) $safe['pos']['s'] * ($this->usesMiles($unit) ? 1.609344 : 1), 1);
+                }
             }
             return $safe;
         }, $units));
@@ -52,15 +55,19 @@ class WialonService
 
     private function trackerMileageKm(array $unit): ?float
     {
-        $kilometers = data_get($unit, 'mileage_km', data_get($unit, 'counters.cnm_km'));
+        $kilometers = data_get($unit, 'mileage_km', data_get($unit, 'cnm_km', data_get($unit, 'counters.cnm_km')));
         if (is_numeric($kilometers)) return round((float) $kilometers, 2);
 
         // Wialon Hosting returns cnm at the unit root in km or miles, selected by mu.
         $counter = data_get($unit, 'cnm', data_get($unit, 'counters.cnm'));
         if (!is_numeric($counter)) return null;
 
-        $miles = in_array((int) ($unit['mu'] ?? 0), [1, 2], true);
-        return round((float) $counter * ($miles ? 1.609344 : 1), 2);
+        return round((float) $counter * ($this->usesMiles($unit) ? 1.609344 : 1), 2);
+    }
+
+    private function usesMiles(array $unit): bool
+    {
+        return in_array((int) ($unit['mu'] ?? 0), [1, 2], true);
     }
 
     public function syncVehicles(string $companyId): int
