@@ -4,7 +4,7 @@ Casons and TheTaxi run on separate servers. Install the same scheduler on each s
 
 ## PHP runtime requirement
 
-This release requires PHP 8.5 for both the web application and scheduled commands. The Casons server previously reported PHP 8.3.22 from `/opt/bitnami/php/bin/php`, so it cannot run this release with that binary.
+This application pins PHP `^8.5` in Composer for both the web application and scheduled commands. Laravel 13 itself supports PHP 8.3, but the app's locked dependencies include packages requiring PHP 8.4.1 or newer, so the framework minimum is not the app's runtime minimum. The Casons server previously reported PHP 8.3.22 from `/opt/bitnami/php/bin/php`, so it cannot run this release with that binary.
 
 Bitnami stacks include their own PHP runtime. Installing a second system PHP does not upgrade the PHP used by the Bitnami web stack; update or migrate the stack using its supported procedure, then verify the web app and CLI both run PHP 8.5. See [Bitnami's stack migration guidance](https://docs.bitnami.com/vmware-marketplace/how-to/migrate-moodle/) and [PHP's supported versions](https://www.php.net/supported-versions.php).
 
