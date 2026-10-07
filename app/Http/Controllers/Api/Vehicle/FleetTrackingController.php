@@ -289,6 +289,30 @@ class FleetTrackingController extends Controller
         ]]);
     }
 
+    public function removeUnitFromGroup(Request $request, int $groupId, int $unitId, WialonService $wialon): JsonResponse
+    {
+        $companyId = $this->companyId($request);
+        try {
+            $membership = $wialon->removeUnitFromGroup($companyId, $groupId, $unitId);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+
+        $syncError = null;
+        $synced = 0;
+        try {
+            $synced = $wialon->syncVehicles($companyId);
+        } catch (RuntimeException $error) {
+            $syncError = $error->getMessage();
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            ...$membership,
+            'synced' => $synced,
+            'sync_error' => $syncError,
+        ]]);
+    }
+
     public function saveSettings(Request $request, WialonService $wialon): JsonResponse
     {
         $data = $request->validate([

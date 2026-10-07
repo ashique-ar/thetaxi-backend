@@ -183,12 +183,25 @@ class WialonService
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
     {
+        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, true);
+    }
+
+    public function removeUnitFromGroup(string $companyId, int $groupId, int $unitId): array
+    {
+        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, false);
+    }
+
+    private function updateUnitGroupMembership(string $companyId, int $groupId, int $unitId, bool $add): array
+    {
         $integration = $this->integration($companyId);
         if (!in_array($groupId, array_map('intval', $integration->group_ids), true)) {
             throw ValidationException::withMessages(['group_id' => ['Save this GPS group in company settings before managing its devices.']]);
         }
+        if ($groupId < 1 || $unitId < 1) {
+            throw ValidationException::withMessages(['unit_id' => ['Choose a valid GPS group and device.']]);
+        }
 
-        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId): array {
+        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId, $add): array {
             $groups = $this->searchUnitGroups($sid);
             $group = collect($groups)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $groupId);
             if (!$group) throw new RuntimeException('The GPS group is no longer available to this service account.');
@@ -196,15 +209,18 @@ class WialonService
             if (!$unitExists) throw new RuntimeException('The GPS device is no longer available to this service account.');
 
             $members = array_values(array_unique(array_map('intval', $group['u'] ?? [])));
-            if (!in_array($unitId, $members, true)) {
-                $members[] = $unitId;
+            $currentlyMember = in_array($unitId, $members, true);
+            if ($currentlyMember !== $add) {
+                $members = $add
+                    ? [...$members, $unitId]
+                    : array_values(array_diff($members, [$unitId]));
                 $updated = $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
                 $members = array_values(array_unique(array_map('intval', $updated['u'] ?? [])));
-                if (!in_array($unitId, $members, true)) {
-                    throw new RuntimeException('The GPS service did not confirm that the device was added to the selected group.');
+                if (in_array($unitId, $members, true) !== $add) {
+                    throw new RuntimeException('The GPS service did not confirm the requested group membership change.');
                 }
             }
-            return ['group_id' => $groupId, 'unit_ids' => $members];
+            return ['group_id' => $groupId, 'unit_ids' => $members, 'is_member' => $add];
         });
     }
 

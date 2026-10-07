@@ -1680,6 +1680,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::get('fleet-tracking/settings', [FleetTrackingController::class, 'settings'])->middleware('permission:vehicles.edit');
     Route::get('fleet-tracking/catalog', [FleetTrackingController::class, 'catalog'])->middleware('permission:vehicles.edit');
     Route::post('fleet-tracking/groups/{groupId}/units', [FleetTrackingController::class, 'addUnitToGroup'])->whereNumber('groupId')->middleware('permission:vehicles.edit')->middleware('throttle:10,1');
+    Route::delete('fleet-tracking/groups/{groupId}/units/{unitId}', [FleetTrackingController::class, 'removeUnitFromGroup'])->whereNumber('groupId')->whereNumber('unitId')->middleware('permission:vehicles.edit')->middleware('throttle:10,1');
     Route::put('fleet-tracking/settings', [FleetTrackingController::class, 'saveSettings'])->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
     Route::post('fleet-tracking/sync', [FleetTrackingController::class, 'sync'])
         ->middleware('permission:vehicles.create|vehicles.edit')->middleware('throttle:6,1');
