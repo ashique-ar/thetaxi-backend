@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class WialonService
@@ -79,9 +80,48 @@ class WialonService
             ->whereNotNull('wialon_unit_id')
             ->pluck('current_mileage', 'wialon_unit_id')
             ->all();
-        $catalog = $this->withSession($companyId, function (string $sid) use ($integration) {
+        $catalog = $this->withSession($companyId, function (string $sid) use ($integration, $companyId) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
-            return ['units' => $this->searchUnits($sid), 'groups' => $groups];
+            $units = $this->searchUnits($sid);
+            $selectedUnitIds = $this->unitIdsFromGroups($groups, $integration->group_ids);
+            if ($selectedUnitIds) {
+                $pendingVehicles = \App\Models\Vehicle\Vehicle::withInactive()
+                    ->where('company_id', $companyId)
+                    ->where('wialon_mileage_sync_pending', true)
+                    ->whereNotNull('current_mileage')
+                    ->whereIn('wialon_unit_id', $selectedUnitIds)
+                    ->get(['id', 'wialon_unit_id', 'current_mileage']);
+
+                foreach ($pendingVehicles as $pendingVehicle) {
+                    $requestedMileage = (int) $pendingVehicle->current_mileage;
+                    try {
+                        $confirmedMileage = $this->writeMileageCounter(
+                            $sid,
+                            (int) $pendingVehicle->wialon_unit_id,
+                            $requestedMileage,
+                        );
+                        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+                            ->where('company_id', $companyId)
+                            ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
+                            ->where('wialon_mileage_sync_pending', true)
+                            ->first();
+                        if ($currentVehicle && (int) $currentVehicle->current_mileage === $requestedMileage) {
+                            $currentVehicle->forceFill([
+                                'wialon_mileage' => $confirmedMileage,
+                            ])->save();
+                        }
+                    } catch (RuntimeException $error) {
+                        Log::warning('Pending GPS mileage correction could not be retried', [
+                            'company_id' => $companyId,
+                            'vehicle_id' => $pendingVehicle->id,
+                            'unit_id' => $pendingVehicle->wialon_unit_id,
+                            'error' => $error->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            return ['units' => $units, 'groups' => $groups];
         });
         $selectedUnitIds = $this->unitIdsFromGroups($catalog['groups'], $integration->group_ids);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
@@ -164,21 +204,38 @@ class WialonService
             ->where('company_id', $companyId)
             ->where('wialon_unit_id', $unitId)
             ->first();
+        $this->assertSelectedUnit($companyId, $unitId);
         $vehicle?->forceFill([
             'wialon_mileage_sync_pending' => true,
             'wialon_mileage_sync_requested_at' => now(),
         ])->save();
 
-        $this->assertSelectedUnit($companyId, $unitId);
-        $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_mileage_counter', [
-            'itemId' => $unitId, 'newValue' => $mileageKm,
-        ]));
-        $confirmedMileage = (int) ($result['cnm'] ?? $mileageKm);
-        $vehicle?->forceFill([
-            'wialon_mileage' => $confirmedMileage,
-        ])->save();
+        $confirmedMileage = $this->withSession(
+            $companyId,
+            fn (string $sid) => $this->writeMileageCounter($sid, $unitId, $mileageKm),
+        );
+        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->where('wialon_unit_id', $unitId)
+            ->where('current_mileage', $mileageKm)
+            ->first();
+        $currentVehicle?->forceFill(['wialon_mileage' => $confirmedMileage])->save();
 
         return $confirmedMileage;
+    }
+
+    private function writeMileageCounter(string $sid, int $unitId, int $mileageKm): int
+    {
+        if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
+            throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
+        }
+
+        $result = $this->call($sid, 'unit/update_mileage_counter', [
+            'itemId' => $unitId,
+            'newValue' => $mileageKm,
+        ]);
+
+        return (int) ($result['cnm'] ?? $mileageKm);
     }
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
