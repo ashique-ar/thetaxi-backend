@@ -178,6 +178,7 @@ class FleetTrackingController extends Controller
         $data = $request->validate(['wialon_unit_id' => $unitRules]);
         DB::transaction(function () use ($vehicle, $companyId, $data): void {
             $unitId = $data['wialon_unit_id'] ?? null;
+            $unitId = $unitId === null ? null : (int) $unitId;
             if ($unitId) {
                 $previousVehicle = Vehicle::withTrashed()->withInactive()
                     ->where('company_id', $companyId)
@@ -202,14 +203,16 @@ class FleetTrackingController extends Controller
                 }
             }
 
-            $vehicle->wialon_unit_id = $unitId;
-            if (!$unitId) {
+            if ((int) $vehicle->wialon_unit_id !== (int) $unitId) {
                 $vehicle->wialon_unique_id = null;
                 $vehicle->wialon_hw_type_id = null;
                 $vehicle->wialon_mileage = null;
                 $vehicle->wialon_last_message_at = null;
                 $vehicle->wialon_last_synced_at = null;
+                $vehicle->wialon_mileage_sync_pending = false;
+                $vehicle->wialon_mileage_sync_requested_at = null;
             }
+            $vehicle->wialon_unit_id = $unitId;
             $vehicle->company_id ??= $companyId;
             $vehicle->save();
         });
