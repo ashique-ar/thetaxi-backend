@@ -126,7 +126,7 @@ class WialonService
     public function setMileage(string $companyId, int $unitId, int $mileageKm): int
     {
         if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
-            throw new RuntimeException('Wialon accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
+            throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
         }
         $this->assertSelectedUnit($companyId, $unitId);
         $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_mileage_counter', [
@@ -139,15 +139,15 @@ class WialonService
     {
         $integration = $this->integration($companyId);
         if (!in_array($groupId, array_map('intval', $integration->group_ids), true)) {
-            throw ValidationException::withMessages(['group_id' => ['Save this Wialon group in company settings before managing its units.']]);
+            throw ValidationException::withMessages(['group_id' => ['Save this GPS group in company settings before managing its devices.']]);
         }
 
         return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId): array {
             $groups = $this->searchUnitGroups($sid);
             $group = collect($groups)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $groupId);
-            if (!$group) throw new RuntimeException('The Wialon group is no longer available to this token.');
+            if (!$group) throw new RuntimeException('The GPS group is no longer available to this service account.');
             $unitExists = collect($this->searchUnits($sid))->contains(fn (array $unit) => (int) ($unit['id'] ?? 0) === $unitId);
-            if (!$unitExists) throw new RuntimeException('The Wialon unit is no longer available to this token.');
+            if (!$unitExists) throw new RuntimeException('The GPS device is no longer available to this service account.');
 
             $members = array_values(array_unique(array_map('intval', $group['u'] ?? [])));
             if (!in_array($unitId, $members, true)) {
@@ -155,7 +155,7 @@ class WialonService
                 $updated = $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
                 $members = array_values(array_unique(array_map('intval', $updated['u'] ?? [])));
                 if (!in_array($unitId, $members, true)) {
-                    throw new RuntimeException('Wialon did not confirm that the unit was added to the selected group.');
+                    throw new RuntimeException('The GPS service did not confirm that the device was added to the selected group.');
                 }
             }
             return ['group_id' => $groupId, 'unit_ids' => $members];
@@ -172,13 +172,13 @@ class WialonService
     {
         $this->assertSelectedUnit($companyId, $unitId);
         if (!in_array($resourceId, array_map('intval', $this->integration($companyId)->resource_ids), true)) {
-            throw new RuntimeException('The selected Wialon resource is not enabled for this company.');
+            throw new RuntimeException('The selected GPS report resource is not enabled for this company.');
         }
         return $this->withSession($companyId, function (string $sid) use ($unitId, $resourceId, $templateId, $from, $to, $tableIndex, $offset) {
             $resources = $this->searchReportResources($sid);
             $resource = collect($resources)->firstWhere('id', $resourceId);
             if (!$resource || !collect($resource['templates'])->contains(fn ($template) => (int) $template['id'] === $templateId)) {
-                throw new RuntimeException('The selected Wialon report template is unavailable.');
+                throw new RuntimeException('The selected GPS report template is unavailable.');
             }
 
             $result = $this->call($sid, 'report/exec_report', [
@@ -191,7 +191,7 @@ class WialonService
             $tables = data_get($result, 'reportResult.tables', []);
             try {
                 if ($tableIndex !== null && !array_key_exists($tableIndex, $tables)) {
-                    throw new \InvalidArgumentException('The selected Wialon report table is unavailable.');
+                    throw new \InvalidArgumentException('The selected GPS report table is unavailable.');
                 }
                 foreach ($tables as $index => &$table) {
                     $count = (int) ($table['rows'] ?? 0);
@@ -274,7 +274,7 @@ class WialonService
         foreach (['resource_ids' => $resourceIds, 'group_ids' => $groupIds] as $field => $selectedIds) {
             $allowedIds = array_map('intval', $available[$field]);
             if (array_diff(array_map('intval', $selectedIds), $allowedIds)) {
-                $errors[$field] = ['One or more selected Wialon items are unavailable to this company token. Refresh the Wialon catalog and select available items.'];
+                $errors[$field] = ['One or more selected GPS items are unavailable to this company service account. Refresh the GPS catalog and select available items.'];
             }
         }
         if ($errors) throw ValidationException::withMessages($errors);
@@ -315,7 +315,7 @@ class WialonService
     private function integration(string $companyId): object
     {
         $row = DB::table('wialon_integrations')->where('company_id', $companyId)->where('enabled', true)->first();
-        if (!$row || !$row->token) throw new RuntimeException('Wialon is not configured for this company.');
+        if (!$row || !$row->token) throw new RuntimeException('GPS tracking is not configured for this company.');
         $row->token = decrypt($row->token);
         $row->resource_ids = json_decode($row->resource_ids ?: '[]', true) ?: [];
         $row->group_ids = json_decode($row->group_ids ?: '[]', true) ?: [];
@@ -335,7 +335,7 @@ class WialonService
     private function assertSelectedUnit(string $companyId, int $unitId): void
     {
         if (!in_array($unitId, $this->selectedUnitIds($companyId), true)) {
-            throw new RuntimeException('The Wialon unit is not enabled for this company.');
+            throw new RuntimeException('The GPS device is not enabled for this company.');
         }
     }
 
@@ -345,7 +345,7 @@ class WialonService
         $this->baseUrl = rtrim($integration->base_url ?: $this->baseUrl, '/');
         $login = $this->call(null, 'token/login', ['token' => $integration->token]);
         if (empty($login['eid'])) {
-            throw new RuntimeException('Wialon did not return a session.');
+            throw new RuntimeException('The GPS service did not start a session.');
         }
         try {
             if (!empty($login['base_url'])) {
@@ -359,7 +359,7 @@ class WialonService
                     }
                 }
                 if (parse_url($reported, PHP_URL_SCHEME) !== 'https' || !$allowedHost) {
-                    throw new RuntimeException('Wialon returned an invalid API host.');
+                    throw new RuntimeException('The GPS service returned an invalid API host.');
                 }
                 $this->baseUrl = $reported;
                 if ($integration->base_url !== $reported) {
@@ -383,13 +383,13 @@ class WialonService
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
         } catch (ConnectionException $error) {
-            throw new RuntimeException('Wialon request failed.', 0, $error);
+            throw new RuntimeException('The GPS service request failed.', 0, $error);
         }
-        if (!$response->successful()) throw new RuntimeException('Wialon request failed.');
+        if (!$response->successful()) throw new RuntimeException('The GPS service request failed.');
 
         $data = $response->json();
         if (!is_array($data) || isset($data['error'])) {
-            throw new RuntimeException('Wialon rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
+            throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
         return $data;
     }
