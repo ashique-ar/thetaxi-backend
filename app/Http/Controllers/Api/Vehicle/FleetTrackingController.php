@@ -92,14 +92,13 @@ class FleetTrackingController extends Controller
         $message = 'Mileage saved in the portal.';
         $wialonSynced = false;
         try {
-            $mileage = $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
-            $vehicle->wialon_mileage = $mileage;
-            $vehicle->save();
+            $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
+            $vehicle->refresh();
             $wialonSynced = true;
         } catch (RuntimeException $error) {
             $message .= ' GPS counter sync failed: ' . $error->getMessage();
         }
-        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced]]);
+        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced, 'wialon_mileage_sync_pending' => true]]);
     }
 
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
@@ -127,7 +126,7 @@ class FleetTrackingController extends Controller
         }
         $vehicles = Vehicle::withInactive()
             ->where(fn($query) => $query->where('company_id', $companyId)->orWhereNull('company_id'))
-            ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_last_message_at', 'wialon_last_synced_at')
+            ->select('id', 'title', 'license_plate', 'registration_no', 'wialon_unit_id', 'current_mileage', 'is_active', 'availability_status', 'wialon_mileage', 'wialon_mileage_sync_pending', 'wialon_last_message_at', 'wialon_last_synced_at')
             ->orderBy('title')
             ->get();
         $unitById = collect($units)->keyBy(fn(array $unit) => (int) ($unit['id'] ?? 0));
@@ -152,6 +151,7 @@ class FleetTrackingController extends Controller
                         'is_active' => (bool) $vehicle->is_active,
                         'availability_status' => $vehicle->availability_status,
                         'wialon_mileage' => $vehicle->wialon_mileage,
+                        'wialon_mileage_sync_pending' => (bool) $vehicle->wialon_mileage_sync_pending,
                         'wialon_last_message_at' => $vehicle->wialon_last_message_at,
                         'wialon_last_synced_at' => $vehicle->wialon_last_synced_at,
                         'unit' => $unit
@@ -177,6 +177,7 @@ class FleetTrackingController extends Controller
         $data = $request->validate(['wialon_unit_id' => $unitRules]);
         DB::transaction(function () use ($vehicle, $companyId, $data): void {
             $unitId = $data['wialon_unit_id'] ?? null;
+            $unitId = $unitId === null ? null : (int) $unitId;
             if ($unitId) {
                 $previousVehicle = Vehicle::withTrashed()->withInactive()
                     ->where('company_id', $companyId)
@@ -201,14 +202,16 @@ class FleetTrackingController extends Controller
                 }
             }
 
-            $vehicle->wialon_unit_id = $unitId;
-            if (!$unitId) {
+            if ((int) $vehicle->wialon_unit_id !== (int) $unitId) {
                 $vehicle->wialon_unique_id = null;
                 $vehicle->wialon_hw_type_id = null;
                 $vehicle->wialon_mileage = null;
                 $vehicle->wialon_last_message_at = null;
                 $vehicle->wialon_last_synced_at = null;
+                $vehicle->wialon_mileage_sync_pending = false;
+                $vehicle->wialon_mileage_sync_requested_at = null;
             }
+            $vehicle->wialon_unit_id = $unitId;
             $vehicle->company_id ??= $companyId;
             $vehicle->save();
         });
@@ -266,6 +269,30 @@ class FleetTrackingController extends Controller
         $companyId = $this->companyId($request);
         try {
             $membership = $wialon->addUnitToGroup($companyId, $groupId, (int) $data['unit_id']);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+
+        $syncError = null;
+        $synced = 0;
+        try {
+            $synced = $wialon->syncVehicles($companyId);
+        } catch (RuntimeException $error) {
+            $syncError = $error->getMessage();
+        }
+
+        return response()->json(['status' => 'success', 'data' => [
+            ...$membership,
+            'synced' => $synced,
+            'sync_error' => $syncError,
+        ]]);
+    }
+
+    public function removeUnitFromGroup(Request $request, int $groupId, int $unitId, WialonService $wialon): JsonResponse
+    {
+        $companyId = $this->companyId($request);
+        try {
+            $membership = $wialon->removeUnitFromGroup($companyId, $groupId, $unitId);
         } catch (RuntimeException $error) {
             return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
         }

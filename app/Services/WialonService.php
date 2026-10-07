@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 class WialonService
@@ -74,38 +75,109 @@ class WialonService
     {
         $synced = 0;
         $integration = $this->integration($companyId);
-        $catalog = $this->withSession($companyId, function (string $sid) use ($integration) {
+        $portalMileageAtStart = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->whereNotNull('wialon_unit_id')
+            ->pluck('current_mileage', 'wialon_unit_id')
+            ->all();
+        $catalog = $this->withSession($companyId, function (string $sid) use ($integration, $companyId) {
             $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
-            return ['units' => $this->searchUnits($sid), 'groups' => $groups];
+            $units = $this->searchUnits($sid);
+            $selectedUnitIds = $this->unitIdsFromGroups($groups, $integration->group_ids);
+            if ($selectedUnitIds) {
+                $pendingVehicles = \App\Models\Vehicle\Vehicle::withInactive()
+                    ->where('company_id', $companyId)
+                    ->where('wialon_mileage_sync_pending', true)
+                    ->whereNotNull('current_mileage')
+                    ->whereIn('wialon_unit_id', $selectedUnitIds)
+                    ->get(['id', 'wialon_unit_id', 'current_mileage']);
+
+                foreach ($pendingVehicles as $pendingVehicle) {
+                    $requestedMileage = (int) $pendingVehicle->current_mileage;
+                    try {
+                        $confirmedMileage = $this->writeMileageCounter(
+                            $sid,
+                            (int) $pendingVehicle->wialon_unit_id,
+                            $requestedMileage,
+                        );
+                        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+                            ->where('company_id', $companyId)
+                            ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
+                            ->where('wialon_mileage_sync_pending', true)
+                            ->first();
+                        if ($currentVehicle && (int) $currentVehicle->current_mileage === $requestedMileage) {
+                            $currentVehicle->forceFill([
+                                'wialon_mileage' => $confirmedMileage,
+                            ])->save();
+                        }
+                    } catch (RuntimeException $error) {
+                        Log::warning('Pending GPS mileage correction could not be retried', [
+                            'company_id' => $companyId,
+                            'vehicle_id' => $pendingVehicle->id,
+                            'unit_id' => $pendingVehicle->wialon_unit_id,
+                            'error' => $error->getMessage(),
+                        ]);
+                    }
+                }
+            }
+
+            return ['units' => $units, 'groups' => $groups];
         });
         $selectedUnitIds = $this->unitIdsFromGroups($catalog['groups'], $integration->group_ids);
         $units = array_values(array_filter($catalog['units'], fn ($unit) => in_array((int) ($unit['id'] ?? 0), $selectedUnitIds, true)));
         foreach ($units as $unit) {
             if (empty($unit['id'])) continue;
-            $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
-                ->where('company_id', $companyId)
-                ->where('wialon_unit_id', (int) $unit['id'])->first();
-            if (!$vehicle || $vehicle->trashed()) continue;
-            if ($this->isImportedPlaceholder($vehicle, $unit)) continue;
-
+            $unitId = (int) $unit['id'];
             $mileage = $this->trackerMileageKm($unit);
-            if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) continue;
-            $vehicle->company_id ??= $companyId;
-            $vehicle->wialon_unit_id = (int) $unit['id'];
-            $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
-            $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
-            $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
-            $vehicle->wialon_last_message_at = data_get($unit, 'pos.t') ? now()->setTimestamp((int) $unit['pos']['t']) : $vehicle->wialon_last_message_at;
-            $vehicle->wialon_last_synced_at = now();
-            if (is_numeric($mileage)) {
-                $vehicle->initial_mileage ??= (int) round($mileage);
-                $trackerMileage = (int) round($mileage);
-                if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
-                    $vehicle->current_mileage = $trackerMileage;
+            $updated = DB::transaction(function () use ($companyId, $unit, $unitId, $mileage, $portalMileageAtStart): bool {
+                $vehicle = \App\Models\Vehicle\Vehicle::withInactive()->withTrashed()
+                    ->where('company_id', $companyId)
+                    ->where('wialon_unit_id', $unitId)
+                    ->lockForUpdate()
+                    ->first();
+                if (!$vehicle || $vehicle->trashed() || $this->isImportedPlaceholder($vehicle, $unit)) return false;
+
+                if ($vehicle->company_id && (string) $vehicle->company_id !== $companyId) return false;
+                $previousTrackerMileage = $vehicle->wialon_mileage;
+                $vehicle->company_id ??= $companyId;
+                $vehicle->wialon_unit_id = $unitId;
+                $vehicle->wialon_unique_id = $unit['uid'] ?? $vehicle->wialon_unique_id;
+                $vehicle->wialon_hw_type_id = $unit['hw'] ?? $vehicle->wialon_hw_type_id;
+                $vehicle->wialon_mileage = is_numeric($mileage) ? $mileage : $vehicle->wialon_mileage;
+                $vehicle->wialon_last_message_at = data_get($unit, 'pos.t') ? now()->setTimestamp((int) $unit['pos']['t']) : $vehicle->wialon_last_message_at;
+                $vehicle->wialon_last_synced_at = now();
+
+                $hasMileageSnapshot = array_key_exists($unitId, $portalMileageAtStart);
+                $mileageAtStart = $hasMileageSnapshot && $portalMileageAtStart[$unitId] !== null
+                    ? (int) $portalMileageAtStart[$unitId]
+                    : null;
+                if (is_numeric($mileage) && $vehicle->wialon_mileage_sync_pending) {
+                    $trackerMileage = (int) round($mileage);
+                    $reportedAt = (int) data_get($unit, 'pos.t', 0);
+                    $counterAdvancedAfterEdit = is_numeric($previousTrackerMileage)
+                        && $trackerMileage > (int) round((float) $previousTrackerMileage)
+                        && $vehicle->wialon_mileage_sync_requested_at
+                        && $reportedAt > $vehicle->wialon_mileage_sync_requested_at->getTimestamp();
+                    if ($vehicle->current_mileage !== null
+                        && ($trackerMileage === $vehicle->current_mileage
+                            || ($counterAdvancedAfterEdit && $trackerMileage >= $vehicle->current_mileage))) {
+                        $vehicle->wialon_mileage_sync_pending = false;
+                        $vehicle->wialon_mileage_sync_requested_at = null;
+                    }
                 }
-            }
-            $vehicle->save();
-            $synced++;
+                if (is_numeric($mileage) && !$vehicle->wialon_mileage_sync_pending
+                    && $hasMileageSnapshot && $vehicle->current_mileage === $mileageAtStart) {
+                    $trackerMileage = (int) round($mileage);
+                    if ($vehicle->current_mileage === null || $trackerMileage >= $vehicle->current_mileage) {
+                        $vehicle->initial_mileage ??= $trackerMileage;
+                        $vehicle->current_mileage = $trackerMileage;
+                    }
+                }
+
+                $vehicle->save();
+                return true;
+            });
+            if ($updated) $synced++;
         }
         return $synced;
     }
@@ -128,21 +200,65 @@ class WialonService
         if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
             throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
         }
+        $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->where('wialon_unit_id', $unitId)
+            ->first();
         $this->assertSelectedUnit($companyId, $unitId);
-        $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_mileage_counter', [
-            'itemId' => $unitId, 'newValue' => $mileageKm,
-        ]));
+        $vehicle?->forceFill([
+            'wialon_mileage_sync_pending' => true,
+            'wialon_mileage_sync_requested_at' => now(),
+        ])->save();
+
+        $confirmedMileage = $this->withSession(
+            $companyId,
+            fn (string $sid) => $this->writeMileageCounter($sid, $unitId, $mileageKm),
+        );
+        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)
+            ->where('wialon_unit_id', $unitId)
+            ->where('current_mileage', $mileageKm)
+            ->first();
+        $currentVehicle?->forceFill(['wialon_mileage' => $confirmedMileage])->save();
+
+        return $confirmedMileage;
+    }
+
+    private function writeMileageCounter(string $sid, int $unitId, int $mileageKm): int
+    {
+        if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
+            throw new RuntimeException('The GPS service accepts mileage counters from 0 to ' . self::MAX_COUNTER_KILOMETERS . ' km.');
+        }
+
+        $result = $this->call($sid, 'unit/update_mileage_counter', [
+            'itemId' => $unitId,
+            'newValue' => $mileageKm,
+        ]);
+
         return (int) ($result['cnm'] ?? $mileageKm);
     }
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array
     {
+        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, true);
+    }
+
+    public function removeUnitFromGroup(string $companyId, int $groupId, int $unitId): array
+    {
+        return $this->updateUnitGroupMembership($companyId, $groupId, $unitId, false);
+    }
+
+    private function updateUnitGroupMembership(string $companyId, int $groupId, int $unitId, bool $add): array
+    {
         $integration = $this->integration($companyId);
         if (!in_array($groupId, array_map('intval', $integration->group_ids), true)) {
             throw ValidationException::withMessages(['group_id' => ['Save this GPS group in company settings before managing its devices.']]);
         }
+        if ($groupId < 1 || $unitId < 1) {
+            throw ValidationException::withMessages(['unit_id' => ['Choose a valid GPS group and device.']]);
+        }
 
-        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId): array {
+        return $this->withSession($companyId, function (string $sid) use ($groupId, $unitId, $add): array {
             $groups = $this->searchUnitGroups($sid);
             $group = collect($groups)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $groupId);
             if (!$group) throw new RuntimeException('The GPS group is no longer available to this service account.');
@@ -150,15 +266,18 @@ class WialonService
             if (!$unitExists) throw new RuntimeException('The GPS device is no longer available to this service account.');
 
             $members = array_values(array_unique(array_map('intval', $group['u'] ?? [])));
-            if (!in_array($unitId, $members, true)) {
-                $members[] = $unitId;
+            $currentlyMember = in_array($unitId, $members, true);
+            if ($currentlyMember !== $add) {
+                $members = $add
+                    ? [...$members, $unitId]
+                    : array_values(array_diff($members, [$unitId]));
                 $updated = $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
                 $members = array_values(array_unique(array_map('intval', $updated['u'] ?? [])));
-                if (!in_array($unitId, $members, true)) {
-                    throw new RuntimeException('The GPS service did not confirm that the device was added to the selected group.');
+                if (in_array($unitId, $members, true) !== $add) {
+                    throw new RuntimeException('The GPS service did not confirm the requested group membership change.');
                 }
             }
-            return ['group_id' => $groupId, 'unit_ids' => $members];
+            return ['group_id' => $groupId, 'unit_ids' => $members, 'is_member' => $add];
         });
     }
 

@@ -14,6 +14,7 @@ class VehicleResource extends JsonResource
             'is_active' => (bool) $this->is_active,
             'wialon_unit_id' => $this->wialon_unit_id,
             'wialon_mileage' => $this->wialon_mileage !== null ? (float) $this->wialon_mileage : null,
+            'wialon_mileage_sync_pending' => (bool) $this->wialon_mileage_sync_pending,
             'wialon_last_message_at' => $this->wialon_last_message_at,
             'wialon_last_synced_at' => $this->wialon_last_synced_at,
             'title' => $this->title ?? null,

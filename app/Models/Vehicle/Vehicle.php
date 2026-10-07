@@ -140,6 +140,8 @@ class Vehicle extends BaseModel
         'wialon_unit_id' => 'integer',
         'wialon_hw_type_id' => 'integer',
         'wialon_mileage' => 'decimal:2',
+        'wialon_mileage_sync_pending' => 'boolean',
+        'wialon_mileage_sync_requested_at' => 'datetime',
         'wialon_last_message_at' => 'datetime',
         'wialon_last_synced_at' => 'datetime',
         'monthly_payment_commitment' => 'decimal:2',
