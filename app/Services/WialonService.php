@@ -204,22 +204,32 @@ class WialonService
             ->where('company_id', $companyId)
             ->where('wialon_unit_id', $unitId)
             ->first();
-        $this->assertSelectedUnit($companyId, $unitId);
         $vehicle?->forceFill([
             'wialon_mileage_sync_pending' => true,
             'wialon_mileage_sync_requested_at' => now(),
         ])->save();
+        $this->assertSelectedUnit($companyId, $unitId);
 
         $confirmedMileage = $this->withSession(
             $companyId,
             fn (string $sid) => $this->writeMileageCounter($sid, $unitId, $mileageKm),
         );
-        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-            ->where('company_id', $companyId)
-            ->where('wialon_unit_id', $unitId)
-            ->where('current_mileage', $mileageKm)
-            ->first();
-        $currentVehicle?->forceFill(['wialon_mileage' => $confirmedMileage])->save();
+        DB::transaction(function () use ($companyId, $unitId, $mileageKm, $confirmedMileage): void {
+            $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+                ->where('company_id', $companyId)
+                ->where('wialon_unit_id', $unitId)
+                ->lockForUpdate()
+                ->first();
+            if (!$currentVehicle) return;
+
+            if ((int) $currentVehicle->current_mileage === $mileageKm) {
+                $currentVehicle->wialon_mileage = $confirmedMileage;
+            } else {
+                $currentVehicle->wialon_mileage_sync_pending = true;
+                $currentVehicle->wialon_mileage_sync_requested_at = now();
+            }
+            $currentVehicle->save();
+        });
 
         return $confirmedMileage;
     }
@@ -235,7 +245,16 @@ class WialonService
             'newValue' => $mileageKm,
         ]);
 
-        return (int) ($result['cnm'] ?? $mileageKm);
+        $confirmedMileage = filter_var($result['cnm'] ?? null, FILTER_VALIDATE_INT);
+        if (
+            $confirmedMileage === false
+            || $confirmedMileage < 0
+            || $confirmedMileage > self::MAX_COUNTER_KILOMETERS
+        ) {
+            throw new RuntimeException('The GPS service did not confirm the mileage counter update.');
+        }
+
+        return $confirmedMileage;
     }
 
     public function addUnitToGroup(string $companyId, int $groupId, int $unitId): array

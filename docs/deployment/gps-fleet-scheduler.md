@@ -1,0 +1,50 @@
+# GPS fleet scheduler
+
+Casons and TheTaxi run on separate servers. Install the same scheduler on each server, from that server's application directory. Each installation reads the enabled companies' encrypted GPS settings from its own database; no GPS token is stored in an environment file.
+
+## PHP runtime requirement
+
+This application pins PHP `^8.5` in Composer for both the web application and scheduled commands. Laravel 13 itself supports PHP 8.3, but the app's locked dependencies include packages requiring PHP 8.4.1 or newer, so the framework minimum is not the app's runtime minimum. The Casons server previously reported PHP 8.3.22 from `/opt/bitnami/php/bin/php`, so it cannot run this release with that binary.
+
+Bitnami stacks include their own PHP runtime. Installing a second system PHP does not upgrade the PHP used by the Bitnami web stack; update or migrate the stack using its supported procedure, then verify the web app and CLI both run PHP 8.5. See [Bitnami's stack migration guidance](https://docs.bitnami.com/vmware-marketplace/how-to/migrate-moodle/) and [PHP's supported versions](https://www.php.net/supported-versions.php).
+
+After the server runtime is updated, verify the CLI binary:
+
+```bash
+php_bin="$(type -P php)"
+"$php_bin" -v
+```
+
+## Install on each server
+
+The installer validates PHP 8.5 and checks that Laravel boots as the service user before writing the unit. It uses one generic unit name on both independent servers and disables the earlier fleet scheduler unit during upgrade.
+
+```bash
+# Casons server
+cd /home/bitnami/htdocs/casons-public
+app_dir="$(pwd -P)"
+php_bin="$(type -P php)"
+sudo bash deploy/systemd/install-gps-scheduler.sh "$app_dir" "$php_bin" bitnami
+
+# TheTaxi server: run these on its separate server
+cd /home/bitnami/htdocs/thetaxi-public
+app_dir="$(pwd -P)"
+php_bin="$(type -P php)"
+sudo bash deploy/systemd/install-gps-scheduler.sh "$app_dir" "$php_bin" bitnami
+```
+
+Before deploying a release with database changes, inspect the target server's migration state, then apply the pending migrations for that release with the same PHP binary. The earlier loop over `2026_10_06_000001` through `000006` does not cover later fleet schema changes, including `2026_10_06_000007_remove_unused_wialon_group_mappings` and `2026_10_07_000004_add_wialon_mileage_sync_pending_to_vehicles`.
+
+```bash
+sudo -u bitnami "$php_bin" artisan migrate:status
+sudo -u bitnami "$php_bin" artisan migrate --force
+```
+
+Check health and recent logs on each server:
+
+```bash
+sudo systemctl status gps-fleet-scheduler.service --no-pager
+sudo journalctl -u gps-fleet-scheduler.service -n 50 --no-pager
+```
+
+The scheduler runs every five minutes. Configure each company's token and selected GPS groups in portal settings; unit groups define fleet scope, while optional report resources only control available report templates.

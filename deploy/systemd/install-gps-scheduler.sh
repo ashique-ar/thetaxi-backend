@@ -26,10 +26,16 @@ if ! runuser -u "$service_user" -- "$php_bin" "$app_dir/artisan" about >/dev/nul
     exit 1
 fi
 
-unit_file=/etc/systemd/system/thetaxi-wialon-scheduler.service
+unit_name=gps-fleet-scheduler
+unit_file="/etc/systemd/system/$unit_name.service"
+legacy_unit=thetaxi-wialon-scheduler.service
+if [[ -e "/etc/systemd/system/$legacy_unit" || -L "/etc/systemd/system/$legacy_unit" ]]; then
+    systemctl disable --now "$legacy_unit" || true
+fi
+
 cat >"$unit_file" <<EOF
 [Unit]
-Description=TheTaxi Wialon fleet synchronization scheduler
+Description=GPS fleet synchronization scheduler
 After=network.target
 ConditionPathExists=$app_dir/artisan
 
@@ -55,7 +61,7 @@ WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
-systemctl enable thetaxi-wialon-scheduler.service
-systemctl restart thetaxi-wialon-scheduler.service
-systemctl status thetaxi-wialon-scheduler.service --no-pager
-journalctl -u thetaxi-wialon-scheduler.service -n 30 --no-pager
+systemctl enable "$unit_name.service"
+systemctl restart "$unit_name.service"
+systemctl status "$unit_name.service" --no-pager
+journalctl -u "$unit_name.service" -n 30 --no-pager
