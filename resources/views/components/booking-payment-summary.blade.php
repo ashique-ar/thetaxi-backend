@@ -62,7 +62,7 @@
     $extraKmCharges = $convertDisplayAmount($extraKmCharges);
     $totalEstimated = $convertDisplayAmount($booking->total_estimated ?? 0);
     $amountToPay = $convertDisplayAmount($booking->amount_to_pay ?? $booking->total_estimated ?? 0);
-    $amountPaid = $convertDisplayAmount($booking->amount_paid ?? 0);
+    $amountPaid = $convertDisplayAmount($booking->payment_collected_amount ?? $booking->amount_paid ?? 0);
     $amountDueNow = $amount_due !== null ? $convertDisplayAmount($amount_due) : null;
     $paymentStatus = $booking->payment_status ?? null;
     $paymentType = $booking->payment_type ?? null;
@@ -87,12 +87,19 @@
     $paymentRows = [];
     if (!$isQuotation) {
         if ($paymentType === 'advance') {
-            $advanceLabel = 'Amount Paid / Due Now';
-            if ($effectiveAdvancePercentage) {
-                $advanceLabel .= ' (' . $effectiveAdvancePercentage . '%)';
+            $hasPayment = $amountDueNow === null && $amountPaid > 0;
+            $advanceAmount = $hasPayment ? $amountPaid : ($amountDueNow ?? $amountToPay);
+            $advancePercentageDisplay = $hasPayment && $totalEstimated > 0
+                ? round(($amountPaid / $totalEstimated) * 100, 2)
+                : ($amountDueNow !== null && $totalEstimated > 0
+                    ? round(($amountDueNow / $totalEstimated) * 100, 2)
+                    : $effectiveAdvancePercentage);
+            $advanceLabel = $hasPayment ? 'Amount Paid' : 'Due Now';
+            if ($advancePercentageDisplay) {
+                $advanceLabel .= ' (' . $advancePercentageDisplay . '%)';
             }
-            $paidNow = floor(max(0, $amountDueNow ?? $amountToPay));
-            $balanceDue = floor(max(0, $totalEstimated - ($amountDueNow ?? $amountToPay)));
+            $paidNow = floor(max(0, $advanceAmount));
+            $balanceDue = floor(max(0, $totalEstimated - $advanceAmount));
             $paymentRows[] = [
                 'class' => 'booking-payment-due-row',
                 'style' => 'background: #eff6ff;',

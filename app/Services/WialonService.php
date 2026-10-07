@@ -152,7 +152,11 @@ class WialonService
             $members = array_values(array_unique(array_map('intval', $group['u'] ?? [])));
             if (!in_array($unitId, $members, true)) {
                 $members[] = $unitId;
-                $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
+                $updated = $this->call($sid, 'unit_group/update_units', ['itemId' => $groupId, 'units' => $members]);
+                $members = array_values(array_unique(array_map('intval', $updated['u'] ?? [])));
+                if (!in_array($unitId, $members, true)) {
+                    throw new RuntimeException('Wialon did not confirm that the unit was added to the selected group.');
+                }
             }
             return ['group_id' => $groupId, 'unit_ids' => $members];
         });
