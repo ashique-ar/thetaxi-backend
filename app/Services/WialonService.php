@@ -100,16 +100,22 @@ class WialonService
                             (int) $pendingVehicle->wialon_unit_id,
                             $requestedMileage,
                         );
-                        $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
-                            ->where('company_id', $companyId)
-                            ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
-                            ->where('wialon_mileage_sync_pending', true)
-                            ->first();
-                        if ($currentVehicle && (int) $currentVehicle->current_mileage === $requestedMileage) {
+                        DB::transaction(function () use ($companyId, $pendingVehicle, $requestedMileage, $confirmedMileage): void {
+                            $currentVehicle = \App\Models\Vehicle\Vehicle::withInactive()
+                                ->where('company_id', $companyId)
+                                ->where('wialon_unit_id', $pendingVehicle->wialon_unit_id)
+                                ->where('wialon_mileage_sync_pending', true)
+                                ->lockForUpdate()
+                                ->first();
+                            if (!$currentVehicle || (int) $currentVehicle->current_mileage !== $requestedMileage) return;
+
+                            $confirmed = $confirmedMileage === $requestedMileage;
                             $currentVehicle->forceFill([
                                 'wialon_mileage' => $confirmedMileage,
+                                'wialon_mileage_sync_pending' => !$confirmed,
+                                'wialon_mileage_sync_requested_at' => $confirmed ? null : now(),
                             ])->save();
-                        }
+                        });
                     } catch (RuntimeException $error) {
                         Log::warning('Pending GPS mileage correction could not be retried', [
                             'company_id' => $companyId,
