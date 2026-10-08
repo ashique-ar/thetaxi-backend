@@ -16,6 +16,7 @@ use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\StaffAccessService;
+use App\Services\SingleCompanyScope;
 use Closure;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -144,6 +145,8 @@ class CollectionScheduleWorkflowController extends Controller
         }
         $companyIds = $profileIds === null ? null : DB::table('sales_booking_attributions')->whereNull('deleted_at')
             ->whereIn('collection_sales_profile_id', $profileIds)->distinct()->pluck('company_id')->all();
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) {
@@ -164,7 +167,7 @@ class CollectionScheduleWorkflowController extends Controller
             'status' => 'active',
         ]);
 
-        return response()->json(['status' => 'success', 'data' => $page]);
+        return response()->json(['status' => 'success', 'data' => $page, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function scheduleBookings(Request $request): JsonResponse
@@ -533,6 +536,8 @@ class CollectionScheduleWorkflowController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->collectionCompanyIds($request);
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) {
@@ -552,7 +557,7 @@ class CollectionScheduleWorkflowController extends Controller
             'status' => 'active',
         ]);
 
-        return response()->json(['status' => 'success', 'data' => $page]);
+        return response()->json(['status' => 'success', 'data' => $page, 'default_company_id' => $defaultCompanyId]);
     }
 
     private function collectionCompanyIds(Request $request): ?array

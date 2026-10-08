@@ -739,6 +739,22 @@
             flex-grow: 1;
         }
 
+        /* Search cards should size optional sections to their content. The shared
+           card's fixed grid tracks leave large blank rows when those sections are empty. */
+        .search-page-layout .vehicle-results-grid .vehicle-card-content {
+            display: flex !important;
+            gap: 0;
+        }
+
+        .search-page-layout .vehicle-results-grid .vehicle-name {
+            min-height: 0;
+            margin-bottom: 8px;
+        }
+
+        .search-page-layout .vehicle-results-grid .vehicle-actions {
+            margin-top: auto !important;
+        }
+
         .vehicle-name {
             font-size: 18px;
             font-weight: 700;

@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Hr\Attendance\HikvisionIsapiAdapter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 use function Pest\Laravel\actingAs;
@@ -48,6 +49,67 @@ it('replays only the same actor and exact credential request without storing the
     $checksum = DB::table('hr_attendance_credential_events')->where('id', $created['id'])->value('request_checksum');
     expect($checksum)->not->toBeNull();
     expect($checksum)->not->toBe($payload['card_number']);
+});
+
+it('refuses to roll back populated credential idempotency evidence', function () {
+    [$user, $company] = hr_seed_admin_actor([], true);
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $id = (string) Str::uuid();
+    $checksum = hash('sha256', 'credential-request-evidence');
+    DB::table('hr_attendance_credential_events')->insert([
+        'id' => $id,
+        'company_id' => $company->id,
+        'device_id' => $device->id,
+        'staff_id' => $staff->id,
+        'provider_person_id' => 'EMP-ROLLBACK-1',
+        'credential_type' => 'card',
+        'action' => 'set',
+        'credential_fingerprint' => hash('sha256', 'card-fingerprint'),
+        'masked_reference' => '••••1234',
+        'status' => 'delivered',
+        'reason' => 'Retained credential operation',
+        'idempotency_key' => 'credential-rollback-1',
+        'actor_user_id' => $user->id,
+        'occurred_at' => now(),
+        'request_checksum' => $checksum,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $governanceMigration = require database_path('migrations/2026_09_01_090000_add_hikvision_identity_and_credential_governance.php');
+    expect(fn () => $governanceMigration->down())
+        ->toThrow(RuntimeException::class, 'Rollback refused: retain attendance credential event evidence before removing Hikvision credential governance.');
+
+    $migration = require database_path('migrations/2026_10_02_000002_add_request_checksum_to_attendance_credentials.php');
+
+    expect(fn () => $migration->down())
+        ->toThrow(RuntimeException::class, 'Rollback refused: export and reconcile attendance credential idempotency evidence first.');
+    expect(Schema::hasColumn('hr_attendance_credential_events', 'request_checksum'))->toBeTrue()
+        ->and(DB::table('hr_attendance_credential_events')->where('id', $id)->value('request_checksum'))->toBe($checksum);
+});
+
+it('refuses to roll back populated attendance identity dispositions', function () {
+    [$user, $company] = hr_seed_admin_actor([], true);
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $id = (string) Str::uuid();
+    DB::table('hr_attendance_identity_dispositions')->insert([
+        'id' => $id,
+        'company_id' => $company->id,
+        'device_id' => $device->id,
+        'provider_person_id' => 'UNMAPPED-ROLLBACK-1',
+        'disposition' => 'reviewed_unmapped',
+        'reason' => 'Retained identity review evidence',
+        'reviewed_by' => $user->id,
+        'reviewed_at' => now(),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $migration = require database_path('migrations/2026_09_01_090000_add_hikvision_identity_and_credential_governance.php');
+
+    expect(fn () => $migration->down())
+        ->toThrow(RuntimeException::class, 'Rollback refused: retain attendance identity disposition evidence before removing Hikvision credential governance.');
+    expect(Schema::hasTable('hr_attendance_identity_dispositions'))->toBeTrue()
+        ->and(DB::table('hr_attendance_identity_dispositions')->where('id', $id)->exists())->toBeTrue();
 });
 
 it('does not return credential events from another company when an idempotency key collides', function () {

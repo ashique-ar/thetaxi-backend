@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -17,5 +18,10 @@ return new class extends Migration
         Schema::create('hr_attendance_access_commands', function(Blueprint $table){$table->uuid('id')->primary();$table->foreignUuid('company_id')->constrained('companies')->restrictOnDelete();$table->foreignUuid('staff_id')->constrained('staff')->restrictOnDelete();$table->foreignUuid('device_id')->nullable()->constrained('hr_attendance_devices')->restrictOnDelete();$table->string('command_type',50);$table->string('access_group_code',100)->nullable();$table->string('status',30)->default('pending_approval');$table->json('request_snapshot');$table->string('idempotency_key',160)->unique();$table->foreignUuid('requested_by')->constrained('users')->restrictOnDelete();$table->foreignUuid('approved_by')->nullable()->constrained('users')->restrictOnDelete();$table->timestamp('approved_at')->nullable();$table->timestamp('delivered_at')->nullable();$table->string('provider_reference',160)->nullable();$table->text('failure_message')->nullable();$table->timestamps();});
         Schema::create('hr_attendance_sync_runs', function(Blueprint $table){$table->uuid('id')->primary();$table->foreignUuid('company_id')->constrained('companies')->restrictOnDelete();$table->foreignUuid('connector_id')->nullable()->constrained('hr_attendance_connectors')->restrictOnDelete();$table->foreignUuid('device_id')->nullable()->constrained('hr_attendance_devices')->restrictOnDelete();$table->string('sync_type',50);$table->string('status',30);$table->timestamp('started_at');$table->timestamp('finished_at')->nullable();$table->unsignedInteger('read_count')->default(0);$table->unsignedInteger('created_count')->default(0);$table->unsignedInteger('duplicate_count')->default(0);$table->unsignedInteger('quarantined_count')->default(0);$table->json('cursor_snapshot')->nullable();$table->text('error_summary')->nullable();$table->timestamps();});
     }
-    public function down():void{foreach(['hr_attendance_sync_runs','hr_attendance_access_commands','hr_attendance_quarantine_items','hr_attendance_raw_events','hr_attendance_ingestion_requests','hr_attendance_person_mappings','hr_attendance_devices','hr_attendance_connectors']as$table)Schema::dropIfExists($table);}
+    public function down():void
+    {
+        $tables=['hr_attendance_sync_runs','hr_attendance_access_commands','hr_attendance_quarantine_items','hr_attendance_raw_events','hr_attendance_ingestion_requests','hr_attendance_person_mappings','hr_attendance_devices','hr_attendance_connectors'];
+        foreach($tables as$table)if(Schema::hasTable($table)&&DB::table($table)->exists())throw new RuntimeException("Rollback refused: export and reconcile attendance evidence from {$table} first.");
+        foreach($tables as$table)Schema::dropIfExists($table);
+    }
 };

@@ -18,6 +18,8 @@ it('preselects an authorized default company and scopes collection work and subm
 
     expect($controller)
         ->toContain('public function collectionCompanyOptions(')
+        ->toContain('activeDefaultCompany()?->id')
+        ->toContain("'default_company_id' => \$defaultCompanyId")
         ->toContain("->whereNull('deleted_at')->where('is_active', true)")
         ->toContain("->orderByDesc('is_default')")
         ->toContain("'metadata' => array_filter(['city' => \$company->city]) + ['is_default' => (bool) \$company->is_default]")

@@ -49,6 +49,42 @@ it('blocks an approval when the leave request company does not match its staff a
         ->and(DB::table('hr_payroll_input_facts')->where('source_id', $requestId)->count())->toBe(0);
 });
 
+it('blocks leave decisions after the company becomes inactive', function () {
+    [$user, $company] = hr_seed_admin_actor();
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $typeId = (string) Str::uuid();
+    $policyId = (string) Str::uuid();
+    $requestId = (string) Str::uuid();
+    $now = now();
+
+    DB::table('hr_leave_types')->insert([
+        'id' => $typeId, 'company_id' => $company->id, 'code' => 'INACTIVE', 'name' => 'Annual leave',
+        'category' => 'annual', 'unit' => 'day', 'paid' => true, 'effective_from' => $now->toDateString(),
+        'status' => 'active', 'created_by' => $user->id, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    DB::table('hr_leave_policies')->insert([
+        'id' => $policyId, 'company_id' => $company->id, 'leave_type_id' => $typeId, 'code' => 'INACTIVE-1',
+        'version' => 1, 'rules' => '{}', 'effective_from' => $now->toDateString(), 'status' => 'approved',
+        'created_by' => $user->id, 'approved_by' => $user->id, 'approved_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    DB::table('hr_leave_requests')->insert([
+        'id' => $requestId, 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'leave_type_id' => $typeId, 'policy_id' => $policyId, 'start_date' => $now->toDateString(),
+        'end_date' => $now->toDateString(), 'unit' => 'day', 'requested_minutes' => 480, 'reserved_minutes' => 480,
+        'status' => 'pending_approval', 'reason' => 'Leave request', 'calculation_snapshot' => '{}',
+        'request_checksum' => str_repeat('c', 64), 'idempotency_key' => 'inactive-company-leave',
+        'requested_by' => $user->id, 'approval_level' => 1, 'created_at' => $now, 'updated_at' => $now,
+    ]);
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    config(['hr.features.leave_overtime' => true]);
+
+    expect(fn () => app(LeaveWorkflowService::class)->decide($requestId, 'approve', 'Approve', $user->id, $staff->id))
+        ->toThrow(HttpException::class);
+    expect(DB::table('hr_leave_requests')->where('id', $requestId)->value('status'))->toBe('pending_approval')
+        ->and(DB::table('hr_leave_balance_entries')->where('leave_request_id', $requestId)->exists())->toBeFalse();
+});
+
 it('does not use a foreign company assignment to authorize a leave extension', function () {
     [$user, $company] = hr_seed_admin_actor();
     $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();

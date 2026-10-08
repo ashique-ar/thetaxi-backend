@@ -7,6 +7,7 @@ use App\Models\Sales\SalesPolicySetting;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesStaffCategoryDefinition;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -37,6 +38,8 @@ class SalesPolicySettingsController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->actorCompanyIds($request);
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
@@ -48,7 +51,7 @@ class SalesPolicySettingsController extends Controller
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function index(Request $request): JsonResponse

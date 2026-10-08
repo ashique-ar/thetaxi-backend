@@ -37,7 +37,7 @@ return new class extends Migration
         if (!Schema::hasColumn('hr_job_requisitions', 'idempotency_key')) {
             return;
         }
-        if (DB::table('hr_job_requisitions')->whereNotNull('idempotency_key')->exists()) {
+        if (DB::table('hr_job_requisitions')->whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()) {
             throw new RuntimeException('Cannot remove requisition idempotency evidence while requests reference it.');
         }
         $driver = DB::getDriverName();

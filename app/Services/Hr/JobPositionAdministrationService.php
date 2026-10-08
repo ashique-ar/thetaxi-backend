@@ -252,7 +252,7 @@ class JobPositionAdministrationService
 
     private function lockCompany(string $companyId): void
     {
-        abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(), 404, 'Legal entity was not found.');
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'HR job and position writes require an active legal entity.');
     }
 
     private function replay(string $key, string $checksum, string $companyId, string $aggregateType): ?array

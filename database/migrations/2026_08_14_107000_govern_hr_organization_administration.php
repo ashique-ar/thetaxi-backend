@@ -46,6 +46,16 @@ return new class extends Migration
         if (Schema::hasTable('hr_organization_change_events') && DB::table('hr_organization_change_events')->exists()) {
             throw new LogicException('Refusing to remove retained HR organization history. Disable the feature without rolling back used governance schema.');
         }
+        if (DB::table('hr_organization_units')->where('version', '>', 1)->exists()) {
+            throw new LogicException('Refusing to remove evolved HR organization version evidence.');
+        }
+        if (DB::table('hr_custom_field_definitions')->where('version', '>', 1)->orWhereNotNull('updated_user_id')->exists()) {
+            throw new LogicException('Refusing to remove custom-field definition version or update-actor evidence.');
+        }
+        if (DB::table('hr_custom_field_values')->where('version', '>', 1)->orWhere('definition_version', '>', 1)->exists()) {
+            throw new LogicException('Refusing to remove evolved custom-field value version evidence.');
+        }
+
         Schema::dropIfExists('hr_organization_change_events');
         Schema::table('hr_custom_field_values', fn (Blueprint $table) => $table->dropColumn(['version','definition_version']));
         Schema::table('hr_custom_field_definitions', function (Blueprint $table) {

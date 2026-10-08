@@ -10,6 +10,7 @@ use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Sales\SalesCommissionStatementExport;
 use App\Models\Sales\SalesProfile;
 use App\Services\StaffAccessService;
+use App\Services\SingleCompanyScope;
 use App\Services\Sales\CommissionDisputeService;
 use App\Services\Sales\CommissionBusinessCalendarService;
 use App\Services\Sales\CommissionCycleResolver;
@@ -32,9 +33,11 @@ class CommissionStatementController extends Controller
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $companyIds = $this->actorCompanyIds($request);
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
-            ->whereIn('id', $this->actorCompanyIds($request))->select(['id', 'name', 'is_default']);
-        $defaultCompanyId = (clone $query)->where('is_default', true)->value('id');
+            ->whereIn('id', $companyIds)->select(['id', 'name', 'is_default']);
         $options = (clone $query)
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
             ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {

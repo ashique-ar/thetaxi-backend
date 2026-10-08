@@ -184,6 +184,9 @@ class CollectionScheduleWorkflowService
     public function submit(Booking $booking, SalesProfile $profile, array $data, string $actorUserId): BookingCollectionSubmission
     {
         return DB::transaction(function () use ($booking, $profile, $data, $actorUserId) {
+            $company = DB::table('companies')->where('id', $profile->company_id)
+                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Collection submission requires an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             $owner = DB::table('sales_profiles as profile')->join('staff', 'staff.id', '=', 'profile.staff_id')
@@ -256,6 +259,9 @@ class CollectionScheduleWorkflowService
     public function verify(BookingCollectionSubmission $submission, array $data, string $actorUserId): BookingCollectionSubmission
     {
         return DB::transaction(function () use ($submission, $data, $actorUserId) {
+            $company = DB::table('companies')->where('id', $submission->company_id)
+                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'Collection verification requires an active legal entity.');
             $booking = Booking::query()->whereKey($submission->booking_id)->lockForUpdate()->firstOrFail();
             $submission = BookingCollectionSubmission::query()->lockForUpdate()->findOrFail($submission->id);
             abort_unless((string) $submission->booking_id === (string) $booking->id, 409, 'The collection submission booking changed; reload before deciding.');

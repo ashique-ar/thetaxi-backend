@@ -6,7 +6,7 @@ it('adds reversible company-scoped idempotency for delegation requests without d
     expect($migration)
         ->toContain("uuid('idempotency_key')->nullable()", "char('request_payload_checksum', 64)->nullable()")
         ->toContain('hr_delegations_company_idempotency_unique', 'idempotency_key IS NOT NULL')
-        ->toContain("whereNotNull('idempotency_key')->exists()", 'Cannot roll back delegation idempotency')
+        ->toContain("whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()", 'Cannot roll back delegation idempotency')
         ->toContain("dropColumn(['idempotency_key', 'request_payload_checksum'])");
 });
 

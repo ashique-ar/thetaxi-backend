@@ -8,6 +8,7 @@ use App\Services\Hr\Leave\LeaveWorkflowService;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
 use App\Services\StaffAccessService;
 use App\Services\Hr\Ess\HrDomainRequestProjectionService;
+use App\Services\SingleCompanyScope;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -20,11 +21,14 @@ class WorkforceController extends Controller
     public function companyOptions(Request $r): JsonResponse
     {
         $data = $r->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
-        $companies = DB::table('companies')->whereIn('id', $this->authorizedCompanyIds($r))
+        $companyIds = $this->authorizedCompanyIds($r);
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
+        $companies = DB::table('companies')->whereIn('id', $companyIds)
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
             ->when(! empty($data['search']), fn ($q) => $q->whereLikeInsensitive('name', trim($data['search'])))
             ->orderByDesc('is_default')->orderBy('name')->limit(25)->get(['id', 'name', 'is_default']);
-        return response()->json(['status' => 'success', 'data' => $companies->map(fn ($company) => [
+        return response()->json(['status' => 'success', 'default_company_id' => $defaultCompanyId, 'data' => $companies->map(fn ($company) => [
             'value' => (string) $company->id, 'label' => $company->name,
             'is_default' => (bool) $company->is_default, 'status' => 'active',
         ])->values()]);

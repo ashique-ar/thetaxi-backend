@@ -92,6 +92,93 @@ it('does not automatically repeat a physical access command after an ambiguous p
         ->and(DB::table('hr_attendance_access_commands')->where('id', $staleId)->value('status'))->toBe('delivery_unknown');
 });
 
+it('replays a physical access approval only for the same approver without changing its evidence', function () {
+    [$requester, $company] = hr_seed_admin_actor();
+    $approver = User::factory()->create();
+    $approver->assignRole('admin');
+    $staff = Staff::factory()->create(['user_id' => $approver->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    \App\Models\UserContext::create([
+        'user_id' => $approver->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $approver->id,
+    ]);
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $commandId = (string) Str::uuid();
+    DB::table('hr_attendance_access_commands')->insert([
+        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'command_type' => 'revoke', 'status' => 'pending_approval', 'request_snapshot' => '{}',
+        'idempotency_key' => 'approval-replay-'.$commandId, 'requested_by' => $requester->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    config(['hr.features.physical_access_commands' => true]);
+    $url = '/api/hr/attendance/access-commands/'.$commandId.'/approve';
+
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved_pending_delivery');
+    $approvedAt = DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('approved_at');
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved_pending_delivery');
+    expect(DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('approved_at'))->toBe($approvedAt);
+
+    $otherApprover = User::factory()->create();
+    $otherApprover->assignRole('admin');
+    $otherStaff = Staff::factory()->create(['user_id' => $otherApprover->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    \App\Models\UserContext::create([
+        'user_id' => $otherApprover->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $otherApprover->id,
+    ]);
+    actingAs($otherApprover, 'api')->postJson($url, [])->assertStatus(409);
+});
+
+it('replays a pending manual command retry only for the same actor and reason', function () {
+    [$user, $company] = hr_seed_admin_actor([], true);
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $commandId = (string) Str::uuid();
+    DB::table('hr_attendance_access_commands')->insert([
+        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'command_type' => 'revoke', 'status' => 'dead_letter', 'request_snapshot' => '{}',
+        'idempotency_key' => 'manual-retry-'.$commandId, 'requested_by' => $user->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $url = '/api/hr/attendance/access-commands/'.$commandId.'/retry';
+    $payload = ['reason' => 'Reviewed against the terminal record.'];
+
+    actingAs($user, 'api')->postJson($url, $payload)->assertOk();
+    $nextAttemptAt = DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('next_attempt_at');
+    expect(DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('retry_requested_by'))->toBe($user->id);
+    actingAs($user, 'api')->postJson($url, $payload)->assertOk();
+    expect(DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('next_attempt_at'))->toBe($nextAttemptAt);
+    actingAs($user, 'api')->postJson($url, ['reason' => 'Different retry evidence'])->assertStatus(409);
+    $audit = DB::table('activity_log')->where('description', 'attendance_access_command_retry_requested')->first();
+    expect(json_decode($audit->properties, true))->toBe(['company_id' => $company->id, 'status' => 'retry_pending', 'command_type' => 'revoke'])
+        ->and(DB::table('activity_log')->where('description', 'attendance_access_command_retry_requested')->count())->toBe(1);
+
+    $otherActor = User::factory()->create();
+    $otherActor->assignRole('admin');
+    $otherStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    \App\Models\UserContext::create([
+        'user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $otherActor->id,
+    ]);
+    actingAs($otherActor, 'api')->postJson($url, $payload)->assertStatus(409);
+});
+
+it('allows an authorized manual retry to bring forward an automatic retry', function () {
+    [$user, $company] = hr_seed_admin_actor([], true);
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    $commandId = (string) Str::uuid();
+    DB::table('hr_attendance_access_commands')->insert([
+        'id' => $commandId, 'company_id' => $company->id, 'staff_id' => $staff->id, 'device_id' => $device->id,
+        'command_type' => 'revoke', 'status' => 'retry_pending', 'request_snapshot' => '{}',
+        'idempotency_key' => 'automatic-retry-'.$commandId, 'requested_by' => $user->id,
+        'failure_message' => 'Temporary provider failure.', 'next_attempt_at' => now()->addHour(),
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($user, 'api')->postJson('/api/hr/attendance/access-commands/'.$commandId.'/retry', ['reason' => 'Reviewed for immediate retry.'])
+        ->assertOk();
+    expect(DB::table('hr_attendance_access_commands')->where('id', $commandId)->value('retry_requested_by'))->toBe($user->id);
+});
+
 it('allows revocation for soft-deleted former Staff while keeping the Staff row locked through delivery', function () {
     [$user, $company] = hr_seed_admin_actor([], true);
     config(['hr.features.physical_access_commands' => true]);

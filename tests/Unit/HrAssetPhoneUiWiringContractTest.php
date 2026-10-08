@@ -12,6 +12,15 @@ it('adds list endpoints for asset types, requests, phone subscriptions, and phon
         ->toContain("if(!\$r->user()->can('hr.assets.phone.approve')&&!\$r->user()->can('hr.assets.view-all'))\$q->where('u.staff_id',\$a->id);");
 });
 
+it('omits reviewer user IDs from phone usage responses', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AssetOperationsController.php'));
+    $phoneUsage = substr($controller, strpos($controller, 'public function phoneUsage('));
+    $phoneUsage = substr($phoneUsage, 0, strpos($phoneUsage, 'public function phoneReferenceOptions('));
+
+    expect($phoneUsage)->not->toContain("'u.reviewed_by'");
+    expect($phoneUsage)->toContain("'u.reviewed_at'");
+});
+
 it('uses tenant-scoped readable selectors for phone subscription, Staff, and linked asset references', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/AssetOperationsController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));

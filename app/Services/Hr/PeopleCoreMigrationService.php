@@ -46,7 +46,10 @@ class PeopleCoreMigrationService
         abort_if($content === false || strlen($content) > 5_000_000, 422, 'The People Core CSV must be readable and no larger than 5 MB.');
         $checksum = hash('sha256', $content);
         $requestChecksum = hash('sha256', CanonicalJson::encode(['company_id'=>$companyId,'file_checksum'=>$checksum,'mapping_version'=>self::MAPPING_VERSION]));
-        $existing = HrPeopleImportJob::query()->where('company_id',$companyId)->where('idempotency_key',$key)->first();
+        $existing = DB::transaction(function () use ($companyId, $key) {
+            $this->lockActiveCompany($companyId);
+            return HrPeopleImportJob::query()->where('company_id',$companyId)->where('idempotency_key',$key)->lockForUpdate()->first();
+        });
         if ($existing) { abort_unless(hash_equals($existing->request_checksum,$requestChecksum),409,'The import key was reused with a different file.'); return $existing; }
         $handle = fopen($file->getRealPath(), 'rb'); abort_unless($handle,422,'The People Core CSV could not be opened.');
         $header = fgetcsv($handle); $header=$header?array_map(fn($v)=>mb_strtolower(trim((string)$v)),$header):[];
@@ -68,17 +71,26 @@ class PeopleCoreMigrationService
         }
         fclose($handle); abort_if($rows===[],422,'The People Core CSV has no data rows.');
         $path='people-core-imports/'.$companyId.'/'.Str::uuid().'.csv'; abort_unless(Storage::disk('hr_private')->put($path,$content),500,'The source import file could not be retained.');
+        try {
         return DB::transaction(function()use($rows,$file,$companyId,$actorId,$key,$path,$checksum,$requestChecksum){
+            $this->lockActiveCompany($companyId);
+            $existing=HrPeopleImportJob::query()->where('company_id',$companyId)->where('idempotency_key',$key)->lockForUpdate()->first();
+            if($existing){Storage::disk('hr_private')->delete($path);abort_unless(hash_equals($existing->request_checksum,$requestChecksum),409,'The import key was reused with a different file.');return $existing;}
             $accepted=collect($rows)->where('errors',[])->count();
             $job=HrPeopleImportJob::create(['company_id'=>$companyId,'mode'=>'preview','status'=>$accepted?'ready':'rejected','original_file_name'=>$file->getClientOriginalName(),'disk'=>'hr_private','path'=>$path,'file_checksum'=>$checksum,'mapping_version'=>self::MAPPING_VERSION,'row_count'=>count($rows),'accepted_count'=>$accepted,'rejected_count'=>count($rows)-$accepted,'reconciliation_totals'=>['before'=>$this->reconciliation($companyId)],'request_checksum'=>$requestChecksum,'idempotency_key'=>$key,'created_by'=>$actorId]);
             foreach($rows as $row)DB::table('hr_people_import_rows')->insert(['id'=>(string)Str::uuid(),'import_job_id'=>$job->id,'row_number'=>$row['row_number'],'source_row_key'=>$row['payload']['employee_number']?:'row-'.$row['row_number'],'normalized_payload'=>json_encode($row['payload'],JSON_THROW_ON_ERROR),'payload_checksum'=>hash('sha256',CanonicalJson::encode($row['payload'])),'outcome'=>$row['errors']?'rejected':'accepted','errors'=>$row['errors']?json_encode($row['errors'],JSON_THROW_ON_ERROR):null,'matched_staff_id'=>$row['staff_id'],'created_user_id'=>$actorId,'created_at'=>now(),'updated_at'=>now()]);
             return $job;
         });
+        } catch (\Throwable $exception) {
+            Storage::disk('hr_private')->delete($path);
+            throw $exception;
+        }
     }
 
     public function commit(HrPeopleImportJob $job, string $companyId, string $actorId): HrPeopleImportJob
     {
         return DB::transaction(function()use($job,$companyId,$actorId){
+            $this->lockActiveCompany($companyId);
             $job=HrPeopleImportJob::query()->whereKey($job->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();
             if($job->status==='committed')return $job;
             abort_unless($job->status==='ready'&&$job->rejected_count===0,409,'Every import row must pass preview before commit.');
@@ -90,7 +102,11 @@ class PeopleCoreMigrationService
 
     public function export(string $companyId, string $actorId, string $key): HrPeopleExport
     {
-        $existing=HrPeopleExport::query()->where('company_id',$companyId)->where('generated_by',$actorId)->where('idempotency_key',$key)->first();
+        $path = null;
+        try {
+        return DB::transaction(function () use ($companyId, $actorId, $key, &$path) {
+        $this->lockActiveCompany($companyId);
+        $existing=HrPeopleExport::query()->where('company_id',$companyId)->where('generated_by',$actorId)->where('idempotency_key',$key)->lockForUpdate()->first();
         if($existing)return $existing;
         $rows=Staff::withTrashed()->with(['user:id,first_name,last_name,email','employmentSpells'=>fn($q)=>$q->orderBy('spell_number')])->where('company_id',$companyId)->orderBy('code')->orderBy('id')->get();
         $handle=fopen('php://temp','w+b');
@@ -102,13 +118,21 @@ class PeopleCoreMigrationService
         $fileName='people-core-'.now()->format('Ymd-His').'-'.Str::random(8).'.csv';$path='people-core-exports/'.$companyId.'/'.$fileName;
         abort_unless(Storage::disk('hr_private')->put($path,$content),500,'The private People Core export could not be written.');
         return HrPeopleExport::create(['company_id'=>$companyId,'disk'=>'hr_private','path'=>$path,'file_name'=>$fileName,'file_checksum'=>hash('sha256',$content),'file_size'=>strlen($content),'row_count'=>$count,'scope_checksum'=>$scopeChecksum,'idempotency_key'=>$key,'generated_by'=>$actorId,'generated_at'=>now(),'expires_at'=>now()->addDays((int)config('hr.report_artifact_retention_days',30))]);
+        }, 3);
+        } catch (\Throwable $exception) {
+            if ($path !== null) Storage::disk('hr_private')->delete($path);
+            throw $exception;
+        }
     }
 
     public function detectDuplicates(string $companyId,string $actorId): array
     {
+        return DB::transaction(function () use ($companyId, $actorId) {
+            $this->lockActiveCompany($companyId);
         $staff=Staff::withTrashed()->with('user:id,first_name,last_name,email')->where('company_id',$companyId)->get();$created=0;
         foreach(['user_id','code','nic_fingerprint','license_no_fingerprint'] as $field){$groups=$staff->filter(fn($row)=>filled($row->{$field}))->groupBy(fn($row)=>mb_strtolower(trim((string)$row->{$field})))->filter(fn($rows)=>$rows->count()>1);foreach($groups as $value=>$rows){$ids=$rows->pluck('id')->map(fn($id)=>(string)$id)->sort()->values()->all();$fingerprint=hash('sha256',$field.'|'.$value);$review=HrPeopleDuplicateReview::withTrashed()->where('company_id',$companyId)->where('match_kind',$field)->where('match_fingerprint',$fingerprint)->first();if(!$review){HrPeopleDuplicateReview::create(['company_id'=>$companyId,'match_kind'=>$field,'match_fingerprint'=>$fingerprint,'candidate_staff_ids'=>$ids,'safe_candidate_snapshot'=>$rows->map(fn($row)=>['staff_id'=>$row->id,'employee_number'=>$row->code,'name'=>trim(($row->user?->first_name??'').' '.($row->user?->last_name??'')),'employment_ended_at'=>$row->employment_ended_at?->toIso8601String(),'deleted_at'=>$row->deleted_at?->toIso8601String()])->values()->all(),'status'=>'pending_review','prepared_by'=>$actorId]);$created++;}elseif($review->status==='pending_review'&&$review->candidate_staff_ids!==$ids){$review->update(['candidate_staff_ids'=>$ids,'safe_candidate_snapshot'=>$rows->map(fn($row)=>['staff_id'=>$row->id,'employee_number'=>$row->code,'name'=>trim(($row->user?->first_name??'').' '.($row->user?->last_name??'')),'employment_ended_at'=>$row->employment_ended_at?->toIso8601String(),'deleted_at'=>$row->deleted_at?->toIso8601String()])->values()->all(),'version'=>$review->version+1]);}}}
-        return ['created'=>$created,'pending'=>HrPeopleDuplicateReview::where('company_id',$companyId)->where('status','pending_review')->count()];
+            return ['created'=>$created,'pending'=>HrPeopleDuplicateReview::where('company_id',$companyId)->where('status','pending_review')->count()];
+        }, 3);
     }
 
     public function duplicateReviews(string $companyId,int $perPage=25): mixed
@@ -118,12 +142,13 @@ class PeopleCoreMigrationService
 
     public function decideDuplicate(HrPeopleDuplicateReview $review,string $companyId,array $data,string $actorId): HrPeopleDuplicateReview
     {
-        return DB::transaction(function()use($review,$companyId,$data,$actorId){$review=HrPeopleDuplicateReview::whereKey($review->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();abort_unless($review->status==='pending_review',409,'This duplicate review has already been decided.');abort_unless($review->version===(int)$data['expected_version'],409,'The duplicate review changed; refresh before deciding.');abort_if($review->prepared_by===$actorId,403,'The duplicate-review preparer cannot decide the same case.');$canonical=$data['canonical_staff_id']??null;if($data['disposition']==='canonical_selected'){abort_unless($canonical&&in_array($canonical,$review->candidate_staff_ids,true),422,'Canonical Staff must be one of the reviewed candidates.');abort_unless(Staff::withTrashed()->whereKey($canonical)->where('company_id',$companyId)->exists(),422,'Canonical Staff is outside the review legal entity.');}else abort_if($canonical!==null,422,'Canonical Staff is only allowed for canonical-selected decisions.');$review->update(['status'=>'decided','disposition'=>$data['disposition'],'canonical_staff_id'=>$canonical,'reason'=>trim($data['reason']),'decided_by'=>$actorId,'decided_at'=>now(),'version'=>$review->version+1]);return$review->fresh();});
+        return DB::transaction(function()use($review,$companyId,$data,$actorId){$this->lockActiveCompany($companyId);$review=HrPeopleDuplicateReview::whereKey($review->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();abort_unless($review->status==='pending_review',409,'This duplicate review has already been decided.');abort_unless($review->version===(int)$data['expected_version'],409,'The duplicate review changed; refresh before deciding.');abort_if($review->prepared_by===$actorId,403,'The duplicate-review preparer cannot decide the same case.');$canonical=$data['canonical_staff_id']??null;if($data['disposition']==='canonical_selected'){abort_unless($canonical&&in_array($canonical,$review->candidate_staff_ids,true),422,'Canonical Staff must be one of the reviewed candidates.');abort_unless(Staff::withTrashed()->whereKey($canonical)->where('company_id',$companyId)->exists(),422,'Canonical Staff is outside the review legal entity.');}else abort_if($canonical!==null,422,'Canonical Staff is only allowed for canonical-selected decisions.');$review->update(['status'=>'decided','disposition'=>$data['disposition'],'canonical_staff_id'=>$canonical,'reason'=>trim($data['reason']),'decided_by'=>$actorId,'decided_at'=>now(),'version'=>$review->version+1]);return$review->fresh();});
     }
 
     public function consolidateDuplicate(HrPeopleDuplicateReview $review,string $companyId,int $expectedVersion,string $actorId): HrPeopleDuplicateReview
     {
         return DB::transaction(function()use($review,$companyId,$expectedVersion,$actorId){
+            $this->lockActiveCompany($companyId);
             $review=HrPeopleDuplicateReview::query()->whereKey($review->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();
             if($review->consolidated_at)return $review;
             abort_unless($review->status==='decided'&&$review->disposition==='canonical_selected'&&$review->canonical_staff_id,409,'Only a canonical-selected duplicate review can be consolidated.');
@@ -148,11 +173,15 @@ class PeopleCoreMigrationService
 
     public function download(HrPeopleExport $export, string $companyId, string $actorId): StreamedResponse
     {
-        abort_unless($export->company_id===$companyId,404);abort_if($export->expires_at->lte(now()),410,'This People Core export has expired.');
-        abort_unless(Storage::disk($export->disk)->exists($export->path),404,'The People Core export file is unavailable.');
-        abort_unless(hash_equals($export->file_checksum,hash('sha256',Storage::disk($export->disk)->get($export->path))),409,'The People Core export integrity check failed.');
-        $export->increment('download_count');$export->update(['last_downloaded_by'=>$actorId,'last_downloaded_at'=>now()]);
-        return Storage::disk($export->disk)->download($export->path,$export->file_name,['Content-Type'=>'text/csv']);
+        return DB::transaction(function () use ($export, $companyId, $actorId) {
+            $this->lockActiveCompany($companyId);
+            $export=HrPeopleExport::query()->whereKey($export->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();
+            abort_if($export->expires_at->lte(now()),410,'This People Core export has expired.');
+            abort_unless(Storage::disk($export->disk)->exists($export->path),404,'The People Core export file is unavailable.');
+            abort_unless(hash_equals($export->file_checksum,hash('sha256',Storage::disk($export->disk)->get($export->path))),409,'The People Core export integrity check failed.');
+            $export->increment('download_count');$export->update(['last_downloaded_by'=>$actorId,'last_downloaded_at'=>now()]);
+            return Storage::disk($export->disk)->download($export->path,$export->file_name,['Content-Type'=>'text/csv']);
+        }, 3);
     }
 
     private function csvCell(mixed $value): string
@@ -184,4 +213,9 @@ class PeopleCoreMigrationService
     }
 
     private function date(string $value): bool { $date=\DateTimeImmutable::createFromFormat('!Y-m-d',$value); return $date!==false&&$date->format('Y-m-d')===$value; }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'People Core migration requires an active legal entity.');
+    }
 }

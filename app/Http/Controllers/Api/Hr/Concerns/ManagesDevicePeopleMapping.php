@@ -63,6 +63,8 @@ trait ManagesDevicePeopleMapping
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can receive Staff users.');
         return DB::transaction(function () use ($data, $device, $providers) {
+            $this->lockActiveAttendanceCompany($device->company_id);
+            $device = $this->lockActiveDirectIsapiDevice($device);
             $staff = Staff::query()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->whereNull('employment_ended_at')->lockForUpdate()->firstOrFail();
             abort_unless(filled($staff->code), 422, 'Set the Staff employee code before provisioning the Hikvision user.');
             abort_unless(preg_match('/^[A-Za-z0-9._-]{1,32}$/', $staff->code) === 1, 422, 'The Staff employee code is not supported by this Hikvision terminal.');
@@ -94,6 +96,8 @@ trait ManagesDevicePeopleMapping
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can synchronize Staff users.');
         return DB::transaction(function () use ($request, $data, $device, $employeeNumber, $providers) {
+            $this->lockActiveAttendanceCompany($device->company_id);
+            $device = $this->lockActiveDirectIsapiDevice($device);
             $staff = Staff::withTrashed()->with('user:id,first_name,last_name')->whereKey($data['staff_id'])->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
             abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
             $mappingExists = DB::table('hr_attendance_person_mappings')
@@ -139,6 +143,8 @@ trait ManagesDevicePeopleMapping
         $data = $request->validate(['enabled' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000']]);
         [$device, $mapping] = $this->mappedIdentity($request, $deviceId, $employeeNumber);
         return DB::transaction(function () use ($request, $data, $device, $mapping, $employeeNumber, $providers) {
+            $this->lockActiveAttendanceCompany($device->company_id);
+            $device = $this->lockActiveDirectIsapiDevice($device);
             $staff = Staff::withTrashed()->whereKey($mapping->staff_id)->where('company_id', $device->company_id)->lockForUpdate()->firstOrFail();
             abort_if($data['enabled'] && ($staff->trashed() || filled($staff->employment_ended_at)), 422, 'Former Staff cannot be enabled on an attendance terminal.');
 
@@ -197,7 +203,8 @@ trait ManagesDevicePeopleMapping
             return response()->json(['status' => 'success', 'data' => ['preview' => $preview, 'committed' => false]]);
         }
         $result = DB::transaction(function () use ($data, $device, $request) {
-            abort_unless(DB::table('companies')->where('id', $device->company_id)->lockForUpdate()->first(), 404);
+            $this->lockActiveAttendanceCompany($device->company_id);
+            $this->lockActiveDirectIsapiDevice($device);
             $created = 0;
             $resolved = 0;
             foreach ($data['rows'] as $row) {
@@ -320,7 +327,7 @@ trait ManagesDevicePeopleMapping
         $this->authorizedCompanyId($request, $data['company_id']);
 
         return DB::transaction(function () use ($request, $data) {
-            DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->first();
+            $this->lockActiveAttendanceCompany($data['company_id']);
             $staff = Staff::query()->where('company_id', $data['company_id'])->lockForUpdate()->find($data['staff_id']);
             abort_unless($staff, 404);
             if (! empty($data['device_id'])) {
@@ -380,7 +387,7 @@ trait ManagesDevicePeopleMapping
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
                 ->whereIn('company_id', $companyIds)->first();
             abort_unless($mapping, 404);
-            abort_unless(DB::table('companies')->where('id', $mapping->company_id)->lockForUpdate()->first(), 404);
+            $this->lockActiveAttendanceCompany($mapping->company_id);
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $mappingId)
                 ->whereIn('company_id', $companyIds)->lockForUpdate()->first();
             abort_unless($mapping, 404);

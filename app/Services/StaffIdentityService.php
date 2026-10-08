@@ -23,8 +23,8 @@ class StaffIdentityService
     public function terminate(Staff $staff, User $actor, string $reason, string $idempotencyKey): array
     {
         return DB::transaction(function () use ($staff, $actor, $reason, $idempotencyKey) {
-            abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');
-            $lockedStaff = Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
+            abort_unless(DB::table('companies')->where('id', $staff->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Staff termination requires an active legal entity.');
+            $lockedStaff = Staff::withTrashed()->where('company_id', $staff->company_id)->lockForUpdate()->findOrFail($staff->id);
             $requestChecksum = hash('sha256', json_encode([
                 'staff_id' => (string) $lockedStaff->id,
                 'reason' => trim($reason),

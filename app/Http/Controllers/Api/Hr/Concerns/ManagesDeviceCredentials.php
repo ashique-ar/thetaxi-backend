@@ -115,9 +115,12 @@ trait ManagesDeviceCredentials
     {
         $data = $request->validate(['disposition' => ['required', Rule::in(['former_staff', 'vendor', 'test_identity', 'unknown', 'ignored'])], 'reason' => ['required', 'string', 'max:2000']]);
         $device = $this->authorizedDevice($request, $deviceId);
-        DB::table('hr_attendance_identity_dispositions')->updateOrInsert(['device_id' => $device->id, 'provider_person_id' => $employeeNumber], [
-            'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'disposition' => $data['disposition'], 'reason' => $data['reason'], 'reviewed_by' => $request->user()->id, 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
-        ]);
+        DB::transaction(function () use ($request, $device, $employeeNumber, $data) {
+            $this->lockActiveAttendanceCompany($device->company_id);
+            DB::table('hr_attendance_identity_dispositions')->updateOrInsert(['device_id' => $device->id, 'provider_person_id' => $employeeNumber], [
+                'id' => (string) Str::uuid(), 'company_id' => $device->company_id, 'disposition' => $data['disposition'], 'reason' => $data['reason'], 'reviewed_by' => $request->user()->id, 'reviewed_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+        });
 
         return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_identity_dispositions')->where('device_id', $device->id)->where('provider_person_id', $employeeNumber)->first()]);
     }

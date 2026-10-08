@@ -189,8 +189,12 @@ it('scopes attendance health and device alerts to the selected company and autho
         ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertIds[$otherCompany->id]);
     actingAs($user, 'api')->getJson('/api/hr/attendance/device-alerts')
         ->assertForbidden();
+    $resolutionNote = 'Verified on the selected terminal.';
     actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
-        'note' => 'Verified on the selected terminal.',
+        'note' => $resolutionNote,
+    ])->assertOk();
+    actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
+        'note' => $resolutionNote,
     ])->assertOk();
     actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
         'note' => 'Duplicate resolution.',
@@ -199,8 +203,11 @@ it('scopes attendance health and device alerts to the selected company and autho
     $this->assertDatabaseHas('hr_attendance_device_alerts', [
         'id' => $alertIds[$otherCompany->id], 'status' => 'resolved', 'resolved_by' => $user->id,
     ]);
-    $this->assertDatabaseHas('activity_log', [
-        'log_name' => 'hr-attendance', 'description' => 'attendance_device_alert_resolved',
-    ]);
-    expect(DB::table('activity_log')->where('description', 'attendance_device_alert_resolved')->count())->toBe(1);
+    $alertAudits = DB::table('activity_log')->where('log_name', 'hr-attendance')->where('description', 'attendance_device_alert_resolved')->get();
+    expect($alertAudits)->toHaveCount(1)
+        ->and(json_decode($alertAudits->first()->properties, true))->toBe([
+            'company_id' => $otherCompany->id,
+            'status' => 'resolved',
+            'alert_type' => 'device_offline',
+        ]);
 });

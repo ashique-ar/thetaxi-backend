@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -93,6 +94,12 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['hr_payroll_input_facts','hr_timesheet_events','hr_timesheet_entries','hr_timesheets','hr_work_request_events','hr_work_requests','hr_work_request_policies','hr_leave_request_events','hr_leave_balance_entries','hr_leave_request_days','hr_leave_requests','hr_leave_balance_accounts','hr_leave_policy_assignments','hr_leave_policies','hr_leave_types'] as $table) Schema::dropIfExists($table);
+        $tables = ['hr_payroll_input_facts','hr_timesheet_events','hr_timesheet_entries','hr_timesheets','hr_work_request_events','hr_work_requests','hr_work_request_policies','hr_leave_request_events','hr_leave_balance_entries','hr_leave_request_days','hr_leave_requests','hr_leave_balance_accounts','hr_leave_policy_assignments','hr_leave_policies','hr_leave_types'];
+        foreach ($tables as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("Rollback refused: export and reconcile leave/payroll evidence from {$table} first.");
+            }
+        }
+        foreach ($tables as $table) Schema::dropIfExists($table);
     }
 };

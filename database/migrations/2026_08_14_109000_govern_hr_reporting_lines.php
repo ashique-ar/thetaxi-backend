@@ -42,6 +42,16 @@ return new class extends Migration
         if (Schema::hasTable('hr_reporting_line_events') && DB::table('hr_reporting_line_events')->exists()) {
             throw new LogicException('Refusing to remove retained HR reporting-line history. Disable the feature without deleting hierarchy evidence.');
         }
+        if (DB::table('hr_reporting_lines')->where(function ($query): void {
+            $query->where('status', '<>', 'active')
+                ->orWhere('version', '>', 1)
+                ->orWhereNotNull('reason')
+                ->orWhereNotNull('idempotency_key')
+                ->orWhereNotNull('updated_user_id');
+        })->exists()) {
+            throw new LogicException('Refusing to remove evolved HR reporting-line status, version, reason, idempotency or update-actor evidence.');
+        }
+
         Schema::dropIfExists('hr_reporting_line_events');
         Schema::table('hr_reporting_lines', function (Blueprint $table) {
             $table->dropIndex('hr_reporting_member_type_effective_index');

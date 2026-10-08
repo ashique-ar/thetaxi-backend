@@ -52,10 +52,13 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['hr_people_import_rows', 'hr_people_import_jobs', 'hr_people_exports'] as $table) {
+        $tables = ['hr_people_import_rows', 'hr_people_import_jobs', 'hr_people_exports'];
+        foreach ($tables as $table) {
             if (Schema::hasTable($table) && DB::table($table)->exists()) {
                 throw new RuntimeException("Rollback refused: export and reconcile retained {$table} evidence first.");
             }
+        }
+        foreach ($tables as $table) {
             Schema::dropIfExists($table);
         }
     }

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
@@ -78,6 +79,26 @@ return new class extends Migration {
 
     public function down(): void
     {
+        $tables = ['hr_knowledge_article_events','hr_travel_request_events','hr_travel_requests','hr_phone_usage_allocations','hr_phone_subscriptions','hr_custody_events','hr_asset_request_events','hr_asset_requests','hr_asset_items','hr_asset_types'];
+        foreach ($tables as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("Rollback refused: export and reconcile HR asset/travel/knowledge evidence from {$table} first.");
+            }
+        }
+        if (DB::table('hr_knowledge_articles')->whereNotNull('created_by')->orWhereNotNull('content_checksum')->exists()) {
+            throw new RuntimeException('Rollback refused: export and reconcile knowledge article authorship and content evidence first.');
+        }
+        if (DB::table('hr_custody_assignments')->where(function ($query): void {
+            foreach (['asset_item_id','asset_request_id','issue_reason','acknowledged_at','acknowledged_by','return_disposition','return_reason','return_condition_snapshot'] as $column) {
+                $query->orWhereNotNull($column);
+            }
+        })->exists()) {
+            throw new RuntimeException('Rollback refused: export and reconcile custody asset, acknowledgement and return evidence first.');
+        }
+        if (DB::table('hr_custody_assignments')->select('company_id','custody_type','item_code')->groupBy('company_id','custody_type','item_code')->havingRaw('COUNT(*) > 1')->exists()) {
+            throw new RuntimeException('Rollback refused: resolve duplicate custody item codes before restoring the legacy unique constraint.');
+        }
+
         Schema::dropIfExists('hr_knowledge_article_events');
         Schema::table('hr_knowledge_articles',fn(Blueprint$t)=>$t->dropConstrainedForeignId('created_by'));
         Schema::table('hr_knowledge_articles',fn(Blueprint$t)=>$t->dropColumn('content_checksum'));

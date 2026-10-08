@@ -64,4 +64,12 @@ it('lists only the actor company clearance queue and replays exact completion on
         ->assertJsonMissingPath('data.data.0.resolution')
         ->assertJsonMissingPath('data.data.0.completed_by')
         ->assertJsonMissing(['id' => $foreignItemId]);
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    expect(fn () => app(\App\Services\Hr\Lifecycle\LifecycleService::class)->completeClearance(
+        $itemId,
+        'Handed over files and access checklist.',
+        (string) $actor->id,
+        (string) $company->id,
+    ))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 });

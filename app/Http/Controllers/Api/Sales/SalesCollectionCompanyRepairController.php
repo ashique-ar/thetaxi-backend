@@ -8,6 +8,7 @@ use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesCollectionCompanyRepairService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -47,6 +48,8 @@ class SalesCollectionCompanyRepairController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->scope->companyIds($request->user(), 'sales.collections.view-all');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($scope) => $scope->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
@@ -63,7 +66,7 @@ class SalesCollectionCompanyRepairController extends Controller
             'status' => $company->is_active ? 'active' : 'inactive',
         ]);
 
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function preview(Request $request): JsonResponse

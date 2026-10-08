@@ -81,4 +81,9 @@ it('returns the committed leave request on retry and rejects changed evidence fo
     ]), $user->id);
     expect($scopedRequest->company_id)->toBe($company->id)
         ->and($scopedRequest->status)->toBe('pending_approval');
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    expect(fn () => $service->submit($payload, $user->id))
+        ->toThrow(HttpException::class, 'Leave writes require an active legal entity.');
+    expect(DB::table('hr_leave_requests')->where('id', $first->id)->value('status'))->toBe('pending_approval');
 });

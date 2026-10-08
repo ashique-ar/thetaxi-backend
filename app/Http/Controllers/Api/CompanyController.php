@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Company;
+use App\Services\SingleCompanyScope;
 use App\Http\Requests\Company\CreateCompanyRequest;
 use App\Http\Requests\Company\UpdateCompanyRequest;
 use App\Http\Resources\Company\CompanyResource;
@@ -53,7 +54,7 @@ class CompanyController extends Controller
         );
     }
 
-    public function options(Request $request): JsonResponse
+    public function options(Request $request, SingleCompanyScope $companyScope): JsonResponse
     {
         $data = $request->validate(['search' => ['nullable', 'string', 'max:100']]);
         $query = Company::query()
@@ -68,6 +69,7 @@ class CompanyController extends Controller
             'status' => 'success',
             'message' => 'Legal entity options loaded',
             'data' => $query->orderByDesc('is_default')->orderBy('name')->limit(25)->get(),
+            'default_company_id' => $companyScope->activeDefaultCompany()?->id,
         ]);
     }
 
@@ -104,8 +106,7 @@ class CompanyController extends Controller
             $willBeActive = (bool) ($data['is_active'] ?? true);
             $data['is_active'] = $willBeActive;
 
-            $makeDefault = ($data['is_default'] ?? false)
-                || ! Company::query()->where('is_default', true)->where('is_active', true)->exists();
+            $makeDefault = (bool) ($data['is_default'] ?? false);
 
             abort_if($makeDefault && ! $willBeActive, 422, 'The default Staff company must remain active.');
 

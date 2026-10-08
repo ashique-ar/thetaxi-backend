@@ -27,7 +27,8 @@ it('searches and hydrates only non-deleted companies belonging to an active Staf
 
     $response = actingAs($actor->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Commission Company')
-        ->assertJsonPath('data.data.0.metadata.is_default', true);
+        ->assertJsonPath('data.data.0.metadata.is_default', true)
+        ->assertJsonPath('default_company_id', $company->id);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
     actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $company->id);

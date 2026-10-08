@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -43,6 +44,15 @@ return new class extends Migration
 
     public function down(): void
     {
+        foreach ([
+            'hr_attendance_credential_events' => 'Rollback refused: retain attendance credential event evidence before removing Hikvision credential governance.',
+            'hr_attendance_identity_dispositions' => 'Rollback refused: retain attendance identity disposition evidence before removing Hikvision credential governance.',
+        ] as $table => $message) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException($message);
+            }
+        }
+
         Schema::dropIfExists('hr_attendance_credential_events');
         Schema::dropIfExists('hr_attendance_identity_dispositions');
     }

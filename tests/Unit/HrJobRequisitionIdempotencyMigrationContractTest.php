@@ -6,6 +6,6 @@ it('keeps requisition retry keys tenant-unique and refuses rollback after use', 
     expect($migration)
         ->toContain("unique(['company_id', 'idempotency_key']")
         ->toContain('CREATE UNIQUE INDEX '."'.self::INDEX.' ON hr_job_requisitions (company_id, idempotency_key) WHERE idempotency_key IS NOT NULL")
-        ->toContain("whereNotNull('idempotency_key')->exists()")
+        ->toContain("whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()")
         ->toContain('Cannot remove requisition idempotency evidence while requests reference it.');
 });

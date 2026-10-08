@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -94,6 +95,12 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['hr_attendance_correction_requests','hr_attendance_exceptions','hr_attendance_daily_result_sources','hr_attendance_daily_results','hr_attendance_period_events','hr_attendance_periods','hr_roster_assignments','hr_attendance_policies','hr_shift_definitions','hr_work_calendar_days','hr_work_calendars'] as $table) Schema::dropIfExists($table);
+        $tables = ['hr_attendance_correction_requests','hr_attendance_exceptions','hr_attendance_daily_result_sources','hr_attendance_daily_results','hr_attendance_period_events','hr_attendance_periods','hr_roster_assignments','hr_attendance_policies','hr_shift_definitions','hr_work_calendar_days','hr_work_calendars'];
+        foreach ($tables as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("Rollback refused: export and reconcile attendance-results evidence from {$table} first.");
+            }
+        }
+        foreach ($tables as $table) Schema::dropIfExists($table);
     }
 };

@@ -12,6 +12,8 @@ it('limits schedule company options and schedule rows to the selected authorized
     expect($options)
         ->toContain("where('is_active', true)")
         ->toContain('->when($companyIds !== null')
+        ->toContain('activeDefaultCompany()?->id')
+        ->toContain("'default_company_id' => \$defaultCompanyId")
         ->toContain('assertScheduleAttributionOwnerIntegrity(null, $profileIds)')
         ->toContain("'is_default' => (bool) \$company->is_default")
         ->and($bookings)

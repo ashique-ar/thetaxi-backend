@@ -7,6 +7,7 @@ use App\Models\Booking\BookingPaymentFinalityPolicy;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Staff;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -48,10 +49,11 @@ class PaymentFinalityController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $query = DB::table('companies')->whereNull('deleted_at');
-        if (! $request->user()->can('sales.payment-finality.manage-all')) {
-            $query->whereIn('id', $this->actorCompanyIds($request));
-        }
+        $companyIds = $request->user()->can('sales.payment-finality.manage-all') ? null : $this->actorCompanyIds($request);
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
+        $query = DB::table('companies')->whereNull('deleted_at')
+            ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) {
             $query->where('id', $data['selected_id']);
         } elseif (! empty($data['search'])) {
@@ -66,7 +68,7 @@ class PaymentFinalityController extends Controller
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive',
         ]);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function context(Request $request): JsonResponse

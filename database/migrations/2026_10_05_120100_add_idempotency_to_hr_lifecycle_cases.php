@@ -39,7 +39,7 @@ return new class extends Migration
         if (!Schema::hasColumn('hr_lifecycle_cases', 'idempotency_key')) {
             return;
         }
-        if (DB::table('hr_lifecycle_cases')->whereNotNull('idempotency_key')->exists()) {
+        if (DB::table('hr_lifecycle_cases')->whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()) {
             throw new RuntimeException('Cannot remove lifecycle case idempotency evidence while requests reference it.');
         }
 

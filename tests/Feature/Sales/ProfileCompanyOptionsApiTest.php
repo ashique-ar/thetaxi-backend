@@ -5,6 +5,7 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use function Pest\Laravel\actingAs;
 
@@ -27,8 +28,12 @@ it('searches and hydrates only companies in the actors effective Profile scope',
 
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Profile Company')
-        ->assertJsonPath('data.data.0.metadata.city', 'Colombo')->assertJsonPath('data.data.0.metadata.is_default', true);
+        ->assertJsonPath('data.data.0.metadata.city', 'Colombo')->assertJsonPath('data.data.0.metadata.is_default', true)
+        ->assertJsonPath('default_company_id', $company->id);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
+    DB::table('companies')->where('id', $company->id)->update(['is_default' => false]);
+    DB::table('companies')->where('id', $foreign->id)->update(['is_default' => true]);
+    actingAs($staff->user, 'api')->getJson($url)->assertOk()->assertJsonPath('default_company_id', null);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$foreign->id)->assertOk()->assertJsonCount(0, 'data.data');

@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration {
@@ -35,6 +36,12 @@ return new class extends Migration {
 
     public function down(): void
     {
+        foreach (['hr_achievement_events', 'hr_performance_review_events'] as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("Rollback refused: export and reconcile talent/performance audit evidence from {$table} first.");
+            }
+        }
+
         Schema::dropIfExists('hr_achievement_events');
         Schema::dropIfExists('hr_performance_review_events');
     }

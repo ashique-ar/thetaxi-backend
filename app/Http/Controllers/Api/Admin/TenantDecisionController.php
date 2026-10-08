@@ -4,6 +4,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Website\WebsiteSetting;
 use App\Services\TenantDecisionMutationService;
 use App\Services\TenantDecisionService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
@@ -25,6 +26,8 @@ class TenantDecisionController extends Controller
     {
         $d = $r->validate(['search' => 'nullable|string|max:120', 'selected_id' => 'nullable|uuid', 'page' => 'nullable|integer|min:1', 'per_page' => 'nullable|integer|min:1|max:50']);
         $ids = $r->user()->can('tenant-decisions.manage-all') ? null : DB::table('staff')->where('user_id', $r->user()->id)->whereNull('deleted_at')->whereNull('employment_ended_at')->pluck('company_id');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $ids !== null && ! $ids->contains($defaultCompanyId)) $defaultCompanyId = null;
         $q = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($d['selected_id'] ?? null, fn ($query, $id) => $query->where('id', $id));
         if ($ids !== null)
@@ -36,7 +39,7 @@ class TenantDecisionController extends Controller
         $rows = $q->orderByDesc('is_default')->orderBy('name')->paginate($d['per_page'] ?? 25, ['id', 'name', 'city', 'is_active', 'is_default']);
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => (string) $company->name,
             'metadata' => ['city' => $company->city, 'is_default' => (bool) $company->is_default], 'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
     public function index(Request $r)
     {

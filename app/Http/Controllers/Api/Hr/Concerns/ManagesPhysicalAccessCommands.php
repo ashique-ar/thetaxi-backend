@@ -91,6 +91,9 @@ trait ManagesPhysicalAccessCommands
             abort_unless($command, 404);
             $companyId = $command->company_id;
             abort_if($command->requested_by === $request->user()->id, 409, 'The requester cannot approve the same physical-access command.');
+            if ($command->approved_by === $request->user()->id && $command->status !== 'pending_approval') {
+                return response()->json(['status' => 'success', 'data' => $command]);
+            }
             abort_unless($command->status === 'pending_approval', 409, 'Only pending commands may be approved.');
             if (in_array($command->command_type, ['grant', 'restore'], true)) {
                 $staff = Staff::query()->whereKey($command->staff_id)->where('company_id', $companyId)->lockForUpdate()->firstOrFail();

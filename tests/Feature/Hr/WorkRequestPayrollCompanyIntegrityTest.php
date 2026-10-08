@@ -1,6 +1,7 @@
 <?php
 
 use App\Models\Company;
+use App\Models\Hr\Leave\LeaveBalanceEntry;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
@@ -98,7 +99,7 @@ it('blocks overtime payroll and time-off writes when their company links disagre
         ->join('hr_leave_balance_accounts as account', 'account.id', '=', 'entry.account_id')
         ->where('entry.source_type', 'work_request')->where('entry.source_id', $validTimeOffRequestId)
         ->where('entry.entry_type', 'time_off_credit')
-        ->first(['entry.minutes', 'entry.effective_date', 'account.company_id', 'account.staff_id', 'account.leave_type_id']);
+        ->first(['entry.id', 'entry.minutes', 'entry.effective_date', 'account.company_id', 'account.staff_id', 'account.leave_type_id']);
     expect($approvedTimeOff->status)->toBe('approved')
         ->and($service->decideWorkRequest($validTimeOffRequestId, 'approve', 'Approve time off', $actor->id)->status)->toBe('approved')
         ->and(DB::table('hr_leave_balance_entries')->where('source_type', 'work_request')->where('source_id', $validTimeOffRequestId)
@@ -107,7 +108,8 @@ it('blocks overtime payroll and time-off writes when their company links disagre
         ->and($timeOffCredit->effective_date)->toBe($today)
         ->and($timeOffCredit->company_id)->toBe($company->id)
         ->and($timeOffCredit->staff_id)->toBe($staff->id)
-        ->and($timeOffCredit->leave_type_id)->toBe($validTimeOffTypeId);
+        ->and($timeOffCredit->leave_type_id)->toBe($validTimeOffTypeId)
+        ->and(DB::table('activity_log')->where('subject_type', LeaveBalanceEntry::class)->where('subject_id', $timeOffCredit->id)->count())->toBe(1);
     expect(fn () => $service->decideWorkRequest($validTimeOffRequestId, 'approve', 'Changed time-off note', $actor->id))
         ->toThrow(HttpException::class, 'Work-request retry does not match the original action, note and actor.');
 
@@ -117,4 +119,38 @@ it('blocks overtime payroll and time-off writes when their company links disagre
     DB::table('hr_leave_balance_entries')->where('source_type', 'work_request')->where('source_id', $validTimeOffRequestId)->delete();
     expect(fn () => $service->decideWorkRequest($validTimeOffRequestId, 'approve', 'Approve time off', $actor->id))
         ->toThrow(HttpException::class, 'The approved time-off credit no longer matches its work request.');
+});
+
+it('requires an active locked company for work-request submission, approval and replay', function () {
+    [$approver, $company] = hr_seed_admin_actor();
+    $staff = Staff::query()->where('user_id', $approver->id)->firstOrFail();
+    $requester = User::factory()->create();
+    $policyId = (string) Str::uuid();
+    $now = now();
+    DB::table('hr_work_request_policies')->insert([
+        'id' => $policyId, 'company_id' => $company->id, 'request_kind' => 'overtime', 'code' => 'ACTIVE-COMPANY',
+        'version' => 1, 'rules' => '{}', 'effective_from' => $now->toDateString(), 'status' => 'approved',
+        'created_by' => $approver->id, 'approved_by' => $approver->id, 'approved_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    config(['hr.features.leave_overtime' => true]);
+    $data = [
+        'company_id' => $company->id, 'staff_id' => $staff->id, 'policy_id' => $policyId,
+        'request_kind' => 'overtime', 'starts_at' => $now->addHours(2)->toIso8601String(),
+        'ends_at' => $now->addHours(3)->toIso8601String(), 'settlement_kind' => 'informational',
+        'reason' => 'Reviewed overtime request.', 'idempotency_key' => 'inactive-company-work-request',
+    ];
+    $service = app(WorkforceWorkflowService::class);
+    $request = $service->submitWorkRequest($data, $requester->id);
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+
+    expect(fn () => $service->decideWorkRequest($request->id, 'approve', 'Approve', $approver->id))
+        ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
+    expect(fn () => $service->submitWorkRequest([...$data, 'idempotency_key' => 'inactive-company-new-work-request'], $requester->id))
+        ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
+    expect(fn () => $service->submitWorkRequest($data, $requester->id))
+        ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
+    expect(DB::table('hr_work_requests')->where('id', $request->id)->value('status'))->toBe('pending_approval')
+        ->and(DB::table('hr_work_request_events')->where('work_request_id', $request->id)->count())->toBe(1)
+        ->and(DB::table('hr_payroll_input_facts')->where('source_id', $request->id)->exists())->toBeFalse();
 });

@@ -26,7 +26,11 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::table('hr_leave_requests')->whereNotNull('recall_date')->exists()) {
+        if (DB::table('hr_leave_requests')->where(function ($query): void {
+            $query->whereNotNull('recall_date')
+                ->orWhereNotNull('recalled_by')
+                ->orWhereNotNull('recalled_at');
+        })->exists()) {
             throw new \LogicException('Refusing to drop retained leave recalls.');
         }
 

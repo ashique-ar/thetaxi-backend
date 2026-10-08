@@ -43,7 +43,9 @@ it('returns an AttendanceDevice created via the factory from the device list end
         ->and($row['serial_number'])->toBe('FACTORY-SN-0001')
         ->and($row['site_code'])->toBe('DEPOT-A')
         ->and($row['company_id'])->toBe($company->id)
-        ->and($row)->not->toHaveKey('encrypted_configuration');
+        ->and($row)->not->toHaveKey('encrypted_configuration')
+        ->and($row)->not->toHaveKey('created_user_id')
+        ->and($row)->not->toHaveKey('updated_user_id');
 });
 
 it('excludes an AttendanceDevice belonging to a different company from the device list', function () {
@@ -67,10 +69,12 @@ it('returns the same not-found response for foreign and missing device UUIDs', f
     [$adminUser, $company] = hr_seed_admin_actor([], true);
     $foreignCompany = \App\Models\Company::create(['name' => 'Foreign Device Company']);
     $foreignDevice = AttendanceDevice::factory()->create(['company_id' => $foreignCompany->id]);
+    $deletedDevice = AttendanceDevice::factory()->create(['company_id' => $company->id]);
+    DB::table('hr_attendance_devices')->where('id', $deletedDevice->id)->update(['deleted_at' => now()]);
     $missingId = (string) Str::uuid();
     config(['hr.features.attendance_ingestion' => true]);
 
-    foreach ([$foreignDevice->id, $missingId] as $deviceId) {
+    foreach ([$foreignDevice->id, $deletedDevice->id, $missingId] as $deviceId) {
         actingAs($adminUser, 'api')->getJson('/api/hr/attendance/devices/'.$deviceId.'/people')->assertNotFound();
         actingAs($adminUser, 'api')->putJson('/api/hr/attendance/devices/'.$deviceId, [])->assertNotFound();
         actingAs($adminUser, 'api')->deleteJson('/api/hr/attendance/devices/'.$deviceId)->assertNotFound();

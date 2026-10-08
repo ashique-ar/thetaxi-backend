@@ -6,6 +6,7 @@ use App\Models\Hr\HrEmploymentSpell;
 use App\Models\Staff;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Spatie\Permission\Models\Role;
 
@@ -62,12 +63,26 @@ it('keeps employee change requests and their approver in the actor legal entity'
         ->assertUnprocessable();
     $this->assertDatabaseCount('hr_employee_change_requests', 0);
 
-    actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))
+    $createdChange = actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))
         ->assertCreated();
     $this->assertDatabaseHas('hr_request_index', [
         'requester_staff_id' => $subject->id,
         'current_owner_staff_id' => $validApprover->id,
     ]);
+
+    config(['hr.features.people_core' => true]);
+    $changeId = (string) $createdChange->json('data.id');
+    $lifecycle = app(\App\Services\Hr\Lifecycle\LifecycleService::class);
+    $approved = $lifecycle->approveChange($changeId, (string) $validApprover->user_id, (string) $company->id);
+    $assignmentCount = DB::table('hr_employment_assignments')->where('staff_id', $subject->id)->count();
+    $replayed = $lifecycle->approveChange($changeId, (string) $validApprover->user_id, (string) $company->id);
+    expect($replayed->result_assignment_id)->toBe($approved->result_assignment_id)
+        ->and(DB::table('hr_employment_assignments')->where('staff_id', $subject->id)->count())->toBe($assignmentCount)
+        ->and(fn () => $lifecycle->approveChange($changeId, (string) $foreignApprover->user_id, (string) $company->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    expect(fn () => $lifecycle->approveChange($changeId, (string) $validApprover->user_id, (string) $company->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
     config(['hr.features.employee_self_service' => false]);
     actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))

@@ -34,7 +34,7 @@ return new class extends Migration
             return;
         }
 
-        if (DB::table('hr_approval_delegations')->whereNotNull('idempotency_key')->exists()) {
+        if (DB::table('hr_approval_delegations')->whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()) {
             throw new RuntimeException('Cannot roll back delegation idempotency while requests reference its keys.');
         }
 

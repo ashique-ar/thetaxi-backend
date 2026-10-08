@@ -36,5 +36,5 @@ it('lets authorized admins choose one active default and exposes it in Company a
         ->toContain('Select another active company as default before deleting this company.')
         ->and($companyForm)->toContain('formControlName="is_default"')
         ->and($staffForm)->toContain('app-ui-legal-entity-select')
-        ->and($legalEntitySelect)->toContain("find(company => company.is_default)?.id");
+        ->and($legalEntitySelect)->toContain('response.default_company_id');
 });

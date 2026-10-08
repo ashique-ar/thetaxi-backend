@@ -34,6 +34,20 @@ return new class extends Migration
             throw new LogicException('Refusing to remove governed HR job or position history. Disable the feature without deleting retained events.');
         }
 
+        foreach (['hr_job_families', 'hr_job_grades', 'hr_designations'] as $tableName) {
+            if (DB::table($tableName)->where(function ($query): void {
+                $query->where('version', '>', 1)
+                    ->orWhereNotNull('effective_from')
+                    ->orWhereNotNull('effective_until')
+                    ->orWhereNotNull('updated_user_id');
+            })->exists()) {
+                throw new LogicException("Refusing to remove evolved HR job-definition evidence from {$tableName}.");
+            }
+        }
+        if (DB::table('hr_positions')->where('version', '>', 1)->orWhereNotNull('updated_user_id')->exists()) {
+            throw new LogicException('Refusing to remove evolved HR position version or update-actor evidence.');
+        }
+
         $duplicateNumber = DB::table('hr_positions')
             ->select('position_number')
             ->groupBy('position_number')

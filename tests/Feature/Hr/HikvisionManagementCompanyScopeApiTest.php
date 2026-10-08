@@ -405,3 +405,40 @@ it('scopes physical-access request references and replays only identical evidenc
     actingAs($user, 'api')->postJson($url, $valid)->assertOk()->assertJsonPath('data.id', $created['id']);
     actingAs($user, 'api')->postJson($url, array_replace($valid, ['reason' => 'Changed reason']))->assertConflict();
 });
+
+it('replays a reboot approval only for the same approver without changing its evidence', function () {
+    [$requester, $company] = hr_seed_admin_actor([], true);
+    $approver = User::factory()->create();
+    $approver->assignRole('admin');
+    $staff = Staff::factory()->create(['user_id' => $approver->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    UserContext::create([
+        'user_id' => $approver->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $approver->id,
+    ]);
+    $device = AttendanceDevice::factory()->create(['company_id' => $company->id, 'capabilities' => [
+        'maintenance' => ['reboot' => true], 'last_identity_probe_at' => now()->toIso8601String(),
+    ]]);
+    $commandId = (string) Str::uuid();
+    DB::table('hr_attendance_device_maintenance_commands')->insert([
+        'id' => $commandId, 'company_id' => $company->id, 'device_id' => $device->id,
+        'command_type' => 'reboot', 'status' => 'pending_approval', 'reason' => 'Scheduled maintenance',
+        'typed_confirmation' => $device->site_code, 'idempotency_key' => 'reboot-approval-'.$commandId,
+        'requested_by' => $requester->id, 'requested_at' => now(), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    config(['hr.features.hikvision_maintenance_commands' => true]);
+    $url = '/api/hr/attendance/maintenance-commands/'.$commandId.'/approve';
+
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved_pending_execution');
+    $approvedAt = DB::table('hr_attendance_device_maintenance_commands')->where('id', $commandId)->value('approved_at');
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved_pending_execution');
+    expect(DB::table('hr_attendance_device_maintenance_commands')->where('id', $commandId)->value('approved_at'))->toBe($approvedAt);
+
+    $otherApprover = User::factory()->create();
+    $otherApprover->assignRole('admin');
+    $otherStaff = Staff::factory()->create(['user_id' => $otherApprover->id, 'company_id' => $company->id, 'staff_type' => 'admin']);
+    UserContext::create([
+        'user_id' => $otherApprover->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $otherApprover->id,
+    ]);
+    actingAs($otherApprover, 'api')->postJson($url, [])->assertStatus(409);
+});

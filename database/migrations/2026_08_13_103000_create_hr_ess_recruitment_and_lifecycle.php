@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -27,5 +28,14 @@ return new class extends Migration
         Schema::create('hr_custody_assignments',function(Blueprint$t){$t->uuid('id')->primary();$t->foreignUuid('company_id')->constrained('companies')->restrictOnDelete();$t->foreignUuid('staff_id')->constrained('staff')->restrictOnDelete();$t->string('custody_type',30);$t->string('item_code',120);$t->string('item_name');$t->text('encrypted_details')->nullable();$t->date('assigned_at');$t->date('due_back_at')->nullable();$t->timestamp('returned_at')->nullable();$t->string('status',30)->default('assigned');$t->json('condition_snapshot')->nullable();$t->foreignUuid('assigned_by')->constrained('users')->restrictOnDelete();$t->foreignUuid('received_by')->nullable()->constrained('users')->restrictOnDelete();$t->timestamps();$t->unique(['company_id','custody_type','item_code']);});
         Schema::create('hr_exit_clearance_items',function(Blueprint$t){$t->uuid('id')->primary();$t->foreignUuid('exit_case_id')->constrained('hr_exit_cases')->restrictOnDelete();$t->string('clearance_type',40);$t->foreignUuid('custody_assignment_id')->nullable()->constrained('hr_custody_assignments')->restrictOnDelete();$t->string('title');$t->foreignUuid('owner_staff_id')->nullable()->constrained('staff')->restrictOnDelete();$t->string('status',30)->default('pending');$t->text('resolution')->nullable();$t->timestamp('completed_at')->nullable();$t->foreignUuid('completed_by')->nullable()->constrained('users')->restrictOnDelete();$t->timestamps();});
     }
-    public function down():void{foreach(['hr_exit_clearance_items','hr_custody_assignments','hr_exit_cases','hr_employee_change_requests','hr_probation_cases','hr_lifecycle_tasks','hr_lifecycle_cases','hr_lifecycle_templates','hr_candidate_offers','hr_candidate_feedback','hr_candidate_interviews','hr_candidate_application_events','hr_candidate_applications','hr_candidates','hr_job_requisitions','hr_approval_delegations','hr_request_events','hr_request_index']as$table)Schema::dropIfExists($table);}
+    public function down():void
+    {
+        $tables=['hr_exit_clearance_items','hr_custody_assignments','hr_exit_cases','hr_employee_change_requests','hr_probation_cases','hr_lifecycle_tasks','hr_lifecycle_cases','hr_lifecycle_templates','hr_candidate_offers','hr_candidate_feedback','hr_candidate_interviews','hr_candidate_application_events','hr_candidate_applications','hr_candidates','hr_job_requisitions','hr_approval_delegations','hr_request_events','hr_request_index'];
+        foreach($tables as $table){
+            if(Schema::hasTable($table)&&DB::table($table)->exists()){
+                throw new RuntimeException("Rollback refused: export and reconcile HR lifecycle/recruitment evidence from {$table} first.");
+            }
+        }
+        foreach($tables as $table)Schema::dropIfExists($table);
+    }
 };

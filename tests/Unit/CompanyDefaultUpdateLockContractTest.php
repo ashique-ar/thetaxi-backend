@@ -36,8 +36,11 @@ it('normalizes company active state after serializing default creation', functio
         ->and(is_int($insert) && $insert > $activeState)->toBeTrue();
 });
 
-it('does not let an inactive legacy default block the first active default', function () {
+it('uses only the explicitly selected default when creating a company', function () {
     $source = file_get_contents(app_path('Http/Controllers/Api/CompanyController.php'));
+    preg_match('/public function store\(CreateCompanyRequest \$request\): JsonResponse\s*\{(.*?)\n    \}/s', $source, $match);
+    $body = $match[1] ?? '';
 
-    expect($source)->toContain("Company::query()->where('is_default', true)->where('is_active', true)->exists()");
+    expect($body)->toContain('$makeDefault = (bool) ($data[\'is_default\'] ?? false)')
+        ->not->toContain("|| ! Company::query()->where('is_default', true)->where('is_active', true)->exists()");
 });

@@ -130,6 +130,12 @@ class HikvisionManagementController extends Controller
             $row = DB::table('hr_attendance_device_alerts')->where('id', $id)
                 ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();
             abort_unless($row, 404);
+            if ($row->status === 'resolved') {
+                abort_unless((string) $row->resolved_by === (string) $r->user()->id
+                    && hash_equals((string) $row->resolution_note, $d['note']), 409, 'Resolved alert differs from this retry.');
+
+                return response()->json(['status' => 'success']);
+            }
             $company = $row->company_id;
             abort_unless($row->status === 'open', 409, 'Only open device alerts may be resolved.');
             DB::table('hr_attendance_device_alerts')->where('id', $id)->where('company_id', $company)->update([
@@ -140,7 +146,7 @@ class HikvisionManagementController extends Controller
                 'updated_at' => now(),
             ]);
             activity('hr-attendance')->causedBy($r->user())
-                ->withProperties(['alert_id' => $id, 'company_id' => $company, 'device_id' => $row->device_id, 'alert_type' => $row->alert_type])
+                ->withProperties(['company_id' => $company, 'status' => 'resolved', 'alert_type' => $row->alert_type])
                 ->log('attendance_device_alert_resolved');
 
             return response()->json(['status' => 'success']);
@@ -155,8 +161,20 @@ class HikvisionManagementController extends Controller
                 ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();
             abort_unless($row, 404);
             $company = $row->company_id;
+            if ($row->status === 'retry_pending' && str_starts_with((string) $row->failure_message, 'Manual retry: ')) {
+                abort_unless((string) $row->retry_requested_by === (string) $r->user()->id
+                    && hash_equals((string) $row->failure_message, 'Manual retry: '.$d['reason']), 409, 'Retry differs from the pending retry request.');
+
+                return response()->json(['status' => 'success']);
+            }
             abort_unless(in_array($row->status, ['dead_letter', 'retry_pending'], true), 409, 'Only failed access commands can be retried.');
-            DB::table('hr_attendance_access_commands')->where('id', $id)->where('company_id', $company)->update(['status' => 'retry_pending', 'next_attempt_at' => now(), 'failure_message' => 'Manual retry: '.$d['reason'], 'updated_at' => now()]);
+            DB::table('hr_attendance_access_commands')->where('id', $id)->where('company_id', $company)->update([
+                'status' => 'retry_pending', 'next_attempt_at' => now(), 'failure_message' => 'Manual retry: '.$d['reason'],
+                'retry_requested_by' => $r->user()->id, 'updated_at' => now(),
+            ]);
+            activity('hr-attendance')->causedBy($r->user())
+                ->withProperties(['company_id' => $company, 'status' => 'retry_pending', 'command_type' => $row->command_type])
+                ->log('attendance_access_command_retry_requested');
 
             return response()->json(['status' => 'success']);
         });
@@ -211,6 +229,9 @@ class HikvisionManagementController extends Controller
             abort_unless($command, 404);
             $company = $command->company_id;
             abort_if($command->requested_by === $r->user()->id, 409, 'The reboot requester cannot approve the same command.');
+            if ($command->approved_by === $r->user()->id && $command->status !== 'pending_approval') {
+                return response()->json(['status' => 'success', 'data' => $command]);
+            }
             abort_unless($command->status === 'pending_approval', 409, 'Only a pending reboot may be approved.');
             $device = AttendanceDevice::query()->where('company_id', $company)->findOrFail($command->device_id);
             abort_unless((bool) data_get($device->capabilities, 'maintenance.reboot'), 409, 'Reboot capability is no longer verified for this terminal.');

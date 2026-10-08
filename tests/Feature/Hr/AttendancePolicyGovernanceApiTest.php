@@ -73,3 +73,43 @@ it('keeps approved attendance policy history immutable and audits pending policy
     $this->assertNotNull($createEvent);
     $this->assertSame($created['id'], json_decode($createEvent->properties, true)['policy_id']);
 });
+
+it('replays attendance policy approval for its original approver and audits it once', function () {
+    [$creator, $company] = hr_seed_admin_actor();
+    $approver = \App\Models\User::factory()->create();
+    $approver->assignRole('admin');
+    $staff = \App\Models\Staff::factory()->create([
+        'user_id' => $approver->id, 'company_id' => $company->id, 'staff_type' => 'admin',
+    ]);
+    \App\Models\UserContext::create([
+        'user_id' => $approver->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $approver->id,
+    ]);
+    $policyId = (string) Str::uuid();
+    DB::table('hr_attendance_policies')->insert([
+        'id' => $policyId, 'company_id' => $company->id, 'code' => 'retry-safe', 'name' => 'Retry safe policy',
+        'rules' => json_encode(['maximum_payable_minutes' => 480], JSON_THROW_ON_ERROR), 'effective_from' => '2026-01-01',
+        'status' => 'pending_approval', 'created_by' => $creator->id, 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $url = "/api/hr/attendance/policies/{$policyId}/approve";
+
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved');
+    $approvedAt = DB::table('hr_attendance_policies')->where('id', $policyId)->value('approved_at');
+    actingAs($approver, 'api')->postJson($url, [])->assertOk()->assertJsonPath('data.status', 'approved');
+    expect(DB::table('hr_attendance_policies')->where('id', $policyId)->value('approved_at'))->toBe($approvedAt);
+    $audit = DB::table('activity_log')->where('description', 'attendance_policy_approved')->first();
+    expect(json_decode($audit->properties, true))->toBe([
+        'company_id' => $company->id, 'status' => 'approved', 'effective_from' => '2026-01-01',
+    ])->and(DB::table('activity_log')->where('description', 'attendance_policy_approved')->count())->toBe(1);
+
+    $otherApprover = \App\Models\User::factory()->create();
+    $otherApprover->assignRole('admin');
+    $otherStaff = \App\Models\Staff::factory()->create([
+        'user_id' => $otherApprover->id, 'company_id' => $company->id, 'staff_type' => 'admin',
+    ]);
+    \App\Models\UserContext::create([
+        'user_id' => $otherApprover->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $otherApprover->id,
+    ]);
+    actingAs($otherApprover, 'api')->postJson($url, [])->assertStatus(409);
+});

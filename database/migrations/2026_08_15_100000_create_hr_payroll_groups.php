@@ -35,6 +35,10 @@ return new class extends Migration
             throw new \LogicException('Refusing to remove retained HR payroll-group governance history. Disable the feature without rolling back used schema.');
         }
 
+        if (DB::table('hr_payroll_groups')->exists()) {
+            throw new \LogicException('Refusing to remove populated HR payroll-group definitions. Export and reconcile the governed configuration first.');
+        }
+
         Schema::dropIfExists('hr_payroll_groups');
     }
 };

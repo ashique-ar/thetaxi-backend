@@ -2,6 +2,7 @@
 
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 return new class extends Migration
@@ -55,6 +56,12 @@ return new class extends Migration
 
     public function down(): void
     {
-        foreach (['hr_custom_field_values','hr_custom_field_definitions','hr_rehire_cases','hr_employee_timeline_events','hr_employee_records','hr_staff_profile_versions','hr_reporting_lines','hr_employment_assignments','hr_employment_spells','hr_employment_types','hr_employee_number_aliases','hr_employee_number_sequences','hr_positions','hr_designations','hr_job_grades','hr_job_families','hr_organization_units'] as $table) Schema::dropIfExists($table);
+        $tables = ['hr_custom_field_values','hr_custom_field_definitions','hr_rehire_cases','hr_employee_timeline_events','hr_employee_records','hr_staff_profile_versions','hr_reporting_lines','hr_employment_assignments','hr_employment_spells','hr_employment_types','hr_employee_number_aliases','hr_employee_number_sequences','hr_positions','hr_designations','hr_job_grades','hr_job_families','hr_organization_units'];
+        foreach ($tables as $table) {
+            if (Schema::hasTable($table) && DB::table($table)->exists()) {
+                throw new RuntimeException("Refusing to drop {$table} while HR People Core records exist.");
+            }
+        }
+        foreach ($tables as $table) Schema::dropIfExists($table);
     }
 };

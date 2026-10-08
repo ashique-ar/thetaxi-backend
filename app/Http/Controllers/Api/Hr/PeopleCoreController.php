@@ -108,8 +108,13 @@ class PeopleCoreController extends Controller
 
     private function importPayload(HrPeopleImportJob $job): array
     {
-        $rows=DB::table('hr_people_import_rows')->where('import_job_id',$job->id)->orderBy('row_number')->get(['row_number','source_row_key','normalized_payload','outcome','errors','matched_staff_id','created_spell_id'])
-            ->map(function($row){$row->normalized_payload=is_string($row->normalized_payload)?json_decode($row->normalized_payload,true,512,JSON_THROW_ON_ERROR):$row->normalized_payload;$row->errors=is_string($row->errors)?json_decode($row->errors,true,512,JSON_THROW_ON_ERROR):$row->errors;return$row;});
+        $rows=DB::table('hr_people_import_rows')->where('import_job_id',$job->id)->orderBy('row_number')->get(['row_number','normalized_payload','outcome','errors'])
+            ->map(fn($row)=>[
+                'row_number'=>$row->row_number,
+                'employee_number'=>json_decode((string)$row->normalized_payload,true,512,JSON_THROW_ON_ERROR)['employee_number']??null,
+                'outcome'=>$row->outcome,
+                'errors'=>is_string($row->errors)?json_decode($row->errors,true,512,JSON_THROW_ON_ERROR):$row->errors,
+            ]);
         return ['job'=>$job,'rows'=>$rows];
     }
 
@@ -164,22 +169,32 @@ class PeopleCoreController extends Controller
         $staff->load([
             'user:id,first_name,last_name,email,phone,is_active',
             'company:id,name',
-            'employmentSpells' => fn($spells) => $spells->with('assignments')->orderByDesc('spell_number'),
+            'employmentSpells' => fn($spells) => $spells->orderByDesc('spell_number'),
             'employmentAssignments' => fn($assignments) => $assignments->orderByDesc('effective_from'),
         ]);
+        $employee = $this->employeeSummary($staff);
+        unset($employee['id'], $employee['company_id'], $employee['current_spell_id']);
+        if ($employee['current_assignment']) {
+            $employee['current_assignment'] = array_diff_key($employee['current_assignment'], array_flip([
+                'id', 'position_id', 'organization_unit_id', 'manager_staff_id', 'dotted_line_manager_staff_id',
+            ]));
+        }
+        $employmentHistory = $this->employmentHistorySummary($staff->employmentSpells);
         $at = now()->toDateString();
         $reportingLines = DB::table('hr_reporting_lines as line')->join('staff as manager_staff', 'manager_staff.id', '=', 'line.manager_staff_id')->leftJoin('users as manager_user', 'manager_user.id', '=', 'manager_staff.user_id')
             ->where('line.company_id', $staff->company_id)->where('line.member_staff_id', $staff->id)->where('line.effective_from', '<=', $at)->where(fn($query) => $query->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $at))
-            ->select(['line.id', 'line.manager_staff_id', 'line.line_type', 'line.effective_from', 'line.effective_until', 'line.version', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])->orderBy('line.line_type')->get();
+            ->select(['line.id', 'line.line_type', 'line.effective_from', 'line.effective_until', 'line.version', 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name'])->orderBy('line.line_type')->get();
         $actingAppointments = DB::table('hr_acting_appointments as appointment')->join('hr_positions as position', 'position.id', '=', 'appointment.acting_position_id')
             ->where('appointment.company_id', $staff->company_id)->where('appointment.staff_id', $staff->id)
-            ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'appointment.acting_assignment_id', 'appointment.restoration_assignment_id', 'position.position_number', 'position.title as position_title'])->orderByDesc('appointment.effective_from')->get();
+            ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'position.position_number', 'position.title as position_title'])
+            ->selectRaw('CASE WHEN appointment.restoration_assignment_id IS NULL THEN 0 ELSE 1 END as has_restoration')
+            ->orderByDesc('appointment.effective_from')->get();
 
         return response()->json([
             'status' => 'success',
             'data' => [
-                'employee' => $this->employeeSummary($staff),
-                'employment_history' => $staff->employmentSpells,
+                'employee' => $employee,
+                'employment_history' => $employmentHistory,
                 'current_reporting_lines' => $reportingLines,
                 'acting_appointments' => $actingAppointments,
                 'custom_field_values' => $this->customFieldValues->listForStaff($staff, $request->user()),
@@ -637,7 +652,16 @@ class PeopleCoreController extends Controller
         $this->ensureEnabled();
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
-        return response()->json(['status' => 'success', 'data' => HrEmploymentSpell::query()->where('staff_id', $staff->id)->with('assignments')->orderBy('spell_number')->get()]);
+        $spells = HrEmploymentSpell::query()->where('staff_id', $staff->id)->orderBy('spell_number')->get();
+        return response()->json(['status' => 'success', 'data' => $this->employmentHistorySummary($spells)]);
+    }
+
+    private function employmentHistorySummary($spells)
+    {
+        return $spells->map(fn($spell) => $spell->only([
+            'id', 'spell_number', 'joined_at', 'service_date', 'confirmation_date', 'rehire_date',
+            'last_working_date', 'terminated_at', 'status',
+        ]))->values();
     }
 
     public function employmentSpellOptions(Request $request, string $staffId): JsonResponse
@@ -716,7 +740,7 @@ class PeopleCoreController extends Controller
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['profile' => ['required', 'array'], 'change_reason' => ['required', 'string', 'max:2000']]);
         $row = $this->people->addProfileVersion($staff, $data['profile'], $data['change_reason'], (string) $request->user()->id);
-        $row->makeVisible('encrypted_profile');
+        if ($request->user()->can('hr.people.timeline-confidential')) $row->makeVisible('encrypted_profile');
         return response()->json(['status' => 'success', 'data' => $row], 201);
     }
 
@@ -749,7 +773,7 @@ class PeopleCoreController extends Controller
         unset($payload['data']);
         $payload['verification_status'] = 'unverified';
         $row = $this->people->addEmployeeRecord($staff, $payload, (string) $request->user()->id);
-        $row->makeVisible('encrypted_data');
+        if ($request->user()->can('hr.people.timeline-confidential')) $row->makeVisible('encrypted_data');
         return response()->json(['status' => 'success', 'data' => $row], 201);
     }
 

@@ -17,6 +17,9 @@ class AttendanceResultService
 
         return DB::transaction(function () use ($companyId, $staffId, $date, $actorUserId) {
             $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
+            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 409, 'Attendance result writes require an active legal entity.');
             abort_if($period && $period->status === 'locked', 409, 'The attendance period is locked.');
             $staff = DB::table('staff')->where('id', $staffId)->where('company_id', $companyId)->lockForUpdate()->first();
             abort_unless($staff, 422, 'Staff does not belong to this legal entity.');
@@ -100,6 +103,8 @@ class AttendanceResultService
     {
         abort_unless(config('hr.features.attendance_results', false), 409, 'Attendance result writes are not enabled.');
         return DB::transaction(function () use ($requestId, $companyId, $actorUserId, $decisionNote) {
+            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 409, 'Attendance correction decisions require an active legal entity.');
             $correction = DB::table('hr_attendance_correction_requests')->where('id', $requestId)
                 ->where('company_id', $companyId)->lockForUpdate()->first();
             abort_unless($correction, 404);

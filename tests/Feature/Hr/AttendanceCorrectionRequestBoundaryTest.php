@@ -103,7 +103,7 @@ it('fails closed on attendance correction submission and approval until the fiel
     $decisionNote = 'Reject pending request while mapping is unresolved.';
     $rejectPath = '/api/hr/attendance/corrections/'.$correctionId.'/reject';
     $rejectedResponse = actingAs($rejector, 'api')->withHeaders($rejectorHeaders)->postJson($rejectPath, ['decision_note' => $decisionNote])
-        ->assertOk()->assertJsonPath('data.status', 'rejected')->assertJsonMissingPath('data.requested_values');
+        ->assertOk()->assertJsonPath('data.status', 'rejected')->assertJsonMissingPath('data.requested_values')->assertJsonMissingPath('data.decision_note');
     $eventsAfterRejection = DB::table('activity_log')->where('description', 'attendance_correction_rejected')->count();
     $rejectionAudit = DB::table('activity_log')->where('description', 'attendance_correction_rejected')->latest('id')->value('properties');
     expect(json_decode((string) $rejectionAudit, true, 512, JSON_THROW_ON_ERROR))->toBe([
@@ -122,6 +122,9 @@ it('fails closed on attendance correction submission and approval until the fiel
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
     actingAs($rejector, 'api')->withHeaders($rejectorHeaders)->postJson('/api/hr/attendance/corrections/'.$foreignCorrectionId.'/reject', ['decision_note' => $decisionNote])
         ->assertNotFound();
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    expect(fn () => app(AttendanceResultService::class)->rejectCorrection($correctionId, (string) $company->id, (string) $rejector->id, $decisionNote))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
     $this->assertDatabaseHas('hr_attendance_correction_requests', [
         'id' => $correctionId,
         'status' => 'rejected',

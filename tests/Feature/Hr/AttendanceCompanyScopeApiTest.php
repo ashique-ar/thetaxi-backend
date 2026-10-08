@@ -19,11 +19,13 @@ it('uses the sole active Staff context and limits attendance company options to 
     $firstContext = UserContext::query()->where('user_id', $user->id)->where('context_id', $actorStaff->id)->firstOrFail();
 
     $options = actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertOk();
-    expect($options->json('data.0.value'))->toBe($company->id);
+    expect($options->json('data.0.value'))->toBe($company->id)
+        ->and($options->json('default_company_id'))->toBe($company->id);
     $options = actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
     ])->getJson('/api/hr/attendance/company-options')->assertOk();
-    expect($options->json('data.0.value'))->toBe($company->id);
+    expect($options->json('data.0.value'))->toBe($company->id)
+        ->and($options->json('default_company_id'))->toBe($company->id);
     actingAs($user, 'api')->getJson('/api/hr/attendance/periods')->assertOk();
 
     actingAs($user, 'api')->withHeaders([

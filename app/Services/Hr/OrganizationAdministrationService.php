@@ -10,7 +10,7 @@ class OrganizationAdministrationService
     public function createUnit(array $data, string $companyId, string $actorUserId): array
     {
         return DB::transaction(function () use ($data, $companyId, $actorUserId) {
-            abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $payload = $this->unitPayload($data, $companyId);
             $checksum = $this->checksum(['command'=>'create_unit','payload'=>$payload,'reason'=>$data['reason']]);
             if ($replay = $this->replay($data['idempotency_key'], $checksum, $companyId, 'organization_unit')) return $replay;
@@ -32,7 +32,7 @@ class OrganizationAdministrationService
     public function updateUnit(string $unitId, array $data, string $companyId, string $actorUserId): array
     {
         return DB::transaction(function () use ($unitId, $data, $companyId, $actorUserId) {
-            abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $row = DB::table('hr_organization_units')->where('id',$unitId)->where('company_id',$companyId)->lockForUpdate()->first();
             abort_unless($row, 404, 'Organization unit was not found in your legal entity.');
             $payload = $this->unitPayload($data, $companyId, true);
@@ -55,7 +55,7 @@ class OrganizationAdministrationService
     public function createDefinition(array $data, string $companyId, string $actorUserId): array
     {
         return DB::transaction(function () use ($data,$companyId,$actorUserId) {
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $payload=$this->definitionPayload($data,$companyId);
             $checksum=$this->checksum(['command'=>'create_definition','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'custom_field_definition'))return$replay;
@@ -70,7 +70,7 @@ class OrganizationAdministrationService
     public function updateDefinition(string $definitionId,array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($definitionId,$data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $row=DB::table('hr_custom_field_definitions')->where('id',$definitionId)->where('company_id',$companyId)->lockForUpdate()->first();
             abort_unless($row,404,'Custom-field definition was not found in your legal entity.');
             $payload=$this->definitionPayload($data,$companyId,true);
@@ -89,7 +89,7 @@ class OrganizationAdministrationService
     public function createPayrollGroup(array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $payload=$this->payrollGroupPayload($data,$companyId);
             $checksum=$this->checksum(['command'=>'create_payroll_group','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'payroll_group'))return$replay;
@@ -105,7 +105,7 @@ class OrganizationAdministrationService
     public function updatePayrollGroup(string $groupId,array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($groupId,$data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $row=DB::table('hr_payroll_groups')->where('id',$groupId)->where('company_id',$companyId)->lockForUpdate()->first();
             abort_unless($row,404,'Payroll group was not found in your legal entity.');
             $payload=$this->payrollGroupPayload($data,$companyId,true);
@@ -131,7 +131,7 @@ class OrganizationAdministrationService
     public function createDocumentType(array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $payload=$this->documentTypePayload($data,$companyId);
             $checksum=$this->checksum(['command'=>'create_document_type','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'document_type'))return$replay;
@@ -147,7 +147,7 @@ class OrganizationAdministrationService
     public function updateDocumentType(string $typeId,array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($typeId,$data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $row=DB::table('hr_document_types')->where('id',$typeId)->where('company_id',$companyId)->lockForUpdate()->first();
             abort_unless($row,404,'Document type was not found in your legal entity.');
             $payload=$this->documentTypePayload($data,$companyId,true);
@@ -187,7 +187,7 @@ class OrganizationAdministrationService
     public function createWorkCalendar(array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($data,$companyId,$actorUserId){
-            abort_unless(DB::table('companies')->where('id',$companyId)->lockForUpdate()->first(),404,'Legal entity was not found.');
+            $this->lockActiveCompany($companyId);
             $payload=['company_id'=>$companyId,'code'=>$data['code'],'name'=>$data['name'],'timezone'=>$data['timezone'],'weekly_working_days'=>$data['weekly_working_days'],'effective_from'=>$data['effective_from'],'effective_until'=>$data['effective_until']??null];
             $checksum=$this->checksum(['command'=>'create_work_calendar','payload'=>$payload,'reason'=>$data['reason']]);
             if($replay=$this->replay($data['idempotency_key'],$checksum,$companyId,'work_calendar'))return$replay;
@@ -203,6 +203,7 @@ class OrganizationAdministrationService
     public function createWorkCalendarDay(string $calendarId,array $data,string $companyId,string $actorUserId):array
     {
         return DB::transaction(function()use($calendarId,$data,$companyId,$actorUserId){
+            $this->lockActiveCompany($companyId);
             $calendar=DB::table('hr_work_calendars')->where('id',$calendarId)->where('company_id',$companyId)->lockForUpdate()->first();
             abort_unless($calendar,404,'Work calendar was not found in your legal entity.');
             $payload=['calendar_date'=>$data['calendar_date'],'day_type'=>$data['day_type'],'name'=>$data['name']??null,'paid'=>$data['paid']];
@@ -281,6 +282,12 @@ class OrganizationAdministrationService
             })->exists();
             abort_if($conflict,422,'The organization-unit interval or status must continue to cover its active child units and positions.');
         }
+    }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'HR organization writes require an active legal entity.');
     }
 
     private function replay(string $key,string $checksum,string $companyId,string $aggregateType):?array

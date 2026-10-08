@@ -16,10 +16,14 @@ it('returns the active designated default company for attribution preselection',
 
     actingAs($admin, 'api')->getJson('/api/sales/attribution-administration-context')
         ->assertOk()->assertJsonPath('data.default_company_id', $company->id);
+    actingAs($admin, 'api')->getJson('/api/sales/attribution-company-options')
+        ->assertOk()->assertJsonPath('default_company_id', $company->id);
 
     DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
     actingAs($admin, 'api')->getJson('/api/sales/attribution-administration-context')
         ->assertOk()->assertJsonPath('data.default_company_id', null);
+    actingAs($admin, 'api')->getJson('/api/sales/attribution-company-options')
+        ->assertOk()->assertJsonPath('default_company_id', null);
 });
 
 it('searches and hydrates only companies in the actors effective attribution scope', function () {
@@ -45,7 +49,8 @@ it('searches and hydrates only companies in the actors effective attribution sco
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Attribution Company')
         ->assertJsonPath('data.data.0.metadata.city', 'Colombo')
-        ->assertJsonPath('data.data.0.metadata.is_default', false);
+        ->assertJsonPath('data.data.0.metadata.is_default', false)
+        ->assertJsonPath('default_company_id', null);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id);

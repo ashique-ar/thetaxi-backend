@@ -169,3 +169,14 @@ it('uses mapped or company-scoped resolved events and ignores quarantined rows',
     expect(fn () => $service->calculate($company->id, $staff->id, '2026-06-01', $admin->id))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class, 'The latest attendance result does not belong to the selected legal entity.');
 });
+
+it('refuses direct attendance result calculation when the company is inactive', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    config(['hr.features.attendance_results' => true]);
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+
+    expect(fn () => app(AttendanceResultService::class)->calculate($company->id, $staff->id, '2026-10-01', $admin->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class, 'Attendance result writes require an active legal entity.');
+    expect(DB::table('hr_attendance_daily_results')->where('company_id', $company->id)->exists())->toBeFalse();
+});

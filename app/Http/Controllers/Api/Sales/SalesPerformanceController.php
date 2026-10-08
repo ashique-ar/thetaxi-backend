@@ -14,6 +14,7 @@ use App\Services\Sales\SalesAlertReconciliationService;
 use App\Services\Sales\SalesPeriodCloseService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -70,7 +71,8 @@ class SalesPerformanceController extends Controller
             ->select('company_id')->distinct()->pluck('company_id');
         $companyLabels = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds)->orderBy('name')->get(['id', 'name', 'is_active'])
             ->map(fn ($company) => ['id' => $company->id, 'name' => $company->name, 'is_active' => (bool) $company->is_active]);
-        $defaultCompanyId = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)->where('is_default', true)->whereIn('id', $companyIds)->value('id');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $policies = SalesAlertPolicyVersion::query()->whereIn('company_id', $companyIds)->orderByDesc('effective_from')->orderByDesc('version')->get();
         $portfolioStatusPolicies = collect();
         if ($ids === null && ($request->user()->can('sales.performance.portfolio-status-policies.manage')
@@ -181,6 +183,8 @@ class SalesPerformanceController extends Controller
                 ->whereNull('employment_ended_at')->orWhere('employment_ended_at', '>', now())))
             ->when($profileIds !== null, fn ($query) => $query->whereIn('id', $profileIds))
             ->pluck('company_id')->filter()->unique()->values();
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->whereIn('id', $companyIds);
         if (! empty($data['selected_id'])) {
             $query->where('id', $data['selected_id']);
@@ -196,7 +200,7 @@ class SalesPerformanceController extends Controller
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive',
         ]);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function createTarget(Request $request, SalesPerformanceService $performance): JsonResponse

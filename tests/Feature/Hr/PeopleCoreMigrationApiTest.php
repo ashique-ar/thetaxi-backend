@@ -21,12 +21,50 @@ it('previews and commits one clean tenant legacy employment row then reconciles 
     $csv="employee_number,joined_at,service_date,confirmation_date\nLEG-001,2020-01-02,2020-01-02,2020-07-02\n";
     $preview=actingAs($admin,'api')->post('/api/hr/people/imports/preview',['file'=>UploadedFile::fake()->createWithContent('people.csv',$csv),'idempotency_key'=>'preview-clean-1']);
     $preview->assertCreated()->assertJsonPath('data.job.accepted_count',1)->assertJsonPath('data.job.rejected_count',0)->assertJsonPath('data.rows.0.outcome','accepted');
+    foreach (['normalized_payload','matched_staff_id','created_spell_id'] as $hidden) {
+        expect($preview->json('data.rows.0'))->not->toHaveKey($hidden);
+    }
+    expect($preview->json('data.rows.0'))->toMatchArray(['row_number'=>2,'employee_number'=>'LEG-001','outcome'=>'accepted','errors'=>null])
+        ->not->toHaveKey('source_row_key');
+    foreach (['disk','path','request_checksum','idempotency_key','created_by','committed_by','created_user_id','updated_user_id'] as $hidden) {
+        expect($preview->json('data.job'))->not->toHaveKey($hidden);
+    }
     $jobId=$preview->json('data.job.id');$checksum=$preview->json('data.job.file_checksum');
     actingAs($admin,'api')->postJson("/api/hr/people/imports/{$jobId}/commit",['expected_file_checksum'=>$checksum])->assertOk()->assertJsonPath('data.job.status','committed');
     $spell=HrEmploymentSpell::where('staff_id',$staff->id)->sole();
     expect($spell->joined_at->toDateString())->toBe('2020-01-02')->and($spell->prior_service_decisions['legacy_import'])->toBeTrue();
     $before=(int)$preview->json('data.job.reconciliation_totals.before.issues.activeMissingSpell');
     actingAs($admin,'api')->getJson('/api/hr/people/reconciliation')->assertOk()->assertJsonPath('data.issues.activeMissingSpell',$before-1);
+});
+
+it('requires the locked active company for People Core import and export writes', function () {
+    [$actor, $company] = hr_seed_admin_actor();
+    config(['hr.features.people_core' => true]);
+    Storage::fake('hr_private');
+    $staff = Staff::factory()->create(['company_id' => $company->id, 'code' => 'LOCK-001']);
+    $csv = "employee_number,joined_at,service_date,confirmation_date\nLOCK-001,2020-01-02,2020-01-02,2020-07-02\n";
+    $service = app(\App\Services\Hr\PeopleCoreMigrationService::class);
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    expect(fn () => $service->preview(UploadedFile::fake()->createWithContent('people.csv', $csv), (string) $company->id, (string) $actor->id, 'inactive-preview'))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
+        ->and(fn () => $service->export((string) $company->id, (string) $actor->id, 'inactive-export'))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
+        ->and(fn () => $service->detectDuplicates((string) $company->id, (string) $actor->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+    expect(DB::table('hr_people_import_jobs')->count())->toBe(0)
+        ->and(DB::table('hr_people_exports')->count())->toBe(0);
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => true]);
+    $job = $service->preview(UploadedFile::fake()->createWithContent('people.csv', $csv), (string) $company->id, (string) $actor->id, 'active-preview');
+    $export = $service->export((string) $company->id, (string) $actor->id, 'active-export');
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+
+    expect(fn () => $service->commit($job, (string) $company->id, (string) $actor->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
+        ->and(fn () => $service->download($export, (string) $company->id, (string) $actor->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+    $this->assertDatabaseMissing('hr_employment_spells', ['staff_id' => $staff->id]);
 });
 
 it('retains ambiguous and invalid legacy rows as rejected evidence and refuses commit', function () {
@@ -42,7 +80,14 @@ it('generates and downloads an integrity checked private tenant export', functio
     [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
     Staff::factory()->create(['company_id'=>$company->id,'code'=>'EXP-001']);
     $created=actingAs($admin,'api')->postJson('/api/hr/people/exports',['idempotency_key'=>'export-1'])->assertCreated();
-    $id=$created->json('data.id');Storage::disk('hr_private')->assertExists($created->json('data.path'));
+    $id=$created->json('data.id');
+    foreach (['disk','path','file_checksum','scope_checksum','idempotency_key','generated_by','last_downloaded_by','created_user_id','updated_user_id'] as $hidden) {
+        expect($created->json('data'))->not->toHaveKey($hidden);
+    }
+    $replay=actingAs($admin,'api')->postJson('/api/hr/people/exports',['idempotency_key'=>'export-1'])->assertCreated();
+    expect($replay->json('data.id'))->toBe($id)
+        ->and(DB::table('hr_people_exports')->count())->toBe(1);
+    Storage::disk('hr_private')->assertExists(DB::table('hr_people_exports')->where('id',$id)->value('path'));
     actingAs($admin,'api')->get("/api/hr/people/exports/{$id}/download")->assertOk()->assertHeader('content-type','text/csv; charset=UTF-8');
 });
 

@@ -26,7 +26,7 @@ class PeopleCoreService
         if (! config('hr.features.people_core', false)) return $staff;
         if (! $staff->company_id) return $staff;
         return DB::transaction(function () use ($staff, $input, $actorUserId) {
-            abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');
+            abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Staff initialization requires an active legal entity.');
             $staff = Staff::query()->lockForUpdate()->findOrFail($staff->id);
             $this->numbers->allocate($staff, $actorUserId, $input['code'] ?? null, $input['employee_number_override_reason'] ?? null);
             $this->assertEmploymentType($input['employment_type_id'] ?? null, $staff->company_id);
@@ -68,7 +68,10 @@ class PeopleCoreService
     {
         abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
         return DB::transaction(function () use ($staff, $data, $actorUserId) {
+            $companyId = (string) $staff->company_id;
+            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Rehire requires an active legal entity.');
             $staff = Staff::withTrashed()->whereKey($staff->id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $staff->company_id === $companyId, 409, 'The employee legal entity changed; reload the rehire review.');
             abort_unless($staff->trashed() || $staff->employment_ended_at, 422, 'Only a former employee can enter rehire review.');
             $prior = HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','terminated')->latest('spell_number')->lockForUpdate()->firstOrFail();
             $checksum=hash('sha256',json_encode(['staff_id'=>$staff->id,'prior_spell_id'=>$prior->id,'data'=>$data],JSON_UNESCAPED_SLASHES));
@@ -91,9 +94,21 @@ class PeopleCoreService
     {
         abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
         return DB::transaction(function () use ($case,$assignment,$actorUserId) {
-            abort_unless(DB::table('companies')->where('id',$case->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');
+            abort_unless(DB::table('companies')->where('id',$case->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Rehire requires an active legal entity.');
             $case=HrRehireCase::query()->lockForUpdate()->findOrFail($case->id);
-            if ($case->status==='approved') return $case;
+            $approvalPayload = array_map(fn (string $field) => $assignment[$field] ?? null, [
+                'employment_type_id', 'position_id', 'organization_unit_id', 'manager_staff_id',
+                'cost_centre_code', 'location_code', 'payroll_group_code', 'default_shift_code', 'work_pattern_code',
+            ]);
+            $approvalChecksum = hash('sha256', json_encode($approvalPayload, JSON_THROW_ON_ERROR));
+            if ($case->status === 'approved') {
+                abort_unless($case->approved_by === $actorUserId
+                    && $case->approval_payload_checksum !== null
+                    && hash_equals($case->approval_payload_checksum, $approvalChecksum),
+                    409,
+                    'Approved rehire can only be replayed by the same approver with the same assignment facts.');
+                return $case;
+            }
             abort_unless($case->status==='pending_approval',422,'Rehire case is not pending approval.');
             abort_if($case->prepared_by===$actorUserId,403,'Rehire preparer and approver must be different users.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($case->staff_id);
@@ -109,7 +124,7 @@ class PeopleCoreService
                 $context->update(['is_active'=>true,'updated_user_id'=>$actorUserId]);
                 $context->roles()->get()->each(fn ($role) => $this->contexts->assignRolesToContext($staff->user,$context,[$role->id]));
             }
-            $case->update(['status'=>'approved','approved_by'=>$actorUserId,'approved_at'=>now(),'new_spell_id'=>$spell->id]);
+            $case->update(['status'=>'approved','approved_by'=>$actorUserId,'approved_at'=>now(),'new_spell_id'=>$spell->id,'approval_payload_checksum'=>$approvalChecksum]);
             $this->timeline($staff,$spell,'employment','employee_rehired','Employee rehired',['retained_employee_number'=>$staff->code,'prior_spell_id'=>$case->prior_spell_id,'prior_service_decisions'=>$case->prior_service_decisions],"rehire-approved:{$case->id}",now());
             return $case->refresh();
         });
@@ -135,7 +150,9 @@ class PeopleCoreService
     {
         abort_unless(config('hr.features.people_core',false),409,'HR People Core writes are not enabled.');
         return DB::transaction(function()use($staff,$data,$actorUserId){
-            $staff=Staff::withTrashed()->whereKey($staff->id)->where('company_id',$staff->company_id)->lockForUpdate()->firstOrFail();
+            $companyId = (string) $staff->company_id;
+            abort_unless(DB::table('companies')->where('id',$companyId)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Employee records require an active legal entity.');
+            $staff=Staff::withTrashed()->whereKey($staff->id)->where('company_id',$companyId)->lockForUpdate()->firstOrFail();
             if(!empty($data['employment_spell_id']))abort_unless(HrEmploymentSpell::query()->whereKey($data['employment_spell_id'])->where('staff_id',$staff->id)->where('company_id',$staff->company_id)->exists(),422,'The employment spell does not belong to this employee.');
             if(!empty($data['evidence_file_id']))abort_unless(DB::table('domain_evidence_files')->where('id',$data['evidence_file_id'])->where('company_id',$staff->company_id)->where('domain','hr')->whereNull('deleted_at')->lockForUpdate()->first(),422,'Employee-record evidence must be an active HR file from the same legal entity.');
             $row=HrEmployeeRecord::create($data+['staff_id'=>$staff->id]);

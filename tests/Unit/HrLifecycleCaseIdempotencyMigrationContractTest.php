@@ -7,6 +7,6 @@ it('keeps lifecycle retry keys tenant-unique and refuses rollback after use', fu
         ->toContain("unique(['company_id', 'idempotency_key']")
         ->toContain('CREATE UNIQUE INDEX ')
         ->toContain('ON hr_lifecycle_cases (company_id, idempotency_key) WHERE idempotency_key IS NOT NULL')
-        ->toContain("whereNotNull('idempotency_key')->exists()")
+        ->toContain("whereNotNull('idempotency_key')->orWhereNotNull('request_payload_checksum')->exists()")
         ->toContain('Cannot remove lifecycle case idempotency evidence while requests reference it.');
 });

@@ -58,6 +58,13 @@ return new class extends Migration
             throw new \LogicException('Refusing to drop legal_hold while a document remains under legal hold.');
         }
 
+        if (DB::table('documents')->whereNotNull('employment_spell_id')->exists()) {
+            throw new \LogicException('Refusing to remove retained employment-spell document links.');
+        }
+        if (DB::table('hr_document_types')->exists()) {
+            throw new \LogicException('Refusing to remove populated HR document-type definitions.');
+        }
+
         Schema::dropIfExists('hr_document_types');
         Schema::table('documents', function (Blueprint $table) {
             $table->dropColumn('legal_hold');

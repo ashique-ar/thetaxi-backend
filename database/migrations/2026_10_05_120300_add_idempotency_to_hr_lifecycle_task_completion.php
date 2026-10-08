@@ -32,7 +32,7 @@ return new class extends Migration
     public function down(): void
     {
         if (! Schema::hasColumn('hr_lifecycle_tasks', 'idempotency_key')) return;
-        if (DB::table('hr_lifecycle_tasks')->whereNotNull('idempotency_key')->exists()) {
+        if (DB::table('hr_lifecycle_tasks')->whereNotNull('idempotency_key')->orWhereNotNull('completion_checksum')->exists()) {
             throw new RuntimeException('Cannot remove lifecycle completion evidence while requests reference it.');
         }
 

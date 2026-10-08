@@ -25,9 +25,24 @@ class ActingAppointmentController extends Controller
             ->where('appointment.company_id', $companyId)->whereIn('appointment.staff_id', $authorizedStaff)->when($data['status'] ?? null, fn ($query, $status) => $query->where('appointment.status', $status))
             ->when($data['staff_id'] ?? null, fn ($query, $staffId) => $query->where('appointment.staff_id', $staffId))
             ->when($data['effective_at'] ?? null, fn ($query, $date) => $query->where('appointment.effective_from', '<=', $date)->where('appointment.effective_until', '>', $date))
-            ->select(['appointment.id', 'appointment.staff_id', 'appointment.acting_position_id', 'appointment.acting_manager_staff_id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'appointment.reason', 'appointment.requested_by', 'appointment.approved_by', 'appointment.approved_at', 'appointment.acting_assignment_id', 'appointment.restoration_assignment_id', 'employee.code as employee_number', 'employee_user.first_name as employee_first_name', 'employee_user.last_name as employee_last_name', 'position.position_number', 'position.title as position_title'])
+            ->select(['appointment.id', 'appointment.effective_from', 'appointment.effective_until', 'appointment.status', 'appointment.version', 'appointment.reason', 'employee.code as employee_number', 'employee_user.first_name as employee_first_name', 'employee_user.last_name as employee_last_name', 'position.position_number', 'position.title as position_title'])
+            ->selectRaw('CASE WHEN appointment.restoration_assignment_id IS NULL THEN 0 ELSE 1 END as has_restoration')
             ->orderByDesc('appointment.effective_from')->orderBy('appointment.id')->paginate((int) ($data['per_page'] ?? 25));
-        if (! $request->user()->can('hr.acting-appointments.manage') && ! $request->user()->can('hr.acting-appointments.approve')) $rows->getCollection()->transform(function ($row) { $row->reason = null; $row->requested_by = null; $row->approved_by = null; return $row; });
+        $canViewReason = $request->user()->can('hr.acting-appointments.manage') || $request->user()->can('hr.acting-appointments.approve');
+        $rows->getCollection()->transform(fn ($row) => [
+            'id' => (string) $row->id,
+            'effective_from' => $row->effective_from,
+            'effective_until' => $row->effective_until,
+            'status' => $row->status,
+            'version' => (int) $row->version,
+            'reason' => $canViewReason ? $row->reason : null,
+            'employee_number' => $row->employee_number,
+            'employee_first_name' => $row->employee_first_name,
+            'employee_last_name' => $row->employee_last_name,
+            'position_number' => $row->position_number,
+            'position_title' => $row->position_title,
+            'has_restoration' => (bool) $row->has_restoration,
+        ]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
 
@@ -90,7 +105,7 @@ class ActingAppointmentController extends Controller
         $data = $request->validate(['staff_id' => ['required', 'uuid'], 'acting_position_id' => ['required', 'uuid'], 'acting_manager_staff_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['required', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $staff = Staff::query()->whereKey($data['staff_id'])->firstOrFail();
         $this->access->authorize($request->user(), $staff);
-        return response()->json(['status' => 'success', 'data' => $this->appointments->create($data, $this->access->actorCompanyId($request->user()), (string) $request->user()->id)], 201);
+        return response()->json(['status' => 'success', 'data' => $this->commandResponse($this->appointments->create($data, $this->access->actorCompanyId($request->user()), (string) $request->user()->id))], 201);
     }
 
     public function approve(Request $request, string $appointmentId): JsonResponse
@@ -101,7 +116,19 @@ class ActingAppointmentController extends Controller
         $appointment = DB::table('hr_acting_appointments')->where('id', $appointmentId)->where('company_id', $companyId)->first();
         abort_unless($appointment, 404, 'Acting appointment was not found in your legal entity.');
         $this->access->authorize($request->user(), Staff::query()->whereKey($appointment->staff_id)->firstOrFail());
-        return response()->json(['status' => 'success', 'data' => $this->appointments->approve($appointmentId, $data, $companyId, (string) $request->user()->id)]);
+        return response()->json(['status' => 'success', 'data' => $this->commandResponse($this->appointments->approve($appointmentId, $data, $companyId, (string) $request->user()->id))]);
+    }
+
+    private function commandResponse(array $appointment): array
+    {
+        return [
+            'id' => (string) $appointment['id'],
+            'effective_from' => $appointment['effective_from'],
+            'effective_until' => $appointment['effective_until'],
+            'status' => $appointment['status'],
+            'version' => (int) $appointment['version'],
+            'has_restoration' => ! empty($appointment['restoration_assignment_id']),
+        ];
     }
 
     private function enabled(): void

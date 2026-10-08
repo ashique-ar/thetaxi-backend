@@ -92,12 +92,20 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
     actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
         'person_mapping_id' => (string) Str::uuid(), 'reason' => 'Missing mapping must be hidden.',
     ])->assertNotFound();
+    $resolution = ['person_mapping_id' => $eligibleId, 'reason' => 'Reviewed against the device record.'];
+    actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", $resolution)->assertOk()
+        ->assertJsonMissingPath('data.resolution_reason')
+        ->assertJsonMissingPath('data.resolved_mapping_id');
+    actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", $resolution)->assertOk();
     actingAs($admin, 'api')->postJson("/api/hr/attendance/quarantine/{$itemId}/resolve", [
-        'person_mapping_id' => $eligibleId, 'reason' => 'Reviewed against the device record.',
-    ])->assertOk();
+        'person_mapping_id' => $eligibleId, 'reason' => 'Changed retry reason.',
+    ])->assertConflict();
 
     $after = DB::table('hr_attendance_raw_events')->where('id', $eventId)->first();
     expect($after->mapping_status)->toBe($before->mapping_status)
         ->and($after->provider_person_id)->toBe($before->provider_person_id)
         ->and(DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->value('resolved_mapping_id'))->toBe($eligibleId);
+    $resolutionAudits = DB::table('activity_log')->where('log_name', 'hr-attendance')->where('description', 'attendance_quarantine_resolved')->get();
+    expect($resolutionAudits)->toHaveCount(1)
+        ->and(json_decode($resolutionAudits->first()->properties, true))->toBe(['company_id' => $company->id, 'status' => 'resolved']);
 });

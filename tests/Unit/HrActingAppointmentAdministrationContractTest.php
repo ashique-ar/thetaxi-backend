@@ -48,7 +48,21 @@ it('scopes list and reference names through current People access and retains em
         ->toContain("whereIn('appointment.staff_id', \$authorizedStaff)")
         ->toContain("whereIn('staff.id', \$this->access->scope")
         ->toContain("authorize(\$request->user(), Staff::query()->whereKey(\$appointment->staff_id)->firstOrFail())")
-        ->and($people)->toContain("'acting_appointments' => \$actingAppointments,");
+        ->and($people)->toContain("'acting_appointments' => \$actingAppointments,")
+        ->toContain('as has_restoration');
+    expect($people)->not->toContain('appointment.acting_assignment_id', 'appointment.restoration_assignment_id');
+});
+
+it('keeps acting appointment register and command responses free of linked-record identifiers and snapshots', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/ActingAppointmentController.php'));
+    preg_match('/->select\(\[(.*?)\]\)\s*->selectRaw/s', $controller, $selection);
+
+    expect($controller)->toContain("'has_restoration' => (bool) $row->has_restoration")
+        ->toContain('$this->commandResponse($this->appointments->create(')
+        ->toContain('$this->commandResponse($this->appointments->approve(')
+        ->and($selection[1] ?? '')->not->toContain('staff_id', 'acting_position_id', 'acting_assignment_id', 'restoration_assignment_id', 'requested_by', 'approved_by');
+    $response = substr($controller, strpos($controller, 'private function commandResponse'), strpos($controller, 'private function enabled') - strpos($controller, 'private function commandResponse'));
+    expect($response)->not->toContain("'company_id' =>", "'staff_id' =>", "'acting_assignment_id' =>", "'restoration_assignment_id' =>", "'snapshot' =>", "'reason' =>", "'actor' =>", "'idempotency_key' =>", "'checksum' =>");
 });
 
 it('uses bounded readable selectors for acting-appointment employee manager and position choices', function () {

@@ -38,6 +38,15 @@ it('keeps encrypted employee records and profile details out of activity logs', 
         'source' => 'staff_self_service',
     ], $actor->id);
     $profile = app(PeopleCoreService::class)->addProfileVersion($staff, ['address' => $payloadMarker], $reasonMarker, $actor->id);
+    DB::table('hr_employee_records')->where('id', $record->id)->update(['verified_by' => $actor->id]);
+    $record->refresh();
+    $record->makeVisible('encrypted_data');
+    $profile->makeVisible('encrypted_profile');
+    expect($record->toArray())->toHaveKey('encrypted_data')->not->toHaveKey('verified_by')
+        ->and($profile->toArray())->toHaveKey('encrypted_profile')
+        ->not->toHaveKey('profile_checksum')
+        ->not->toHaveKey('change_reason')
+        ->not->toHaveKey('changed_by');
 
     $aliasNumber = 'private-employee-number-alias';
     $alias = HrEmployeeNumberAlias::create([
@@ -52,6 +61,8 @@ it('keeps encrypted employee records and profile details out of activity logs', 
     ]);
     expect(fn () => $alias->update(['employee_number' => 'reassigned-number']))
         ->toThrow(LogicException::class, 'Employee-number aliases are immutable history.');
+    expect(fn () => $alias->delete())
+        ->toThrow(LogicException::class, 'This record cannot be deleted.');
     $this->assertDatabaseHas('hr_employee_number_aliases', [
         'id' => $alias->id,
         'employee_number' => $aliasNumber,
@@ -120,6 +131,7 @@ it('keeps HR history snapshots out of activity logs', function () {
     $actor = User::factory()->create();
     $company = Company::create(['name' => 'HR history audit company', 'is_active' => true, 'is_default' => true]);
     $staff = Staff::factory()->create(['company_id' => $company->id]);
+    $privateMarker = 'private-hr-history-snapshot';
     $spell = HrEmploymentSpell::create([
         'staff_id' => $staff->id,
         'company_id' => $company->id,
@@ -127,9 +139,11 @@ it('keeps HR history snapshots out of activity logs', function () {
         'joined_at' => '2025-01-01',
         'service_date' => '2025-01-01',
         'gratuity_service_start' => '2025-01-01',
+        'termination_reason' => $privateMarker,
+        'gratuity_service_decision' => $privateMarker,
+        'prior_service_decisions' => ['private' => $privateMarker],
         'created_user_id' => $actor->id,
     ]);
-    $privateMarker = 'private-hr-history-snapshot';
     $manager = Staff::factory()->create(['company_id' => $company->id]);
     $reportingLine = HrReportingLine::create([
         'company_id' => $company->id,
@@ -149,7 +163,21 @@ it('keeps HR history snapshots out of activity logs', function () {
         'effective_from' => '2025-01-01',
         'change_reason' => $privateMarker,
         'snapshot' => ['private' => $privateMarker],
+        'created_user_id' => $actor->id,
+        'updated_user_id' => $actor->id,
+        'approved_by' => $actor->id,
     ]);
+    $spell->refresh();
+    $assignment->refresh();
+    expect($spell->toArray())->not->toHaveKey('created_user_id')
+        ->not->toHaveKey('termination_reason')
+        ->not->toHaveKey('gratuity_service_decision')
+        ->not->toHaveKey('prior_service_decisions')
+        ->and($assignment->toArray())->not->toHaveKey('created_user_id')
+        ->not->toHaveKey('updated_user_id')
+        ->not->toHaveKey('approved_by')
+        ->not->toHaveKey('change_reason')
+        ->not->toHaveKey('snapshot');
     $event = HrEmployeeTimelineEvent::create([
         'staff_id' => $staff->id,
         'employment_spell_id' => $spell->id,
@@ -164,6 +192,9 @@ it('keeps HR history snapshots out of activity logs', function () {
         'recorded_at' => now(),
         'idempotency_key' => 'private-timeline-event-key',
     ]);
+    expect($event->toArray())->not->toHaveKey('source_id')
+        ->not->toHaveKey('safe_summary')
+        ->not->toHaveKey('idempotency_key');
     $case = HrRehireCase::create([
         'staff_id' => $staff->id,
         'company_id' => $company->id,
@@ -215,4 +246,20 @@ it('keeps HR history snapshots out of activity logs', function () {
         ->and($rehireAudit)->not->toContain($privateMarker)
         ->and($rehireAudit)->not->toContain('private-rehire-idempotency-key')
         ->and($rehireAudit)->not->toContain(hash('sha256', $privateMarker));
+});
+
+it('refuses to add an employee record to an inactive company', function () {
+    config(['hr.features.people_core' => true]);
+    $company = Company::create(['name' => 'Inactive HR records company', 'is_active' => false, 'is_default' => false]);
+    $staff = Staff::factory()->create(['company_id' => $company->id]);
+
+    expect(fn () => app(PeopleCoreService::class)->addEmployeeRecord($staff, [
+        'record_type' => 'qualification',
+        'title' => 'Qualification record',
+        'encrypted_data' => ['value' => 'private'],
+        'confidentiality' => 'hr_private',
+        'source' => 'hr_entry',
+    ], (string) $staff->user_id))->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+
+    $this->assertDatabaseMissing('hr_employee_records', ['staff_id' => $staff->id]);
 });

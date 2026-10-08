@@ -7,6 +7,6 @@ it('keeps task completion replay keys unique and protects used evidence from rol
         ->toContain("unique('idempotency_key'")
         ->toContain('CREATE UNIQUE INDEX ')
         ->toContain('ON hr_lifecycle_tasks (idempotency_key) WHERE idempotency_key IS NOT NULL')
-        ->toContain("whereNotNull('idempotency_key')->exists()")
+        ->toContain("whereNotNull('idempotency_key')->orWhereNotNull('completion_checksum')->exists()")
         ->toContain('Cannot remove lifecycle completion evidence while requests reference it.');
 });

@@ -29,21 +29,27 @@ class AttendanceIngestionService
     {
         abort_unless(config('hr.features.attendance_ingestion', false), 409, 'HR attendance ingestion is not enabled.');
         $connector = AttendanceConnector::query()->where('connector_key', $headers['connector_key'])->where('status', 'active')->firstOrFail();
+        abort_unless(DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance ingestion requires an active legal entity.');
         $this->verify($connector, $headers, $rawBody, $sourceIp);
         $checksum = hash('sha256', $rawBody);
         if ($existing = DB::table('hr_attendance_ingestion_requests')->where('request_id', $headers['request_id'])->first()) {
+            abort_unless((string) $existing->connector_id === (string) $connector->id, 409, 'Ingestion request ID is already associated with another connector.');
             abort_unless(hash_equals($existing->payload_checksum, $checksum), 409, 'Ingestion request ID was reused with a different payload.');
             return ['request_id' => $existing->request_id, 'status' => $existing->status, 'idempotent_replay' => true];
         }
         abort_if(DB::table('hr_attendance_ingestion_requests')->where('nonce', $headers['nonce'])->exists(), 409, 'Attendance ingestion nonce was already used.');
         return DB::transaction(function () use ($connector, $headers, $events, $sourceIp, $checksum) {
+            $company = DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 409, 'Attendance ingestion requires an active legal entity.');
+            $currentConnector = AttendanceConnector::query()->whereKey($connector->id)->where('company_id', $company->id)->where('status', 'active')->lockForUpdate()->firstOrFail();
+            abort_unless(hash_equals($connector->signing_secret, $currentConnector->signing_secret), 401, 'Attendance connector credentials changed; sign the request again.');
             $requestId = (string) Str::uuid();
             DB::table('hr_attendance_ingestion_requests')->insert(['id' => $requestId, 'connector_id' => $connector->id, 'request_id' => $headers['request_id'], 'nonce' => $headers['nonce'], 'signed_at' => CarbonImmutable::parse($headers['signed_at']), 'received_at' => now(), 'payload_checksum' => $checksum, 'event_count' => count($events), 'status' => 'processing', 'source_ip' => $sourceIp, 'created_at' => now(), 'updated_at' => now()]);
             $counts = ['created' => 0, 'duplicate' => 0, 'quarantined' => 0];
             foreach ($events as $event)
-                $this->ingestEvent($connector, $requestId, $event, $counts);
+                $this->ingestEvent($currentConnector, $requestId, $event, $counts);
             DB::table('hr_attendance_ingestion_requests')->where('id', $requestId)->update(['status' => 'accepted', 'updated_at' => now()]);
-            $connector->update(['last_heartbeat_at' => now()]);
+            $currentConnector->update(['last_heartbeat_at' => now()]);
             return ['request_id' => $headers['request_id'], 'status' => 'accepted', 'counts' => $counts, 'idempotent_replay' => false];
         });
     }

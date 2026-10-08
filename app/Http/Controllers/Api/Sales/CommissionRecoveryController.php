@@ -7,6 +7,7 @@ use App\Models\Sales\SalesCommissionRecoveryCase;
 use App\Services\Sales\CommissionRecoveryService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\PermissionEvaluator;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -26,10 +27,11 @@ class CommissionRecoveryController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->access->companyIds($request->user(), 'sales.commission-recoveries.view-all');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->select(['id', 'name', 'is_default']);
-        $defaultCompanyId = (clone $query)->where('is_default', true)->value('id');
         $options = (clone $query)
             ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('id', $id))
             ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {

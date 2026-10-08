@@ -62,6 +62,10 @@ return new class extends Migration
             || (Schema::hasTable('hr_custom_field_value_access_events') && DB::table('hr_custom_field_value_access_events')->exists())) {
             throw new RuntimeException('Custom-field value or access history exists; disable the feature instead of removing retained encrypted Staff evidence.');
         }
+        if (DB::table('hr_custom_field_values')->whereNotNull('value_checksum')
+            ->orWhereNotNull('effective_from')->orWhereNotNull('change_reason')->exists()) {
+            throw new RuntimeException('Custom-field values contain checksum, effective-date or change-reason evidence; export and reconcile it before rollback.');
+        }
 
         Schema::dropIfExists('hr_custom_field_value_access_events');
         Schema::dropIfExists('hr_custom_field_value_events');

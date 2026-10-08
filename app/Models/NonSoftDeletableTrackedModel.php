@@ -28,7 +28,7 @@ abstract class NonSoftDeletableTrackedModel extends BaseModel
 
     public static function bootSoftDeletes(): void
     {
-        // These tables have selected user-tracking columns but no deleted_at column.
+        // Compatibility tables may retain deleted_at; model deletion stays disabled, with filtering explicit per model.
     }
 
     protected function performDeleteOnModel(): ?bool

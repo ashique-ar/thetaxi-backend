@@ -3,13 +3,14 @@
 use App\Models\Company;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
 it('returns only active searchable legal entity labels and minimal fields', function () {
-    [$admin] = hr_seed_admin_actor();
+    [$admin, $default] = hr_seed_admin_actor();
     $admin->givePermissionTo('companies.view');
     $company = Company::create([
         'name' => 'Selector Search Entity',
@@ -22,7 +23,7 @@ it('returns only active searchable legal entity labels and minimal fields', func
 
     $response = actingAs($admin, 'api')->getJson('/api/companies/options?search=Selector%20Search');
     $response->assertOk()->assertJsonPath('status', 'success')->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $company->id)
-        ->assertJsonPath('data.0.name', 'Selector Search Entity');
+        ->assertJsonPath('data.0.name', 'Selector Search Entity')->assertJsonPath('default_company_id', $default->id);
     $this->assertEqualsCanonicalizing(['id', 'is_active', 'is_default', 'name'], array_keys($response->json('data.0')));
 
     actingAs($admin, 'api')->getJson('/api/companies/'.$company->id.'/option')->assertOk()
@@ -30,6 +31,17 @@ it('returns only active searchable legal entity labels and minimal fields', func
         ->assertJsonPath('data.id', $company->id)
         ->assertJsonMissingPath('data.email')
         ->assertJsonMissingPath('data.address');
+});
+
+it('keeps one canonical default when the database rejects a second default', function () {
+    [$admin, $default] = hr_seed_admin_actor();
+    $admin->givePermissionTo('companies.view');
+    $other = Company::create(['name' => 'Second active entity', 'is_active' => true]);
+    expect(fn () => DB::table('companies')->where('id', $other->id)->update(['is_default' => true]))
+        ->toThrow(\Illuminate\Database\QueryException::class);
+
+    actingAs($admin, 'api')->getJson('/api/companies/options')
+        ->assertOk()->assertJsonPath('default_company_id', $default->id);
 });
 
 it('requires company and system view permissions for legal entity options', function () {
@@ -84,16 +96,36 @@ it('normalizes a null active flag when creating a company', function () {
     ]);
 });
 
-it('sets the first active company as default even when the form flag is false', function () {
+it('does not infer the first active company as default when the form flag is false', function () {
     (new \Database\Seeders\AllPermissionsSeeder())->run();
     $admin = User::factory()->create();
     $admin->assignRole('admin');
 
-    actingAs($admin, 'api')->postJson('/api/companies', [
+    $response = actingAs($admin, 'api')->postJson('/api/companies', [
         'name' => 'First active company',
         'is_active' => true,
         'is_default' => false,
+    ])->assertCreated()->assertJsonPath('data.is_default', false);
+
+    $this->assertDatabaseHas('companies', [
+        'id' => $response->json('data.id'),
+        'is_active' => true,
+        'is_default' => false,
+    ]);
+    actingAs($admin, 'api')->getJson('/api/companies/options')
+        ->assertOk()->assertJsonPath('default_company_id', null);
+
+    $selected = actingAs($admin, 'api')->postJson('/api/companies', [
+        'name' => 'Explicit default company',
+        'is_active' => true,
+        'is_default' => true,
     ])->assertCreated()->assertJsonPath('data.is_default', true);
+    $this->assertDatabaseHas('companies', [
+        'id' => $response->json('data.id'),
+        'is_default' => false,
+    ]);
+    actingAs($admin, 'api')->getJson('/api/companies/options')
+        ->assertOk()->assertJsonPath('default_company_id', $selected->json('data.id'));
 });
 
 it('preserves the active default when an update sends a null active flag', function () {

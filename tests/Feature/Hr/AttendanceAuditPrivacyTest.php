@@ -11,6 +11,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use LogicException;
+use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
@@ -109,5 +110,30 @@ it('keeps attendance credentials, raw punch data and employee identifiers out of
         ->and($audit)->not->toContain('private-raw-punch-payload')
         ->and($audit)->not->toContain('private-attendance-rule-snapshot');
 
+    actingAs($actor, 'api');
+    $trackedResult = AttendanceDailyResult::create([
+        'company_id' => $company->id,
+        'staff_id' => $staff->id,
+        'work_date' => $now->toDateString(),
+        'result_version' => 2,
+        'supersedes_id' => $result->id,
+        'day_status' => 'present',
+        'source_kind' => 'device_events',
+        'calculated_at' => $now,
+        'calculated_by' => $actor->id,
+        'input_checksum' => str_repeat('e', 64),
+        'result_checksum' => str_repeat('f', 64),
+        'rule_snapshot' => [],
+    ]);
+    expect(DB::table('hr_attendance_daily_results')->where('id', $trackedResult->id)->value('created_user_id'))
+        ->toBe($actor->id)
+        ->and(DB::table('hr_attendance_daily_results')->where('id', $trackedResult->id)->value('calculated_by'))->toBe($actor->id)
+        ->and($trackedResult->toArray())->not->toHaveKey('calculated_by')
+        ->and($trackedResult->toArray())->not->toHaveKey('created_user_id')
+        ->and($trackedResult->toArray())->not->toHaveKey('updated_user_id');
+
+    expect(fn () => $trackedResult->update(['day_status' => 'absent']))
+        ->toThrow(LogicException::class, 'Attendance result versions are immutable.');
+    expect(DB::table('hr_attendance_daily_results')->where('id', $trackedResult->id)->value('day_status'))->toBe('present');
     expect(fn () => $result->delete())->toThrow(LogicException::class, 'Attendance result versions cannot be deleted.');
 });

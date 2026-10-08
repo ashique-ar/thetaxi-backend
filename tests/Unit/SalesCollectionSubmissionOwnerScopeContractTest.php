@@ -37,6 +37,13 @@ it('locks the authenticated collection owner and revalidates bound evidence on e
         ->and(strpos($submit, 'abort_unless($owner'))
         ->toBeLessThan(strpos($submit, "if (! empty(\$data['evidence_file_id']))"));
 
+    expect($submit)
+        ->toContain("DB::table('companies')->where('id', \$profile->company_id)")
+        ->toContain("->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first()")
+        ->toContain('Collection submission requires an active legal entity.')
+        ->and(strpos($submit, "DB::table('companies')"))
+        ->toBeLessThan(strpos($submit, 'Booking::query()->lockForUpdate()'));
+
     expect($uploadScope)
         ->toContain("whereColumn('profile.company_id', 'staff.company_id')")
         ->toContain("where('profile.collection_eligible', true)")
@@ -70,6 +77,12 @@ it('uses immutable submitter evidence for separation of duties and guards migrat
     $migration = file_get_contents(base_path('database/migrations/2026_10_04_000003_add_immutable_submitter_identity_to_collection_submissions.php'));
 
     expect($verify)
+        ->toContain("DB::table('companies')->where('id', \$submission->company_id)")
+        ->toContain("->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first()")
+        ->toContain('Collection verification requires an active legal entity.')
+        ->and(strpos($verify, "DB::table('companies')"))
+        ->toBeLessThan(strpos($verify, 'Booking::query()->whereKey($submission->booking_id)->lockForUpdate()'))
+        ->and($verify)
         ->toContain('$submission->submitted_by_staff_id && $submission->submitted_by_user_id')
         ->toContain('(string) $submission->submitted_by_user_id === (string) $actorUserId')
         ->toContain('immutable submitter identity; resolve its history before deciding.')

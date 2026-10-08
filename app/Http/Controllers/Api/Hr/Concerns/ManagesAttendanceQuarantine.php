@@ -106,7 +106,15 @@ trait ManagesAttendanceQuarantine
                 ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
             abort_unless($item, 404);
             if ($item->status === 'resolved') {
-                return response()->json(['status' => 'success', 'data' => $item]);
+                abort_unless((string) $item->resolved_by === (string) $request->user()->id
+                    && (string) $item->resolved_mapping_id === (string) $data['person_mapping_id']
+                    && hash_equals((string) $item->resolution_reason, $data['reason']), 409, 'Resolved quarantine evidence differs from this retry.');
+
+                return response()->json(['status' => 'success', 'data' => [
+                    'id' => $itemId,
+                    'status' => 'resolved',
+                    'resolved_at' => CarbonImmutable::parse($item->resolved_at)->toISOString(),
+                ]]);
             }
             $mapping = DB::table('hr_attendance_person_mappings')->where('id', $data['person_mapping_id'])
                 ->where('company_id', $item->company_id)->lockForUpdate()->first();
@@ -121,12 +129,20 @@ trait ManagesAttendanceQuarantine
             abort_unless($mapping->device_id === null || $mapping->device_id === $event->device_id, 422, 'The event device does not match the selected mapping.');
             $occurred = CarbonImmutable::parse($event->occurred_at)->toDateString();
             abort_unless($occurred >= $mapping->effective_from && ($mapping->effective_until === null || $occurred < $mapping->effective_until), 422, 'The mapping was not effective when the event occurred.');
+            $resolvedAt = now();
             DB::table('hr_attendance_quarantine_items')->where('id', $itemId)->where('company_id', $item->company_id)->update([
                 'status' => 'resolved', 'resolved_staff_id' => $mapping->staff_id, 'resolved_mapping_id' => $mapping->id,
-                'resolved_by' => $request->user()->id, 'resolved_at' => now(), 'resolution_reason' => $data['reason'], 'updated_at' => now(),
+                'resolved_by' => $request->user()->id, 'resolved_at' => $resolvedAt, 'resolution_reason' => $data['reason'], 'updated_at' => $resolvedAt,
             ]);
+            activity('hr-attendance')->causedBy($request->user())
+                ->withProperties(['company_id' => $item->company_id, 'status' => 'resolved'])
+                ->log('attendance_quarantine_resolved');
 
-            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_quarantine_items')->find($itemId)]);
+            return response()->json(['status' => 'success', 'data' => [
+                'id' => $itemId,
+                'status' => 'resolved',
+                'resolved_at' => $resolvedAt->toISOString(),
+            ]]);
         });
     }
 }

@@ -12,7 +12,20 @@ PHP)
 PHP)
         ->toContain("'person_missing'")->toContain("'person_unmapped'")->toContain("'person_mapping_ambiguous'")
         ->and($console)->toContain('hr:hikvision-sync --lookback-minutes=15')->toContain('hr:hikvision-sync --days=2')
-        ->and($migration)->toContain('hr_attendance_device_provider_event_unique');
+        ->and($migration)->toContain('hr_attendance_device_provider_event_unique')
+        ->toContain("DB::table('hr_attendance_ingestion_requests')")
+        ->toContain("DB::table('hr_attendance_raw_events')")
+        ->toContain("\$query->whereNotNull('device_id')->orWhereNull('connector_id')")
+        ->toContain("whereNotNull('device_id')->orWhereNull('connector_id')")
+        ->toContain('Rollback refused: reconcile direct-device attendance provenance before removing device links or restoring required connectors.')
+        ->toContain("uuid('connector_id')->nullable(false)->change()");
+    expect($service)
+        ->toContain("hash_equals(\$existingChecksum, \$payloadChecksum)")
+        ->toContain("->where('device_id', \$device->id)->where('provider_event_id', \$event['provider_event_id'])->value('payload_checksum')")
+        ->toContain("where('id', \$device->company_id)->where('is_active', true)->whereNull('deleted_at')")
+        ->toContain('Attendance synchronization requires an active legal entity.')
+        ->toContain("where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists()")
+        ->toContain("where('id', \$device->id)->where('company_id', \$company->id)->where('status', 'active')->whereNull('deleted_at')->lockForUpdate()");
 });
 
 it('exposes permission-gated manual sync and run diagnostics in the admin UI', function () {

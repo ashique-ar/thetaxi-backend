@@ -37,12 +37,16 @@ it('creates integrity checked private tenant exports with spreadsheet injection 
 
 it('retains immutable source files row outcomes checksums and blocks lossy rollback', function () {
     $migration=file_get_contents(database_path('migrations/2026_09_04_120000_create_hr_people_core_migration_evidence.php'));
+    $secondLoop = strpos($migration, 'foreach ($tables as $table)', strpos($migration, 'foreach ($tables as $table)') + 1);
+    $firstDrop = strpos($migration, 'Schema::dropIfExists($table)');
     expect($migration)->toContain("Schema::create('hr_people_import_jobs'")
         ->toContain("Schema::create('hr_people_import_rows'")
         ->toContain("char('file_checksum', 64)")
         ->toContain("char('payload_checksum', 64)")
         ->toContain("json('errors')->nullable()")
-        ->toContain('Rollback refused: export and reconcile retained');
+        ->toContain('Rollback refused: export and reconcile retained')
+        ->and($secondLoop)->not->toBeFalse()
+        ->and($firstDrop)->toBeGreaterThan($secondLoop);
 });
 
 it('reports every active identity spell and assignment exception without inventing legacy dates', function () {

@@ -19,7 +19,8 @@ it('searches and exactly hydrates only legal entities in the decision actors sco
         ->assertJsonPath('data.data.0.label', 'Scoped Decision Company')
         ->assertJsonPath('data.data.0.metadata.city', 'Colombo')
         ->assertJsonPath('data.data.0.metadata.is_default', false)
-        ->assertJsonPath('data.data.0.status', 'active');
+        ->assertJsonPath('data.data.0.status', 'active')
+        ->assertJsonPath('default_company_id', null);
     actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $company->id);
     actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$foreign->id)
@@ -47,13 +48,14 @@ it('does not offer inactive companies as selectable tenant decisions', function 
 });
 
 it('allows explicitly authorized decision administrators to search companies across legal entities', function () {
-    [$admin] = hr_seed_admin_actor();
+    [$admin, $default] = hr_seed_admin_actor();
     $admin->givePermissionTo(['tenant-decisions.view', 'tenant-decisions.manage', 'tenant-decisions.manage-all']);
     $company = Company::create(['name' => 'New Decision Tenant', 'city' => 'Galle']);
 
     actingAs($admin, 'api')->getJson('/api/tenant-decisions/company-options?search=New%20Decision&per_page=50')
         ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.value', $company->id)
-        ->assertJsonPath('data.data.0.label', 'New Decision Tenant');
+        ->assertJsonPath('data.data.0.label', 'New Decision Tenant')
+        ->assertJsonPath('default_company_id', $default->id);
 
     actingAs($admin, 'api')->postJson('/api/tenant-decisions', [
         'company_id' => $company->id, 'key' => 'company.localization',

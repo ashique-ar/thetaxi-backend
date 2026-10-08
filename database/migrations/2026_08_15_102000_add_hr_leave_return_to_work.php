@@ -25,7 +25,11 @@ return new class extends Migration
 
     public function down(): void
     {
-        if (DB::table('hr_leave_requests')->whereNotNull('actual_return_date')->exists()) {
+        if (DB::table('hr_leave_requests')->where(function ($query): void {
+            $query->whereNotNull('actual_return_date')
+                ->orWhereNotNull('return_confirmed_by')
+                ->orWhereNotNull('return_confirmed_at');
+        })->exists()) {
             throw new \LogicException('Refusing to drop retained return-to-work confirmations.');
         }
 

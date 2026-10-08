@@ -1,6 +1,8 @@
 <?php
 it('detects tenant duplicate signals and records a maker checker decision without mutating Staff',function(){
  $service=file_get_contents(app_path('Services/Hr/PeopleCoreMigrationService.php'));$routes=file_get_contents(base_path('routes/api.php'));$migration=file_get_contents(database_path('migrations/2026_09_04_121000_create_hr_people_duplicate_reviews.php'));
+ expect((new App\Models\Hr\HrPeopleDuplicateReview())->getHidden())->toContain('match_fingerprint','candidate_staff_ids','prepared_by','decided_by','consolidated_by','created_user_id','updated_user_id');
+ expect((new App\Models\Hr\HrPeopleIdentityLink())->getHidden())->toContain('duplicate_review_id','alias_staff_id','canonical_staff_id','reason','evidence_checksum','approved_by','created_user_id','updated_user_id');
  expect($routes)->toContain("duplicate-reviews/detect")->toContain("duplicate-reviews/{review}/decide")->toContain("duplicate-reviews/{review}/consolidate")
   ->and($service)->toContain("['user_id','code','nic_fingerprint','license_no_fingerprint']")
   ->toContain("'safe_candidate_snapshot'")

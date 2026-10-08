@@ -13,6 +13,7 @@ use App\Services\Sales\BookingCommercialValueAdjustmentService;
 use App\Services\Sales\CommissionPlanResolver;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
+use App\Services\SingleCompanyScope;
 use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Exceptions\HttpResponseException;
@@ -384,7 +385,8 @@ class SalesBookingAttributionController extends Controller
         $authorizedCompanies = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
             ->when($companyIds !== null, fn ($query) => $query->whereIn('id', $companyIds))
             ->get(['id', 'is_default']);
-        $defaultCompanyId = $authorizedCompanies->firstWhere('is_default', true)?->id;
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && ! $authorizedCompanies->contains('id', $defaultCompanyId)) $defaultCompanyId = null;
         return response()->json(['status' => 'success', 'data' => [
             'can_correct' => $this->scope->hasPermission($request->user(), 'sales.attributions.correct'),
             'default_company_id' => $defaultCompanyId,
@@ -398,6 +400,8 @@ class SalesBookingAttributionController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! in_array($defaultCompanyId, $companyIds, true)) $defaultCompanyId = null;
         $query = DB::table('companies')->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($company) => $company->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
@@ -409,7 +413,7 @@ class SalesBookingAttributionController extends Controller
         $rows->getCollection()->transform(fn ($company) => ['value' => (string) $company->id, 'label' => $company->name,
             'metadata' => array_filter(['city' => $company->city, 'availability' => $company->is_active ? null : 'Inactive']) + ['is_default' => (bool) $company->is_default],
             'status' => $company->is_active ? 'active' : 'inactive']);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function profileOptions(Request $request): JsonResponse

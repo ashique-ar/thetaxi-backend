@@ -39,7 +39,7 @@ it('records one scoped audit event when an attendance exception is resolved', fu
     expect(array_keys($resolution->json('data')))->toBe(['id', 'status', 'resolved_at']);
     $event = DB::table('activity_log')->where('description', 'attendance_exception_resolved')->first();
     expect($event)->not->toBeNull()
-        ->and(json_decode($event->properties, true))->toMatchArray(['exception_id' => $exceptionId, 'company_id' => $company->id, 'staff_id' => $staff->id])
+        ->and(json_decode($event->properties, true))->toBe(['company_id' => $company->id, 'status' => 'resolved', 'exception_type' => 'absent'])
         ->and(json_decode($event->properties, true))->not->toHaveKey('resolution_note');
 
     actingAs($admin, 'api')->withHeaders($headers)->postJson("/api/hr/attendance/exceptions/{$exceptionId}/resolve", ['resolution_note' => 'Reviewed source evidence.'])

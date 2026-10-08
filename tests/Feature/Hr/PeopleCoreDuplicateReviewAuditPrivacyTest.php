@@ -71,3 +71,27 @@ it('keeps duplicate-review identity evidence immutable and decision reasons out 
         ->and($audit)->not->toContain($reason)
         ->and($audit)->not->toContain('safe_candidate_snapshot');
 });
+
+it('requires an active company for duplicate-review decisions and consolidation', function () {
+    $preparer = User::factory()->create();
+    $actor = User::factory()->create();
+    $company = Company::create(['name' => 'Inactive duplicate review company', 'is_active' => false]);
+    $review = HrPeopleDuplicateReview::create([
+        'company_id' => $company->id,
+        'match_kind' => 'code',
+        'match_fingerprint' => hash('sha256', 'inactive-review'),
+        'candidate_staff_ids' => [],
+        'safe_candidate_snapshot' => [],
+        'prepared_by' => $preparer->id,
+    ]);
+    $service = app(PeopleCoreMigrationService::class);
+
+    expect(fn () => $service->decideDuplicate($review, (string) $company->id, [
+        'expected_version' => 1,
+        'disposition' => 'keep_separate',
+        'reason' => 'Reviewed while company is inactive.',
+    ], (string) $actor->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class)
+        ->and(fn () => $service->consolidateDuplicate($review, (string) $company->id, 1, (string) $actor->id))
+        ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
+});

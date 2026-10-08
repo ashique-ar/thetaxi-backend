@@ -67,6 +67,20 @@ trait AuthorizesAttendanceRequests
         return $device;
     }
 
+    private function lockActiveAttendanceCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Attendance writes require an active legal entity.');
+    }
+
+    private function lockActiveDirectIsapiDevice(AttendanceDevice $device): AttendanceDevice
+    {
+        $locked = AttendanceDevice::query()->where('company_id', $device->company_id)->where('status', 'active')
+            ->where('integration_mode', 'direct_isapi')->lockForUpdate()->find($device->id);
+        abort_unless($locked, 409, 'The attendance device must remain active for direct ISAPI writes.');
+
+        return $locked;
+    }
+
     private function requireAttendanceWrites(): void
     {
         abort_unless(config('hr.features.attendance_ingestion', false), 409, 'Attendance ingestion writes are not enabled.');

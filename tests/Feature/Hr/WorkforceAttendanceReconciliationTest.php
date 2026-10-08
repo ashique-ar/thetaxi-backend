@@ -94,3 +94,26 @@ it('reconciles Work Requests and timesheets against only the latest company-owne
         ->toThrow(HttpException::class, 'Staff and timesheet legal entities must match.');
     expect(DB::table('hr_timesheet_events')->where('timesheet_id', $mismatchedSheetId)->count())->toBe(0);
 });
+
+it('rechecks the active company before timesheet creation and transition', function () {
+    config(['hr.features.leave_overtime' => true]);
+    $user = User::factory()->create();
+    $company = Company::create(['name' => 'Inactive Timesheet Company', 'is_active' => true, 'is_default' => true]);
+    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $service = app(WorkforceWorkflowService::class);
+    $sheet = $service->saveTimesheet([
+        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
+        'entries' => [['work_date' => '2026-01-01', 'minutes' => 60, 'entry_mode' => 'manual', 'billable' => false]],
+    ], $user->id);
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+
+    expect(fn () => $service->saveTimesheet([
+        'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-02-01', 'period_end' => '2026-02-28',
+        'entries' => [['work_date' => '2026-02-01', 'minutes' => 60, 'entry_mode' => 'manual', 'billable' => false]],
+    ], $user->id))->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
+    expect(fn () => $service->transitionTimesheet($sheet->id, 'submit', 'Submit timesheet.', $user->id))
+        ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
+    expect(DB::table('hr_timesheets')->where('id', $sheet->id)->value('status'))->toBe('draft')
+        ->and(DB::table('hr_timesheet_entries')->where('timesheet_id', $sheet->id)->count())->toBe(1)
+        ->and(DB::table('hr_timesheet_events')->where('timesheet_id', $sheet->id)->count())->toBe(0);
+});

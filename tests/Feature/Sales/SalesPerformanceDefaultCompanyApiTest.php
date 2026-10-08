@@ -69,5 +69,6 @@ it('lists active performance companies before an inactive configured default', f
     ]);
 
     actingAs($admin, 'api')->getJson('/api/sales/performance/company-options?per_page=1')
-        ->assertOk()->assertJsonPath('data.data.0.value', $activeCompany->id);
+        ->assertOk()->assertJsonPath('data.data.0.value', $activeCompany->id)
+        ->assertJsonPath('default_company_id', null);
 });

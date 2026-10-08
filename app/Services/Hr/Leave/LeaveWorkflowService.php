@@ -15,14 +15,14 @@ class LeaveWorkflowService
     {
         $this->enabled();
         $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
-        if ($existing = $this->existingSubmission($data['idempotency_key'], $checksum, $actorUserId)) return $existing;
         try {
             return DB::transaction(function () use ($data, $actorUserId, $checksum) {
-                $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
-                abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
+                $this->assertActiveCompany($data['company_id']);
                 if ($existing = DB::table('hr_leave_requests')->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first()) {
                     return $this->matchingSubmission($existing, $checksum, $actorUserId);
                 }
+                $staff = DB::table('staff')->where('id', $data['staff_id'])->lockForUpdate()->first();
+                abort_unless($staff && $staff->company_id === $data['company_id'] && $staff->employment_ended_at === null && $staff->deleted_at === null, 422, 'Staff is no longer active in this legal entity.');
                 $policy = DB::table('hr_leave_policies')->where('id', $data['policy_id'])->where('company_id', $data['company_id'])->where('status', 'approved')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->first();
                 abort_unless($policy, 422, 'No approved leave policy covers the requested interval.');
                 abort_unless(DB::table('hr_leave_policy_assignments')->where('company_id', $data['company_id'])->where('staff_id', $data['staff_id'])->where('policy_id', $policy->id)->whereNotNull('approved_at')->whereDate('effective_from', '<=', $data['start_date'])->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $data['end_date']))->exists(), 422, 'The leave policy is not assigned for the full interval.');
@@ -60,7 +60,7 @@ class LeaveWorkflowService
             });
         } catch (QueryException $e) {
             if (! in_array($e->errorInfo[0] ?? null, ['23000', '23505'], true)) throw $e;
-            $existing = $this->existingSubmission($data['idempotency_key'], $checksum, $actorUserId);
+            $existing = $this->existingSubmission($data['company_id'], $data['idempotency_key'], $checksum, $actorUserId);
             if ($existing) return $existing;
             throw $e;
         }
@@ -78,12 +78,16 @@ class LeaveWorkflowService
     {
         $this->enabled();
         return DB::transaction(function () use ($requestId, $action, $reason, $actorUserId, $actorStaffId, $overrideAuthorized) {
-            $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
+            $candidate = DB::table('hr_leave_requests')->where('id', $requestId)->first();
+            abort_unless($candidate, 404);
+            $this->assertActiveCompany($candidate->company_id);
+            $row = DB::table('hr_leave_requests')->where('id', $requestId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
             $this->assertRequestCompany($row);
             abort_if($row->requested_by === $actorUserId, 409, 'The leave requester cannot decide the same request.');
-            abort_unless($row->status === 'pending_approval', 409, 'Only pending leave may be decided.');
             abort_unless(in_array($action, ['approve', 'reject'], true), 422, 'Unsupported leave decision.');
+            if ($this->isDecisionReplay($row, $action, $reason, $actorUserId, $actorStaffId)) return $row;
+            abort_unless($row->status === 'pending_approval', 409, 'Only pending leave may be decided.');
             $overrideUsed = false;
             $delegateUsed = false;
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
@@ -325,7 +329,9 @@ class LeaveWorkflowService
         return DB::transaction(function () use ($accountId, $entryType, $minutes, $effectiveDate, $expiresOn, $sourceType, $sourceId, $reason, $snapshot, $actorUserId) {
             $this->validBalanceAccount($accountId);
             if ($existing = LeaveBalanceEntry::query()->where('source_type', $sourceType)->where('source_id', $sourceId)->where('entry_type', $entryType)->first()) {
-                abort_unless((int) $existing->minutes === $minutes && $existing->effective_date->toDateString() === $effectiveDate && $existing->expires_on?->toDateString() === $expiresOn, 409, 'Automated leave source was reused with different evidence.');
+                $payload = ['account' => $accountId, 'request' => null, 'type' => $entryType, 'minutes' => $minutes, 'date' => $effectiveDate, 'sourceType' => $sourceType, 'sourceId' => $sourceId, 'reason' => $reason, 'snapshot' => $snapshot, 'expiresOn' => $expiresOn];
+                $checksum = hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+                abort_unless(hash_equals((string) $existing->entry_checksum, $checksum), 409, 'Automated leave source was reused with different evidence.');
                 return $existing;
             }return $this->entry($accountId, null, $entryType, $minutes, $effectiveDate, $sourceType, $sourceId, $reason, $snapshot, $actorUserId, $expiresOn);
         });
@@ -345,8 +351,12 @@ class LeaveWorkflowService
     }
     private function validBalanceAccount(string $id): object
     {
-        $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->lockForUpdate()->first();
+        $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->first();
         abort_unless($account, 404);
+        $companyId = (string) $account->company_id;
+        $this->assertActiveCompany($companyId);
+        $account = DB::table('hr_leave_balance_accounts')->where('id', $id)->lockForUpdate()->first();
+        abort_unless($account && (string) $account->company_id === $companyId, 409, 'Leave balance account changed legal entities.');
         abort_unless(DB::table('staff')->where('id', $account->staff_id)->where('company_id', $account->company_id)->exists()
             && DB::table('hr_leave_types')->where('id', $account->leave_type_id)->where('company_id', $account->company_id)->exists(), 409,
             'Leave balance account company links are inconsistent.');
@@ -374,15 +384,32 @@ class LeaveWorkflowService
         $payload = compact('account', 'request', 'type', 'minutes', 'date', 'sourceType', 'sourceId', 'reason', 'snapshot', 'expiresOn');
         return LeaveBalanceEntry::create(['account_id' => $account, 'leave_request_id' => $request, 'entry_type' => $type, 'minutes' => $minutes, 'effective_date' => $date, 'expires_on' => $expiresOn, 'source_type' => $sourceType, 'source_id' => $sourceId, 'reason' => $reason, 'rule_snapshot' => $snapshot, 'entry_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'posted_by' => $actor, 'posted_at' => now()]);
     }
-    private function existingSubmission(string $key, string $checksum, string $actorUserId): ?object
+    private function existingSubmission(string $companyId, string $key, string $checksum, string $actorUserId): ?object
     {
-        $existing = DB::table('hr_leave_requests')->where('idempotency_key', $key)->first();
-        return $existing ? $this->matchingSubmission($existing, $checksum, $actorUserId) : null;
+        return DB::transaction(function () use ($companyId, $key, $checksum, $actorUserId): ?object {
+            $this->assertActiveCompany($companyId);
+            $existing = DB::table('hr_leave_requests')->where('idempotency_key', $key)->lockForUpdate()->first();
+            return $existing ? $this->matchingSubmission($existing, $checksum, $actorUserId) : null;
+        });
     }
     private function matchingSubmission(object $existing, string $checksum, string $actorUserId): object
     {
         abort_unless($existing->requested_by === $actorUserId && hash_equals((string) $existing->request_checksum, $checksum), 409, 'Leave idempotency key was reused with different evidence or actor.');
         return $existing;
+    }
+    private function isDecisionReplay(object $row, string $action, string $reason, string $actorUserId, string $actorStaffId): bool
+    {
+        $events = DB::table('hr_leave_request_events')->where('leave_request_id', $row->id)
+            ->where('actor_user_id', $actorUserId)->where('reason', $reason)->orderByDesc('created_at')->get();
+        foreach ($events as $event) {
+            $snapshot = json_decode((string) $event->snapshot, true, 512, JSON_THROW_ON_ERROR);
+            if ((string) ($snapshot['decision_actor_staff_id'] ?? '') !== $actorStaffId) continue;
+            if ($event->event_type === $action && $event->to_status === $row->status
+                && $row->decided_by === $actorUserId) return true;
+            if ($action === 'approve' && $event->event_type === 'approval_level_completed'
+                && (int) $row->approval_level > (int) ($snapshot['completed_level'] ?? PHP_INT_MAX)) return true;
+        }
+        return false;
     }
     private function event(string $id, string $type, ?string $from, string $to, string $reason, array $snapshot, string $actor, ?string $eventId = null): void
     {
@@ -399,9 +426,14 @@ class LeaveWorkflowService
     }
     private function assertRequestCompany(object $row): void
     {
+        $this->assertActiveCompany($row->company_id);
         abort_unless(DB::table('staff')->where('id', $row->staff_id)->where('company_id', $row->company_id)->exists(), 422, 'Leave request Staff does not belong to its legal entity.');
         abort_unless(DB::table('hr_leave_types')->where('id', $row->leave_type_id)->where('company_id', $row->company_id)->exists(), 422, 'Leave request type does not belong to its legal entity.');
         abort_unless(DB::table('hr_leave_policies')->where('id', $row->policy_id)->where('company_id', $row->company_id)->where('leave_type_id', $row->leave_type_id)->exists(), 422, 'Leave request policy does not match its legal entity and type.');
+    }
+    private function assertActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Leave writes require an active legal entity.');
     }
     private function enabled(): void
     {

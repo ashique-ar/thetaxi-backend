@@ -254,7 +254,7 @@ class ActingAppointmentAdministrationService
 
     private function lockCompany(string $companyId): void
     {
-        abort_unless(DB::table('companies')->where('id', $companyId)->lockForUpdate()->first(), 404, 'Legal entity was not found.');
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Acting appointments require an active legal entity.');
     }
 
     private function decode(mixed $value): array

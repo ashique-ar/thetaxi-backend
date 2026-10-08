@@ -19,7 +19,7 @@ it('offers only companies in the authenticated Staff scope and rejects unrelated
     $role = Role::create(['name' => 'hr_scope_tester', 'guard_name' => 'api']);
     $role->givePermissionTo(['hr.leave.config.manage', 'hr.leave.config.approve', 'hr.work-requests.config.manage', 'hr.work-requests.config.approve', 'staff.view-legal-entity']);
     $user->assignRole($role);
-    $authorizedCompany = Company::create(['name' => 'Authorized Workforce Company']);
+    $authorizedCompany = Company::create(['name' => 'Authorized Workforce Company', 'is_default' => true]);
     $unassignedCompany = Company::create(['name' => 'Unassigned Workforce Company']);
     Staff::factory()->create(['user_id' => $user->id, 'company_id' => $authorizedCompany->id]);
 
@@ -27,6 +27,7 @@ it('offers only companies in the authenticated Staff scope and rejects unrelated
     $companyIds = collect($options->json('data'))->pluck('value')->all();
     expect($companyIds)->toContain($authorizedCompany->id);
     expect($companyIds)->not->toContain($unassignedCompany->id);
+    expect($options->json('default_company_id'))->toBe($authorizedCompany->id);
 
     actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$authorizedCompany->id)
         ->assertOk()->assertJsonPath('data.company_id', $authorizedCompany->id);

@@ -46,7 +46,7 @@ class ReportingLineController extends Controller
             ->when($data['effective_at'] ?? null, fn ($q, $date) => $q->where('line.effective_from', '<=', $date)
                 ->where(fn ($active) => $active->whereNull('line.effective_until')->orWhere('line.effective_until', '>', $date)))
             ->select([
-                'line.id', 'line.company_id', 'line.manager_staff_id', 'line.member_staff_id', 'line.line_type', 'line.status',
+                'line.id', 'line.line_type', 'line.status',
                 'line.effective_from', 'line.effective_until', 'line.version',
                 'manager_staff.code as manager_employee_number', 'manager_user.first_name as manager_first_name', 'manager_user.last_name as manager_last_name',
                 'member_staff.code as member_employee_number', 'member_user.first_name as member_first_name', 'member_user.last_name as member_last_name',
@@ -105,7 +105,9 @@ class ReportingLineController extends Controller
         $data = $request->validate($this->commandRules());
         $companyId = $this->access->actorCompanyId($request->user());
 
-        return response()->json(['status' => 'success', 'data' => $this->reporting->create($data, $companyId, (string) $request->user()->id)], 201);
+        $line = $this->reporting->create($data, $companyId, (string) $request->user()->id);
+
+        return response()->json(['status' => 'success', 'data' => $this->commandResponse($line)], 201);
     }
 
     public function end(Request $request, string $lineId): JsonResponse
@@ -117,7 +119,9 @@ class ReportingLineController extends Controller
         ]);
         $companyId = $this->access->actorCompanyId($request->user());
 
-        return response()->json(['status' => 'success', 'data' => $this->reporting->end($lineId, $data, $companyId, (string) $request->user()->id)]);
+        $line = $this->reporting->end($lineId, $data, $companyId, (string) $request->user()->id);
+
+        return response()->json(['status' => 'success', 'data' => $this->commandResponse($line)]);
     }
 
     private function commandRules(): array
@@ -127,6 +131,18 @@ class ReportingLineController extends Controller
             'line_type' => ['required', Rule::in(['primary', 'dotted_line', 'hr_partner', 'approval'])],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160'],
+        ];
+    }
+
+    private function commandResponse(array $line): array
+    {
+        return [
+            'id' => (string) $line['id'],
+            'line_type' => $line['line_type'],
+            'status' => $line['status'],
+            'effective_from' => $line['effective_from'],
+            'effective_until' => $line['effective_until'],
+            'version' => (int) $line['version'],
         ];
     }
 

@@ -19,15 +19,15 @@ class HrNotificationService
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.id', $staffId)->where('staff.company_id', $companyId)
-            ->where('staff.user_id', $userId)->exists();
+            ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('users.deleted_at')->exists();
     }
 
     public function recipientIsActive(string $companyId, string $staffId, string $userId): bool
     {
         return DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.id', $staffId)->where('staff.company_id', $companyId)
-            ->where('staff.user_id', $userId)->whereNull('staff.employment_ended_at')
-            ->where('users.is_active', true)->exists();
+            ->where('staff.user_id', $userId)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+            ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
     }
 
     public function queue(string $companyId, string $eventType, string $sourceType, string $sourceId, string $staffId, array $variables): array
@@ -38,7 +38,7 @@ class HrNotificationService
             ->whereNull('employment_ended_at')->first();
         if (!$staff || !$staff->user_id) return [];
 
-        $user = DB::table('users')->where('id', $staff->user_id)->where('is_active', true)->first();
+        $user = DB::table('users')->where('id', $staff->user_id)->whereNull('deleted_at')->where('is_active', true)->first();
         if (!$user) return [];
 
         $rows = [];

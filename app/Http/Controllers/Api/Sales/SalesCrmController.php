@@ -9,6 +9,7 @@ use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesTask;
 use App\Models\Booking\Booking;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\SingleCompanyScope;
 use App\Services\Sales\SalesCrmService;
 use App\Services\Sales\SalesPolicySettingsService;
 use Illuminate\Http\JsonResponse;
@@ -72,6 +73,8 @@ class SalesCrmController extends Controller
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
         $companyIds = $profileIds === null ? null : DB::table('sales_profiles')->whereNull('deleted_at')
             ->whereIn('id', $profileIds)->pluck('company_id')->filter()->unique()->values();
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if ($defaultCompanyId && $companyIds !== null && ! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $query = DB::table('companies')->where('is_active', true)->whereNull('deleted_at')
             ->when($companyIds !== null, fn ($companies) => $companies->whereIn('id', $companyIds));
         if (! empty($data['selected_id'])) $query->where('id', $data['selected_id']);
@@ -86,7 +89,7 @@ class SalesCrmController extends Controller
             'metadata' => array_filter(['city' => $company->city]) + ['is_default' => (bool) $company->is_default],
             'status' => 'active',
         ]);
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json(['status' => 'success', 'data' => $rows, 'default_company_id' => $defaultCompanyId]);
     }
 
     public function showOpportunity(Request $request, SalesOpportunity $opportunity): JsonResponse

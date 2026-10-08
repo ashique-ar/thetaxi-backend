@@ -138,6 +138,7 @@ trait ManagesAttendanceDeviceCrud
         $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
         $connectors = DB::table('hr_attendance_connectors')
             ->where('company_id', $companyId)
+            ->whereNull('deleted_at')
             ->select(['id', 'name', 'topology', 'status', 'last_heartbeat_at', 'capabilities'])
             ->get();
         // Connectivity fields (ip_address/port/username) are safe to return to any actor who
@@ -201,6 +202,7 @@ trait ManagesAttendanceDeviceCrud
 
         return response()->json(['status' => 'success', 'data' => [
             'connector' => $connector,
+            'connector_key' => $connector->connector_key,
             'signing_secret' => $secret,
             'secret_display' => 'one_time_only',
         ]], 201);
