@@ -416,6 +416,8 @@ class CommissionRecoveryService
         string $actorUserId,
     ): SalesCommissionRecoveryDecision {
         return DB::transaction(function () use ($case, $decision, $reason, $expectedVersion, $previewChecksum, $key, $actorUserId) {
+            abort_unless(DB::table('companies')->where('id', $case->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422, 'Select an active legal entity.');
             $case = SalesCommissionRecoveryCase::query()->lockForUpdate()->findOrFail($case->id);
             $checksum = hash('sha256', CanonicalJson::encode([
                 'recovery_case_id' => $case->id, 'decision' => $decision, 'reason' => trim($reason),

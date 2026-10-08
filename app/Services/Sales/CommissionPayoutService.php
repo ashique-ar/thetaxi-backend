@@ -26,7 +26,11 @@ class CommissionPayoutService
         $checksum = $this->checksum(['statement_ids' => array_values($statementIds), ...$data]);
         try {
             return DB::transaction(function () use ($statementIds, $data, $actorUserId, $checksum) {
-            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
+            $companyId = DB::table('sales_commission_payouts')->where('idempotency_key', $data['idempotency_key'])->value('company_id')
+                ?? DB::table('sales_commission_statements')->whereIn('id', $statementIds)->orderBy('id')->value('company_id');
+            abort_unless($companyId, 422, 'A payout requires an existing statement in an active legal entity.');
+            $this->lockActiveCompany((string) $companyId);
+            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout key was already used with different facts.');
                 return $duplicate;
@@ -103,12 +107,16 @@ class CommissionPayoutService
             return $payout;
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate) throw $exception;
-            abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
-                'This payout key was already used with different facts.');
-
-            return $duplicate;
+            return DB::transaction(function () use ($exception, $data, $checksum) {
+                $companyId = DB::table('sales_commission_payouts')->where('idempotency_key', $data['idempotency_key'])->value('company_id');
+                if (! $companyId) throw $exception;
+                $this->lockActiveCompany((string) $companyId);
+                $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+                if (! $duplicate) throw $exception;
+                abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
+                    'This payout key was already used with different facts.');
+                return $duplicate;
+            });
         }
     }
 
@@ -117,8 +125,11 @@ class CommissionPayoutService
         $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
         try {
             return DB::transaction(function () use ($original, $data, $actorUserId, $checksum) {
+            $companyId = DB::table('sales_commission_payouts')->whereKey($original->id)->value('company_id');
+            abort_unless($companyId, 404, 'Original commission payout not found.');
+            $this->lockActiveCompany((string) $companyId);
             $original = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($original->id);
-            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
+            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422, 'This payout reversal key was already used with different facts.');
                 return $duplicate;
@@ -181,12 +192,16 @@ class CommissionPayoutService
             return $reversal;
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate) throw $exception;
-            abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
-                'This payout reversal key was already used with different facts.');
-
-            return $duplicate;
+            return DB::transaction(function () use ($exception, $data, $checksum) {
+                $companyId = DB::table('sales_commission_payouts')->where('idempotency_key', $data['idempotency_key'])->value('company_id');
+                if (! $companyId) throw $exception;
+                $this->lockActiveCompany((string) $companyId);
+                $duplicate = SalesCommissionPayout::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+                if (! $duplicate) throw $exception;
+                abort_unless(hash_equals($duplicate->request_payload_checksum, $checksum), 422,
+                    'This payout reversal key was already used with different facts.');
+                return $duplicate;
+            });
         }
     }
 
@@ -194,6 +209,7 @@ class CommissionPayoutService
     {
         try {
             return DB::transaction(function () use ($payout, $data, $actorUserId) {
+            $this->lockActiveCompany((string) $payout->company_id);
             $payout = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($payout->id);
             $duplicate = SalesCommissionAccountingDelivery::query()->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
             if ($duplicate) {
@@ -239,25 +255,33 @@ class CommissionPayoutService
             return $delivery;
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionAccountingDelivery::query()
-                ->where('idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate) throw $exception;
-            $checksum = $this->checksum([
-                'company_id' => (string) $payout->company_id,
-                'payout_id' => (string) $payout->id,
-                'event_type' => $duplicate->event_type,
-                ...$data,
-            ]);
-            abort_unless($duplicate->request_payload_checksum
-                && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
-                'This accounting-delivery key is already bound to different or unverified facts.');
-
-            return $duplicate;
+            return DB::transaction(function () use ($exception, $payout, $data) {
+                $this->lockActiveCompany((string) $payout->company_id);
+                $duplicate = SalesCommissionAccountingDelivery::query()
+                    ->where('idempotency_key', $data['idempotency_key'])->lockForUpdate()->first();
+                if (! $duplicate) throw $exception;
+                $checksum = $this->checksum([
+                    'company_id' => (string) $payout->company_id,
+                    'payout_id' => (string) $payout->id,
+                    'event_type' => $duplicate->event_type,
+                    ...$data,
+                ]);
+                abort_unless($duplicate->request_payload_checksum
+                    && hash_equals($duplicate->request_payload_checksum, $checksum), 409,
+                    'This accounting-delivery key is already bound to different or unverified facts.');
+                return $duplicate;
+            });
         }
     }
 
     private function checksum(array $facts): string
     { return hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)); }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422, 'Select an active legal entity.');
+    }
 
     private function assertFrozenProfileBeneficiaries($statements): void
     {

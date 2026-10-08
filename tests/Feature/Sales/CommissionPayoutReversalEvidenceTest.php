@@ -98,6 +98,17 @@ it('rejects payout execution when a statement profile belongs to another company
     ], $actor->id))->toThrow(HttpException::class, 'Every statement must match its frozen Sales Profile company and Staff beneficiary.');
 });
 
+it('rejects payout reversal when its legal entity is inactive', function () {
+    [$service, $payout, $actor] = payout_reversal_fixture();
+    Company::query()->whereKey($payout->company_id)->update(['is_active' => false]);
+
+    expect(fn () => $service->reverse($payout, [
+        'payment_method' => 'bank', 'payment_reference' => 'reversal-'.Str::uuid(),
+        'reversed_at' => now()->toIso8601String(), 'evidence_file_id' => (string) Str::uuid(),
+        'reason' => 'Finance-authorized reversal', 'idempotency_key' => (string) Str::uuid(),
+    ], (string) $actor->id))->toThrow(HttpException::class, 'Select an active legal entity.');
+});
+
 it('rejects payout reversal when allocations do not reconcile to the original amount', function () {
     [$service, $payout, $actor] = payout_reversal_fixture();
     $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);

@@ -56,3 +56,13 @@ it('preselects the authorized default company for recovery and hold filters', fu
     expect($selector)->toContain('default_company_id', 'is_default', 'this.onChange(this.value)');
     expect($routes)->toContain("commission-recoveries/company-options", "commission-holds/company-options");
 });
+
+it('locks an active company before deciding a commission recovery case', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionRecoveryService.php'));
+    $start = strpos($service, 'public function decide(');
+    $end = strpos($service, 'private function allowedDecisions(', $start);
+    $decision = substr($service, $start, $end - $start);
+
+    expect(strpos($decision, "DB::table('companies')"))->toBeLessThan(strpos($decision, 'SalesCommissionRecoveryCase::query()->lockForUpdate()'))
+        ->and($decision)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+});

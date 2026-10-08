@@ -21,6 +21,18 @@ it('recovers concurrent payout, reversal, and accounting-delivery idempotency co
         ->toContain('hash_equals($duplicate->request_payload_checksum, $checksum), 409');
 });
 
+it('locks an active company before payout, reversal, and delivery rows', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
+    $pay = substr($service, strpos($service, 'public function pay('), strpos($service, 'public function reverse(') - strpos($service, 'public function pay('));
+    $reverse = substr($service, strpos($service, 'public function reverse('), strpos($service, 'public function recordAccountingDelivery(') - strpos($service, 'public function reverse('));
+    $delivery = substr($service, strpos($service, 'public function recordAccountingDelivery('), strpos($service, 'private function checksum(') - strpos($service, 'public function recordAccountingDelivery('));
+
+    foreach ([$pay, $reverse, $delivery] as $mutation) {
+        expect(strpos($mutation, '$this->lockActiveCompany('))->toBeLessThan(strpos($mutation, 'lockForUpdate()'));
+    }
+    expect($service)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+});
+
 it('requires reversal evidence and keeps result-only delivery fields separate', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionStatementController.php'));
     $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
