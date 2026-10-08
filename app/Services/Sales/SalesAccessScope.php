@@ -5,6 +5,7 @@ namespace App\Services\Sales;
 use App\Models\Sales\SalesProfile;
 use App\Models\User;
 use App\Services\PermissionEvaluator;
+use App\Services\SingleCompanyScope;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Exceptions\HttpResponseException;
 use Illuminate\Support\Facades\DB;
@@ -14,32 +15,48 @@ class SalesAccessScope
 {
     public function __construct(private readonly PermissionEvaluator $permissions) {}
 
-    public function activeProfile(User $user, ?string $companyId = null): SalesProfile
+    public function activeProfile(User $user, ?string $companyId = null): ?SalesProfile
     {
         $profiles = $this->actorProfiles($user, $companyId)->take(2);
 
-        if ($profiles->count() !== 1) {
-            $this->deny(
-                'AUTH_CONTEXT_INVALID',
-                'The current user must resolve to exactly one configured active Sales Profile in this legal entity.'
-            );
-        }
-
-        return $profiles->first();
+        return $profiles->count() === 1 ? $profiles->first() : null;
     }
 
     public function actorProfiles(User $user, ?string $companyId = null)
     {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        if (! $companyId) {
+            return collect();
+        }
+
+        $contextType = request()->header('X-Active-Context-Type');
+        $contextId = request()->header('X-Active-Context-Id');
+        if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
+            return collect();
+        }
+        if ($contextType !== null && ! in_array($contextType, ['staff', 'internal'], true)) {
+            return collect();
+        }
+
         return SalesProfile::query()
-            ->whereHas('staff', fn (Builder $staff) => $staff
-                ->where('user_id', $user->id)
-                ->whereNull('deleted_at')
-                ->where(fn (Builder $employment) => $employment
-                    ->whereNull('employment_ended_at')
-                    ->orWhere('employment_ended_at', '>', now())))
+            ->whereHas('staff', function (Builder $staff) use ($user, $contextType, $contextId): void {
+                $staff->where('user_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->where(fn (Builder $employment) => $employment
+                        ->whereNull('employment_ended_at')
+                        ->orWhere('employment_ended_at', '>', now()))
+                    ->when($contextType === 'staff', fn (Builder $staff) => $staff->whereExists(
+                        fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                            ->whereColumn('user_contexts.context_id', 'staff.id')
+                            ->where('user_contexts.id', $contextId)
+                            ->where('user_contexts.user_id', $user->id)
+                            ->where('user_contexts.context_type', 'staff')
+                            ->where('user_contexts.is_active', true)->whereNull('user_contexts.deleted_at'),
+                    ));
+            })
             ->activeAt(now())
             ->configured()
-            ->when($companyId, fn (Builder $query, string $id) => $query->where('company_id', $id))
+            ->where('company_id', $companyId)
             ->orderBy('id')
             ->get();
     }
@@ -55,15 +72,19 @@ class SalesAccessScope
             return null;
         }
 
-        $profile = $this->activeProfile($user, $companyId);
-        $ids = [$profile->id];
+        $profiles = $this->actorProfiles($user, $companyId);
+        if ($profiles->isEmpty()) {
+            return [];
+        }
 
+        $ids = $profiles->pluck('id')->all();
         if ($this->hasPermission($user, $teamPermission)) {
             $assignments = DB::table('sales_reporting_assignments')
-                ->where('company_id', $profile->company_id)
+                ->whereIn('company_id', $profiles->pluck('company_id')->unique()->all())
                 ->whereNull('deleted_at')
                 ->where('effective_from', '<=', now())
                 ->where(fn ($query) => $query->whereNull('effective_until')->orWhere('effective_until', '>', now()))
+                ->whereIn('manager_sales_profile_id', $ids)
                 ->get(['manager_sales_profile_id', 'member_sales_profile_id']);
 
             $children = [];
@@ -71,7 +92,7 @@ class SalesAccessScope
                 $children[$assignment->manager_sales_profile_id][] = $assignment->member_sales_profile_id;
             }
 
-            $pending = [$profile->id];
+            $pending = $ids;
             while ($pending !== []) {
                 $managerId = array_pop($pending);
                 foreach ($children[$managerId] ?? [] as $memberId) {
@@ -84,7 +105,7 @@ class SalesAccessScope
             }
 
             $ids = SalesProfile::query()
-                ->where('company_id', $profile->company_id)
+                ->whereIn('company_id', $profiles->pluck('company_id')->unique()->all())
                 ->whereIn('id', $ids)
                 ->activeAt(now())
                 ->configured()
@@ -151,7 +172,8 @@ class SalesAccessScope
             return;
         }
 
-        if (! $this->actorProfiles($user, $companyId)->isNotEmpty()) {
+        if (! $this->actorProfiles($user, $companyId)->isNotEmpty()
+            && ! $this->hasActiveStaffCompanyContext($user, $companyId)) {
             $this->deny('LEGAL_ENTITY_MISMATCH', 'The Sales legal entity is outside your permitted scope.');
         }
     }
@@ -162,12 +184,21 @@ class SalesAccessScope
             return null;
         }
 
-        return $this->actorProfiles($user)
+        $companyIds = $this->actorProfiles($user)
             ->pluck('company_id')
             ->filter()
             ->unique()
             ->values()
             ->all();
+
+        if ($companyIds === []) {
+            $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            if ($defaultCompanyId && $this->hasActiveStaffCompanyContext($user, (string) $defaultCompanyId)) {
+                return [(string) $defaultCompanyId];
+            }
+        }
+
+        return $companyIds;
     }
 
     public function scopeType(User $user, string $allPermission, string $teamPermission): string
@@ -182,6 +213,33 @@ class SalesAccessScope
     public function hasPermission(User $user, string $permission): bool
     {
         return $this->permissions->userHasAnyForInternalContext($user, [$permission]);
+    }
+
+    private function hasActiveStaffCompanyContext(User $user, string $companyId): bool
+    {
+        $contextType = request()->header('X-Active-Context-Type');
+        $contextId = request()->header('X-Active-Context-Id');
+        if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
+            return false;
+        }
+        if ($contextType !== null && ! in_array($contextType, ['staff', 'internal'], true)) {
+            return false;
+        }
+
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        return DB::table('user_contexts as context')
+            ->join('staff', 'staff.id', '=', 'context.context_id')
+            ->where('context.user_id', $user->id)
+            ->where('context.context_type', 'staff')
+            ->where('context.is_active', true)
+            ->whereNull('context.deleted_at')
+            ->when($contextType === 'staff', fn ($query) => $query->where('context.id', $contextId))
+            ->where('staff.user_id', $user->id)
+            ->whereNull('staff.deleted_at')
+            ->where(fn ($query) => $query->whereNull('staff.employment_ended_at')->orWhere('staff.employment_ended_at', '>', now()))
+            ->where(fn ($query) => $query->where('staff.company_id', $companyId)
+                ->orWhere(fn ($unassigned) => $unassigned->whereNull('staff.company_id')->whereRaw('? = ?', [$defaultCompanyId, $companyId])))
+            ->exists();
     }
 
     private function deny(string $code, string $message): never

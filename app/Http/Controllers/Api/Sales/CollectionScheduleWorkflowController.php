@@ -177,6 +177,7 @@ class CollectionScheduleWorkflowController extends Controller
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         $profileIds = $this->scheduleProfileIds($request, $companyId);
+        $actorProfileIds = $this->access->actorProfiles($request->user(), $companyId)->pluck('id')->all();
         $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
         $query = DB::table('sales_booking_attributions as attribution')
             ->join('bookings as booking', 'booking.id', '=', 'attribution.booking_id')
@@ -306,6 +307,7 @@ class CollectionScheduleWorkflowController extends Controller
                 'booking:id,booking_number,customer_id',
                 'booking.customer:id,user_id,code',
                 'booking.customer.user:id,first_name,last_name,email,phone',
+                'booking.salesAttribution:id,booking_id,company_id,collection_sales_profile_id',
                 'paymentSchedule' => fn ($schedule) => $schedule->withSum('allocations', 'amount'),
             ])
             ->addSelect([
@@ -327,7 +329,7 @@ class CollectionScheduleWorkflowController extends Controller
 
         $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
 
-        $rows->setCollection($rows->getCollection()->map(function ($row) use ($canViewCustomerContact): array {
+        $rows->setCollection($rows->getCollection()->map(function ($row) use ($canViewCustomerContact, $actorProfileIds): array {
             $schedule = $row->paymentSchedule;
             $scheduledAmount = round((float) ($schedule?->source_amount ?? $schedule?->amount ?? 0), 4);
             $allocatedAmount = round((float) ($schedule?->allocations_sum_amount ?? 0), 4);
@@ -346,6 +348,8 @@ class CollectionScheduleWorkflowController extends Controller
             return [
                 'id' => $row->id, 'company_id' => $row->company_id, 'booking_id' => $row->booking_id,
                 'booking_number' => $row->booking?->booking_number, 'booking_payment_schedule_id' => $row->booking_payment_schedule_id,
+                'can_submit' => in_array((string) $row->assigned_sales_profile_id, array_map('strval', $actorProfileIds), true)
+                    && (string) $row->booking?->salesAttribution?->collection_sales_profile_id === (string) $row->assigned_sales_profile_id,
                 'work_type' => $row->work_type, 'status' => $row->status, 'due_at' => $row->due_at,
                 'promised_date' => $dueDate->toDateString(), 'days_overdue' => $aging['days_overdue'],
                 'aging_bucket' => $aging['aging_bucket'], 'last_activity_at' => $lastActivityAt,
@@ -391,7 +395,9 @@ class CollectionScheduleWorkflowController extends Controller
             'staff_notes' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $profile = $this->actorProfile($request);
+        $this->ledger->ensureBookingCompanyAttribution($booking);
+        $profile = $this->actorProfile($request, $booking);
+        abort_unless($profile, 409, 'An active collection Sales Profile is not configured for this user in the default company.');
 
         $submission = $this->workflow->submit($booking, $profile, $data, (string) $request->user()->id);
         return response()->json(['status' => 'success', 'data' => [
@@ -453,8 +459,16 @@ class CollectionScheduleWorkflowController extends Controller
         ]]);
     }
 
-    private function actorProfile(Request $request): SalesProfile
+    private function actorProfile(Request $request, ?Booking $booking = null): ?SalesProfile
     {
+        if ($booking) {
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
+            if ($attribution?->collection_sales_profile_id) {
+                return $this->access->actorProfiles($request->user(), $attribution->company_id)
+                    ->firstWhere('id', $attribution->collection_sales_profile_id);
+            }
+        }
+
         return $this->access->activeProfile($request->user());
     }
 

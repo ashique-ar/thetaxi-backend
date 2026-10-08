@@ -52,12 +52,12 @@ it('requires one authorized company for policy and receipt lists', function () {
     $actor->user->givePermissionTo('sales.payment-finality.transition');
     $foreign = Company::create(['name' => 'Other finality company']);
 
-    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies')->assertUnprocessable();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies')->assertOk()->assertJsonCount(0, 'data');
     actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies?company_id='.$foreign->id)->assertForbidden();
     actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-policies?company_id='.$company->id)
         ->assertOk()->assertJsonCount(0, 'data');
 
-    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts')->assertUnprocessable();
+    actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts')->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts?company_id='.$foreign->id)->assertForbidden();
     actingAs($actor->user, 'api')->getJson('/api/sales/payment-finality-receipts?company_id='.$company->id)
         ->assertOk()->assertJsonCount(0, 'data.data');

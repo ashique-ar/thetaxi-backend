@@ -11,6 +11,21 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
+it('returns an empty current profile and the default company without a Sales Profile assignment', function () {
+    [$admin, $company] = hr_seed_admin_actor(['name' => 'Default Profileless Company']);
+    $staff = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create(['user_id' => $staff->user_id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $admin->id]);
+    $staff->user->givePermissionTo('sales.self.view');
+    $staff->user->givePermissionTo('sales.profiles.view');
+
+    actingAs($staff->user, 'api')->getJson('/api/sales/me')
+        ->assertOk()->assertJsonPath('status', 'success')->assertJsonPath('data', null);
+    actingAs($staff->user, 'api')->getJson('/api/sales/profile-company-options')
+        ->assertOk()->assertJsonPath('default_company_id', $company->id)
+        ->assertJsonPath('data.data.0.value', $company->id);
+});
+
 it('searches and hydrates only companies in the actors effective Profile scope', function () {
     [$admin, $company] = hr_seed_admin_actor(['name' => 'Scoped Profile Company', 'city' => 'Colombo']);
     $staff = Staff::factory()->create(['company_id' => $company->id]);

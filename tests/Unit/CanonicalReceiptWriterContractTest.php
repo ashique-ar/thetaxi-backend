@@ -76,7 +76,7 @@ it('locks the active booking company before canonical receipt and callback booki
         ->and(strpos($repair, "DB::table('companies')"))->toBeLessThan(strpos($repair, 'Booking::query()->lockForUpdate()'))
         ->and(strpos($paymentCallback, "DB::table('companies')"))->toBeLessThan(strpos($paymentCallback, 'Booking::query()->lockForUpdate()'))
         ->and(strpos($callback, "DB::table('companies')"))->toBeLessThan(strpos($callback, "Booking::where('id', \$booking->id)->lockForUpdate()"))
-        ->and(strpos($notify, "DB::table('companies')"))->toBeLessThan(strpos($notify, "Booking::where('booking_number', \$bookingNumber)"))
+        ->and(strpos($notify, "DB::table('companies')"))->toBeLessThan(strpos($notify, "Booking::where('booking_number', \$bookingNumber)\n                            ->lockForUpdate()"))
         ->and($repair)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
         ->and($paymentCallback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
         ->and($callback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")

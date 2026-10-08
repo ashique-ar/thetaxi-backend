@@ -35,11 +35,13 @@ class SalesProfileController extends Controller
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
         ]);
-        $profile = $this->scope
-            ->activeProfile($request->user(), $data['company_id'] ?? null)
-            ->load('staff.user');
+        $profile = $this->scope->activeProfile($request->user(), $data['company_id'] ?? null);
 
-        return response()->json(['status' => 'success', 'data' => $this->payload($profile)]);
+        if (! $profile) {
+            return response()->json(['status' => 'success', 'data' => null]);
+        }
+
+        return response()->json(['status' => 'success', 'data' => $this->payload($profile->load('staff.user'))]);
     }
 
     public function index(Request $request): JsonResponse

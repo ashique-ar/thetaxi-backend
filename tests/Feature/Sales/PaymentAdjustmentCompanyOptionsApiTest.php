@@ -37,7 +37,7 @@ it('searches and hydrates only companies in the actors effective Sales scope', f
         ->assertJsonPath('data.data.0.value', $company->id);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$foreign->id)->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$deleted->id)->assertOk()->assertJsonCount(0, 'data.data');
-    $staff->update(['employment_ended_at' => now()]);
-    actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($staff->user, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
+    $staff->forceFill(['employment_ended_at' => now()])->save();
+    actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertForbidden();
 });

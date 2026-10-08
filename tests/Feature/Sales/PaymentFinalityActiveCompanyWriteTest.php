@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Staff;
+use App\Models\Booking\Booking;
+use App\Models\Customer;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Services\BookingPaymentLedgerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -10,6 +12,28 @@ use Illuminate\Support\Str;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
+
+it('creates an audited default-company attribution when payment handling finds none', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    $customer = Customer::create(['user_id' => $admin->id]);
+    $bookingId = (string) Str::uuid();
+    DB::table('bookings')->insert([
+        'id' => $bookingId, 'booking_number' => 'BK-DEFAULT-FALLBACK-1', 'customer_id' => $customer->id,
+        'status' => 'confirmed', 'currency' => 'LKR', 'total_estimated' => 1500,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $booking = Booking::query()->findOrFail($bookingId);
+
+    $ledger = app(BookingPaymentLedgerService::class);
+    expect($ledger->ensureBookingCompanyAttribution($booking))->toBe($company->id);
+    expect($ledger->ensureBookingCompanyAttribution($booking))->toBe($company->id);
+
+    $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)->first();
+    expect($attribution->company_id)->toBe($company->id)
+        ->and($attribution->status)->toBe('held')
+        ->and(DB::table('sales_booking_attribution_events')->where('attribution_id', $attribution->id)
+            ->where('event_type', 'default_company_fallback')->count())->toBe(1);
+});
 
 it('blocks payment-finality policy writes when the company is inactive or deleted', function () {
     [, $company] = hr_seed_admin_actor();
