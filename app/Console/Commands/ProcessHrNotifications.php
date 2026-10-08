@@ -17,8 +17,7 @@ class ProcessHrNotifications extends Command
 
     public function handle(HrNotificationService $notifications): int
     {
-        if (! config('hr.features.engagement_analytics', false)
-            || ! config('hr.system_user_id')
+        if (! config('hr.system_user_id')
             || ! Schema::hasTable('hr_notification_outbox')) {
             return self::SUCCESS;
         }

@@ -20,7 +20,7 @@ class ReportingLineController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate([
             'manager_staff_id' => ['nullable', 'uuid'], 'member_staff_id' => ['nullable', 'uuid'],
@@ -59,7 +59,7 @@ class ReportingLineController extends Controller
 
     public function staffOptions(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $search = trim((string) ($data['search'] ?? ''));
@@ -70,7 +70,7 @@ class ReportingLineController extends Controller
 
     public function staffSelectorOptions(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
         $query = $this->staffOptionsQuery($companyId, trim((string) ($data['search'] ?? '')), $data['selected_id'] ?? null);
@@ -101,7 +101,7 @@ class ReportingLineController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $data = $request->validate($this->commandRules());
         $companyId = $this->access->actorCompanyId($request->user());
 
@@ -112,7 +112,7 @@ class ReportingLineController extends Controller
 
     public function end(Request $request, string $lineId): JsonResponse
     {
-        $this->enabled();
+        
         $data = $request->validate([
             'effective_until' => ['required', 'date'], 'reason' => ['required', 'string', 'max:2000'],
             'expected_version' => ['required', 'integer', 'min:1'], 'idempotency_key' => ['required', 'string', 'max:160'],
@@ -146,8 +146,5 @@ class ReportingLineController extends Controller
         ];
     }
 
-    private function enabled(): void
-    {
-        abort_unless(config('hr.features.people_core', false), 409, 'HR People Core is not enabled.');
-    }
+    
 }

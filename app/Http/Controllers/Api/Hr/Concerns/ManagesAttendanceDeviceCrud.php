@@ -25,7 +25,7 @@ trait ManagesAttendanceDeviceCrud
 {
     public function probe(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate(['company_id' => ['nullable', 'uuid']]);
         $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
         abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
@@ -63,7 +63,7 @@ trait ManagesAttendanceDeviceCrud
 
     public function sync(Request $request, string $deviceId, DirectAttendanceSyncService $sync): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'days' => ['nullable', 'integer', 'min:1', 'max:31']]);
         $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
         $to = CarbonImmutable::now();
@@ -161,7 +161,7 @@ trait ManagesAttendanceDeviceCrud
 
         $latestRun = DB::table('hr_attendance_sync_runs')->where('company_id', $companyId)->latest('started_at')->first();
         $latestCompletedAt = $latestRun?->finished_at ?? $latestRun?->started_at;
-        $automationEnabled = (bool) config('hr.features.attendance_ingestion');
+        $automationEnabled = true;
         $automationHealthy = $automationEnabled && $latestCompletedAt && CarbonImmutable::parse($latestCompletedAt)->gte(now()->subMinutes(15)) && $latestRun->status === 'completed';
 
         return response()->json(['status' => 'success', 'data' => [
@@ -183,7 +183,7 @@ trait ManagesAttendanceDeviceCrud
 
     public function storeConnector(Request $request): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid'],
             'name' => ['required', 'string', 'max:255'],
@@ -210,7 +210,7 @@ trait ManagesAttendanceDeviceCrud
 
     public function storeDevice(Request $request, AttendanceProviderManager $providers): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid'],
             'connector_id' => ['nullable', 'uuid'],
@@ -286,7 +286,7 @@ trait ManagesAttendanceDeviceCrud
      */
     public function updateDevice(Request $request, string $deviceId): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $device = $this->authorizedDevice($request, $deviceId);
         $data = $request->validate([
             'connector_id' => ['nullable', 'uuid'],
@@ -319,7 +319,7 @@ trait ManagesAttendanceDeviceCrud
 
     public function destroyDevice(Request $request, string $deviceId): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $device = $this->authorizedDevice($request, $deviceId);
 
         // Soft deletion removes the terminal from operational selection and all

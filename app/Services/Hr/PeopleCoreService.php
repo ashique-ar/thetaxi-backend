@@ -23,7 +23,7 @@ class PeopleCoreService
 
     public function initializeStaff(Staff $staff, array $input, string $actorUserId): Staff
     {
-        if (! config('hr.features.people_core', false)) return $staff;
+        
         if (! $staff->company_id) return $staff;
         return DB::transaction(function () use ($staff, $input, $actorUserId) {
             abort_unless(DB::table('companies')->where('id',$staff->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Staff initialization requires an active legal entity.');
@@ -49,7 +49,7 @@ class PeopleCoreService
 
     public function closeEmployment(Staff $staff, string $reason, string $actorUserId): ?HrEmploymentSpell
     {
-        if (! config('hr.features.people_core', false)) return null;
+        
         return DB::transaction(function()use($staff,$reason,$actorUserId){
             abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
@@ -66,7 +66,7 @@ class PeopleCoreService
 
     public function prepareRehire(Staff $staff, array $data, string $actorUserId): HrRehireCase
     {
-        abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
+        
         return DB::transaction(function () use ($staff, $data, $actorUserId) {
             $companyId = (string) $staff->company_id;
             abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Rehire requires an active legal entity.');
@@ -92,7 +92,7 @@ class PeopleCoreService
 
     public function approveRehire(HrRehireCase $case, array $assignment, string $actorUserId): HrRehireCase
     {
-        abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
+        
         return DB::transaction(function () use ($case,$assignment,$actorUserId) {
             abort_unless(DB::table('companies')->where('id',$case->company_id)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Rehire requires an active legal entity.');
             $case=HrRehireCase::query()->lockForUpdate()->findOrFail($case->id);
@@ -132,7 +132,7 @@ class PeopleCoreService
 
     public function addProfileVersion(Staff $staff,array $profile,string $reason,string $actorUserId): HrStaffProfileVersion
     {
-        abort_unless(config('hr.features.people_core',false),409,'HR People Core writes are not enabled.');
+        
         return DB::transaction(function()use($staff,$profile,$reason,$actorUserId){
             $staff=Staff::withTrashed()->lockForUpdate()->findOrFail($staff->id);
             $version=(int)HrStaffProfileVersion::query()->where('staff_id',$staff->id)->max('version')+1;
@@ -148,7 +148,7 @@ class PeopleCoreService
 
     public function addEmployeeRecord(Staff $staff,array $data,string $actorUserId): HrEmployeeRecord
     {
-        abort_unless(config('hr.features.people_core',false),409,'HR People Core writes are not enabled.');
+        
         return DB::transaction(function()use($staff,$data,$actorUserId){
             $companyId = (string) $staff->company_id;
             abort_unless(DB::table('companies')->where('id',$companyId)->where('is_active',true)->whereNull('deleted_at')->lockForUpdate()->first(),409,'Employee records require an active legal entity.');
@@ -164,7 +164,7 @@ class PeopleCoreService
 
     public function applyApprovedAssignmentChange(Staff $staff,array $data,string $actorUserId,string $changeRequestId):HrEmploymentAssignment
     {
-        abort_unless(config('hr.features.people_core',false),409,'HR People Core writes are not enabled.');
+        
         return DB::transaction(function()use($staff,$data,$actorUserId,$changeRequestId){abort_unless(DB::table('companies')->where('id',$staff->company_id)->lockForUpdate()->first(),404,'Staff legal entity was not found.');$staff=Staff::query()->lockForUpdate()->findOrFail($staff->id);$spell=HrEmploymentSpell::query()->where('staff_id',$staff->id)->where('status','active')->lockForUpdate()->firstOrFail();abort_if(HrEmploymentAssignment::query()->where('staff_id',$staff->id)->where('effective_from','>',$data['effective_from'])->exists(),409,'A later assignment already exists; review the effective-date sequence.');$assignment=$this->createAssignment($staff,$spell,$data,$actorUserId,'approved_'.$data['change_type']);$this->timeline($staff,$spell,'lifecycle','assignment_changed',ucwords(str_replace('_',' ',$data['change_type'])),['assignment_id'=>$assignment->id,'effective_from'=>$assignment->effective_from->toDateString(),'change_request_id'=>$changeRequestId],"assignment-change:{$changeRequestId}",$assignment->effective_from);return$assignment;});
     }
 

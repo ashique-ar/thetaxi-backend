@@ -15,8 +15,7 @@ class ExpireSalesProfileExports extends Command
     public function handle(SalesProfileExportService $exports): int
     {
         if (! Schema::hasTable('sales_profile_exports')
-            || ! Schema::hasColumn('sales_profile_exports', 'expires_at')
-            || config('sales.features.sales_profiles', false) !== true) {
+            || ! Schema::hasColumn('sales_profile_exports', 'expires_at')) {
             return self::SUCCESS;
         }
 

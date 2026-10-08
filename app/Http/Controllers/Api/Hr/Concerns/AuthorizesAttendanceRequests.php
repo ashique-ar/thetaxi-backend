@@ -85,8 +85,5 @@ trait AuthorizesAttendanceRequests
         return $locked;
     }
 
-    private function requireAttendanceWrites(): void
-    {
-        abort_unless(config('hr.features.attendance_ingestion', false), 409, 'Attendance ingestion writes are not enabled.');
-    }
+    
 }

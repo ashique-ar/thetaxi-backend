@@ -15,10 +15,7 @@ class CalculateAttendanceResults extends Command
 
     public function handle(AttendanceResultService $results): int
     {
-        if (! config('hr.features.attendance_results', false)) {
-            $this->warn('Attendance result calculation is disabled.');
-            return self::SUCCESS;
-        }
+
 
         $days = max(1, min(31, (int) $this->option('days')));
         $to = CarbonImmutable::today();

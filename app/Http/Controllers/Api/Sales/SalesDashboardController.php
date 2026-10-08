@@ -324,13 +324,13 @@ class SalesDashboardController extends Controller
             'held_attributions' => SalesBookingAttribution::query()->where('company_id', $companyId)->where('status', 'held')->where(fn ($q) => $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids))->count(),
             'held_commission_decisions' => DB::table('sales_commission_decisions')->where('company_id', $companyId)->whereIn('beneficiary_sales_profile_id', $ids)->whereIn('status', ['held', 'shadow_held'])->count(),
             'metric_freshness_at' => DB::table('sales_metric_facts')->where('company_id', $companyId)->whereIn('sales_profile_id', $ids)->max('created_at'),
-            'latest_alert_suppressed_rule_count' => $companyWide && config('sales.features.performance_alert_evaluations', false)
+            'latest_alert_suppressed_rule_count' => $companyWide
                 ? DB::table('sales_alert_evaluation_runs')->where('company_id', $companyId)->latest('evaluated_at')->value('suppressed_rule_count')
                 : null,
         ];
-        $alertEvidenceEnabled = config('sales.features.performance_alert_evaluations', false);
+        $alertEvidenceEnabled = true;
         $alertEvaluationsEnabled = $this->policySettings->featureEnabled((string) $companyId, 'performance_alert_evaluations');
-        $alertActionEvidenceAvailable = config('sales.features.performance_alert_actions', false);
+        $alertActionEvidenceAvailable = true;
         $alertActionsEnabled = $this->policySettings->featureEnabled((string) $companyId, 'performance_alert_actions');
         $alertFields = ['alert.id', 'alert.sales_profile_id', 'staff.code as staff_code', 'alert.alert_type',
             'alert.severity', 'alert.status', 'alert.explanation', 'alert.detected_at', 'alert.assigned_to',

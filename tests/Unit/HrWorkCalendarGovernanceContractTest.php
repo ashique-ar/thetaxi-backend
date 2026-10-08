@@ -9,13 +9,12 @@ it('gives People Core its own work-calendar write path independent of the attend
         ->not->toContain("hr.features.attendance_results");
 });
 
-it('does not modify the existing Attendance calendar write endpoint or its own feature gate', function () {
+it('keeps the Attendance calendar write endpoint independent of environment feature gates', function () {
     $attendanceController = file_get_contents(app_path('Http/Controllers/Api/Hr/AttendanceResultController.php'));
 
     expect($attendanceController)
         ->toContain("public function storeCalendar(Request \$request): JsonResponse")
-        ->toContain('private function writes(): void')
-        ->toContain("config('hr.features.attendance_results', false)");
+        ->not->toContain('hr.features.attendance_results', 'Attendance result writes are not enabled.');
 });
 
 it('governs work-calendar and calendar-day creation as idempotent, replay-safe, audited commands', function () {

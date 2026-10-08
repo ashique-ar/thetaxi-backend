@@ -16,7 +16,8 @@ it('keeps frozen alert policy contracts out of the dashboard response', function
         ->not->toContain('policy_contract_snapshot')
         ->and($alerts)
         ->toContain("'id' => \$alert->id", "'explanation' => \$alert->explanation")
-        ->toContain('setCollection(', "config('sales.features.performance_alert_evaluations', false)")
+        ->toContain('setCollection(')
+        ->not->toContain("config('sales.features.performance_alert_evaluations', false)")
         ->not->toContain('sales_profile_id', 'policy_contract_snapshot', 'evidence_snapshot',
             'evaluation_checksum', 'assigned_to', 'policy_version_id');
 });

@@ -37,10 +37,10 @@ it('keeps snooze timezone-explicit and escalation separately authorized', functi
         ->toContain("\$alert, 'escalate'")
         ->and($routes)
         ->toContain("'permission:sales.performance.alerts.escalate'")
-        ->toContain("'sales.feature:performance_alert_actions'")
+        ->not->toContain("'sales.feature:performance_alert_actions'")
         ->and($permissions)->toContain("'sales.performance.alerts.escalate'")
         ->and($dashboard)
-        ->toContain("config('sales.features.performance_alert_actions', false)")
+        ->not->toContain("config('sales.features.performance_alert_actions', false)")
         ->toContain("whereNull('alert.snoozed_until')");
 });
 

@@ -128,7 +128,7 @@ class SalesCrmController extends Controller
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
             ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids))
             ->where('profile.company_id', $companyId);
-        if (config('sales.features.crm') === true && $featureTableReady) {
+        if ($featureTableReady) {
             $query->whereExists(fn ($feature) => $feature->selectRaw('1')->from('sales_company_feature_settings as setting')
                 ->whereColumn('setting.company_id', 'profile.company_id')->where('setting.feature_key', 'crm')
                 ->whereRaw('setting.version = (select MAX(current_setting.version) from sales_company_feature_settings as current_setting where current_setting.company_id = profile.company_id and current_setting.feature_key = setting.feature_key and current_setting.status = \'approved\' and current_setting.deleted_at is null)')

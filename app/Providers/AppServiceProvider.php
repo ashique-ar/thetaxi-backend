@@ -88,9 +88,7 @@ class AppServiceProvider extends ServiceProvider
         // Register model observers
         Driver::observe(DriverObserver::class);
         Booking::observe(BookingPaymentObserver::class);
-        if (config('sales.features.sales_profiles', false) === true) {
-            Booking::observe(BookingSalesObserver::class);
-        }
+        Booking::observe(BookingSalesObserver::class);
 
         // Register policies
         Gate::policy(Booking::class, BookingPolicy::class);

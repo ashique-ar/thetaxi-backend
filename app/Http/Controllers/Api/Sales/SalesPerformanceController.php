@@ -398,7 +398,7 @@ class SalesPerformanceController extends Controller
             ->where('status', 'frozen')->select('id'));
         if ($ids !== null) $query->whereIn('sales_profile_id', $ids);
         $query->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status));
-        if (config('sales.features.performance_alert_actions', false) && ! ($data['include_snoozed'] ?? false)) {
+        if (! ($data['include_snoozed'] ?? false)) {
             $query->where(fn ($q) => $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now()));
         }
         $page = $query->orderByRaw("CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
@@ -411,17 +411,13 @@ class SalesPerformanceController extends Controller
                 'detected_at' => $alert->detected_at, 'acknowledged_at' => $alert->acknowledged_at,
                 'resolved_at' => $alert->resolved_at,
             ];
-            if (config('sales.features.performance_alert_evaluations', false)) {
-                $row['threshold_snapshot'] = $alert->threshold_snapshot;
-                $row['comparison_snapshot'] = $alert->comparison_snapshot;
-            }
-            if (config('sales.features.performance_alert_actions', false)) {
-                $row += [
-                    'event_version' => $alert->event_version, 'snoozed_until' => $alert->snoozed_until,
-                    'escalation_level' => $alert->escalation_level, 'escalated_at' => $alert->escalated_at,
-                    'last_action_at' => $alert->last_action_at,
-                ];
-            }
+            $row['threshold_snapshot'] = $alert->threshold_snapshot;
+            $row['comparison_snapshot'] = $alert->comparison_snapshot;
+            $row += [
+                'event_version' => $alert->event_version, 'snoozed_until' => $alert->snoozed_until,
+                'escalation_level' => $alert->escalation_level, 'escalated_at' => $alert->escalated_at,
+                'last_action_at' => $alert->last_action_at,
+            ];
 
             return $row;
         }));

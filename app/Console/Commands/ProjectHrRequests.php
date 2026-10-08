@@ -28,7 +28,7 @@ class ProjectHrRequests extends Command
         }
         foreach ($counts as $table => $count) $this->line($table.': '.$count);
         if (! $this->option('commit')) return self::SUCCESS;
-        if (! config('hr.features.employee_self_service', false)) { $this->error('HR employee self-service is disabled.'); return self::FAILURE; }
+        
         $actor = User::query()->find(config('hr.system_user_id'));
         if (! $actor) { $this->error('HR_SYSTEM_USER_ID must identify an existing system actor.'); return self::FAILURE; }
         foreach ($sources as [$table, $method, $excluded]) {

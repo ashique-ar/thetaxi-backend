@@ -234,8 +234,7 @@ class ProcessBookingPaymentSchedules extends Command
 
     private function extendRollingHorizons($asOf, bool $dryRun): array
     {
-        if (config('sales.features.rolling_payment_schedules', false) !== true
-            || ! Schema::hasTable('sales_company_feature_settings')) {
+        if (! Schema::hasTable('sales_company_feature_settings')) {
             return [0, 0, 0];
         }
         if (! Schema::hasTable('booking_payment_schedule_rules')

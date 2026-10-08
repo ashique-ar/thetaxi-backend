@@ -27,7 +27,7 @@ class AttendanceIngestionService
 {
     public function ingest(array $headers, string $rawBody, array $events, ?string $sourceIp): array
     {
-        abort_unless(config('hr.features.attendance_ingestion', false), 409, 'HR attendance ingestion is not enabled.');
+        
         $connector = AttendanceConnector::query()->where('connector_key', $headers['connector_key'])->where('status', 'active')->firstOrFail();
         abort_unless(DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance ingestion requires an active legal entity.');
         $this->verify($connector, $headers, $rawBody, $sourceIp);

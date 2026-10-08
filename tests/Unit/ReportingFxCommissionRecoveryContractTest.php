@@ -70,7 +70,7 @@ class ReportingFxCommissionRecoveryContractTest extends TestCase
     public function test_routes_remain_internal_permission_and_profile_feature_gated(): void
     {
         $routes = file_get_contents(base_path('routes/api.php'));
-        self::assertStringContainsString("Route::prefix('sales')->middleware(['ensure.internal', 'sales.feature:sales_profiles'])", $routes);
+        self::assertStringContainsString("Route::prefix('sales')->middleware(['ensure.internal'])", $routes);
         self::assertStringContainsString("bookings/{booking}/payment-adjustments/preview", $routes);
         self::assertStringContainsString("permission:sales.payment-adjustments.create", $routes);
         self::assertStringContainsString("permission:sales.commission-recoveries.decide", $routes);

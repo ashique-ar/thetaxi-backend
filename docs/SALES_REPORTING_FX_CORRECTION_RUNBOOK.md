@@ -2,7 +2,7 @@
 
 ## Activation gate
 
-Keep `SALES_FX_CORRECTIONS_ENABLED=false` until Finance has approved and configured all of:
+FX correction actions are available after Finance approves and configures all of:
 
 - `SALES_FX_APPROVED_QUOTE_BASE`
 - `SALES_FX_CALCULATION_MODE` (`multiply_source_by_rate` or `divide_source_by_rate` only after Finance chooses it)

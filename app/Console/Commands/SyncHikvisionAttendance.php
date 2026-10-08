@@ -14,7 +14,7 @@ class SyncHikvisionAttendance extends Command
 
     public function handle(DirectAttendanceSyncService $sync): int
     {
-        if (! config('hr.features.attendance_ingestion')) { $this->warn('Attendance ingestion is disabled.'); return self::SUCCESS; }
+        
         $query=AttendanceDevice::query()->where('provider','hikvision')->where('integration_mode','direct_isapi')->where('status','active')->when($this->option('device'),fn($q,$id)=>$q->whereKey($id));
         $failed=false;
         foreach($query->cursor() as $device){

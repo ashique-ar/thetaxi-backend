@@ -24,7 +24,7 @@ class PayrollStatutoryController extends Controller
 
     public function context(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
 
         return response()->json([
@@ -37,7 +37,7 @@ class PayrollStatutoryController extends Controller
 
     public function epfEtfPolicies(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate([
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -54,7 +54,7 @@ class PayrollStatutoryController extends Controller
 
     public function storeEpfEtfPolicy(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->epfEtfRules());
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->createEpfEtfPolicy($data, $companyId, (string) $request->user()->id);
@@ -64,7 +64,7 @@ class PayrollStatutoryController extends Controller
 
     public function approveEpfEtfPolicy(Request $request, HrEpfEtfContributionPolicy $policy): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->approveEpfEtfPolicy($policy->id, $companyId, (string) $request->user()->id);
 
@@ -73,7 +73,7 @@ class PayrollStatutoryController extends Controller
 
     public function previewEpfEtfContribution(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate([
             'earnings' => ['required', 'array:basic_salary,cost_of_living_allowance,food_allowance,holiday_pay,other_regular_allowances,overtime,bonus,reimbursements'],
             'earnings.basic_salary' => ['required', 'numeric', 'min:0'],
@@ -98,7 +98,7 @@ class PayrollStatutoryController extends Controller
 
     public function gratuityPolicies(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate([
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -115,7 +115,7 @@ class PayrollStatutoryController extends Controller
 
     public function storeGratuityPolicy(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->gratuityRules());
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->createGratuityPolicy($data, $companyId, (string) $request->user()->id);
@@ -125,7 +125,7 @@ class PayrollStatutoryController extends Controller
 
     public function approveGratuityPolicy(Request $request, HrGratuityPolicy $policy): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $policy = $this->policies->approveGratuityPolicy($policy->id, $companyId, (string) $request->user()->id);
 
@@ -134,7 +134,7 @@ class PayrollStatutoryController extends Controller
 
     public function previewGratuityEntitlement(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate([
             'pay_basis' => ['required', Rule::in(['monthly', 'non_monthly'])],
             'wage_amount' => ['required_if:pay_basis,monthly', 'nullable', 'numeric', 'min:0'],
@@ -247,8 +247,5 @@ class PayrollStatutoryController extends Controller
         ];
     }
 
-    private function ensureEnabled(): void
-    {
-        abort_unless(config('hr.features.payroll', false), 409, 'HR Payroll is not enabled.');
-    }
+    
 }

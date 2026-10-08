@@ -1,12 +1,12 @@
 <?php
 
-it('keeps commission notification delivery default off and migration rollback evidence safe', function () {
+it('keeps company governed commission notification delivery and migration rollback evidence safe', function () {
     $config = file_get_contents(config_path('sales.php'));
     $environment = file_get_contents(base_path('.env.example'));
     $migration = file_get_contents(database_path('migrations/2026_08_13_141000_create_sales_commission_notification_governance.php'));
 
-    expect($config)->toContain("'commission_notifications' => env('SALES_COMMISSION_NOTIFICATIONS_ENABLED', false)")
-        ->and($environment)->toContain('SALES_COMMISSION_NOTIFICATIONS_ENABLED=false')
+    expect($config)->not->toContain('features')
+        ->and($environment)->not->toContain('SALES_COMMISSION_NOTIFICATIONS_ENABLED')
         ->and($migration)->toContain('sales_commission_notification_policy_versions')
         ->toContain('sales_commission_notification_policy_checker')
         ->toContain("channel = 'in_app'")

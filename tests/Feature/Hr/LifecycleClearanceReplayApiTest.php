@@ -45,9 +45,6 @@ it('lists only the actor company clearance queue and replays exact completion on
     $foreignItemId = $makeItem($foreign->id, $foreignSubject->id);
     $url = "/api/hr/lifecycle/clearance/{$itemId}/complete";
 
-    config(['hr.features.employee_self_service' => false]);
-    actingAs($actor, 'api')->postJson($url, ['resolution' => 'Handed over files and access checklist.'])->assertConflict();
-    config(['hr.features.employee_self_service' => true]);
     $first = actingAs($actor, 'api')->postJson($url, ['resolution' => 'Handed over files and access checklist.'])->assertOk();
     $replay = actingAs($actor, 'api')->postJson($url, ['resolution' => 'Handed over files and access checklist.'])
         ->assertOk()->assertJsonPath('idempotent_replay', true);

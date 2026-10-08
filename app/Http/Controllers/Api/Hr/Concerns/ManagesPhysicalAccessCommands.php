@@ -32,7 +32,7 @@ trait ManagesPhysicalAccessCommands
 
     public function requestAccess(Request $request): JsonResponse
     {
-        abort_unless(config('hr.features.physical_access_commands', false), 409, 'Physical access command writes are not enabled.');
+        
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'],
             'device_id' => ['required', 'uuid'],
@@ -83,7 +83,7 @@ trait ManagesPhysicalAccessCommands
 
     public function approveAccess(Request $request, string $commandId): JsonResponse
     {
-        abort_unless(config('hr.features.physical_access_commands', false), 409, 'Physical access command writes are not enabled.');
+        
 
         return DB::transaction(function () use ($request, $commandId) {
             $command = DB::table('hr_attendance_access_commands')->where('id', $commandId)

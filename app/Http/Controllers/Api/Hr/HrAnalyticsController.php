@@ -24,7 +24,7 @@ class HrAnalyticsController extends Controller
 
     public function storeDefinition(Request $request): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate([
             'metric_code' => ['required', 'string', 'max:100'], 'version' => ['required', 'integer', 'min:1'], 'name' => ['required', 'string', 'max:255'],
             'definition' => ['required', 'string', 'max:10000'], 'source_contract' => ['required', 'array'],
@@ -43,7 +43,7 @@ class HrAnalyticsController extends Controller
 
     public function approveDefinition(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         return DB::transaction(function () use ($request, $actor, $id) {
             $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Definition creator cannot approve the same version.');
@@ -56,7 +56,7 @@ class HrAnalyticsController extends Controller
 
     public function rejectDefinition(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request); $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
+         $actor = $this->actor($request); $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
             $row = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Definition creator cannot reject the same version.');
@@ -67,7 +67,7 @@ class HrAnalyticsController extends Controller
 
     public function generate(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['as_of_date' => ['required', 'date'], 'dimension' => ['nullable', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])]]);
         $definition = DB::table('hr_analytics_definition_versions')->where('id', $id)->where('company_id', $actor->company_id)->where('status', 'approved')->whereDate('effective_from', '<=', $data['as_of_date'])->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', $data['as_of_date']))->first(); abort_unless($definition, 404);
         $built = $this->snapshots->build($definition, $data['as_of_date'], ['dimension' => $data['dimension'] ?? null]);
@@ -89,5 +89,5 @@ class HrAnalyticsController extends Controller
     }
 
     private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }
-    private function enabled(): void { abort_unless(config('hr.features.engagement_analytics', false), 409, 'HR engagement and analytics writes are not enabled.'); }
+    
 }

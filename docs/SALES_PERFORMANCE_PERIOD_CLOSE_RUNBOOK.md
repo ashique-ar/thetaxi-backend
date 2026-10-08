@@ -4,7 +4,7 @@ This runbook governs the Sales KPI snapshot only. Every employee remains a canon
 
 ## Preconditions
 
-- Keep `SALES_PERFORMANCE_SNAPSHOTS_ENABLED=false` until the schema, permissions, denial matrix, and rollback rehearsal have passed in the target environment.
+- Apply the schema and complete permission, denial, and rollback checks before the first close.
 - Set `SALES_BUSINESS_TIMEZONE` only to the Finance/operations-approved IANA business timezone. Missing or invalid configuration must block preview and close.
 - Approve exactly one alert-policy version covering the whole local calendar month. Do not substitute suggested thresholds or application defaults for approval.
 - Reconcile booking attribution, canonical receipt/finality facts, commission facts, Sales activities, approved target versions, and Profile-to-Staff/company ownership before close.
@@ -34,4 +34,3 @@ The close serialises against company-scoped metric writers, rechecks source rows
 - Rehearse apply and rollback on a production-like copy. Rollback intentionally refuses once close events or linked snapshots exist; export/reconcile immutable evidence and use an approved forward recovery instead of deleting it.
 - Do not backfill historical periods unless source attribution, finality, target, policy, timezone, and cutoff evidence is unambiguous. Run eligible history in shadow, reconcile it, and obtain the required owner/Finance sign-offs before publication.
 - In consolidated final verification, execute backend and portal tests/builds, actor/current-and-former-manager denial cases, preview/close/replay/stale-version/reopen/rebuild concurrency cases, timezone boundaries, zero/missing-target ranking, privacy, 320px/accessibility, migration/restore, and source-to-snapshot reconciliation. Record §24.1 evidence before checking any completion gate.
-

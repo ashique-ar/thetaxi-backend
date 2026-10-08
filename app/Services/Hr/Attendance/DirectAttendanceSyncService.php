@@ -31,7 +31,7 @@ class DirectAttendanceSyncService
 
     public function sync(AttendanceDevice $device, CarbonImmutable $from, CarbonImmutable $to, string $type = 'incremental'): array
     {
-        abort_unless(config('hr.features.attendance_ingestion', false), 409, 'HR attendance ingestion is not enabled.');
+        
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only active direct-ISAPI devices can be synchronized.');
         abort_unless(DB::table('hr_attendance_devices')->where('id', $device->id)->where('company_id', $device->company_id)->where('status', 'active')->where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active undeleted device.');
         abort_unless(DB::table('companies')->where('id', $device->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active legal entity.');

@@ -6,7 +6,7 @@ This runbook covers canonical internal-Staff organization units, job families, g
 
 ## Preflight
 
-1. Keep `HR_PEOPLE_CORE_ENABLED=false` while rehearsing schema and data checks.
+1. HR People Core is available by default. Rehearse schema and data checks against a production-like copy before applying migrations.
 2. Confirm `2026_08_12_147000_create_hr_people_core.php` precedes `2026_08_14_107000_govern_hr_organization_administration.php`, followed by `2026_08_14_108000_govern_hr_job_and_position_administration.php`, `2026_08_14_109000_govern_hr_reporting_lines.php`, `2026_08_14_110000_govern_hr_acting_appointments.php`, and `2026_08_14_111000_govern_hr_staff_custom_field_values.php`.
 3. Inventory organization units by legal entity, code, parent, type, effective interval and status. Reject duplicate company/code values, missing/cross-company parents, self-parenting, cycles and cross-company manager/HR-partner references.
 4. Inventory custom-field definitions by company, owner type and key. Reject duplicate keys, unsupported types/classifications, select fields without options and non-select fields with options.
@@ -22,7 +22,7 @@ This runbook covers canonical internal-Staff organization units, job families, g
 1. Rehearse the two People migrations in order against a production-like copy and capture apply/rollback timings.
 2. Confirm existing rows receive version `1`, the change-event table is empty, global position-number uniqueness becomes legal-entity-qualified, and legacy job catalogue effective dates remain null pending approved mapping rather than receiving guessed history.
 3. Run the focused API, permission, idempotency, stale-version, hierarchy-cycle, cross-entity, privacy and Angular accessibility matrices required by the canonical plan.
-4. Enable People Core only after the historical organization import/backfill has a reviewed mapping, rejection report and reconciliation totals.
+4. Apply People Core after the historical organization import/backfill has a reviewed mapping, rejection report and reconciliation totals.
 5. Create or edit one isolated non-production unit, job record, position and definition; prove one event per accepted version and exact before/after reconstruction.
 6. Reconcile each position's current effective Staff assignments against `occupied_count`, `vacancy_count`, and availability. Prove capacity cannot be reduced below occupancy and occupied positions cannot be deactivated.
 7. Prove primary/dotted People scope changes exactly at interval boundaries; HR-partner and approval lines must not grant team access. Exercise two employees, a current/former manager, a cycle attempt, retry, stale version, manager exit, future cancellation, and assignment-manager projection.
@@ -48,8 +48,8 @@ This runbook covers canonical internal-Staff organization units, job families, g
 ## Rollback and incident response
 
 - Before any organization command has written an event, schema rollback may remove the unused follow-on tables/columns after rehearsal. The job/position rollback additionally refuses while cross-company duplicate position numbers cannot fit the former global constraint.
-- Once retained events exist, the migration deliberately refuses destructive rollback. Disable `HR_PEOPLE_CORE_ENABLED`, preserve the schema/history, correct through a new version, and restore service after reconciliation.
-- Once any custom-field value or access event exists, its follow-on migration refuses rollback. Feature-disable People writes, preserve ciphertext and access history, and correct through a new authorized value version.
+- Once retained events exist, the migration deliberately refuses destructive rollback. Preserve the schema/history, correct through a new version, and reconcile before resuming affected writes.
+- Once any custom-field value or access event exists, its follow-on migration refuses rollback. Pause affected writes through the normal operational process, preserve ciphertext and access history, and correct through a new authorized value version.
 - Never delete or rewrite an event to repair a hierarchy. Create a reasoned corrective version.
-- If a cycle, cross-company reference or version gap is detected, disable People Core writes, retain reads where privacy-safe, capture affected IDs/counts, reconcile from events, and require HR/Security approval before reactivation.
+- If a cycle, cross-company reference or version gap is detected, pause affected People Core writes through the normal operational process, retain reads where privacy-safe, capture affected IDs/counts, reconcile from events, and require HR/Security approval before resuming writes.
 - If manager termination leaves members without a primary line, retain the closed line and expose the resulting unassigned hierarchy for HR correction; never guess a replacement manager.

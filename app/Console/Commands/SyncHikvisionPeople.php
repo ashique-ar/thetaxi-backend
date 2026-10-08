@@ -17,11 +17,7 @@ class SyncHikvisionPeople extends Command
 
     public function handle(AttendanceProviderManager $providers): int
     {
-        if (! config('hr.features.attendance_ingestion')) {
-            $this->warn('Attendance ingestion is disabled.');
-
-            return self::SUCCESS;
-        }
+        
 
         $failed = false;
         $devices = AttendanceDevice::query()

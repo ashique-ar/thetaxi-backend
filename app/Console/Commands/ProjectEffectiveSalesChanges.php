@@ -17,8 +17,7 @@ class ProjectEffectiveSalesChanges extends Command
         if (! Schema::hasTable('sales_booking_attribution_events')
             || ! Schema::hasTable('sales_profile_events')
             || ! Schema::hasColumn('sales_booking_attribution_events', 'projected_at')
-            || ! Schema::hasColumn('sales_profile_events', 'projected_at')
-            || config('sales.features.sales_profiles', false) !== true) {
+            || ! Schema::hasColumn('sales_profile_events', 'projected_at')) {
             return self::SUCCESS;
         }
 

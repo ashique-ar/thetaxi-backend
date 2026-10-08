@@ -42,7 +42,7 @@ it('evaluates the policy frozen by period close on its due schedule exactly once
         ->toContain("where('feature_key', 'performance_alert_evaluations')")
         ->toContain("where('status', 'approved')->where('enabled', true)")
         ->and($schedule)
-        ->toContain("config('sales.features.performance_alert_evaluations')")
+        ->not->toContain("config('sales.features.performance_alert_evaluations')")
         ->toContain("sales:process-performance-alerts --commit")
         ->and($migration)
         ->toContain('sales_alert_evaluation_snapshot_policy_unique')

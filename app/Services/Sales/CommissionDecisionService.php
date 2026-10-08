@@ -26,9 +26,6 @@ class CommissionDecisionService
 
     public function decide(BookingPaymentReceipt $receipt, BookingPaymentReceiptComponent $component): ?SalesCommissionDecision
     {
-        if (! config('sales.features.commission_shadow', false) && ! config('sales.features.commission_accrual', false)) {
-            return null;
-        }
         if (! $component->is_commission_eligible) {
             return null;
         }
@@ -196,7 +193,7 @@ class CommissionDecisionService
     private function hold(array $facts, string $code, string $explanation): SalesCommissionDecision
     {
         return $this->persist($facts + [
-            'status' => config('sales.features.commission_accrual', false) ? 'held' : 'shadow_held',
+            'status' => true ? 'held' : 'shadow_held',
             'hold_code' => $code, 'calculation_explanation' => $explanation,
         ]);
     }
@@ -204,7 +201,7 @@ class CommissionDecisionService
     private function earned(array $facts, CarbonInterface $earnedAt): SalesCommissionDecision
     {
         return $this->persist($facts + [
-            'status' => config('sales.features.commission_accrual', false) ? 'earned' : 'shadow_earned',
+            'status' => true ? 'earned' : 'shadow_earned',
             'hold_code' => null, 'earned_at' => $earnedAt,
         ]);
     }

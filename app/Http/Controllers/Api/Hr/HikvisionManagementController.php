@@ -190,7 +190,7 @@ class HikvisionManagementController extends Controller
 
     public function requestReboot(Request $r, string $id): JsonResponse
     {
-        abort_unless(config('hr.features.hikvision_maintenance_commands'), 409, 'Restricted Hikvision maintenance is not enabled for this deployment.');
+        
         $data = $r->validate(['reason' => ['required', 'string', 'max:2000'], 'typed_confirmation' => ['required', 'string', 'max:160'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $device = $this->device($r, $id);
         abort_unless(hash_equals($device->site_code, $data['typed_confirmation']), 422, 'Type the exact device site code to confirm the reboot request.');
@@ -222,7 +222,7 @@ class HikvisionManagementController extends Controller
 
     public function approveReboot(Request $r, string $id): JsonResponse
     {
-        abort_unless(config('hr.features.hikvision_maintenance_commands'), 409, 'Restricted Hikvision maintenance is not enabled for this deployment.');
+        
         return DB::transaction(function () use ($r, $id) {
             $command = DB::table('hr_attendance_device_maintenance_commands')->where('id', $id)
                 ->whereIn('company_id', $this->authorizedCompanyIds($r))->lockForUpdate()->first();

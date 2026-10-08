@@ -3,7 +3,6 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\Booking\BookingCollectionCommission;
 use App\Models\Sales\SalesCommissionDecision;
 use App\Models\Sales\SalesProfile;
 use App\Services\StaffAccessService;
@@ -23,43 +22,7 @@ class CollectionCommissionController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        if (config('sales.features.commission_accrual', false)) {
-            return $this->newEngineIndex($request);
-        }
-        $filters = $request->validate([
-            'staff_id' => ['nullable', 'uuid', 'exists:staff,id'],
-            'status' => ['nullable', 'in:earned,paid,ineligible,reversed'],
-            'date_from' => ['nullable', 'date'],
-            'date_to' => ['nullable', 'date', 'after_or_equal:date_from'],
-            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
-        ]);
-        $query = BookingCollectionCommission::query()
-            ->with(['staff.user:id,first_name,last_name', 'booking:id,booking_number', 'receipt:id,payment_purpose,received_at'])
-            ->when($filters['staff_id'] ?? null, fn ($q, $id) => $q->where('staff_id', $id))
-            ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->whereDate('earned_at', '>=', $date))
-            ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->whereDate('earned_at', '<=', $date));
-        $this->scopeLegacyQuery($query, $request);
-        $totals = (clone $query)->selectRaw(
-            "COALESCE(SUM(receipt_amount),0) receipt_total,
-             COALESCE(SUM(eligible_amount),0) eligible_total,
-             COALESCE(SUM(CASE WHEN status IN ('earned','paid') THEN commission_amount ELSE 0 END),0) earned_total,
-             COALESCE(SUM(CASE WHEN status = 'paid' THEN commission_amount ELSE 0 END),0) paid_total,
-             COALESCE(SUM(CASE WHEN status = 'earned' THEN commission_amount ELSE 0 END),0) outstanding_total"
-        )->first();
-        $rows = $query->latest('earned_at')->paginate($filters['per_page'] ?? 25);
-
-        return $this->deprecatedResponse($request, response()->json([
-            'status' => 'success',
-            'data' => $rows,
-            'summary' => [
-                'receipt_total' => (float) $totals->receipt_total,
-                'eligible_total' => (float) $totals->eligible_total,
-                'earned_total' => (float) $totals->earned_total,
-                'paid_total' => (float) $totals->paid_total,
-                'outstanding_total' => (float) $totals->outstanding_total,
-            ],
-        ]));
+        return $this->newEngineIndex($request);
     }
 
     public function markPaid(): JsonResponse
@@ -90,28 +53,6 @@ class CollectionCommissionController extends Controller
             'data' => $query->latest('decision_at')->paginate($filters['per_page'] ?? 25),
             'summary' => ['receipt_total' => (float) $totals->receipt_total, 'eligible_total' => (float) $totals->eligible_total,
                 'earned_total' => (float) $totals->earned_total, 'paid_total' => 0, 'outstanding_total' => (float) $totals->earned_total]]));
-    }
-
-    private function scopeLegacyQuery($query, Request $request): void
-    {
-        if ($request->attributes->get('legacy_commission_self_only', false)) {
-            $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
-            $query->where('staff_id', $staff->id);
-            return;
-        }
-        if ($request->user()->can('collection-commissions.view-all')) return;
-        $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
-        $staffIds = [$staff->id];
-        if ($request->user()->can('collection-commissions.view-team')) {
-            $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->first();
-            if ($profile) {
-                $profileIds = DB::table('sales_reporting_assignments')->where('manager_sales_profile_id', $profile->id)
-                    ->where('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', now()))
-                    ->pluck('member_sales_profile_id');
-                $staffIds = array_merge($staffIds, SalesProfile::query()->whereIn('id', $profileIds)->where('company_id', $staff->company_id)->pluck('staff_id')->all());
-            }
-        }
-        $query->whereIn('staff_id', array_values(array_unique($staffIds)));
     }
 
     private function scopeDecisionQuery($query, Request $request): void

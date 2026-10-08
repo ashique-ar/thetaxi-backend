@@ -453,11 +453,9 @@ class BookingPaymentLedgerService
             if (!$existing) {
                 $legacy = $this->legacyPaidAmount($booking, $this->total($booking));
                 if ($legacy > 0) {
-                    if (config('sales.features.canonical_receipts_v2', false)) {
-                        throw ValidationException::withMessages([
-                            'booking' => ['Legacy paid-state evidence must be reconciled through the controlled repair workflow before recording another receipt.'],
-                        ]);
-                    }
+                    throw ValidationException::withMessages([
+                        'booking' => ['Legacy paid-state evidence must be reconciled through the controlled repair workflow before recording another receipt.'],
+                    ]);
                     $openingReceipt = BookingPaymentReceipt::create([
                         'booking_id' => $booking->id,
                         'amount' => $legacy,
@@ -531,8 +529,7 @@ class BookingPaymentLedgerService
             } else {
                 $staff = null;
             }
-            if (! config('sales.features.commission_accrual', false)
-                && $staff && $staff->collection_commission_enabled
+            if ($staff && $staff->collection_commission_enabled
                 && $component->is_commission_eligible && $receipt->finality_status === 'confirmed') {
                 $rate = (float) $staff->collection_commission_rate;
                 BookingCollectionCommission::create([
@@ -1134,15 +1131,15 @@ class BookingPaymentLedgerService
         $sourceCurrency = strtoupper((string) ($data['source_currency'] ?? $booking->currency ?? 'LKR'));
         $fxRate = $sourceCurrency === 'LKR' ? 1.0 : (isset($data['fx_rate_to_lkr']) ? (float) $data['fx_rate_to_lkr'] : null);
         $finality = $this->resolveFinality($attribution?->company_id, strtolower((string) $data['payment_method']), $data['received_at']);
-        if (config('sales.features.canonical_receipts_v2', false) && ! $attribution?->company_id) {
+        if (! $attribution?->company_id) {
             throw ValidationException::withMessages(['booking' => ['Sales attribution and legal entity are required before a canonical receipt can be activated.']]);
         }
-        if (config('sales.features.canonical_receipts_v2', false) && empty($data['idempotency_key'])) {
+        if (empty($data['idempotency_key'])) {
             throw ValidationException::withMessages([
                 'idempotency_key' => ['A persistent payment source identity is required for canonical receipts.'],
             ]);
         }
-        if ($sourceCurrency !== 'LKR' && $fxRate === null && config('sales.features.canonical_receipts_v2', false)) {
+        if ($sourceCurrency !== 'LKR' && $fxRate === null) {
             throw ValidationException::withMessages(['fx_rate_to_lkr' => ['An approved LKR conversion rate is required for non-LKR collections.']]);
         }
 

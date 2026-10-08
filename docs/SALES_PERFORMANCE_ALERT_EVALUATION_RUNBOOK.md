@@ -4,7 +4,7 @@ This process evaluates management-support alerts from one immutable, reconciled 
 
 ## Activation prerequisites
 
-- Apply and rehearse rollback for `2026_08_14_101000_govern_sales_performance_alert_evaluations.php` before enabling `SALES_PERFORMANCE_ALERT_EVALUATIONS_ENABLED`.
+- Apply and rehearse rollback for `2026_08_14_101000_govern_sales_performance_alert_evaluations.php` before running scheduled evaluations.
 - Configure the approved `SALES_BUSINESS_TIMEZONE` and an effective policy prepared and approved by different users.
 - The policy must explicitly declare severities, factual thresholds, completed-month grain, once-after-close local schedule, grace/minimum elapsed days, baseline completeness, missing-data behavior, comparison normalization, prior-period-booking commission basis, and one accountable active internal Staff owner in the same legal entity.
 - Do not copy recommended percentages into production without management approval. Old-format policies, legacy snapshots without frozen policy lineage, and pre-governance alerts fail closed for reviewed disposition.
@@ -24,4 +24,3 @@ The unique snapshot/policy evaluation ledger and alert deduplication keys make r
 - Disable the evaluation feature flag to stop new evaluations; do not delete existing alerts or evaluation runs.
 - Migration rollback intentionally refuses after immutable evidence exists. Use an approved forward correction or snapshot rebuild, not row edits.
 - In consolidated verification, execute policy maker-checker/overlap, due-time/timezone/DST, dry-run/no-write, replay/concurrency, missing baseline/dimension/target, cohort-versus-category, current/superseded snapshot, direct-ID/current-former-manager/peer scope, accessibility/320px, migration/restore, and alert-to-source reconciliation scenarios.
-

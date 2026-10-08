@@ -552,7 +552,7 @@ Route::middleware(['auth:api'])->group(function () {
         ->whereUuid('change')
         ->middleware('permission:staff-sensitive-payment-methods.approve');
 
-    Route::prefix('sales')->middleware(['ensure.internal', 'sales.feature:sales_profiles'])->group(function () {
+    Route::prefix('sales')->middleware(['ensure.internal'])->group(function () {
         Route::get('me', [SalesProfileController::class, 'me'])->middleware('permission:sales.self.view');
         Route::get('profiles', [SalesProfileController::class, 'index'])->middleware('permission:sales.profiles.view');
         Route::post('profiles/exports', [SalesProfileController::class, 'export'])->middleware('permission:sales.profiles.export');
@@ -624,9 +624,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('bookings/{booking}/collection-schedule/revision-preview', [CollectionScheduleWorkflowController::class, 'previewRevision'])
             ->whereUuid('booking')->middleware('permission:sales.collection-schedules.revise');
         Route::post('bookings/{booking}/collection-schedule/rolling-rule', [CollectionScheduleWorkflowController::class, 'createRollingRule'])
-            ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise', 'sales.feature:rolling_payment_schedules']);
+            ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise']);
         Route::post('bookings/{booking}/collection-schedule/rolling-rule/transition', [CollectionScheduleWorkflowController::class, 'transitionRollingRule'])
-            ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise', 'sales.feature:rolling_payment_schedules']);
+            ->whereUuid('booking')->middleware(['permission:sales.collection-schedules.revise']);
         Route::get('collection-schedule-company-options', [CollectionScheduleWorkflowController::class, 'scheduleCompanyOptions'])
             ->middleware('permission:sales.collection-schedules.revise');
         Route::get('collection-schedule-bookings', [CollectionScheduleWorkflowController::class, 'scheduleBookings'])
@@ -872,11 +872,11 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('performance/alerts/{alert}/reconciliation', [SalesPerformanceController::class, 'reconcileAlert'])
             ->whereUuid('alert')->middleware('permission:sales.performance.view');
         Route::post('performance/alerts/{alert}/transition', [SalesPerformanceController::class, 'transitionAlert'])
-            ->whereUuid('alert')->middleware(['sales.feature:performance_alert_actions', 'permission:sales.performance.alerts.manage']);
+            ->whereUuid('alert')->middleware(['permission:sales.performance.alerts.manage']);
         Route::post('performance/alerts/{alert}/actions', [SalesPerformanceController::class, 'actOnAlert'])
-            ->whereUuid('alert')->middleware(['sales.feature:performance_alert_actions', 'permission:sales.performance.alerts.manage']);
+            ->whereUuid('alert')->middleware(['permission:sales.performance.alerts.manage']);
         Route::post('performance/alerts/{alert}/escalate', [SalesPerformanceController::class, 'escalateAlert'])
-            ->whereUuid('alert')->middleware(['sales.feature:performance_alert_actions', 'permission:sales.performance.alerts.escalate']);
+            ->whereUuid('alert')->middleware(['permission:sales.performance.alerts.escalate']);
         Route::post('performance/alert-policies', [SalesPerformanceController::class, 'createAlertPolicy'])
             ->middleware('permission:sales.performance.alert-policies.manage');
         Route::post('performance/alert-policies/{policy}/approve', [SalesPerformanceController::class, 'approveAlertPolicy'])
@@ -893,7 +893,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('portfolio', [SalesDashboardController::class, 'portfolio'])->middleware('permission:sales.performance.view');
     });
 
-    Route::prefix('sales-performance')->middleware(['ensure.internal', 'sales.feature:sales_profiles'])->group(function () {
+    Route::prefix('sales-performance')->middleware(['ensure.internal'])->group(function () {
         Route::get('kpis/facts', [SalesDashboardController::class, 'kpiFacts'])
             ->middleware('permission:sales.performance.view');
         Route::get('commission-status', [SalesDashboardController::class, 'commissionStatus'])

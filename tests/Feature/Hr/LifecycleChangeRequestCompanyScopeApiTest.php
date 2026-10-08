@@ -84,7 +84,6 @@ it('keeps employee change requests and their approver in the actor legal entity'
     expect(fn () => $lifecycle->approveChange($changeId, (string) $validApprover->user_id, (string) $company->id))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
-    config(['hr.features.employee_self_service' => false]);
     actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))
         ->assertStatus(409);
     $this->assertDatabaseCount('hr_employee_change_requests', 1);

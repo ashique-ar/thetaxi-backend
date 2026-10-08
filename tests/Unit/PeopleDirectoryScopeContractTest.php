@@ -28,7 +28,7 @@ it('rechecks People mutation subjects and related-record ownership', function ()
         ->and($controller)
         ->toContain('The employment spell does not belong to this employee.')
         ->toContain('The manager must belong to the employee legal entity.')
-        ->toContain("config('hr.features.people_core', false)")
+        ->not->toContain('hr.features.people_core')
         ->and($organizationAdmin)
         ->toContain('Parent organization unit must belong to your legal entity.');
 });

@@ -17,7 +17,7 @@ class ActingAppointmentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $authorizedStaff = $this->access->scope(Staff::query()->select('staff.id'), $request->user());
         $data = $request->validate(['status' => ['nullable', Rule::in(['pending_approval', 'approved'])], 'staff_id' => ['nullable', 'uuid'], 'effective_at' => ['nullable', 'date'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
@@ -48,7 +48,7 @@ class ActingAppointmentController extends Controller
 
     public function referenceOptions(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate([
             'record_type' => ['required', Rule::in(['staff', 'position'])],
@@ -101,7 +101,7 @@ class ActingAppointmentController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $data = $request->validate(['staff_id' => ['required', 'uuid'], 'acting_position_id' => ['required', 'uuid'], 'acting_manager_staff_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['required', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $staff = Staff::query()->whereKey($data['staff_id'])->firstOrFail();
         $this->access->authorize($request->user(), $staff);
@@ -110,7 +110,7 @@ class ActingAppointmentController extends Controller
 
     public function approve(Request $request, string $appointmentId): JsonResponse
     {
-        $this->enabled();
+        
         $data = $request->validate(['expected_version' => ['required', 'integer', 'min:1'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $appointment = DB::table('hr_acting_appointments')->where('id', $appointmentId)->where('company_id', $companyId)->first();
@@ -131,8 +131,5 @@ class ActingAppointmentController extends Controller
         ];
     }
 
-    private function enabled(): void
-    {
-        abort_unless(config('hr.features.people_core', false), 409, 'HR People Core writes are not enabled.');
-    }
+    
 }

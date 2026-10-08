@@ -60,7 +60,7 @@ class EngagementController extends Controller
 
     public function storeAnnouncement(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $actor = $this->actor($request);
         $data = $request->validate([
             'title' => ['required', 'string', 'max:255'], 'body' => ['required', 'string', 'max:50000'],
@@ -85,7 +85,7 @@ class EngagementController extends Controller
 
     public function approveAnnouncement(Request $request, string $id): JsonResponse
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($request, $id) {
             $row = DB::table('hr_announcements')->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404); $this->company($request, $row->company_id);
@@ -98,7 +98,7 @@ class EngagementController extends Controller
 
     public function rejectAnnouncement(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
+         $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
         return DB::transaction(function () use ($request, $id, $data) {
             $row = DB::table('hr_announcements')->where('id', $id)->lockForUpdate()->first(); abort_unless($row, 404); $this->company($request, $row->company_id);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Announcement creator cannot reject the same content.');
@@ -109,7 +109,7 @@ class EngagementController extends Controller
 
     public function acknowledgeAnnouncement(Request $request, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $actor = $this->actor($request);
         $query = DB::table('hr_announcements')->where('id', $id)->where('company_id', $actor->company_id)->where('status', 'published');
         $this->audience($query, $actor);
@@ -123,7 +123,7 @@ class EngagementController extends Controller
 
     public function storeSurvey(Request $request): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate([
             'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'],
             'title' => ['required', 'string', 'max:255'], 'survey_type' => ['required', Rule::in(['pulse', 'engagement', 'enps', 'custom'])],
@@ -160,7 +160,7 @@ class EngagementController extends Controller
 
     public function approveSurvey(Request $request, string $id): JsonResponse
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($request, $id) {
             $row = DB::table('hr_survey_versions')->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404); $this->company($request, $row->company_id);
@@ -173,7 +173,7 @@ class EngagementController extends Controller
 
     public function rejectSurvey(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
+         $data = $request->validate(['reason' => ['required', 'string', 'max:3000']]);
         return DB::transaction(function () use ($request, $id, $data) {
             $row = DB::table('hr_survey_versions')->where('id', $id)->lockForUpdate()->first(); abort_unless($row, 404); $this->company($request, $row->company_id);
             abort_unless($row->status === 'pending_approval', 409); abort_if($row->created_by === $request->user()->id, 409, 'Survey creator cannot reject the same version.');
@@ -184,7 +184,7 @@ class EngagementController extends Controller
 
     public function respondSurvey(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['responses' => ['required', 'array']]);
         $query = DB::table('hr_survey_versions')->where('id', $id)->where('company_id', $actor->company_id)
             ->where('status', 'approved')->where('opens_at', '<=', now())->where('closes_at', '>=', now());
@@ -212,7 +212,7 @@ class EngagementController extends Controller
 
     public function surveyResults(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $survey = DB::table('hr_survey_versions')->where('id', $id)->where('company_id', $actor->company_id)->first();
         abort_unless($survey, 404);
         $data = $request->validate(['dimension' => ['nullable', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])]]);
@@ -232,7 +232,7 @@ class EngagementController extends Controller
 
     public function nominateRecognition(Request $request): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate([
             'nominee_staff_id' => ['required', 'uuid'], 'achievement_id' => ['nullable', 'uuid'], 'category' => ['required', 'string', 'max:60'],
             'citation' => ['required', 'string', 'max:10000'], 'evidence' => ['nullable', 'array', 'max:20'], 'evidence.*' => ['required', 'string', 'max:500'], 'visibility' => ['required', Rule::in(['private', 'team', 'company'])],
@@ -290,7 +290,7 @@ class EngagementController extends Controller
 
     public function decideRecognition(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $data = $request->validate(['decision' => ['required', Rule::in(['approved', 'rejected', 'revoked'])], 'reason' => ['required', 'string', 'max:2000']]);
+         $data = $request->validate(['decision' => ['required', Rule::in(['approved', 'rejected', 'revoked'])], 'reason' => ['required', 'string', 'max:2000']]);
         return DB::transaction(function () use ($request, $id, $data) {
             $row = DB::table('hr_recognition_nominations')->where('id', $id)->lockForUpdate()->first();
             abort_unless($row, 404); $this->company($request, $row->company_id);
@@ -304,7 +304,7 @@ class EngagementController extends Controller
 
     public function storeWellnessProgram(Request $request): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'description' => ['required', 'string', 'max:10000'], 'audience' => ['required', 'array'], 'starts_at' => ['required', 'date'], 'ends_at' => ['nullable', 'date', 'after_or_equal:starts_at']]);
         $id = (string) Str::uuid(); $data['audience'] = json_encode($data['audience'], JSON_THROW_ON_ERROR);
         DB::table('hr_wellness_programs')->insert($data + ['id' => $id, 'company_id' => $actor->company_id, 'status' => 'active', 'created_at' => now(), 'updated_at' => now()]);
@@ -340,7 +340,7 @@ class EngagementController extends Controller
 
     public function requestWellnessReferral(Request $request): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['program_id' => ['nullable', 'uuid'], 'referral_type' => ['required', Rule::in(['self_referral', 'assistance', 'wellness', 'occupational_support'])], 'details' => ['required', 'string', 'max:10000']]);
         if (isset($data['program_id'])) {
             $query = DB::table('hr_wellness_programs')->where('id', $data['program_id'])->where('company_id', $actor->company_id)->where('status', 'active')->whereDate('starts_at', '<=', now())->where(fn ($q) => $q->whereNull('ends_at')->orWhereDate('ends_at', '>=', now()));
@@ -453,7 +453,7 @@ class EngagementController extends Controller
 
     public function consentWellnessReferral(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['decision' => ['required', Rule::in(['granted', 'declined', 'withdrawn'])], 'consent_scope' => ['present', 'array'], 'consent_scope.*' => ['required', Rule::in(['internal_case_handling', 'provider_referral', 'appointment_coordination', 'follow_up'])], 'notice_version' => ['required', 'string', 'max:80']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
             $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->where('staff_id', $actor->id)->lockForUpdate()->first(); abort_unless($row, 404); $noticeVersion = config('hr.wellness_consent_notice_version'); abort_unless($noticeVersion, 409, 'An approved wellness consent notice version must be configured.'); abort_unless(hash_equals((string) $noticeVersion, $data['notice_version']), 409, 'Consent notice version is stale or not approved.');
@@ -470,7 +470,7 @@ class EngagementController extends Controller
 
     public function manageWellnessReferral(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['status' => ['required', Rule::in(['assigned', 'in_support', 'closed'])], 'case_owner_staff_id' => ['nullable', 'uuid'], 'case_note' => ['required', 'string', 'max:10000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
             $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404);
@@ -486,7 +486,7 @@ class EngagementController extends Controller
 
     public function scheduleWellnessFollowup(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request);
+         $actor = $this->actor($request);
         $data = $request->validate(['due_at' => ['required', 'date'], 'timezone' => ['required', 'timezone'], 'owner_staff_id' => ['nullable', 'uuid'], 'purpose' => ['required', 'string', 'max:10000'], 'employee_visible' => ['required', 'boolean']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
             $row = DB::table('hr_wellness_referrals')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first(); abort_unless($row, 404); abort_unless($row->status === 'in_support' && $row->consent_status === 'granted', 409, 'Follow-ups require active support and current granted consent.');
@@ -500,7 +500,7 @@ class EngagementController extends Controller
 
     public function completeWellnessFollowup(Request $request, string $id): JsonResponse
     {
-        $this->enabled(); $actor = $this->actor($request); $data = $request->validate(['completion_note' => ['required', 'string', 'max:10000']]);
+         $actor = $this->actor($request); $data = $request->validate(['completion_note' => ['required', 'string', 'max:10000']]);
         return DB::transaction(function () use ($request, $actor, $data, $id) {
             $followup = DB::table('hr_wellness_followups as f')->join('hr_wellness_referrals as r', 'r.id', '=', 'f.referral_id')->where('f.id', $id)->where('r.company_id', $actor->company_id)->select('f.*', 'r.status as referral_status')->lockForUpdate()->first(); abort_unless($followup, 404); abort_unless($followup->status === 'scheduled', 409); abort_unless($followup->owner_staff_id === $actor->id || $request->user()->can('hr.wellness.case.manage'), 403); $at = now();
             DB::table('hr_wellness_followups')->where('id', $id)->update(['status' => 'completed', 'encrypted_completion_note' => encrypt($data['completion_note']), 'completed_by' => $request->user()->id, 'completed_at' => $at, 'updated_at' => $at]);
@@ -581,5 +581,5 @@ class EngagementController extends Controller
 
     private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }
     private function company(Request $request, string $companyId): void { abort_unless($this->actor($request)->company_id === $companyId, 403, 'Engagement data is outside your legal entity.'); }
-    private function enabled(): void { abort_unless(config('hr.features.engagement_analytics', false), 409, 'HR engagement and analytics writes are not enabled.'); }
+    
 }

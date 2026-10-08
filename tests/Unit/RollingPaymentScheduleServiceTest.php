@@ -34,7 +34,7 @@ it('keeps rolling generation feature gated, occurrence unique, and outside attri
         ->toContain("'booking_schedule_rule_occurrence_unique'")
         ->toContain('Refusing to drop rolling payment schedule rule or occurrence evidence.')
         ->and($routes)
-        ->toContain("'sales.feature:rolling_payment_schedules'")
+        ->not->toContain("'sales.feature:rolling_payment_schedules'")
         ->and($ledger)
         ->toContain("'lifetime_contract_value' => \$openEndedRule ? null : \$total")
         ->toContain("'generated_horizon_value' => \$openEndedRule ? \$scheduledAmount : null")

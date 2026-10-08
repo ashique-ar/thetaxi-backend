@@ -14,10 +14,7 @@ class ProcessSalesPerformanceAlerts extends Command
 
     public function handle(SalesPerformanceService $performance): int
     {
-        if (! config('sales.features.performance_alert_evaluations', false)) {
-            $this->error('Sales performance alert evaluation is disabled.');
-            return self::FAILURE;
-        }
+        
         $limit = max(1, min(500, (int) $this->option('limit')));
         $snapshots = SalesKpiSnapshot::query()->where('status', 'frozen')->where('period_type', 'month')
             ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')

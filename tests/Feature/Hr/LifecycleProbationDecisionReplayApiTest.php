@@ -48,9 +48,6 @@ it('replays the same probation extension only for its original actor and company
     $payload = ['outcome' => 'extended', 'new_end_at' => today()->addDays(120)->toDateString(), 'reason' => 'Documented review needs additional time.'];
     $url = "/api/hr/lifecycle/probation/{$probationId}/decide";
 
-    config(['hr.features.employee_self_service' => false]);
-    actingAs($actor, 'api')->postJson($url, $payload)->assertConflict();
-    config(['hr.features.employee_self_service' => true]);
     $first = actingAs($actor, 'api')->postJson($url, $payload)->assertOk()->assertJsonPath('idempotent_replay', false);
     $replay = actingAs($actor, 'api')->postJson($url, $payload)->assertOk()->assertJsonPath('idempotent_replay', true);
     actingAs($actor, 'api')->postJson($url, array_replace($payload, ['reason' => 'Changed reason.']))->assertConflict();

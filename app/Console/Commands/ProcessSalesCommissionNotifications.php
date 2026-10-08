@@ -19,10 +19,7 @@ class ProcessSalesCommissionNotifications extends Command
             $this->info("Would process up to {$limit} of {$due} queued commission notification(s). No writes performed.");
             return self::SUCCESS;
         }
-        if (! config('sales.features.commission_notifications', false)) {
-            $this->warn('Commission notifications are disabled; no deliveries were attempted.');
-            return self::SUCCESS;
-        }
+        
 
         $refreshed = $notifications->refreshBlocked($limit);
         $delivered = $notifications->deliverDue($limit);

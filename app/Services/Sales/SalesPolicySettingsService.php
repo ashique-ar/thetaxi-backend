@@ -25,7 +25,7 @@ class SalesPolicySettingsService
 
     public function featureEnabled(string $companyId, string $feature): bool
     {
-        if (!in_array($feature, self::FEATURES, true) || config("sales.features.{$feature}", false) !== true
+        if (!in_array($feature, self::FEATURES, true)
             || ! Schema::hasTable('sales_company_feature_settings')) {
             return false;
         }
@@ -38,7 +38,7 @@ class SalesPolicySettingsService
     public function featureAvailability(): array
     {
         return collect(self::FEATURES)->mapWithKeys(fn(string $feature) => [
-            $feature => config("sales.features.{$feature}", false) === true,
+            $feature => true,
         ])->all();
     }
 
@@ -71,11 +71,6 @@ class SalesPolicySettingsService
             $setting = SalesCompanyFeatureSetting::query()->lockForUpdate()->findOrFail($id);
             abort_unless($setting->status === 'draft', 422, 'Only a draft company feature setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The feature-setting creator cannot approve the same version.');
-            abort_if(
-                $setting->enabled && config("sales.features.{$setting->feature_key}", false) !== true,
-                409,
-                'This capability is not available in the current deployment and cannot be enabled for a company.'
-            );
             SalesCompanyFeatureSetting::query()->where('company_id', $setting->company_id)
                 ->where('feature_key', $setting->feature_key)->where('status', 'approved')->lockForUpdate()
                 ->update(['status' => 'retired']);

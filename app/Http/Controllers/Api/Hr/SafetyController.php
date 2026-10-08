@@ -14,7 +14,7 @@ class SafetyController extends Controller
 {
     public function locationOptions(Request $request): JsonResponse
     {
-        $this->enabled();
+        
         $actor = $this->actor($request);
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'string', 'max:80'],
@@ -163,7 +163,7 @@ class SafetyController extends Controller
     }
     public function storeHazard(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'location_code' => ['required', 'string', 'max:80'], 'category' => ['required', 'string', 'max:60'], 'title' => ['required', 'string', 'max:500'], 'description' => ['required', 'string', 'max:10000'], 'likelihood' => ['required', Rule::in(['rare', 'unlikely', 'possible', 'likely', 'almost_certain'])], 'impact' => ['required', Rule::in(['insignificant', 'minor', 'moderate', 'major', 'severe'])], 'risk_rating' => ['required', Rule::in(['low', 'medium', 'high', 'critical'])], 'controls' => ['required', 'array', 'min:1'], 'owner_staff_id' => ['nullable', 'uuid']]);
         return DB::transaction(function () use ($r, $a, $d) {
@@ -192,7 +192,7 @@ class SafetyController extends Controller
     }
     public function transitionHazard(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['status' => ['required', Rule::in(['controlled', 'closed', 'reopened'])], 'reason' => ['required', 'string', 'max:3000']]);
         return DB::transaction(function () use ($r, $a, $d, $id) {
@@ -208,7 +208,7 @@ class SafetyController extends Controller
     }
     public function issuePpe(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'custody_assignment_id' => ['nullable', 'uuid'], 'ppe_type' => ['required', 'string', 'max:80'], 'issued_at' => ['required', 'date'], 'expires_at' => ['nullable', 'date', 'after_or_equal:issued_at'], 'training_due_at' => ['nullable', 'date'], 'evidence' => ['nullable', 'array']]);
         return DB::transaction(function () use ($r, $a, $d) {
@@ -232,7 +232,7 @@ class SafetyController extends Controller
     }
     public function report(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['incident_type' => ['required', Rule::in(['injury', 'illness', 'near_miss', 'property_damage', 'environmental', 'security', 'vehicle', 'other'])], 'severity' => ['required', Rule::in(['low', 'medium', 'high', 'critical'])], 'location_code' => ['required', 'string', 'max:80'], 'occurred_at' => ['required', 'date_format:Y-m-d\\TH:i'], 'source_timezone' => ['required', 'timezone'], 'narrative' => ['required', 'string', 'max:20000'], 'immediate_action' => ['nullable', 'string', 'max:10000'], 'reporter_staff_id' => ['nullable', 'uuid']]);
         $reporter = $d['reporter_staff_id'] ?? $a->id;
@@ -256,7 +256,7 @@ class SafetyController extends Controller
     }
     public function assignInvestigator(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['investigator_staff_id' => ['required', 'uuid']]);
         $actor = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $d, $actor) {
@@ -273,7 +273,7 @@ class SafetyController extends Controller
     }
     public function storeInvestigation(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['version' => ['required', 'integer', 'min:1'], 'findings' => ['required', 'string', 'max:30000'], 'root_cause' => ['required', 'string', 'max:30000'], 'evidence_references' => ['nullable', 'array']]);
         $actor = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $d, $actor) {
@@ -290,7 +290,7 @@ class SafetyController extends Controller
     }
     public function approveInvestigation(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($r, $id) {
             $candidate = DB::table('hr_safety_investigations as i')->join('hr_safety_incidents as s', 's.id', '=', 'i.incident_id')->where('i.id', $id)->select('i.id', 's.company_id')->first();
             abort_unless($candidate, 404);
@@ -306,7 +306,7 @@ class SafetyController extends Controller
     }
     public function storeAction(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['incident_id' => ['nullable', 'uuid'], 'action_type' => ['required', Rule::in(['corrective', 'preventive', 'training', 'inspection', 'ppe', 'policy', 'engineering'])], 'title' => ['required', 'string', 'max:500'], 'description' => ['required', 'string', 'max:5000'], 'owner_staff_id' => ['required', 'uuid'], 'due_at' => ['required', 'date', 'after_or_equal:today']]);
         return DB::transaction(function () use ($r, $a, $d) {
@@ -328,7 +328,7 @@ class SafetyController extends Controller
     }
     public function completeAction(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['completion_evidence' => ['required', 'array', 'min:1']]);
         return DB::transaction(function () use ($r, $id, $d, $a) {
@@ -354,7 +354,7 @@ class SafetyController extends Controller
     }
     public function verifyAction(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $actor = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $actor) {
             $this->lockActiveCompany($actor->company_id);
@@ -379,7 +379,7 @@ class SafetyController extends Controller
     }
     public function closeIncident(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $actor = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $actor) {
             $this->lockActiveCompany($actor->company_id);
@@ -395,7 +395,7 @@ class SafetyController extends Controller
     }
     public function storeRestriction(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'fitness_status' => ['required', Rule::in(['fit', 'fit_with_restrictions', 'temporarily_unfit', 'review_required'])], 'work_restrictions' => ['required', 'array', 'min:1'], 'private_notes' => ['nullable', 'string', 'max:10000'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'], 'verification_reference' => ['required', 'string', 'max:160']]);
 
@@ -421,7 +421,7 @@ class SafetyController extends Controller
     }
     public function storeInspection(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'location_code' => ['required', 'string', 'max:80'], 'inspection_type' => ['required', 'string', 'max:60'], 'scheduled_for' => ['required', 'date_format:Y-m-d'], 'checklist_snapshot' => ['required', 'array', 'min:1'], 'lead_staff_id' => ['required', 'uuid']]);
         return DB::transaction(function () use ($r, $a, $d) {
@@ -450,7 +450,7 @@ class SafetyController extends Controller
     }
     public function completeInspection(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $d = $r->validate(['result_snapshot' => ['required', 'array', 'min:1'], 'actions' => ['nullable', 'array'], 'actions.*.action_type' => ['required_with:actions', Rule::in(['corrective', 'preventive', 'training', 'inspection', 'ppe', 'policy', 'engineering'])], 'actions.*.title' => ['required_with:actions', 'string', 'max:500'], 'actions.*.description' => ['required_with:actions', 'string', 'max:5000'], 'actions.*.owner_staff_id' => ['required_with:actions', 'uuid'], 'actions.*.due_at' => ['required_with:actions', 'date', 'after_or_equal:today']]);
         return DB::transaction(function () use ($r, $a, $id, $d) {
@@ -471,7 +471,7 @@ class SafetyController extends Controller
     }
     public function verifyInspection(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $a) {
             $this->lockActiveCompany($a->company_id);
@@ -487,7 +487,7 @@ class SafetyController extends Controller
     }
     public function prepareExternalNotification(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $incident = $this->owned($r, $id);
         $d = $r->validate(['recipient_type' => ['required', Rule::in(['regulator', 'insurer'])], 'notification_type' => ['required', 'string', 'max:60'], 'payload_snapshot' => ['required', 'array']]);
         return DB::transaction(function () use ($r, $id, $incident, $d) {
@@ -502,7 +502,7 @@ class SafetyController extends Controller
     }
     public function approveExternalNotification(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($r, $id) {
             $candidate = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.id', 'i.company_id')->first();
             abort_unless($candidate, 404);
@@ -517,7 +517,7 @@ class SafetyController extends Controller
     }
     public function externalNotificationQueue(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         $max = max(1, (int) config('hr.safety_external_max_attempts', 5));
         $rows = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')
@@ -531,7 +531,7 @@ class SafetyController extends Controller
     }
     public function claimExternalNotification(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $a = $this->actor($r);
         return DB::transaction(function () use ($r, $a, $id) {
             $this->lockActiveCompany($a->company_id);
@@ -574,7 +574,7 @@ class SafetyController extends Controller
     }
     public function acknowledgeExternalNotification(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['payload_checksum' => ['required', 'string', 'size:64'], 'lease_token' => ['required', 'string', 'size:64'], 'external_reference' => ['required', 'string', 'max:200']]);
         return DB::transaction(function () use ($r, $id, $d) {
             $candidate = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.id', 'i.company_id')->first();
@@ -614,7 +614,7 @@ class SafetyController extends Controller
     }
     public function failExternalNotification(Request $r, string $id): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['payload_checksum' => ['required', 'string', 'size:64'], 'lease_token' => ['required', 'string', 'size:64'], 'message' => ['required', 'string', 'max:4000']]);
         $safeMessage = ObservabilitySanitizer::text($d['message']) ?? '';
         return DB::transaction(function () use ($r, $id, $d, $safeMessage) {
@@ -725,8 +725,5 @@ class SafetyController extends Controller
         abort_unless($this->actor($r)->company_id === $id, 403, 'Safety data is outside your legal entity.');
     }
 
-    private function enabled(): void
-    {
-        abort_unless(config('hr.features.relations_safety', false), 409, 'HR relations and safety writes are not enabled.');
-    }
+    
 }

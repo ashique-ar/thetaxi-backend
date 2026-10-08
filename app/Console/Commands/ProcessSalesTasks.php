@@ -18,7 +18,7 @@ class ProcessSalesTasks extends Command
     public function handle(): int
     {
         if (! Schema::hasTable('sales_tasks') || ! Schema::hasTable('sales_company_feature_settings')
-            || ! config('sales.features.crm', false)) return self::SUCCESS;
+            ) return self::SUCCESS;
         $dryRun = (bool) $this->option('dry-run'); $count = 0;
         SalesTask::query()->whereIn('status', ['open', 'in_progress'])
             ->whereIn('company_id', DB::table('sales_company_feature_settings')->select('company_id')

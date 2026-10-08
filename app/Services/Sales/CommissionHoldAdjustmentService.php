@@ -33,8 +33,8 @@ class CommissionHoldAdjustmentService
 
     public function preview(SalesCommissionDecision $decision): array
     {
-        if ($decision->status !== 'held' || ! config('sales.features.commission_accrual', false)) {
-            return $this->blocked($decision, 'Only an accrual-enabled immutable held decision can create a linked adjustment.');
+        if ($decision->status !== 'held') {
+            return $this->blocked($decision, 'Only an immutable held decision can create a linked adjustment.');
         }
         if (! in_array($decision->hold_code, [
             'attribution_missing', 'legal_entity_missing', 'acquisition_profile_missing', 'acquisition_profile_ineligible',

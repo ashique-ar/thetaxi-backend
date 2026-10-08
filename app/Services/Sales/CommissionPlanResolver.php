@@ -18,9 +18,6 @@ class CommissionPlanResolver
 
     public function freezeFamilyForAttribution(SalesBookingAttribution $attribution): ?SalesBookingAttribution
     {
-        if (! config('sales.features.commission_shadow', false) && ! config('sales.features.commission_accrual', false)) {
-            return $attribution;
-        }
         if ($attribution->commission_plan_family_id) {
             return $attribution;
         }

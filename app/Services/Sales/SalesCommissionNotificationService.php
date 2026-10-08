@@ -125,8 +125,7 @@ class SalesCommissionNotificationService
 
     public function refreshBlocked(int $limit = 100): int
     {
-        if (! config('sales.features.commission_notifications', false)
-            || ! Schema::hasTable('sales_commission_notification_deliveries')
+        if (! Schema::hasTable('sales_commission_notification_deliveries')
             || ! Schema::hasTable('sales_company_feature_settings')) {
             return 0;
         }
@@ -150,7 +149,6 @@ class SalesCommissionNotificationService
     {
         return Schema::hasTable('sales_commission_notification_deliveries')
             && Schema::hasTable('sales_company_feature_settings')
-            && config('sales.features.commission_notifications', false)
             ? DB::table('sales_commission_notification_deliveries')->where('status', 'queued')
                 ->whereIn('company_id', $this->enabledCompanyIds())->where('available_at', '<=', now())->count()
             : 0;
@@ -158,8 +156,7 @@ class SalesCommissionNotificationService
 
     public function deliverDue(int $limit = 100): int
     {
-        if (! config('sales.features.commission_notifications', false)
-            || ! Schema::hasTable('sales_commission_notification_deliveries')
+        if (! Schema::hasTable('sales_commission_notification_deliveries')
             || ! Schema::hasTable('sales_company_feature_settings')) {
             return 0;
         }

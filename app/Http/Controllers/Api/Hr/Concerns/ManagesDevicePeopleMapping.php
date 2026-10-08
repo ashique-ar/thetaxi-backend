@@ -58,7 +58,7 @@ trait ManagesDevicePeopleMapping
 
     public function provisionDevicePerson(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate(['staff_id' => ['required', 'uuid']]);
         $device = $this->authorizedDevice($request, $deviceId);
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only an active direct-ISAPI device can receive Staff users.');
@@ -86,7 +86,7 @@ trait ManagesDevicePeopleMapping
 
     public function updateDevicePerson(Request $request, string $deviceId, string $employeeNumber, AttendanceProviderManager $providers): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate([
             'staff_id' => ['required', 'uuid'],
             'enabled' => ['required', 'boolean'],
@@ -139,7 +139,7 @@ trait ManagesDevicePeopleMapping
 
     public function updateDevicePersonStatus(Request $request, string $deviceId, string $employeeNumber, AttendanceProviderManager $providers): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate(['enabled' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000']]);
         [$device, $mapping] = $this->mappedIdentity($request, $deviceId, $employeeNumber);
         return DB::transaction(function () use ($request, $data, $device, $mapping, $employeeNumber, $providers) {
@@ -312,7 +312,7 @@ trait ManagesDevicePeopleMapping
 
     public function storeMapping(Request $request): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid'],
             'staff_id' => ['required', 'uuid'],
@@ -380,7 +380,7 @@ trait ManagesDevicePeopleMapping
 
     public function approveMapping(Request $request, string $mappingId): JsonResponse
     {
-        $this->requireAttendanceWrites();
+        
 
         return DB::transaction(function () use ($request, $mappingId) {
             $companyIds = $this->authorizedCompanyIds($request);

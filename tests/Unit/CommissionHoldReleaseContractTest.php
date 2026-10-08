@@ -61,7 +61,7 @@ it('uses central internal self-team-all scope and a separate release permission'
         ->toContain("'sales.commission-decisions.view-all'")
         ->toContain("'sales.commission-decisions.view-team'")
         ->toContain("whereIn('beneficiary_sales_profile_id', \$ids)")
-        ->and($routes)->toContain("Route::prefix('sales')->middleware(['ensure.internal', 'sales.feature:sales_profiles'])")
+        ->and($routes)->toContain("Route::prefix('sales')->middleware(['ensure.internal'])")
         ->toContain("commission-earnings/{earning}/release")
         ->toContain("permission:sales.commission_holds.release")
         ->and($permissions)->toContain("'sales.commission_holds.release'");

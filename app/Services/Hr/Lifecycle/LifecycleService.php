@@ -120,7 +120,7 @@ class LifecycleService
                 abort_unless(hash_equals(hash('sha256', json_encode($prior, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), hash('sha256', json_encode($evidence, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR))), 409, 'Change key was reused with different evidence.');
                 return $existing; }$id = (string) Str::uuid();
             DB::table('hr_employee_change_requests')->insert(['id' => $id, 'company_id' => $staff->company_id, 'staff_id' => $staff->id, 'change_type' => $data['change_type'], 'effective_date' => $data['effective_date'], 'before_snapshot' => json_encode($current, JSON_THROW_ON_ERROR), 'proposed_snapshot' => json_encode($data['proposed_snapshot'], JSON_THROW_ON_ERROR), 'impact_snapshot' => json_encode($data['impact_snapshot'], JSON_THROW_ON_ERROR), 'status' => 'pending_approval', 'reason' => $data['reason'], 'idempotency_key' => $data['idempotency_key'], 'requested_by' => $actor, 'created_at' => now(), 'updated_at' => now()]);
-            $this->requests->register($staff->company_id, $staff->id, $data['change_type'], 'employee_change', $id, 'pending_approval', ucwords(str_replace('_', ' ', $data['change_type'])) . ' request', $ownerStaffId, $data['sla_hours'] ?? null, $actor, ['people_core' => true, 'payroll' => config('hr.features.payroll', false)]);
+            $this->requests->register($staff->company_id, $staff->id, $data['change_type'], 'employee_change', $id, 'pending_approval', ucwords(str_replace('_', ' ', $data['change_type'])) . ' request', $ownerStaffId, $data['sla_hours'] ?? null, $actor, ['people_core' => true, 'payroll' => true]);
             return DB::table('hr_employee_change_requests')->find($id); });
     }
     public function approveChange(string $id, string $actor, string $companyId): object
@@ -192,11 +192,11 @@ class LifecycleService
             if ($item->custody_assignment_id) {
                 $custody = DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->lockForUpdate()->first();
                 abort_unless($custody, 409, 'The linked custody assignment is outside this lifecycle legal entity.');
-                if (config('hr.features.advanced_assets', false) && $custody?->asset_item_id) {
+                if ($custody?->asset_item_id) {
                     abort_unless(in_array($custody->status, ['returned', 'recovery_approved', 'exception_approved'], true), 409, 'Complete the governed asset return or approved recovery/exception before clearance.');
                 }
 
-                if (! (config('hr.features.advanced_assets', false) && $custody->asset_item_id)) {
+                if (! $custody->asset_item_id) {
                     DB::table('hr_custody_assignments')->where('id', $item->custody_assignment_id)->where('company_id', $companyId)->update([
                         'status' => 'returned', 'returned_at' => now(), 'received_by' => $actor, 'updated_at' => now(),
                     ]);

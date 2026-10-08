@@ -4,7 +4,7 @@
 
 Sales alerts are support records for internal `Staff` who have an effective `SalesProfile`; Sales is a Staff category/capability, not a separate employee master. Alert evidence must never create, recommend, or execute discipline, termination, payroll withholding, commission withholding, or another HR action.
 
-Keep `SALES_PERFORMANCE_ALERT_ACTIONS_ENABLED=false` until migration preflight/apply, permission review, denial testing, approved owner/on-call and escalation rules, and reconciliation are complete. The capability fails closed while disabled. Grant `sales.performance.alerts.escalate` only through an approved role bundle; the additive permission seeder deliberately does not grant it to a baseline role.
+Complete migration preflight/apply, permission review, denial testing, approved owner/on-call and escalation rules, and reconciliation before using alert actions. Grant `sales.performance.alerts.escalate` only through an approved role bundle; the additive permission seeder deliberately does not grant it to a baseline role.
 
 ## Operating procedure
 

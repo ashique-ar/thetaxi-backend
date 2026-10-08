@@ -391,7 +391,7 @@ class WorkforceController extends Controller
 
     public function storeLeaveType(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         return DB::transaction(function () use ($r, $d) {
@@ -403,7 +403,7 @@ class WorkforceController extends Controller
     }
     public function storeLeavePolicy(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
@@ -421,7 +421,7 @@ class WorkforceController extends Controller
     }
     public function assignLeavePolicy(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         return DB::transaction(function () use ($r, $d) {
@@ -512,7 +512,7 @@ class WorkforceController extends Controller
     }
     public function storeWorkPolicy(Request $r): JsonResponse
     {
-        $this->enabled();
+        
         $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.maximum_request_minutes' => ['nullable', 'integer', 'min:1'], 'rules.default_rate_category' => ['nullable', 'string', 'max:60'], 'rules.default_settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'rules.time_off_leave_type_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         if (!empty($d['rules']['time_off_leave_type_id']))
@@ -597,7 +597,7 @@ class WorkforceController extends Controller
 
     private function approveConfig(Request $r, string $table, string $id, ?callable $validate = null): JsonResponse
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($r, $table, $id, $validate) {
             $candidate = DB::table($table)->where('id', $id)->first();
             abort_unless($candidate, 404);
@@ -687,8 +687,5 @@ class WorkforceController extends Controller
         return $row;
     }
 
-    private function enabled(): void
-    {
-        abort_unless(config('hr.features.leave_overtime', false), 409, 'Leave, overtime, and timesheet writes are not enabled.');
-    }
+    
 }

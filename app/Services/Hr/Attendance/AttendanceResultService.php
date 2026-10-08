@@ -12,7 +12,7 @@ class AttendanceResultService
 {
     public function calculate(string $companyId, string $staffId, string $workDate, ?string $actorUserId = null): AttendanceDailyResult
     {
-        abort_unless(config('hr.features.attendance_results', false), 409, 'Attendance result writes are not enabled.');
+        
         $date = CarbonImmutable::parse($workDate)->startOfDay();
 
         return DB::transaction(function () use ($companyId, $staffId, $date, $actorUserId) {
@@ -94,14 +94,14 @@ class AttendanceResultService
 
     public function approveCorrection(string $requestId, string $actorUserId, string $decisionNote): AttendanceDailyResult
     {
-        abort_unless(config('hr.features.attendance_results', false), 409, 'Attendance result writes are not enabled.');
+        
         abort(409, 'Attendance correction approval is unavailable until the correction-type-to-field mapping is approved.');
     }
 
     /** Reject a pending request without changing attendance or payable facts. */
     public function rejectCorrection(string $requestId, string $companyId, string $actorUserId, string $decisionNote): object
     {
-        abort_unless(config('hr.features.attendance_results', false), 409, 'Attendance result writes are not enabled.');
+        
         return DB::transaction(function () use ($requestId, $companyId, $actorUserId, $decisionNote) {
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Attendance correction decisions require an active legal entity.');

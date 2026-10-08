@@ -18,7 +18,6 @@ it('fails closed on attendance correction submission and approval until the fiel
     $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_id', $staff->id)->firstOrFail();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
-    config(['hr.features.attendance_results' => true, 'hr.features.employee_self_service' => false]);
     $correctionsBefore = DB::table('hr_attendance_correction_requests')->count();
 
     actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/corrections', [

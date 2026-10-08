@@ -45,13 +45,13 @@ class PeopleCoreController extends Controller
 
     public function reconciliation(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         return response()->json(['status'=>'success','data'=>$this->migration->reconciliation($this->access->actorCompanyId($request->user()))]);
     }
 
     public function previewImport(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data=$request->validate(['file'=>['required','file','mimes:csv,txt','max:5120'],'idempotency_key'=>['required','string','max:160']]);
         $job=$this->migration->preview($data['file'],$this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key']);
         return response()->json(['status'=>'success','data'=>$this->importPayload($job)],201);
@@ -59,14 +59,14 @@ class PeopleCoreController extends Controller
 
     public function importJob(Request $request, HrPeopleImportJob $job): JsonResponse
     {
-        $this->ensureEnabled();
+        
         abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
         return response()->json(['status'=>'success','data'=>$this->importPayload($job)]);
     }
 
     public function commitImport(Request $request, HrPeopleImportJob $job): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data=$request->validate(['expected_file_checksum'=>['required','string','size:64']]);
         abort_unless($job->company_id===$this->access->actorCompanyId($request->user()),404);
         abort_unless(hash_equals($job->file_checksum,$data['expected_file_checksum']),409,'The retained import file differs from the reviewed preview.');
@@ -75,20 +75,20 @@ class PeopleCoreController extends Controller
 
     public function export(Request $request): JsonResponse
     {
-        $this->ensureEnabled();$data=$request->validate(['idempotency_key'=>['required','string','max:160']]);
+        $data=$request->validate(['idempotency_key'=>['required','string','max:160']]);
         return response()->json(['status'=>'success','data'=>$this->migration->export($this->access->actorCompanyId($request->user()),(string)$request->user()->id,$data['idempotency_key'])],201);
     }
 
     public function downloadExport(Request $request, HrPeopleExport $export): StreamedResponse
     {
-        $this->ensureEnabled();return $this->migration->download($export,$this->access->actorCompanyId($request->user()),(string)$request->user()->id);
+        return $this->migration->download($export,$this->access->actorCompanyId($request->user()),(string)$request->user()->id);
     }
 
-    public function detectDuplicates(Request $request):JsonResponse{$this->ensureEnabled();return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates($this->access->actorCompanyId($request->user()),(string)$request->user()->id)]);}
-    public function duplicateReviews(Request $request):JsonResponse{$this->ensureEnabled();$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews($this->access->actorCompanyId($request->user()),(int)($data['per_page']??25))]);}
+    public function detectDuplicates(Request $request):JsonResponse{return response()->json(['status'=>'success','data'=>$this->migration->detectDuplicates($this->access->actorCompanyId($request->user()),(string)$request->user()->id)]);}
+    public function duplicateReviews(Request $request):JsonResponse{$data=$request->validate(['per_page'=>['nullable','integer','min:1','max:100']]);return response()->json(['status'=>'success','data'=>$this->migration->duplicateReviews($this->access->actorCompanyId($request->user()),(int)($data['per_page']??25))]);}
     public function duplicateReviewCandidateOptions(Request $request,string $reviewId):JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data=$request->validate(['search'=>['nullable','string','max:120'],'selected_id'=>['nullable','uuid'],'page'=>['nullable','integer','min:1'],'per_page'=>['nullable','integer','min:1','max:50']]);
         $companyId=$this->access->actorCompanyId($request->user());
         $review=HrPeopleDuplicateReview::query()->whereKey($reviewId)->where('company_id',$companyId)->where('status','pending_review')->firstOrFail();
@@ -103,8 +103,8 @@ class PeopleCoreController extends Controller
 
         return response()->json(['status'=>'success','data'=>$options]);
     }
-    public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$this->access->actorCompanyId($request->user()),$data,(string)$request->user()->id)]);}
-    public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$this->ensureEnabled();$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,$this->access->actorCompanyId($request->user()),(int)$data['expected_version'],(string)$request->user()->id)]);}
+    public function decideDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1'],'disposition'=>['required',Rule::in(['keep_separate','canonical_selected','false_positive'])],'canonical_staff_id'=>['nullable','uuid'],'reason'=>['required','string','min:10','max:2000']]);return response()->json(['status'=>'success','data'=>$this->migration->decideDuplicate($review,$this->access->actorCompanyId($request->user()),$data,(string)$request->user()->id)]);}
+    public function consolidateDuplicate(Request $request,HrPeopleDuplicateReview $review):JsonResponse{$data=$request->validate(['expected_version'=>['required','integer','min:1']]);return response()->json(['status'=>'success','data'=>$this->migration->consolidateDuplicate($review,$this->access->actorCompanyId($request->user()),(int)$data['expected_version'],(string)$request->user()->id)]);}
 
     private function importPayload(HrPeopleImportJob $job): array
     {
@@ -120,7 +120,7 @@ class PeopleCoreController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'status' => ['nullable', Rule::in(['active', 'former'])],
@@ -158,7 +158,7 @@ class PeopleCoreController extends Controller
 
     public function show(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         activity('hr-sensitive-data')
@@ -205,7 +205,7 @@ class PeopleCoreController extends Controller
 
     public function putStaffCustomFieldValue(Request $request, string $staffId, string $definitionId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['definition_version' => ['required', 'integer', 'min:1'], 'expected_version' => ['nullable', 'integer', 'min:0'], 'effective_from' => ['required', 'date'], 'value' => ['present'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
@@ -214,7 +214,7 @@ class PeopleCoreController extends Controller
 
     public function subjectCustomFieldValues(Request $request, string $ownerType, string $ownerId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $this->assertSubjectType($ownerType);
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->subjectCustomFieldValues->listFor($ownerType, $ownerId, $companyId, $request->user())]);
@@ -222,7 +222,7 @@ class PeopleCoreController extends Controller
 
     public function putSubjectCustomFieldValue(Request $request, string $ownerType, string $ownerId, string $definitionId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $this->assertSubjectType($ownerType);
         $data = $request->validate(['definition_version' => ['required', 'integer', 'min:1'], 'expected_version' => ['nullable', 'integer', 'min:0'], 'effective_from' => ['required', 'date'], 'value' => ['present'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $companyId = $this->access->actorCompanyId($request->user());
@@ -236,7 +236,7 @@ class PeopleCoreController extends Controller
 
     public function organization(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'unit_type' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
         abort_if(isset($data['company_id']) && $data['company_id'] !== $companyId, 403, 'The requested organization is outside your legal entity.');
@@ -248,7 +248,7 @@ class PeopleCoreController extends Controller
 
     public function organizationReferenceOptions(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate([
             'record_type' => ['required', Rule::in(['organization_unit', 'job_family', 'job_grade', 'designation'])],
@@ -335,7 +335,7 @@ class PeopleCoreController extends Controller
      */
     public function organizationChart(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['as_of' => ['nullable', 'date']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $asOf = $data['as_of'] ?? now()->toDateString();
@@ -355,7 +355,7 @@ class PeopleCoreController extends Controller
 
     public function storeOrganizationUnit(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->organizationUnitRules() + ['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
         $companyId = $this->access->actorCompanyId($request->user());
         abort_if(isset($data['company_id']) && $data['company_id'] !== $companyId, 403, 'The organization unit must belong to your legal entity.');
@@ -365,7 +365,7 @@ class PeopleCoreController extends Controller
 
     public function updateOrganizationUnit(Request $request, string $unitId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->organizationUnitRules(true));
         $this->assertOrganizationStaffReferences($data, $companyId);
@@ -374,7 +374,7 @@ class PeopleCoreController extends Controller
 
     public function payrollGroups(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
@@ -384,7 +384,7 @@ class PeopleCoreController extends Controller
 
     public function storePayrollGroup(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->payrollGroupRules());
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createPayrollGroup($data, $companyId, (string) $request->user()->id)], 201);
@@ -392,7 +392,7 @@ class PeopleCoreController extends Controller
 
     public function updatePayrollGroup(Request $request, string $groupId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->payrollGroupRules(true));
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updatePayrollGroup($groupId, $data, $companyId, (string) $request->user()->id)]);
@@ -416,7 +416,7 @@ class PeopleCoreController extends Controller
 
     public function documentTypes(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['category' => ['nullable', 'string', 'max:40'], 'status' => ['nullable', Rule::in(['active', 'inactive'])], 'search' => ['nullable', 'string', 'max:120'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->access->actorCompanyId($request->user());
         $search = trim((string) ($data['search'] ?? ''));
@@ -427,7 +427,7 @@ class PeopleCoreController extends Controller
 
     public function storeDocumentType(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->documentTypeRules());
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createDocumentType($data, $companyId, (string) $request->user()->id)], 201);
@@ -435,7 +435,7 @@ class PeopleCoreController extends Controller
 
     public function updateDocumentType(Request $request, string $typeId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate($this->documentTypeRules(true));
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->updateDocumentType($typeId, $data, $companyId, (string) $request->user()->id)]);
@@ -464,7 +464,7 @@ class PeopleCoreController extends Controller
 
     public function workCalendars(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $rows = DB::table('hr_work_calendars')->where('company_id', $companyId)->orderBy('name')->orderBy('id')->get();
         return response()->json(['status' => 'success', 'data' => $rows->map(fn($row) => $this->decodeJsonColumns($row, ['weekly_working_days']))->values()]);
@@ -472,7 +472,7 @@ class PeopleCoreController extends Controller
 
     public function storeWorkCalendar(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendar($data, $companyId, (string) $request->user()->id)], 201);
@@ -480,7 +480,7 @@ class PeopleCoreController extends Controller
 
     public function workCalendarDays(Request $request, string $calendarId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         abort_unless(DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $companyId)->exists(), 404, 'Work calendar was not found in your legal entity.');
         $rows = DB::table('hr_work_calendar_days')->where('calendar_id', $calendarId)->orderBy('calendar_date')->get();
@@ -489,7 +489,7 @@ class PeopleCoreController extends Controller
 
     public function storeWorkCalendarDay(Request $request, string $calendarId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['calendar_date' => ['required', 'date'], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean'], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
         $companyId = $this->access->actorCompanyId($request->user());
         return response()->json(['status' => 'success', 'data' => $this->organizationAdmin->createWorkCalendarDay($calendarId, $data, $companyId, (string) $request->user()->id)], 201);
@@ -497,7 +497,7 @@ class PeopleCoreController extends Controller
 
     public function customFieldDefinitions(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate(['applies_to' => ['nullable', Rule::in(['staff', 'organization_unit', 'position', 'employment_spell'])], 'active' => ['nullable', 'boolean'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $rows = DB::table('hr_custom_field_definitions')->where('company_id', $companyId)->when($data['applies_to'] ?? null, fn($q, $type) => $q->where('applies_to', $type))->when(array_key_exists('active', $data), fn($q) => $q->where('active', (bool) $data['active']))->orderBy('applies_to')->orderBy('label')->orderBy('id')->paginate((int) ($data['per_page'] ?? 50));
@@ -507,7 +507,7 @@ class PeopleCoreController extends Controller
 
     public function storeCustomFieldDefinition(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->customFieldRules());
         $this->assertCustomFieldRules($data);
@@ -516,7 +516,7 @@ class PeopleCoreController extends Controller
 
     public function updateCustomFieldDefinition(Request $request, string $definitionId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->customFieldRules(true));
         $this->assertCustomFieldRules($data);
@@ -561,7 +561,7 @@ class PeopleCoreController extends Controller
 
     public function designations(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules() + [
             'job_family_id' => ['nullable', 'uuid'],
@@ -589,7 +589,7 @@ class PeopleCoreController extends Controller
 
     public function positions(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules() + [
             'organization_unit_id' => ['nullable', 'uuid'],
@@ -631,7 +631,7 @@ class PeopleCoreController extends Controller
 
     public function storePosition(Request $request): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->positionRules());
 
@@ -640,7 +640,7 @@ class PeopleCoreController extends Controller
 
     public function updatePosition(Request $request, string $positionId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->positionRules(true));
 
@@ -649,7 +649,7 @@ class PeopleCoreController extends Controller
 
     public function employmentHistory(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $spells = HrEmploymentSpell::query()->where('staff_id', $staff->id)->orderBy('spell_number')->get();
@@ -666,7 +666,7 @@ class PeopleCoreController extends Controller
 
     public function employmentSpellOptions(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
@@ -682,7 +682,7 @@ class PeopleCoreController extends Controller
 
     public function timeline(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $data = $request->validate(['domain' => ['nullable', 'string', 'max:50'], 'employment_spell_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
@@ -697,7 +697,7 @@ class PeopleCoreController extends Controller
 
     public function prepareRehire(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['proposed_rehire_date' => ['required', 'date', 'after_or_equal:today'], 'eligibility_snapshot' => ['required', 'array'], 'prior_service_decisions' => ['required', 'array'], 'prior_service_decisions.gratuity' => ['required', 'string'], 'prior_service_decisions.leave' => ['required', 'string'], 'access_reactivation_plan' => ['nullable', 'array'], 'benefit_statutory_review' => ['required', 'array'], 'idempotency_key' => ['required', 'string', 'max:160']]);
@@ -706,7 +706,7 @@ class PeopleCoreController extends Controller
 
     public function approveRehire(Request $request, HrRehireCase $case): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($case->staff_id);
         $this->access->authorize($request->user(), $staff);
         abort_unless($staff->company_id === $case->company_id, 409, 'The rehire case and employee legal entity do not match.');
@@ -724,7 +724,7 @@ class PeopleCoreController extends Controller
 
     public function profileVersions(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $rows = HrStaffProfileVersion::query()->where('staff_id', $staff->id)->latest('version')->get();
@@ -735,7 +735,7 @@ class PeopleCoreController extends Controller
 
     public function storeProfileVersion(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['profile' => ['required', 'array'], 'change_reason' => ['required', 'string', 'max:2000']]);
@@ -746,7 +746,7 @@ class PeopleCoreController extends Controller
 
     public function records(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $query = HrEmployeeRecord::query()->where('staff_id', $staff->id);
@@ -760,7 +760,7 @@ class PeopleCoreController extends Controller
 
     public function storeRecord(Request $request, string $staffId): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $staff = Staff::withTrashed()->findOrFail($staffId);
         $this->access->authorize($request->user(), $staff);
         $data = $request->validate(['employment_spell_id' => ['nullable', 'uuid', 'exists:hr_employment_spells,id'], 'record_type' => ['required', Rule::in(['emergency_contact', 'dependent', 'beneficiary', 'qualification', 'skill', 'language', 'membership', 'licence', 'certification', 'career', 'achievement', 'award', 'note'])], 'title' => ['required', 'string', 'max:255'], 'data' => ['required', 'array'], 'effective_date' => ['nullable', 'date'], 'expiry_date' => ['nullable', 'date', 'after_or_equal:effective_date'], 'confidentiality' => ['required', Rule::in(['employee', 'manager', 'internal', 'hr_private', 'legal'])], 'source' => ['required', 'string', 'max:60'], 'employee_submitted' => ['nullable', 'boolean'], 'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id']]);
@@ -777,14 +777,11 @@ class PeopleCoreController extends Controller
         return response()->json(['status' => 'success', 'data' => $row], 201);
     }
 
-    private function ensureEnabled(): void
-    {
-        abort_unless(config('hr.features.people_core', false), 409, 'HR People Core is not enabled.');
-    }
+    
 
     private function jobCatalog(Request $request, string $table): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         $data = $request->validate($this->catalogListRules());
         $rows = $this->catalogQuery($table, $companyId, $data)->paginate((int) ($data['per_page'] ?? 50));
@@ -799,7 +796,7 @@ class PeopleCoreController extends Controller
 
     private function storeJobCatalogData(Request $request, string $type, array $data): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
 
         return response()->json(['status' => 'success', 'data' => $this->jobPositionAdmin->createCatalog($type, $data, $companyId, (string) $request->user()->id)], 201);
@@ -812,7 +809,7 @@ class PeopleCoreController extends Controller
 
     private function updateJobCatalogData(Request $request, string $type, string $table, string $id, array $data): JsonResponse
     {
-        $this->ensureEnabled();
+        
         $companyId = $this->access->actorCompanyId($request->user());
         abort_unless(DB::table($table)->where('id', $id)->where('company_id', $companyId)->exists(), 404, 'The requested job catalogue record was not found in your legal entity.');
 

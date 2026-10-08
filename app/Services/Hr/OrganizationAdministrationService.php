@@ -176,9 +176,8 @@ class OrganizationAdministrationService
      * already consumed by both the Attendance daily engine and
      * `LeaveWorkflowService`'s sandwich-rule day resolution — but the only
      * existing write path (`AttendanceResultController::storeCalendar`) is
-     * gated behind the separate `hr.features.attendance_results` flag, which
-     * leaves a legal entity that enables `leave_overtime` without
-     * `attendance_results` unable to define the holidays Leave depends on.
+     * owned by Attendance, while People Core also needs to author calendars
+     * used by the Leave workflow.
      * This governs calendar/day creation as a People-Core-owned register
      * (create-only, matching the existing endpoint's own create-only shape)
      * without altering the Attendance engine's read contract or its existing

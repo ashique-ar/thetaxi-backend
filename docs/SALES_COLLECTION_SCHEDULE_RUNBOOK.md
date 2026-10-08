@@ -14,7 +14,7 @@ This runbook covers creation/revision of payment schedules, open-ended rolling-h
 
 1. Confirm the legal entity, booking, current Sales attribution/handler, source currency, reviewed open-ended monthly value, feature-flag state, and deployed migration list.
 2. Use read-only queries first. Record target, as-of timestamp/timezone, query version, row counts, source/LKR totals, and checksums without copying customer contact or evidence into tickets.
-3. Do not enable `SALES_ROLLING_PAYMENT_SCHEDULES_ENABLED` until migration rehearsal, active-long-term review, role approval, and shadow reconciliation are signed.
+3. Complete migration rehearsal, active-long-term review, role approval, and shadow reconciliation before using rolling schedules.
 4. Customer reminders remain disabled until channel, content, consent, escalation, retention, and owner are approved.
 
 ## Read-only diagnosis

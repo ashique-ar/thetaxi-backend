@@ -14,7 +14,7 @@ class ProcessLeaveAccruals extends Command
 
     public function handle(LeaveWorkflowService$service):int
     {
-        $asOf=CarbonImmutable::parse($this->option('as-of')?:now()->toDateString())->startOfDay();$actor=(string)config('hr.system_user_id');if($this->option('commit')){if(!config('hr.features.leave_overtime',false)){$this->error('HR leave/overtime feature is disabled.');return self::FAILURE;}if(!$actor||!DB::table('users')->where('id',$actor)->exists()){$this->error('HR_SYSTEM_USER_ID must identify an existing system actor before committed processing.');return self::FAILURE;}}
+        $asOf=CarbonImmutable::parse($this->option('as-of')?:now()->toDateString())->startOfDay();$actor=(string)config('hr.system_user_id');if($this->option('commit')){if(!$actor||!DB::table('users')->where('id',$actor)->exists()){$this->error('HR_SYSTEM_USER_ID must identify an existing system actor before committed processing.');return self::FAILURE;}}
         $rows=DB::table('hr_leave_policy_assignments as assignment')
             ->join('hr_leave_policies as policy',fn($join)=>$join->on('policy.id','=','assignment.policy_id')->on('policy.company_id','=','assignment.company_id'))
             ->join('hr_leave_types as type',fn($join)=>$join->on('type.id','=','policy.leave_type_id')->on('type.company_id','=','assignment.company_id'))

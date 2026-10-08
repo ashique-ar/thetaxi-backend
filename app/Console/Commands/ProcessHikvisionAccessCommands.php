@@ -17,9 +17,7 @@ class ProcessHikvisionAccessCommands extends Command
 
     public function handle(AttendanceProviderManager $providers): int
     {
-        if (! config('hr.features.physical_access_commands')) {
-            return self::SUCCESS;
-        }
+        
         $staleSeconds = max(60, ((int) config('hr.hikvision.connect_timeout_seconds', 3) + (int) config('hr.hikvision.request_timeout_seconds', 10)) * 3 + 5);
         DB::table('hr_attendance_access_commands')->where('status', 'delivering')->where('updated_at', '<=', now()->subSeconds($staleSeconds))
             ->update(['status' => 'delivery_unknown', 'failure_message' => 'Worker claim expired; verify the terminal before taking further action.', 'updated_at' => now()]);

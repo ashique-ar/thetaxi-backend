@@ -127,7 +127,7 @@ class CommissionHoldService
         SalesCommissionDecision $decision,
         BookingPaymentReceiptFinalityEvent $finalityEvent,
     ): ?SalesCommissionHoldRelease {
-        if (! config('sales.features.commission_accrual', false) || $finalityEvent->to_status !== 'confirmed') {
+        if ($finalityEvent->to_status !== 'confirmed') {
             return null;
         }
 
@@ -204,9 +204,7 @@ class CommissionHoldService
         SalesCommissionDecision $decision,
         BookingPaymentReceiptFinalityEvent $finalityEvent,
     ): ?SalesCommissionHoldResolution {
-        if ((! config('sales.features.commission_shadow', false)
-                && ! config('sales.features.commission_accrual', false))
-            || $finalityEvent->to_status !== 'failed') {
+        if ($finalityEvent->to_status !== 'failed') {
             return null;
         }
 
@@ -283,7 +281,7 @@ class CommissionHoldService
 
     private function structuralBlocker(SalesCommissionDecision $decision): ?string
     {
-        if ($decision->status === 'shadow_held' || ! config('sales.features.commission_accrual', false)) return 'Commission accrual is disabled; shadow holds cannot create payable releases.';
+        if ($decision->status === 'shadow_held') return 'Shadow commission decisions cannot create payable releases.';
         if ($decision->status !== 'held') return 'Only an immutable held commission decision can be reviewed.';
         if (! CommissionHoldRemediationService::isFormulaReplayable($decision->hold_code)) return 'This hold requires governed attribution, identity, eligibility, finality, or FX correction and cannot be released here.';
         if (! $decision->company_id || ! $decision->beneficiary_sales_profile_id || ! $decision->beneficiary_staff_id) return 'The frozen legal entity and beneficiary evidence is incomplete.';

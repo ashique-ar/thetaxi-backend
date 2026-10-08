@@ -105,13 +105,12 @@ it('computes monthly gratuity and blocks non-monthly gratuity without wage-histo
         ->not->toContain("round(\$wageAmount * (float) \$policy->non_monthly_daily_wage_multiplier * \$completedYears, 2)");
 });
 
-it('gates the payroll-statutory API behind the existing HR payroll feature flag and dedicated permissions', function () {
+it('keeps the payroll-statutory API available behind dedicated permissions', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Hr/PayrollStatutoryController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
 
-    expect($controller)->toContain("config('hr.features.payroll', false)")
-        ->toContain('HR Payroll is not enabled.')
-        ->toContain("'tax_exempt_threshold_lkr' => ['required', 'numeric', 'min:0']")
+    expect($controller)->not->toContain('hr.features.payroll', 'HR Payroll is not enabled.')
+        ->and($controller)->toContain("'tax_exempt_threshold_lkr' => ['required', 'numeric', 'min:0']")
         ->toContain("'tax_rate_above_threshold_percent' => ['required', 'numeric', 'min:0', 'max:100']")
         ->toContain("'current_employer_headcount' => ['required', 'integer', 'min:0']")
         ->and($routes)->toContain("Route::prefix('hr/payroll')->middleware('ensure.internal')->group")

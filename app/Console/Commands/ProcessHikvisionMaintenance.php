@@ -16,9 +16,7 @@ class ProcessHikvisionMaintenance extends Command
 
     public function handle(AttendanceProviderManager $providers): int
     {
-        if (! config('hr.features.hikvision_maintenance_commands')) {
-            return self::SUCCESS;
-        }
+        
 
         DB::table('hr_attendance_device_maintenance_commands')->where('status', 'approved_pending_execution')->orderBy('approved_at')->limit(10)->get()->each(function ($command) use ($providers) {
             $device = AttendanceDevice::query()->find($command->device_id);

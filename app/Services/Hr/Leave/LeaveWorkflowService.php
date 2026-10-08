@@ -13,7 +13,7 @@ class LeaveWorkflowService
 {
     public function submit(array $data, string $actorUserId): object
     {
-        $this->enabled();
+        
         $checksum = hash('sha256', json_encode($data, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
         try {
             return DB::transaction(function () use ($data, $actorUserId, $checksum) {
@@ -76,7 +76,7 @@ class LeaveWorkflowService
      */
     public function decide(string $requestId, string $action, string $reason, string $actorUserId, string $actorStaffId, bool $overrideAuthorized = false): object
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($requestId, $action, $reason, $actorUserId, $actorStaffId, $overrideAuthorized) {
             $candidate = DB::table('hr_leave_requests')->where('id', $requestId)->first();
             abort_unless($candidate, 404);
@@ -139,7 +139,7 @@ class LeaveWorkflowService
 
     public function cancel(string $requestId, string $reason, string $actorUserId): object
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($requestId, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
@@ -175,7 +175,7 @@ class LeaveWorkflowService
      */
     public function confirmReturn(string $requestId, string $actualReturnDate, ?string $notes, string $actorUserId): object
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($requestId, $actualReturnDate, $notes, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
@@ -215,7 +215,7 @@ class LeaveWorkflowService
      */
     public function extend(string $requestId, string $newEndDate, string $reason, string $actorUserId): object
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($requestId, $newEndDate, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
@@ -277,7 +277,7 @@ class LeaveWorkflowService
      */
     public function recall(string $requestId, string $recallDate, string $reason, string $actorUserId): object
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($requestId, $recallDate, $reason, $actorUserId) {
             $row = DB::table('hr_leave_requests')->where('id', $requestId)->lockForUpdate()->first();
             abort_unless($row, 404);
@@ -308,7 +308,7 @@ class LeaveWorkflowService
 
     public function postBalance(string $accountId, string $entryType, int $minutes, string $effectiveDate, string $reason, string $actorUserId, string $idempotencyKey): LeaveBalanceEntry
     {
-        $this->enabled();
+        
         abort_unless(in_array($entryType, ['opening', 'accrual', 'adjustment', 'carry_forward', 'expiry', 'encashment'], true), 422, 'Unsupported balance entry type.');
         return DB::transaction(function () use ($accountId, $entryType, $minutes, $effectiveDate, $reason, $actorUserId, $idempotencyKey) {
             $this->validBalanceAccount($accountId);
@@ -325,7 +325,7 @@ class LeaveWorkflowService
     }
     public function postAutomatedBalance(string $accountId, string $entryType, int $minutes, string $effectiveDate, ?string $expiresOn, string $sourceType, string $sourceId, string $reason, array $snapshot, string $actorUserId): LeaveBalanceEntry
     {
-        $this->enabled();
+        
         return DB::transaction(function () use ($accountId, $entryType, $minutes, $effectiveDate, $expiresOn, $sourceType, $sourceId, $reason, $snapshot, $actorUserId) {
             $this->validBalanceAccount($accountId);
             if ($existing = LeaveBalanceEntry::query()->where('source_type', $sourceType)->where('source_id', $sourceId)->where('entry_type', $entryType)->first()) {
@@ -435,8 +435,5 @@ class LeaveWorkflowService
     {
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Leave writes require an active legal entity.');
     }
-    private function enabled(): void
-    {
-        abort_unless(config('hr.features.leave_overtime', false), 409, 'Leave, overtime, and timesheet writes are not enabled.');
-    }
+    
 }
