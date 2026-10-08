@@ -11,6 +11,7 @@ $decision = fn (string $key, string $module, string $label, string $description,
 
 return [
     $decision('company.localization', 'company', 'Currency and timezone', 'Company display preferences; timestamps remain stored in UTC and are localized only for presentation.', 'operational', [$field('currency', 'Currency code', 'text', ['pattern' => '/^[A-Z]{3}$/']), $field('timezone', 'IANA timezone', 'timezone')]),
+    $decision('operations.service_scope', 'operations', 'Company service scope', 'Starting description of the transport services offered by this company.', 'operational', [$field('scope', 'Service scope', 'textarea')], ['company.localization']),
     $decision('hr.employee_numbering', 'hr', 'Employee numbering', 'Approved employee-number format, ownership and exception policy reference.', 'hr', [$field('policy_reference', 'Approved numbering policy reference')], ['company.localization']),
     $decision('hr.work_calendars', 'hr', 'Work calendars and locations', 'Approved calendar, holiday, location and work-pattern source reference.', 'hr', [$field('policy_reference', 'Approved calendar and location policy reference')], ['company.localization']),
     $decision('hr.retention_privacy', 'hr', 'Employee retention and privacy', 'Approved retention, legal-hold and confidentiality policy reference.', 'privacy', [$field('policy_reference', 'Approved retention and privacy policy reference')], ['company.localization'], 'Company privacy administrator', 'Independent privacy approver'),
