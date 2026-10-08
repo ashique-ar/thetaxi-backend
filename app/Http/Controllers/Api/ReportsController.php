@@ -341,6 +341,7 @@ class ReportsController extends Controller
     public function getVehicleReports(Request $request): JsonResponse
     {
         $rows = Vehicle::with('group')
+            ->when($request->filled('vehicle_id'), fn ($query) => $query->whereKey($request->get('vehicle_id')))
             ->withCount('bookingItems')
             ->withSum(['bookingItems as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_price')
             ->orderBy('title')
@@ -858,6 +859,7 @@ class ReportsController extends Controller
     private function exportVehicleReport(array $filters, string $format): Response
     {
         $rows = Vehicle::with('group')
+            ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
             ->select('title', 'license_plate', 'status', 'availability_status', 'created_at')
             ->orderBy('title')
             ->get();

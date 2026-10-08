@@ -154,10 +154,16 @@ class AssignmentController extends Controller
             ]);
         } catch (\InvalidArgumentException $e) {
             $code = $e->getMessage();
-            $httpStatus = 400;
+            $httpStatus = in_array(
+                $code,
+                ['ASSIGNMENT_SUPERSEDED', 'ASSIGNMENT_EXPIRED'],
+                true
+            ) ? 409 : 400;
             $message = match ($code) {
                 'ASSIGNMENT_ALREADY_CONFIRMED' => 'Assignment has already been confirmed',
                 'ASSIGNMENT_INVALID_STATE' => 'Assignment is not in a valid state for acceptance',
+                'ASSIGNMENT_SUPERSEDED' => 'This assignment has been replaced. Refresh assignments.',
+                'ASSIGNMENT_EXPIRED' => 'This assignment has expired.',
                 default => $code,
             };
 

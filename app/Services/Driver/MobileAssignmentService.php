@@ -68,6 +68,7 @@ class MobileAssignmentService
                     $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
                         ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
                     $this->excludeTerminalBookings($query);
+                    $this->excludeStaleOffers($query);
                     break;
 
                 case 'in_progress':
@@ -89,6 +90,7 @@ class MobileAssignmentService
             $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
                 ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
             $this->excludeTerminalBookings($query);
+            $this->excludeStaleOffers($query);
         }
 
         if (!empty($filters['date'])) {
@@ -165,6 +167,7 @@ class MobileAssignmentService
             ->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
             ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
         $this->excludeTerminalBookings($query);
+        $this->excludeStaleOffers($query);
 
         return $query->orderBy('assigned_from')->get();
     }
@@ -246,6 +249,32 @@ class MobileAssignmentService
         return ['completed', 'cancelled', 'booking_cancelled', 'booking_rejected', 'rejected'];
     }
 
+    /** Keep replaced and expired unaccepted assignments out of the driver's inbox. */
+    private function excludeStaleOffers(Builder $query): void
+    {
+        $activeTripPhases = [
+            TripPhase::ACCEPTED,
+            TripPhase::PICKUP_ARRIVED,
+            TripPhase::IN_PROGRESS,
+        ];
+        $now = Carbon::now();
+
+        $query->where(function (Builder $query) use ($activeTripPhases, $now) {
+            $query->whereIn('trip_phase', $activeTripPhases)
+                ->orWhere(function (Builder $offerQuery) use ($now) {
+                    $offerQuery->where(function (Builder $itemQuery) {
+                        $itemQuery->whereNull('driver_assignments.booking_item_id')
+                            ->orWhereHas('bookingItem', function (Builder $relatedItemQuery) {
+                                $relatedItemQuery->whereNull('booking_items.driver_id')
+                                    ->orWhereColumn('booking_items.driver_id', 'driver_assignments.driver_id');
+                            });
+                    })->where(function (Builder $dateQuery) use ($now) {
+                        $dateQuery->whereNull('assigned_to')->orWhere('assigned_to', '>=', $now);
+                    });
+                });
+        });
+    }
+
     /**
      * Get completed hire history for a driver.
      */
@@ -286,17 +315,19 @@ class MobileAssignmentService
      */
     public function acceptAssignment(Driver $driver, DriverAssignment $assignment, array $location = []): DriverAssignment
     {
-        $this->assertAssignmentOwnership($driver, $assignment);
-
-        if ($assignment->status === 'confirmed') {
-            throw new \InvalidArgumentException('ASSIGNMENT_ALREADY_CONFIRMED');
-        }
-
-        if (!in_array($assignment->status, ['active', 'pending_approval'])) {
-            throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
-        }
-
         return DB::transaction(function () use ($driver, $assignment, $location) {
+            $assignment = DriverAssignment::query()->lockForUpdate()->findOrFail($assignment->id);
+            $this->assertAssignmentOwnership($driver, $assignment);
+
+            if ($assignment->status === 'confirmed') {
+                throw new \InvalidArgumentException('ASSIGNMENT_ALREADY_CONFIRMED');
+            }
+
+            if (!in_array($assignment->status, ['active', 'pending_approval'], true)) {
+                throw new \InvalidArgumentException('ASSIGNMENT_INVALID_STATE');
+            }
+
+            $this->assertAssignmentStillCurrent($assignment);
             $now = Carbon::now('UTC');
 
             $assignment->update([
@@ -347,6 +378,35 @@ class MobileAssignmentService
 
             return $updated;
         });
+    }
+
+    private function assertAssignmentStillCurrent(DriverAssignment $assignment): void
+    {
+        if ($assignment->booking_id && DB::table('bookings')
+            ->where('id', $assignment->booking_id)
+            ->whereIn('status', $this->terminalBookingStatuses())
+            ->exists()) {
+            throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
+        }
+
+        if ($assignment->booking_item_id) {
+            $item = BookingItem::query()
+                ->whereKey($assignment->booking_item_id)
+                ->where('booking_id', $assignment->booking_id)
+                ->lockForUpdate()
+                ->first();
+
+            if (
+                !$item
+                || ($item->driver_id && (string) $item->driver_id !== (string) $assignment->driver_id)
+            ) {
+                throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
+            }
+        }
+
+        if ($assignment->assigned_to && $assignment->assigned_to->isPast()) {
+            throw new \InvalidArgumentException('ASSIGNMENT_EXPIRED');
+        }
     }
 
     private function buildBookingDeviceSnapshot(mixed $snapshot, Carbon $capturedAt): ?array
