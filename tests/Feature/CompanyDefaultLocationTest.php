@@ -8,6 +8,7 @@ use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Staff;
 use App\Services\BookingFlowService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 
 uses(RefreshDatabase::class);
 
@@ -75,9 +76,11 @@ it('defaults HR fixtures to the configured company instead of the first company'
     }
 });
 
-it('does not infer the first existing company when no default is configured', function () {
+it('persists the earliest active company as default when none is configured', function () {
     $first = Company::create(['name' => 'First non-default company', 'is_active' => true, 'is_default' => false]);
     $second = Company::create(['name' => 'Second non-default company', 'is_active' => true, 'is_default' => false]);
+    DB::table('companies')->where('id', $first->id)->update(['created_at' => now()->subMinute()]);
+    DB::table('companies')->where('id', $second->id)->update(['created_at' => now()]);
 
     foreach ([
         Staff::factory(),
@@ -87,11 +90,9 @@ it('does not infer the first existing company when no default is configured', fu
         AttendanceConnector::factory(),
     ] as $factory) {
         $companyId = $factory->make()->company_id;
-        $assigned = Company::find($companyId);
-
-        expect($companyId)->not->toBe($first->id)
-            ->and($companyId)->not->toBe($second->id)
-            ->and($assigned?->is_active)->toBeTrue()
-            ->and($assigned?->is_default)->toBeTrue();
+        expect($companyId)->toBe($first->id);
     }
+
+    $this->assertDatabaseHas('companies', ['id' => $first->id, 'is_default' => true]);
+    $this->assertDatabaseHas('companies', ['id' => $second->id, 'is_default' => false]);
 });

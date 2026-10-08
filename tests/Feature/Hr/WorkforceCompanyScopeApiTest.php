@@ -21,7 +21,9 @@ it('offers only companies in the authenticated Staff scope and rejects unrelated
     $user->assignRole($role);
     $authorizedCompany = Company::create(['name' => 'Authorized Workforce Company', 'is_default' => true]);
     $unassignedCompany = Company::create(['name' => 'Unassigned Workforce Company']);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $authorizedCompany->id]);
+    $staff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $authorizedCompany->id]);
+    UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $staff->id,
+        'is_active' => true, 'created_user_id' => $user->id]);
 
     $options = actingAs($user, 'api')->getJson('/api/hr/workforce/company-options')->assertOk();
     $companyIds = collect($options->json('data'))->pluck('value')->all();
@@ -41,7 +43,7 @@ it('offers only companies in the authenticated Staff scope and rejects unrelated
         ->assertForbidden();
 });
 
-it('uses the selected active Staff context when the user has multiple Staff records', function () {
+it('uses the selected active Staff context for Workforce requests', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $role = Role::create(['name' => 'multi_staff_workforce_scope_tester', 'guard_name' => 'api']);
@@ -50,17 +52,13 @@ it('uses the selected active Staff context when the user has multiple Staff reco
     $firstCompany = Company::create(['name' => 'First Workforce Company']);
     $secondCompany = Company::create(['name' => 'Second Workforce Company']);
     $firstStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $firstCompany->id]);
-    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
     $firstContext = UserContext::create([
         'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $firstStaff->id,
         'is_active' => true, 'created_user_id' => $user->id,
     ]);
-    $secondContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
-    ]);
 
-    actingAs($user, 'api')->getJson('/api/hr/workforce/company-options')->assertForbidden();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/company-options')->assertOk()->assertJsonCount(1, 'data')
+        ->assertJsonPath('data.0.value', $firstCompany->id);
     actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
     ])->getJson('/api/hr/workforce/company-options')->assertOk()->assertJsonCount(1, 'data')
@@ -69,8 +67,8 @@ it('uses the selected active Staff context when the user has multiple Staff reco
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
     ])->getJson('/api/hr/workforce/references?company_id='.$secondCompany->id)->assertForbidden();
     actingAs($user, 'api')->withHeaders([
-        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
-    ])->getJson('/api/hr/workforce/references')->assertOk()->assertJsonPath('data.company_id', $secondCompany->id);
+        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
+    ])->getJson('/api/hr/workforce/references')->assertOk()->assertJsonPath('data.company_id', $firstCompany->id);
     actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => (string) Str::uuid(),
     ])->getJson('/api/hr/workforce/company-options')->assertForbidden();
@@ -94,34 +92,37 @@ it('keeps company selection for staff.view-all users who have no Staff record', 
         ->assertOk()->assertJsonPath('data.company_id', $second->id);
 });
 
-it('does not guess a Workforce company when several authorized entities have no default', function () {
+it('uses the earliest Workforce company as default when several authorized entities have none configured', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $role = Role::create(['name' => 'workforce_no_default_scope_tester', 'guard_name' => 'api']);
     $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
     $user->assignRole($role);
-    Company::create(['name' => 'Workforce Choice A', 'is_default' => false]);
+    $first = Company::create(['name' => 'Workforce Choice A', 'is_default' => false]);
     $selected = Company::create(['name' => 'Workforce Choice B', 'is_default' => false]);
 
-    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+        ->assertOk()->assertJsonPath('data.company_id', $first->id);
     actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$selected->id)
         ->assertOk()->assertJsonPath('data.company_id', $selected->id);
 });
 
-it('does not guess between multiple configured Workforce defaults', function () {
+it('uses the explicitly configured Workforce default among multiple authorized entities', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $role = Role::create(['name' => 'workforce_ambiguous_default_scope_tester', 'guard_name' => 'api']);
     $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
     $user->assignRole($role);
-    Company::create(['name' => 'Workforce Default A', 'is_default' => true]);
-    Company::create(['name' => 'Workforce Default B', 'is_default' => true]);
+    $other = Company::create(['name' => 'Workforce Default A', 'is_default' => false]);
+    $default = Company::create(['name' => 'Workforce Default B', 'is_default' => true]);
 
-    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
-    actingAs($user, 'api')->getJson('/api/hr/workforce/staff-options')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+        ->assertOk()->assertJsonPath('data.company_id', $default->id);
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$other->id)
+        ->assertOk()->assertJsonPath('data.company_id', $other->id);
 });
 
-it('requires a configured default or explicit selection for a sole Workforce company', function () {
+it('uses a sole Workforce company as default when none is configured', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $role = Role::create(['name' => 'workforce_single_company_scope_tester', 'guard_name' => 'api']);
@@ -129,8 +130,10 @@ it('requires a configured default or explicit selection for a sole Workforce com
     $user->assignRole($role);
     $company = Company::create(['name' => 'Single Workforce Choice', 'is_default' => false]);
 
-    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
-    actingAs($user, 'api')->getJson('/api/hr/workforce/payroll-inputs')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')
+        ->assertOk()->assertJsonPath('data.company_id', $company->id);
+    actingAs($user, 'api')->getJson('/api/hr/workforce/payroll-inputs')
+        ->assertOk()->assertJsonPath('data.data', []);
     actingAs($user, 'api')->getJson('/api/hr/workforce/references?company_id='.$company->id)
         ->assertOk()->assertJsonPath('data.company_id', $company->id);
 });

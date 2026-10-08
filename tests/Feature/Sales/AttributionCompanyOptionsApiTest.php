@@ -44,13 +44,13 @@ it('searches and hydrates only companies in the actors effective attribution sco
     $url = '/api/sales/attribution-company-options';
 
     actingAs($staff->user, 'api')->getJson('/api/sales/attribution-administration-context')->assertOk()
-        ->assertJsonPath('data.default_company_id', null);
+        ->assertJsonPath('data.default_company_id', $company->id);
 
     $response = actingAs($staff->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id)->assertJsonPath('data.data.0.label', 'Scoped Attribution Company')
         ->assertJsonPath('data.data.0.metadata.city', 'Colombo')
-        ->assertJsonPath('data.data.0.metadata.is_default', false)
-        ->assertJsonPath('default_company_id', null);
+        ->assertJsonPath('data.data.0.metadata.is_default', true)
+        ->assertJsonPath('default_company_id', $company->id);
     expect(array_keys($response->json('data.data.0')))->toBe(['value', 'label', 'metadata', 'status']);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id.'&search=no-match')->assertOk()
         ->assertJsonPath('data.data.0.value', $company->id);
@@ -99,5 +99,7 @@ it('searches and hydrates bounded eligible attribution targets in the requested 
     actingAs($admin, 'api')->getJson('/api/sales/attribution-profile-options?purpose=acquisition&cross_company=1&selected_id='.$foreign->id)
         ->assertOk()->assertJsonPath('data.data.0.value', $foreign->id);
     actingAs($admin, 'api')->getJson($url.'&per_page=51')->assertUnprocessable();
-    actingAs($admin, 'api')->getJson('/api/sales/attribution-profile-options?purpose=collection')->assertUnprocessable();
+    actingAs($admin, 'api')->getJson('/api/sales/attribution-profile-options?purpose=collection')
+        ->assertOk()->assertJsonCount(1, 'data.data')
+        ->assertJsonPath('data.data.0.metadata.company', 'Attribution Target Company');
 });

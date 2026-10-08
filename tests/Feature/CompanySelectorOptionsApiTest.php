@@ -96,7 +96,7 @@ it('normalizes a null active flag when creating a company', function () {
     ]);
 });
 
-it('does not infer the first active company as default when the form flag is false', function () {
+it('makes the first active company default when none is configured, even when the form flag is false', function () {
     (new \Database\Seeders\AllPermissionsSeeder())->run();
     $admin = User::factory()->create();
     $admin->assignRole('admin');
@@ -105,15 +105,15 @@ it('does not infer the first active company as default when the form flag is fal
         'name' => 'First active company',
         'is_active' => true,
         'is_default' => false,
-    ])->assertCreated()->assertJsonPath('data.is_default', false);
+    ])->assertCreated()->assertJsonPath('data.is_default', true);
 
     $this->assertDatabaseHas('companies', [
         'id' => $response->json('data.id'),
         'is_active' => true,
-        'is_default' => false,
+        'is_default' => true,
     ]);
     actingAs($admin, 'api')->getJson('/api/companies/options')
-        ->assertOk()->assertJsonPath('default_company_id', null);
+        ->assertOk()->assertJsonPath('default_company_id', $response->json('data.id'));
 
     $selected = actingAs($admin, 'api')->postJson('/api/companies', [
         'name' => 'Explicit default company',
@@ -126,6 +126,28 @@ it('does not infer the first active company as default when the form flag is fal
     ]);
     actingAs($admin, 'api')->getJson('/api/companies/options')
         ->assertOk()->assertJsonPath('default_company_id', $selected->json('data.id'));
+});
+
+it('promotes the earliest existing active company when creating another company with no default', function () {
+    (new \Database\Seeders\AllPermissionsSeeder())->run();
+    $admin = User::factory()->create();
+    $admin->assignRole('admin');
+    $first = Company::create(['name' => 'Earliest active entity', 'is_active' => true, 'is_default' => false]);
+    $second = Company::create(['name' => 'Later active entity', 'is_active' => true, 'is_default' => false]);
+    DB::table('companies')->where('id', $first->id)->update(['created_at' => now()->subMinute()]);
+    DB::table('companies')->where('id', $second->id)->update(['created_at' => now()]);
+
+    $newCompany = actingAs($admin, 'api')->postJson('/api/companies', [
+        'name' => 'Newest active entity',
+        'is_active' => true,
+        'is_default' => false,
+    ])->assertCreated()->assertJsonPath('data.is_default', false);
+
+    $this->assertDatabaseHas('companies', ['id' => $first->id, 'is_default' => true]);
+    $this->assertDatabaseHas('companies', ['id' => $second->id, 'is_default' => false]);
+    $this->assertDatabaseHas('companies', ['id' => $newCompany->json('data.id'), 'is_default' => false]);
+    actingAs($admin, 'api')->getJson('/api/companies/options')
+        ->assertOk()->assertJsonPath('default_company_id', $first->id);
 });
 
 it('preserves the active default when an update sends a null active flag', function () {

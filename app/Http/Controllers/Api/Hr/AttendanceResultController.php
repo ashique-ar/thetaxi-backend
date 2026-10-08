@@ -26,6 +26,7 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
         $companyIds = $this->authorizedCompanyIds($request);
+        abort_unless($companyIds->isNotEmpty(), 403, 'The authenticated user has no active Staff legal-entity context.');
         $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         if (! $companyIds->contains($defaultCompanyId)) $defaultCompanyId = null;
         $companies = Company::query()->whereIn('id', $companyIds)

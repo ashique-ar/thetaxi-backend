@@ -107,6 +107,18 @@ class CompanyController extends Controller
             $data['is_active'] = $willBeActive;
 
             $makeDefault = (bool) ($data['is_default'] ?? false);
+            $hasActiveDefault = DB::table('companies')->whereNull('deleted_at')
+                ->where('is_active', true)->where('is_default', true)->exists();
+            if (! $makeDefault && ! $hasActiveDefault) {
+                $firstActiveCompany = DB::table('companies')->whereNull('deleted_at')
+                    ->where('is_active', true)->orderBy('created_at')->orderBy('id')->first(['id']);
+                if ($firstActiveCompany) {
+                    DB::table('companies')->whereNull('deleted_at')->update(['is_default' => false]);
+                    DB::table('companies')->where('id', $firstActiveCompany->id)->update(['is_default' => true]);
+                } else {
+                    $makeDefault = $willBeActive;
+                }
+            }
 
             abort_if($makeDefault && ! $willBeActive, 422, 'The default Staff company must remain active.');
 

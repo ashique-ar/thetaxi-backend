@@ -34,13 +34,16 @@ trait AuthorizesAttendanceRequests
 
     private function authorizedCompanyIds(Request $request)
     {
-        if ($request->user()->can('staff.view-all')) {
+        // A global Staff permission can span legal entities only in the
+        // explicit internal context. An explicitly selected Staff context is
+        // always constrained to that employment's company, including admins.
+        $contextType = $request->header('X-Active-Context-Type');
+        if ($request->user()->can('staff.view-all') && $contextType === 'internal') {
             return Company::query()->where('is_active', true)->orderByDesc('is_default')->orderBy('name')->pluck('id');
         }
 
         $contexts = DB::table('user_contexts')->where('user_id', $request->user()->id)
             ->where('context_type', 'staff')->where('is_active', true)->whereNull('deleted_at');
-        $contextType = $request->header('X-Active-Context-Type');
         $contextId = $request->header('X-Active-Context-Id');
         if ($contextType === 'staff') {
             abort_unless($contextId && Str::isUuid($contextId), 403, 'Select an active Staff context.');

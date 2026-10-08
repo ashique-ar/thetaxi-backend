@@ -184,12 +184,37 @@ class SalesAccessScope
             return null;
         }
 
-        $companyIds = $this->actorProfiles($user)
-            ->pluck('company_id')
-            ->filter()
-            ->unique()
-            ->values()
-            ->all();
+        $contextType = request()->header('X-Active-Context-Type');
+        $contextId = request()->header('X-Active-Context-Id');
+        $profiles = SalesProfile::query()
+            ->whereHas('staff', function (Builder $staff) use ($user, $contextType, $contextId): void {
+                $staff->where('user_id', $user->id)
+                    ->whereNull('deleted_at')
+                    ->where(fn (Builder $employment) => $employment
+                        ->whereNull('employment_ended_at')
+                        ->orWhere('employment_ended_at', '>', now()))
+                    ->when($contextType === 'staff', fn (Builder $staff) => $staff->whereExists(
+                        fn ($context) => $context->selectRaw('1')->from('user_contexts')
+                            ->whereColumn('user_contexts.context_id', 'staff.id')
+                            ->where('user_contexts.id', $contextId)
+                            ->where('user_contexts.user_id', $user->id)
+                            ->where('user_contexts.context_type', 'staff')
+                            ->where('user_contexts.is_active', true)->whereNull('user_contexts.deleted_at'),
+                    ));
+            })
+            ->activeAt(now())
+            ->configured();
+        if ($contextType === 'staff' && (! $contextId || ! \Illuminate\Support\Str::isUuid($contextId))) {
+            $profiles->whereRaw('1 = 0');
+        } elseif ($contextType !== null && ! in_array($contextType, ['staff', 'internal'], true)) {
+            $profiles->whereRaw('1 = 0');
+        }
+
+        $companyIds = $profiles->distinct()->pluck('company_id')->filter()->values()->all();
+        if ($companyIds !== []) {
+            $companyIds = DB::table('companies')->whereIn('id', $companyIds)
+                ->where('is_active', true)->whereNull('deleted_at')->orderBy('id')->pluck('id')->all();
+        }
 
         if ($companyIds === []) {
             $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
