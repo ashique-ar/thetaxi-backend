@@ -18,6 +18,12 @@ it('governs alert actions with optimistic versioning and checksum-bound replay',
         ->toContain('sales_alert_action_idempotency_unique')
         ->toContain('sales_alert_action_version_unique')
         ->toContain('Rollback refused: export and reconcile immutable Sales alert action evidence first.');
+
+    $actionStart = strpos($service, 'public function actOnAlert(');
+    $actionEnd = strpos($service, 'public function ', $actionStart + 1);
+    $action = substr($service, $actionStart, $actionEnd - $actionStart);
+    expect(strpos($action, "DB::table('companies')"))->toBeLessThan(strpos($action, 'SalesPerformanceAlert::query()->lockForUpdate()'))
+        ->and($action)->toContain("where('is_active', true)", "whereNull('deleted_at')");
 });
 
 it('keeps snooze timezone-explicit and escalation separately authorized', function () {

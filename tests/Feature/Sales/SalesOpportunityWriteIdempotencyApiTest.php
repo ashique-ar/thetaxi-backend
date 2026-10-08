@@ -129,4 +129,8 @@ it('replays only the original opportunity transition and transfer command', func
         ->and($otherBooking->fresh()->sales_opportunity_id)->toBeNull()
         ->and($foreignBooking->fresh()->sales_opportunity_id)->toBeNull()
         ->and($second->fresh()->state_version)->toBe(1);
+
+    $company->update(['is_active' => false]);
+    actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transition', $transition)->assertUnprocessable();
+    actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transfer', $transfer)->assertUnprocessable();
 });

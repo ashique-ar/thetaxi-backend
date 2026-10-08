@@ -978,6 +978,8 @@ class SalesPerformanceService
     ): SalesPerformanceAlert
     {
         return DB::transaction(function () use ($alert, $action, $expectedVersion, $reason, $key, $actorUserId, $snoozedUntil) {
+            abort_unless(DB::table('companies')->where('id', $alert->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422, 'Select an active legal entity.');
             $locked = SalesPerformanceAlert::query()->lockForUpdate()->findOrFail($alert->id);
             $reason = trim($reason);
             $snoozeAt = $snoozedUntil === null ? null : CarbonImmutable::parse($snoozedUntil)->utc();

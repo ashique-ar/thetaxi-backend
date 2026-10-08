@@ -151,4 +151,9 @@ it('scopes task links and makes create, transition, and transfer commands replay
 
     $migration = require database_path('migrations/2026_10_03_000001_add_sales_task_write_idempotency.php');
     expect(fn () => $migration->down())->toThrow(RuntimeException::class);
+
+    $company->update(['is_active' => false]);
+    actingAs($actor, 'api')->postJson('/api/sales/tasks/'.$task->id.'/transition', [
+        'to_status' => 'in_progress', 'expected_version' => 3, 'idempotency_key' => (string) Str::uuid(),
+    ])->assertUnprocessable();
 });
