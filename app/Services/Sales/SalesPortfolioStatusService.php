@@ -30,7 +30,8 @@ class SalesPortfolioStatusService
         $checksum = hash('sha256', CanonicalJson::encode($payload));
 
         return DB::transaction(function () use ($data, $payload, $checksum, $actorUserId) {
-            DB::table('companies')->where('id', $payload['company_id'])->lockForUpdate()->firstOrFail();
+            DB::table('companies')->where('id', $payload['company_id'])->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesPortfolioStatusPolicyVersion::query()
                 ->where('company_id', $payload['company_id'])->where('idempotency_key', $data['idempotency_key'])
                 ->lockForUpdate()->first();
@@ -60,7 +61,8 @@ class SalesPortfolioStatusService
         string $idempotencyKey,
     ): SalesPortfolioStatusPolicyVersion {
         return DB::transaction(function () use ($policy, $actorUserId, $idempotencyKey) {
-            DB::table('companies')->where('id', $policy->company_id)->lockForUpdate()->firstOrFail();
+            DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $locked = SalesPortfolioStatusPolicyVersion::query()->lockForUpdate()->findOrFail($policy->id);
             if ($locked->status === 'approved') {
                 abort_unless($locked->approval_idempotency_key === $idempotencyKey, 409,

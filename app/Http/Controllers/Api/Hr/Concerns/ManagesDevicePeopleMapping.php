@@ -314,7 +314,7 @@ trait ManagesDevicePeopleMapping
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
             'staff_id' => ['required', 'uuid'],
             'device_id' => ['nullable', 'uuid'],
             'provider_person_id' => ['required', 'string', 'max:160'],
@@ -324,7 +324,7 @@ trait ManagesDevicePeopleMapping
             'enrolled_methods.*' => ['string', Rule::in(['fingerprint', 'card', 'face', 'pin'])],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
-        $this->authorizedCompanyId($request, $data['company_id']);
+        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
 
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveAttendanceCompany($data['company_id']);

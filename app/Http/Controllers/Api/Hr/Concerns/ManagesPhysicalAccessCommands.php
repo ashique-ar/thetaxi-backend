@@ -34,13 +34,13 @@ trait ManagesPhysicalAccessCommands
     {
         abort_unless(config('hr.features.physical_access_commands', false), 409, 'Physical access command writes are not enabled.');
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'],
+            'company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'],
             'device_id' => ['required', 'uuid'],
             'command_type' => ['required', Rule::in(['grant', 'revoke', 'suspend', 'restore'])],
             'access_group_code' => ['nullable', 'string', 'max:100'], 'reason' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->authorizedCompanyId($request, $data['company_id']);
+        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $checksum = hash('sha256', json_encode(['request' => $data, 'requested_by' => $request->user()->id], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
         try {

@@ -28,3 +28,16 @@ it('replays statement transitions only when their original version and decision 
         ->toContain('$duplicate->actor_user_id === $actorUserId')
         ->toContain('This statement transition key was already used with different facts.');
 });
+
+it('locks the active statement company before generation and transition writes', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionStatementService.php'));
+    $generate = substr($service, strpos($service, 'public function generate('), strpos($service, 'public function transition(') - strpos($service, 'public function generate('));
+    $transition = substr($service, strpos($service, 'public function transition('), strpos($service, 'private function lockActiveCompany(') - strpos($service, 'public function transition('));
+
+    expect(strpos($generate, '$this->lockActiveCompany('))->toBeLessThan(strpos($generate, 'SalesProfile::query()->with(\'staff\')->lockForUpdate()'))
+        ->and(strpos($generate, 'SalesProfile::query()->with(\'staff\')->lockForUpdate()'))
+            ->toBeLessThan(strpos($generate, 'generation_idempotency_key'))
+        ->and(strpos($transition, '$this->lockActiveCompany('))->toBeLessThan(strpos($transition, 'SalesCommissionStatement::query()->lockForUpdate()'))
+        ->and($generate)->toContain('return DB::transaction(function () use ($exception', "where('is_active', true)", "whereNull('deleted_at')")
+        ->and($transition)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+});

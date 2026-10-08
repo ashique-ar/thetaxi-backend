@@ -191,7 +191,8 @@ class SalesPeriodCloseService
             $companyId, $periodStart, $cutoffAt, $expectedLockVersion, $previewChecksum,
             $reason, $idempotencyKey, $actorUserId, $requestChecksum
         ): object {
-            DB::table('companies')->whereKey($companyId)->lockForUpdate()->firstOrFail();
+            DB::table('companies')->whereKey($companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = DB::table('sales_period_close_events')->where('company_id', $companyId)
                 ->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
@@ -259,7 +260,8 @@ class SalesPeriodCloseService
         return DB::transaction(function () use ($periodLockId, $expectedVersion, $reason, $idempotencyKey, $actorUserId): object {
             $lock = DB::table('domain_period_locks')->whereKey($periodLockId)->where('domain', 'sales')->first();
             abort_unless($lock, 404);
-            DB::table('companies')->whereKey($lock->company_id)->lockForUpdate()->firstOrFail();
+            DB::table('companies')->whereKey($lock->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $lock = DB::table('domain_period_locks')->whereKey($periodLockId)->where('domain', 'sales')->lockForUpdate()->first();
             abort_unless($lock, 404);
             $requestChecksum = hash('sha256', CanonicalJson::encode([

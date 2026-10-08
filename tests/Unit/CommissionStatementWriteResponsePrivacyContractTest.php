@@ -20,7 +20,7 @@ it('preselects and enforces the authorized company across commission operation l
     $routes = file_get_contents(base_path('routes/api.php'));
 
     expect($controller)->toContain(
-        'public function companyOptions', 'default_company_id', "'company_id' => ['required'", "where('is_active', true)",
+        'public function companyOptions', 'default_company_id', "'company_id' => ['nullable'", 'resolveCompanyId(', "where('is_active', true)",
         "where('company_id', \$companyId)", 'in_array($data[\'company_id\'], $companyIds, true)',
         "where('sales_profiles.company_id', \$companyId)", 'Select a Sales Profile in the chosen legal entity.',
     );

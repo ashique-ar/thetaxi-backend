@@ -12,7 +12,7 @@ it('keeps Workforce Staff pickers bounded, tenant-scoped, and mutation-revalidat
     $selector = file_get_contents(base_path('../portal-thetaxi/src/app/shared/components/ui/managed-record-select/managed-record-select.component.ts'));
 
     expect($routes)->toContain("Route::get('staff-options', [WorkforceController::class, 'staffOptions'])")
-        ->and($controller)->toContain('public function staffOptions(Request $r, StaffAccessService $access)', "'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "whereNull('employment_ended_at')", 'scope(Staff::query()')
+        ->and($controller)->toContain('public function staffOptions(Request $r, StaffAccessService $access)', "'company_id' => ['nullable', 'uuid']", "'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", 'company($r, $data[\'company_id\'] ?? null)', "whereNull('employment_ended_at')", 'scope(Staff::query()')
         ->toContain("'company_id' => \$companyId")
         ->not->toContain("'staff' => \$staff")
         ->and($leave)->toContain('lockForUpdate()->first()', "\$staff->company_id === \$data['company_id']", "\$staff->employment_ended_at === null")

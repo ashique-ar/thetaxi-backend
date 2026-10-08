@@ -253,6 +253,47 @@ it('closes failed finality as immutable zero-value non-entitlement without finan
     expect($holds)->not->toContain('projectCommissionHoldResolution');
 });
 
+it('locks the active company before manual commission hold release retries and decisions', function () {
+    $holds = file_get_contents(app_path('Services/Sales/CommissionHoldService.php'));
+    $start = strpos($holds, 'public function release(');
+    $end = strpos($holds, 'public function releaseForFinality(', $start);
+    $release = substr($holds, $start, $end - $start);
+
+    expect(strpos($release, "DB::table('companies')"))->toBeLessThan(strpos($release, "where('idempotency_key', \$idempotencyKey)"))
+        ->and($release)->toContain("where('is_active', true)", "whereNull('deleted_at')")
+        ->and(strpos($release, "where('idempotency_key', \$idempotencyKey)"))->toBeLessThan(strpos($release, 'SalesCommissionDecision::query()->lockForUpdate()'));
+});
+
+it('locks the active company before linked hold-adjustment retries and receipt/decision rows', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionHoldAdjustmentService.php'));
+    $start = strpos($service, 'public function append(');
+    $end = strpos($service, 'private function ', $start);
+    $append = substr($service, $start, $end - $start);
+
+    expect(strpos($append, "DB::table('companies')"))->toBeLessThan(strpos($append, 'SalesCommissionHoldAdjustment::query()->where'))
+        ->and($append)->toContain("where('is_active', true)", "whereNull('deleted_at')")
+        ->and(strpos($append, 'SalesCommissionHoldAdjustment::query()->where'))
+            ->toBeLessThan(strpos($append, 'BookingPaymentReceipt::query()->whereKey($receiptId)->lockForUpdate()'))
+        ->and(strpos($append, 'BookingPaymentReceipt::query()->whereKey($receiptId)->lockForUpdate()'))
+            ->toBeLessThan(strpos($append, 'SalesCommissionDecision::query()->lockForUpdate()'));
+});
+
+it('locks the active booking company before payment-adjustment booking and receipt writes', function () {
+    $service = file_get_contents(app_path('Services/Sales/BookingPaymentAdjustmentService.php'));
+    $start = strpos($service, 'public function record(');
+    $end = strpos($service, 'public function previewReportingFx(', $start);
+    $record = substr($service, $start, $end - $start);
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/BookingPaymentAdjustmentController.php'));
+    $start = strpos($controller, 'private function withinBookingScope(');
+    $scope = substr($controller, $start);
+
+    expect(strpos($record, "DB::table('companies')"))->toBeLessThan(strpos($record, 'Booking::query()->lockForUpdate()'))
+        ->and(strpos($record, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($record, 'BookingPaymentReceiptComponent::query()'))
+        ->and($record)->toContain("where('is_active', true)", "whereNull('deleted_at')", 'receipt legal entity does not match the booking')
+        ->and(strpos($scope, "DB::table('companies')"))->toBeLessThan(strpos($scope, 'Booking::query()->whereKey($booking->id)->lockForUpdate()'))
+        ->and($scope)->toContain("where('is_active', true)", "whereNull('deleted_at')");
+});
+
 it('rejects a pending-clearance policy that could expose commission to payout', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/PaymentFinalityController.php'));
 
@@ -370,6 +411,7 @@ it('establishes a missing receipt-component FX/LKR snapshot as separate evidence
 
     expect($adjustmentService)->toContain('public function previewFxSnapshotEstablishment(')
         ->toContain('public function establishFxSnapshot(')
+        ->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
         ->toContain("where('hold_code', 'fx_snapshot_missing')->exists()")
         ->toContain('has no open fx_snapshot_missing commission hold to establish evidence for')
         ->toContain('already has an immutable established FX snapshot')
@@ -390,6 +432,11 @@ it('establishes a missing receipt-component FX/LKR snapshot as separate evidence
         ->and($remediation)->toContain('Establish missing FX/LKR snapshot')
         ->and($migration)->toContain("adjustment_kind = 'late_fx_snapshot_entitlement' AND original_hold_code = 'fx_snapshot_missing'")
         ->toContain('Rollback refused: export and reconcile late FX-snapshot commission entitlement evidence first.');
+
+    $start = strpos($adjustmentService, 'public function establishFxSnapshot(');
+    $end = strpos($adjustmentService, 'private function ', $start);
+    $write = substr($adjustmentService, $start, $end - $start);
+    expect(strpos($write, "DB::table('companies')"))->toBeLessThan(strpos($write, 'Booking::query()->lockForUpdate()'));
 });
 
 it('governed-transitions a receipt out of a genuinely unrecognized finality state before a linked entitlement is previewable', function () {

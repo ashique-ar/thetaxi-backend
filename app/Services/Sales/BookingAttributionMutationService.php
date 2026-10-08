@@ -333,8 +333,18 @@ class BookingAttributionMutationService
             }
         }
 
-        return DB::transaction(function () use ($attribution, $field, $toProfile, $eventType, $effectiveAt, $reason, $idempotencyKey, $actorUserId) {
+        $lockedCandidate = SalesBookingAttribution::query()->with('booking')->findOrFail($attribution->id);
+        app(\App\Services\BookingPaymentLedgerService::class)->ensureBookingCompanyAttribution($lockedCandidate->booking);
+        $companyId = SalesBookingAttribution::query()->whereKey($attribution->id)->value('company_id');
+        abort_unless($companyId, 409, 'This attribution has no resolved legal entity.');
+
+        return DB::transaction(function () use ($attribution, $field, $toProfile, $eventType, $effectiveAt, $reason, $idempotencyKey, $actorUserId, $companyId) {
+            $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
+            abort_unless((string) $locked->company_id === (string) $company->id, 409,
+                'The attribution legal entity changed before its owner could be corrected.');
             $existing = DB::table('sales_booking_attribution_events')
                 ->where('attribution_id', $locked->id)
                 ->where('idempotency_key', $idempotencyKey)

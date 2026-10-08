@@ -56,7 +56,8 @@ class SalesPolicySettingsController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
         $canReviewRationale = $request->user()->can('sales.policy-settings.manage')
             || $request->user()->can('sales.policy-settings.approve');
@@ -91,7 +92,7 @@ class SalesPolicySettingsController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'policy_kind' => ['required', Rule::in(SalesPolicySettingsService::KINDS)],
             'fx_quote_base' => ['required_if:policy_kind,fx_corrections', 'nullable', 'string', 'max:40'],
             'fx_calculation_mode' => ['required_if:policy_kind,fx_corrections', 'nullable', Rule::in(['multiply_source_by_rate', 'divide_source_by_rate'])],
@@ -102,6 +103,7 @@ class SalesPolicySettingsController extends Controller
             'business_timezone' => ['required_if:policy_kind,business_timezone', 'nullable', 'timezone'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
         $setting = $this->settings->create($data['company_id'], $data['policy_kind'], $data, (string) $request->user()->id);
 
@@ -119,11 +121,12 @@ class SalesPolicySettingsController extends Controller
     public function storeFeature(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'feature_key' => ['required', Rule::in(SalesPolicySettingsService::FEATURES)],
             'enabled' => ['required', 'boolean'],
             'reason' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
         $setting = $this->settings->createFeature($data['company_id'], $data['feature_key'], $data['enabled'], $data['reason'], (string) $request->user()->id);
 
@@ -140,10 +143,11 @@ class SalesPolicySettingsController extends Controller
     public function storeStaffCategory(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'category_name' => ['required', 'string', 'max:80'],
             'reason' => ['nullable', 'string', 'max:2000'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompany($request, $data['company_id']);
         $category = $this->settings->createStaffCategory($data['company_id'], $data['category_name'], $data['reason'] ?? null, (string) $request->user()->id);
 
@@ -173,6 +177,14 @@ class SalesPolicySettingsController extends Controller
         if (isset($row->version)) $confirmation['version'] = (int) $row->version;
 
         return $confirmation;
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+
+        return (string) $resolved;
     }
 
     private function assertCompany(Request $request, string $companyId): void

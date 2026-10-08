@@ -27,8 +27,10 @@ class SalesCrmController extends Controller
 
     public function opportunities(Request $request): JsonResponse
     {
-        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['required', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
+        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data['company_id'] = $data['company_id'] ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($data['company_id'], 409, 'No active default legal entity is configured.');
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
         abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         abort_unless($ids === null || SalesProfile::query()->whereIn('id', $ids)
@@ -107,7 +109,8 @@ class SalesCrmController extends Controller
             'exclude_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'] ?? null);
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
         $featureTableReady = Schema::hasTable('sales_company_feature_settings');
         $query = DB::table('sales_profiles as profile')
             ->join('staff', 'staff.id', '=', 'profile.staff_id')
@@ -124,7 +127,7 @@ class SalesCrmController extends Controller
             ->where(fn ($eligible) => $eligible->where('profile.acquisition_eligible', true)
                 ->orWhere('profile.collection_eligible', true)->orWhere('profile.commission_eligible', true))
             ->when($ids !== null, fn ($profiles) => $profiles->whereIn('profile.id', $ids))
-            ->when($data['company_id'] ?? null, fn ($profiles, $companyId) => $profiles->where('profile.company_id', $companyId));
+            ->where('profile.company_id', $companyId);
         if (config('sales.features.crm') === true && $featureTableReady) {
             $query->whereExists(fn ($feature) => $feature->selectRaw('1')->from('sales_company_feature_settings as setting')
                 ->whereColumn('setting.company_id', 'profile.company_id')->where('setting.feature_key', 'crm')
@@ -181,12 +184,12 @@ class SalesCrmController extends Controller
     public function opportunitySourceOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'source_type' => ['required', Rule::in(['inquiry', 'phone_call'])],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = (string) $data['company_id'];
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         abort_unless($this->policySettings->featureEnabled($companyId, 'crm'), 422,
@@ -245,7 +248,7 @@ class SalesCrmController extends Controller
     public function createOpportunity(Request $request, SalesCrmService $crm): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'customer_id' => ['nullable', 'uuid', 'exists:customers,id'], 'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'],
             'source_phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'name' => ['required', 'string', 'max:255'],
             'prospect_name' => ['nullable', 'string', 'max:255'], 'prospect_company' => ['nullable', 'string', 'max:255'],
@@ -258,6 +261,7 @@ class SalesCrmController extends Controller
             'competitor_notes' => ['nullable', 'string', 'max:5000'], 'next_action' => ['nullable', 'string', 'max:2000'],
             'next_action_at' => ['nullable', 'date'], 'confidentiality' => ['nullable', Rule::in(['owner', 'team', 'management'])],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
         abort_unless(SalesProfile::query()->whereKey($profile->id)->activeAt(now())->exists(), 422, 'Opportunity owner must have an active Sales Profile.');
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
@@ -314,8 +318,9 @@ class SalesCrmController extends Controller
 
     public function activities(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'activity_type' => ['nullable', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'activity_type' => ['nullable', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
         $this->assertActiveListCompany($data['company_id'], $ids);
         $query = SalesActivity::query()
             ->where('sales_activities.company_id', $data['company_id'])
@@ -401,7 +406,7 @@ class SalesCrmController extends Controller
     public function recordActivity(Request $request, SalesCrmService $crm): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
             'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
             'phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'booking_activity_id' => ['nullable', 'uuid', 'exists:booking_activities,id'],
@@ -411,6 +416,7 @@ class SalesCrmController extends Controller
             'source_system' => ['required', 'string', 'max:60'], 'source_reference' => ['required', 'string', 'max:160'],
             'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'], 'occurred_at' => ['required', 'date', 'before_or_equal:now'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
@@ -420,7 +426,7 @@ class SalesCrmController extends Controller
     public function tasks(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'],
             'status' => ['nullable', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])],
             'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
@@ -428,7 +434,8 @@ class SalesCrmController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+        $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
         $this->assertActiveListCompany($data['company_id'], $ids);
         $query = SalesTask::query()
             ->where('sales_tasks.company_id', $data['company_id'])
@@ -492,6 +499,14 @@ class SalesCrmController extends Controller
             'The selected legal entity is outside your Sales scope.');
     }
 
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+
+        return (string) $resolved;
+    }
+
     private function constrainBookingOwnerToOpportunity($query, string $bookingAlias, string $opportunityAlias): void
     {
         $query->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as linked_booking_staff')
@@ -515,7 +530,7 @@ class SalesCrmController extends Controller
     {
         $explicitInstant = 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2}(\.\d{1,6})?)?(Z|[+-]\d{2}:\d{2})$/';
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'],
             'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
@@ -528,6 +543,7 @@ class SalesCrmController extends Controller
             'remind_at' => ['nullable', 'date', $explicitInstant, 'before_or_equal:due_at'],
             'escalate_at' => ['nullable', 'date', $explicitInstant, 'after_or_equal:due_at'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
         $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createTask($data, (string) $request->user()->id, $authorizedProfileIds))], 201);

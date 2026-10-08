@@ -189,7 +189,7 @@ it('returns readable commission targets without employee IDs, approver IDs, or p
         'percentage_rate' => 1.25, 'effective_from' => now(), 'reason' => 'Confidential compensation rationale',
         'status' => 'draft', 'created_by' => $admin->id]);
 
-    $response = actingAs($actor->user, 'api')->getJson('/api/sales/commission-configuration?company_id='.$company->id)->assertOk();
+    $response = actingAs($actor->user, 'api')->getJson('/api/sales/commission-configuration')->assertOk();
     $response->assertJsonPath('data.assignments.0.target_type', 'employee')
         ->assertJsonPath('data.assignments.0.target_label', fn ($label) => str_contains($label, $employee->code))
         ->assertJsonPath('data.overrides.0.target_type', 'employee')
@@ -206,7 +206,7 @@ it('returns readable commission targets without employee IDs, approver IDs, or p
         ->assertOk()->assertJsonPath('data.overrides.0.reason', 'Confidential compensation rationale');
     $actor->user->givePermissionTo('sales.commission-config.manage');
     $write = actingAs($actor->user, 'api')->postJson('/api/sales/commission-staff-overrides', [
-        'company_id' => $company->id, 'staff_id' => $employee->id, 'percentage_rate' => 2.5,
+        'staff_id' => $employee->id, 'percentage_rate' => 2.5,
         'effective_from' => today()->toDateString(), 'reason' => 'Another private compensation rationale',
     ])->assertCreated();
     expect(array_keys($write->json('data')))->toBe(['id', 'status']);

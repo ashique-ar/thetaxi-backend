@@ -33,8 +33,8 @@ class HikvisionManagementController extends Controller
 
     public function groups(Request $r): JsonResponse
     {
-        $data = $r->validate(['company_id' => ['required', 'uuid'], 'device_id' => ['nullable', 'uuid']]);
-        $company = $this->authorizedCompanyId($r, $data['company_id']);
+        $data = $r->validate(['company_id' => ['nullable', 'uuid'], 'device_id' => ['nullable', 'uuid']]);
+        $company = $this->authorizedCompanyId($r, $data['company_id'] ?? null);
         if (! empty($data['device_id'])) {
             abort_unless(AttendanceDevice::query()->whereKey($data['device_id'])->where('company_id', $company)->exists(), 404);
         }
@@ -182,8 +182,8 @@ class HikvisionManagementController extends Controller
 
     public function maintenanceCommands(Request $r): JsonResponse
     {
-        $data = $r->validate(['company_id' => ['required', 'uuid']]);
-        $company = $this->authorizedCompanyId($r, $data['company_id']);
+        $data = $r->validate(['company_id' => ['nullable', 'uuid']]);
+        $company = $this->authorizedCompanyId($r, $data['company_id'] ?? null);
 
         return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $company)->latest('requested_at')->paginate($r->integer('per_page', 50))]);
     }

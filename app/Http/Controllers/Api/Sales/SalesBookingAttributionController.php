@@ -44,6 +44,7 @@ class SalesBookingAttributionController extends Controller
             'to' => ['nullable', 'date', 'after:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $allowedProfileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
         $profile = fn ($query) => $query->with('staff.user:id,first_name,last_name')
@@ -75,6 +76,7 @@ class SalesBookingAttributionController extends Controller
             'exception_type' => ['nullable', 'string', 'max:80'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $query = DB::table('sales_attribution_exceptions as exception')
             ->join('bookings as booking', 'booking.id', '=', 'exception.booking_id')
@@ -108,6 +110,7 @@ class SalesBookingAttributionController extends Controller
             'booking_ids.*' => ['uuid', 'exists:bookings,id'],
             'limit' => ['nullable', 'integer', 'min:1', 'max:500'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $profileIds = $this->actorProfileIds($request, $data['company_id'] ?? null);
         $bookings = Booking::query()
@@ -146,7 +149,8 @@ class SalesBookingAttributionController extends Controller
 
     public function applyHistoricalBatch(Request $request): JsonResponse
     {
-        $data=$request->validate(['company_id'=>['required','uuid','exists:companies,id'],'booking_ids'=>['required','array','min:1','max:500'],'booking_ids.*'=>['uuid','distinct','exists:bookings,id'],'preview_checksum'=>['required','string','size:64'],'idempotency_key'=>['required','string','max:160']]);
+        $data=$request->validate(['company_id'=>['nullable','uuid','exists:companies,id'],'booking_ids'=>['required','array','min:1','max:500'],'booking_ids.*'=>['uuid','distinct','exists:bookings,id'],'preview_checksum'=>['required','string','size:64'],'idempotency_key'=>['required','string','max:160']]);
+        $data['company_id']=$this->resolveCompanyId($data['company_id']??null);
         abort_unless($this->scope->hasPermission($request->user(),'sales.attributions.correct'),403);
         return DB::transaction(function()use($request,$data){
             DB::table('companies')->where('id',$data['company_id'])->lockForUpdate()->firstOrFail();
@@ -427,7 +431,9 @@ class SalesBookingAttributionController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $companyId = $data['company_id'] ?? null;
-        abort_if(! $companyId && ! ($data['cross_company'] ?? false), 422, 'Select a legal entity.');
+        if (! $companyId && ! ($data['cross_company'] ?? false)) {
+            $companyId = $this->resolveCompanyId(null);
+        }
         if ($companyId) {
             abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
             $this->scope->assertCompany($request->user(), $companyId, 'sales.attributions.view-all');
@@ -526,9 +532,18 @@ class SalesBookingAttributionController extends Controller
         $candidate = SalesBookingAttribution::query()->findOrFail($attributionId);
 
         return DB::transaction(function () use ($request, $candidate, $operation): JsonResponse {
+            app(\App\Services\BookingPaymentLedgerService::class)
+                ->ensureBookingCompanyAttribution($candidate->booking);
+            $candidate->refresh();
+            abort_unless($candidate->company_id, 409, 'This attribution has no resolved legal entity.');
+            $company = DB::table('companies')->where('id', $candidate->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()->firstOrFail();
             $locked = SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()->firstOrFail();
             abort_unless((string) $locked->booking_id === (string) $candidate->booking_id, 409, 'The attribution booking changed; reload before adjusting its value.');
+            abort_unless((string) $locked->company_id === (string) $company->id, 409,
+                'The attribution legal entity changed before its commercial value adjustment.');
             $scoped = $this->scopedAttribution($request, (string) $locked->id);
             $this->collectionCompanyIntegrity->assertConsistent($scoped->booking, $scoped->company_id);
 
@@ -558,5 +573,13 @@ class SalesBookingAttributionController extends Controller
             'sales.attributions.view-team',
             $companyId,
         );
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 }

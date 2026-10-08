@@ -17,6 +17,16 @@ class StaffAccessService
         $staff = $this->actorStaff($actor);
         abort_unless($staff, 403, 'Select an active Staff context.');
 
+        // Internal users and legacy Staff records can have an active Staff context before a
+        // company has been assigned. Use the configured tenant company for this request so
+        // company-scoped controllers do not query or write against a missing company_id.
+        if (empty($staff->company_id)) {
+            $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            if ($defaultCompanyId) {
+                $staff->setAttribute('company_id', (string) $defaultCompanyId);
+            }
+        }
+
         return $staff;
     }
 

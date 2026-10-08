@@ -59,3 +59,26 @@ it('keeps every current successful booking collection writer behind the canonica
         ->and($submissions)->toContain('$this->ledger->receive(')
         ->and($settlements)->toContain('$this->ledger->receive(');
 });
+
+it('locks the active booking company before canonical receipt and callback booking writes', function () {
+    $ledger = file_get_contents(app_path('Services/BookingPaymentLedgerService.php'));
+    $receive = substr($ledger, strpos($ledger, 'public function receive('), strpos($ledger, 'public function repairLegacyPaidBooking(') - strpos($ledger, 'public function receive('));
+    $repair = substr($ledger, strpos($ledger, 'public function repairLegacyPaidBooking('), strpos($ledger, 'public function ', strpos($ledger, 'public function repairLegacyPaidBooking(') + 1) - strpos($ledger, 'public function repairLegacyPaidBooking('));
+    $payment = file_get_contents(app_path('Http/Controllers/Api/PaymentController.php'));
+    $paymentCallback = substr($payment, strpos($payment, 'public function paymentCallback('), strpos($payment, 'public function getPaymentStatus(') - strpos($payment, 'public function paymentCallback('));
+    $checkout = file_get_contents(app_path('Http/Controllers/CheckoutController.php'));
+    $callback = substr($checkout, strpos($checkout, 'public function webxpayCallback('), strpos($checkout, 'public function webxpayNotify(') - strpos($checkout, 'public function webxpayCallback('));
+    $notify = substr($checkout, strpos($checkout, 'public function webxpayNotify('), strpos($checkout, 'public function mockGateway(') - strpos($checkout, 'public function webxpayNotify('));
+
+    expect(strpos($receive, "DB::table('companies')"))->toBeLessThan(strpos($receive, 'Booking::query()->lockForUpdate()'))
+        ->and(strpos($receive, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($receive, "where('idempotency_key', \$data['idempotency_key'])"))
+        ->and($receive)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()", 'assertConsistent($booking, (string) $company->id)')
+        ->and(strpos($repair, "DB::table('companies')"))->toBeLessThan(strpos($repair, 'Booking::query()->lockForUpdate()'))
+        ->and(strpos($paymentCallback, "DB::table('companies')"))->toBeLessThan(strpos($paymentCallback, 'Booking::query()->lockForUpdate()'))
+        ->and(strpos($callback, "DB::table('companies')"))->toBeLessThan(strpos($callback, "Booking::where('id', \$booking->id)->lockForUpdate()"))
+        ->and(strpos($notify, "DB::table('companies')"))->toBeLessThan(strpos($notify, "Booking::where('booking_number', \$bookingNumber)"))
+        ->and($repair)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
+        ->and($paymentCallback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
+        ->and($callback)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
+        ->and($notify)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+});

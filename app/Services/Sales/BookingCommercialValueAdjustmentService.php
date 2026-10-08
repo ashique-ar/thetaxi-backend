@@ -6,6 +6,7 @@ use App\Contracts\Foundation\DomainEventPublisher;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingCommercialValueAdjustment;
 use App\Models\Sales\SalesBookingAttribution;
+use App\Services\BookingPaymentLedgerService;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
@@ -28,11 +29,13 @@ class BookingCommercialValueAdjustmentService
         private readonly DomainEventPublisher $events,
         private readonly SalesMetricFactService $metricFacts,
         private readonly CollectionScheduleWorkflowService $scheduleWorkflow,
+        private readonly BookingPaymentLedgerService $paymentLedger,
     ) {}
 
     public function preview(Booking $booking, array $data): array
     {
         $booking = Booking::query()->findOrFail($booking->id);
+        $this->paymentLedger->ensureBookingCompanyAttribution($booking);
         $context = $this->resolveContext($booking, $data);
         $scheduleData = $this->scheduleRevisionPayload($data, $context);
         $schedulePreview = $this->scheduleWorkflow->previewFutureUnpaidRevision($booking, $scheduleData);
@@ -42,8 +45,18 @@ class BookingCommercialValueAdjustmentService
 
     public function apply(Booking $booking, array $data, string $actorUserId): BookingCommercialValueAdjustment
     {
-        return DB::transaction(function () use ($booking, $data, $actorUserId) {
+        $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+        $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
+        abort_unless($tenant?->company_id, 409, 'This booking has no resolved legal entity.');
+
+        return DB::transaction(function () use ($booking, $data, $actorUserId, $tenant) {
+            $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+                'The booking legal entity changed before its commercial value adjustment.');
             $checksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingCommercialValueAdjustment::query()
                 ->where('booking_id', $booking->id)
@@ -59,8 +72,6 @@ class BookingCommercialValueAdjustmentService
                 return $duplicate;
             }
 
-            $attribution = SalesBookingAttribution::query()
-                ->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
             abort_unless($attribution->status === 'active', 422,
                 'An active reviewed Sales attribution is required before a commercial value adjustment.');
             abort_unless($attribution->acquisition_sales_profile_id, 422,

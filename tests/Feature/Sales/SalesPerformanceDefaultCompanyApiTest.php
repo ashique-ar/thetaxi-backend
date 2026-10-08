@@ -23,6 +23,20 @@ it('returns the default company only when it is in the authorized performance sc
         ->assertJsonPath('data.companyLabels.0.id', $company->id);
 });
 
+it('uses the default company when performance filters omit company_id', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    SalesProfile::query()->create([
+        'id' => (string) Str::uuid(), 'company_id' => $company->id, 'staff_id' => $staff->id,
+        'sales_code' => 'DEFAULT-PERF-FILTER-01', 'status' => 'active', 'effective_from' => now()->subDay(),
+    ]);
+
+    actingAs($admin, 'api')->getJson('/api/sales/performance/targets')
+        ->assertOk()->assertJsonPath('data.data', []);
+    actingAs($admin, 'api')->getJson('/api/sales/performance/snapshots')
+        ->assertOk()->assertJsonPath('data.data', []);
+});
+
 it('does not offer a default company outside the authorized performance scope', function () {
     [$admin] = hr_seed_admin_actor();
     $authorizedCompany = Company::create(['name' => 'Authorized non-default Sales company']);

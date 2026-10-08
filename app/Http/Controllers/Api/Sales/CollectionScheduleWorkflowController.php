@@ -172,8 +172,8 @@ class CollectionScheduleWorkflowController extends Controller
 
     public function scheduleBookings(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
-        $companyId = (string) $data['company_id'];
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
             ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         $profileIds = $this->scheduleProfileIds($request, $companyId);
@@ -290,13 +290,13 @@ class CollectionScheduleWorkflowController extends Controller
     public function workItems(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['open', 'upcoming', 'due', 'overdue', 'completed', 'cancelled'])],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = (string) $data['company_id'];
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertSelectedCollectionCompany($request, $companyId);
         $profileIds = $this->scheduleProfileIds($request, $companyId);
         $this->assertScheduleAttributionOwnerIntegrity($companyId, $profileIds);
@@ -403,11 +403,11 @@ class CollectionScheduleWorkflowController extends Controller
     public function submissions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['submitted', 'verified', 'rejected'])],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $companyId = (string) $data['company_id'];
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertSelectedCollectionCompany($request, $companyId);
         $profileIds = $request->user()->can('sales.collections.verify')
             ? null
@@ -588,6 +588,14 @@ class CollectionScheduleWorkflowController extends Controller
             ? in_array($companyId, $this->actorCompanyIds($request), true)
             : $this->scheduleProfileIds($request, $companyId) !== [];
         abort_unless($authorized, 403, 'The selected legal entity is outside your collection scope.');
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 
     private function assertScheduleAttributionOwnerIntegrity(?string $companyId, ?array $profileIds, ?string $bookingId = null): void

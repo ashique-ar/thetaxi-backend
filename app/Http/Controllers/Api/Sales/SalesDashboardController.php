@@ -13,6 +13,7 @@ use App\Services\Sales\SalesMetricBreakdownService;
 use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Sales\SalesPerformanceService;
 use App\Services\Sales\SalesPortfolioStatusService;
+use App\Services\SingleCompanyScope;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Database\Query\Builder;
@@ -47,19 +48,17 @@ class SalesDashboardController extends Controller
             'alerts_page' => ['nullable', 'integer', 'min:1'],
             'alerts_per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
-        $ids = $this->scope->profileIds(
-            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $data['company_id'] ?? null,
-        );
         /** @var SalesProfile|null $selectedProfile */
         $selectedProfile = $request->attributes->get('sales_dashboard_profile');
+        $companyId = $selectedProfile?->company_id ?? $this->resolveCompanyId($data['company_id'] ?? null);
+        $ids = $this->scope->profileIds(
+            $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
+        );
         $companyWide = $ids === null && $selectedProfile === null;
-        $companyId = $selectedProfile?->company_id
-            ?? $data['company_id']
-            ?? SalesProfile::query()->whereIn('id', $ids ?? [])->value('company_id');
-        abort_unless($companyId, 422, 'A legal entity is required for the Sales dashboard.');
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         abort_if($selectedProfile && isset($data['company_id']) && $data['company_id'] !== $selectedProfile->company_id,
             422, 'The requested legal entity does not match the selected Staff Sales Profile.');
+        $data['company_id'] = (string) $companyId;
         if ($selectedProfile) $ids = [$selectedProfile->id];
         elseif ($ids === null) $ids = SalesProfile::query()->where('company_id', $companyId)->pluck('id')->all();
         else {
@@ -379,12 +378,13 @@ class SalesDashboardController extends Controller
     public function collectionAging(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'], 'to' => ['required', 'date', 'after_or_equal:from'],
             'bucket' => ['nullable', Rule::in(['not_due', 'due_today', '1_30', '31_60', '61_90', '91_plus'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Collection aging evidence is outside your current Sales scope.',
@@ -414,13 +414,14 @@ class SalesDashboardController extends Controller
     public function commissionStatus(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'], 'to' => ['required', 'date', 'after_or_equal:from'],
             'status' => ['required', Rule::in(['pending', 'held', 'approved', 'paid'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Commission status evidence is outside your current Sales scope.',
@@ -714,7 +715,7 @@ class SalesDashboardController extends Controller
     public function kpiFacts(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'from' => ['required', 'date'],
             'to' => ['required', 'date', 'after_or_equal:from'],
             'metric' => ['required', Rule::in([
@@ -726,6 +727,7 @@ class SalesDashboardController extends Controller
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_if(isset($data['collection_cohort']) && ! in_array($data['metric'], ['eligible_collections', 'commission'], true),
             422, 'Collection cohort applies only to collection or commission facts.');
         abort_if(isset($data['commission_category']) && $data['metric'] !== 'commission',
@@ -841,12 +843,13 @@ class SalesDashboardController extends Controller
     public function pipelineFacts(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'stage' => ['required', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation'])],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Pipeline stage is outside your current Sales scope.',
@@ -903,11 +906,12 @@ class SalesDashboardController extends Controller
     public function scheduleFacts(Request $request, string $schedule): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Collection schedule is outside your current Sales scope.',
@@ -973,10 +977,11 @@ class SalesDashboardController extends Controller
     public function activePortfolio(Request $request, SalesPortfolioStatusService $portfolio): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'to' => ['required', 'date_format:Y-m-d'], 'sales_profile_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $authorizedIds = $this->dashboardProfileIds(
             $request, $data['company_id'], $data['sales_profile_id'] ?? null,
             'Active portfolio is outside your current Sales scope.',
@@ -991,7 +996,7 @@ class SalesDashboardController extends Controller
     public function staff(Request $request, string $staffId, SalesPerformanceService $performance): JsonResponse
     {
         $scope = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
-        $companyId = $scope['company_id'] ?? null;
+        $companyId = $this->resolveCompanyId($scope['company_id'] ?? null);
         $authorizedIds = $this->scope->profileIds(
             $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId,
         );
@@ -1187,5 +1192,13 @@ class SalesDashboardController extends Controller
         abort_if($authorizedIds === [], 404, $notFoundMessage);
 
         return $authorizedIds;
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 }

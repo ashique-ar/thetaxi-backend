@@ -17,6 +17,9 @@ it('searches and hydrates active Workforce Staff only inside the actor legal ent
     $foreign = Staff::factory()->create(['company_id' => Company::create(['name' => 'Foreign Workforce Company'])->id, 'code' => 'WF-STAFF-FOREIGN']);
     $url = '/api/hr/workforce/staff-options?company_id='.$company->id;
 
+    actingAs($admin, 'api')->getJson('/api/hr/workforce/staff-options?search=WF-STAFF-01')
+        ->assertOk()->assertJsonPath('data.data.0.value', $employee->id);
+
     $response = actingAs($admin, 'api')->getJson($url.'&search=WF-STAFF-01')->assertOk()
         ->assertJsonPath('data.data.0.value', $employee->id)
         ->assertJsonPath('data.data.0.label', 'Workforce Employee · WF-STAFF-01');

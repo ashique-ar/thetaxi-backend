@@ -25,10 +25,11 @@ class PaymentFinalityController extends Controller
     public function index(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'payment_method' => ['nullable', 'string', 'max:50'],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'retired'])],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $query = BookingPaymentFinalityPolicy::query()
             ->leftJoin('companies', 'companies.id', '=', 'booking_payment_finality_policies.company_id')
@@ -85,7 +86,8 @@ class PaymentFinalityController extends Controller
 
     public function receipts(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'finality_status' => ['nullable', Rule::in(['pending_clearance', 'confirmed', 'failed'])], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $query = BookingPaymentReceipt::query()->join('bookings', 'bookings.id', '=', 'booking_payment_receipts.booking_id')
             ->where('booking_payment_receipts.company_id', $data['company_id'])
@@ -131,7 +133,7 @@ class PaymentFinalityController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'payment_method' => ['required', 'string', 'max:50'],
             'official_collection_state' => ['required', Rule::in(['confirmed', 'pending_clearance'])],
             'can_earn_before_final' => ['required', 'boolean'],
@@ -141,6 +143,7 @@ class PaymentFinalityController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($request, $data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $data['payment_method'] = strtolower($data['payment_method']);
         $this->validatePendingClearancePolicy($data);
@@ -235,6 +238,14 @@ class PaymentFinalityController extends Controller
             return;
         }
         abort_unless($companyId && in_array($companyId, $this->actorCompanyIds($request), true), 403, 'Payment-finality record is outside your legal entity.');
+    }
+
+    private function resolveCompanyId(Request $request, ?string $companyId): string
+    {
+        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+
+        return (string) $resolved;
     }
 
     private function actorCompanyIds(Request $request): array

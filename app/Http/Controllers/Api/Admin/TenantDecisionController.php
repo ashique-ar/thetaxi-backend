@@ -22,6 +22,13 @@ class TenantDecisionController extends Controller
         $ids = DB::table('staff')->where('user_id', $r->user()->id)->whereNull('deleted_at')->whereNull('employment_ended_at')->pluck('company_id')->all();
         abort_unless($r->user()->can('tenant-decisions.manage-all') || in_array($id, $ids, true), 403, 'Decision is outside your legal entity.');
     }
+    private function companyId(Request $r, ?string $id): string
+    {
+        $id = $id ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($id, 409, 'No active default legal entity is configured.');
+        $this->scope($r, $id);
+        return (string) $id;
+    }
     public function companyOptions(Request $r)
     {
         $d = $r->validate(['search' => 'nullable|string|max:120', 'selected_id' => 'nullable|uuid', 'page' => 'nullable|integer|min:1', 'per_page' => 'nullable|integer|min:1|max:50']);
@@ -43,8 +50,8 @@ class TenantDecisionController extends Controller
     }
     public function index(Request $r)
     {
-        $d = $r->validate(['company_id' => 'required|uuid|exists:companies,id']);
-        $this->scope($r, $d['company_id']);
+        $d = $r->validate(['company_id' => 'nullable|uuid|exists:companies,id']);
+        $d['company_id'] = $this->companyId($r, $d['company_id'] ?? null);
         $rows = WebsiteSetting::where('company_id', $d['company_id'])->whereIn('type', collect($this->defs())->map(fn($x) => 'decision.' . $x['key']))->get()->keyBy('type');
         $defs = $this->defs();
         $configured = 0;
@@ -138,8 +145,8 @@ class TenantDecisionController extends Controller
     }
     public function store(Request $r)
     {
-        $d = $r->validate(['company_id' => 'required|uuid|exists:companies,id', 'key' => 'required|string', 'value' => 'required|array', 'effective_from' => 'required|date_format:Y-m-d', 'effective_until' => 'nullable|date_format:Y-m-d|after_or_equal:effective_from', 'reason' => 'required|string|min:3', 'idempotency_key' => 'required|uuid']);
-        $this->scope($r, $d['company_id']);
+        $d = $r->validate(['company_id' => 'nullable|uuid|exists:companies,id', 'key' => 'required|string', 'value' => 'required|array', 'effective_from' => 'required|date_format:Y-m-d', 'effective_until' => 'nullable|date_format:Y-m-d|after_or_equal:effective_from', 'reason' => 'required|string|min:3', 'idempotency_key' => 'required|uuid']);
+        $d['company_id'] = $this->companyId($r, $d['company_id'] ?? null);
         abort_unless(collect($this->defs())->pluck('key')->contains($d['key']), 422, 'Unknown decision.');
         $d['value'] = $this->decisions->validate($d['key'], $d['value']);
         $admin = $r->user()->can('tenant-decisions.manage-all');
@@ -148,8 +155,8 @@ class TenantDecisionController extends Controller
     }
     public function approve(Request $r, string $key)
     {
-        $d = $r->validate(['company_id' => 'required|uuid|exists:companies,id', 'idempotency_key' => 'required|uuid']);
-        $this->scope($r, $d['company_id']);
+        $d = $r->validate(['company_id' => 'nullable|uuid|exists:companies,id', 'idempotency_key' => 'required|uuid']);
+        $d['company_id'] = $this->companyId($r, $d['company_id'] ?? null);
         $row = $this->mutations->approve($d['company_id'], $key, (string) $r->user()->id, $d['idempotency_key']);
         return response()->json(['status' => 'success', 'data' => $row]);
     }

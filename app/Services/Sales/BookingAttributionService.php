@@ -7,6 +7,7 @@ use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Models\Sales\SalesProfile;
 use App\Models\Staff;
+use App\Services\SingleCompanyScope;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -224,7 +225,12 @@ class BookingAttributionService
             'acquisition_profile' => $acquisitionProfile,
             'collection_profile_id' => $collectionProfile?->id,
             'collection_profile' => $collectionProfile,
-            'company_id' => $acquisitionProfile?->company_id ?? $staff?->company_id,
+            // Public bookings can have no linked acquisition Staff/Profile. They still belong to
+            // the configured tenant company so payment callbacks and company scoped ledgers have
+            // a stable entity from the moment the booking is confirmed.
+            'company_id' => $acquisitionProfile?->company_id
+                ?? $staff?->company_id
+                ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id,
         ];
     }
 

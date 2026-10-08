@@ -60,6 +60,11 @@ class CommissionHoldService
         $requestChecksum = $this->checksum(['decision_id' => $decisionId, 'expected_version' => $expectedVersion,
             'reason' => $reason, 'actor_user_id' => $actorUserId]);
         return DB::transaction(function () use ($decisionId, $expectedVersion, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
+            $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id']);
+            abort_unless($decisionTenant, 404, 'Commission decision not found.');
+            abort_unless($decisionTenant->company_id && DB::table('companies')->where('id', $decisionTenant->company_id)
+                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422,
+                'Select an active legal entity.');
             $byKey = SalesCommissionHoldRelease::query()->where('idempotency_key', $idempotencyKey)->first();
             if ($byKey) {
                 abort_unless(hash_equals($byKey->request_payload_checksum, $requestChecksum), 409,

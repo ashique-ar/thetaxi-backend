@@ -1361,7 +1361,7 @@ class WebsiteSettingsService
 
         $host = strtolower((string) $request->getHost());
         if ($host === '') {
-            return null;
+            return app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         }
 
         $company = Company::query()
@@ -1374,7 +1374,7 @@ class WebsiteSettingsService
             })
             ->first(['id']);
 
-        return $company?->id;
+        return $company?->id ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
     }
 
     /**

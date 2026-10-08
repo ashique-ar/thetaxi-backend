@@ -143,8 +143,8 @@ class AttendanceResultController extends Controller
 
     public function calculate(Request $request, AttendanceResultService $service, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'], 'work_date' => ['required', 'date']]);
-        $companyId = $this->actorCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'], 'work_date' => ['required', 'date']]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         abort_unless(
             $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->whereKey($data['staff_id'])->exists(),
             404,
@@ -171,8 +171,8 @@ class AttendanceResultController extends Controller
     public function storeCalendar(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->sameCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $data, $id) {
             $this->lockActiveCompany($data['company_id']);
@@ -249,8 +249,8 @@ class AttendanceResultController extends Controller
     public function storeShift(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'start_time' => ['required', 'date_format:H:i'], 'end_time' => ['required', 'date_format:H:i'], 'ends_next_day' => ['required', 'boolean'], 'unpaid_break_minutes' => ['required', 'integer', 'min:0', 'max:600'], 'grace_in_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'grace_out_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'minimum_half_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'minimum_full_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'timezone' => ['required', 'timezone'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->sameCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'start_time' => ['required', 'date_format:H:i'], 'end_time' => ['required', 'date_format:H:i'], 'ends_next_day' => ['required', 'boolean'], 'unpaid_break_minutes' => ['required', 'integer', 'min:0', 'max:600'], 'grace_in_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'grace_out_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'minimum_half_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'minimum_full_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'timezone' => ['required', 'timezone'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         abort_if($data['minimum_half_day_minutes'] > $data['minimum_full_day_minutes'], 422, 'Half-day minutes cannot exceed full-day minutes.');
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $data, $id) {
@@ -308,8 +308,8 @@ class AttendanceResultController extends Controller
     public function storePolicy(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->sameCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $data, $id) {
             $this->lockActiveCompany($data['company_id']);
@@ -368,8 +368,8 @@ class AttendanceResultController extends Controller
 
     public function rosters(Request $request, StaffAccessService $access): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved'])]]);
-        $companyId = $this->actorCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved'])]]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         $staffIds = $access->scope(Staff::query()->where('company_id', $companyId), $request->user())->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
         $query = DB::table('hr_roster_assignments')->where('company_id', $companyId)->whereIn('staff_id', $staffIds)->when(($data['status'] ?? null) === 'approved', fn($q) => $q->whereNotNull('approved_at'))->when(($data['status'] ?? null) === 'pending_approval', fn($q) => $q->whereNull('approved_at'))->latest('created_at');
         return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
@@ -378,8 +378,8 @@ class AttendanceResultController extends Controller
     public function storeRoster(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
-        $this->sameCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
+        $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveCompany($data['company_id']);
             foreach (['staff' => 'staff_id', 'hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
@@ -422,8 +422,8 @@ class AttendanceResultController extends Controller
     public function storeRosterBulk(Request $request): JsonResponse
     {
         $this->writes();
-        $data = $request->validate(['company_id' => ['required', 'uuid'], 'staff_ids' => ['required', 'array', 'min:1', 'max:200'], 'staff_ids.*' => ['required', 'uuid', 'distinct'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
-        $this->sameCompany($request, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_ids' => ['required', 'array', 'min:1', 'max:200'], 'staff_ids.*' => ['required', 'uuid', 'distinct'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
+        $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         return DB::transaction(function () use ($request, $data) {
             $this->lockActiveCompany($data['company_id']);
             foreach (['hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
@@ -632,9 +632,9 @@ class AttendanceResultController extends Controller
         });
     }
 
-    private function sameCompany(Request $request, string $companyId): void
+    private function sameCompany(Request $request, ?string $companyId): string
     {
-        $this->authorizedCompanyId($request, $companyId);
+        return $this->authorizedCompanyId($request, $companyId);
     }
     private function lockActiveCompany(string $companyId): void
     {

@@ -202,11 +202,11 @@ class WorkforceController extends Controller
     public function staffOptions(Request $r, StaffAccessService $access): JsonResponse
     {
         $data = $r->validate([
-            'company_id' => ['required', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'company_id' => ['nullable', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
-        $companyId = $this->company($r, $data['company_id']);
+        $companyId = $this->company($r, $data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $query = $access->scope(Staff::query()->with('user:id,first_name,last_name,email')
             ->where('company_id', $companyId)->whereNull('employment_ended_at'), $r->user());
@@ -287,7 +287,8 @@ class WorkforceController extends Controller
     }
     public function submitLeave(Request $r, LeaveWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'start_date' => ['required', 'date'], 'end_date' => ['required', 'date', 'after_or_equal:start_date'], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'requested_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'reason' => ['required', 'string', 'max:2000'], 'coverage_snapshot' => ['nullable', 'array'], 'private_evidence' => ['nullable', 'array'], 'approver_staff_id' => ['nullable', 'uuid'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'start_date' => ['required', 'date'], 'end_date' => ['required', 'date', 'after_or_equal:start_date'], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'requested_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'reason' => ['required', 'string', 'max:2000'], 'coverage_snapshot' => ['nullable', 'array'], 'private_evidence' => ['nullable', 'array'], 'approver_staff_id' => ['nullable', 'uuid'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
         abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and leave legal entities must match.');
@@ -391,8 +392,8 @@ class WorkforceController extends Controller
     public function storeLeaveType(Request $r): JsonResponse
     {
         $this->enabled();
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->company($r, $d['company_id']);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         return DB::transaction(function () use ($r, $d) {
             $this->lockActiveCompany($d['company_id']);
             $id = (string) Str::uuid();
@@ -403,8 +404,8 @@ class WorkforceController extends Controller
     public function storeLeavePolicy(Request $r): JsonResponse
     {
         $this->enabled();
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->company($r, $d['company_id']);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
         return DB::transaction(function () use ($r, $d) {
             $this->lockActiveCompany($d['company_id']);
@@ -421,8 +422,8 @@ class WorkforceController extends Controller
     public function assignLeavePolicy(Request $r): JsonResponse
     {
         $this->enabled();
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
-        $this->company($r, $d['company_id']);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         return DB::transaction(function () use ($r, $d) {
             $this->lockActiveCompany($d['company_id']);
             abort_unless(DB::table('staff')->where('id', $d['staff_id'])->where('company_id', $d['company_id'])->whereNull('employment_ended_at')->exists(), 422, 'Staff must be active in the selected legal entity.');
@@ -474,7 +475,8 @@ class WorkforceController extends Controller
     }
     public function submitWork(Request $r, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'starts_at' => ['required', 'date'], 'ends_at' => ['required', 'date', 'after:starts_at'], 'rate_category' => ['nullable', 'string', 'max:60'], 'settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'starts_at' => ['required', 'date'], 'ends_at' => ['required', 'date', 'after:starts_at'], 'rate_category' => ['nullable', 'string', 'max:60'], 'settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'reason' => ['required', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
         abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and request legal entities must match.');
@@ -511,8 +513,8 @@ class WorkforceController extends Controller
     public function storeWorkPolicy(Request $r): JsonResponse
     {
         $this->enabled();
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.maximum_request_minutes' => ['nullable', 'integer', 'min:1'], 'rules.default_rate_category' => ['nullable', 'string', 'max:60'], 'rules.default_settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'rules.time_off_leave_type_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
-        $this->company($r, $d['company_id']);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'request_kind' => ['required', Rule::in(['overtime', 'field_duty', 'remote_work', 'travel', 'standby', 'callout', 'on_call'])], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.maximum_request_minutes' => ['nullable', 'integer', 'min:1'], 'rules.default_rate_category' => ['nullable', 'string', 'max:60'], 'rules.default_settlement_kind' => ['nullable', Rule::in(['pay', 'time_off', 'informational'])], 'rules.time_off_leave_type_id' => ['nullable', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         if (!empty($d['rules']['time_off_leave_type_id']))
             abort_unless(DB::table('hr_leave_types')->where('id', $d['rules']['time_off_leave_type_id'])->where('company_id', $d['company_id'])->exists(), 422, 'Time-off leave type must belong to the same legal entity.');
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
@@ -551,7 +553,8 @@ class WorkforceController extends Controller
     }
     public function saveTimesheet(Request $r, WorkforceWorkflowService $service, StaffAccessService $access, HrDomainRequestProjectionService $projection): JsonResponse
     {
-        $d = $r->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'entries' => ['required', 'array', 'min:1'], 'entries.*.work_date' => ['required', 'date'], 'entries.*.started_at' => ['nullable', 'date'], 'entries.*.ended_at' => ['nullable', 'date'], 'entries.*.minutes' => ['nullable', 'integer', 'min:1'], 'entries.*.entry_mode' => ['required', Rule::in(['manual', 'timer'])], 'entries.*.cost_centre_code' => ['nullable', 'string', 'max:80'], 'entries.*.project_code' => ['nullable', 'string', 'max:80'], 'entries.*.booking_id' => ['nullable', 'uuid', 'exists:bookings,id'], 'entries.*.job_reference' => ['nullable', 'string', 'max:120'], 'entries.*.activity_code' => ['required', 'string', 'max:80'], 'entries.*.billable' => ['required', 'boolean'], 'entries.*.notes' => ['nullable', 'string', 'max:2000']]);
+        $d = $r->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['required', 'uuid'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'entries' => ['required', 'array', 'min:1'], 'entries.*.work_date' => ['required', 'date'], 'entries.*.started_at' => ['nullable', 'date'], 'entries.*.ended_at' => ['nullable', 'date'], 'entries.*.minutes' => ['nullable', 'integer', 'min:1'], 'entries.*.entry_mode' => ['required', Rule::in(['manual', 'timer'])], 'entries.*.cost_centre_code' => ['nullable', 'string', 'max:80'], 'entries.*.project_code' => ['nullable', 'string', 'max:80'], 'entries.*.booking_id' => ['nullable', 'uuid', 'exists:bookings,id'], 'entries.*.job_reference' => ['nullable', 'string', 'max:120'], 'entries.*.activity_code' => ['required', 'string', 'max:80'], 'entries.*.billable' => ['required', 'boolean'], 'entries.*.notes' => ['nullable', 'string', 'max:2000']]);
+        $d['company_id'] = $this->company($r, $d['company_id'] ?? null);
         $staff = Staff::query()->findOrFail($d['staff_id']);
         $access->authorize($r->user(), $staff, 'view');
         abort_unless($staff->company_id === $d['company_id'], 422, 'Staff and timesheet legal entities must match.');
@@ -631,9 +634,8 @@ class WorkforceController extends Controller
         }
         if ($allowed->count() === 1 && ! $r->user()->can('staff.view-all')) return (string) $allowed->first();
 
-        $defaultCompanyId = DB::table('companies')->whereIn('id', $allowed)
-            ->where('is_active', true)->where('is_default', true)->whereNull('deleted_at')->value('id');
-        abort_unless($defaultCompanyId, 422, 'Select an authorized legal entity.');
+        $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($defaultCompanyId && $allowed->contains($defaultCompanyId), 422, 'Select an authorized legal entity.');
         return (string) $defaultCompanyId;
     }
 

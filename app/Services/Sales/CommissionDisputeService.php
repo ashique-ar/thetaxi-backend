@@ -20,9 +20,14 @@ class CommissionDisputeService
 
     public function raise(SalesCommissionStatementLine $line, string $staffId, array $data): SalesCommissionDispute
     {
+        $companyId = DB::table('sales_commission_statements')->where('id', $line->statement_id)->value('company_id');
+        abort_unless($companyId, 404, 'Commission statement not found.');
         try {
-            return DB::transaction(function () use ($line, $staffId, $data) {
+            return DB::transaction(function () use ($line, $staffId, $data, $companyId) {
+            $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($line->statement_id);
+            abort_unless((string) $statement->company_id === (string) $companyId, 409,
+                'The statement legal entity changed before the dispute could be raised.');
             abort_unless($statement->staff_id === $staffId, 403, 'Only the statement beneficiary may dispute this line.');
             abort_unless(DB::table('staff')->where('id', $staffId)->where('company_id', $statement->company_id)->exists(), 409,
                 'The statement beneficiary Staff record does not match its legal entity.');
@@ -80,35 +85,42 @@ class CommissionDisputeService
             return $dispute;
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionDispute::query()->where('idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate) {
-                throw $exception;
-            }
-            $requestChecksum = hash('sha256', json_encode([
-                'statement_id' => (string) $line->statement_id,
-                'statement_line_id' => (string) $line->id,
-                'raised_by_staff_id' => $staffId,
-                'category' => $data['category'],
-                'reason' => $data['reason'],
-                'evidence_file_id' => $data['evidence_file_id'] ?? null,
-                'contested_amount_lkr' => (string) $data['contested_amount_lkr'],
-                'idempotency_key' => $data['idempotency_key'],
-            ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-            abort_unless($duplicate->request_payload_checksum
-                && hash_equals($duplicate->request_payload_checksum, $requestChecksum), 409,
-                'This dispute key is already bound to different or unverified facts.');
+            return DB::transaction(function () use ($exception, $line, $staffId, $data, $companyId) {
+                $this->lockActiveCompany((string) $companyId);
+                $duplicate = SalesCommissionDispute::query()->where('idempotency_key', $data['idempotency_key'])->first();
+                if (! $duplicate) {
+                    throw $exception;
+                }
+                $requestChecksum = hash('sha256', json_encode([
+                    'statement_id' => (string) $line->statement_id,
+                    'statement_line_id' => (string) $line->id,
+                    'raised_by_staff_id' => $staffId,
+                    'category' => $data['category'],
+                    'reason' => $data['reason'],
+                    'evidence_file_id' => $data['evidence_file_id'] ?? null,
+                    'contested_amount_lkr' => (string) $data['contested_amount_lkr'],
+                    'idempotency_key' => $data['idempotency_key'],
+                ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                abort_unless($duplicate->request_payload_checksum
+                    && hash_equals($duplicate->request_payload_checksum, $requestChecksum), 409,
+                    'This dispute key is already bound to different or unverified facts.');
 
-            return $duplicate;
+                return $duplicate;
+            });
         }
     }
 
     public function resolve(SalesCommissionDispute $dispute, array $data, string $actorUserId): SalesCommissionDispute
     {
+        $companyId = DB::table('sales_commission_disputes')->where('id', $dispute->id)->value('company_id');
+        abort_unless($companyId, 404, 'Commission dispute not found.');
         try {
-            return DB::transaction(function () use ($dispute, $data, $actorUserId) {
+            return DB::transaction(function () use ($dispute, $data, $actorUserId, $companyId) {
+            $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($dispute->statement_id);
             $dispute = SalesCommissionDispute::query()->lockForUpdate()->findOrFail($dispute->id);
-            abort_unless($dispute->statement_id === $statement->id && $dispute->company_id === $statement->company_id, 409,
+            abort_unless((string) $companyId === (string) $statement->company_id
+                && $dispute->statement_id === $statement->id && $dispute->company_id === $statement->company_id, 409,
                 'The dispute statement does not match its legal entity.');
             $line = SalesCommissionStatementLine::query()->whereKey($dispute->statement_line_id)
                 ->where('statement_id', $statement->id)->lockForUpdate()->first();
@@ -160,17 +172,27 @@ class CommissionDisputeService
             return $dispute;
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionDispute::query()
-                ->where('resolution_idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate) {
-                throw $exception;
-            }
-            $checksum = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
-            abort_unless($duplicate->id === $dispute->id
-                && hash_equals((string) $duplicate->resolution_payload_checksum, $checksum), 409,
-                'This dispute-resolution key is already bound to different facts or another dispute.');
+            return DB::transaction(function () use ($exception, $dispute, $data, $companyId) {
+                $this->lockActiveCompany((string) $companyId);
+                $duplicate = SalesCommissionDispute::query()
+                    ->where('resolution_idempotency_key', $data['idempotency_key'])->first();
+                if (! $duplicate) {
+                    throw $exception;
+                }
+                $checksum = hash('sha256', json_encode($data, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+                abort_unless($duplicate->id === $dispute->id
+                    && hash_equals((string) $duplicate->resolution_payload_checksum, $checksum), 409,
+                    'This dispute-resolution key is already bound to different facts or another dispute.');
 
-            return $duplicate;
+                return $duplicate;
+            });
         }
+    }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+        abort_unless($company, 422, 'Select an active legal entity.');
     }
 }

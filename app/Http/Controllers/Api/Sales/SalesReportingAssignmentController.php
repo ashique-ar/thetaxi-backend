@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Sales\SalesProfile;
 use App\Models\Sales\SalesReportingAssignment;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,7 +18,8 @@ class SalesReportingAssignmentController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profileIds = $this->scope->profileIds(
             $request->user(),
             'sales.profiles.view-all',
@@ -58,7 +60,7 @@ class SalesReportingAssignmentController extends Controller
     public function store(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'manager_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id', 'different:member_sales_profile_id'],
             'member_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
             'team_code' => ['nullable', 'string', 'max:80'],
@@ -66,6 +68,7 @@ class SalesReportingAssignmentController extends Controller
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $assignment = DB::transaction(function () use ($data, $request) {
@@ -194,5 +197,13 @@ class SalesReportingAssignmentController extends Controller
                 'name' => trim((string) ($profile->staff->user?->first_name.' '.$profile->staff->user?->last_name)),
             ] : null,
         ];
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+
+        return (string) $resolved;
     }
 }

@@ -27,13 +27,14 @@ class SalesPerformanceController extends Controller
     public function targets(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'sales_profile_id' => ['nullable', 'uuid'],
             'month' => ['nullable', 'date_format:Y-m'],
             'status' => ['nullable', Rule::in(['draft', 'approved', 'superseded'])],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $ids = $this->scope->profileIds(
             $request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $data['company_id'],
         );
@@ -91,12 +92,13 @@ class SalesPerformanceController extends Controller
     public function profileOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'selected_ids' => ['sometimes', 'array', 'max:100'],
             'selected_ids.*' => ['required', 'uuid', 'distinct'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         if (! empty($data['company_id'])) {
             abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422,
                 'Select an available legal entity.');
@@ -137,10 +139,11 @@ class SalesPerformanceController extends Controller
     public function alertOwnerOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
         $query = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $data['company_id'])->whereNull('staff.deleted_at')
@@ -205,8 +208,11 @@ class SalesPerformanceController extends Controller
 
     public function createTarget(Request $request, SalesPerformanceService $performance): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'new_sales_target_lkr' => ['nullable', 'numeric', 'min:0'], 'eligible_collections_target_lkr' => ['nullable', 'numeric', 'min:0'], 'reason' => ['required', 'string', 'min:10', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'new_sales_target_lkr' => ['nullable', 'numeric', 'min:0'], 'eligible_collections_target_lkr' => ['nullable', 'numeric', 'min:0'], 'reason' => ['required', 'string', 'min:10', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
+        abort_unless((string) $profile->company_id === $data['company_id'], 422,
+            'The Sales Profile must belong to the selected legal entity.');
         $this->scope->assertProfile($request->user(), $profile, 'sales.performance.view-all', 'sales.performance.view-team');
         return response()->json(['status' => 'success', 'data' => $performance->createTarget(
             $data, $data['idempotency_key'], (string) $request->user()->id, $request->ip(),
@@ -324,9 +330,10 @@ class SalesPerformanceController extends Controller
     public function periodLocks(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
         $query = DB::table('domain_period_locks as period_lock')
             ->leftJoin('sales_kpi_snapshots as snapshot', function ($join) {
@@ -359,14 +366,16 @@ class SalesPerformanceController extends Controller
 
     public function snapshots(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+        $this->assertCompanyScope($request, $data['company_id']);
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         $query = SalesKpiSnapshot::query()->with(['rows' => fn ($q) => $ids === null ? $q : $q->whereIn('sales_profile_id', $ids)]);
         if ($ids !== null) {
             $companyIds = SalesProfile::query()->withTrashed()->whereIn('id', $ids)->pluck('company_id')->unique();
             $query->whereIn('company_id', $companyIds);
         }
-        $page = $query->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
+        $page = $query->where('company_id', $data['company_id'])
             ->latest('period_end')->paginate($request->integer('per_page', 12));
         if ($ids !== null) {
             $page->getCollection()->each(fn (SalesKpiSnapshot $snapshot) => $snapshot->makeHidden([
@@ -484,7 +493,7 @@ class SalesPerformanceController extends Controller
     public function createAlertPolicy(Request $request, SalesPerformanceService $performance): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'rules' => ['required', 'array'],
             'rules.no_new_sales.enabled' => ['required', 'boolean'], 'rules.no_new_sales.severity' => ['required', Rule::in(['low', 'medium', 'high'])],
             'rules.no_sales_activity.enabled' => ['required', 'boolean'], 'rules.no_sales_activity.severity' => ['required', Rule::in(['low', 'medium', 'high'])],
@@ -525,6 +534,7 @@ class SalesPerformanceController extends Controller
             'rules.evaluation.owner_user_id' => ['required', 'uuid', 'exists:users,id'],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($performance->storeAlertPolicy($data, (string) $request->user()->id))], 201);
     }
@@ -538,9 +548,10 @@ class SalesPerformanceController extends Controller
     public function portfolioStatusPolicies(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
         $rows = SalesPortfolioStatusPolicyVersion::query()->where('company_id', $data['company_id'])
             ->orderByDesc('version')->paginate((int) ($data['per_page'] ?? 25), [
@@ -553,7 +564,7 @@ class SalesPerformanceController extends Controller
     public function createPortfolioStatusPolicy(Request $request, SalesPortfolioStatusService $policies): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'active_booking_statuses' => ['required', 'array', 'min:1', 'max:50'],
             'active_booking_statuses.*' => ['required', 'string', 'max:80', 'distinct'],
             'effective_from' => ['required', 'date_format:Y-m-d'],
@@ -561,6 +572,7 @@ class SalesPerformanceController extends Controller
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyWideScope($request, $data['company_id']);
 
         return response()->json(['status' => 'success',
@@ -584,6 +596,14 @@ class SalesPerformanceController extends Controller
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         if ($ids === null) return;
         abort_unless(SalesProfile::query()->whereIn('id', $ids)->where('company_id', $companyId)->exists(), 403, 'Sales performance administration is outside your legal entity or team scope.');
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 
     private function writeConfirmation(object $row): array
@@ -616,8 +636,8 @@ class SalesPerformanceController extends Controller
 
     private function targetCopyInput(Request $request, bool $commit = false): array
     {
-        return $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'source_period_start' => ['required', 'date_format:Y-m-d'],
             'target_period_start' => ['required', 'date_format:Y-m-d', 'different:source_period_start'],
             'profile_ids' => ['required', 'array', 'min:1', 'max:100'],
@@ -626,29 +646,38 @@ class SalesPerformanceController extends Controller
             'reason' => [$commit ? 'required' : 'nullable', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => [$commit ? 'required' : 'nullable', 'string', 'max:160'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+
+        return $data;
     }
 
     private function targetImportInput(Request $request, bool $commit = false): array
     {
-        return $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'target_period_start' => ['required', 'date_format:Y-m-d'],
             'file' => ['required', 'file', 'max:2048', 'mimes:csv,txt'],
             'preview_checksum' => [$commit ? 'required' : 'nullable', 'string', 'size:64'],
             'reason' => [$commit ? 'required' : 'nullable', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => [$commit ? 'required' : 'nullable', 'string', 'max:160'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+
+        return $data;
     }
 
     private function periodInput(Request $request, bool $requireKey = false): array
     {
-        return $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'period_type' => ['required', Rule::in(['month', 'quarter', 'year', 'custom'])], 'cutoff_at' => ['required', 'date', 'before_or_equal:now'], 'idempotency_key' => [$requireKey ? 'required' : 'nullable', 'string', 'max:160']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'period_start' => ['required', 'date'], 'period_end' => ['required', 'date', 'after_or_equal:period_start'], 'period_type' => ['required', Rule::in(['month', 'quarter', 'year', 'custom'])], 'cutoff_at' => ['required', 'date', 'before_or_equal:now'], 'idempotency_key' => [$requireKey ? 'required' : 'nullable', 'string', 'max:160']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+
+        return $data;
     }
 
     private function periodCloseInput(Request $request, bool $commit = false): array
     {
-        return $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'period_start' => ['required', 'date_format:Y-m-d'],
             'cutoff_at' => ['required', 'date', 'before_or_equal:now',
                 'regex:/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$/'],
@@ -657,5 +686,8 @@ class SalesPerformanceController extends Controller
             'reason' => [$commit ? 'required' : 'nullable', 'string', 'min:10', 'max:2000'],
             'idempotency_key' => [$commit ? 'required' : 'nullable', 'string', 'max:160'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+
+        return $data;
     }
 }

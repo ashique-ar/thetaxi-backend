@@ -1272,11 +1272,17 @@ class CommissionHoldAdjustmentService
     ): SalesCommissionHoldAdjustment {
         $requestChecksum = $this->checksum(['decision_id' => $decisionId, 'expected_version' => $expectedVersion,
             'preview_checksum' => $previewChecksum, 'reason' => trim($reason), 'actor_user_id' => $actorUserId]);
-        $receiptId = SalesCommissionDecision::query()->whereKey($decisionId)->value('receipt_id');
-        abort_unless($receiptId, 404, 'Commission decision not found.');
+        $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id', 'receipt_id']);
+        abort_unless($decisionTenant, 404, 'Commission decision not found.');
+        $receiptId = $decisionTenant->receipt_id;
+        abort_unless($receiptId, 422, 'The held decision has no linked receipt.');
 
         return DB::transaction(function () use ($decisionId, $receiptId, $expectedVersion, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
-            $duplicate = SalesCommissionHoldAdjustment::query()->where('idempotency_key', $idempotencyKey)->first();
+            $decisionTenant = DB::table('sales_commission_decisions')->where('id', $decisionId)->first(['company_id']);
+            abort_unless($decisionTenant?->company_id && DB::table('companies')->where('id', $decisionTenant->company_id)
+                ->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(['id']), 422,
+                'Select an active legal entity.');
+            $duplicate = SalesCommissionHoldAdjustment::query()->where('idempotency_key', $idempotencyKey)->lockForUpdate()->first();
             if ($duplicate) {
                 abort_unless(hash_equals($duplicate->request_payload_checksum, $requestChecksum), 409,
                     'The hold-adjustment idempotency key was reused with different evidence.');

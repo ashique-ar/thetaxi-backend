@@ -41,3 +41,17 @@ it('recovers globally unique dispute-key races only for checksum-matched replays
         ->toContain('$duplicate->id === $dispute->id')
         ->toContain('hash_equals((string) $duplicate->resolution_payload_checksum, $checksum)');
 });
+
+it('locks the active company before dispute statement writes and idempotent race recovery', function () {
+    $service = file_get_contents(app_path('Services/Sales/CommissionDisputeService.php'));
+    $raise = substr($service, strpos($service, 'public function raise('), strpos($service, 'public function resolve(') - strpos($service, 'public function raise('));
+    $resolve = substr($service, strpos($service, 'public function resolve('));
+
+    expect(strpos($raise, '$this->lockActiveCompany('))->toBeLessThan(strpos($raise, 'SalesCommissionStatement::query()->lockForUpdate()'))
+        ->and(strpos($raise, 'SalesCommissionStatement::query()->lockForUpdate()'))
+            ->toBeLessThan(strpos($raise, 'SalesCommissionDispute::query()->where'))
+        ->and(strpos($resolve, '$this->lockActiveCompany('))->toBeLessThan(strpos($resolve, 'SalesCommissionStatement::query()->lockForUpdate()'))
+        ->and($raise)->toContain('return DB::transaction(function () use ($exception', '$this->lockActiveCompany((string) $companyId)')
+        ->and($resolve)->toContain('return DB::transaction(function () use ($exception', '$this->lockActiveCompany((string) $companyId)')
+        ->and($service)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+});

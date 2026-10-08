@@ -1304,6 +1304,15 @@ class CheckoutController extends Controller
 
                 if ($request->input('status') === 'success') {
                     $this->paymentEventService->recordEvent('payment_success', ['booking_id' => $booking->id, 'transaction_id' => $request->input('transaction_id'), 'payload' => $request->all(), 'source' => 'webxpay', 'status' => 'success']);
+                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                    if (! $company) {
+                        $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+                        $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                    }
+                    abort_unless($company, 409, 'No active default company is configured.');
                     // Mock payment successful
                     $wasPaid = $booking->payment_status === 'paid';
                     $booking->update([
@@ -1423,8 +1432,21 @@ class CheckoutController extends Controller
                 $wasPaid = false;
                 DB::beginTransaction();
 
+                $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                if (! $company) {
+                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                }
+                abort_unless($company, 409, 'No active default company is configured.');
                 // Re-fetch with a pessimistic lock to guard against concurrent callback/notify
                 $lockedBooking = Booking::where('id', $booking->id)->lockForUpdate()->first();
+                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                    ->lockForUpdate()->first(['company_id']);
+                abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+                    'The booking legal entity changed before payment could be recorded.');
 
                 if ($lockedBooking && $lockedBooking->payment_status !== 'paid') {
                     $workflowData = is_array($lockedBooking->workflow_data) ? $lockedBooking->workflow_data : [];
@@ -1590,14 +1612,27 @@ class CheckoutController extends Controller
                         return response('Payment order mismatch', 422);
                     }
                     $emailBooking = null;
+                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($matchedBooking);
 
-                    DB::transaction(function () use ($bookingNumber, $verificationResult, &$emailBooking) {
+                    DB::transaction(function () use ($bookingNumber, $verificationResult, $matchedBooking, $tenantCompanyId, &$emailBooking) {
+                        $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                        if (! $company) {
+                            $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($matchedBooking);
+                            $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                        }
+                        abort_unless($company, 409, 'No active default company is configured.');
                         // Lock the row — prevents duplicate delivery race conditions
                         $booking = Booking::where('booking_number', $bookingNumber)
                             ->lockForUpdate()
                             ->first();
 
                         if (!$booking) return;
+                        $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                            ->lockForUpdate()->first(['company_id']);
+                        abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+                            'The booking legal entity changed before payment could be recorded.');
 
                         // Idempotency: if already paid, nothing to do
                         if ($booking->payment_status === 'paid') return;

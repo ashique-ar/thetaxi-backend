@@ -36,13 +36,18 @@ class CommissionStatementService
 
     public function generate(SalesProfile $profile, array $data, string $actorUserId): SalesCommissionStatement
     {
-        abort_unless($this->policySettings->featureEnabled((string) $profile->company_id, 'statements'), 409,
-            'Commission statement generation is not activated for this legal entity.');
+        $companyId = DB::table('sales_profiles')->where('id', $profile->id)->value('company_id');
+        abort_unless($companyId, 404, 'Sales Profile not found.');
         $scope = null;
         $facts = null;
         try {
-            return DB::transaction(function () use ($profile, $data, $actorUserId, &$scope, &$facts) {
+            return DB::transaction(function () use ($profile, $data, $actorUserId, $companyId, &$scope, &$facts) {
+            $this->lockActiveCompany((string) $companyId);
+            abort_unless($this->policySettings->featureEnabled((string) $companyId, 'statements'), 409,
+                'Commission statement generation is not activated for this legal entity.');
             $profile = SalesProfile::query()->with('staff')->lockForUpdate()->findOrFail($profile->id);
+            abort_unless((string) $profile->company_id === (string) $companyId, 409,
+                'The Sales Profile legal entity changed before statement generation.');
             $scope = ['company_id' => $profile->company_id, 'staff_id' => $profile->staff_id];
             $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
             $duplicate = SalesCommissionStatement::query()->where('generation_idempotency_key', $data['idempotency_key'])->first();
@@ -109,31 +114,42 @@ class CommissionStatementService
             return $statement->load('lines');
             });
         } catch (QueryException $exception) {
-            $duplicate = SalesCommissionStatement::query()
-                ->where('generation_idempotency_key', $data['idempotency_key'])->first();
-            if (! $duplicate && $scope && $facts) {
-                $periodConflict = SalesCommissionStatement::query()
-                    ->where('company_id', $scope['company_id'])->where('staff_id', $scope['staff_id'])
-                    ->where('cycle_version_id', $facts['cycle']->id)
-                    ->whereDate('period_start', $facts['period_start'])->whereDate('period_end', $facts['period_end'])
-                    ->where('status', '!=', 'void')->exists();
-                if ($periodConflict) {
-                    throw ValidationException::withMessages(['period_start' => ['A non-void statement already exists for this Staff/cycle period.']]);
+            return DB::transaction(function () use ($exception, $profile, $data, $companyId, $scope, $facts) {
+                $this->lockActiveCompany((string) $companyId);
+                $duplicate = SalesCommissionStatement::query()
+                    ->where('generation_idempotency_key', $data['idempotency_key'])->first();
+                if (! $duplicate && $scope && $facts) {
+                    $periodConflict = SalesCommissionStatement::query()
+                        ->where('company_id', $scope['company_id'])->where('staff_id', $scope['staff_id'])
+                        ->where('cycle_version_id', $facts['cycle']->id)
+                        ->whereDate('period_start', $facts['period_start'])->whereDate('period_end', $facts['period_end'])
+                        ->where('status', '!=', 'void')->exists();
+                    if ($periodConflict) {
+                        throw ValidationException::withMessages(['period_start' => ['A non-void statement already exists for this Staff/cycle period.']]);
+                    }
                 }
-            }
-            if (! $duplicate) throw $exception;
-            $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
-            abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum), 422,
-                'This statement generation key was already used with different facts.');
+                if (! $duplicate) throw $exception;
+                $checksum = $this->checksum(['sales_profile_id' => $profile->id, ...$data]);
+                abort_unless(hash_equals($duplicate->generation_payload_checksum, $checksum)
+                    && (string) $duplicate->sales_profile_id === (string) $profile->id
+                    && (string) $duplicate->company_id === (string) $companyId, 422,
+                    'This statement generation key was already used with different facts.');
 
-            return $duplicate->load('lines');
+                return $duplicate->load('lines');
+            });
         }
     }
 
     public function transition(SalesCommissionStatement $statement, string $toStatus, int $expectedVersion, string $reason, string $key, string $actorUserId): SalesCommissionStatement
     {
-        return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId) {
+        $companyId = DB::table('sales_commission_statements')->where('id', $statement->id)->value('company_id');
+        abort_unless($companyId, 404, 'Commission statement not found.');
+
+        return DB::transaction(function () use ($statement, $toStatus, $expectedVersion, $reason, $key, $actorUserId, $companyId) {
+            $this->lockActiveCompany((string) $companyId);
             $statement = SalesCommissionStatement::query()->lockForUpdate()->findOrFail($statement->id);
+            abort_unless((string) $statement->company_id === (string) $companyId, 409,
+                'The statement legal entity changed before its status could be updated.');
             $duplicate = SalesCommissionStatementEvent::query()->where('statement_id', $statement->id)->where('idempotency_key', $key)->first();
             if ($duplicate) {
                 abort_unless($duplicate->from_version === $expectedVersion && $duplicate->to_status === $toStatus
@@ -171,6 +187,13 @@ class CommissionStatementService
                 'sales.commission.statement_'.$toStatus, $toVersion, 1, ['from_status' => $from, 'to_status' => $toStatus], now(), $key);
             return $statement->fresh();
         });
+    }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+        abort_unless($company, 422, 'Select an active legal entity.');
     }
 
     private function facts(SalesProfile $profile, array $data, bool $lockSources): array

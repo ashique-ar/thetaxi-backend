@@ -196,7 +196,17 @@ class PaymentController extends Controller
                 ]);
             }
 
-            $smsConfirmation = DB::transaction(function () use ($request, $transaction): ?array {
+            $tenantBooking = Booking::query()->findOrFail($transaction->booking_id);
+            $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($tenantBooking);
+            $smsConfirmation = DB::transaction(function () use ($request, $transaction, $tenantBooking, $tenantCompanyId): ?array {
+                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                if (! $company) {
+                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($tenantBooking);
+                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                }
+                abort_unless($company, 409, 'No active default company is configured.');
                 DB::table('payment_transactions')
                     ->where('transaction_id', $request->input('transaction_id'))
                     ->update([
@@ -209,6 +219,10 @@ class PaymentController extends Controller
                 if (! $booking) {
                     return null;
                 }
+                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                    ->lockForUpdate()->first(['company_id']);
+                abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
+                    'The booking legal entity changed before payment could be recorded.');
                 if ($request->input('status') === 'success') {
                     $amount = (float) ($transaction->amount ?? 0);
                     $currency = (string) ($transaction->currency ?? 'LKR');
@@ -632,3 +646,4 @@ class PaymentController extends Controller
         return hash_equals($expectedSignature, $providedSignature);
     }
 }
+

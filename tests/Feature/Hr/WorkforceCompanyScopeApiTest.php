@@ -108,6 +108,19 @@ it('does not guess a Workforce company when several authorized entities have no 
         ->assertOk()->assertJsonPath('data.company_id', $selected->id);
 });
 
+it('does not guess between multiple configured Workforce defaults', function () {
+    (new Database\Seeders\AllPermissionsSeeder())->run();
+    $user = User::factory()->create();
+    $role = Role::create(['name' => 'workforce_ambiguous_default_scope_tester', 'guard_name' => 'api']);
+    $role->givePermissionTo(['hr.leave.config.manage', 'staff.view-all']);
+    $user->assignRole($role);
+    Company::create(['name' => 'Workforce Default A', 'is_default' => true]);
+    Company::create(['name' => 'Workforce Default B', 'is_default' => true]);
+
+    actingAs($user, 'api')->getJson('/api/hr/workforce/references')->assertUnprocessable();
+    actingAs($user, 'api')->getJson('/api/hr/workforce/staff-options')->assertUnprocessable();
+});
+
 it('requires a configured default or explicit selection for a sole Workforce company', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();

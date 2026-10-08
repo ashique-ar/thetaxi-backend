@@ -22,10 +22,14 @@ trait AuthorizesAttendanceRequests
         if ($requestedCompanyId) {
             abort_unless($actorCompanyIds->contains($requestedCompanyId), 403, 'Attendance data is outside your legal entity.');
         } else {
-            abort_unless($actorCompanyIds->count() === 1, 403, 'Select an authorized Staff legal entity for attendance access.');
+            $defaultCompanyId = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            $requestedCompanyId = $defaultCompanyId && $actorCompanyIds->contains($defaultCompanyId)
+                ? (string) $defaultCompanyId
+                : ($actorCompanyIds->count() === 1 ? (string) $actorCompanyIds->first() : null);
+            abort_unless($requestedCompanyId, 403, 'No authorized default legal entity is available for attendance access.');
         }
 
-        return $requestedCompanyId ?: (string) $actorCompanyIds->first();
+        return (string) $requestedCompanyId;
     }
 
     private function authorizedCompanyIds(Request $request)

@@ -38,7 +38,8 @@ class SalesMetricFactService
         $payload['fact_checksum'] = hash('sha256', CanonicalJson::encode($payload));
 
         return DB::transaction(function () use ($payload) {
-            DB::table('companies')->whereKey($payload['company_id'])->lockForUpdate()->firstOrFail();
+            DB::table('companies')->whereKey($payload['company_id'])->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesMetricFact::query()->where([
                 'source_type' => $payload['source_type'], 'source_id' => $payload['source_id'],
                 'source_event' => $payload['source_event'], 'sales_profile_id' => $payload['sales_profile_id'],

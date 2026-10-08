@@ -14,6 +14,7 @@ it('limits opportunity reads to workflow fields and enforces owner company integ
     $payload = substr($controller, $payloadStart, $payloadEnd - $payloadStart);
 
     expect($list)
+        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']", 'activeDefaultCompany()?->id', "abort_unless(\$data['company_id'], 409")
         ->toContain("whereColumn('profile.company_id', 'sales_opportunities.company_id')")
         ->toContain("whereColumn('owner_staff.company_id', 'sales_opportunities.company_id')")
         ->toContain("constrainBookingOwnerToOpportunity(\$linked, 'won_booking', 'sales_opportunities')")

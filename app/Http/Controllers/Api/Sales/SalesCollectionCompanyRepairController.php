@@ -23,8 +23,8 @@ class SalesCollectionCompanyRepairController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        $data['company_id'] = $this->companyId($request, $data['company_id'] ?? null);
 
         $items = $this->integrity->mismatchReport(companyId: $data['company_id']);
 
@@ -35,8 +35,8 @@ class SalesCollectionCompanyRepairController extends Controller
 
     public function history(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
-        $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        $data['company_id'] = $this->companyId($request, $data['company_id'] ?? null);
 
         return response()->json(['status' => 'success', 'data' => $this->repairs->history($data['company_id'])]);
     }
@@ -118,10 +118,19 @@ class SalesCollectionCompanyRepairController extends Controller
     private function authorizeBooking(Request $request, string $bookingNumber): string
     {
         $booking = Booking::query()->where('booking_number', $bookingNumber)->firstOrFail();
+        app(\App\Services\BookingPaymentLedgerService::class)->ensureBookingCompanyAttribution($booking);
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
         abort_unless($attribution?->company_id, 409, 'The booking has no established legal entity and is outside this repair workflow.');
         $this->scope->assertCompany($request->user(), $attribution->company_id, 'sales.collections.view-all');
 
         return (string) $attribution->company_id;
+    }
+
+    private function companyId(Request $request, ?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        $this->scope->assertCompany($request->user(), $companyId, 'sales.collections.view-all');
+        return (string) $companyId;
     }
 }

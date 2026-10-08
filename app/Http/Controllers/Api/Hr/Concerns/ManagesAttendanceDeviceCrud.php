@@ -26,8 +26,8 @@ trait ManagesAttendanceDeviceCrud
     public function probe(Request $request, string $deviceId, AttendanceProviderManager $providers): JsonResponse
     {
         $this->requireAttendanceWrites();
-        $data = $request->validate(['company_id' => ['required', 'uuid']]);
-        $device = $this->authorizedDevice($request, $deviceId, $data['company_id']);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid']]);
+        $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
         abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
 
         try {
@@ -185,13 +185,13 @@ trait ManagesAttendanceDeviceCrud
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
             'name' => ['required', 'string', 'max:255'],
             'topology' => ['required', Rule::in(['direct_isapi', 'hikcentral', 'provider_push', 'approved_csv', 'local_connector'])],
             'allowed_ip_cidrs' => ['nullable', 'string', 'max:2000'],
             'capabilities' => ['nullable', 'array'],
         ]);
-        $this->authorizedCompanyId($request, $data['company_id']);
+        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $secret = bin2hex(random_bytes(32));
         $connector = AttendanceConnector::create($data + [
             'connector_key' => 'ATC-'.strtoupper(Str::random(24)),
@@ -212,7 +212,7 @@ trait ManagesAttendanceDeviceCrud
     {
         $this->requireAttendanceWrites();
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
             'connector_id' => ['nullable', 'uuid'],
             'organization_unit_id' => ['nullable', 'uuid'],
             'provider' => ['required', 'string', 'max:60'],
@@ -225,7 +225,7 @@ trait ManagesAttendanceDeviceCrud
             'capabilities' => ['nullable', 'array'],
             'encrypted_configuration' => ['nullable', 'array'],
         ]);
-        $this->authorizedCompanyId($request, $data['company_id']);
+        $data['company_id'] = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         if (! empty($data['connector_id'])) {
             abort_unless(AttendanceConnector::query()->where('company_id', $data['company_id'])->whereKey($data['connector_id'])->exists(), 404);
         }

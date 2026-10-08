@@ -29,8 +29,18 @@ class BookingPaymentAdjustmentService
 
     public function record(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
     {
-        return DB::transaction(function () use ($booking, $data, $actorUserId) {
+        $this->ledger->ensureBookingCompanyAttribution($booking);
+        $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
+        abort_unless($tenant?->company_id, 422, 'This booking has no resolved legal entity.');
+
+        return DB::transaction(function () use ($booking, $data, $actorUserId, $tenant) {
+            $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
+            $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+                'The booking legal entity changed before its payment adjustment could be recorded.');
             $payloadChecksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingPaymentAdjustment::query()
                 ->where('booking_id', $booking->id)
@@ -56,6 +66,8 @@ class BookingPaymentAdjustmentService
 
             if ($component) {
                 $component->load('receipt');
+                abort_unless((string) $component->receipt?->company_id === (string) $company->id, 409,
+                    'The receipt legal entity does not match the booking.');
             }
 
             $earning = $this->validateDimensions($component, $data);
@@ -184,7 +196,17 @@ class BookingPaymentAdjustmentService
 
     public function establishFxSnapshot(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
     {
-        return DB::transaction(function () use ($booking, $data, $actorUserId) {
+        $receipt = DB::table('booking_payment_receipt_components as component')
+            ->join('booking_payment_receipts as receipt', 'receipt.id', '=', 'component.receipt_id')
+            ->where('component.id', $data['receipt_component_id'])->where('receipt.booking_id', $booking->id)
+            ->first(['receipt.company_id']);
+        abort_unless($receipt, 404, 'Receipt component not found for this booking.');
+        abort_unless($receipt->company_id, 422, 'The original receipt has no canonical legal-entity identity.');
+
+        return DB::transaction(function () use ($booking, $data, $actorUserId, $receipt) {
+            $company = DB::table('companies')->where('id', $receipt->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->lockForUpdate()->findOrFail($booking->id);
             $payloadChecksum = $this->payloadChecksum($booking->id, $data);
             $duplicate = BookingPaymentAdjustment::query()
@@ -203,6 +225,8 @@ class BookingPaymentAdjustmentService
                 ->whereHas('receipt', fn($q) => $q->where('booking_id', $booking->id))
                 ->lockForUpdate()->firstOrFail();
             $component->load('receipt');
+            abort_unless((string) $component->receipt?->company_id === (string) $company->id, 409,
+                'The receipt company changed before its FX snapshot could be established.');
             $facts = $this->validateFxEstablishment($component, $data, $booking);
             $preview = $this->fxEstablishmentPreview($facts);
             if (!hash_equals($preview['preview_checksum'], (string) ($data['preview_checksum'] ?? ''))) {

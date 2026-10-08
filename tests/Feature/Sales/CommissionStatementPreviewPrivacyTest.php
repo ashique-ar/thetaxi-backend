@@ -25,7 +25,7 @@ it('returns readable statement preview facts without source identifiers or snaps
     ]);
     $sourceId = (string) Str::uuid();
     $statementService = Mockery::mock(CommissionStatementService::class);
-    $statementService->shouldReceive('preview')->once()->andReturn([
+    $statementService->shouldReceive('preview')->twice()->andReturn([
         'period_start' => CarbonImmutable::parse('2026-01-01'),
         'period_end' => CarbonImmutable::parse('2026-01-31'),
         'cutoff_at' => CarbonImmutable::parse('2026-02-01T00:00:00Z'),
@@ -55,7 +55,7 @@ it('returns readable statement preview facts without source identifiers or snaps
     actingAs($admin, 'api')->postJson('/api/sales/commission-statements/preview', [
         'sales_profile_id' => $profile->id,
         'period_start' => '2026-01-01', 'period_end' => '2026-01-31', 'cutoff_at' => '2026-02-01T00:00:00Z',
-    ])->assertUnprocessable();
+    ])->assertOk();
     actingAs($admin, 'api')->postJson('/api/sales/commission-statements/preview', [
         'company_id' => $foreignCompany->id, 'sales_profile_id' => $profile->id,
         'period_start' => '2026-01-01', 'period_end' => '2026-01-31', 'cutoff_at' => '2026-02-01T00:00:00Z',
@@ -148,9 +148,9 @@ it('returns minimized commission and accounting views without source or owner id
     $events->shouldReceive('record')->once()->andReturn((string) Str::uuid());
     app()->instance(DomainEventPublisher::class, $events);
 
-    actingAs($admin, 'api')->getJson('/api/sales/commission-statements')->assertUnprocessable();
-    actingAs($admin, 'api')->getJson('/api/sales/commission-disputes')->assertUnprocessable();
-    actingAs($admin, 'api')->getJson('/api/sales/commission-payouts')->assertUnprocessable();
+    actingAs($admin, 'api')->getJson('/api/sales/commission-statements')->assertOk();
+    actingAs($admin, 'api')->getJson('/api/sales/commission-disputes')->assertOk();
+    actingAs($admin, 'api')->getJson('/api/sales/commission-payouts')->assertOk();
 
     $index = actingAs($admin, 'api')->getJson('/api/sales/commission-statements?company_id='.$company->id)
         ->assertOk()

@@ -40,6 +40,21 @@ it('binds apply() to a checksum-matched preview and de-duplicates by booking plu
         ->toContain("'preview_checksum' => (string) \$data['preview_checksum']");
 });
 
+it('locks the active company before booking, attribution, and commercial adjustment rows', function () {
+    $service = file_get_contents(app_path('Services/Sales/BookingCommercialValueAdjustmentService.php'));
+    $apply = substr($service, strpos($service, 'public function apply('), strpos($service, 'private function ', strpos($service, 'public function apply(') + 1) - strpos($service, 'public function apply('));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesBookingAttributionController.php'));
+    $scope = substr($controller, strpos($controller, 'private function withinCommercialAdjustmentScope('));
+
+    expect(strpos($apply, "DB::table('companies')"))->toBeLessThan(strpos($apply, 'Booking::query()->lockForUpdate()'))
+        ->and(strpos($apply, 'Booking::query()->lockForUpdate()'))->toBeLessThan(strpos($apply, 'BookingCommercialValueAdjustment::query()'))
+        ->and(strpos($scope, "DB::table('companies')"))->toBeLessThan(strpos($scope, 'Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()'))
+        ->and(strpos($scope, 'Booking::query()->whereKey($candidate->booking_id)->lockForUpdate()'))
+            ->toBeLessThan(strpos($scope, 'SalesBookingAttribution::query()->whereKey($candidate->id)->lockForUpdate()'))
+        ->and($apply)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
+        ->and($scope)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+});
+
 it('keeps the schedule-revision override additive and backward compatible when absent', function () {
     $service = file_get_contents(app_path('Services/Sales/CollectionScheduleWorkflowService.php'));
 

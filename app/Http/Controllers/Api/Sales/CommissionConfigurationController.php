@@ -49,11 +49,12 @@ class CommissionConfigurationController extends Controller
     public function referenceOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'record_type' => ['required', Rule::in(['sales_profile', 'employee', 'plan_family', 'cycle_version', 'approved_calendar', 'draft_calendar'])],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         if ($data['record_type'] === 'plan_family') {
             $query = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->where('status', 'approved');
@@ -130,10 +131,11 @@ class CommissionConfigurationController extends Controller
     public function versionOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $query = DB::table('sales_commission_plan_versions as version')
             ->join('sales_commission_plan_families as family', 'family.id', '=', 'version.plan_family_id')
@@ -159,7 +161,8 @@ class CommissionConfigurationController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['required', 'uuid', 'exists:companies,id']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id']]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $familyIds = SalesCommissionPlanFamily::query()->where('company_id', $data['company_id'])->select('id');
         $versionIds = SalesCommissionPlanVersion::query()->whereIn('plan_family_id', $familyIds)->select('id');
@@ -219,9 +222,10 @@ class CommissionConfigurationController extends Controller
     public function storeFamily(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
             'name' => ['required', 'string', 'max:160'], 'commission_category' => ['required', Rule::in(['one_time', 'long_term'])],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         return $this->confirmation(SalesCommissionPlanFamily::create($data + ['status' => 'draft', 'created_by' => $request->user()->id]), 201);
     }
@@ -308,13 +312,14 @@ class CommissionConfigurationController extends Controller
     public function storeAssignment(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'plan_family_id' => ['required', 'uuid', 'exists:sales_commission_plan_families,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'plan_family_id' => ['required', 'uuid', 'exists:sales_commission_plan_families,id'],
             'scope_type' => ['required', Rule::in(['company', 'staff_category', 'sales_profile', 'employee'])],
             'sales_profile_id' => ['nullable', 'required_if:scope_type,sales_profile', 'uuid', 'exists:sales_profiles,id'],
             'staff_id' => ['nullable', 'required_if:scope_type,employee', 'uuid', 'exists:staff,id'],
             'staff_category' => ['nullable', 'required_if:scope_type,staff_category', 'string', 'max:80'],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $this->validateAssignmentTargets($data);
         $assignment = SalesCommissionPlanAssignment::create($data + ['precedence' => $this->precedence($data['scope_type']), 'status' => 'draft', 'created_by' => $request->user()->id]);
@@ -343,10 +348,11 @@ class CommissionConfigurationController extends Controller
     public function storeOverride(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'staff_id' => ['required', 'uuid', 'exists:staff,id'],
             'percentage_rate' => ['required', 'numeric', 'gt:0', 'max:100'], 'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:2000'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         abort_unless($this->activeStaffExists($data['staff_id'], $data['company_id']), 422, 'Staff must be active in this legal entity.');
         return $this->confirmation(SalesCommissionStaffOverride::create($data + ['status' => 'draft', 'created_by' => $request->user()->id]), 201);
@@ -368,7 +374,7 @@ class CommissionConfigurationController extends Controller
     public function storeCycle(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
             'timezone' => ['required', 'timezone'], 'business_calendar_id' => ['required', 'uuid', 'exists:sales_commission_business_calendars,id'],
             'earning_period_rule' => ['required', Rule::in(['calendar_month', 'previous_cutoff_to_cutoff'])],
             'cutoff_day' => ['required', 'integer', 'min:1', 'max:28'], 'finalization_day' => ['required', 'integer', 'min:1', 'max:28'],
@@ -376,6 +382,7 @@ class CommissionConfigurationController extends Controller
             'holiday_rule' => ['required', Rule::in(['previous_business_day', 'next_business_day', 'no_movement'])],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $calendar = SalesCommissionBusinessCalendar::query()->findOrFail($data['business_calendar_id']);
         abort_unless($calendar->company_id === $data['company_id'], 422, 'Business calendar belongs to another legal entity.');
@@ -412,12 +419,13 @@ class CommissionConfigurationController extends Controller
     {
         $days = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'code' => ['required', 'string', 'max:80'],
             'name' => ['required', 'string', 'max:160'], 'timezone' => ['required', 'timezone'],
             'weekly_working_days' => ['required', 'array', 'min:1', 'max:7'],
             'weekly_working_days.*' => ['required', Rule::in($days), 'distinct'],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         return $this->confirmation(SalesCommissionBusinessCalendar::create(
             $data + ['status' => 'draft', 'created_by' => $request->user()->id]
@@ -470,7 +478,7 @@ class CommissionConfigurationController extends Controller
     public function storeCycleAssignment(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'cycle_version_id' => ['required', 'uuid', 'exists:sales_commission_cycle_versions,id'],
             'scope_type' => ['required', Rule::in(['company', 'staff_category', 'sales_profile', 'employee'])],
             'sales_profile_id' => ['nullable', 'required_if:scope_type,sales_profile', 'uuid', 'exists:sales_profiles,id'],
@@ -478,6 +486,7 @@ class CommissionConfigurationController extends Controller
             'staff_category' => ['nullable', 'required_if:scope_type,staff_category', 'string', 'max:80'],
             'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
         $this->validateScopedTarget($data);
         $cycle = SalesCommissionCycleVersion::query()->findOrFail($data['cycle_version_id']);
@@ -605,6 +614,14 @@ class CommissionConfigurationController extends Controller
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         abort_unless($request->user()->can('sales.commission-config.manage-all')
             || in_array($companyId, $this->actorCompanyIds($request) ?? [], true), 403, 'Commission configuration is outside your legal entity.');
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($resolved, 409, 'No active default legal entity is configured.');
+
+        return (string) $resolved;
     }
 
     /** @return array<int, string>|null */

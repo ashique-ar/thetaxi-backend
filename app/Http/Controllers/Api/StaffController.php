@@ -237,6 +237,12 @@ class StaffController extends Controller
     {
         $this->accessService->authorize($request->user(), $staff, 'edit');
         $data = $request->validated();
+        if (array_key_exists('company_id', $data) && empty($data['company_id'])) {
+            $data['company_id'] = $staff->company_id ?: $this->defaultCompany->id();
+            if (! $data['company_id']) {
+                unset($data['company_id']);
+            }
+        }
         if (array_key_exists('company_id', $data) && (string) $data['company_id'] !== (string) $staff->company_id) {
             abort_unless($request->user()->can('staff.edit-all'), 403, 'Changing a Staff legal entity requires Staff edit-all permission.');
         }

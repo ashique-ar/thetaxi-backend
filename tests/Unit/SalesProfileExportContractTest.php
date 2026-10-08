@@ -22,12 +22,13 @@ it('gates the Sales Profile roster export/download behind a deny-by-default perm
         ->toContain('scopeChecksum(');
 });
 
-it('requires an explicit company and freezes the evaluated row scope for every Sales Profile export', function () {
+it('defaults Sales Profile exports to the active entity and freezes the evaluated row scope', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/SalesProfileController.php'));
     $service = file_get_contents(app_path('Services/Sales/SalesProfileExportService.php'));
 
     expect($controller)
-        ->toContain("'company_id' => ['required', 'uuid', 'exists:companies,id']")
+        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
+        ->toContain('->resolveCompanyId($data[\'company_id\'] ?? null)')
         ->toContain('scopeType(')
         ->and($service)
         ->toContain("'scope_profile_ids' => \$profileIds")

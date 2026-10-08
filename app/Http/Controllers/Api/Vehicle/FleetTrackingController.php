@@ -357,8 +357,9 @@ class FleetTrackingController extends Controller
             return (string) $company->id;
         }
 
-        $companyId = app(\App\Services\StaffAccessService::class)->currentActorStaff($request->user())->company_id;
-        abort_unless($companyId, 403, 'The active Staff context has no company assigned.');
+        $companyId = app(\App\Services\StaffAccessService::class)->currentActorStaff($request->user())->company_id
+            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default company is configured.');
 
         return (string) $companyId;
     }

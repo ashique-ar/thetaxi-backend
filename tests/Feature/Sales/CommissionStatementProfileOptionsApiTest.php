@@ -46,6 +46,8 @@ it('searches and hydrates only active commission-eligible profiles in the reques
         ->assertJsonPath('data.data.0.metadata.company', 'Statement Options Company');
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$target->id.'&search=no-match')
         ->assertOk()->assertJsonPath('data.data.0.value', $target->id);
+    actingAs($admin, 'api')->getJson('/api/sales/commission-statement-profile-options?selected_id='.$target->id)
+        ->assertOk()->assertJsonPath('data.data.0.value', $target->id);
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$foreign->id)
         ->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($admin, 'api')->getJson($url.'&selected_id='.$mismatched->id)

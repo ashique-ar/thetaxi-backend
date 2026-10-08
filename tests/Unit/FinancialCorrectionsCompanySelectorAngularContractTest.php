@@ -1,13 +1,14 @@
 <?php
 
-it('uses an explicit bounded Sales-scoped company selector for financial corrections', function () {
+it('uses an explicit bounded Sales-scoped company selector and defaults omitted correction context', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/BookingPaymentAdjustmentController.php'));
     $routes = file_get_contents(base_path('routes/api.php'));
     $component = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-financial-corrections/sales-financial-corrections.component.ts'));
     $template = file_get_contents(base_path('../portal-thetaxi/src/app/modules/sales/components/sales-financial-corrections/sales-financial-corrections.component.html'));
 
     expect($routes)->toContain("Route::get('payment-adjustment-company-options', [BookingPaymentAdjustmentController::class, 'companyOptions'])")
-        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "'company_id' => ['required', 'uuid', 'exists:companies,id']")
+        ->and($controller)->toContain("'per_page' => ['nullable', 'integer', 'min:1', 'max:50']", "'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
+        ->toContain('resolveCompanyId($data[\'company_id\'] ?? null)')
         ->toContain("where('id', \$data['company_id'])->whereNull('deleted_at')->exists()")
         ->and($component)->toContain('UiManagedRecordSelectComponent', 'revision!==this.candidateLoadRevision', 'clearCandidateState()', 'paymentAdjustmentCompanyOptions()', 'preselectedCompany(response)', 'companyContextRequestVersion')->not->toContain('per_page: 1')
         ->not->toContain('companies = signal', "company_id:this.companyId||undefined")

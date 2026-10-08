@@ -193,7 +193,8 @@ it('scopes payment-ledger reconciliation to an authorized company without return
     $ledger = file_get_contents(app_path('Services/BookingPaymentLedgerService.php'));
 
     expect($controller)
-        ->toContain("'company_id' => ['required', 'uuid', 'exists:companies,id']")
+        ->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
+        ->toContain('->resolveCompanyId($data[\'company_id\'] ?? null)')
         ->toContain("'booking_number' => ['nullable', 'string', 'max:80']")
         ->toContain("assertCompany(\$request->user(), \$data['company_id'], 'sales.collections.view-all')")
         ->toContain("->whereHas('salesAttribution'")
@@ -205,6 +206,27 @@ it('scopes payment-ledger reconciliation to an authorized company without return
         ->and($ledger)
         ->toContain('repairLegacyPaidBooking(Booking $booking, array $data, string $actorUserId, string $authorizedCompanyId)')
         ->toContain('assertConsistent($booking, (string) $attribution->company_id)');
+});
+
+it('resolves omitted reconciliation and legacy receipt repair company IDs to the active default', function (): void {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/PaymentLedgerReconciliationController.php'));
+
+    foreach ([
+        'public function preview(',
+        'public function receiptComponentOptions(',
+        'public function legacyReceiptBookingOptions(',
+        'public function legacyReceiptRepairHistory(',
+        'public function repairLegacyBooking(',
+        'public function repairComponents(',
+    ] as $marker) {
+        $start = strpos($controller, $marker);
+        $end = strpos($controller, "\n    public function ", $start + 1);
+        $method = substr($controller, $start, $end === false ? null : $end - $start);
+
+        expect($method)->toContain("'company_id' => ['nullable', 'uuid', 'exists:companies,id']")
+            ->toContain('->resolveCompanyId($data[\'company_id\'] ?? null)')
+            ->toContain("assertCompany(\$request->user(), \$data['company_id'], 'sales.collections.view-all')");
+    }
 });
 
 it('binds receipt component repair to company scope, restricted evidence, and audited idempotent replay', function (): void {

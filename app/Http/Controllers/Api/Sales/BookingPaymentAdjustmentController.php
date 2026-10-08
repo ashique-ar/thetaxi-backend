@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\BookingPaymentAdjustmentService;
+use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesPolicySettingsService;
@@ -22,6 +23,7 @@ class BookingPaymentAdjustmentController extends Controller
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
         private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
+        private readonly BookingPaymentLedgerService $paymentLedger,
     ) {}
 
     public function companyOptions(Request $request): JsonResponse
@@ -50,10 +52,11 @@ class BookingPaymentAdjustmentController extends Controller
     public function context(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:100'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $this->access->assertCompany($request->user(), $data['company_id'], 'sales.payment-adjustments.create-all');
         $profileIds = $this->profileIds($request, $data['company_id']);
@@ -201,8 +204,16 @@ class BookingPaymentAdjustmentController extends Controller
     private function withinBookingScope(Request $request, Booking $booking, Closure $operation): JsonResponse
     {
         return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
+            $this->paymentLedger->ensureBookingCompanyAttribution($booking);
+            $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
+            abort_unless($tenant?->company_id, 409, 'This booking has no resolved legal entity.');
+            $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 422, 'Select an active legal entity.');
             $booking = Booking::query()->whereKey($booking->id)->lockForUpdate()->firstOrFail();
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+                'The booking legal entity changed before payment-adjustment review.');
             $profileIds = $this->profileIds($request, $attribution->company_id);
             abort_unless($profileIds === null || in_array($attribution->collection_sales_profile_id, $profileIds, true), 403,
                 'Booking is outside your permitted payment-adjustment scope.');
@@ -216,5 +227,13 @@ class BookingPaymentAdjustmentController extends Controller
     {
         return $this->access->profileIds($request->user(), 'sales.payment-adjustments.create-all',
             'sales.payment-adjustments.create-team', $companyId);
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 }

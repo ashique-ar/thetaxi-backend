@@ -35,7 +35,7 @@ class PerformanceController extends Controller
 
     public function storeCycle(Request $request): JsonResponse
     {
-        $this->enabled(); $data = $request->validate(['company_id'=>['required','uuid'],'code'=>['required','string','max:80'],'name'=>['required','string','max:255'],'period_start'=>['required','date'],'period_end'=>['required','date','after_or_equal:period_start'],'stages'=>['required','array','min:1']]); $this->company($request, $data['company_id']);
+        $this->enabled(); $data = $request->validate(['company_id'=>['nullable','uuid'],'code'=>['required','string','max:80'],'name'=>['required','string','max:255'],'period_start'=>['required','date'],'period_end'=>['required','date','after_or_equal:period_start'],'stages'=>['required','array','min:1']]); $data['company_id']=$data['company_id']??$this->actor($request)->company_id;$this->company($request, $data['company_id']);
         $id=(string)Str::uuid(); DB::table('hr_review_cycles')->insert($data+['id'=>$id,'stages'=>json_encode($data['stages'],JSON_THROW_ON_ERROR),'status'=>'draft','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
         return response()->json(['status'=>'success','data'=>DB::table('hr_review_cycles')->find($id)],201);
     }
@@ -45,7 +45,7 @@ class PerformanceController extends Controller
 
     public function storeTemplate(Request $request): JsonResponse
     {
-        $this->enabled(); $data=$request->validate(['company_id'=>['required','uuid'],'code'=>['required','string','max:80'],'version'=>['required','integer','min:1'],'applicability'=>['required','array'],'sections'=>['required','array','min:1'],'rating_scale'=>['required','array','min:1']]); $this->company($request,$data['company_id']);
+        $this->enabled(); $data=$request->validate(['company_id'=>['nullable','uuid'],'code'=>['required','string','max:80'],'version'=>['required','integer','min:1'],'applicability'=>['required','array'],'sections'=>['required','array','min:1'],'rating_scale'=>['required','array','min:1']]); $data['company_id']=$data['company_id']??$this->actor($request)->company_id;$this->company($request,$data['company_id']);
         $id=(string)Str::uuid(); foreach(['applicability','sections','rating_scale'] as $key)$data[$key]=json_encode($data[$key],JSON_THROW_ON_ERROR); DB::table('hr_review_templates')->insert($data+['id'=>$id,'status'=>'pending_approval','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
         return response()->json(['status'=>'success','data'=>DB::table('hr_review_templates')->find($id)],201);
     }
@@ -54,7 +54,7 @@ class PerformanceController extends Controller
     { $this->enabled(); $this->owns($request,'hr_review_templates',$id); return response()->json(['status'=>'success','data'=>$service->approveTemplate($id,$request->user()->id)]); }
 
     public function assign(Request $request,PerformanceManagementService $service):JsonResponse
-    { $this->enabled(); $data=$request->validate(['company_id'=>['required','uuid'],'cycle_id'=>['required','uuid'],'template_id'=>['required','uuid'],'staff_id'=>['required','uuid'],'manager_staff_id'=>['nullable','uuid']]); $this->company($request,$data['company_id']); return response()->json(['status'=>'success','data'=>$service->assignReview($data,$request->user()->id)],201); }
+    { $this->enabled(); $data=$request->validate(['company_id'=>['nullable','uuid'],'cycle_id'=>['required','uuid'],'template_id'=>['required','uuid'],'staff_id'=>['required','uuid'],'manager_staff_id'=>['nullable','uuid']]); $data['company_id']=$data['company_id']??$this->actor($request)->company_id;$this->company($request,$data['company_id']); return response()->json(['status'=>'success','data'=>$service->assignReview($data,$request->user()->id)],201); }
 
     public function linkSalesKpi(Request $request,string $id,SalesKpiReviewEvidenceService $service):JsonResponse
     { $this->enabled(); $data=$request->validate(['sales_kpi_snapshot_row_id'=>['required','uuid']]); $this->owns($request,'hr_performance_reviews',$id); return response()->json(['status'=>'success','data'=>$service->link($id,$data['sales_kpi_snapshot_row_id'],$request->user()->id)],201); }

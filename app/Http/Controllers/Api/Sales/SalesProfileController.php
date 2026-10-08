@@ -57,10 +57,7 @@ class SalesProfileController extends Controller
         }
         $allPermission = $manageableOnly ? 'sales.profiles.manage-all' : 'sales.profiles.view-all';
         $teamPermission = $manageableOnly ? 'sales.profiles.manage-team' : 'sales.profiles.view-team';
-        $companyId = $data['company_id'] ?? null;
-        if (! $companyId && ! $this->scope->hasPermission($request->user(), $allPermission)) {
-            $this->fail('VALIDATION_FAILED', 'A legal entity is required for a scoped Sales Profile roster.', 422);
-        }
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $profiles = SalesProfile::query()
             ->with('staff.user')
@@ -104,10 +101,11 @@ class SalesProfileController extends Controller
     public function export(Request $request, SalesProfileExportService $exports): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'status' => ['nullable', Rule::in(['active', 'suspended', 'ended'])],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
 
         $query = SalesProfile::query()
             ->where('company_id', $data['company_id'])
@@ -236,7 +234,7 @@ class SalesProfileController extends Controller
             'reporting_currency' => strtoupper((string) $request->input('reporting_currency')),
         ]);
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'staff_id' => ['required', 'uuid', 'exists:staff,id'],
             'sales_code' => ['required', 'string', 'max:80'],
             'acquisition_eligible' => ['required', 'boolean'],
@@ -246,6 +244,7 @@ class SalesProfileController extends Controller
             'effective_from' => ['required', 'date'],
             'effective_until' => ['nullable', 'date', 'after:effective_from'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         if (! $data['acquisition_eligible'] && ! $data['collection_eligible'] && ! $data['commission_eligible']) {
             $this->fail('VALIDATION_FAILED', 'A Sales Profile must have at least one explicit eligibility.', 422);
         }
@@ -527,10 +526,11 @@ class SalesProfileController extends Controller
     public function staffOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
         $categories = $this->salesStaffCategories($data['company_id']);
@@ -561,10 +561,11 @@ class SalesProfileController extends Controller
     public function reportingProfileOptions(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
@@ -759,6 +760,14 @@ class SalesProfileController extends Controller
     private function salesStaffCategories(string $companyId): array
     {
         return $this->policySettings->approvedStaffCategories($companyId);
+    }
+
+    private function resolveCompanyId(?string $companyId): string
+    {
+        $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 409, 'No active default legal entity is configured.');
+
+        return (string) $companyId;
     }
 
     private function isSalesStaffCategory(?string $category, array $allowed): bool

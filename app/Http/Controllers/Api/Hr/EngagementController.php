@@ -367,10 +367,11 @@ class EngagementController extends Controller
     {
         $actor = $this->actor($request);
         $data = $request->validate([
-            'company_id' => ['required', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
+            'company_id' => ['nullable', 'uuid'], 'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        $data['company_id'] = $data['company_id'] ?? $actor->company_id;
         abort_unless($data['company_id'] === $actor->company_id, 403, 'Wellness handlers are outside your legal entity.');
 
         $query = Staff::query()->with('user:id,first_name,last_name,is_active')

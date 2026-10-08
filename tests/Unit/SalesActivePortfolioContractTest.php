@@ -53,3 +53,12 @@ it('keeps active portfolio current scoped paginated and open ended value safe', 
         ->and($policyType)->toContain('policy: null | {', 'version: number;')
         ->not->toContain('request_checksum: string;', 'id: string;');
 });
+
+it('requires an active undeleted company before active-portfolio policy writes', function () {
+    $service = file_get_contents(app_path('Services/Sales/SalesPortfolioStatusService.php'));
+    $create = substr($service, strpos($service, 'public function createPolicy('), strpos($service, 'public function approvePolicy(') - strpos($service, 'public function createPolicy('));
+    $approve = substr($service, strpos($service, 'public function approvePolicy('), strpos($service, 'public function policyFor(') - strpos($service, 'public function approvePolicy('));
+
+    expect($create)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()")
+        ->and($approve)->toContain("where('is_active', true)", "whereNull('deleted_at')->lockForUpdate()");
+});
