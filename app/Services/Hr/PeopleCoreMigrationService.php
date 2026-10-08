@@ -30,7 +30,7 @@ class PeopleCoreMigrationService
         $activeMissingIdentity = (clone $active)->whereNull('user_id')->count();
         $activeMissingCode = (clone $active)->where(fn ($q) => $q->whereNull('code')->orWhere('code', ''))->count();
         $activeMissingSpell = (clone $active)->whereDoesntHave('employmentSpells', fn ($q) => $q->where('status', 'active'))->count();
-        $activeMultipleSpells = DB::table('hr_employment_spells')->where('company_id', $companyId)->where('status', 'active')
+        $activeMultipleSpells = DB::table('hr_employment_spells')->where('company_id', $companyId)->where('status', 'active')->select('staff_id')
             ->groupBy('staff_id')->havingRaw('count(*) > 1')->get()->count();
         $activeMissingAssignment = (clone $active)->whereDoesntHave('employmentAssignments', fn ($q) => $q->where('effective_from', '<=', now())->where(fn ($range) => $range->whereNull('effective_until')->orWhere('effective_until', '>', now())))->count();
         $formerOpenSpell = (clone $former)->whereHas('employmentSpells', fn ($q) => $q->where('status', 'active'))->count();

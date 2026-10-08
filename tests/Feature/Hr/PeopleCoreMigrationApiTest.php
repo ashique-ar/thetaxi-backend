@@ -15,6 +15,19 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
+it('counts duplicate active employment spells with a PostgreSQL compatible grouped query', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.people_core' => true]);
+
+    $staff = Staff::factory()->create(['company_id' => $company->id, 'employment_ended_at' => null]);
+    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 1]);
+    HrEmploymentSpell::factory()->create(['staff_id' => $staff->id, 'company_id' => $company->id, 'spell_number' => 2]);
+
+    actingAs($admin, 'api')->getJson('/api/hr/people/reconciliation')
+        ->assertOk()
+        ->assertJsonPath('data.issues.activeMultipleSpells', 1);
+});
+
 it('previews and commits one clean tenant legacy employment row then reconciles it', function () {
     [$admin,$company]=hr_seed_admin_actor();config(['hr.features.people_core'=>true]);Storage::fake('hr_private');
     $staff=Staff::factory()->create(['company_id'=>$company->id,'code'=>'LEG-001','employment_ended_at'=>null]);
