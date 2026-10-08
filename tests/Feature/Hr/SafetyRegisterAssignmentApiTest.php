@@ -70,6 +70,36 @@ it('revalidates an inspection lead login and permission after selection and audi
     expect(DB::table('hr_safety_register_events')->where('register_id', $payload['idempotency_key'])->count())->toBe(1);
 });
 
+it('rejects inspection actions assigned to a disabled user without partially completing the inspection', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.relations_safety' => true]);
+    safety_seed_location($admin, $company, Staff::query()->where('user_id', $admin->id)->firstOrFail(), 'WORKSHOP');
+    $lead = Staff::factory()->create(['company_id' => $company->id]);
+    $lead->user->givePermissionTo('hr.safety.investigate');
+    $owner = Staff::factory()->create(['company_id' => $company->id]);
+    $owner->user->givePermissionTo('hr.safety.action');
+    $inspectionId = (string) Str::uuid();
+
+    actingAs($admin, 'api')->postJson('/api/hr/safety/inspections', [
+        'idempotency_key' => $inspectionId, 'location_code' => 'WORKSHOP',
+        'inspection_type' => 'Routine', 'scheduled_for' => now()->addDay()->toDateString(),
+        'checklist_snapshot' => ['Check walkway'], 'lead_staff_id' => $lead->id,
+    ])->assertCreated();
+
+    $owner->user->update(['is_active' => false]);
+    actingAs($lead->user, 'api')->postJson('/api/hr/safety/inspections/'.$inspectionId.'/complete', [
+        'result_snapshot' => ['walkway_clear' => true],
+        'actions' => [[
+            'action_type' => 'corrective', 'title' => 'Remove obstruction',
+            'description' => 'Clear the walkway.', 'owner_staff_id' => $owner->id,
+            'due_at' => now()->addDay()->toDateString(),
+        ]],
+    ])->assertUnprocessable();
+
+    expect(DB::table('hr_safety_inspections')->where('id', $inspectionId)->value('status'))->toBe('planned')
+        ->and(DB::table('hr_safety_actions')->where('inspection_id', $inspectionId)->exists())->toBeFalse();
+});
+
 it('returns bounded exact-hydrated Safety locations only from the actor legal entity', function () {
     [$admin, $company] = hr_seed_admin_actor();
     config(['hr.features.relations_safety' => true]);

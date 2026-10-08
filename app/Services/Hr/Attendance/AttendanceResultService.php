@@ -16,10 +16,10 @@ class AttendanceResultService
         $date = CarbonImmutable::parse($workDate)->startOfDay();
 
         return DB::transaction(function () use ($companyId, $staffId, $date, $actorUserId) {
-            $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
             $company = DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 409, 'Attendance result writes require an active legal entity.');
+            $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $date)->whereDate('period_end', '>=', $date)->lockForUpdate()->first();
             abort_if($period && $period->status === 'locked', 409, 'The attendance period is locked.');
             $staff = DB::table('staff')->where('id', $staffId)->where('company_id', $companyId)->lockForUpdate()->first();
             abort_unless($staff, 422, 'Staff does not belong to this legal entity.');

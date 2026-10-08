@@ -61,6 +61,38 @@ it('blocks payment-finality policy writes when the company is inactive or delete
     expect(DB::table('booking_payment_finality_policies')->where('company_id', $company->id)->count())->toBe(1);
 });
 
+it('replays finality-policy approval for its original checker and rejects another checker', function () {
+    [, $company] = hr_seed_admin_actor();
+    $maker = Staff::factory()->create(['company_id' => $company->id]);
+    $checker = Staff::factory()->create(['company_id' => $company->id]);
+    $otherChecker = Staff::factory()->create(['company_id' => $company->id]);
+    $maker->user->givePermissionTo('sales.payment-finality.manage');
+    $checker->user->givePermissionTo('sales.payment-finality.approve');
+    $otherChecker->user->givePermissionTo('sales.payment-finality.approve');
+    $policyId = (string) Str::uuid();
+    DB::table('booking_payment_finality_policies')->insert([
+        'id' => $policyId, 'company_id' => $company->id, 'payment_method' => 'cash',
+        'official_collection_state' => 'confirmed', 'can_earn_before_final' => false,
+        'hold_payout_until_final' => true, 'effective_from' => now()->toDateString(),
+        'version' => 1, 'status' => 'draft', 'created_by' => $maker->user_id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $url = '/api/sales/payment-finality-policies/'.$policyId.'/approve';
+
+    actingAs($checker->user, 'api')->postJson($url)->assertOk();
+    $approved = DB::table('booking_payment_finality_policies')->where('id', $policyId)->first();
+    actingAs($checker->user, 'api')->postJson($url)->assertOk();
+    expect(DB::table('booking_payment_finality_policies')->where('id', $policyId)->value('approved_by'))->toBe($checker->user_id)
+        ->and(DB::table('booking_payment_finality_policies')->where('id', $policyId)->value('approved_at'))->toBe($approved->approved_at)
+        ->and(DB::table('booking_payment_finality_policies')->where('id', $policyId)->value('updated_at'))->toBe($approved->updated_at)
+        ->and(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
+    expect(json_decode((string) DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->value('properties'), true, 512, JSON_THROW_ON_ERROR))
+        ->toBe(['company_id' => $company->id, 'status' => 'approved', 'effective_from' => $approved->effective_from, 'version' => 1]);
+
+    actingAs($otherChecker->user, 'api')->postJson($url)->assertStatus(409);
+    expect(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
+});
+
 it('blocks receipt finality transitions for an inactive or deleted company before touching its booking', function () {
     foreach (['inactive', 'deleted'] as $state) {
         [, $company] = hr_seed_admin_actor();

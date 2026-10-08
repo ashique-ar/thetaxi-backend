@@ -224,6 +224,8 @@ class WialonService
 
             if ((int) $currentVehicle->current_mileage === $mileageKm) {
                 $currentVehicle->wialon_mileage = $confirmedMileage;
+                $currentVehicle->wialon_mileage_sync_pending = false;
+                $currentVehicle->wialon_mileage_sync_requested_at = null;
             } else {
                 $currentVehicle->wialon_mileage_sync_pending = true;
                 $currentVehicle->wialon_mileage_sync_requested_at = now();

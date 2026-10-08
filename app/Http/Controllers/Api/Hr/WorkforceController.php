@@ -393,20 +393,26 @@ class WorkforceController extends Controller
         $this->enabled();
         $d = $r->validate(['company_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'category' => ['required', Rule::in(['annual', 'sick', 'maternity', 'paternity', 'parental', 'no_pay', 'compassionate', 'study', 'lieu', 'duty', 'custom'])], 'unit' => ['required', Rule::in(['day', 'half_day', 'hour'])], 'paid' => ['required', 'boolean'], 'medical_confidential' => ['required', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $this->company($r, $d['company_id']);
-        $id = (string) Str::uuid();
-        DB::table('hr_leave_types')->insert($d + ['id' => $id, 'status' => 'active', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_types')->find($id)], 201);
+        return DB::transaction(function () use ($r, $d) {
+            $this->lockActiveCompany($d['company_id']);
+            $id = (string) Str::uuid();
+            DB::table('hr_leave_types')->insert($d + ['id' => $id, 'status' => 'active', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_types')->find($id)], 201);
+        });
     }
     public function storeLeavePolicy(Request $r): JsonResponse
     {
         $this->enabled();
         $d = $r->validate(['company_id' => ['required', 'uuid'], 'leave_type_id' => ['required', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'], 'rules' => ['required', 'array'], 'rules.minutes_per_day' => ['required', 'integer', 'min:1', 'max:1440'], 'rules.minimum_notice_days' => ['nullable', 'integer', 'min:0', 'max:365'], 'rules.negative_balance_limit_minutes' => ['nullable', 'integer', 'min:0'], 'rules.weekend_days' => ['nullable', 'array'], 'rules.sandwich_rule_enabled' => ['nullable', 'boolean'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $this->company($r, $d['company_id']);
-        abort_unless(DB::table('hr_leave_types')->where('id', $d['leave_type_id'])->where('company_id', $d['company_id'])->exists(), 422, 'Leave type and policy legal entities must match.');
-        $id = (string) Str::uuid();
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
-        DB::table('hr_leave_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_policies')->find($id)], 201);
+        return DB::transaction(function () use ($r, $d) {
+            $this->lockActiveCompany($d['company_id']);
+            abort_unless(DB::table('hr_leave_types')->where('id', $d['leave_type_id'])->where('company_id', $d['company_id'])->exists(), 422, 'Leave type and policy legal entities must match.');
+            $id = (string) Str::uuid();
+            DB::table('hr_leave_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_leave_policies')->find($id)], 201);
+        });
     }
     public function approveLeavePolicy(Request $r, string $id): JsonResponse
     {
@@ -418,7 +424,7 @@ class WorkforceController extends Controller
         $d = $r->validate(['company_id' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
         $this->company($r, $d['company_id']);
         return DB::transaction(function () use ($r, $d) {
-            DB::table('companies')->where('id', $d['company_id'])->lockForUpdate()->first();
+            $this->lockActiveCompany($d['company_id']);
             abort_unless(DB::table('staff')->where('id', $d['staff_id'])->where('company_id', $d['company_id'])->whereNull('employment_ended_at')->exists(), 422, 'Staff must be active in the selected legal entity.');
             $policy = DB::table('hr_leave_policies')->where('id', $d['policy_id'])->where('company_id', $d['company_id'])->where('status', 'approved')
                 ->whereDate('effective_from', '<=', $d['effective_from'])
@@ -509,10 +515,13 @@ class WorkforceController extends Controller
         $this->company($r, $d['company_id']);
         if (!empty($d['rules']['time_off_leave_type_id']))
             abort_unless(DB::table('hr_leave_types')->where('id', $d['rules']['time_off_leave_type_id'])->where('company_id', $d['company_id'])->exists(), 422, 'Time-off leave type must belong to the same legal entity.');
-        $id = (string) Str::uuid();
         $d['rules'] = json_encode($d['rules'], JSON_THROW_ON_ERROR);
-        DB::table('hr_work_request_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_work_request_policies')->find($id)], 201);
+        return DB::transaction(function () use ($r, $d) {
+            $this->lockActiveCompany($d['company_id']);
+            $id = (string) Str::uuid();
+            DB::table('hr_work_request_policies')->insert($d + ['id' => $id, 'status' => 'pending_approval', 'created_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_work_request_policies')->find($id)], 201);
+        });
     }
     public function approveWorkPolicy(Request $r, string $id): JsonResponse
     {
@@ -587,14 +596,19 @@ class WorkforceController extends Controller
     {
         $this->enabled();
         return DB::transaction(function () use ($r, $table, $id, $validate) {
-            $row = DB::table($table)->where('id', $id)->lockForUpdate()->first();
+            $candidate = DB::table($table)->where('id', $id)->first();
+            abort_unless($candidate, 404);
+            $this->company($r, $candidate->company_id);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table($table)->where('id', $id)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->company($r, $row->company_id);
+            if ($row->approved_at) {
+                abort_unless($row->approved_by === $r->user()->id, 409, 'This configuration was approved by another user.');
+                return response()->json(['status' => 'success', 'data' => $row]);
+            }
             abort_if($row->created_by === $r->user()->id, 409, 'The configuration creator cannot approve the same record.');
             if (property_exists($row, 'status'))
                 abort_unless($row->status === 'pending_approval', 409, 'Only pending configuration may be approved.');
-            else
-                abort_if($row->approved_at, 409, 'This assignment is already approved.');
             if ($validate) $validate($row);
             $update = ['approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()];
             if (property_exists($row, 'status'))
@@ -602,6 +616,11 @@ class WorkforceController extends Controller
             DB::table($table)->where('id', $id)->update($update);
             return response()->json(['status' => 'success', 'data' => DB::table($table)->find($id)]); });
     }
+    private function lockActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Workforce writes require an active legal entity.');
+    }
+
     private function company(Request $r, ?string $id): string
     {
         $allowed = $this->authorizedCompanyIds($r);

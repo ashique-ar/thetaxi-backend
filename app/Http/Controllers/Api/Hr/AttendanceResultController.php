@@ -189,10 +189,12 @@ class AttendanceResultController extends Controller
         abort_unless($row, 404);
         $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_work_calendars', 'code')->where('company_id', $row->company_id)->ignore($calendarId)], 'name' => ['required', 'string', 'max:255'], 'timezone' => ['required', 'timezone'], 'weekly_working_days' => ['required', 'array', 'min:1'], 'weekly_working_days.*' => ['required', Rule::in(['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'])], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
         return DB::transaction(function () use ($request, $calendarId, $data) {
-            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_work_calendars')->where('id', $calendarId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($calendar, 404);
-            $this->lockActiveCompany($calendar->company_id);
             DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $calendar->company_id)->update($this->json($data, ['weekly_working_days']) + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $calendar->company_id, 'status' => $data['status'], 'changed_fields' => array_keys($data)])->log('attendance_calendar_updated');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendars')->find($calendarId)]);
@@ -206,9 +208,11 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['calendar_date' => ['required', 'date'], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean']]);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $calendarId, $data, $id) {
-            $calendar = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->lockForUpdate()->first();
+            $candidate = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($calendar, 404);
-            $this->lockActiveCompany($calendar->company_id);
             DB::table('hr_work_calendar_days')->insert($data + ['id' => $id, 'calendar_id' => $calendarId, 'created_at' => now(), 'updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $calendar->company_id, 'status' => $calendar->status, 'day_type' => $data['day_type']])->log('attendance_calendar_day_created');
             return response()->json(['status' => 'success', 'data' => DB::table('hr_work_calendar_days')->find($id)], 201);
@@ -222,9 +226,11 @@ class AttendanceResultController extends Controller
         abort_unless(DB::table('hr_work_calendar_days')->where('id', $dayId)->where('calendar_id', $calendarId)->exists(), 404);
         $data = $request->validate(['calendar_date' => ['required', 'date', Rule::unique('hr_work_calendar_days', 'calendar_date')->where('calendar_id', $calendarId)->ignore($dayId)], 'day_type' => ['required', Rule::in(['working', 'holiday', 'rest_day', 'special_leave'])], 'name' => ['nullable', 'string', 'max:255'], 'paid' => ['required', 'boolean']]);
         return DB::transaction(function () use ($request, $calendarId, $dayId, $data) {
-            $calendar = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->lockForUpdate()->first();
+            $candidate = DB::table('hr_work_calendars')->whereIn('company_id', $this->authorizedCompanyIds($request))->where('id', $calendarId)->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $calendar = DB::table('hr_work_calendars')->where('id', $calendarId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($calendar, 404);
-            $this->lockActiveCompany($calendar->company_id);
             $day = DB::table('hr_work_calendar_days')->where('id', $dayId)->where('calendar_id', $calendarId)->lockForUpdate()->first();
             abort_unless($day, 404);
             DB::table('hr_work_calendar_days')->where('id', $dayId)->where('calendar_id', $calendarId)->update($data + ['updated_at' => now()]);
@@ -263,10 +269,12 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_shift_definitions', 'code')->where('company_id', $row->company_id)->ignore($shiftId)], 'name' => ['required', 'string', 'max:255'], 'start_time' => ['required', 'date_format:H:i'], 'end_time' => ['required', 'date_format:H:i'], 'ends_next_day' => ['required', 'boolean'], 'unpaid_break_minutes' => ['required', 'integer', 'min:0', 'max:600'], 'grace_in_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'grace_out_minutes' => ['required', 'integer', 'min:0', 'max:180'], 'minimum_half_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'minimum_full_day_minutes' => ['required', 'integer', 'min:1', 'max:1440'], 'timezone' => ['required', 'timezone'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'status' => ['required', Rule::in(['active', 'inactive'])]]);
         abort_if($data['minimum_half_day_minutes'] > $data['minimum_full_day_minutes'], 422, 'Half-day minutes cannot exceed full-day minutes.');
         $row = DB::transaction(function () use ($request, $shiftId, $data) {
-            $shift = DB::table('hr_shift_definitions')->where('id', $shiftId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_shift_definitions')->where('id', $shiftId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $shift = DB::table('hr_shift_definitions')->where('id', $shiftId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($shift, 404);
-            $this->lockActiveCompany($shift->company_id);
             DB::table('hr_shift_definitions')->where('id', $shiftId)->where('company_id', $shift->company_id)->update($data + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())->withProperties(['company_id' => $shift->company_id, 'status' => $data['status'], 'changed_fields' => array_keys($data)])->log('attendance_shift_updated');
             return $shift;
@@ -320,10 +328,12 @@ class AttendanceResultController extends Controller
         abort_unless($row, 404);
         $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where('company_id', $row->company_id)->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         return DB::transaction(function () use ($request, $policyId, $data) {
-            $locked = DB::table('hr_attendance_policies')->where('id', $policyId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_attendance_policies')->where('id', $policyId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $locked = DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($locked, 404);
-            $this->lockActiveCompany($locked->company_id);
             abort_unless(in_array($locked->status, ['draft', 'pending_approval'], true), 409, 'Approved attendance policies cannot be changed.');
             DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $locked->company_id)->update($this->json($data, ['rules']) + ['updated_at' => now()]);
             activity('hr-attendance')->causedBy($request->user())
@@ -337,10 +347,12 @@ class AttendanceResultController extends Controller
     {
         $this->writes();
         return DB::transaction(function () use ($request, $policyId) {
-            $row = DB::table('hr_attendance_policies')->where('id', $policyId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_attendance_policies')->where('id', $policyId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table('hr_attendance_policies')->where('id', $policyId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->lockActiveCompany($row->company_id);
             abort_if($row->created_by === $request->user()->id, 409, 'Policy creator cannot approve the same policy.');
             if ($row->status === 'approved' && (string) $row->approved_by === (string) $request->user()->id) {
                 return response()->json(['status' => 'success', 'data' => $row]);
@@ -384,10 +396,12 @@ class AttendanceResultController extends Controller
     {
         $this->writes();
         return DB::transaction(function () use ($request, $rosterId) {
-            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_roster_assignments')->where('id', $rosterId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->lockActiveCompany($row->company_id);
             $data = $request->validate(['staff_id' => ['required', 'uuid'], 'calendar_id' => ['required', 'uuid'], 'shift_id' => ['required', 'uuid'], 'policy_id' => ['required', 'uuid'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from'], 'reason' => ['required', 'string', 'max:500']]);
             foreach (['staff' => 'staff_id', 'hr_work_calendars' => 'calendar_id', 'hr_shift_definitions' => 'shift_id', 'hr_attendance_policies' => 'policy_id'] as $table => $field)
                 abort_unless(DB::table($table)->where('id', $data[$field])->where('company_id', $row->company_id)->exists(), 422, 'Roster references must belong to one legal entity.');
@@ -438,10 +452,12 @@ class AttendanceResultController extends Controller
     {
         $this->writes();
         return DB::transaction(function () use ($request, $rosterId) {
-            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_roster_assignments')->where('id', $rosterId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table('hr_roster_assignments')->where('id', $rosterId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->lockActiveCompany($row->company_id);
             abort_if($row->created_by === $request->user()->id, 409, 'Roster creator cannot approve the same roster.');
             if ($row->approved_at) {
                 abort_unless((string) $row->approved_by === (string) $request->user()->id, 409, 'Roster is already approved.');
@@ -528,8 +544,12 @@ class AttendanceResultController extends Controller
     {
         $data = $request->validate(['resolution_note' => ['required', 'string', 'max:2000']]);
         return DB::transaction(function () use ($request, $exceptionId, $data) {
+            $candidate = DB::table('hr_attendance_exceptions')->where('id', $exceptionId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
             $row = DB::table('hr_attendance_exceptions')->where('id', $exceptionId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+                ->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
             if ($row->status === 'resolved' && (string) $row->resolved_by === (string) $request->user()->id
                 && hash_equals((string) $row->resolution_note, $data['resolution_note'])) {
@@ -587,10 +607,12 @@ class AttendanceResultController extends Controller
         $this->writes();
         $data = $request->validate(['action' => ['required', Rule::in(['review', 'lock', 'reopen'])], 'reason' => ['required', 'string', 'max:2000'], 'expected_version' => ['required', 'integer', 'min:1']]);
         return DB::transaction(function () use ($request, $periodId, $data) {
-            $row = DB::table('hr_attendance_periods')->where('id', $periodId)
-                ->whereIn('company_id', $this->authorizedCompanyIds($request))->lockForUpdate()->first();
+            $candidate = DB::table('hr_attendance_periods')->where('id', $periodId)
+                ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
+            abort_unless($candidate, 404);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table('hr_attendance_periods')->where('id', $periodId)->where('company_id', $candidate->company_id)->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->lockActiveCompany($row->company_id);
             abort_unless($row->version === $data['expected_version'], 409, 'Attendance period version is stale.');
             $next = ['open' => ['review' => 'reviewed'], 'reviewed' => ['lock' => 'locked'], 'locked' => ['reopen' => 'open']][$row->status][$data['action']] ?? null;
             abort_unless($next, 409, 'Invalid attendance period transition.');

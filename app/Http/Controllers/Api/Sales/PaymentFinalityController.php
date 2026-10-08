@@ -161,12 +161,16 @@ class PaymentFinalityController extends Controller
     public function approve(Request $request, BookingPaymentFinalityPolicy $policy): JsonResponse
     {
         $this->assertCompanyScope($request, $policy->company_id);
-        abort_unless($policy->status === 'draft', 422, 'Only draft finality policies can be approved.');
-        DB::transaction(function () use ($policy, $request): void {
+        $policy = DB::transaction(function () use ($policy, $request): BookingPaymentFinalityPolicy {
             $company = DB::table('companies')->where('id', $policy->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first();
             abort_unless($company, 422, 'The payment-finality policy legal entity is no longer active.');
-            $policy = BookingPaymentFinalityPolicy::query()->lockForUpdate()->findOrFail($policy->id);
+            $policy = BookingPaymentFinalityPolicy::query()->where('company_id', $company->id)->lockForUpdate()->findOrFail($policy->id);
+            if ($policy->status === 'approved') {
+                abort_unless((string) $policy->approved_by === (string) $request->user()->id, 409, 'Finality policy was approved by another user.');
+
+                return $policy;
+            }
             abort_unless($policy->status === 'draft', 422, 'Only draft finality policies can be approved.');
             $this->validatePendingClearancePolicy($policy->toArray());
             abort_if($policy->created_by === $request->user()->id, 409, 'Finality-policy creator cannot approve the same version.');
@@ -178,9 +182,14 @@ class PaymentFinalityController extends Controller
                 ->exists();
             abort_if($overlap, 422, 'An approved finality policy already overlaps this effective period.');
             $policy->update(['status' => 'approved', 'approved_by' => $request->user()->id, 'approved_at' => now()]);
+            activity('sales-payment-finality')->causedBy($request->user())
+                ->withProperties(['company_id' => $policy->company_id, 'status' => 'approved', 'effective_from' => $policy->effective_from, 'version' => $policy->version])
+                ->log('payment_finality_policy_approved');
+
+            return $policy->fresh();
         });
 
-        return response()->json(['status' => 'success', 'data' => $policy->fresh()]);
+        return response()->json(['status' => 'success', 'data' => $policy]);
     }
 
     public function transition(Request $request, BookingPaymentReceipt $receipt): JsonResponse

@@ -35,3 +35,25 @@ it('accepts only the original verifier decision retry and requires the linked re
         ->toContain("->where('company_id', \$attribution->company_id)")
         ->toContain("where('booking_payment_schedule_id', \$schedule->id)");
 });
+
+it('records one limited domain event for a final collection decision', function () {
+    $service = file_get_contents(app_path('Services/Sales/CollectionScheduleWorkflowService.php'));
+    $start = strpos($service, 'public function verify(');
+    $end = strpos($service, 'private function assertCollectionReceiptMatches(', $start);
+    $verify = substr($service, $start, $end - $start);
+    $rejectUpdate = strpos($verify, "'status' => 'rejected'");
+    $rejectEvent = strpos($verify, "'sales.collection.rejected', 2, 1, ['status' => 'rejected']");
+    $verifiedUpdate = strpos($verify, "'status' => 'verified'");
+    $verifiedEvent = strpos($verify, "'sales.collection.verified', 2, 1, ['status' => 'verified']");
+    $replayCheck = strpos($verify, "in_array(\$submission->status, ['verified', 'rejected'], true)");
+
+    expect($replayCheck)->not->toBeFalse();
+    expect($rejectUpdate)->not->toBeFalse();
+    expect($rejectEvent)->not->toBeFalse();
+    expect($verifiedUpdate)->not->toBeFalse();
+    expect($verifiedEvent)->not->toBeFalse();
+    expect($rejectUpdate)->toBeLessThan($rejectEvent);
+    expect($verifiedUpdate)->toBeLessThan($verifiedEvent);
+    expect($replayCheck)->toBeLessThan($rejectEvent);
+    expect($verify)->toContain('$submission->idempotency_key');
+});

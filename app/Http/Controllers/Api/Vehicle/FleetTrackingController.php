@@ -93,12 +93,12 @@ class FleetTrackingController extends Controller
         $wialonSynced = false;
         try {
             $wialon->setMileage((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $data['mileage_km']);
-            $vehicle->refresh();
             $wialonSynced = true;
         } catch (RuntimeException $error) {
             $message .= ' GPS counter sync failed: ' . $error->getMessage();
         }
-        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced, 'wialon_mileage_sync_pending' => true]]);
+        $vehicle->refresh();
+        return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced, 'wialon_mileage_sync_pending' => (bool) $vehicle->wialon_mileage_sync_pending]]);
     }
 
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse

@@ -167,7 +167,7 @@ class SafetyController extends Controller
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'location_code' => ['required', 'string', 'max:80'], 'category' => ['required', 'string', 'max:60'], 'title' => ['required', 'string', 'max:500'], 'description' => ['required', 'string', 'max:10000'], 'likelihood' => ['required', Rule::in(['rare', 'unlikely', 'possible', 'likely', 'almost_certain'])], 'impact' => ['required', Rule::in(['insignificant', 'minor', 'moderate', 'major', 'severe'])], 'risk_rating' => ['required', Rule::in(['low', 'medium', 'high', 'critical'])], 'controls' => ['required', 'array', 'min:1'], 'owner_staff_id' => ['nullable', 'uuid']]);
         return DB::transaction(function () use ($r, $a, $d) {
-            DB::table('companies')->where('id', $a->company_id)->lockForUpdate()->first();
+            $this->lockActiveCompany($a->company_id);
             $existing = DB::table('hr_hazards')->where('id', $d['idempotency_key'])->first();
             if ($existing) {
                 $expected = $this->checksum(['hazard_number' => $existing->hazard_number] + $d);
@@ -195,13 +195,16 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         $d = $r->validate(['status' => ['required', Rule::in(['controlled', 'closed', 'reopened'])], 'reason' => ['required', 'string', 'max:3000']]);
-        $row = DB::table('hr_hazards')->where('id', $id)->where('company_id', $a->company_id)->lockForUpdate()->first();
-        abort_unless($row, 404);
-        $allowed = ['open' => ['controlled', 'closed'], 'controlled' => ['closed', 'reopened'], 'closed' => ['reopened'], 'reopened' => ['controlled', 'closed']];
-        abort_unless(in_array($d['status'], $allowed[$row->status] ?? [], true), 409);
-        DB::table('hr_hazards')->where('id', $id)->update(['status' => $d['status'], 'updated_at' => now()]);
-        $this->registerEvent($a->company_id, 'hazard', $id, 'status_changed', $row->status, $d['status'], ['reason' => $d['reason']], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_hazards')->find($id)]);
+        return DB::transaction(function () use ($r, $a, $d, $id) {
+            $this->lockActiveCompany($a->company_id);
+            $row = DB::table('hr_hazards')->where('id', $id)->where('company_id', $a->company_id)->lockForUpdate()->first();
+            abort_unless($row, 404);
+            $allowed = ['open' => ['controlled', 'closed'], 'controlled' => ['closed', 'reopened'], 'closed' => ['reopened'], 'reopened' => ['controlled', 'closed']];
+            abort_unless(in_array($d['status'], $allowed[$row->status] ?? [], true), 409);
+            DB::table('hr_hazards')->where('id', $id)->update(['status' => $d['status'], 'updated_at' => now()]);
+            $this->registerEvent($a->company_id, 'hazard', $id, 'status_changed', $row->status, $d['status'], ['reason' => $d['reason']], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_hazards')->find($id)]);
+        });
     }
     public function issuePpe(Request $r): JsonResponse
     {
@@ -209,6 +212,7 @@ class SafetyController extends Controller
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'custody_assignment_id' => ['nullable', 'uuid'], 'ppe_type' => ['required', 'string', 'max:80'], 'issued_at' => ['required', 'date'], 'expires_at' => ['nullable', 'date', 'after_or_equal:issued_at'], 'training_due_at' => ['nullable', 'date'], 'evidence' => ['nullable', 'array']]);
         return DB::transaction(function () use ($r, $a, $d) {
+            $this->lockActiveCompany($a->company_id);
             Staff::query()->whereKey($d['staff_id'])->where('company_id', $a->company_id)->lockForUpdate()->first();
             $payload = $d;
             $checksum = $this->checksum($payload);
@@ -238,6 +242,8 @@ class SafetyController extends Controller
         $occurred = CarbonImmutable::createFromFormat('Y-m-d\\TH:i', $d['occurred_at'], $d['source_timezone'])->utc();
         abort_if($occurred->isFuture(), 422, 'Incident occurrence cannot be in the future.');
         return DB::transaction(function () use ($r, $a, $d, $reporter, $occurred) {
+            $this->lockActiveCompany($a->company_id);
+            abort_unless(Staff::query()->whereKey($reporter)->where('company_id', $a->company_id)->whereNull('employment_ended_at')->lockForUpdate()->first(), 422);
             $this->assertLocation($a->company_id, $d['location_code']);
             do {
                 $number = 'SAF-' . now()->format('Ymd') . '-' . strtoupper(Str::random(8)); } while (DB::table('hr_safety_incidents')->where('incident_number', $number)->exists());
@@ -252,34 +258,46 @@ class SafetyController extends Controller
     {
         $this->enabled();
         $d = $r->validate(['investigator_staff_id' => ['required', 'uuid']]);
-        $incident = $this->owned($r, $id);
-        $staff = Staff::query()->with('user')->whereKey($d['investigator_staff_id'])->where('company_id', $incident->company_id)->whereNull('employment_ended_at')->first();
-        abort_unless($staff && $staff->user && $staff->user->is_active && ($staff->user->can('hr.safety.investigate') || $staff->user->can('hr.safety.manage')), 422, 'Investigator must be active and safety-authorized.');
-        abort_if($incident->status === 'closed', 409, 'A closed incident cannot be reassigned.');
-        DB::table('hr_safety_incidents')->where('id', $id)->update(['investigator_staff_id' => $staff->id, 'status' => 'investigating', 'updated_at' => now()]);
-        $this->event($id, 'investigator_assigned', $incident->status, 'investigating', ['investigator_staff_id' => $staff->id], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_incidents')->select(['id', 'incident_number', 'status', 'investigator_staff_id'])->find($id)]);
+        $actor = $this->actor($r);
+        return DB::transaction(function () use ($r, $id, $d, $actor) {
+            $this->lockActiveCompany($actor->company_id);
+            $incident = DB::table('hr_safety_incidents')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            abort_unless($incident, 404);
+            $staff = Staff::query()->with('user')->whereKey($d['investigator_staff_id'])->where('company_id', $incident->company_id)->whereNull('employment_ended_at')->lockForUpdate()->first();
+            abort_unless($staff && $staff->user && $staff->user->is_active && ($staff->user->can('hr.safety.investigate') || $staff->user->can('hr.safety.manage')), 422, 'Investigator must be active and safety-authorized.');
+            abort_if($incident->status === 'closed', 409, 'A closed incident cannot be reassigned.');
+            DB::table('hr_safety_incidents')->where('id', $id)->update(['investigator_staff_id' => $staff->id, 'status' => 'investigating', 'updated_at' => now()]);
+            $this->event($id, 'investigator_assigned', $incident->status, 'investigating', ['investigator_staff_id' => $staff->id], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_incidents')->select(['id', 'incident_number', 'status', 'investigator_staff_id'])->find($id)]);
+        });
     }
     public function storeInvestigation(Request $r, string $id): JsonResponse
     {
         $this->enabled();
-        $incident = $this->owned($r, $id);
         $d = $r->validate(['version' => ['required', 'integer', 'min:1'], 'findings' => ['required', 'string', 'max:30000'], 'root_cause' => ['required', 'string', 'max:30000'], 'evidence_references' => ['nullable', 'array']]);
         $actor = $this->actor($r);
-        abort_unless($r->user()->can('hr.safety.manage') || $incident->investigator_staff_id === $actor->id, 403);
-        abort_if($incident->status === 'closed', 409);
-        $iid = (string) Str::uuid();
-        DB::table('hr_safety_investigations')->insert(['id' => $iid, 'incident_id' => $id, 'version' => $d['version'], 'encrypted_findings' => encrypt($d['findings']), 'encrypted_root_cause' => encrypt($d['root_cause']), 'evidence_references' => isset($d['evidence_references']) ? json_encode($d['evidence_references'], JSON_THROW_ON_ERROR) : null, 'status' => 'draft', 'prepared_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        $this->event($id, 'investigation_prepared', $incident->status, $incident->status, ['investigation_id' => $iid, 'version' => $d['version']], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_investigations')->select(['id', 'incident_id', 'version', 'status', 'created_at'])->find($iid)], 201);
+        return DB::transaction(function () use ($r, $id, $d, $actor) {
+            $this->lockActiveCompany($actor->company_id);
+            $incident = DB::table('hr_safety_incidents')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            abort_unless($incident, 404);
+            abort_unless($r->user()->can('hr.safety.manage') || $incident->investigator_staff_id === $actor->id, 403);
+            abort_if($incident->status === 'closed', 409);
+            $iid = (string) Str::uuid();
+            DB::table('hr_safety_investigations')->insert(['id' => $iid, 'incident_id' => $id, 'version' => $d['version'], 'encrypted_findings' => encrypt($d['findings']), 'encrypted_root_cause' => encrypt($d['root_cause']), 'evidence_references' => isset($d['evidence_references']) ? json_encode($d['evidence_references'], JSON_THROW_ON_ERROR) : null, 'status' => 'draft', 'prepared_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            $this->event($id, 'investigation_prepared', $incident->status, $incident->status, ['investigation_id' => $iid, 'version' => $d['version']], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_investigations')->select(['id', 'incident_id', 'version', 'status', 'created_at'])->find($iid)], 201);
+        });
     }
     public function approveInvestigation(Request $r, string $id): JsonResponse
     {
         $this->enabled();
         return DB::transaction(function () use ($r, $id) {
-            $row = DB::table('hr_safety_investigations as i')->join('hr_safety_incidents as s', 's.id', '=', 'i.incident_id')->where('i.id', $id)->select('i.*', 's.company_id', 's.status as incident_status')->lockForUpdate()->first();
+            $candidate = DB::table('hr_safety_investigations as i')->join('hr_safety_incidents as s', 's.id', '=', 'i.incident_id')->where('i.id', $id)->select('i.id', 's.company_id')->first();
+            abort_unless($candidate, 404);
+            $this->company($r, $candidate->company_id);
+            $this->lockActiveCompany($candidate->company_id);
+            $row = DB::table('hr_safety_investigations as i')->join('hr_safety_incidents as s', 's.id', '=', 'i.incident_id')->where('i.id', $id)->where('s.company_id', $candidate->company_id)->select('i.*', 's.company_id', 's.status as incident_status')->lockForUpdate()->first();
             abort_unless($row, 404);
-            $this->company($r, $row->company_id);
             abort_unless($row->status === 'draft', 409);
             abort_if($row->prepared_by === $r->user()->id, 409, 'Investigation preparer cannot approve the same version.');
             DB::table('hr_safety_investigations')->where('id', $id)->update(['status' => 'approved', 'approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
@@ -291,19 +309,22 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         $d = $r->validate(['incident_id' => ['nullable', 'uuid'], 'action_type' => ['required', Rule::in(['corrective', 'preventive', 'training', 'inspection', 'ppe', 'policy', 'engineering'])], 'title' => ['required', 'string', 'max:500'], 'description' => ['required', 'string', 'max:5000'], 'owner_staff_id' => ['required', 'uuid'], 'due_at' => ['required', 'date', 'after_or_equal:today']]);
-        $incident = null;
-        if (isset($d['incident_id'])) {
-            $incident = DB::table('hr_safety_incidents')->where('id', $d['incident_id'])->where('company_id', $a->company_id)->first();
-            abort_unless($incident, 422);
-            abort_if($incident->status === 'closed', 409);
-        }
-        $owner = Staff::query()->with('user')->whereKey($d['owner_staff_id'])->where('company_id', $a->company_id)->whereNull('employment_ended_at')->first();
-        abort_unless($owner && $owner->user && $owner->user->is_active && $owner->user->can('hr.safety.action'), 422, 'Action owner must be active and authorized to complete safety actions.');
-        $id = (string) Str::uuid();
-        DB::table('hr_safety_actions')->insert($d + ['id' => $id, 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
-        if ($incident)
-            $this->event($incident->id, 'corrective_action_created', $incident->status, $incident->status, ['action_id' => $id, 'owner_staff_id' => $owner->id, 'due_at' => $d['due_at']], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)], 201);
+        return DB::transaction(function () use ($r, $a, $d) {
+            $this->lockActiveCompany($a->company_id);
+            $incident = null;
+            if (isset($d['incident_id'])) {
+                $incident = DB::table('hr_safety_incidents')->where('id', $d['incident_id'])->where('company_id', $a->company_id)->lockForUpdate()->first();
+                abort_unless($incident, 422);
+                abort_if($incident->status === 'closed', 409);
+            }
+            $owner = Staff::query()->with('user')->whereKey($d['owner_staff_id'])->where('company_id', $a->company_id)->whereNull('employment_ended_at')->lockForUpdate()->first();
+            abort_unless($owner && $owner->user && $owner->user->is_active && $owner->user->can('hr.safety.action'), 422, 'Action owner must be active and authorized to complete safety actions.');
+            $id = (string) Str::uuid();
+            DB::table('hr_safety_actions')->insert($d + ['id' => $id, 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]);
+            if ($incident)
+                $this->event($incident->id, 'corrective_action_created', $incident->status, $incident->status, ['action_id' => $id, 'owner_staff_id' => $owner->id, 'due_at' => $d['due_at']], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_actions')->find($id)], 201);
+        });
     }
     public function completeAction(Request $r, string $id): JsonResponse
     {
@@ -311,6 +332,7 @@ class SafetyController extends Controller
         $a = $this->actor($r);
         $d = $r->validate(['completion_evidence' => ['required', 'array', 'min:1']]);
         return DB::transaction(function () use ($r, $id, $d, $a) {
+            $this->lockActiveCompany($a->company_id);
             $action = DB::table('hr_safety_actions')->where('id', $id)
                 ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('staff')
                     ->whereColumn('staff.id', 'hr_safety_actions.owner_staff_id')->where('staff.company_id', $a->company_id))
@@ -335,6 +357,7 @@ class SafetyController extends Controller
         $this->enabled();
         $actor = $this->actor($r);
         return DB::transaction(function () use ($r, $id, $actor) {
+            $this->lockActiveCompany($actor->company_id);
             $action = DB::table('hr_safety_actions')->where('id', $id)
                 ->whereExists(fn ($owner) => $owner->selectRaw('1')->from('staff')
                     ->whereColumn('staff.id', 'hr_safety_actions.owner_staff_id')->where('staff.company_id', $actor->company_id))
@@ -357,13 +380,18 @@ class SafetyController extends Controller
     public function closeIncident(Request $r, string $id): JsonResponse
     {
         $this->enabled();
-        $incident = $this->owned($r, $id);
-        abort_if($incident->status === 'closed', 409);
-        abort_unless(DB::table('hr_safety_investigations')->where('incident_id', $id)->where('status', 'approved')->exists(), 422, 'An approved investigation is required.');
-        abort_if(DB::table('hr_safety_actions')->where('incident_id', $id)->where('status', '!=', 'verified')->exists(), 422, 'All corrective actions must be independently verified.');
-        DB::table('hr_safety_incidents')->where('id', $id)->update(['status' => 'closed', 'closed_at' => now(), 'updated_at' => now()]);
-        $this->event($id, 'closed', $incident->status, 'closed', [], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_incidents')->select(['id', 'incident_number', 'status', 'closed_at'])->find($id)]);
+        $actor = $this->actor($r);
+        return DB::transaction(function () use ($r, $id, $actor) {
+            $this->lockActiveCompany($actor->company_id);
+            $incident = DB::table('hr_safety_incidents')->where('id', $id)->where('company_id', $actor->company_id)->lockForUpdate()->first();
+            abort_unless($incident, 404);
+            abort_if($incident->status === 'closed', 409);
+            abort_unless(DB::table('hr_safety_investigations')->where('incident_id', $id)->where('status', 'approved')->exists(), 422, 'An approved investigation is required.');
+            abort_if(DB::table('hr_safety_actions')->where('incident_id', $id)->where('status', '!=', 'verified')->exists(), 422, 'All corrective actions must be independently verified.');
+            DB::table('hr_safety_incidents')->where('id', $id)->update(['status' => 'closed', 'closed_at' => now(), 'updated_at' => now()]);
+            $this->event($id, 'closed', $incident->status, 'closed', [], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_incidents')->select(['id', 'incident_number', 'status', 'closed_at'])->find($id)]);
+        });
     }
     public function storeRestriction(Request $r): JsonResponse
     {
@@ -372,7 +400,7 @@ class SafetyController extends Controller
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'staff_id' => ['required', 'uuid'], 'fitness_status' => ['required', Rule::in(['fit', 'fit_with_restrictions', 'temporarily_unfit', 'review_required'])], 'work_restrictions' => ['required', 'array', 'min:1'], 'private_notes' => ['nullable', 'string', 'max:10000'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'], 'verification_reference' => ['required', 'string', 'max:160']]);
 
         return DB::transaction(function () use ($r, $a, $d) {
-            DB::table('companies')->where('id', $a->company_id)->lockForUpdate()->first();
+            $this->lockActiveCompany($a->company_id);
             Staff::query()->whereKey($d['staff_id'])->where('company_id', $a->company_id)->lockForUpdate()->first();
             $payload = ['staff_id' => $d['staff_id'], 'fitness_status' => $d['fitness_status'], 'work_restrictions' => $d['work_restrictions'], 'effective_from' => $d['effective_from'], 'effective_until' => $d['effective_until'] ?? null, 'verification_reference' => $d['verification_reference']];
             $checksum = $this->checksum($payload);
@@ -397,7 +425,7 @@ class SafetyController extends Controller
         $a = $this->actor($r);
         $d = $r->validate(['idempotency_key' => ['required', 'uuid'], 'location_code' => ['required', 'string', 'max:80'], 'inspection_type' => ['required', 'string', 'max:60'], 'scheduled_for' => ['required', 'date_format:Y-m-d'], 'checklist_snapshot' => ['required', 'array', 'min:1'], 'lead_staff_id' => ['required', 'uuid']]);
         return DB::transaction(function () use ($r, $a, $d) {
-            DB::table('companies')->where('id', $a->company_id)->lockForUpdate()->first();
+            $this->lockActiveCompany($a->company_id);
             $existing = DB::table('hr_safety_inspections')->where('id', $d['idempotency_key'])->first();
             if ($existing) {
                 $expected = $this->checksum(['inspection_number' => $existing->inspection_number] + $d);
@@ -426,6 +454,7 @@ class SafetyController extends Controller
         $a = $this->actor($r);
         $d = $r->validate(['result_snapshot' => ['required', 'array', 'min:1'], 'actions' => ['nullable', 'array'], 'actions.*.action_type' => ['required_with:actions', Rule::in(['corrective', 'preventive', 'training', 'inspection', 'ppe', 'policy', 'engineering'])], 'actions.*.title' => ['required_with:actions', 'string', 'max:500'], 'actions.*.description' => ['required_with:actions', 'string', 'max:5000'], 'actions.*.owner_staff_id' => ['required_with:actions', 'uuid'], 'actions.*.due_at' => ['required_with:actions', 'date', 'after_or_equal:today']]);
         return DB::transaction(function () use ($r, $a, $id, $d) {
+            $this->lockActiveCompany($a->company_id);
             $i = DB::table('hr_safety_inspections')->where('id', $id)->where('company_id', $a->company_id)->lockForUpdate()->first();
             abort_unless($i, 404);
             abort_unless($i->status === 'planned', 409);
@@ -433,8 +462,10 @@ class SafetyController extends Controller
             $resultChecksum = $this->checksum(['inspection_id' => $id, 'checklist_checksum' => $i->checklist_checksum, 'result_snapshot' => $d['result_snapshot']]);
             DB::table('hr_safety_inspections')->where('id', $id)->update(['status' => 'completed_pending_verification', 'result_snapshot' => json_encode($d['result_snapshot'], JSON_THROW_ON_ERROR), 'result_checksum' => $resultChecksum, 'updated_at' => now()]);
             foreach ($d['actions'] ?? [] as $action) {
-                $owner = $this->activeStaff($action['owner_staff_id'], $a->company_id);
-                abort_unless($owner->user && $owner->user->can('hr.safety.action'), 422, 'Inspection action owner must be safety-action authorized.');
+                $owner = Staff::query()->whereKey($action['owner_staff_id'])->where('company_id', $a->company_id)->whereNull('employment_ended_at')->lockForUpdate()->first();
+                abort_unless($owner, 422, 'Inspection action owner must be active in the same legal entity.');
+                $user = $owner->user_id ? \App\Models\User::query()->whereKey($owner->user_id)->where('is_active', true)->lockForUpdate()->first() : null;
+                abort_unless($user && $user->can('hr.safety.action'), 422, 'Inspection action owner must be active and safety-action authorized.');
                 DB::table('hr_safety_actions')->insert($action + ['id' => (string) Str::uuid(), 'inspection_id' => $id, 'action_type' => $action['action_type'], 'status' => 'open', 'created_at' => now(), 'updated_at' => now()]); }$this->registerEvent($a->company_id, 'inspection', $id, 'completed', $i->status, 'completed_pending_verification', ['result_checksum' => $resultChecksum, 'action_count' => count($d['actions'] ?? [])], $r->user()->id);
             return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_inspections')->find($id)]); });
     }
@@ -442,32 +473,43 @@ class SafetyController extends Controller
     {
         $this->enabled();
         $a = $this->actor($r);
-        $i = DB::table('hr_safety_inspections')->where('id', $id)->where('company_id', $a->company_id)->lockForUpdate()->first();
-        abort_unless($i, 404);
-        abort_unless($i->status === 'completed_pending_verification', 409);
-        abort_if($i->lead_staff_id === $a->id, 409, 'Inspection lead cannot verify the same inspection.');
-        abort_if(DB::table('hr_safety_actions')->where('inspection_id', $id)->where('status', '!=', 'verified')->exists(), 422, 'Every inspection action must be independently verified first.');
-        DB::table('hr_safety_inspections')->where('id', $id)->update(['status' => 'verified', 'verified_by' => $r->user()->id, 'verified_at' => now(), 'updated_at' => now()]);
-        $this->registerEvent($a->company_id, 'inspection', $id, 'verified', $i->status, 'verified', ['result_checksum' => $i->result_checksum], $r->user()->id);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_inspections')->find($id)]);
+        return DB::transaction(function () use ($r, $id, $a) {
+            $this->lockActiveCompany($a->company_id);
+            $i = DB::table('hr_safety_inspections')->where('id', $id)->where('company_id', $a->company_id)->lockForUpdate()->first();
+            abort_unless($i, 404);
+            abort_unless($i->status === 'completed_pending_verification', 409);
+            abort_if($i->lead_staff_id === $a->id, 409, 'Inspection lead cannot verify the same inspection.');
+            abort_if(DB::table('hr_safety_actions')->where('inspection_id', $id)->where('status', '!=', 'verified')->exists(), 422, 'Every inspection action must be independently verified first.');
+            DB::table('hr_safety_inspections')->where('id', $id)->update(['status' => 'verified', 'verified_by' => $r->user()->id, 'verified_at' => now(), 'updated_at' => now()]);
+            $this->registerEvent($a->company_id, 'inspection', $id, 'verified', $i->status, 'verified', ['result_checksum' => $i->result_checksum], $r->user()->id);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_inspections')->find($id)]);
+        });
     }
     public function prepareExternalNotification(Request $r, string $id): JsonResponse
     {
         $this->enabled();
         $incident = $this->owned($r, $id);
         $d = $r->validate(['recipient_type' => ['required', Rule::in(['regulator', 'insurer'])], 'notification_type' => ['required', 'string', 'max:60'], 'payload_snapshot' => ['required', 'array']]);
-        $payload = ['incident_id' => $id, 'incident_number' => $incident->incident_number, 'recipient_type' => $d['recipient_type'], 'notification_type' => $d['notification_type'], 'payload' => $d['payload_snapshot']];
-        $nid = (string) Str::uuid();
-        DB::table('hr_safety_external_notifications')->insert(['id' => $nid, 'incident_id' => $id, 'recipient_type' => $d['recipient_type'], 'notification_type' => $d['notification_type'], 'payload_snapshot' => json_encode($d['payload_snapshot'], JSON_THROW_ON_ERROR), 'payload_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'status' => 'pending_approval', 'prepared_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')->select(['id', 'incident_id', 'recipient_type', 'notification_type', 'payload_checksum', 'status'])->find($nid)], 201);
+        return DB::transaction(function () use ($r, $id, $incident, $d) {
+            $this->lockActiveCompany($incident->company_id);
+            $current = DB::table('hr_safety_incidents')->where('id', $id)->where('company_id', $incident->company_id)->lockForUpdate()->first();
+            abort_unless($current, 404);
+            $payload = ['incident_id' => $id, 'incident_number' => $current->incident_number, 'recipient_type' => $d['recipient_type'], 'notification_type' => $d['notification_type'], 'payload' => $d['payload_snapshot']];
+            $nid = (string) Str::uuid();
+            DB::table('hr_safety_external_notifications')->insert(['id' => $nid, 'incident_id' => $id, 'recipient_type' => $d['recipient_type'], 'notification_type' => $d['notification_type'], 'payload_snapshot' => json_encode($d['payload_snapshot'], JSON_THROW_ON_ERROR), 'payload_checksum' => hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'status' => 'pending_approval', 'prepared_by' => $r->user()->id, 'created_at' => now(), 'updated_at' => now()]);
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_safety_external_notifications')->select(['id', 'incident_id', 'recipient_type', 'notification_type', 'payload_checksum', 'status'])->find($nid)], 201);
+        });
     }
     public function approveExternalNotification(Request $r, string $id): JsonResponse
     {
         $this->enabled();
         return DB::transaction(function () use ($r, $id) {
-            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
+            $candidate = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.id', 'i.company_id')->first();
+            abort_unless($candidate, 404);
+            $this->company($r, $candidate->company_id);
+            $this->lockActiveCompany($candidate->company_id);
+            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $candidate->company_id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
-            $this->company($r, $n->company_id);
             abort_unless($n->status === 'pending_approval', 409);
             abort_if($n->prepared_by === $r->user()->id, 409, 'Notification preparer cannot approve the same payload.');
             DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => 'approved_pending_delivery', 'available_at' => now(), 'approved_by' => $r->user()->id, 'approved_at' => now(), 'updated_at' => now()]);
@@ -492,7 +534,8 @@ class SafetyController extends Controller
         $this->enabled();
         $a = $this->actor($r);
         return DB::transaction(function () use ($r, $a, $id) {
-            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $a->company_id)->select('n.*', 'i.incident_number')->lockForUpdate()->first();
+            $this->lockActiveCompany($a->company_id);
+            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $a->company_id)->select('n.*', 'i.incident_number', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
             $claimable = $n->status === 'approved_pending_delivery' && $n->available_at && now()->greaterThanOrEqualTo($n->available_at);
             $expired = $n->status === 'delivering' && (! $n->leased_until || now()->greaterThanOrEqualTo($n->leased_until));
@@ -534,9 +577,12 @@ class SafetyController extends Controller
         $this->enabled();
         $d = $r->validate(['payload_checksum' => ['required', 'string', 'size:64'], 'lease_token' => ['required', 'string', 'size:64'], 'external_reference' => ['required', 'string', 'max:200']]);
         return DB::transaction(function () use ($r, $id, $d) {
-            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
+            $candidate = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.id', 'i.company_id')->first();
+            abort_unless($candidate, 404);
+            $this->company($r, $candidate->company_id);
+            $this->lockActiveCompany($candidate->company_id);
+            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $candidate->company_id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
-            $this->company($r, $n->company_id);
             $leaseHash = hash('sha256', $d['lease_token']);
             if ($n->status === 'acknowledged') {
                 $prior = DB::table('hr_safety_register_events')->where('company_id', $n->company_id)
@@ -572,9 +618,12 @@ class SafetyController extends Controller
         $d = $r->validate(['payload_checksum' => ['required', 'string', 'size:64'], 'lease_token' => ['required', 'string', 'size:64'], 'message' => ['required', 'string', 'max:4000']]);
         $safeMessage = ObservabilitySanitizer::text($d['message']) ?? '';
         return DB::transaction(function () use ($r, $id, $d, $safeMessage) {
-            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
+            $candidate = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->select('n.id', 'i.company_id')->first();
+            abort_unless($candidate, 404);
+            $this->company($r, $candidate->company_id);
+            $this->lockActiveCompany($candidate->company_id);
+            $n = DB::table('hr_safety_external_notifications as n')->join('hr_safety_incidents as i', 'i.id', '=', 'n.incident_id')->where('n.id', $id)->where('i.company_id', $candidate->company_id)->select('n.*', 'i.company_id')->lockForUpdate()->first();
             abort_unless($n, 404);
-            $this->company($r, $n->company_id);
             $leaseHash = hash('sha256', $d['lease_token']);
             $prior = DB::table('hr_safety_register_events')->where('company_id', $n->company_id)
                 ->where('register_type', 'external_notification')->where('register_id', $id)
@@ -664,6 +713,11 @@ class SafetyController extends Controller
     private function actor(Request $r): Staff
     {
         return app(StaffAccessService::class)->currentActorStaff($r->user());
+    }
+
+    private function lockActiveCompany(string $companyId): void
+    {
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->lockForUpdate()->first(), 409, 'Safety writes require an active legal entity.');
     }
 
     private function company(Request $r, string $id): void

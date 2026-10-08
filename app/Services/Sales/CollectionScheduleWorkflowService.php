@@ -297,6 +297,9 @@ class CollectionScheduleWorkflowService
                     'status' => 'rejected', 'verification_notes' => $data['verification_notes'],
                     'verified_by' => $actorUserId, 'verified_at' => now(),
                 ]);
+                $this->events->record('sales', $submission->company_id, 'booking_collection_submission', $submission->id,
+                    'sales.collection.rejected', 2, 1, ['status' => 'rejected'], $submission->verified_at, $submission->idempotency_key);
+
                 return $submission;
             }
 
@@ -327,6 +330,8 @@ class CollectionScheduleWorkflowService
                 'status' => 'verified', 'verification_notes' => $data['verification_notes'] ?? null,
                 'verified_by' => $actorUserId, 'verified_at' => now(), 'booking_payment_receipt_id' => $receipt->id,
             ]);
+            $this->events->record('sales', $submission->company_id, 'booking_collection_submission', $submission->id,
+                'sales.collection.verified', 2, 1, ['status' => 'verified'], $submission->verified_at, $submission->idempotency_key);
             if ($submission->booking_payment_schedule_id) {
                 $schedule = BookingPaymentSchedule::query()
                     ->whereKey($submission->booking_payment_schedule_id)
