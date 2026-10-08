@@ -59,6 +59,8 @@ class WebsiteSettingsService
         'late_return_fee_per_hour',
         'late_return_fee_per_minute',
         'feature_corporate_management_enabled',
+        'feature_hr_management_enabled',
+        'feature_sales_management_enabled',
         'assignment_enable_maintenance_stage',
         'internal_pricing_mode',
         'driver_mobile_latest_version',
@@ -1087,6 +1089,8 @@ class WebsiteSettingsService
             'assignment_enable_maintenance_stage',
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
+            'feature_hr_management_enabled',
+            'feature_sales_management_enabled',
         ];
 
         $settings = $this->getMultiple($types);
@@ -1136,6 +1140,8 @@ class WebsiteSettingsService
         return $this->getMultiple([
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
+            'feature_hr_management_enabled',
+            'feature_sales_management_enabled',
         ]);
     }
 

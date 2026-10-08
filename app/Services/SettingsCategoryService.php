@@ -845,6 +845,16 @@ class SettingsCategoryService
                     'label' => 'Vehicle Return Management',
                     'type' => 'toggle',
                     'description' => 'Enable rental return processing and post-return workflows. Leave disabled for taxi or trip-based businesses that complete directly after service. Disabled by default.'
+                ],
+                'feature_hr_management_enabled' => [
+                    'label' => 'HR Management',
+                    'type' => 'toggle',
+                    'description' => 'Enable or disable the complete HR module.'
+                ],
+                'feature_sales_management_enabled' => [
+                    'label' => 'Sales Management',
+                    'type' => 'toggle',
+                    'description' => 'Enable or disable the complete Sales module.'
                 ]
             ]
         ];

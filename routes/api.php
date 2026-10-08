@@ -552,7 +552,7 @@ Route::middleware(['auth:api'])->group(function () {
         ->whereUuid('change')
         ->middleware('permission:staff-sensitive-payment-methods.approve');
 
-    Route::prefix('sales')->middleware(['ensure.internal'])->group(function () {
+    Route::prefix('sales')->middleware(['ensure.internal', 'business.module:sales'])->group(function () {
         Route::get('me', [SalesProfileController::class, 'me'])->middleware('permission:sales.self.view');
         Route::get('profiles', [SalesProfileController::class, 'index'])->middleware('permission:sales.profiles.view');
         Route::post('profiles/exports', [SalesProfileController::class, 'export'])->middleware('permission:sales.profiles.export');
@@ -893,7 +893,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('portfolio', [SalesDashboardController::class, 'portfolio'])->middleware('permission:sales.performance.view');
     });
 
-    Route::prefix('sales-performance')->middleware(['ensure.internal'])->group(function () {
+    Route::prefix('sales-performance')->middleware(['ensure.internal', 'business.module:sales'])->group(function () {
         Route::get('kpis/facts', [SalesDashboardController::class, 'kpiFacts'])
             ->middleware('permission:sales.performance.view');
         Route::get('commission-status', [SalesDashboardController::class, 'commissionStatus'])
@@ -920,7 +920,7 @@ Route::middleware(['auth:api'])->group(function () {
             ->whereUuid('staffId')->middleware('permission:sales.performance.view-team|sales.performance.view-all');
     });
 
-    Route::prefix('hr/people')->middleware('ensure.internal')->group(function () {
+    Route::prefix('hr/people')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
         Route::get('reconciliation', [PeopleCoreController::class, 'reconciliation'])->middleware('permission:hr.people.view-all');
         Route::post('imports/preview', [PeopleCoreController::class, 'previewImport'])->middleware('permission:hr.people.manage');
         Route::get('imports/{job}', [PeopleCoreController::class, 'importJob'])->whereUuid('job')->middleware('permission:hr.people.manage');
@@ -944,7 +944,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('staff/{staffId}/records', [PeopleCoreController::class, 'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
         Route::post('staff/{staffId}/records', [PeopleCoreController::class, 'storeRecord'])->whereUuid('staffId')->middleware('permission:hr.people.manage');
     });
-    Route::prefix('hr/employees')->middleware('ensure.internal')->group(function () {
+    Route::prefix('hr/employees')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
         Route::get('', [PeopleCoreController::class, 'index'])->middleware('permission:hr.people.view');
         Route::get('{staffId}', [PeopleCoreController::class, 'show'])->whereUuid('staffId')->middleware('permission:hr.people.view');
         Route::get('{staffId}/employment-history', [PeopleCoreController::class, 'employmentHistory'])->whereUuid('staffId')->middleware('permission:hr.people.view');
@@ -954,7 +954,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('{staffId}/records', [PeopleCoreController::class, 'records'])->whereUuid('staffId')->middleware('permission:hr.people.view');
         Route::put('{staffId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putStaffCustomFieldValue'])->whereUuid('staffId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
-    Route::prefix('hr/organization')->middleware('ensure.internal')->group(function () {
+    Route::prefix('hr/organization')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
         Route::get('units', [PeopleCoreController::class, 'organization'])->middleware('permission:hr.organization.view');
         Route::get('reference-options', [PeopleCoreController::class, 'organizationReferenceOptions'])->middleware('permission:hr.organization.view');
         Route::get('chart', [PeopleCoreController::class, 'organizationChart'])->middleware('permission:hr.organization.view');
@@ -997,7 +997,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('subjects/{ownerType}/{ownerId}/custom-fields', [PeopleCoreController::class, 'subjectCustomFieldValues'])->whereUuid('ownerId')->middleware('permission:hr.custom-fields.values.view');
         Route::put('subjects/{ownerType}/{ownerId}/custom-fields/{definitionId}', [PeopleCoreController::class, 'putSubjectCustomFieldValue'])->whereUuid('ownerId')->whereUuid('definitionId')->middleware('permission:hr.custom-fields.values.manage');
     });
-    Route::prefix('hr/attendance')->group(function () {
+    Route::prefix('hr/attendance')->middleware('business.module:hr')->group(function () {
         Route::get('company-options', [AttendanceResultController::class, 'companyOptions'])->middleware('permission:hr.attendance.results.view|hr.attendance.corrections.request|hr.attendance.periods.manage|hr.attendance.periods.reopen|hr.attendance.devices.view|hr.attendance.devices.manage|hr.attendance.access.request|hr.attendance.maintenance.execute|hr.attendance.config.manage|hr.attendance.config.approve');
         Route::get('device-options', [AttendanceDeviceController::class, 'deviceOptions'])->middleware('permission:hr.attendance.devices.view|hr.attendance.devices.manage');
         Route::get('devices', [AttendanceDeviceController::class, 'index'])->middleware('permission:hr.attendance.devices.view');
@@ -1074,7 +1074,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('periods', [AttendanceResultController::class, 'storePeriod'])->middleware('permission:hr.attendance.periods.manage');
         Route::post('periods/{periodId}/transition', [AttendanceResultController::class, 'transitionPeriod'])->whereUuid('periodId')->middleware('permission:hr.attendance.periods.manage|hr.attendance.periods.reopen');
     });
-    Route::prefix('hr/workforce')->group(function () {
+    Route::prefix('hr/workforce')->middleware('business.module:hr')->group(function () {
         Route::get('company-options', [WorkforceController::class, 'companyOptions'])->middleware('permission:hr.leave.view|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.config.manage|hr.work-requests.config.approve');
         Route::get('references', [WorkforceController::class, 'references'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
         Route::get('staff-options', [WorkforceController::class, 'staffOptions'])->middleware('permission:hr.leave.view|hr.leave.request|hr.leave.config.manage|hr.leave.config.approve|hr.work-requests.view|hr.work-requests.request|hr.work-requests.config.manage|hr.work-requests.config.approve|hr.timesheets.view|hr.timesheets.manage');
@@ -1111,7 +1111,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('timesheets/{id}/transition', [WorkforceController::class, 'transitionTimesheet'])->whereUuid('id')->middleware('permission:hr.timesheets.view');
         Route::get('payroll-inputs', [WorkforceController::class, 'payrollInputs'])->middleware('permission:hr.payroll-inputs.view');
     });
-    Route::prefix('hr/payroll')->middleware('ensure.internal')->group(function () {
+    Route::prefix('hr/payroll')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
         Route::get('context', [PayrollStatutoryController::class, 'context'])->middleware('permission:hr.payroll.statutory.view');
         Route::get('epf-etf-policies', [PayrollStatutoryController::class, 'epfEtfPolicies'])->middleware('permission:hr.payroll.statutory.view');
         Route::post('epf-etf-policies', [PayrollStatutoryController::class, 'storeEpfEtfPolicy'])->middleware('permission:hr.payroll.statutory.manage');
@@ -1122,7 +1122,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('gratuity-policies/{policy}/approve', [PayrollStatutoryController::class, 'approveGratuityPolicy'])->whereUuid('policy')->middleware('permission:hr.payroll.statutory.approve');
         Route::post('gratuity-policies/preview', [PayrollStatutoryController::class, 'previewGratuityEntitlement'])->middleware('permission:hr.payroll.statutory.view');
     });
-    Route::prefix('hr/ess')->group(function () {
+    Route::prefix('hr/ess')->middleware('business.module:hr')->group(function () {
         Route::get('my-requests', [EssController::class, 'myRequests'])->middleware('permission:hr.ess.use');
         Route::get('my-requests/{id}', [EssController::class, 'requestHistory'])->whereUuid('id')->middleware('permission:hr.ess.use');
         Route::get('approval-inbox', [EssController::class, 'inbox'])->middleware('permission:hr.mss.approve');
@@ -1131,7 +1131,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('delegations', [EssController::class, 'delegate'])->middleware('permission:hr.mss.delegate');
         Route::post('delegations/{id}/approve', [EssController::class, 'approveDelegation'])->whereUuid('id')->middleware('permission:hr.mss.delegations.approve');
     });
-    Route::prefix('hr/recruitment')->group(function () {
+    Route::prefix('hr/recruitment')->middleware('business.module:hr')->group(function () {
         Route::get('requisitions', [RecruitmentController::class, 'requisitions'])->middleware('permission:hr.recruitment.view');
         Route::get('position-options', [RecruitmentController::class, 'positionOptions'])->middleware('permission:hr.recruitment.manage');
         Route::post('requisitions', [RecruitmentController::class, 'storeRequisition'])->middleware('permission:hr.recruitment.manage');
@@ -1153,7 +1153,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('interviews/{interviewId}/feedback', [RecruitmentController::class, 'interviewFeedback'])->whereUuid('interviewId')->middleware('permission:hr.recruitment.approve');
         Route::get('analytics', [RecruitmentController::class, 'analytics'])->middleware('permission:hr.recruitment.view');
     });
-    Route::prefix('hr/lifecycle')->group(function () {
+    Route::prefix('hr/lifecycle')->middleware('business.module:hr')->group(function () {
         Route::get('cases', [LifecycleController::class, 'cases'])->middleware('permission:hr.lifecycle.view');
         Route::get('templates', [LifecycleController::class, 'templates'])->middleware('permission:hr.lifecycle.manage|hr.lifecycle.approve');
         Route::get('template-options', [LifecycleController::class, 'templateOptions'])->middleware('permission:hr.lifecycle.manage');
@@ -1174,7 +1174,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('clearance/{id}/complete', [LifecycleController::class, 'completeClearance'])->whereUuid('id')->middleware('permission:hr.lifecycle.clearance');
         Route::post('exits/{id}/finalize', [LifecycleController::class, 'finalizeExit'])->whereUuid('id')->middleware('permission:hr.lifecycle.exit.finalize');
     });
-    Route::prefix('hr/performance')->group(function () {
+    Route::prefix('hr/performance')->middleware('business.module:hr')->group(function () {
         Route::get('reviews', [PerformanceController::class, 'index'])->middleware('permission:hr.performance.view');
         Route::get('reviews/{id}', [PerformanceController::class, 'show'])->whereUuid('id')->middleware('permission:hr.performance.view');
         Route::post('cycles', [PerformanceController::class, 'storeCycle'])->middleware('permission:hr.performance.configure');
@@ -1189,7 +1189,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('achievements', [PerformanceController::class, 'storeAchievement'])->middleware('permission:hr.performance.achievements.submit');
         Route::post('achievements/{id}/decide', [PerformanceController::class, 'decideAchievement'])->whereUuid('id')->middleware('permission:hr.performance.achievements.verify');
     });
-    Route::prefix('hr/learning')->group(function () {
+    Route::prefix('hr/learning')->middleware('business.module:hr')->group(function () {
         Route::get('courses', [LearningController::class, 'courses'])->middleware('permission:hr.learning.view');
         Route::post('courses', [LearningController::class, 'storeCourse'])->middleware('permission:hr.learning.manage');
         Route::post('sessions', [LearningController::class, 'storeSession'])->middleware('permission:hr.learning.manage');
@@ -1200,7 +1200,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('enrollments/{id}/approve', [LearningController::class, 'approve'])->whereUuid('id')->middleware('permission:hr.learning.approve');
         Route::post('enrollments/{id}/complete', [LearningController::class, 'complete'])->whereUuid('id')->middleware('permission:hr.learning.complete');
     });
-    Route::prefix('hr/service-operations')->group(function () {
+    Route::prefix('hr/service-operations')->middleware('business.module:hr')->group(function () {
         Route::get('expense-claims', [ServiceOperationsController::class, 'claims'])->middleware('permission:hr.expenses.view');
         Route::get('expense-policy-options', [ServiceOperationsController::class, 'expensePolicyOptions'])->middleware('permission:hr.expenses.submit');
         Route::get('expense-policies', [ServiceOperationsController::class, 'expensePolicyVersions'])->middleware('permission:hr.expenses.policy.manage|hr.expenses.policy.approve');
@@ -1213,7 +1213,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('requests', [ServiceOperationsController::class, 'openTicket'])->middleware('permission:hr.service-desk.submit');
         Route::post('requests/{id}/transition', [ServiceOperationsController::class, 'transitionTicket'])->whereUuid('id')->middleware('permission:hr.service-desk.manage');
     });
-    Route::prefix('hr/assets')->group(function () {
+    Route::prefix('hr/assets')->middleware('business.module:hr')->group(function () {
         Route::get('types', [AssetOperationsController::class, 'types'])->middleware('permission:hr.assets.view');
         Route::get('type-options', [AssetOperationsController::class, 'typeOptions'])->middleware('permission:hr.assets.view|hr.assets.request');
         Route::get('items', [AssetOperationsController::class, 'items'])->middleware('permission:hr.assets.view');
@@ -1234,14 +1234,14 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('phone-usage', [AssetOperationsController::class, 'storePhoneUsage'])->middleware('permission:hr.assets.phone.manage');
         Route::post('phone-usage/{id}/decide', [AssetOperationsController::class, 'decidePhoneUsage'])->whereUuid('id')->middleware('permission:hr.assets.phone.approve');
     });
-    Route::prefix('hr/travel')->group(function () {
+    Route::prefix('hr/travel')->middleware('business.module:hr')->group(function () {
         Route::get('requests', [TravelController::class, 'index'])->middleware('permission:hr.travel.view');
         Route::get('requests/{id}/settlement-claim-options', [TravelController::class, 'settlementClaimOptions'])->whereUuid('id')->middleware('permission:hr.travel.settle');
         Route::post('requests', [TravelController::class, 'store'])->middleware('permission:hr.travel.request');
         Route::post('requests/{id}/decide', [TravelController::class, 'decide'])->whereUuid('id')->middleware('permission:hr.travel.approve');
         Route::post('requests/{id}/settle', [TravelController::class, 'settle'])->whereUuid('id')->middleware('permission:hr.travel.settle');
     });
-    Route::prefix('hr/knowledge')->group(function () {
+    Route::prefix('hr/knowledge')->middleware('business.module:hr')->group(function () {
         Route::get('articles', [KnowledgeController::class, 'index'])->middleware('permission:hr.knowledge.view');
         Route::get('articles/{id}', [KnowledgeController::class, 'show'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
         Route::post('articles', [KnowledgeController::class, 'store'])->middleware('permission:hr.knowledge.manage');
@@ -1249,7 +1249,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('articles/{id}/retire', [KnowledgeController::class, 'retire'])->whereUuid('id')->middleware('permission:hr.knowledge.manage');
         Route::post('articles/{id}/acknowledge', [KnowledgeController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.knowledge.view');
     });
-    Route::prefix('hr/talent')->group(function () {
+    Route::prefix('hr/talent')->middleware('business.module:hr')->group(function () {
         Route::get('development-plans', [TalentController::class, 'developmentPlans'])->middleware('permission:hr.development.view');
         Route::post('development-plans', [TalentController::class, 'storeDevelopmentPlan'])->middleware('permission:hr.development.view');
         Route::post('development-plans/{id}/transition', [TalentController::class, 'transitionDevelopmentPlan'])->whereUuid('id')->middleware('permission:hr.development.view');
@@ -1264,7 +1264,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('recommendations/{id}/approve', [TalentController::class, 'approveRecommendation'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.approve');
         Route::post('recommendations/{id}/convert-promotion', [TalentController::class, 'convertPromotion'])->whereUuid('id')->middleware('permission:hr.talent.recommendations.convert');
     });
-    Route::prefix('hr/meals')->group(function () {
+    Route::prefix('hr/meals')->middleware('business.module:hr')->group(function () {
         Route::get('my-orders', [MealProgrammeController::class, 'myOrders'])->middleware('permission:hr.meals.view');
         Route::post('programs', [MealProgrammeController::class, 'storeProgram'])->middleware('permission:hr.meals.configure');
         Route::post('programs/{id}/approve', [MealProgrammeController::class, 'approveProgram'])->whereUuid('id')->middleware('permission:hr.meals.approve-program');
@@ -1282,11 +1282,11 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('variance-cases/{id}/decide', [MealVarianceController::class, 'decide'])->whereUuid('id')->middleware('permission:hr.meals.vendor.approve');
         Route::post('vendor-orders/{id}/reconcile', [MealVarianceController::class, 'reconcile'])->whereUuid('id')->middleware('permission:hr.meals.reconcile');
     });
-    Route::prefix('hr/integration-deliveries')->group(function () {
+    Route::prefix('hr/integration-deliveries')->middleware('business.module:hr')->group(function () {
         Route::get('pending', [HrIntegrationDeliveryController::class, 'pending'])->middleware('permission:hr.integrations.deliver');
         Route::post('{id}/acknowledge', [HrIntegrationDeliveryController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.integrations.acknowledge');
     });
-    Route::prefix('hr/relations')->group(function () {
+    Route::prefix('hr/relations')->middleware('business.module:hr')->group(function () {
         Route::get('cases', [RelationsCaseController::class, 'index'])->middleware('permission:hr.relations.case.view');
         Route::get('cases/{id}', [RelationsCaseController::class, 'show'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
         Route::get('cases/{id}/staff-labels', [RelationsCaseController::class, 'staffLabels'])->whereUuid('id')->middleware('permission:hr.relations.case.view');
@@ -1308,7 +1308,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('cases/{id}/transition', [RelationsCaseController::class, 'transition'])->whereUuid('id')->middleware('permission:hr.relations.case.transition');
         Route::post('cases/{id}/legal-hold', [RelationsCaseController::class, 'legalHold'])->whereUuid('id')->middleware('permission:hr.relations.legal-hold');
     });
-    Route::prefix('hr/safety')->group(function () {
+    Route::prefix('hr/safety')->middleware('business.module:hr')->group(function () {
         Route::get('location-options', [SafetyController::class, 'locationOptions'])->middleware('permission:hr.safety.report|hr.safety.manage');
         Route::get('fitness-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.fitness-restricted');
         Route::get('register-employee-options', [SafetyController::class, 'ppeEmployeeOptions'])->middleware('permission:hr.safety.manage');
@@ -1341,7 +1341,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('external-notifications/{id}/acknowledge', [SafetyController::class, 'acknowledgeExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
         Route::post('external-notifications/{id}/fail', [SafetyController::class, 'failExternalNotification'])->whereUuid('id')->middleware('permission:hr.safety.external.acknowledge');
     });
-    Route::prefix('hr/engagement')->group(function () {
+    Route::prefix('hr/engagement')->middleware('business.module:hr')->group(function () {
         Route::get('audience-options', [EngagementController::class, 'audienceOptions'])->middleware('permission:hr.engagement.manage|hr.surveys.manage');
         Route::get('announcements', [EngagementController::class, 'announcements'])->middleware('permission:hr.engagement.view');
         Route::post('announcements', [EngagementController::class, 'storeAnnouncement'])->middleware('permission:hr.engagement.manage');
@@ -1370,7 +1370,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('wellness/referrals/{id}/followups', [EngagementController::class, 'scheduleWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
         Route::post('wellness/followups/{id}/complete', [EngagementController::class, 'completeWellnessFollowup'])->whereUuid('id')->middleware('permission:hr.wellness.case.manage');
     });
-    Route::prefix('hr/analytics')->group(function () {
+    Route::prefix('hr/analytics')->middleware('business.module:hr')->group(function () {
         Route::get('definitions', [HrAnalyticsController::class, 'definitions'])->middleware('permission:hr.analytics.view');
         Route::post('definitions', [HrAnalyticsController::class, 'storeDefinition'])->middleware('permission:hr.analytics.configure');
         Route::post('definitions/{id}/approve', [HrAnalyticsController::class, 'approveDefinition'])->whereUuid('id')->middleware('permission:hr.analytics.approve');
@@ -1398,7 +1398,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('data-quality', [HrReportingController::class, 'dataQuality'])->middleware('permission:hr.data-quality.view');
         Route::post('data-quality/snapshots', [HrReportingController::class, 'snapshotQuality'])->middleware('permission:hr.data-quality.generate');
     });
-    Route::prefix('hr/notifications')->group(function () {
+    Route::prefix('hr/notifications')->middleware('business.module:hr')->group(function () {
         Route::get('templates', [HrNotificationController::class, 'templates'])->middleware('permission:hr.notifications.manage');
         Route::post('templates', [HrNotificationController::class, 'storeTemplate'])->middleware('permission:hr.notifications.manage');
         Route::post('templates/{id}/approve', [HrNotificationController::class, 'approveTemplate'])->whereUuid('id')->middleware('permission:hr.notifications.approve');
@@ -1412,7 +1412,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('outbox/{id}/acknowledge', [HrNotificationController::class, 'acknowledge'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
         Route::post('outbox/{id}/receipt', [HrNotificationController::class, 'recordReceipt'])->whereUuid('id')->middleware('permission:hr.notifications.adapter.acknowledge');
     });
-    Route::get('hr/governance/queues', [HrGovernanceController::class, 'queues'])->middleware('permission:hr.governance.view');
+    Route::get('hr/governance/queues', [HrGovernanceController::class, 'queues'])->middleware(['business.module:hr', 'permission:hr.governance.view']);
 
     Route::prefix('tenant-decisions')->group(function () {
         Route::get('company-options', [\App\Http\Controllers\Api\Admin\TenantDecisionController::class, 'companyOptions'])->middleware('permission:tenant-decisions.view');
@@ -2416,7 +2416,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.update');
             Route::put('{bookingId}/commission-owner', [AssignmentController::class, 'setCommissionOwner'])
                 ->whereUuid('bookingId')
-                ->middleware('permission:collection-commissions.manage');
+                ->middleware(['business.module:sales', 'permission:collection-commissions.manage']);
             Route::post('{bookingId}/security-deposits/{receipt}/refund', [AssignmentController::class, 'refundSecurityDeposit'])
                 ->whereUuid('bookingId')
                 ->middleware('permission:bookings.update');
@@ -2426,11 +2426,11 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.update');
         });
         Route::get('collection-commissions', [CollectionCommissionController::class, 'index'])
-            ->middleware('permission:collection-commissions.view');
+            ->middleware(['business.module:sales', 'permission:collection-commissions.view']);
         Route::get('collection-commissions/me', [CollectionCommissionController::class, 'me'])
-            ->middleware('permission:collection-commissions.view');
+            ->middleware(['business.module:sales', 'permission:collection-commissions.view']);
         Route::post('collection-commissions/mark-paid', [CollectionCommissionController::class, 'markPaid'])
-            ->middleware('permission:collection-commissions.pay');
+            ->middleware(['business.module:sales', 'permission:collection-commissions.pay']);
 
         Route::get('bookings/active-trips', [BookingObservabilityController::class, 'activeTrips'])
             ->middleware('permission:bookings.view');
@@ -3011,7 +3011,7 @@ Route::middleware(['auth:api'])->group(function () {
 |
 */
 
-Route::post('hr/attendance/ingest', AttendanceIngestionController::class)->middleware('throttle:60,1');
+Route::post('hr/attendance/ingest', AttendanceIngestionController::class)->middleware(['business.module:hr', 'throttle:60,1']);
 Route::get('health', HealthController::class);
 
 /*
