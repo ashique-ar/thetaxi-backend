@@ -8,7 +8,7 @@ class TheTaxiTenantDecisionSeeder extends TenantDecisionProfileSeeder
     {
         return [
             'name' => 'TheTaxi',
-            'scope' => 'Taxi and chauffeur-driven transport services in Sri Lanka.',
+            'service_scope' => 'Taxi and chauffeur-driven transport services in Sri Lanka.',
         ];
     }
 }

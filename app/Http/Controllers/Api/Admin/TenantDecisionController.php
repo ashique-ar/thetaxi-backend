@@ -56,6 +56,7 @@ class TenantDecisionController extends Controller
         $defs = $this->defs();
         $configured = 0;
         $draft = 0;
+        $approvable = 0;
         $missing = 0;
         $invalid = 0;
         $expiring = 0;
@@ -96,6 +97,15 @@ class TenantDecisionController extends Controller
             $x['active_version'] = $active['version']->version ?? null;
             $x['active_value'] = $active['value'] ?? null;
             $x['pending_approval'] = ($x['status'] === 'draft');
+            $x['draft_invalid'] = false;
+            if ($x['pending_approval']) {
+                try {
+                    if (! is_array($latestValue)) throw ValidationException::withMessages(['value' => ['The decision draft must contain an object of field values.']]);
+                    $this->decisions->validate($x['key'], $latestValue);
+                } catch (\JsonException|ValidationException) {
+                    $x['draft_invalid'] = true;
+                }
+            }
             $x['blocked_by'] = collect($x['depends_on'] ?? [])->filter(
                 fn ($key) => ! is_array($activeByKey[$key]['value'] ?? null)
             )->values()->all();
@@ -109,20 +119,23 @@ class TenantDecisionController extends Controller
                 return $before === $after ? null : ['label' => $field['label'], 'before' => $before, 'after' => $after];
             })->filter()->values()->all() : [];
             $x['next_action'] = $x['invalid'] ? 'Replace the invalid approved version with a schema-valid draft.'
+                : ($x['draft_invalid'] ? 'Complete the required fields and correct the draft values.'
                 : ($x['blocked_by_labels'] ? 'Configure first: '.implode(', ', $x['blocked_by_labels']).'.'
                 : ($x['pending_approval'] ? 'Await independent approval.'
                 : ($x['expiring'] ? 'Prepare and approve a replacement before expiry.'
-                : ($x['configured'] ? 'No configuration action required.' : 'Prepare this required decision.'))));
+                : ($x['configured'] ? 'No configuration action required.' : 'Prepare this required decision.')))));
             if ($x['configured'])
                 $configured++;
             if ($x['pending_approval'])
                 $draft++;
+            if ($x['pending_approval'] && ! $x['invalid'] && ! $x['draft_invalid'] && ! $x['blocked_by_labels'])
+                $approvable++;
             if ($x['invalid'])
                 $invalid++;
             if ($x['expiring'])
                 $expiring++;
             if (! $x['configured']) {
-                $blockers[] = ['key' => $x['key'], 'label' => $x['label'], 'module' => $x['module'], 'risk' => $x['risk'], 'status' => $x['status'], 'invalid' => $x['invalid'], 'blocked_by' => $x['blocked_by_labels'], 'next_action' => $x['next_action']];
+                $blockers[] = ['key' => $x['key'], 'label' => $x['label'], 'module' => $x['module'], 'risk' => $x['risk'], 'status' => $x['status'], 'invalid' => $x['invalid'], 'draft_invalid' => $x['draft_invalid'], 'blocked_by' => $x['blocked_by_labels'], 'next_action' => $x['next_action']];
                 if (! $x['pending_approval']) $missing++;
             }
         }
@@ -139,7 +152,7 @@ class TenantDecisionController extends Controller
         unset($x);
         $total = count($defs);
         return response()->json(['status' => 'success', 'data' => ['definitions' => $defs, 'readiness' => [
-            'configured' => $configured, 'draft' => $draft, 'missing' => $missing, 'invalid' => $invalid, 'expiring' => $expiring,
+            'configured' => $configured, 'draft' => $draft, 'approvable' => $approvable, 'missing' => $missing, 'invalid' => $invalid, 'expiring' => $expiring,
             'total' => $total, 'activation_ready' => $total > 0 && $configured === $total, 'blockers' => $blockers,
         ]]]);
     }

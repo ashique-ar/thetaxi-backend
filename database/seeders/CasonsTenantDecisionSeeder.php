@@ -8,7 +8,7 @@ class CasonsTenantDecisionSeeder extends TenantDecisionProfileSeeder
     {
         return [
             'name' => 'Casons',
-            'scope' => 'Car rental services in Sri Lanka, including self-drive and with-driver rentals.',
+            'service_scope' => 'Car rental services in Sri Lanka, including self-drive and with-driver rentals.',
         ];
     }
 }
