@@ -753,6 +753,8 @@
 
         .search-page-layout .vehicle-results-grid .vehicle-actions {
             margin-top: auto !important;
+            align-self: stretch;
+            width: 100%;
         }
 
         .vehicle-name {
@@ -829,9 +831,11 @@
         /* Action Buttons */
         .vehicle-actions .btn {
             font-weight: 600;
-            padding: 10px 16px;
+            min-height: 40px;
+            padding: 8px 12px;
             border-radius: 8px;
             font-size: 14px;
+            line-height: 1.25;
             transition: all 0.3s ease;
         }
 

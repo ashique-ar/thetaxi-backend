@@ -211,3 +211,24 @@ it('returns readable commission targets without employee IDs, approver IDs, or p
     ])->assertCreated();
     expect(array_keys($write->json('data')))->toBe(['id', 'status']);
 });
+
+it('replays commission approval only for its original approver while the company is active', function () {
+    [$creator, $company] = hr_seed_admin_actor(['name' => 'Commission Approval Company']);
+    $approver = Staff::factory()->create(['company_id' => $company->id]);
+    $approver->user->givePermissionTo('sales.commission-config.approve');
+    $family = SalesCommissionPlanFamily::create(['company_id' => $company->id, 'code' => 'COM-APPROVAL',
+        'name' => 'Approval Plan', 'commission_category' => 'one_time', 'status' => 'draft', 'created_by' => $creator->id]);
+    $url = '/api/sales/commission-plan-families/'.$family->id.'/approve';
+
+    actingAs($approver->user, 'api')->postJson($url)->assertOk()->assertJsonPath('data.status', 'approved');
+    $approvedAt = $family->fresh()->approved_at;
+    actingAs($approver->user, 'api')->postJson($url)->assertOk()->assertJsonPath('data.status', 'approved');
+    expect($family->fresh()->approved_at->equalTo($approvedAt))->toBeTrue();
+
+    $otherApprover = Staff::factory()->create(['company_id' => $company->id]);
+    $otherApprover->user->givePermissionTo('sales.commission-config.approve');
+    actingAs($otherApprover->user, 'api')->postJson($url)->assertConflict();
+
+    $company->update(['is_active' => false]);
+    actingAs($approver->user, 'api')->postJson($url)->assertUnprocessable();
+});
