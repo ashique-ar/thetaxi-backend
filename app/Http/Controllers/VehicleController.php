@@ -56,8 +56,12 @@ class VehicleController extends Controller
         $searchPricingParams = null;
         
         if ($searchId) {
-            $sessionSearchParams = session('current_search_params', []);
-            $useSessionSearchParams = in_array((string) $searchId, array_filter([
+            $cachedSearch = data_get(session('public_vehicle_search_pricing', []), (string) $searchId, []);
+            $cachedSearchParams = $cachedSearch['params'] ?? null;
+            $sessionSearchParams = is_array($cachedSearchParams)
+                ? $cachedSearchParams
+                : session('current_search_params', []);
+            $useSessionSearchParams = is_array($cachedSearchParams) || in_array((string) $searchId, array_filter([
                 (string) session('session_id'),
                 (string) session('booking_session_id'),
             ]), true);
@@ -173,15 +177,23 @@ class VehicleController extends Controller
 
         // Calculate initial pricing based on search data
         if ($searchPricingParams) {
-            $searchPricingParams['vehicle_group_id'] = $vehicleGroup->id;
-            $searchPricingParams['page'] = 1;
-            $searchPricingParams['per_page'] = 1;
-            $matchedSearchVehicle = $this->bookingFlowService->getPublicVehicleGroupAvailability($searchPricingParams);
-            $pricing = $matchedSearchVehicle['pricing_info'] ?? [
-                'base_amount' => 0,
-                'currency' => getSelectedCurrency(),
-                'error' => 'Pricing not available',
-            ];
+            $cachedSearchPricing = data_get(
+                session('public_vehicle_search_pricing', []),
+                $searchId . '.prices.' . $vehicleGroup->id
+            );
+            if (is_array($cachedSearchPricing)) {
+                $pricing = $cachedSearchPricing;
+            } else {
+                $searchPricingParams['vehicle_group_id'] = $vehicleGroup->id;
+                $searchPricingParams['page'] = 1;
+                $searchPricingParams['per_page'] = 1;
+                $matchedSearchVehicle = $this->bookingFlowService->getPublicVehicleGroupAvailability($searchPricingParams);
+                $pricing = $matchedSearchVehicle['pricing_info'] ?? [
+                    'base_amount' => 0,
+                    'currency' => getSelectedCurrency(),
+                    'error' => 'Pricing not available',
+                ];
+            }
         } else {
             $pricing = $this->calculatePricing($vehicleGroup, $searchData);
         }

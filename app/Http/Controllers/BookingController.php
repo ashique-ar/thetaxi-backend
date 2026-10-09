@@ -103,6 +103,7 @@ class BookingController extends Controller
 
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
+            session()->forget('public_vehicle_search_pricing');
             session()->put('search_timestamp', now());
             session()->put('session_id', $sessionId);
             session()->put('backend_service_type_id', $serviceType->id);
@@ -1069,6 +1070,7 @@ class BookingController extends Controller
 
             // Transform results for view (add public-specific enhancements)
             $transformedData = $this->transformResultsForPublicView($vehicleGroups, $searchParams, $pricingContext);
+            $this->rememberPublicVehicleSearchPricing((string) session('session_id'), $searchParams, $transformedData);
 
 
             // Wrap results in expected structure for blade template
@@ -1210,6 +1212,7 @@ class BookingController extends Controller
         $availabilityData = $this->bookingFlowService->getAvailableVehicleGroups($searchParams, true);
         $groups = $availabilityData['data'] ?? $availabilityData;
         $vehicles = $this->transformResultsForPublicView($groups ?? [], $searchParams, $pricingContext);
+        $this->rememberPublicVehicleSearchPricing((string) session('session_id'), $searchParams, $vehicles);
         $cards = collect($vehicles)->map(function ($vehicle) {
             $pricing = $vehicle['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
             $availability = [
@@ -1418,6 +1421,28 @@ class BookingController extends Controller
             ];
         }
         return $results;
+    }
+
+    private function rememberPublicVehicleSearchPricing(string $searchId, array $searchParams, array $vehicleGroups): void
+    {
+        if ($searchId === '') {
+            return;
+        }
+
+        $searches = session('public_vehicle_search_pricing', []);
+        $existing = $searches[$searchId] ?? [];
+        $prices = $existing['prices'] ?? [];
+        foreach ($vehicleGroups as $vehicleGroup) {
+            if (!empty($vehicleGroup['id']) && isset($vehicleGroup['pricing_info'])) {
+                $prices[(string) $vehicleGroup['id']] = $vehicleGroup['pricing_info'];
+            }
+        }
+
+        $searches[$searchId] = [
+            'params' => $searchParams,
+            'prices' => $prices,
+        ];
+        session()->put('public_vehicle_search_pricing', $searches);
     }
 
     /**
