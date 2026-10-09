@@ -140,8 +140,6 @@ class PaymentController extends Controller
                     'gateway_success'        => $gatewayResult['success'] ?? false,
                 ],
             ]);
-        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
-            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -741,6 +739,8 @@ class PaymentController extends Controller
                     'transaction' => $transaction
                 ]
             ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
