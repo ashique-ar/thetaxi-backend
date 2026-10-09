@@ -4,8 +4,10 @@ use App\Contracts\PaymentGatewayInterface;
 use App\Http\Controllers\Api\PaymentController;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
+use App\Models\Booking\BookingPaymentAdjustment;
 use App\Models\Customer;
 use App\Models\Currency;
+use App\Models\Finance\FinancialAuditEvent;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Payment\PaymentGatewayManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -111,6 +113,7 @@ it('reserves manual refunds, replays idempotently, and rejects key reuse with ch
         ->and($replay->getStatusCode())->toBe(200)
         ->and($replay->getData(true)['data']['refund_id'])->toBe($firstData['refund_id'])
         ->and(DB::table('payment_refunds')->where('transaction_id', DB::table('payment_transactions')->where('transaction_id', $transactionId)->value('id'))->count())->toBe(1)
+        ->and(FinancialAuditEvent::query()->where('subject_id', $firstData['refund_id'])->count())->toBe(2)
         ->and(BookingPaymentReceipt::query()->where('booking_id', $booking->id)->value('refunded_amount'))->toBe('0.00');
 
     expect(fn () => $controller->refundPayment(paymentRefundRequest($actor, [
@@ -124,4 +127,28 @@ it('reserves manual refunds, replays idempotently, and rejects key reuse with ch
         'idempotency_key' => 'refund-fixture-2',
     ]), $transactionId))->toThrow(HttpException::class);
     expect(DB::table('payment_refunds')->count())->toBe(1);
+});
+
+it('posts a provider-confirmed refund exactly once to the canonical receipt ledger', function () {
+    [$actor, $booking, $transactionId] = seedGatewayRefundFixture();
+    $gateway = Mockery::mock(PaymentGatewayInterface::class);
+    $gateway->shouldReceive('refund')->once()->with('gateway-refund-fixture', 250.0, 'Partial refund')
+        ->andReturn(['success' => true, 'refund_id' => 'provider-refund-1']);
+    $manager = Mockery::mock(PaymentGatewayManager::class);
+    $manager->shouldReceive('resolve')->once()->with('webxpay')->andReturn($gateway);
+    $this->app->instance(PaymentGatewayManager::class, $manager);
+    $controller = app(PaymentController::class);
+    $payload = ['amount' => 250, 'reason' => 'Partial refund', 'idempotency_key' => 'refund-confirmed-1'];
+
+    $first = $controller->refundPayment(paymentRefundRequest($actor, $payload), $transactionId);
+    $replay = $controller->refundPayment(paymentRefundRequest($actor, $payload), $transactionId);
+    $refundRow = DB::table('payment_refunds')->where('id', $first->getData(true)['data']['refund_id'])->first();
+
+    expect($first->getStatusCode())->toBe(201)
+        ->and($first->getData(true)['data']['status'])->toBe('completed', (string) $refundRow->notes)
+        ->and($replay->getStatusCode())->toBe(200)
+        ->and($refundRow->status)->toBe('completed')
+        ->and(BookingPaymentReceipt::query()->where('booking_id', $booking->id)->value('refunded_amount'))->toBe('250.00')
+        ->and(BookingPaymentAdjustment::query()->where('booking_id', $booking->id)->count())->toBe(1)
+        ->and(FinancialAuditEvent::query()->where('subject_id', $first->getData(true)['data']['refund_id'])->count())->toBe(2);
 });

@@ -66,9 +66,15 @@
             'dropoff_latitude' => $searchData['dropoff_lat'] ?? 6.9271,
             'dropoff_longitude' => $searchData['dropoff_lng'] ?? 79.8612,
             'duration_days' => $numDays,
-            'passengers' => 1,
+            'passengers' => $searchData['passengers'] ?? 1,
             'transfer_type' => $searchData['transfer_type'] ?? null,
             'rental_mode' => $searchData['rental_mode'] ?? null,
+            'package_id' => $searchData['package_id'] ?? $searchData['service_package_id'] ?? null,
+            'service_package_id' => $searchData['service_package_id'] ?? $searchData['package_id'] ?? null,
+            'package_type' => $searchData['package_type'] ?? null,
+            'is_return_trip' => $searchData['is_return_trip'] ?? false,
+            'return_trip_date' => $searchData['return_trip_date'] ?? $searchData['return_date'] ?? null,
+            'return_trip_time' => $searchData['return_trip_time'] ?? $searchData['return_time'] ?? null,
         ];
 
         $mainImage = $vehicleGroup->thumbnail

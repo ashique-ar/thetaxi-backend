@@ -52,23 +52,53 @@ class VehicleController extends Controller
         $preset = strtolower((string) $request->query('preset', ''));
         $search = null;
         $searchData = [];
+        $searchPricingParams = null;
         
         if ($searchId) {
-            $search = BookingSearch::find($searchId);
+            $sessionSearchParams = session('current_search_params', []);
+            if ((string) session('session_id') === (string) $searchId && is_array($sessionSearchParams) && $sessionSearchParams) {
+                $serviceType = ServiceType::publicContext()->find(
+                    session('backend_service_type_id') ?? ($sessionSearchParams['service_type_id'] ?? $sessionSearchParams['service_type'] ?? null)
+                );
+                $frontendService = session('frontend_service') ?? $serviceType?->code ?? 'day_rental';
+                $search = (object) array_merge($sessionSearchParams, [
+                    'id' => $searchId,
+                    'service_type' => $frontendService,
+                    'from_date' => $sessionSearchParams['from_date'] ?? null,
+                    'to_date' => $sessionSearchParams['to_date'] ?? null,
+                    'from_time' => $sessionSearchParams['from_time'] ?? null,
+                    'to_time' => $sessionSearchParams['to_time'] ?? null,
+                ]);
+                $searchData = array_merge($sessionSearchParams, [
+                    'service_type' => $frontendService,
+                    'pickup_date' => $sessionSearchParams['from_date'] ?? $sessionSearchParams['pickup_date'] ?? now()->format('Y-m-d'),
+                    'return_date' => $sessionSearchParams['to_date'] ?? $sessionSearchParams['return_date'] ?? null,
+                    'pickup_time' => $sessionSearchParams['from_time'] ?? $sessionSearchParams['pickup_time'] ?? '10:00',
+                    'return_time' => $sessionSearchParams['to_time'] ?? $sessionSearchParams['return_time'] ?? null,
+                    'pickup_lat' => data_get($sessionSearchParams, 'pickup_location.latitude'),
+                    'pickup_lng' => data_get($sessionSearchParams, 'pickup_location.longitude'),
+                    'dropoff_lat' => data_get($sessionSearchParams, 'dropoff_location.latitude'),
+                    'dropoff_lng' => data_get($sessionSearchParams, 'dropoff_location.longitude'),
+                ]);
+                $searchPricingParams = $sessionSearchParams;
+            } else {
+                $search = BookingSearch::find($searchId);
+            }
+
             if ($search) {
-                $searchData = [
+                $searchData = array_merge($searchData, [
                     'service_type' => $search->service_type ?? 'point_to_point',
-                    'pickup_date' => $search->from_date ?? now()->format('Y-m-d'),
-                    'return_date' => $search->to_date ?? now()->addDay()->format('Y-m-d'),
+                    'pickup_date' => $searchData['pickup_date'] ?? $search->from_date ?? now()->format('Y-m-d'),
+                    'return_date' => $searchData['return_date'] ?? $search->to_date ?? now()->addDay()->format('Y-m-d'),
                     'pickup_time' => $search->from_time ?? '10:00',
                     'return_time' => $search->to_time ?? '18:00',
-                    'pickup_location' => $search->pickup_location ?? '',
-                    'dropoff_location' => $search->dropoff_location ?? '',
-                    'pickup_lat' => $search->pickup_lat,
-                    'pickup_lng' => $search->pickup_lng,
-                    'dropoff_lat' => $search->dropoff_lat,
-                    'dropoff_lng' => $search->dropoff_lng,
-                ];
+                    'pickup_location' => $searchData['pickup_location'] ?? $search->pickup_location ?? '',
+                    'dropoff_location' => $searchData['dropoff_location'] ?? $search->dropoff_location ?? '',
+                    'pickup_lat' => $searchData['pickup_lat'] ?? $search->pickup_lat,
+                    'pickup_lng' => $searchData['pickup_lng'] ?? $search->pickup_lng,
+                    'dropoff_lat' => $searchData['dropoff_lat'] ?? $search->dropoff_lat,
+                    'dropoff_lng' => $searchData['dropoff_lng'] ?? $search->dropoff_lng,
+                ]);
             }
         }
 
@@ -95,6 +125,7 @@ class VehicleController extends Controller
                 'num_days' => $presetDays,
             ];
             $search = null;
+            $searchPricingParams = null;
         }
         
         $configuredDefaultServiceType = (string) $this->websiteSettingsService->get('default_service_type', 'day_rental');
@@ -133,7 +164,19 @@ class VehicleController extends Controller
             ->get();
 
         // Calculate initial pricing based on search data
-        $pricing = $this->calculatePricing($vehicleGroup, $searchData);
+        if ($searchPricingParams) {
+            $searchPricingParams['vehicle_group_id'] = $vehicleGroup->id;
+            $searchPricingParams['page'] = 1;
+            $searchPricingParams['per_page'] = 1;
+            $matchedSearchVehicle = $this->bookingFlowService->getPublicVehicleGroupAvailability($searchPricingParams);
+            $pricing = $matchedSearchVehicle['pricing_info'] ?? [
+                'base_amount' => 0,
+                'currency' => getSelectedCurrency(),
+                'error' => 'Pricing not available',
+            ];
+        } else {
+            $pricing = $this->calculatePricing($vehicleGroup, $searchData);
+        }
         
         return view('vehicle-details', compact(
             'vehicleGroup',
@@ -307,18 +350,33 @@ class VehicleController extends Controller
         $pickupTime = (string) ($input['pickup_time'] ?? ($input['time'] ?? ($input['from_time'] ?? '10:00')));
         $dropoffTime = (string) ($input['dropoff_time'] ?? ($input['return_time'] ?? ($input['to_time'] ?? $pickupTime)));
 
-        $params = [
+        $params = array_intersect_key($input, array_flip([
+            'additional_pickup_locations',
+            'additional_dropoff_locations',
+            'ordered_additional_stops',
+            'transfer_type',
+            'is_return_trip',
+            'return_trip_date',
+            'return_trip_time',
+            'package_type',
+            'package_hours',
+            'contract_type',
+            'rental_mode',
+            'passengers',
+        ]));
+        $params = array_merge($params, [
             'service_type' => $serviceType->id,
             'service_type_id' => $serviceType->id,
             'service_type_context' => 'public',
             'vehicle_group_id' => $vehicleGroup->id,
             'pickup_location' => $this->formatLocationFromInput($input, 'pickup'),
             'dropoff_location' => $this->formatLocationFromInput($input, 'dropoff'),
-        ];
+        ]);
 
-        if (!empty($input['package_id'])) {
+        $packageId = $input['package_id'] ?? $input['service_package_id'] ?? null;
+        if (!empty($packageId)) {
             $package = ServicePackage::where('service_type_id', $serviceType->id)
-                ->where('id', $input['package_id'])
+                ->where('id', $packageId)
                 ->where('is_active', true)
                 ->first();
             if ($package) {

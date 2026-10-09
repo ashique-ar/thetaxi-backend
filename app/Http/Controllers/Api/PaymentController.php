@@ -6,6 +6,7 @@ use App\Contracts\PaymentGatewayInterface;
 use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
+use App\Models\Finance\FinancialAuditEvent;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
@@ -401,6 +402,10 @@ class PaymentController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
+            $this->recordRefundAudit($refundId, $booking->id, null, 'pending', $amount, $request->user()?->id, [
+                'transaction_id' => $transaction->id,
+                'request_payload_checksum' => $checksum,
+            ]);
 
             return [
                 'row' => (object) [
@@ -485,16 +490,36 @@ class PaymentController extends Controller
                         'reference' => $gatewayRefundId ?: $refund->id,
                         'idempotency_key' => 'gateway-refund:'.$refund->id,
                     ], (string) $refund->created_by);
+                    $this->recordRefundAudit(
+                        (string) $refund->id,
+                        (string) $reservation['booking']->id,
+                        'pending',
+                        'completed',
+                        (float) $refund->amount,
+                        $refund->created_by,
+                        ['gateway_refund_id' => $gatewayRefundId],
+                    );
                 });
             } catch (\Throwable $e) {
                 // The provider has confirmed cash movement. Keep the amount
                 // reserved and flag the ledger mismatch for reconciliation.
-                DB::table('payment_refunds')->where('id', $refund->id)->update([
-                    'status' => 'manual_required',
-                    'gateway_refund_id' => $gatewayRefundId,
-                    'notes' => 'Provider confirmed refund, but canonical ledger adjustment failed; reconcile before retrying.',
-                    'updated_at' => now(),
-                ]);
+                DB::transaction(function () use ($refund, $gatewayRefundId, $reservation, $e): void {
+                    DB::table('payment_refunds')->where('id', $refund->id)->update([
+                        'status' => 'manual_required',
+                        'gateway_refund_id' => $gatewayRefundId,
+                        'notes' => 'Provider confirmed refund, but canonical ledger adjustment failed; reconcile before retrying: '.$e->getMessage(),
+                        'updated_at' => now(),
+                    ]);
+                    $this->recordRefundAudit(
+                        (string) $refund->id,
+                        (string) $reservation['booking']->id,
+                        'pending',
+                        'manual_required',
+                        (float) $refund->amount,
+                        $refund->created_by,
+                        ['gateway_refund_id' => $gatewayRefundId, 'reconciliation_required' => true],
+                    );
+                });
                 Log::error('Confirmed gateway refund could not be reflected in the canonical receipt ledger.', [
                     'refund_id' => $refund->id,
                     'error' => $e->getMessage(),
@@ -503,11 +528,22 @@ class PaymentController extends Controller
                 $refundNotes = 'Provider confirmed refund; canonical ledger adjustment requires reconciliation.';
             }
         } else {
-            DB::table('payment_refunds')->where('id', $refund->id)->update([
-                'status' => $refundStatus,
-                'notes' => $refundNotes,
-                'updated_at' => now(),
-            ]);
+            DB::transaction(function () use ($refund, $refundStatus, $refundNotes, $reservation): void {
+                DB::table('payment_refunds')->where('id', $refund->id)->update([
+                    'status' => $refundStatus,
+                    'notes' => $refundNotes,
+                    'updated_at' => now(),
+                ]);
+                $this->recordRefundAudit(
+                    (string) $refund->id,
+                    (string) $reservation['booking']->id,
+                    'pending',
+                    $refundStatus,
+                    (float) $refund->amount,
+                    $refund->created_by,
+                    ['message' => $refundNotes],
+                );
+            });
         }
 
         return response()->json([
@@ -525,6 +561,29 @@ class PaymentController extends Controller
             'amount' => number_format($amount, 2, '.', ''),
             'reason' => trim($reason),
         ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+    }
+
+    private function recordRefundAudit(
+        string $refundId,
+        string $bookingId,
+        ?string $fromStatus,
+        string $toStatus,
+        float $amount,
+        ?string $actorId,
+        array $metadata = [],
+    ): void {
+        FinancialAuditEvent::create([
+            'subject_type' => 'payment_refund',
+            'subject_id' => $refundId,
+            'booking_id' => $bookingId,
+            'event_type' => $fromStatus === null ? 'payment_refund_reserved' : 'payment_refund_status_changed',
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'amount' => $amount,
+            'metadata' => $metadata,
+            'performed_by' => $actorId,
+            'occurred_at' => now(),
+        ]);
     }
 
     /**

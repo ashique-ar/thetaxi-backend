@@ -44,6 +44,28 @@ return new class extends Migration
                 $table->index(['transaction_id', 'status'], 'payment_refunds_transaction_status_idx');
                 $table->unique(['transaction_id', 'gateway_refund_id'], 'payment_refunds_gateway_reference_unique');
             });
+        } else {
+            $requiredColumns = [
+                'id', 'transaction_id', 'amount', 'reason', 'status', 'gateway_refund_id',
+                'notes', 'idempotency_key', 'request_payload_checksum', 'created_by',
+            ];
+            $missingColumns = array_diff($requiredColumns, Schema::getColumnListing('payment_refunds'));
+            $uniqueIndexes = array_values(array_filter(
+                Schema::getIndexes('payment_refunds'),
+                static fn (array $index): bool => (bool) ($index['unique'] ?? false),
+            ));
+            $hasTransactionKey = collect($uniqueIndexes)->contains(
+                static fn (array $index): bool => array_values($index['columns'] ?? []) === ['transaction_id', 'idempotency_key'],
+            );
+            $hasGatewayReference = collect($uniqueIndexes)->contains(
+                static fn (array $index): bool => array_values($index['columns'] ?? []) === ['transaction_id', 'gateway_refund_id'],
+            );
+
+            if ($missingColumns || ! $hasTransactionKey || ! $hasGatewayReference) {
+                throw new RuntimeException(
+                    'An existing payment_refunds table does not match the immutable idempotent refund contract; reconcile its schema and rows before migrating.'
+                );
+            }
         }
     }
 
