@@ -233,6 +233,10 @@ body.theme-theme-03.theme-page-vehicle-details .vehicle-title { font-family: var
 body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t3-line); border-left: 1px solid var(--t3-line); }
 body.theme-theme-03.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t3-line); border-bottom: 1px solid var(--t3-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
 body.theme-theme-03.theme-page-vehicle-details .booking-form-card { position: sticky; top: 110px; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-booking-top { margin-top: 24px; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-booking-top .filter-wrapper { border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-booking-top { margin-top: 24px; }
+body.theme-theme-03.theme-page-vehicle-details .vehicle-booking-top .filter-wrapper { border-radius: 0 !important; background: #fffdf8 !important; box-shadow: 14px 14px 0 var(--t3-stone) !important; }
 body.theme-theme-03.theme-page-vehicle-details .booking-shell-header { border-bottom: 5px solid var(--t3-accent); border-radius: 0 !important; background: var(--t3-ink) !important; color: var(--t3-text-on-dark) !important; }
 body.theme-theme-03.theme-page-vehicle-details .booking-form-context--vehicle .filter-item-list .single-item.active { background: var(--t3-accent) !important; border-color: var(--t3-accent) !important; color: #fff !important; }
 body.theme-theme-03.theme-page-vehicle-details .booking-form-context--vehicle .primary-btn1 { width: 100%; border-radius: 0 !important; background: var(--t3-accent) !important; }

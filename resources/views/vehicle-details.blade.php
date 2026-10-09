@@ -94,16 +94,19 @@
 
     <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('theme-01') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="container">
-            @if (is_theme('theme-01'))
-                <div class="vehicle-booking-top mb-4">
-                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--theme-01"
+            @if (is_theme('theme-01') || is_theme('theme-02') || is_theme('theme-03'))
+                <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
+                    @if (is_theme('theme-03'))
+                        <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
+                    @endif
+                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
                     </div>
                 </div>
             @endif
             <div class="row g-4 vehicle-details-layout">
-                <div class="vehicle-details-main col-lg-8">
+                <div class="vehicle-details-main {{ is_theme('theme-01') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8' }}">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -291,6 +294,7 @@
                     </div>
                 </div>
 
+                @if (is_theme('theme-04'))
                 <div class="col-lg-4">
                     <div class="booking-form-card booking-form-card--vehicle {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
@@ -366,6 +370,7 @@
                         </div>
                     </div>
                 </div>
+                @endif
             </div>
         </div>
     </div>
@@ -712,36 +717,36 @@
         }
 
         /* Hide search button on vehicle page: direct add/book flow only */
-        .booking-form-card:not(.booking-form-card--theme-01) .primary-btn1 {
+        .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .booking-form-card .primary-btn1,
+        .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .filter-wrapper .primary-btn1,
+        .vehicle-details-wrapper .booking-form-card--top .primary-btn1 {
             display: none !important;
         }
 
-        .vehicle-details--theme-01 .vehicle-booking-top .booking-form-card--theme-01 {
+        .vehicle-booking-top {
+            width: 100%;
+        }
+
+        .vehicle-details-wrapper .booking-form-card--top {
             position: static;
             width: 100%;
         }
 
-        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper {
+        .vehicle-details-wrapper .vehicle-booking-top .filter-wrapper {
             margin: 0 !important;
             padding: 0 !important;
+        }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper {
             border: 1px solid rgba(15, 23, 42, 0.08) !important;
             border-radius: 16px !important;
             background: #fff !important;
             box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
         }
 
-        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper .filter-input-wrap {
-            border-radius: 16px !important;
-        }
-
-        .vehicle-details--theme-01 .vehicle-booking-top .filter-item-list .single-item.active {
+        .vehicle-details--theme-01 .vehicle-booking-top .booking-form-context--vehicle .single-item.active {
             background: var(--primary-color1) !important;
             border-color: var(--primary-color1) !important;
-            color: #fff !important;
-        }
-
-        .vehicle-details--theme-01 .vehicle-booking-top .primary-btn1 {
-            display: inline-flex !important;
         }
 
 
@@ -1191,7 +1196,7 @@
                     });
                 });
 
-                const bookingCard = document.querySelector('.booking-form-card');
+                const bookingCard = document.querySelector('.booking-form-card--vehicle');
                 if (bookingCard) {
                     bookingCard.addEventListener('change', function(e) {
                         if (e.target && (e.target.matches('input') || e.target.matches('select'))) {
@@ -1208,7 +1213,7 @@
                     });
                 }
 
-                document.querySelectorAll('.booking-form-card .single-item[data-service]').forEach(function(
+                document.querySelectorAll('.booking-form-card--vehicle .single-item[data-service]').forEach(function(
                 tab) {
                     tab.addEventListener('click', function() {
                         setTimeout(requestPriceUpdate, 450);
