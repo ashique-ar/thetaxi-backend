@@ -103,17 +103,18 @@
                         @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
                             <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-                                <span class="text-muted small">{{ $initialServiceTypeName }} ({{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }})</span>
+                                <span class="text-muted small" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</span>
                                 <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }} {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
-                                <span class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</span>
+                                <span class="vehicle-summary-subline" id="vehiclePriceSubLabel">{{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }}</span>
+                                <span class="vehicle-summary-unit" id="vehicleSummaryUnit"></span>
                                 <span class="vehicle-price-status d-none" id="vehiclePriceStatus"></span>
                                 <meta itemprop="priceCurrency" id="vehicleOfferCurrencyMeta" content="{{ $pricing['currency'] ?? getSelectedCurrency() }}">
                                 <meta itemprop="price" id="vehicleOfferPriceMeta" content="{{ number_format((float) ($pricing['base_amount'] ?? 0), 2, '.', '') }}">
                                 <link itemprop="availability" href="https://schema.org/InStock">
                             </div>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn">Add to Cart</button>
-                                <button type="button" class="btn btn-primary" id="vehicleBookNowBtn">Book Now</button>
+                            <div class="vehicle-top-actions d-flex gap-2">
+                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn"><i class="bi bi-cart-plus" aria-hidden="true"></i> Add to Cart</button>
+                                <button type="button" class="btn btn-primary" id="vehicleBookNowBtn"><i class="bi bi-calendar-check" aria-hidden="true"></i> Book Now</button>
                             </div>
                         </div>
                     </div>
@@ -265,46 +266,6 @@
                             </div>
                         @endif
 
-                        <div class="vehicle-specifications mt-4">
-                            <h4>Vehicle Specifications</h4>
-                            <div class="row g-3">
-                                @if ($vehicleGroup->seating_capacity)
-                                    <div class="col-md-6">
-                                        <div class="spec-item">
-                                            <i class="bi bi-people-fill"></i>
-                                            <span><strong>Seating:</strong> {{ $vehicleGroup->seating_capacity }}
-                                                passengers</span>
-                                        </div>
-                                    </div>
-                                @endif
-                                @if ($vehicleGroup->transmission)
-                                    <div class="col-md-6">
-                                        <div class="spec-item">
-                                            <i class="bi bi-gear-fill text-primary"></i>
-                                            <span><strong>Transmission:</strong>
-                                                {{ $vehicleGroup->transmission->name }}</span>
-                                        </div>
-                                    </div>
-                                @endif
-                                @if ($vehicleGroup->fuelType)
-                                    <div class="col-md-6">
-                                        <div class="spec-item">
-                                            <i class="bi bi-fuel-pump-fill text-primary"></i>
-                                            <span><strong>Fuel:</strong> {{ $vehicleGroup->fuelType->name }}</span>
-                                        </div>
-                                    </div>
-                                @endif
-                                @if ($vehicleGroup->category)
-                                    <div class="col-md-6">
-                                        <div class="spec-item">
-                                            <i class="bi bi-car-front-fill text-primary"></i>
-                                            <span><strong>Category:</strong>
-                                                {{ $vehicleGroup->category->name ?? 'Standard' }}</span>
-                                        </div>
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
                     </div>
                 </div>
 
@@ -330,9 +291,9 @@
                                 </div>
                             </div>
                             <div class="booking-shell-body">
-                                @include('partials.themes.theme-04.booking-form', [
-                                    'embedded' => true,
+                                @include('components.booking-form', [
                                     'search' => $bookingFormSearch,
+                                    'bookingContext' => 'vehicle',
                                 ])
                             </div>
                         </div>
@@ -403,17 +364,30 @@
         }
 
         .vehicle-details-wrapper {
-            background:
-                radial-gradient(circle at top right, rgba(191, 38, 41, 0.08), transparent 34%),
-                linear-gradient(180deg, #f8f9fa 0%, #f4f6f8 100%);
+            padding-block: 24px !important;
+            background: linear-gradient(180deg, #f8f9fa 0%, #f4f6f8 100%);
+        }
+
+        .vehicle-details-wrapper .vehicle-details-layout { align-items: start; }
+        .vehicle-image-gallery { margin-bottom: 16px !important; }
+        .vehicle-image-gallery .main-vehicle-image {
+            display: grid;
+            min-height: clamp(250px, 30vw, 390px);
+            padding: clamp(12px, 2vw, 24px);
+            place-items: center;
+            overflow: hidden;
+            border: 1px solid var(--vehicle-border);
+            border-radius: 14px;
+            background: #fff;
         }
 
         .main-vehicle-image img {
             width: 100%;
-            height: clamp(260px, 36vw, 430px);
-            object-fit: cover;
-            border-radius: 16px;
-            box-shadow: var(--vehicle-shadow);
+            height: auto;
+            max-height: clamp(230px, 28vw, 350px);
+            object-fit: contain;
+            border-radius: 8px;
+            box-shadow: none;
         }
 
         .thumbnail-img {
@@ -431,8 +405,8 @@
 
         .vehicle-info-card {
             background: var(--vehicle-surface);
-            padding: 28px;
-            border-radius: 16px;
+            padding: clamp(18px, 2.5vw, 28px);
+            border-radius: 14px;
             border: 1px solid var(--vehicle-border);
             box-shadow: var(--vehicle-shadow);
         }
@@ -508,18 +482,22 @@
         }
 
         .details-grid {
-            border: 1px solid var(--vehicle-border);
-            border-radius: 12px;
-            overflow: hidden;
-            background: #fff;
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 8px;
+            border: 0;
+            overflow: visible;
+            background: transparent;
         }
 
         .detail-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 11px 14px;
-            border-bottom: 1px solid #f1f3f7;
+            padding: 10px 12px;
+            border: 1px solid #edf0f4;
+            border-radius: 8px;
+            background: #fff;
             gap: 16px;
         }
 
@@ -731,6 +709,7 @@
         }
 
         /* Hide search button on vehicle page: direct add/book flow only */
+        .vehicle-details-wrapper .booking-form-card--vehicle .primary-btn1,
         .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .booking-form-card .primary-btn1,
         .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .filter-wrapper .primary-btn1 {
             display: none !important;
@@ -752,6 +731,21 @@
             border: 0;
             box-shadow: none;
         }
+
+        .vehicle-top-price { background: #fff; }
+        .vehicle-top-price .vehicle-price-summary {
+            display: grid;
+            grid-template-columns: auto auto;
+            align-items: baseline;
+            column-gap: 10px;
+            padding: 0;
+            border: 0;
+            box-shadow: none;
+        }
+        .vehicle-top-price .vehicle-summary-price { font-size: 22px; }
+        .vehicle-top-price .vehicle-summary-subline,
+        .vehicle-top-price .vehicle-summary-unit { color: var(--vehicle-muted); font-size: 12px; }
+        .vehicle-details-wrapper .vehicle-top-actions .btn { min-height: 42px; padding-inline: 18px; font-weight: 700; }
 
         .vehicle-details-wrapper .vehicle-booking-top .filter-wrapper {
             margin: 0 !important;
@@ -832,10 +826,8 @@
                 padding-block: 24px !important;
             }
 
-            .main-vehicle-image img {
-                height: 250px;
-                object-fit: contain;
-            }
+            .vehicle-image-gallery .main-vehicle-image { min-height: 230px; }
+            .main-vehicle-image img { max-height: 220px; }
 
             .vehicle-thumbnails .row {
                 display: grid;
@@ -885,6 +877,10 @@
             .vehicle-details-wrapper .booking-shell-body .filter-item-list { flex-wrap: wrap; }
             .vehicle-details-wrapper .booking-shell-body .filter-item-list .single-item { flex: 1 1 44%; }
             .detail-row { flex-wrap: wrap; }
+            .details-grid { grid-template-columns: 1fr; }
+            .vehicle-top-price { align-items: stretch !important; flex-direction: column; padding: 14px; }
+            .vehicle-top-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
+            .vehicle-top-actions .btn { padding-inline: 8px !important; }
         }
 
         .booking-form-card .filter-wrapper .filter-input-wrap .filter-input.show {
