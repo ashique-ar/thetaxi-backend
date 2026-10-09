@@ -150,7 +150,19 @@ class VehicleGroupController extends Controller
         if (array_key_exists('service_seo', $data)) {
             $submittedPages = collect($data['service_seo'] ?? []);
             $submittedServiceIds = $submittedPages->pluck('service_type_id')->map(fn ($id) => (string) $id)->all();
-            $inactivePages = collect($vehicleGroup->service_seo ?? [])
+            $existingPages = collect($vehicleGroup->service_seo ?? [])->keyBy(fn ($page) => (string) ($page['service_type_id'] ?? ''));
+            $submittedPages = $submittedPages->map(function ($page) use ($existingPages) {
+                $previous = $existingPages->get((string) ($page['service_type_id'] ?? ''));
+                if ($previous) {
+                    $previousSlugs = $previous['previous_slugs'] ?? [];
+                    if (!empty($previous['slug']) && $previous['slug'] !== ($page['slug'] ?? null)) {
+                        $previousSlugs[] = $previous['slug'];
+                    }
+                    $page['previous_slugs'] = array_values(array_unique(array_filter($previousSlugs)));
+                }
+                return $page;
+            });
+            $inactivePages = $existingPages
                 ->reject(fn ($page) => in_array((string) ($page['service_type_id'] ?? ''), $submittedServiceIds, true));
             $data['service_seo'] = $submittedPages->concat($inactivePages)->values()->all();
         }

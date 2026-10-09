@@ -394,11 +394,12 @@ class PerformanceOptimizationService
         $vehicleGroups = \App\Models\Vehicle\VehicleGroup::query()
             ->where('is_active', true)
             ->whereHas('vehicles', fn ($query) => $query->where('is_active', true)->where('status', 'published'))
-            ->get(['id', 'service_seo', 'updated_at', 'created_at']);
+            ->get(['id', 'name', 'seo_slug', 'service_seo', 'updated_at', 'created_at']);
         foreach ($vehicleGroups as $vehicleGroup) {
             $lastmod = optional($vehicleGroup->updated_at)->toISOString() ?? optional($vehicleGroup->created_at)->toISOString();
+            $vehicleSlug = $vehicleGroup->seo_slug ?: (\Illuminate\Support\Str::slug($vehicleGroup->name) ?: (string) $vehicleGroup->id);
             $urls->push([
-                'loc' => route('vehicle.details', $vehicleGroup->id),
+                'loc' => route('vehicle.details.seo', ['vehicleSlug' => $vehicleSlug, 'id' => $vehicleGroup->id]),
                 'lastmod' => $lastmod,
                 'changefreq' => 'monthly',
                 'priority' => '0.6'
@@ -414,7 +415,8 @@ class PerformanceOptimizationService
                     continue;
                 }
 
-                $loc = route('vehicle.details', [
+                $loc = route('vehicle.details.seo', [
+                    'vehicleSlug' => $vehicleSlug,
                     'id' => $vehicleGroup->id,
                     'serviceSlug' => $servicePage['slug'],
                 ]);

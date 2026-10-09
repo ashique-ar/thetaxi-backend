@@ -23,7 +23,7 @@ it('maps the proven AcsEvent pagination contract without retaining names or pict
     $device->id = 'device-1';
     $page = app(HikvisionIsapiAdapter::class)->attendanceEvents($device, now()->subDay(), now(), 0, 30);
     $event = $page['events'][0];
-    expect($page['has_more'])->toBeTrue()->and($page['next_position'])->toBe(1)->and($event['provider_event_id'])->toBe('17731')->and($event['provider_person_id'])->toBe('34')->and($event['authentication_method'])->toBe('multi_factor')->and($event['vendor'])->not->toHaveKey('name')->not->toHaveKey('pictureURL');
+    expect($page['has_more'])->toBeTrue()->and($page['next_position'])->toBe(1)->and($event['provider_event_id'])->toBe('17731')->and($event['provider_person_id'])->toBe('34')->and($event['source_utc_offset_minutes'])->toBe(330)->and($event['authentication_method'])->toBe('multi_factor')->and($event['vendor'])->not->toHaveKey('name')->not->toHaveKey('pictureURL');
     Http::assertSent(fn ($request) => $request->method() === 'POST' && $request->data()['AcsEventCond']['maxResults'] === 30);
 });
 

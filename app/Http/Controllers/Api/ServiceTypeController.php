@@ -63,6 +63,7 @@ class ServiceTypeController extends Controller
         $data['created_user_id'] = $request->user()->id;
         $svc = ServiceType::create($data);
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+        Cache::forget('sitemap');
 
         return response()->json([
             'status'=>'success',
@@ -111,6 +112,7 @@ class ServiceTypeController extends Controller
         }
         $serviceType->save();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+        Cache::forget('sitemap');
         return response()->json([
             'status'=>'success',
             'message'=>'Service type updated',
@@ -136,6 +138,7 @@ class ServiceTypeController extends Controller
         $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $serviceType->delete();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+        Cache::forget('sitemap');
         return response()->json([
             'status'=>'success',
             'message'=>'Service type deleted'

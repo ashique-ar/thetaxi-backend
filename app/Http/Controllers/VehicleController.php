@@ -31,6 +31,36 @@ class VehicleController extends Controller
         $this->cartService = $cartService;
         $this->websiteSettingsService = $websiteSettingsService;
     }
+
+    public function showSeo(Request $request, string $vehicleSlug, string $id, ?string $serviceSlug = null)
+    {
+        $vehicleGroup = VehicleGroup::findOrFail($id);
+        $canonicalSlug = $this->vehicleUrlSlug($vehicleGroup);
+        $canonicalServiceSlug = $serviceSlug;
+        if ($serviceSlug !== null) {
+            $servicePage = collect($vehicleGroup->service_seo ?? [])->first(function ($page) use ($serviceSlug) {
+                return ($page['slug'] ?? null) === $serviceSlug
+                    || in_array($serviceSlug, $page['previous_slugs'] ?? [], true);
+            });
+            abort_if(!$servicePage, 404);
+            $canonicalServiceSlug = $servicePage['slug'] ?? null;
+        }
+
+        if ($vehicleSlug !== $canonicalSlug || $serviceSlug !== $canonicalServiceSlug) {
+            return redirect()->route('vehicle.details.seo', array_filter([
+                'vehicleSlug' => $canonicalSlug,
+                'id' => $vehicleGroup->id,
+                'serviceSlug' => $canonicalServiceSlug,
+            ]), 301);
+        }
+
+        return $this->show($request, $id, $serviceSlug);
+    }
+
+    private function vehicleUrlSlug(VehicleGroup $vehicleGroup): string
+    {
+        return trim((string) ($vehicleGroup->seo_slug ?: Str::slug($vehicleGroup->name))) ?: (string) $vehicleGroup->id;
+    }
     
     /**
      * Display vehicle details with booking functionality
@@ -47,6 +77,15 @@ class VehicleController extends Controller
             'transmission',
             'fuelType',
         ])->withCount('vehicles')->findOrFail($id);
+
+        if (!$request->routeIs('vehicle.details.seo')) {
+            $routeParams = [
+                'vehicleSlug' => $this->vehicleUrlSlug($vehicleGroup),
+                'id' => $vehicleGroup->id,
+            ];
+            if ($serviceSlug !== null) $routeParams['serviceSlug'] = $serviceSlug;
+            return redirect()->route('vehicle.details.seo', array_merge($request->query(), $routeParams), 301);
+        }
 
         $serviceSeoPage = null;
         $seoServiceType = null;

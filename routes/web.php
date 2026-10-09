@@ -68,6 +68,9 @@ Route::get('/vehicles', fn () => redirect()->route('cms.index', ['contentType' =
     ->name('vehicles');
 
 // Vehicle routes
+Route::get('/vehicle/{vehicleSlug}/{id}/{serviceSlug?}', [VehicleController::class, 'showSeo'])
+    ->whereUuid('id')
+    ->name('vehicle.details.seo');
 Route::get('/vehicle/{id}/{serviceSlug?}', [VehicleController::class, 'show'])->name('vehicle.details');
 Route::post('/vehicle/{id}/update-pricing', [VehicleController::class, 'updatePricing'])->name('vehicle.updatePricing');
 

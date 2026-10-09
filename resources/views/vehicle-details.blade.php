@@ -6,9 +6,10 @@
 @push('meta')
     @php
         $vehicleSeoPage = $serviceSeoPage ?? [];
+        $vehicleSlug = $vehicleGroup->seo_slug ?: (\Illuminate\Support\Str::slug($vehicleGroup->name) ?: (string) $vehicleGroup->id);
         $vehicleSeoUrl = !empty($vehicleSeoPage['slug'])
-            ? route('vehicle.details', ['id' => $vehicleGroup->id, 'serviceSlug' => $vehicleSeoPage['slug']])
-            : route('vehicle.details', ['id' => $vehicleGroup->id]);
+            ? route('vehicle.details.seo', ['vehicleSlug' => $vehicleSlug, 'id' => $vehicleGroup->id, 'serviceSlug' => $vehicleSeoPage['slug']])
+            : route('vehicle.details.seo', ['vehicleSlug' => $vehicleSlug, 'id' => $vehicleGroup->id]);
     @endphp
     @include('partials.seo', ['model' => $vehicleGroup, 'seoOverride' => $vehicleSeoPage, 'canonicalUrl' => $vehicleSeoUrl])
     @php
@@ -251,7 +252,7 @@
                                 <h3>Explore this vehicle by service</h3>
                                 <div class="d-flex flex-wrap gap-2">
                                     @foreach ($indexedServiceSeoPages as $servicePage)
-                                        <a href="{{ route('vehicle.details', ['id' => $vehicleGroup->id, 'serviceSlug' => $servicePage['slug']]) }}">
+                                        <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => $vehicleSlug, 'id' => $vehicleGroup->id, 'serviceSlug' => $servicePage['slug']]) }}">
                                             {{ $servicePage['service_name'] }}
                                         </a>
                                     @endforeach
@@ -597,6 +598,7 @@
         }
 
         .vehicle-price-summary {
+            position: relative;
             background: #fff;
             border: 1px solid var(--vehicle-border);
             border-radius: 14px;
@@ -627,8 +629,29 @@
         }
 
         .vehicle-price-status.loading {
-            color: #0f172a;
-            background: #eef2ff;
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin: 0;
+            color: var(--vehicle-muted);
+        }
+        .vehicle-price-status.loading::before {
+            content: '';
+            width: 18px;
+            height: 18px;
+            flex-shrink: 0;
+            border: 2px solid currentColor;
+            border-right-color: transparent;
+            border-radius: 50%;
+            animation: vehicle-price-spin .7s linear infinite;
+        }
+        .vehicle-price-summary[aria-busy="true"] > :not(.vehicle-price-status) { visibility: hidden; }
+        @keyframes vehicle-price-spin { to { transform: rotate(360deg); } }
+        @media (prefers-reduced-motion: reduce) {
+            .vehicle-price-status.loading::before { animation: none; }
         }
 
         .vehicle-price-status.error {
@@ -814,6 +837,7 @@
             const priceHeader = document.getElementById('vehiclePriceHeader');
             const priceHeaderValue = document.getElementById('vehicleHeaderPriceValue');
             const summaryPrice = document.getElementById('vehicleSummaryPrice');
+            const priceSummary = document.getElementById('vehiclePriceSummary');
             const summaryUnit = document.getElementById('vehicleSummaryUnit');
             const summaryLabel = document.getElementById('vehiclePriceLabel');
             const summarySubLabel = document.getElementById('vehiclePriceSubLabel');
@@ -827,6 +851,8 @@
 
             let pricingRequest = null;
             let pricingDebounce = null;
+            let pricingRevision = 0;
+            let priceLoading = false;
 
             function pluralize(value, unit) {
                 return `${value} ${unit}${value === 1 ? '' : 's'}`;
@@ -1016,6 +1042,20 @@
                 if (quotationActions) quotationActions.hidden = !show;
             }
 
+            function setPriceLoading(loading) {
+                priceLoading = loading;
+                if (priceSummary) priceSummary.setAttribute('aria-busy', String(loading));
+                document.querySelectorAll('#vehicleDirectBookingActions button, #vehicleQuotationActions button')
+                    .forEach(button => button.disabled = loading);
+                setPriceStatus(loading ? 'Updating price…' : '', loading ? 'loading' : '');
+            }
+
+            function showPriceOnRequest() {
+                showQuotationActions(true);
+                if (summaryPrice) summaryPrice.textContent = 'Price on request';
+                if (summaryUnit) summaryUnit.hidden = true;
+            }
+
             function applyPricingToUi(pricing, searchData) {
                 const amount = Number((pricing && pricing.base_amount) || 0);
                 const metadata = (pricing && pricing.calculation_metadata) || {};
@@ -1064,11 +1104,14 @@
                 }
             }
 
-            function refreshPriceNow() {
+            function refreshPriceNow(revision) {
+                if (revision !== pricingRevision) return;
                 let payload;
                 try {
                     payload = buildPricingPayload();
                 } catch (err) {
+                    showPriceOnRequest();
+                    setPriceLoading(false);
                     return;
                 }
 
@@ -1076,38 +1119,42 @@
                     pricingRequest.abort();
                 }
 
-                setPriceStatus('', '');
                 pricingRequest = $.ajax({
                     url: '{{ route('vehicle.updatePricing', ['id' => $vehicleGroup->id]) }}',
                     method: 'POST',
                     data: payload,
                     success: function(response) {
+                        if (revision !== pricingRevision) return;
                         if (response && response.success && response.pricing) {
                             applyPricingToUi(response.pricing, response.search_data || payload);
-                            setPriceStatus('', '');
                         } else {
-                            showQuotationActions(true);
-                            if (summaryPrice) summaryPrice.textContent = 'Price on request';
-                            if (summaryUnit) summaryUnit.hidden = true;
+                            showPriceOnRequest();
                         }
                     },
                     error: function(xhr, status) {
-                        if (status === 'abort') return;
-                        showQuotationActions(true);
-                        if (summaryPrice) summaryPrice.textContent = 'Price on request';
-                        if (summaryUnit) summaryUnit.hidden = true;
+                        if (status === 'abort' || revision !== pricingRevision) return;
+                        showPriceOnRequest();
+                    },
+                    complete: function() {
+                        if (revision !== pricingRevision) return;
+                        pricingRequest = null;
+                        setPriceLoading(false);
                     }
                 });
             }
 
-            function requestPriceUpdate() {
+            function requestPriceUpdate(delay = 350) {
+                const revision = ++pricingRevision;
+                setPriceLoading(true);
                 if (pricingDebounce) {
                     clearTimeout(pricingDebounce);
                 }
-                pricingDebounce = setTimeout(refreshPriceNow, 350);
+                if (pricingRequest && typeof pricingRequest.abort === 'function') pricingRequest.abort();
+                pricingDebounce = setTimeout(() => refreshPriceNow(revision), delay);
             }
 
             function postToCart(bookNow) {
+                if (priceLoading) return;
                 const payload = buildCartPayload();
                 $.ajax({
                     url: '{{ route('cart.add') }}',
@@ -1154,21 +1201,19 @@
                 let bookingFormTouched = false;
                 if (bookingCard) {
                     bookingCard.addEventListener('pointerdown', function(e) {
-                        if (e.target.closest('input, select, button, .single-item')) bookingFormTouched = true;
+                        if (e.target.closest('input, select, textarea, button, .single-item')) bookingFormTouched = true;
                     }, true);
                     bookingCard.addEventListener('keydown', function(e) {
-                        if (e.target.matches('input, select')) bookingFormTouched = true;
+                        if (e.target.matches('input, select, textarea')) bookingFormTouched = true;
                     }, true);
                     bookingCard.addEventListener('change', function(e) {
-                        if (bookingFormTouched && e.target && (e.target.matches('input') || e.target.matches('select'))) {
+                        if (bookingFormTouched && e.target?.matches('input, select, textarea')) {
                             requestPriceUpdate();
                         }
                     });
 
                     bookingCard.addEventListener('input', function(e) {
-                        if (bookingFormTouched && e.target && e.target.matches(
-                                'input[name=\"pickup\"], input[name=\"dropoff\"], input[name=\"pickup_date\"], input[name=\"dropoff_date\"], input[name=\"date\"], input[name=\"pickup_time\"], input[name=\"dropoff_time\"], input[name=\"time\"]'
-                                )) {
+                        if (bookingFormTouched && e.target?.matches('input, select, textarea')) {
                             requestPriceUpdate();
                         }
                     });
@@ -1178,7 +1223,7 @@
                 tab) {
                 tab.addEventListener('click', function() {
                     bookingFormTouched = true;
-                        setTimeout(requestPriceUpdate, 450);
+                        requestPriceUpdate(450);
                     });
                 });
 

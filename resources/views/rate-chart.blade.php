@@ -577,7 +577,7 @@
                             <!-- Daily Rate -->
                             <td style="text-align: center;">
                                 @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
-                                    <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
+                                    <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => \Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id'], 'id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                         <div class="rate-amount">
                                             {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['daily_rate']['amount'])), 0) }}
                                         </div>
@@ -600,7 +600,7 @@
                             <!-- Monthly Rate -->
                             <td style="text-align: center;">
                                 @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
-                                    <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
+                                    <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => \Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id'], 'id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                         <div class="rate-amount">
                                             {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['amount'])), 0) }}
                                         </div>
@@ -645,7 +645,7 @@
 
                             <!-- Action -->
                             {{-- <td style="text-align: center;">
-                                <a href="{{ route('vehicle.details', $vehicle['id']) }}" 
+                                <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => \Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id'], 'id' => $vehicle['id']]) }}"
                                    class="btn btn-sm btn-primary"
                                    style="padding: 8px 16px; border-radius: 6px; text-decoration: none;">
                                     <i class="bi bi-eye"></i> View
@@ -729,7 +729,7 @@
                         <div class="rate-box">
                             <div class="rate-label">Daily Rate</div>
                             @if(($vehicle['daily_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
-                                <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
+                                <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => \Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id'], 'id' => $vehicle['id'], 'preset' => 'daily']) }}" class="rate-link" title="Open vehicle with 1-day rental preset">
                                     <div class="rate-amount">
                                         {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['daily_rate']['amount'])), 0) }}
                                     </div>
@@ -752,7 +752,7 @@
                         <div class="rate-box">
                             <div class="rate-label">Monthly Rate</div>
                             @if(($vehicle['monthly_rate']['amount'] ?? 0) > 0 && !($vehicle['is_inquiry_only'] ?? false))
-                                <a href="{{ route('vehicle.details', ['id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
+                                <a href="{{ route('vehicle.details.seo', ['vehicleSlug' => \Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id'], 'id' => $vehicle['id'], 'preset' => 'monthly']) }}" class="rate-link" title="Open vehicle with 30-day rental preset">
                                     <div class="rate-amount">
                                         {{ getCurrencySymbol() }} {{ number_format(floor(max(0, $vehicle['monthly_rate']['amount'])), 0) }}
                                     </div>

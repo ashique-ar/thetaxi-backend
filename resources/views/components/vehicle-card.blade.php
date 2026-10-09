@@ -525,7 +525,7 @@
                 @endif
 
                 @if ($showViewDetails)
-                    <a href="{{ $searchId ? route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) : route('vehicle.details', ['id' => $vehicle['id']]) }}"
+                    <a href="{{ route('vehicle.details.seo', array_filter(['vehicleSlug' => $vehicle['seo_slug'] ?? (\Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id']), 'id' => $vehicle['id'], 'search' => $searchId ?: null])) }}"
                         class="btn btn-outline-secondary btn-sm w-100">
                         <i class="bi bi-eye"></i> View Details
                     </a>
@@ -553,7 +553,7 @@
                 </p>
 
                 @if ($showViewDetails)
-                    <a href="{{ $searchId ? route('vehicle.details', ['id' => $vehicle['id'], 'search' => $searchId]) : route('vehicle.details', ['id' => $vehicle['id']]) }}"
+                    <a href="{{ route('vehicle.details.seo', array_filter(['vehicleSlug' => $vehicle['seo_slug'] ?? (\Illuminate\Support\Str::slug($vehicle['name'] ?? 'vehicle') ?: (string) $vehicle['id']), 'id' => $vehicle['id'], 'search' => $searchId ?: null])) }}"
                         class="btn btn-outline-secondary btn-sm w-100 mt-2">
                         <i class="bi bi-eye"></i> View Details
                     </a>

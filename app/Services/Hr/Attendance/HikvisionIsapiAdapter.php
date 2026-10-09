@@ -67,7 +67,7 @@ class HikvisionIsapiAdapter implements AttendanceProviderAdapter
                 continue;
             }
             $personId = (string) ($row['employeeNoString'] ?? $row['employeeNo'] ?? $row['cardNo'] ?? '');
-            $occurred = CarbonImmutable::parse((string) $row['time']);
+            $occurred = CarbonImmutable::parse((string) $row['time'], $device->timezone);
             $attendanceStatus = (string) ($row['attendanceStatus'] ?? 'undefined');
             $events[] = [
                 'provider_event_id' => (string) $row['serialNo'],
@@ -75,7 +75,7 @@ class HikvisionIsapiAdapter implements AttendanceProviderAdapter
                 'employee_number' => $personId !== '' ? $personId : null,
                 'occurred_at' => $occurred->toIso8601String(),
                 'source_timezone' => $device->timezone,
-                'source_utc_offset_minutes' => (int) ($occurred->utcOffset() / 60),
+                'source_utc_offset_minutes' => (int) $occurred->setTimezone($device->timezone)->utcOffset(),
                 'event_kind' => $personId !== '' ? 'punch' : 'access_control',
                 'direction' => match ($attendanceStatus) {
                     'checkIn', 'breakIn', 'overtimeIn' => 'in', 'checkOut', 'breakOut', 'overtimeOut' => 'out', default => null

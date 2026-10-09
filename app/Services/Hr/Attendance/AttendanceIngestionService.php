@@ -65,7 +65,7 @@ class AttendanceIngestionService
             return;
         }
         $occurred = CarbonImmutable::parse($event['occurred_at']);
-        $sourceOffset = (int) ($occurred->setTimezone($event['source_timezone'])->utcOffset() / 60);
+        $sourceOffset = (int) $occurred->setTimezone($event['source_timezone'])->utcOffset();
         abort_unless($sourceOffset === (int) $event['source_utc_offset_minutes'], 422, 'Attendance event timezone and UTC offset evidence do not agree.');
         $occurredDate = $occurred->setTimezone($event['source_timezone'])->toDateString();
         $mappingQuery = DB::table('hr_attendance_person_mappings')->where('company_id', $connector->company_id)->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->whereDate('effective_from', '<=', $occurredDate)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $occurredDate));
