@@ -94,6 +94,42 @@
 
     <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('default') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="container">
+            @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
+                <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
+                    @if (is_theme('theme-03'))
+                        <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
+                    @endif
+                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}"
+                        data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
+                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
+                        <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
+                            <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+                                <span class="text-muted small">{{ $initialServiceTypeName }} ({{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }})</span>
+                                <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }} {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
+                                <span class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</span>
+                                <span class="vehicle-price-status d-none" id="vehiclePriceStatus"></span>
+                                <meta itemprop="priceCurrency" id="vehicleOfferCurrencyMeta" content="{{ $pricing['currency'] ?? getSelectedCurrency() }}">
+                                <meta itemprop="price" id="vehicleOfferPriceMeta" content="{{ number_format((float) ($pricing['base_amount'] ?? 0), 2, '.', '') }}">
+                                <link itemprop="availability" href="https://schema.org/InStock">
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn">Add to Cart</button>
+                                <button type="button" class="btn btn-primary" id="vehicleBookNowBtn">Book Now</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            @endif
+            @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
+                <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
+                    @if (is_theme('theme-03'))
+                        <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
+                    @endif
+                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
+                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
+                    </div>
+                </div>
+            @endif
             <div class="row g-4 vehicle-details-layout">
                 <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8' }}">
                     <div class="vehicle-image-gallery mb-4">
@@ -361,31 +397,6 @@
                 </div>
                 @endif
             </div>
-            @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
-                <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mt-4">
-                    @if (is_theme('theme-03'))
-                        <div class="t3-journey-desk__masthead" aria-hidden="true">
-                            <span>Journey desk</span><i></i><b>Search / enquire</b>
-                        </div>
-                    @endif
-                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}"
-                        data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
-                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
-                        <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
-                            <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
-                                <span class="text-muted small">{{ $initialServiceTypeName }} ({{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }})</span>
-                                <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }} {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
-                                <span class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</span>
-                                <span class="vehicle-price-status d-none" id="vehiclePriceStatus"></span>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn">Add to Cart</button>
-                                <button type="button" class="btn btn-primary" id="vehicleBookNowBtn">Book Now</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            @endif
         </div>
     </div>
 @endsection
@@ -744,6 +755,12 @@
         .vehicle-details-wrapper .booking-form-card--top .t4-booking-panel__card {
             position: static;
             width: 100%;
+        }
+
+        .vehicle-details-wrapper .booking-form-card--top .booking-shell-header,
+        .vehicle-details-wrapper .booking-form-card--top .vehicle-price-summary,
+        .vehicle-details-wrapper .booking-form-card--top .vehicle-actions-card {
+            display: none;
         }
 
         .vehicle-details-wrapper .vehicle-booking-top .filter-wrapper {
