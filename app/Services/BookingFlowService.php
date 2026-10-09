@@ -1088,7 +1088,9 @@ class BookingFlowService
                         'pricing_context' => !empty($corporateAccountId)
                             ? 'corporate'
                             : (($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : 'portal'),
-                        'currency' => $this->currencyService->getBookingBaseCurrency(),
+                        'currency' => $isPublic
+                            ? $this->currencyService->getSelectedCurrency()
+                            : $this->currencyService->getBookingBaseCurrency(),
                         'base_currency' => $this->currencyService->getBookingBaseCurrency(),
                         'is_preview_calculation' => true,
                     ];

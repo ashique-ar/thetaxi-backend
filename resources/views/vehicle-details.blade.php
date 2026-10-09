@@ -77,6 +77,7 @@
         $vehicleImages = array_values(array_unique(array_filter(array_slice($vehicleImages, 0, 8))));
     @endphp
 
+    @if (!is_theme('theme-01') && !is_theme('theme-02'))
     <div class="breadcrumb-section three"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container banner-content">
@@ -89,11 +90,20 @@
             </div>
         </div>
     </div>
+    @endif
 
-    <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} py-5">
+    <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('theme-01') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="container">
-            <div class="row g-4">
-                <div class="col-lg-8">
+            @if (is_theme('theme-01'))
+                <div class="vehicle-booking-top mb-4">
+                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--theme-01"
+                        data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
+                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
+                    </div>
+                </div>
+            @endif
+            <div class="row g-4 vehicle-details-layout">
+                <div class="vehicle-details-main col-lg-8">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -292,13 +302,12 @@
                                         {{ \Illuminate\Support\Str::plural('day', $numDays) }}).</small>
                                 </div>
                                 <div class="booking-shell-price" id="vehiclePriceHeader"
-                                    data-currency-symbol="{{ getCurrencySymbol() }}"
                                     data-currency-code="{{ $pricing['currency'] ?? getSelectedCurrency() }}"
                                     data-initial-price="{{ (float) ($pricing['base_amount'] ?? 0) }}"
                                     data-initial-service="{{ $initialServiceTypeCode }}"
                                     data-initial-days="{{ $numDays }}">
                                     <small>Current</small>
-                                    <strong id="vehicleHeaderPriceValue">{{ getCurrencySymbol() }}
+                                    <strong id="vehicleHeaderPriceValue">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
                                         {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
                                 </div>
                             </div>
@@ -322,7 +331,7 @@
                                 </div>
                                 <div class="text-end">
                                     <div class="vehicle-summary-price" id="vehicleSummaryPrice">
-                                        {{ getCurrencySymbol() }}
+                                        {{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
                                         {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}
                                     </div>
                                     @if (($pricing['base_amount'] ?? 0) > 0 && $numDays > 1)
@@ -703,9 +712,38 @@
         }
 
         /* Hide search button on vehicle page: direct add/book flow only */
-        .booking-form-card .primary-btn1 {
+        .booking-form-card:not(.booking-form-card--theme-01) .primary-btn1 {
             display: none !important;
         }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .booking-form-card--theme-01 {
+            position: static;
+            width: 100%;
+        }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper {
+            margin: 0 !important;
+            padding: 0 !important;
+            border: 1px solid rgba(15, 23, 42, 0.08) !important;
+            border-radius: 16px !important;
+            background: #fff !important;
+            box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
+        }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper .filter-input-wrap {
+            border-radius: 16px !important;
+        }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .filter-item-list .single-item.active {
+            background: var(--primary-color1) !important;
+            border-color: var(--primary-color1) !important;
+            color: #fff !important;
+        }
+
+        .vehicle-details--theme-01 .vehicle-booking-top .primary-btn1 {
+            display: inline-flex !important;
+        }
+
 
         .vehicle-toast {
             position: fixed;
@@ -967,7 +1005,7 @@
                 return payload;
             }
 
-            const currencySymbols = @json(collect(getAvailableCurrencies())->pluck('symbol', 'code'));
+            const currencySymbols = @json(collect(getAvailableCurrencies())->mapWithKeys(fn ($currency) => [strtoupper($currency['code']) => $currency['symbol'] ?? $currency['code']]));
 
             function formatMoney(amount, currencyCode) {
                 const value = Number(amount || 0);
