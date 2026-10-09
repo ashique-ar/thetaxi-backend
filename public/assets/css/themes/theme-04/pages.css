@@ -369,7 +369,6 @@ body.theme-theme-04.theme-page-search :where(.distance-info, .duration-info, .se
 body.theme-theme-04.theme-page-vehicle-details .vehicle-details-section { margin: 0 !important; padding: var(--t4-section) 0; }
 body.theme-theme-04.theme-page-vehicle-details :where(.vehicle-gallery, .vehicle-details-image, .main-vehicle-image) { border: 1px solid var(--t4-line); border-radius: 10px; background: linear-gradient(180deg, #fff, #f2f3f4); }
 body.theme-theme-04.theme-page-vehicle-details .main-vehicle-image { padding: clamp(20px, 4vw, 48px); object-fit: contain; }
-body.theme-theme-04.theme-page-vehicle-details :where(.booking-form-card, .booking-form-shell) { overflow: hidden; border: 1px solid var(--t4-line) !important; border-top: 4px solid var(--t4-accent) !important; border-radius: 10px !important; background: #fff !important; box-shadow: var(--t4-shadow) !important; }
 body.theme-theme-04.theme-page-vehicle-details .booking-shell-header { background: var(--t4-text) !important; color: #fff !important; }
 body.theme-theme-04.theme-page-vehicle-details .details-grid { border-top: 1px solid var(--t4-line); border-left: 1px solid var(--t4-line); }
 body.theme-theme-04.theme-page-vehicle-details .detail-row { padding: 16px; border-right: 1px solid var(--t4-line); border-bottom: 1px solid var(--t4-line); }

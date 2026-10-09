@@ -503,11 +503,11 @@ class PaymentController extends Controller
             } catch (\Throwable $e) {
                 // The provider has confirmed cash movement. Keep the amount
                 // reserved and flag the ledger mismatch for reconciliation.
-                DB::transaction(function () use ($refund, $gatewayRefundId, $reservation, $e): void {
+                DB::transaction(function () use ($refund, $gatewayRefundId, $reservation): void {
                     DB::table('payment_refunds')->where('id', $refund->id)->update([
                         'status' => 'manual_required',
                         'gateway_refund_id' => $gatewayRefundId,
-                        'notes' => 'Provider confirmed refund, but canonical ledger adjustment failed; reconcile before retrying: '.$e->getMessage(),
+                        'notes' => 'Provider confirmed refund, but canonical ledger adjustment failed; reconcile before retrying.',
                         'updated_at' => now(),
                     ]);
                     $this->recordRefundAudit(

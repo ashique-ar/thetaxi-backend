@@ -330,6 +330,8 @@ class Booking extends BaseModel
         'booking_date' => 'datetime',
         'approval_requested_at' => 'datetime',
         'confirmed_at' => 'datetime',
+        'settlement_due_date' => 'date',
+        'settled_at' => 'datetime',
         'recurrence_end_date' => 'date',
         'recurring_occurrence_date' => 'date',
         'payment_collected_at' => 'datetime',
