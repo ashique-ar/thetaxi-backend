@@ -121,7 +121,7 @@
                 </div>
             @endif
             <div class="row g-4 vehicle-details-layout">
-                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8' }}">
+                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8 order-2' }}">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -149,63 +149,40 @@
                         @if ($vehicleGroup->description)
                             <p class="vehicle-description">{{ $vehicleGroup->description }}</p>
                         @endif
-                        <div class="vehicle-meta-chips mb-3">
-                            @if ($vehicleGroup->category)
-                                <span class="meta-chip"><i class="bi bi-tag"></i>
-                                    {{ $vehicleGroup->category->name ?? 'Standard' }}</span>
-                            @endif
-                            @if ($vehicleGroup->seating_capacity)
-                                <span class="meta-chip"><i class="bi bi-people"></i> {{ $vehicleGroup->seating_capacity }}
-                                    Seats</span>
-                            @endif
-                            @if ($vehicleGroup->transmission)
-                                <span class="meta-chip"><i class="bi bi-gear"></i>
-                                    {{ $vehicleGroup->transmission->name }}</span>
-                            @endif
+                        <div class="vehicle-specs vehicle-details-specs">
+                            <div class="spec-item">
+                                @if ($vehicleGroup->passengers_count || $vehicleGroup->seating_capacity)
+                                    <i class="bi bi-people-fill"></i>
+                                    <span>{{ $vehicleGroup->passengers_count ?? $vehicleGroup->seating_capacity }}{{ !$vehicleGroup->passengers_count ? ' Seats' : '' }}</span>
+                                @endif
+                                @if ($vehicleGroup->no_of_doors)
+                                    <i class="bi bi-door-open-fill"></i>
+                                    <span>{{ $vehicleGroup->no_of_doors }} Doors</span>
+                                @endif
+                                @if ($vehicleGroup->transmission)
+                                    <i class="bi bi-gear-fill"></i>
+                                    <span>{{ $vehicleGroup->transmission->name }}</span>
+                                @endif
+                                @if ($vehicleGroup->fuelType)
+                                    <i class="bi bi-fuel-pump-fill"></i>
+                                    <span>{{ $vehicleGroup->fuelType->name }}</span>
+                                @endif
+                                @if ($vehicleGroup->hand_luggages)
+                                    <i class="bi bi-suitcase-fill"></i>
+                                    <span>{{ $vehicleGroup->hand_luggages }}</span>
+                                @endif
+                            </div>
                         </div>
 
-                        <div class="vehicle-quick-grid">
-                            @if ($vehicleGroup->passengers_count || $vehicleGroup->seating_capacity)
-                                <div class="quick-cell">
-                                    <small>Passengers</small>
-                                    <strong>{{ $vehicleGroup->passengers_count ?? $vehicleGroup->seating_capacity }}</strong>
-                                </div>
-                            @endif
-                            @if ($vehicleGroup->hand_luggages)
-                                <div class="quick-cell">
-                                    <small>Hand Luggage</small>
-                                    <strong>{{ $vehicleGroup->hand_luggages }}</strong>
-                                </div>
-                            @endif
-                            @if ($vehicleGroup->no_of_doors)
-                                <div class="quick-cell">
-                                    <small>Doors</small>
-                                    <strong>{{ $vehicleGroup->no_of_doors }}</strong>
-                                </div>
-                            @endif
-                            @if (!is_null($vehicleGroup->air_conditioning))
-                                <div class="quick-cell">
-                                    <small>A/C</small>
-                                    <strong>{{ $vehicleGroup->air_conditioning ? 'Yes' : 'No' }}</strong>
-                                </div>
-                            @endif
-                            @if (($vehicleGroup->vehicles_count ?? 0) > 0)
-                                <div class="quick-cell">
-                                    <small>Vehicles In Group</small>
-                                    <strong>{{ $vehicleGroup->vehicles_count }}</strong>
-                                </div>
-                            @endif
-                            @if (($vehicleGroup->refundable_deposit ?? 0) > 0)
-                                <div class="quick-cell">
-                                    <small>Refundable Deposit</small>
-                                    <strong>{{ getCurrencySymbol() }}
-                                        {{ number_format((float) $vehicleGroup->refundable_deposit, 0) }}</strong>
-                                </div>
-                            @endif
-                        </div>
+                        @if (($vehicleGroup->refundable_deposit ?? 0) > 0)
+                            <div class="vehicle-deposit-note mt-3">
+                                <i class="bi bi-shield-check"></i>
+                                <span>Refundable deposit: {{ formatPrice((float) $vehicleGroup->refundable_deposit) }}</span>
+                            </div>
+                        @endif
 
                         <div class="vehicle-specifications mt-4">
-                            <h4>Vehicle Group Details</h4>
+                            <h4>Vehicle Details</h4>
                             @php
                                 $groupDetails = [
                                     ['label' => 'Make', 'value' => $vehicleGroup->make->name ?? null],
@@ -213,21 +190,11 @@
                                     ['label' => 'Grade', 'value' => $vehicleGroup->grade->name ?? null],
                                     ['label' => 'Class', 'value' => $vehicleGroup->class->name ?? null],
                                     ['label' => 'Category', 'value' => $vehicleGroup->category->name ?? null],
-                                    ['label' => 'Transmission', 'value' => $vehicleGroup->transmission->name ?? null],
-                                    ['label' => 'Fuel Type', 'value' => $vehicleGroup->fuelType->name ?? null],
-                                    [
-                                        'label' => 'Seating Capacity',
-                                        'value' => $vehicleGroup->seating_capacity ?? $vehicleGroup->passengers_count,
-                                    ],
-                                    ['label' => 'Hand Luggages', 'value' => $vehicleGroup->hand_luggages],
-                                    ['label' => 'No. of Doors', 'value' => $vehicleGroup->no_of_doors],
                                     [
                                         'label' => 'Air Conditioning',
                                         'value' => is_null($vehicleGroup->air_conditioning)
                                             ? null
-                                            : ($vehicleGroup->air_conditioning
-                                                ? 'Available'
-                                                : 'Not Available'),
+                                            : ($vehicleGroup->air_conditioning ? 'Available' : 'Not Available'),
                                     ],
                                 ];
                             @endphp
@@ -270,32 +237,14 @@
                 </div>
 
                 @if (is_theme('theme-04'))
-                <div class="col-lg-4">
+                <div class="col-lg-4 order-1">
                     <div class="booking-form-card booking-form-card--vehicle {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
-                        <div class="booking-form-shell">
-                            <div class="booking-shell-header">
-                                <div>
-                                    <h5 class="mb-1">Plan Your Ride</h5>
-                                    <small>Defaulted to {{ $initialServiceTypeName }} ({{ $numDays }}
-                                        {{ \Illuminate\Support\Str::plural('day', $numDays) }}).</small>
-                                </div>
-                                <div class="booking-shell-price" id="vehiclePriceHeader"
-                                    data-currency-code="{{ $pricing['currency'] ?? getSelectedCurrency() }}"
-                                    data-initial-price="{{ (float) ($pricing['base_amount'] ?? 0) }}"
-                                    data-initial-service="{{ $initialServiceTypeCode }}"
-                                    data-initial-days="{{ $numDays }}">
-                                    <small>Current</small>
-                                    <strong id="vehicleHeaderPriceValue">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
-                                        {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
-                                </div>
-                            </div>
-                            <div class="booking-shell-body">
-                                @include('components.booking-form', [
-                                    'search' => $bookingFormSearch,
-                                    'bookingContext' => 'vehicle',
-                                ])
-                            </div>
+                        <div class="search-booking-panel t4-booking-panel__card">
+                            <header>
+                                <span class="t4-kicker">Book Your Ride</span>
+                            </header>
+                            @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
                         </div>
 
                         <div class="vehicle-price-summary mt-3" id="vehiclePriceSummary" itemprop="offers" itemscope
@@ -354,8 +303,7 @@
 @push('styles')
     <style>
         :root {
-            --vehicle-primary: #bf2629;
-            --vehicle-primary-dark: #9f1f21;
+            --vehicle-primary: var(--t4-accent, var(--t3-accent, var(--primary-color1, #bf2629)));
             --vehicle-surface: #ffffff;
             --vehicle-muted: #6b7280;
             --vehicle-border: #eceef2;
@@ -424,54 +372,22 @@
             line-height: 1.7;
         }
 
-        .vehicle-meta-chips {
-            display: flex;
+        .vehicle-details-specs .spec-item {
             flex-wrap: wrap;
-            gap: 8px;
+            gap: 8px 10px;
+            padding: 8px 0;
         }
 
-        .meta-chip {
-            background: #f7f8fa;
-            border: 1px solid var(--vehicle-border);
-            border-radius: 999px;
-            padding: 6px 12px;
-            font-size: 12px;
-            font-weight: 600;
-            color: #1f2937;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
+        .vehicle-details-specs .spec-item span {
+            margin-right: 8px;
         }
 
-        .vehicle-quick-grid {
-            margin-top: 16px;
-            display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 10px;
-        }
-
-        .quick-cell {
-            border: 1px solid var(--vehicle-border);
-            border-radius: 12px;
-            padding: 10px 12px;
-            background: #fcfcfd;
+        .vehicle-deposit-note {
             display: flex;
-            flex-direction: column;
-            gap: 2px;
-        }
-
-        .quick-cell small {
+            align-items: center;
+            gap: 8px;
             color: var(--vehicle-muted);
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.3px;
-        }
-
-        .quick-cell strong {
-            color: #111827;
-            font-size: 15px;
-            font-weight: 700;
-            line-height: 1.2;
+            font-size: 14px;
         }
 
         .vehicle-specifications h4 {
@@ -590,53 +506,6 @@
             background: #fff;
         }
 
-        .vehicle-details-wrapper .booking-shell-body .filter-wrapper {
-            margin-top: 0 !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .filter-item-list {
-            margin: 0 !important;
-            gap: 8px !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .single-item {
-            border-radius: 10px !important;
-            border: 1px solid var(--vehicle-border) !important;
-            background: #f8fafc !important;
-            padding: 10px 8px !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .single-item.active {
-            background: var(--vehicle-primary) !important;
-            border-color: var(--vehicle-primary) !important;
-            color: #fff !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .filter-input-wrap {
-            margin-top: 10px !important;
-            background: transparent !important;
-            box-shadow: none !important;
-            padding: 0 !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .single-search-box {
-            margin-bottom: 10px !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .booking-field > .input-label {
-            font-weight: 600 !important;
-            font-size: 12px !important;
-        }
-
-        .vehicle-details-wrapper .booking-shell-body .single-search-box input,
-        .vehicle-details-wrapper .booking-shell-body .single-search-box select {
-            border-radius: 9px !important;
-            border: 1px solid var(--vehicle-border) !important;
-        }
-
         .vehicle-details-wrapper,
         .vehicle-details-wrapper .container,
         .vehicle-details-wrapper .row,
@@ -732,7 +601,6 @@
             box-shadow: none;
         }
 
-        .vehicle-top-price { background: #fff; }
         .vehicle-top-price .vehicle-price-summary {
             display: grid;
             grid-template-columns: auto auto;
@@ -752,21 +620,9 @@
             padding: 0 !important;
         }
 
-        .vehicle-details--theme-01 .vehicle-booking-top .filter-wrapper {
-            border: 1px solid rgba(15, 23, 42, 0.08) !important;
-            border-radius: 16px !important;
-            background: #fff !important;
-            box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
-        }
-
         .vehicle-details--theme-01 .vehicle-top-price {
             padding: 12px 18px;
             border-top: 1px solid rgba(15, 23, 42, 0.08);
-        }
-
-        .vehicle-details--theme-01 .vehicle-booking-top .booking-form-context--vehicle .single-item.active {
-            background: var(--primary-color1) !important;
-            border-color: var(--primary-color1) !important;
         }
 
         .vehicle-top-price {
@@ -816,9 +672,6 @@
                 position: static;
             }
 
-            .vehicle-quick-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
         }
 
         @media (max-width: 576px) {
@@ -849,10 +702,6 @@
 
             .vehicle-actions-card {
                 padding: 14px;
-            }
-
-            .vehicle-quick-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             .detail-row {

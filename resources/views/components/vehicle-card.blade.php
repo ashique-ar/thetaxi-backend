@@ -366,7 +366,7 @@
                     @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                         <span class="amenity-badge">
                             <i class="bi bi-shield-check"></i> Deposit:
-                            {{ getCurrencySymbol() }} {{ number_format($vehicle['refundable_deposit'], 0) }}
+                            {{ formatPrice((float) $vehicle['refundable_deposit']) }}
                         </span>
                     @endif
                 </div>
