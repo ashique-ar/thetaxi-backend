@@ -73,10 +73,12 @@ class PaymentController extends Controller
 
             DB::table('payment_transactions')->insert([
                 'id'             => $recordId,
+                'attempt_id'     => $recordId,
                 'booking_id'     => $booking->id,
                 'amount'         => $request->amount,
                 'currency'       => $request->currency,
                 'payment_method' => $request->payment_method,
+                'gateway'        => $request->payment_method,
                 'status'         => 'pending',
                 'transaction_id' => $transactionId,
                 'created_at'     => now(),
@@ -331,33 +333,36 @@ class PaymentController extends Controller
      */
     public function refundPayment(Request $request, string $id): JsonResponse
     {
-        $validator = Validator::make($request->all(), [
-            'amount' => 'nullable|numeric|min:0.01',
-            'reason' => 'required|string|max:500'
+        $data = $request->validate([
+            'amount' => ['nullable', 'numeric', 'gt:0'],
+            'reason' => ['required', 'string', 'max:500'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
 
-        if ($validator->fails()) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Validation failed',
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        try {
+        // Reserve the amount before calling a provider. Pending and uncertain
+        // outcomes continue to reserve funds until explicitly reconciled.
+        $reservation = DB::transaction(function () use ($id, $data, $request): array {
             $transaction = DB::table('payment_transactions')
                 ->where('transaction_id', $id)
-                ->where('status', 'success')
+                ->lockForUpdate()
                 ->first();
+            abort_unless($transaction && $transaction->status === 'success', 404,
+                'Transaction not found or not eligible for refund.');
 
-            if (!$transaction) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Transaction not found or not eligible for refund'
-                ], 404);
+            $existing = DB::table('payment_refunds')
+                ->where('transaction_id', $transaction->id)
+                ->where('idempotency_key', $data['idempotency_key'])
+                ->first();
+            if ($existing) {
+                $amount = round((float) ($data['amount'] ?? $existing->amount), 2);
+                $checksum = $this->refundRequestChecksum($amount, (string) $data['reason']);
+                abort_unless(hash_equals((string) $existing->request_payload_checksum, $checksum), 409,
+                    'This refund key was already used with different facts.');
+
+                return ['row' => $existing, 'replayed' => true];
             }
 
-            $booking = Booking::find($transaction->booking_id);
+            $booking = Booking::query()->find($transaction->booking_id);
             $receipt = BookingPaymentReceipt::query()
                 ->with('components')
                 ->where('booking_id', $transaction->booking_id)
@@ -366,119 +371,160 @@ class PaymentController extends Controller
                         ->orWhere('provider_event_id', $transaction->transaction_id)
                         ->orWhere('idempotency_key', 'gateway:'.$transaction->transaction_id);
                 })
+                ->lockForUpdate()
                 ->first();
             $component = $receipt?->components->firstWhere('component_type', 'booking_payment');
-            if (! $booking || ! $component) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.',
-                ], 409);
-            }
+            abort_unless($booking && $component, 409,
+                'Canonical payment receipt is missing. Reconcile this transaction before refunding it.');
 
-            $alreadyRefunded = (float) DB::table('payment_refunds')
+            $reservedAmount = (float) DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)
-                ->where('status', 'completed')
+                ->whereIn('status', ['pending', 'completed', 'manual_required'])
                 ->sum('amount');
-            $remainingRefundable = max(0, round((float) $transaction->amount - $alreadyRefunded, 2));
-            $refundAmount = round((float) ($request->amount ?? $remainingRefundable), 2);
-            if ($refundAmount <= 0) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'This transaction has no remaining refundable amount.',
-                ], 422);
-            }
-            if ($refundAmount > $remainingRefundable) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => "Refund amount cannot exceed the remaining refundable amount of {$remainingRefundable}.",
-                ], 422);
-            }
-
-            // Attempt gateway refund
-            $gatewayRefundId = null;
-            $refundStatus    = 'pending';
-            $refundNotes     = null;
-
-            try {
-                $gateway      = $this->gatewayManager->resolve($transaction->payment_method ?? 'webxpay');
-                $gatewayResult = $gateway->refund(
-                    $transaction->gateway_transaction_id ?? $transaction->transaction_id,
-                    (float) $refundAmount,
-                    $request->reason
-                );
-
-                if ($gatewayResult['success']) {
-                    $gatewayRefundId = $gatewayResult['refund_id'] ?? null;
-                    $refundStatus    = 'completed';
-                } elseif (!empty($gatewayResult['manual'])) {
-                    $refundStatus = 'manual_required';
-                    $refundNotes  = $gatewayResult['message'] ?? null;
-                } else {
-                    $refundStatus = 'failed';
-                    $refundNotes  = $gatewayResult['message'] ?? null;
-                }
-            } catch (\Throwable $e) {
-                Log::error('Gateway refund call failed', ['transaction_id' => $id, 'error' => $e->getMessage()]);
-                $refundStatus = 'manual_required';
-                $refundNotes  = $e->getMessage();
-            }
+            $remaining = max(0, round((float) $transaction->amount - $reservedAmount, 2));
+            $amount = round((float) ($data['amount'] ?? $remaining), 2);
+            abort_if($amount <= 0, 422, 'This transaction has no remaining refundable amount.');
+            abort_if($amount > $remaining, 422,
+                "Refund amount cannot exceed the remaining refundable amount of {$remaining}.");
 
             $refundId = (string) Str::uuid();
-            DB::transaction(function () use (
-                $refundId, $transaction, $refundAmount, $refundStatus, $gatewayRefundId,
-                $refundNotes, $request, $booking, $receipt, $component
-            ): void {
-                DB::table('payment_refunds')->insert([
-                    'id'                      => $refundId,
-                    'transaction_id'          => $transaction->id,
-                    'amount'                  => $refundAmount,
-                    'reason'                  => $request->reason,
-                    'status'                  => $refundStatus,
-                    'gateway_refund_id'       => $gatewayRefundId,
-                    'notes'                   => $refundNotes,
-                    'created_at'              => now(),
-                    'updated_at'              => now(),
-                ]);
+            $checksum = $this->refundRequestChecksum($amount, (string) $data['reason']);
+            DB::table('payment_refunds')->insert([
+                'id' => $refundId,
+                'transaction_id' => $transaction->id,
+                'amount' => $amount,
+                'reason' => $data['reason'],
+                'status' => 'pending',
+                'idempotency_key' => $data['idempotency_key'],
+                'request_payload_checksum' => $checksum,
+                'created_by' => $request->user()?->id,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
 
-                // Only confirmed provider cash movement changes the canonical collection ledger.
-                if ($refundStatus === 'completed') {
-                    $sourceCurrency = strtoupper((string) ($receipt->source_currency ?: $transaction->currency ?: 'LKR'));
+            return [
+                'row' => (object) [
+                    'id' => $refundId,
+                    'transaction_id' => $transaction->id,
+                    'amount' => $amount,
+                    'reason' => $data['reason'],
+                    'status' => 'pending',
+                    'created_by' => $request->user()?->id,
+                ],
+                'replayed' => false,
+                'transaction' => $transaction,
+                'booking' => $booking,
+                'receipt' => $receipt,
+                'component' => $component,
+            ];
+        });
+
+        $refund = $reservation['row'];
+        if ($reservation['replayed']) {
+            return response()->json([
+                'status' => 'success',
+                'message' => 'Refund request already recorded.',
+                'data' => ['refund_id' => $refund->id, 'amount' => (float) $refund->amount, 'status' => $refund->status],
+            ]);
+        }
+
+        $transaction = $reservation['transaction'];
+        $gatewayRefundId = null;
+        $refundStatus = 'pending';
+        $refundNotes = null;
+        try {
+            $gateway = $this->gatewayManager->resolve($transaction->payment_method ?? 'webxpay');
+            $gatewayResult = $gateway->refund(
+                $transaction->gateway_transaction_id ?? $transaction->transaction_id,
+                (float) $refund->amount,
+                (string) $refund->reason,
+            );
+            if (! empty($gatewayResult['success'])) {
+                $gatewayRefundId = $gatewayResult['refund_id'] ?? null;
+                $refundStatus = 'completed';
+            } elseif (! empty($gatewayResult['manual'])) {
+                $refundStatus = 'manual_required';
+                $refundNotes = $gatewayResult['message'] ?? null;
+            } else {
+                $refundStatus = 'failed';
+                $refundNotes = $gatewayResult['message'] ?? null;
+            }
+        } catch (\Throwable $e) {
+            Log::error('Gateway refund outcome is uncertain; keeping the amount reserved.', [
+                'transaction_id' => $id,
+                'refund_id' => $refund->id,
+                'error' => $e->getMessage(),
+            ]);
+            $refundStatus = 'manual_required';
+            $refundNotes = 'Provider outcome is uncertain; reconcile before retrying with a new key.';
+        }
+
+        if ($refundStatus === 'completed') {
+            try {
+                DB::transaction(function () use ($reservation, $refund, $refundStatus, $gatewayRefundId): void {
+                    DB::table('payment_refunds')->where('id', $refund->id)->lockForUpdate()->first();
+                    DB::table('payment_refunds')->where('id', $refund->id)->update([
+                        'status' => $refundStatus,
+                        'gateway_refund_id' => $gatewayRefundId,
+                        'updated_at' => now(),
+                    ]);
+
+                    $receipt = $reservation['receipt'];
                     $fxRate = $receipt->fx_rate_to_lkr !== null ? (float) $receipt->fx_rate_to_lkr : null;
-                    $this->paymentAdjustments->record($booking, [
-                        'receipt_component_id' => $component->id,
+                    $this->paymentAdjustments->record($reservation['booking'], [
+                        'receipt_component_id' => $reservation['component']->id,
                         'impact_dimension' => 'cash_receipt',
                         'adjustment_type' => 'refund',
                         'direction' => 'decrease',
-                        'source_amount' => $refundAmount,
-                        'source_currency' => $sourceCurrency,
-                        'lkr_amount' => $fxRate !== null ? round($refundAmount * $fxRate, 4) : null,
+                        'source_amount' => (float) $refund->amount,
+                        'source_currency' => strtoupper((string) ($receipt->source_currency ?: $reservation['transaction']->currency ?: 'LKR')),
+                        'lkr_amount' => $fxRate !== null ? round((float) $refund->amount * $fxRate, 4) : null,
                         'fx_rate_to_lkr' => $fxRate,
                         'adjustment_effective_at' => now(),
-                        'reason' => $request->reason,
-                        'reference' => $gatewayRefundId ?: $refundId,
-                        'idempotency_key' => 'gateway-refund:'.$refundId,
-                    ], (string) $request->user()->id);
-                }
-            });
-
-            return response()->json([
-                'status' => 'success',
-                'message' => $refundStatus === 'completed'
-                    ? 'Payment refund completed and the collection ledger was adjusted.'
-                    : 'Refund request recorded; the collection ledger will remain unchanged until cash movement is confirmed.',
-                'data' => [
-                    'refund_id' => $refundId,
-                    'amount' => $refundAmount,
-                    'status' => $refundStatus,
-                ]
+                        'reason' => $refund->reason,
+                        'reference' => $gatewayRefundId ?: $refund->id,
+                        'idempotency_key' => 'gateway-refund:'.$refund->id,
+                    ], (string) $refund->created_by);
+                });
+            } catch (\Throwable $e) {
+                // The provider has confirmed cash movement. Keep the amount
+                // reserved and flag the ledger mismatch for reconciliation.
+                DB::table('payment_refunds')->where('id', $refund->id)->update([
+                    'status' => 'manual_required',
+                    'gateway_refund_id' => $gatewayRefundId,
+                    'notes' => 'Provider confirmed refund, but canonical ledger adjustment failed; reconcile before retrying.',
+                    'updated_at' => now(),
+                ]);
+                Log::error('Confirmed gateway refund could not be reflected in the canonical receipt ledger.', [
+                    'refund_id' => $refund->id,
+                    'error' => $e->getMessage(),
+                ]);
+                $refundStatus = 'manual_required';
+                $refundNotes = 'Provider confirmed refund; canonical ledger adjustment requires reconciliation.';
+            }
+        } else {
+            DB::table('payment_refunds')->where('id', $refund->id)->update([
+                'status' => $refundStatus,
+                'notes' => $refundNotes,
+                'updated_at' => now(),
             ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to process refund',
-                'error' => $e->getMessage()
-            ], 500);
         }
+
+        return response()->json([
+            'status' => 'success',
+            'message' => $refundStatus === 'completed'
+                ? 'Payment refund completed and the collection ledger was adjusted.'
+                : 'Refund request recorded; the amount remains reserved until its outcome is reconciled.',
+            'data' => ['refund_id' => $refund->id, 'amount' => (float) $refund->amount, 'status' => $refundStatus],
+        ], 201);
+    }
+
+    private function refundRequestChecksum(float $amount, string $reason): string
+    {
+        return hash('sha256', json_encode([
+            'amount' => number_format($amount, 2, '.', ''),
+            'reason' => trim($reason),
+        ], JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
     }
 
     /**

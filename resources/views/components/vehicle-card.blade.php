@@ -58,15 +58,19 @@
 @endphp
 
 @php
-    // Get pricing data from BookingFlowService (already calculated final amounts)
-    $totalAmountLKR = $pricing['base_amount'] ?? 0; // This is the FINAL package amount (after adjustments)
+    // BookingFlowService returns amounts in the currency declared by pricing.currency.
+    $totalAmountSource = $pricing['base_amount'] ?? 0;
+    $pricingCurrency = strtoupper((string) ($pricing['currency'] ?? app(\App\Services\CurrencyService::class)->getBookingBaseCurrency()));
+    // Keep existing card metadata bindings pointed at the amount's source currency.
+    $totalAmountLKR = $totalAmountSource;
     $durationDays = $pricing['duration_info']['days'] ?? 1;
     $packageHours = $pricing['duration_info']['package_hours'] ?? null;
     $serviceType = $pricing['service_type'] ?? 'point_to_point';
 
     // Get discount/adjustment details
     $hasDiscount = $pricing['has_discount'] ?? false;
-    $originalAmountLKR = $pricing['original_amount'] ?? $totalAmountLKR;
+    $originalAmountSource = $pricing['original_amount'] ?? $totalAmountSource;
+    $originalAmountLKR = $originalAmountSource;
     $discountAmountLKR = $pricing['discount_amount'] ?? 0;
     $discountPercentage = $pricing['discount_percentage'] ?? 0;
     $savingsDisplay = $pricing['savings_display'] ?? null;
@@ -88,23 +92,26 @@
 
     // IMPORTANT: BookingFlowService returns TOTAL PACKAGE AMOUNT, not per-day rate
     // Only calculate per-day rate for display purposes in multi-day non-package services
-    $perDayRateLKR = !$isPackageService && $durationDays > 1 ? $totalAmountLKR / $durationDays : $totalAmountLKR;
-    $originalPerDayRateLKR =
-        !$isPackageService && $durationDays > 1 ? $originalAmountLKR / $durationDays : $originalAmountLKR;
+    $perDayRateSource = !$isPackageService && $durationDays > 1 ? $totalAmountSource / $durationDays : $totalAmountSource;
+    $originalPerDayRateSource = !$isPackageService && $durationDays > 1 ? $originalAmountSource / $durationDays : $originalAmountSource;
+    $perDayRateLKR = $perDayRateSource;
+    $originalPerDayRateLKR = $originalPerDayRateSource;
 
-    // Convert to selected currency using helper functions
+    // Convert only when the selected display currency differs from the price currency.
     $selectedCurrency = getSelectedCurrency();
-    $totalAmountConverted = convertPrice($totalAmountLKR); // Final package amount
-    $originalAmountConverted = convertPrice($originalAmountLKR); // Original amount before discount
-    $perDayRateConverted = convertPrice($perDayRateLKR); // Per-day rate for display only
-    $originalPerDayConverted = convertPrice($originalPerDayRateLKR); // Original per-day rate
-    $discountAmountConverted = convertPrice($discountAmountLKR);
+    $convertPricingAmount = fn ($amount) => app(\App\Services\CurrencyService::class)
+        ->convert((float) $amount, $pricingCurrency, $selectedCurrency);
+    $totalAmountConverted = $convertPricingAmount($totalAmountSource);
+    $originalAmountConverted = $convertPricingAmount($originalAmountSource);
+    $perDayRateConverted = $convertPricingAmount($perDayRateSource);
+    $originalPerDayConverted = $convertPricingAmount($originalPerDayRateSource);
+    $discountAmountConverted = $convertPricingAmount($discountAmountLKR);
     $currencySymbol = getCurrencySymbol();
 
     // Convert return trip amounts if applicable
-    $oneWayAmountConverted = $oneWayAmountLKR ? convertPrice($oneWayAmountLKR) : null;
-    $returnAmountConverted = $returnAmountLKR ? convertPrice($returnAmountLKR) : null;
-    $returnDiscountAmountConverted = $returnDiscountAmountLKR ? convertPrice($returnDiscountAmountLKR) : null;
+    $oneWayAmountConverted = $oneWayAmountLKR ? $convertPricingAmount($oneWayAmountLKR) : null;
+    $returnAmountConverted = $returnAmountLKR ? $convertPricingAmount($returnAmountLKR) : null;
+    $returnDiscountAmountConverted = $returnDiscountAmountLKR ? $convertPricingAmount($returnDiscountAmountLKR) : null;
 @endphp
 
 <!-- Vehicle Card -->

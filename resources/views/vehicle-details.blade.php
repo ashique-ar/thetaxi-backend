@@ -100,7 +100,7 @@
                         <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
                     @endif
                     <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
-                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
+                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles'])
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
                             <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
                                 <span class="text-muted small" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</span>
@@ -120,8 +120,8 @@
                     </div>
                 </div>
             @endif
-            <div class="row g-4 vehicle-details-layout">
-                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8 order-lg-1' }}">
+            <div class="{{ is_theme('theme-04') ? 'vehicle-details-layout vehicle-details-layout--theme-04' : 'row g-4 vehicle-details-layout' }}">
+                <div class="vehicle-details-main {{ is_theme('theme-04') ? '' : 'col-12' }}">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -237,14 +237,14 @@
                 </div>
 
                 @if (is_theme('theme-04'))
-                <div class="col-lg-4 order-lg-2">
+                <div class="vehicle-booking-rail">
                     <div class="booking-form-card booking-form-card--vehicle t4-booking-panel {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         <div class="search-booking-panel t4-booking-panel__card">
                             <header>
                                 <span class="t4-kicker">Book Your Ride</span>
                             </header>
-                            @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
+                            @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles'])
                         </div>
 
                         <div class="vehicle-price-summary mt-3" id="vehiclePriceSummary" itemprop="offers" itemscope
@@ -264,7 +264,7 @@
                                     </div>
                                     @if (($pricing['base_amount'] ?? 0) > 0 && $numDays > 1)
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">
-                                            {{ getCurrencySymbol() }}
+                                            {{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
                                             {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0) / $numDays)), 0) }}/day
                                         </div>
                                     @else
@@ -575,13 +575,6 @@
         .vehicle-actions-card .btn-primary:hover,
         .vehicle-actions-card .btn-outline-primary:hover {
             transform: translateY(-1px);
-        }
-
-        /* Hide search button on vehicle page: direct add/book flow only */
-        .vehicle-details-wrapper .booking-form-card--vehicle .primary-btn1,
-        .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .booking-form-card .primary-btn1,
-        .vehicle-details-wrapper > .container > .vehicle-details-layout > .col-lg-4 .filter-wrapper .primary-btn1 {
-            display: none !important;
         }
 
         .vehicle-booking-top {
@@ -1071,13 +1064,6 @@
             }
 
             document.addEventListener('DOMContentLoaded', function() {
-                // Vehicle page should not submit booking search forms directly.
-                document.querySelectorAll('.booking-form-card--vehicle form[data-service]').forEach(function(form) {
-                    form.addEventListener('submit', function(e) {
-                        e.preventDefault();
-                    });
-                });
-
                 const bookingCard = document.querySelector('.booking-form-card--vehicle');
                 if (bookingCard) {
                     bookingCard.addEventListener('change', function(e) {

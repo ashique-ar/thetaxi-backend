@@ -156,11 +156,6 @@
     box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
 }
 
-.theme-default .search-booking-panel .filter-wrapper,
-.theme-default .vehicle-details-wrapper .filter-wrapper {
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.08) !important;
-}
-
 .theme-default .vehicle-image-gallery .main-vehicle-image img {
     border-radius: 16px !important;
 }

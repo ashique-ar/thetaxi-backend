@@ -384,6 +384,7 @@
                     'airportOptions' => $airportOptions ?? collect(),
                     'airportTransferType' => $airportTransferType ?? null,
                     'hasSearchContext' => $hasSearchContext,
+                    'submitLabel' => $submitLabel ?? null,
                 ])
             @endif
         @endforeach

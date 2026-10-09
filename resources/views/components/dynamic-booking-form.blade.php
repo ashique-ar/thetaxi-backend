@@ -21,9 +21,10 @@
 @php
     $isInquiry = (bool) ($serviceTypeModel?->is_inquiry ?? false);
     $actionRoute = $isInquiry ? route('booking.enquiry') : route('booking.search');
-    $submitLabel = $isInquiry
-        ? ($settings['booking_submit_inquiry_label'] ?? 'Submit Inquiry')
-        : ($settings['booking_search_submit_label'] ?? 'Search Vehicles');
+    $submitLabel = $submitLabel
+        ?? ($isInquiry
+            ? ($settings['booking_submit_inquiry_label'] ?? 'Submit Inquiry')
+            : ($settings['booking_search_submit_label'] ?? 'Search Vehicles'));
 
     // Resolve current values for location fields
     $pickupLoc = $getLocationForService($serviceCode, true);

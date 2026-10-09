@@ -153,7 +153,7 @@ class VehicleController extends Controller
         try {
             $serviceType = $this->resolveServiceTypeModel((string) ($searchData['service_type'] ?? ''));
             if (!$serviceType) {
-                return ['base_amount' => 0, 'currency' => 'LKR', 'error' => 'Invalid service type'];
+                return ['base_amount' => 0, 'currency' => getSelectedCurrency(), 'error' => 'Invalid service type'];
             }
 
             $pricingParams = $this->buildAvailabilityParams($searchData, $vehicleGroup, $serviceType);
@@ -164,11 +164,11 @@ class VehicleController extends Controller
 
             foreach ($groups as $vehicleData) {
                 if ($vehicleData['id'] == $vehicleGroup->id) {
-                    return $vehicleData['pricing_info'] ?? ['base_amount' => 0, 'currency' => 'LKR'];
+                    return $vehicleData['pricing_info'] ?? ['base_amount' => 0, 'currency' => getSelectedCurrency()];
                 }
             }
 
-            return ['base_amount' => 0, 'currency' => 'LKR', 'error' => 'Pricing not available'];
+            return ['base_amount' => 0, 'currency' => getSelectedCurrency(), 'error' => 'Pricing not available'];
         } catch (\Exception $e) {
             Log::error('Vehicle pricing calculation error', [
                 'vehicle_id' => $vehicleGroup->id,
@@ -176,7 +176,7 @@ class VehicleController extends Controller
                 'error' => $e->getMessage()
             ]);
             
-            return ['base_amount' => 0, 'currency' => 'LKR', 'error' => $e->getMessage()];
+            return ['base_amount' => 0, 'currency' => getSelectedCurrency(), 'error' => $e->getMessage()];
         }
     }
 
