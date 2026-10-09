@@ -436,6 +436,7 @@ body.theme-theme-04.theme-page-vehicle-details .vehicle-title { font-family: Int
 body.theme-theme-04.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t4-line); border-left: 1px solid var(--t4-line); }
 body.theme-theme-04.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t4-line); border-bottom: 1px solid var(--t4-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
 body.theme-theme-04.theme-page-vehicle-details .booking-form-card:not(.booking-form-card--top) { position: sticky; top: 96px; }
+body.theme-theme-04.theme-page-vehicle-details .booking-form-card--vehicle.t4-booking-panel { min-height: 0; margin: 0; padding: 0; pointer-events: auto; }
 body.theme-theme-04.theme-page-vehicle-details .booking-form-card--vehicle .t4-booking-panel__card { width: 100%; max-width: none; }
 body.theme-theme-04.theme-page-vehicle-details .vehicle-details-layout { align-items: start; }
 body.theme-theme-04.theme-page-vehicle-details .booking-shell-header { border-bottom: 4px solid var(--t4-accent); }

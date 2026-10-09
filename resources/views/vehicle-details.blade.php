@@ -238,7 +238,7 @@
 
                 @if (is_theme('theme-04'))
                 <div class="col-lg-4 order-1">
-                    <div class="booking-form-card booking-form-card--vehicle {{ theme_class('booking-form-card') }}"
+                    <div class="booking-form-card booking-form-card--vehicle t4-booking-panel {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         <div class="search-booking-panel t4-booking-panel__card">
                             <header>
