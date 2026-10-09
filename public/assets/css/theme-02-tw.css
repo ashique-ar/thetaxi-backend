@@ -1335,6 +1335,10 @@ body:has(.t2-header) .featured-vehicles-btn:hover {
     width: 100%;
 }
 
+.theme-theme-02.theme-page-vehicle-details .vehicle-top-price .vehicle-actions-card {
+    margin: 0 !important;
+}
+
 .theme-theme-02.theme-page-vehicle-details .vehicle-booking-top {
     margin-bottom: 24px;
 }

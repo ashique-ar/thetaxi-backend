@@ -435,7 +435,7 @@ body.theme-theme-04.theme-page-vehicle-details .vehicle-info-card { padding: cla
 body.theme-theme-04.theme-page-vehicle-details .vehicle-title { font-family: Inter, "Segoe UI", Arial, sans-serif; font-size: clamp(2.2rem, 4.5vw, 4.2rem); font-weight: 500; letter-spacing: -.035em; line-height: .98; }
 body.theme-theme-04.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t4-line); border-left: 1px solid var(--t4-line); }
 body.theme-theme-04.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t4-line); border-bottom: 1px solid var(--t4-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
-body.theme-theme-04.theme-page-vehicle-details .booking-form-card { position: sticky; top: 96px; }
+body.theme-theme-04.theme-page-vehicle-details .booking-form-card:not(.booking-form-card--top) { position: sticky; top: 96px; }
 body.theme-theme-04.theme-page-vehicle-details .vehicle-details-layout { align-items: start; }
 body.theme-theme-04.theme-page-vehicle-details .booking-shell-header { border-bottom: 4px solid var(--t4-accent); }
 body.theme-theme-04.theme-page-vehicle-details .booking-form-context--vehicle .filter-item-list .single-item.active { background: var(--t4-accent) !important; border-color: var(--t4-accent) !important; color: #fff !important; }
