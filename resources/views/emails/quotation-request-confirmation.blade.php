@@ -8,7 +8,7 @@
 
 @section('content')
     @php
-        $serviceType = $requestData['service_type'] ?? 'Quotation';
+        $serviceType = $requestData['service_type_name'] ?? $requestData['service_type'] ?? 'Quotation';
         $pickupLocation = $requestData['pickup_location'] ?? null;
         $dropoffLocation = $requestData['dropoff_location'] ?? null;
         $travelDate = $requestData['travel_date'] ?? null;
@@ -56,7 +56,7 @@
                     </h3>
                     <span
                         style="display: inline-block; background-color: #fff3cd; color: #856404; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; border: 1px solid #ffc107; margin-bottom: 8px;">
-                        Service: {{ ucwords(str_replace(['_', '-'], ' ', $serviceType)) }}
+                        Service: {{ $serviceType }}
                     </span>
                 </div>
             </div>

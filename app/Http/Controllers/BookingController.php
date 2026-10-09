@@ -2369,6 +2369,11 @@ class BookingController extends Controller
             // Get search parameters from session for context
             $searchParams = $searchContext;
             $vehicleGroup = VehicleGroup::findOrFail($request->vehicle_group_id);
+            $serviceTypeName = \App\Models\Service\ServiceType::publicContext()
+                ->where('code', $request->service_type)
+                ->value('name')
+                ?? ucwords(str_replace(['_', '-'], ' ', $request->service_type));
+            $requestData = array_merge($request->all(), ['service_type_name' => $serviceTypeName]);
 
             // Create inquiry with enhanced context
             $baseInquiryData = [
@@ -2376,7 +2381,7 @@ class BookingController extends Controller
                 'email' => $request->customer_email,
                 'phone' => $request->customer_phone,
                 'subject' => "Request Quotation - {$vehicleGroup->name}",
-                'message' => $this->buildQuotationMessage($request->all(), $searchParams, $vehicleGroup),
+                'message' => $this->buildQuotationMessage($requestData, $searchParams, $vehicleGroup),
                 'status' => 'open',
                 'customer_id' => null, // Will be created if needed
                 'inquiry_type' => 'quotation_request',
@@ -2386,6 +2391,7 @@ class BookingController extends Controller
                     'vehicle_group_id' => $request->vehicle_group_id,
                     'vehicle_group_name' => $vehicleGroup->name,
                     'form' => $request->except(['_token']),
+                    'service_type_name' => $serviceTypeName,
                     'search_context' => $searchParams,
                 ],
             ];
@@ -2396,7 +2402,7 @@ class BookingController extends Controller
                 'vehicle_group_id' => $request->vehicle_group_id,
                 'company_name' => $request->company_name,
                 'search_context' => $searchParams,
-                'form_data' => $request->except(['_token']),
+                'form_data' => $requestData,
                 'ip_address' => $request->ip(),
                 'user_agent' => $request->userAgent(),
             ];
@@ -2428,7 +2434,7 @@ class BookingController extends Controller
             $inquiry->save();
 
             // Trigger email notifications
-            $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup, $quotationNumber);
+            $this->sendQuotationRequestEmails($inquiry, $requestData, $vehicleGroup, $quotationNumber);
 
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
@@ -2475,7 +2481,7 @@ class BookingController extends Controller
         }
 
         $message .= "\nSERVICE DETAILS:\n";
-        $message .= "Service Type: {$requestData['service_type']}\n";
+        $message .= "Service Type: " . ($requestData['service_type_name'] ?? $requestData['service_type']) . "\n";
 
         if (!empty($requestData['pickup_location'])) {
             $message .= "Pickup: {$requestData['pickup_location']}\n";
