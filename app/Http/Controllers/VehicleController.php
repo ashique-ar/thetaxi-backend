@@ -114,14 +114,17 @@ class VehicleController extends Controller
             }
         }
 
-        // Preset path (used by rate chart): force direct day_rental defaults
-        if (in_array($preset, ['daily', 'monthly'], true)) {
+        // Presets may use a configured service type code or a booking tab code.
+        if ($preset !== '') {
+            $presetServiceType = $this->resolvePresetServiceType($preset);
+        }
+        if ($preset !== '' && $presetServiceType) {
             $presetDays = $preset === 'monthly' ? 30 : 1;
             $pickupDate = Carbon::today();
             $returnDate = $pickupDate->copy()->addDays($presetDays - 1);
 
             $searchData = [
-                'service_type' => 'day_rental',
+                'service_type' => $presetServiceType->code,
                 'pickup_date' => $pickupDate->format('Y-m-d'),
                 'return_date' => $returnDate->format('Y-m-d'),
                 'pickup_time' => '10:00',
@@ -393,6 +396,58 @@ class VehicleController extends Controller
         }
 
         return $defaultQuery->first();
+    }
+
+    private function resolvePresetServiceType(string $preset): ?ServiceType
+    {
+        if (in_array($preset, ['daily', 'monthly'], true)) {
+            $rentalTabCodes = BookingFormTab::query()
+                ->where('enabled', true)
+                ->whereHas('serviceType', fn ($query) => $query
+                    ->where('is_active', true)
+                    ->where('pricing_mode', 'day'))
+                ->orderBy('sort_order')
+                ->pluck('service_type_code');
+
+            foreach ($rentalTabCodes as $serviceTypeCode) {
+                $serviceType = ServiceType::publicContext()
+                    ->where('is_active', true)
+                    ->where('pricing_mode', 'day')
+                    ->where('code', $serviceTypeCode)
+                    ->first();
+
+                if ($serviceType) {
+                    return $serviceType;
+                }
+            }
+
+            return ServiceType::publicContext()
+                ->where('is_active', true)
+                ->where('pricing_mode', 'day')
+                ->orderBy('priority')
+                ->first();
+        }
+
+        $serviceType = ServiceType::publicContext()
+            ->where('is_active', true)
+            ->where('code', $preset)
+            ->first();
+
+        if ($serviceType) {
+            return $serviceType;
+        }
+
+        $tab = BookingFormTab::query()
+            ->where('enabled', true)
+            ->where('code', $preset)
+            ->first();
+
+        return $tab?->service_type_code
+            ? ServiceType::publicContext()
+                ->where('is_active', true)
+                ->where('code', $tab->service_type_code)
+                ->first()
+            : null;
     }
 
     private function buildAvailabilityParams(array $input, $vehicleGroup, ServiceType $serviceType): array
