@@ -14,6 +14,7 @@ class VehicleGroupResource extends JsonResource
             'grade_id'    => $this->grade_id,
             'name'        => $this->name,
             'description' => $this->description,
+            'service_seo' => $this->service_seo ?? [],
             'specs'       => $this->specs,
             'images'      => $this->images,
             'thumbnail'      => $this->thumbnail,

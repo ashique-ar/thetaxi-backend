@@ -224,13 +224,13 @@ body.theme-theme-03.theme-page-search :where(#requestQuotationModal, #newSearchM
 
 body.theme-theme-03.theme-page-vehicle-details .vehicle-details--theme-03 { margin: 0; padding: var(--t3-section-space) 0 !important; }
 body.theme-theme-03.theme-page-vehicle-details .vehicle-image-gallery { padding: clamp(18px, 4vw, 38px); border-top: 6px solid var(--t3-ink); background: #fffdf8; box-shadow: 14px 14px 0 var(--t3-stone); }
-body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { display: grid; min-height: 420px; padding: clamp(20px, 5vw, 54px); place-items: center; }
-body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image img { max-height: 440px; object-fit: contain; }
+body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { display: grid; height: clamp(240px, 25vw, 320px); min-height: 0; padding: 16px; place-items: center; }
+body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image img { height: 100%; max-height: 100%; object-fit: contain; }
 body.theme-theme-03.theme-page-vehicle-details .thumbnail-img { border: 1px solid var(--t3-line); border-radius: 0 !important; background: var(--t3-stone); }
 body.theme-theme-03.theme-page-vehicle-details .thumbnail-img.active { border-color: var(--t3-accent); box-shadow: 0 0 0 2px var(--t3-accent); }
 body.theme-theme-03.theme-page-vehicle-details .vehicle-info-card { padding: clamp(24px, 5vw, 52px); border-left: 5px solid var(--t3-accent); background: #fffdf8; }
 body.theme-theme-03.theme-page-vehicle-details .vehicle-title { font-family: var(--t3-font-display); font-size: clamp(2.3rem, 5vw, 4.6rem); font-weight: 500; line-height: .95; }
-body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); border-top: 1px solid var(--t3-line); border-left: 1px solid var(--t3-line); }
+body.theme-theme-03.theme-page-vehicle-details :where(.vehicle-quick-grid, .details-grid) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); border-top: 1px solid var(--t3-line); border-left: 1px solid var(--t3-line); }
 body.theme-theme-03.theme-page-vehicle-details :where(.quick-cell, .detail-row, .spec-item) { border-right: 1px solid var(--t3-line); border-bottom: 1px solid var(--t3-line); border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
 body.theme-theme-03.theme-page-vehicle-details .booking-form-card:not(.booking-form-card--top) { position: sticky; top: 110px; }
 body.theme-theme-03.theme-page-vehicle-details .vehicle-booking-top { margin-top: 24px; }
@@ -303,7 +303,8 @@ body.theme-theme-03 .booking-status--theme-03 .progress-bar { background: var(--
     body.theme-theme-03:is(.theme-page-point-to-point, .theme-page-corporate-transfers, .theme-page-inquiry-services-show) .banner-content h1 { font-size: clamp(2.5rem, 11vw, 3.5rem); }
     body.theme-theme-03.theme-page-rate-chart .rate-chart-hero h1 { font-size: clamp(2.5rem, 11vw, 3.4rem); }
     body.theme-theme-03.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { width: 100%; }
-    body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { min-height: 280px; }
+    body.theme-theme-03.theme-page-vehicle-details .main-vehicle-image { height: 220px; min-height: 0; }
+    body.theme-theme-03.theme-page-vehicle-details .details-grid { grid-template-columns: minmax(0, 1fr); }
     body.theme-theme-03 .cart-summary-float--theme-03 { right: max(12px, env(safe-area-inset-right)); bottom: max(12px, env(safe-area-inset-bottom)); left: max(12px, env(safe-area-inset-left)); width: auto; max-height: calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom)); }
     body.theme-theme-03 .cart-summary-float--theme-03 .cart-float-body { max-height: min(38dvh, 300px); }
     body.theme-theme-03 :where(.checkout-success--theme-03, .payment-resume--theme-03) > .container > .row > .card { padding: 18px !important; box-shadow: 8px 8px 0 var(--t3-stone) !important; }

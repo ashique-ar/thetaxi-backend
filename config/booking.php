@@ -48,6 +48,10 @@ return [
         'currency' => env('WEBXPAY_CURRENCY', 'LKR'),
     ],
 
+    // Shared HMAC key for the authenticated internal payment callback endpoint.
+    // Keep this distinct from provider credentials and set a random value of at least 32 bytes.
+    'payment_callback_secret' => env('BOOKING_PAYMENT_CALLBACK_SECRET', ''),
+
     /**
      * Service Fee Configuration
      */

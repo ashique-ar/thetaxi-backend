@@ -4,16 +4,30 @@
 @section('title', ($vehicleGroup->name ?? 'Vehicle Details'))
 
 @push('meta')
-    @include('partials.seo', ['model' => $vehicleGroup])
+    @php
+        $vehicleSeoPage = $serviceSeoPage ?? [];
+        $vehicleSeoUrl = !empty($vehicleSeoPage['slug'])
+            ? route('vehicle.details', ['id' => $vehicleGroup->id, 'serviceSlug' => $vehicleSeoPage['slug']])
+            : route('vehicle.details', ['id' => $vehicleGroup->id]);
+    @endphp
+    @include('partials.seo', ['model' => $vehicleGroup, 'seoOverride' => $vehicleSeoPage, 'canonicalUrl' => $vehicleSeoUrl])
     @php
         $schemaCurrency = $pricing['currency'] ?? getSelectedCurrency();
-        $schemaPrice = (float) ($pricing['base_amount'] ?? 0);
+        $schemaPrice = floor((float) ($pricing['base_amount'] ?? 0));
+        $schemaPricingMetadata = $pricing['calculation_metadata'] ?? [];
+        $schemaPriceIsValid = $schemaPrice > 0
+            && empty($vehicleGroup->is_inquiry_only)
+            && empty($vehicleGroup->force_quotation_request)
+            && empty($pricing['error'])
+            && empty($schemaPricingMetadata['requires_quotation'])
+            && empty($schemaPricingMetadata['fallback_used'])
+            && empty($schemaPricingMetadata['default_structure']);
         $schemaImage = $vehicleGroup->thumbnail
             ? s3_asset($vehicleGroup->thumbnail['path'] ?? $vehicleGroup->thumbnail)
             : asset('assets/img/default-vehicle.jpg');
         $vehicleSchema = [
             '@context' => 'https://schema.org',
-            '@type' => 'Product',
+            '@type' => $schemaPriceIsValid ? 'Product' : 'Vehicle',
             'name' => $vehicleGroup->name ?? 'Vehicle',
             'description' => strip_tags($vehicleGroup->description ?? ($vehicleGroup->name ?? 'Vehicle rental option')),
             'image' => [$schemaImage],
@@ -21,15 +35,17 @@
                 '@type' => 'Brand',
                 'name' => $vehicleGroup->make->name ?? (config('app.name')),
             ],
-            'url' => route('vehicle.details', ['id' => $vehicleGroup->id]),
-            'offers' => [
+            'url' => $vehicleSeoUrl,
+        ];
+        if ($schemaPriceIsValid) {
+            $vehicleSchema['offers'] = [
                 '@type' => 'Offer',
                 'priceCurrency' => $schemaCurrency,
                 'price' => number_format($schemaPrice, 2, '.', ''),
                 'availability' => 'https://schema.org/InStock',
-                'url' => route('vehicle.details', ['id' => $vehicleGroup->id]),
-            ],
-        ];
+                'url' => $vehicleSeoUrl,
+            ];
+        }
     @endphp
     <script type="application/ld+json">{!! json_encode($vehicleSchema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) !!}</script>
 @endpush
@@ -43,7 +59,9 @@
         $returnTime = $searchData['return_time'] ?? $pickupTime;
         $numDays = max(1, \Carbon\Carbon::parse($pickupDate)->diffInDays(\Carbon\Carbon::parse($returnDate)) + 1);
         $priceMetadata = $pricing['calculation_metadata'] ?? [];
-        $hasBookablePrice = (float) ($pricing['base_amount'] ?? 0) > 0
+        $hasBookablePrice = floor((float) ($pricing['base_amount'] ?? 0)) > 0
+            && empty($vehicleGroup->is_inquiry_only)
+            && empty($vehicleGroup->force_quotation_request)
             && empty($pricing['error'])
             && empty($priceMetadata['requires_quotation'])
             && empty($priceMetadata['fallback_used'])
@@ -91,6 +109,9 @@
 
     <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('default') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="{{ is_theme('theme-04') ? 'vehicle-details-page-layout vehicle-details-page-layout--theme-04' : 'container' }}">
+            <header class="vehicle-detail-heading">
+                <h1>{{ $vehicleGroup->name }}</h1>
+            </header>
             @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
                 <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
                     @if (is_theme('theme-03'))
@@ -99,19 +120,16 @@
                     <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles', 'hasSearchContext' => true])
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
-                            <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
+                            <div class="vehicle-price-summary" id="vehiclePriceSummary" aria-live="polite" aria-atomic="true">
                                 <span class="text-muted small" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</span>
                                 <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ $hasBookablePrice ? getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) . ' ' . number_format(floor((float) $pricing['base_amount']), 0) : 'Price on request' }}</strong>
                                 <span class="vehicle-summary-subline" id="vehiclePriceSubLabel">{{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }}</span>
                                 <span class="vehicle-summary-unit" id="vehicleSummaryUnit"></span>
                                 <span class="vehicle-price-status d-none" id="vehiclePriceStatus"></span>
-                                <meta itemprop="priceCurrency" id="vehicleOfferCurrencyMeta" content="{{ $pricing['currency'] ?? getSelectedCurrency() }}">
-                                <meta itemprop="price" id="vehicleOfferPriceMeta" content="{{ number_format((float) ($pricing['base_amount'] ?? 0), 2, '.', '') }}">
-                                <link itemprop="availability" href="https://schema.org/InStock">
                             </div>
                             <div class="vehicle-top-actions d-flex gap-2" id="vehicleDirectBookingActions" @if (!$hasBookablePrice) hidden @endif>
-                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn"><i class="bi bi-cart-plus" aria-hidden="true"></i> Add to Cart</button>
                                 <button type="button" class="btn btn-primary" id="vehicleBookNowBtn"><i class="bi bi-calendar-check" aria-hidden="true"></i> Book Now</button>
+                                <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn"><i class="bi bi-cart-plus" aria-hidden="true"></i> Add to Cart</button>
                             </div>
                             <div class="vehicle-top-actions" id="vehicleQuotationActions" @if ($hasBookablePrice) hidden @endif>
                                 <button type="button" class="btn btn-warning vehicle-request-quotation" data-bs-toggle="modal" data-bs-target="#vehicleQuotationModal"><i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation</button>
@@ -129,47 +147,42 @@
                         </div>
 
                         @if (count($vehicleImages) > 1)
-                            <div class="vehicle-thumbnails mt-3">
-                                <div class="row g-2">
+                            <div class="vehicle-thumbnails mt-3" role="group" aria-label="Vehicle photos">
                                     @foreach ($vehicleImages as $index => $image)
-                                        <div class="col-2">
-                                            <img src="{{ $image }}" alt="Vehicle Image {{ $index + 1 }}"
-                                                class="img-fluid rounded thumbnail-img {{ $index === 0 ? 'active' : '' }}"
-                                                onclick="changeMainImage(event, '{{ $image }}')"
-                                                style="cursor:pointer;height:80px;object-fit:cover;width:100%;">
-                                        </div>
+                                        <button type="button" class="vehicle-thumbnail {{ $index === 0 ? 'active' : '' }}"
+                                            aria-label="View {{ $vehicleGroup->name }} photo {{ $index + 1 }}"
+                                            aria-pressed="{{ $index === 0 ? 'true' : 'false' }}"
+                                            data-image-src="{{ $image }}" onclick="changeMainImage(event, this.dataset.imageSrc)">
+                                            <img src="{{ $image }}" alt="" loading="lazy" class="thumbnail-img">
+                                        </button>
                                     @endforeach
-                                </div>
                             </div>
                         @endif
                     </div>
 
                     <div class="vehicle-info-card">
-                        <h2 class="vehicle-title">{{ $vehicleGroup->name }}</h2>
                         @if ($vehicleGroup->description)
                             <p class="vehicle-description">{{ $vehicleGroup->description }}</p>
+                        @endif
+                        @if (!empty($serviceSeoPage['intro']))
+                            <div class="vehicle-service-seo-content mt-3">{!! nl2br(e($serviceSeoPage['intro'])) !!}</div>
                         @endif
                         <div class="vehicle-specs vehicle-details-specs">
                             <div class="spec-item">
                                 @if ($vehicleGroup->passengers_count || $vehicleGroup->seating_capacity)
-                                    <i class="bi bi-people-fill"></i>
-                                    <span>{{ $vehicleGroup->passengers_count ?? $vehicleGroup->seating_capacity }}{{ !$vehicleGroup->passengers_count ? ' Seats' : '' }}</span>
+                                    <span class="vehicle-feature"><i class="bi bi-people-fill" aria-hidden="true"></i> {{ $vehicleGroup->passengers_count ?? $vehicleGroup->seating_capacity }} passengers</span>
                                 @endif
                                 @if ($vehicleGroup->no_of_doors)
-                                    <i class="bi bi-door-open-fill"></i>
-                                    <span>{{ $vehicleGroup->no_of_doors }} Doors</span>
+                                    <span class="vehicle-feature"><i class="bi bi-door-open-fill" aria-hidden="true"></i> {{ $vehicleGroup->no_of_doors }} doors</span>
                                 @endif
                                 @if ($vehicleGroup->transmission)
-                                    <i class="bi bi-gear-fill"></i>
-                                    <span>{{ $vehicleGroup->transmission->name }}</span>
+                                    <span class="vehicle-feature"><i class="bi bi-gear-fill" aria-hidden="true"></i> {{ $vehicleGroup->transmission->name }}</span>
                                 @endif
                                 @if ($vehicleGroup->fuelType)
-                                    <i class="bi bi-fuel-pump-fill"></i>
-                                    <span>{{ $vehicleGroup->fuelType->name }}</span>
+                                    <span class="vehicle-feature"><i class="bi bi-fuel-pump-fill" aria-hidden="true"></i> {{ $vehicleGroup->fuelType->name }}</span>
                                 @endif
                                 @if ($vehicleGroup->hand_luggages)
-                                    <i class="bi bi-suitcase-fill"></i>
-                                    <span>{{ $vehicleGroup->hand_luggages }}</span>
+                                    <span class="vehicle-feature"><i class="bi bi-suitcase-fill" aria-hidden="true"></i> {{ $vehicleGroup->hand_luggages }} bags</span>
                                 @endif
                             </div>
                         </div>
@@ -182,7 +195,7 @@
                         @endif
 
                         <div class="vehicle-specifications mt-4">
-                            <h4>Vehicle Details</h4>
+                            <h2>Vehicle Details</h2>
                             @php
                                 $groupDetails = [
                                     ['label' => 'Make', 'value' => $vehicleGroup->make->name ?? null],
@@ -212,7 +225,7 @@
 
                         @if (!empty($vehicleGroup->specs) && is_array($vehicleGroup->specs))
                             <div class="vehicle-specifications mt-4">
-                                <h4>Additional Specifications</h4>
+                                <h2>Additional Specifications</h2>
                                 <div class="details-grid">
                                     @foreach ($vehicleGroup->specs as $key => $value)
                                         @if (!is_null($value) && $value !== '')
@@ -233,6 +246,19 @@
                             </div>
                         @endif
 
+                        @if ($indexedServiceSeoPages->isNotEmpty())
+                            <nav class="vehicle-service-links mt-4" aria-label="Vehicle service options">
+                                <h3>Explore this vehicle by service</h3>
+                                <div class="d-flex flex-wrap gap-2">
+                                    @foreach ($indexedServiceSeoPages as $servicePage)
+                                        <a href="{{ route('vehicle.details', ['id' => $vehicleGroup->id, 'serviceSlug' => $servicePage['slug']]) }}">
+                                            {{ $servicePage['service_name'] }}
+                                        </a>
+                                    @endforeach
+                                </div>
+                            </nav>
+                        @endif
+
                     </div>
                 </div>
 
@@ -247,8 +273,8 @@
                             @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles', 'hasSearchContext' => true])
                         </div>
 
-                        <div class="vehicle-price-summary mt-3" id="vehiclePriceSummary" itemprop="offers" itemscope
-                            itemtype="https://schema.org/Offer">
+                        <div class="vehicle-booking-summary mt-3">
+                            <div class="vehicle-price-summary" id="vehiclePriceSummary" aria-live="polite" aria-atomic="true">
                             <div class="d-flex justify-content-between align-items-start gap-2">
                                 <div>
                                     <h5 class="mb-1" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</h5>
@@ -269,20 +295,15 @@
                                 </div>
                             </div>
                             <div class="vehicle-price-status d-none" id="vehiclePriceStatus"></div>
-                            <meta itemprop="priceCurrency" id="vehicleOfferCurrencyMeta"
-                                content="{{ $pricing['currency'] ?? getSelectedCurrency() }}">
-                            <meta itemprop="price" id="vehicleOfferPriceMeta"
-                                content="{{ number_format((float) ($pricing['base_amount'] ?? 0), 2, '.', '') }}">
-                            <link itemprop="availability" href="https://schema.org/InStock">
                         </div>
 
-                        <div class="vehicle-actions-card mt-3">
+                        <div class="vehicle-actions-card">
                             <div class="d-grid gap-2" id="vehicleDirectBookingActions" @if (!$hasBookablePrice) hidden @endif>
-                                <button type="button" class="btn btn-outline-primary w-100" id="vehicleAddToCartBtn">
-                                    <i class="bi bi-cart-plus"></i> Add to Cart
-                                </button>
                                 <button type="button" class="btn btn-primary w-100" id="vehicleBookNowBtn">
                                     <i class="bi bi-calendar-check"></i> Book Now
+                                </button>
+                                <button type="button" class="btn btn-outline-primary w-100" id="vehicleAddToCartBtn">
+                                    <i class="bi bi-cart-plus"></i> Add to Cart
                                 </button>
                             </div>
                             <div class="d-grid" id="vehicleQuotationActions" @if ($hasBookablePrice) hidden @endif>
@@ -290,6 +311,7 @@
                                     <i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation
                                 </button>
                             </div>
+                        </div>
                         </div>
                     </div>
                 </div>
@@ -346,7 +368,7 @@
 
 @push('styles')
     <style>
-        :root {
+        .vehicle-details-wrapper {
             --vehicle-primary: var(--t4-accent, var(--t3-accent, var(--primary-color1, #bf2629)));
             --vehicle-surface: #ffffff;
             --vehicle-muted: #6b7280;
@@ -362,12 +384,16 @@
 
         .vehicle-details-wrapper [hidden] { display: none !important; }
 
+        .vehicle-detail-heading { margin-bottom: 20px; }
+        .vehicle-detail-heading h1 { margin: 0; font-size: clamp(24px, 2.8vw, 36px); line-height: 1.2; font-weight: 700; overflow-wrap: break-word; }
+
         .vehicle-details-wrapper .vehicle-details-layout { align-items: start; }
         .vehicle-image-gallery { margin-bottom: 16px !important; }
         .vehicle-image-gallery .main-vehicle-image {
             display: grid;
-            min-height: clamp(250px, 30vw, 390px);
-            padding: clamp(12px, 2vw, 24px);
+            height: clamp(220px, 25vw, 320px);
+            min-height: 0;
+            padding: 12px;
             place-items: center;
             overflow: hidden;
             border: 1px solid var(--vehicle-border);
@@ -377,8 +403,9 @@
 
         .main-vehicle-image img {
             width: 100%;
-            height: auto;
-            max-height: clamp(230px, 28vw, 350px);
+            height: 100%;
+            min-height: 0;
+            max-height: 100%;
             object-fit: contain;
             border-radius: 8px;
             box-shadow: none;
@@ -389,6 +416,12 @@
             transition: all 0.2s ease;
             border-radius: 10px;
         }
+
+        .vehicle-thumbnails { display: flex; gap: 10px; overflow-x: auto; padding: 3px; }
+        .vehicle-thumbnail { flex: 0 0 88px; height: 64px; padding: 4px; border: 1px solid var(--vehicle-border); border-radius: 8px; background: var(--vehicle-surface); }
+        .vehicle-thumbnail img { width: 100%; height: 100%; object-fit: contain; border: 0; border-radius: 4px; }
+        .vehicle-thumbnail.active { border-color: var(--vehicle-primary); }
+        .vehicle-thumbnail:focus-visible { outline: 2px solid var(--vehicle-primary); outline-offset: 2px; }
 
         .thumbnail-img.active,
         .thumbnail-img:hover {
@@ -405,14 +438,6 @@
             box-shadow: var(--vehicle-shadow);
         }
 
-        .vehicle-title {
-            font-size: 32px;
-            font-weight: 700;
-            margin-bottom: 8px;
-            line-height: 1.2;
-            color: #111827;
-        }
-
         .vehicle-description {
             color: var(--vehicle-muted);
             line-height: 1.7;
@@ -427,6 +452,7 @@
         .vehicle-details-specs .spec-item span {
             margin-right: 8px;
         }
+        .vehicle-feature { display: inline-flex; align-items: center; gap: 6px; }
 
         .vehicle-deposit-note {
             display: flex;
@@ -436,8 +462,8 @@
             font-size: 14px;
         }
 
-        .vehicle-specifications h4 {
-            font-size: 20px;
+        .vehicle-specifications h2 {
+            font-size: 18px;
             font-weight: 700;
             margin-bottom: 14px;
             color: #111827;
@@ -463,17 +489,16 @@
             gap: 16px;
         }
 
-        .detail-row:last-child {
-            border-bottom: none;
-        }
-
         .detail-label {
+            min-width: 0;
             color: var(--vehicle-muted);
             font-size: 13px;
             font-weight: 500;
         }
 
         .detail-value {
+            min-width: 0;
+            overflow-wrap: break-word;
             color: #111827;
             font-size: 14px;
             font-weight: 600;
@@ -623,6 +648,23 @@
             transform: translateY(-1px);
         }
 
+        .vehicle-details-wrapper :is(.vehicle-top-actions, .vehicle-actions-card) .btn-primary {
+            background: var(--vehicle-primary);
+            border-color: var(--vehicle-primary);
+            color: var(--white-color, #fff);
+        }
+        .vehicle-details-wrapper :is(.vehicle-top-actions, .vehicle-actions-card) .btn-outline-primary {
+            color: var(--vehicle-primary);
+            border-color: var(--vehicle-primary);
+            background: transparent;
+        }
+        .vehicle-details-wrapper :is(.vehicle-top-actions, .vehicle-actions-card) .btn-outline-primary:hover {
+            background: var(--vehicle-primary);
+            color: var(--white-color, #fff);
+        }
+        .vehicle-details-wrapper :is(.vehicle-top-actions, .vehicle-actions-card) .btn { min-height: 44px; }
+        .vehicle-booking-summary { border: 1px solid var(--vehicle-border); border-radius: 10px; background: var(--vehicle-surface); }
+
         .vehicle-booking-top {
             width: 100%;
         }
@@ -649,6 +691,8 @@
             border: 0;
             box-shadow: none;
         }
+        .vehicle-top-price .vehicle-summary-subline { grid-column: 1 / -1; }
+        .vehicle-top-price .vehicle-summary-unit:empty { display: none; }
         .vehicle-top-price .vehicle-summary-price { font-size: 22px; }
         .vehicle-top-price .vehicle-summary-subline,
         .vehicle-top-price .vehicle-summary-unit { color: var(--vehicle-muted); font-size: 12px; }
@@ -665,14 +709,18 @@
         }
 
         .vehicle-top-price {
-            padding: 12px 18px;
-            border-top: 1px solid rgba(15, 23, 42, 0.08);
+            padding: 16px 18px;
+            border: 1px solid var(--vehicle-border);
+            border-radius: 12px;
+            background: var(--vehicle-surface);
         }
 
         .vehicle-top-price .vehicle-price-summary {
             padding: 0;
-            border: 0;
-            box-shadow: none;
+            background: transparent !important;
+            border: 0 !important;
+            border-radius: 0 !important;
+            box-shadow: none !important;
         }
 
 
@@ -699,14 +747,6 @@
         }
 
         @media (max-width: 992px) {
-            .main-vehicle-image img {
-                height: 320px;
-            }
-
-            .vehicle-title {
-                font-size: 26px;
-            }
-
             .booking-form-card {
                 position: static;
             }
@@ -718,25 +758,10 @@
                 padding-block: 24px !important;
             }
 
-            .vehicle-image-gallery .main-vehicle-image { min-height: 230px; }
-            .main-vehicle-image img { max-height: 220px; }
-
-            .vehicle-thumbnails .row {
-                display: grid;
-                grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
-            }
-
-            .vehicle-thumbnails .row > [class*="col-"] {
-                width: 100%;
-            }
+            .vehicle-image-gallery .main-vehicle-image { height: 220px; min-height: 0; }
 
             .vehicle-info-card {
                 padding: 16px;
-            }
-
-            .vehicle-title {
-                overflow-wrap: anywhere;
-                font-size: clamp(22px, 7vw, 28px);
             }
 
             .vehicle-actions-card {
@@ -768,6 +793,7 @@
             .details-grid { grid-template-columns: 1fr; }
             .vehicle-top-price { align-items: stretch !important; flex-direction: column; padding: 14px; }
             .vehicle-top-actions { display: grid !important; grid-template-columns: 1fr 1fr; }
+            #vehicleQuotationActions { grid-template-columns: 1fr; }
             .vehicle-top-actions .btn { padding-inline: 8px !important; }
         }
 
@@ -794,8 +820,6 @@
             const priceStatus = document.getElementById('vehiclePriceStatus');
             const directBookingActions = document.getElementById('vehicleDirectBookingActions');
             const quotationActions = document.getElementById('vehicleQuotationActions');
-            const offerPriceMeta = document.getElementById('vehicleOfferPriceMeta');
-            const offerCurrencyMeta = document.getElementById('vehicleOfferCurrencyMeta');
             const quotationModal = document.getElementById('vehicleQuotationModal');
             if (quotationModal && quotationModal.parentElement !== document.body) {
                 document.body.appendChild(quotationModal);
@@ -1029,23 +1053,11 @@
                     }
                 }
                 if (summaryUnit) {
-                    summaryUnit.hidden = !hasBookablePrice;
-                    if (!hasBookablePrice) {
-                        summaryUnit.textContent = '';
-                    } else if (isWeddingPackage) {
-                        summaryUnit.textContent = `/${packageHours}h package`;
-                    } else if (serviceType === 'airport_transfers') {
-                        summaryUnit.textContent = '/ transfer';
-                    } else if (fixedRateService) {
-                        summaryUnit.textContent = durationLabel;
-                    } else if (numDays > 1) {
-                        summaryUnit.textContent = `${formatMoney(perDay, currencyCode)}/day`;
-                    } else {
-                        summaryUnit.textContent = durationLabel;
-                    }
+                    const showDailyRate = hasBookablePrice && !fixedRateService && !isWeddingPackage
+                        && serviceType !== 'airport_transfers' && numDays > 1;
+                    summaryUnit.hidden = !showDailyRate;
+                    summaryUnit.textContent = showDailyRate ? `${formatMoney(perDay, currencyCode)}/day` : '';
                 }
-                if (offerPriceMeta) offerPriceMeta.setAttribute('content', Math.floor(Math.max(0, amount)).toFixed(0));
-                if (offerCurrencyMeta) offerCurrencyMeta.setAttribute('content', currencyCode);
                 if (priceHeader) {
                     priceHeader.dataset.currencyCode = currencyCode;
                     priceHeader.dataset.currencySymbol = currencySymbols[currencyCode] || currencyCode;
@@ -1202,11 +1214,14 @@
             window.changeMainImage = function(event, imageSrc) {
                 const main = document.getElementById('mainVehicleImage');
                 if (main) main.setAttribute('src', imageSrc);
-                document.querySelectorAll('.thumbnail-img').forEach(function(img) {
-                    img.classList.remove('active');
+                document.querySelectorAll('.vehicle-thumbnail').forEach(function(button) {
+                    button.classList.remove('active');
+                    button.setAttribute('aria-pressed', 'false');
                 });
-                if (event && event.target) {
-                    event.target.classList.add('active');
+                const selected = event?.target?.closest('.vehicle-thumbnail');
+                if (selected) {
+                    selected.classList.add('active');
+                    selected.setAttribute('aria-pressed', 'true');
                 }
             };
         })();

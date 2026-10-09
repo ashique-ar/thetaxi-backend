@@ -60,6 +60,7 @@ class VehicleGroup extends BaseModel
         'class_id',
         'name',
         'description',
+        'service_seo',
         'specs',
         'images',
         'thumbnail',
@@ -81,6 +82,7 @@ class VehicleGroup extends BaseModel
      */
     protected $casts = [
         'specs' => 'array',
+        'service_seo' => 'array',
         'images' => 'array',
         'thumbnail' => 'array',
         'is_active' => 'boolean',

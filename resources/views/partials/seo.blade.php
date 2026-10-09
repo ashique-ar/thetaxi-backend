@@ -2,18 +2,19 @@
     // Inputs: $model (optional), $sections (optional array), $pageTitle (optional),
     // $managedSeo (optional). Model/CMS metadata remains owned by its editor.
     $settings = $settings ?? (View::shared('settings') ?? []);
+    $seoOverride = is_array($seoOverride ?? null) ? $seoOverride : [];
     $managedSeo = (bool) ($managedSeo ?? !empty($model));
     $pageTitle = trim((string) ($pageTitle ?? $__env->yieldContent('title')));
     $metaDescription = $metaDescription ?? '';
     $metaKeywords = $metaKeywords ?? '';
     $ogImage = $ogImage ?? '';
-    $canonical = request()->url();
+    $canonical = $canonicalUrl ?? request()->url();
 
     if (!empty($model)) {
-        $pageTitle = $model->seo_title ?: ($model->meta_title ?: ($model->title ?: ($model->name ?: $pageTitle)));
-        $metaDescription = $model->seo_description ?: ($model->meta_description ?: ($model->excerpt ?: ''));
+        $pageTitle = !empty($seoOverride['title']) ? $seoOverride['title'] : ($model->seo_title ?: ($model->meta_title ?: ($model->title ?: ($model->name ?: $pageTitle))));
+        $metaDescription = !empty($seoOverride['meta_description']) ? $seoOverride['meta_description'] : ($model->seo_description ?: ($model->meta_description ?: ($model->excerpt ?: '')));
         $metaKeywords = $model->seo_keywords ?: ($model->meta_tags ?: ($model->meta_keywords ?: ''));
-        $ogImage = $model->seo_og_image ?: ($model->featured_image ?: ($model->thumbnail ?: ($model->og_image ?: null)));
+        $ogImage = !empty($seoOverride['og_image']) ? $seoOverride['og_image'] : ($model->seo_og_image ?: ($model->featured_image ?: ($model->thumbnail ?: ($model->og_image ?: null))));
 
         if (method_exists($model, 'contentType') && $model->relationLoaded('contentType')) {
             $contentTypeSlug = $model->contentType->slug ?? null;
@@ -75,7 +76,9 @@
     $enabled = static fn ($value, bool $default = true): bool => filter_var($value ?? $default, FILTER_VALIDATE_BOOLEAN);
     $canonicalEnabled = $enabled($settings['seo_canonical_enabled'] ?? true);
     $schemaEnabled = $enabled($settings['seo_schema_enabled'] ?? true);
-    $robots = $settings['seo_robots'] ?? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1';
+    $robots = !empty($seoOverride) && empty($seoOverride['is_indexable'])
+        ? 'noindex, follow'
+        : ($settings['seo_robots'] ?? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     $locale = $settings['seo_default_locale'] ?? 'en_LK';
     $organizationSummary = $replaceSeoTokens($settings['seo_ai_summary'] ?? '');
     $topicSource = $managedSeo ? $metaKeywords : ($settings['seo_ai_topics'] ?? $metaKeywords);

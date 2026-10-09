@@ -12,6 +12,7 @@ use App\Http\Resources\Vehicle\VehicleGroupResource;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Validation\Rule;
 
 class VehicleGroupController extends Controller
@@ -110,6 +111,7 @@ class VehicleGroupController extends Controller
     public function store(CreateVehicleGroupRequest $request): JsonResponse
     {
         $vg = VehicleGroup::create($request->validated() + ['created_user_id' => $request->user()->id]);
+        Cache::forget('sitemap');
         return response()->json(['status' => 'success', 'message' => 'Group created', 'data' => ['group' => new VehicleGroupResource($vg)]], 201);
     }
 
@@ -131,9 +133,30 @@ class VehicleGroupController extends Controller
         ]);
     }
 
+    public function seoServiceTypes(): JsonResponse
+    {
+        $serviceTypes = \App\Models\Service\ServiceType::publicContext()
+            ->where('is_active', true)
+            ->orderBy('priority')
+            ->orderBy('name')
+            ->get(['id', 'code', 'name', 'slug', 'description']);
+
+        return response()->json(['status' => 'success', 'data' => $serviceTypes]);
+    }
+
     public function update(UpdateVehicleGroupRequest $request, VehicleGroup $vehicleGroup): JsonResponse
     {
-        $vehicleGroup->update($request->validated());
+        $data = $request->validated();
+        if (array_key_exists('service_seo', $data)) {
+            $submittedPages = collect($data['service_seo'] ?? []);
+            $submittedServiceIds = $submittedPages->pluck('service_type_id')->map(fn ($id) => (string) $id)->all();
+            $inactivePages = collect($vehicleGroup->service_seo ?? [])
+                ->reject(fn ($page) => in_array((string) ($page['service_type_id'] ?? ''), $submittedServiceIds, true));
+            $data['service_seo'] = $submittedPages->concat($inactivePages)->values()->all();
+        }
+
+        $vehicleGroup->update($data);
+        Cache::forget('sitemap');
         return response()->json([
             'status' => 'success',
             'message' => 'Group updated',
@@ -167,6 +190,7 @@ class VehicleGroupController extends Controller
                 'updated_user_id' => $request->user()->id,
                 'updated_at' => now(),
             ]));
+        Cache::forget('sitemap');
 
         return response()->json([
             'status' => 'success',
@@ -178,6 +202,7 @@ class VehicleGroupController extends Controller
     public function destroy(VehicleGroup $vehicleGroup): JsonResponse
     {
         $vehicleGroup->delete();
+        Cache::forget('sitemap');
         return response()->json(['status' => 'success', 'message' => 'Group deleted']);
     }
 }

@@ -13,7 +13,6 @@ use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -155,11 +154,19 @@ class PaymentController extends Controller
      */
     public function paymentCallback(Request $request): JsonResponse
     {
+        $callbackSecret = config('booking.payment_callback_secret');
+        if (! is_string($callbackSecret) || strlen($callbackSecret) < 32) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Secure payment callback verification is not configured.',
+            ], 503);
+        }
+
         $validator = Validator::make($request->all(), [
             'transaction_id' => 'required|string',
             'status' => 'required|string|in:success,failed,cancelled',
             'payment_id' => 'nullable|string',
-            'signature' => 'nullable|string'
+            'signature' => 'required|string'
         ]);
 
         if ($validator->fails()) {
@@ -182,27 +189,32 @@ class PaymentController extends Controller
                 ], 404);
             }
 
-            // Verify signature if provided
-            if ($request->signature && !$this->verifyPaymentSignature($request->all())) {
+            if (! $this->verifyPaymentSignature($request->all())) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Invalid payment signature'
                 ], 400);
             }
 
-            // Idempotency: skip if already processed with this status
-            $idempotencyKey = 'payment.callback.' . $request->input('transaction_id') . '.' . $request->input('status');
-            if (Cache::has($idempotencyKey)) {
-                return response()->json([
-                    'status' => 'success',
-                    'message' => 'Payment callback already processed',
-                    'data' => ['transaction_id' => $request->input('transaction_id'), 'status' => $request->input('status')]
-                ]);
-            }
-
             $tenantBooking = Booking::query()->findOrFail($transaction->booking_id);
             $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($tenantBooking);
-            $smsConfirmation = DB::transaction(function () use ($request, $transaction, $tenantBooking, $tenantCompanyId): ?array {
+            $callbackOutcome = DB::transaction(function () use ($request, $transaction, $tenantBooking, $tenantCompanyId): array {
+                $lockedTransaction = DB::table('payment_transactions')
+                    ->where('id', $transaction->id)
+                    ->lockForUpdate()
+                    ->first();
+                abort_unless($lockedTransaction, 404, 'Transaction not found.');
+                $requestedStatus = (string) $request->input('status');
+                if (in_array($lockedTransaction->status, ['success', 'failed', 'cancelled'], true)) {
+                    $sameOutcome = $lockedTransaction->status === $requestedStatus
+                        && (string) ($lockedTransaction->payment_id ?? '') === (string) ($request->input('payment_id') ?? '');
+                    abort_unless($sameOutcome, 409, 'The payment transaction already has a different final outcome.');
+
+                    return ['applied' => false, 'sms_confirmation' => null];
+                }
+                abort_unless($lockedTransaction->status === 'pending', 409,
+                    'The payment transaction is not awaiting a provider outcome.');
+
                 $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
                     ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
                 if (! $company) {
@@ -212,7 +224,7 @@ class PaymentController extends Controller
                 }
                 abort_unless($company, 409, 'No active default company is configured.');
                 DB::table('payment_transactions')
-                    ->where('transaction_id', $request->input('transaction_id'))
+                    ->where('id', $lockedTransaction->id)
                     ->update([
                         'status' => $request->input('status'),
                         'payment_id' => $request->input('payment_id'),
@@ -220,16 +232,14 @@ class PaymentController extends Controller
                     ]);
 
                 $booking = Booking::query()->lockForUpdate()->find($transaction->booking_id);
-                if (! $booking) {
-                    return null;
-                }
+                abort_unless($booking, 409, 'The payment booking no longer exists; reconcile this callback manually.');
                 $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
                     ->lockForUpdate()->first(['company_id']);
                 abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
                     'The booking legal entity changed before payment could be recorded.');
                 if ($request->input('status') === 'success') {
-                    $amount = (float) ($transaction->amount ?? 0);
-                    $currency = (string) ($transaction->currency ?? 'LKR');
+                    $amount = (float) ($lockedTransaction->amount ?? 0);
+                    $currency = (string) ($lockedTransaction->currency ?? 'LKR');
                     $reference = (string) ($request->input('payment_id') ?? $request->input('transaction_id'));
                     $this->paymentLedger->receive($booking, [
                         'amount' => $amount,
@@ -248,7 +258,10 @@ class PaymentController extends Controller
                         'notes' => 'Canonically recorded from verified payment callback.',
                     ], $request->user()?->id);
 
-                    return compact('booking', 'amount', 'currency', 'reference');
+                    return [
+                        'applied' => true,
+                        'sms_confirmation' => compact('booking', 'amount', 'currency', 'reference'),
+                    ];
                 }
 
                 if (in_array($request->input('status'), ['failed', 'cancelled'], true)) {
@@ -260,26 +273,29 @@ class PaymentController extends Controller
                     ]);
                 }
 
-                return null;
+                return ['applied' => true, 'sms_confirmation' => null];
             });
-            if ($smsConfirmation) {
+            if ($callbackOutcome['sms_confirmation']) {
                 $this->smsAutomation->queuePaymentConfirmation(
-                    $smsConfirmation['booking'], $smsConfirmation['amount'],
-                    $smsConfirmation['currency'], $smsConfirmation['reference']
+                    $callbackOutcome['sms_confirmation']['booking'], $callbackOutcome['sms_confirmation']['amount'],
+                    $callbackOutcome['sms_confirmation']['currency'], $callbackOutcome['sms_confirmation']['reference']
                 );
             }
 
-            // Mark as processed for 24 hours to prevent duplicate handling
-            Cache::put($idempotencyKey, true, now()->addHours(24));
-
             return response()->json([
                 'status' => 'success',
-                'message' => 'Payment callback processed successfully',
+                'message' => $callbackOutcome['applied']
+                    ? 'Payment callback processed successfully.'
+                    : 'Payment callback was already applied.',
                 'data' => [
                     'transaction_id' => $request->input('transaction_id'),
                     'status' => $request->input('status')
                 ]
             ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -332,6 +348,8 @@ class PaymentController extends Controller
                 ]
             ]);
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
             throw $e;
         } catch (\Exception $e) {
             return response()->json([
@@ -804,6 +822,8 @@ class PaymentController extends Controller
             ]);
         } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
             throw $e;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -837,10 +857,8 @@ class PaymentController extends Controller
     private function verifyPaymentSignature(array $data): bool
     {
         $secret = config('booking.payment_callback_secret');
-        if (empty($secret)) {
-            // If no secret configured, skip verification but log a warning.
-            \Illuminate\Support\Facades\Log::warning('Payment signature verification skipped: payment_callback_secret not configured');
-            return true;
+        if (! is_string($secret) || strlen($secret) < 32) {
+            return false;
         }
 
         $providedSignature = $data['signature'] ?? '';

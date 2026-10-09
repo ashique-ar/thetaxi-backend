@@ -1722,6 +1722,7 @@ Route::middleware(['auth:api'])->group(function () {
             Route::apiResource('vehicle-distance-multipliers', VehicleDistanceMultiplierController::class);
             Route::apiResource('vehicle-fuel-types', VehicleFuelTypeController::class);
             Route::apiResource('vehicle-grades', VehicleGradeController::class);
+            Route::get('vehicle-groups/seo-service-types', [VehicleGroupController::class, 'seoServiceTypes'])->middleware('permission:vehicle-groups.view');
             Route::post('vehicle-groups/{vehicleGroup}/move-vehicles', [VehicleGroupController::class, 'moveVehicles']);
             Route::apiResource('vehicle-groups', VehicleGroupController::class);
             Route::apiResource('vehicle-images', VehicleImageController::class);

@@ -385,16 +385,46 @@ class PerformanceOptimizationService
             ]);
         }
 
-        // Add vehicle detail pages
-        $vehicles = \App\Models\Vehicle\Vehicle::where('status', 'published')->where('is_active', true)->select('id', 'updated_at', 'created_at', 'slug')->get();
-        foreach ($vehicles as $vehicle) {
-            $loc = route('vehicle.details', $vehicle->id);
+        // Add active vehicle group detail pages and only fully authored service variants.
+        $activeServiceTypeIds = \App\Models\Service\ServiceType::publicContext()
+            ->where('is_active', true)
+            ->pluck('id')
+            ->map(fn ($id) => (string) $id)
+            ->all();
+        $vehicleGroups = \App\Models\Vehicle\VehicleGroup::query()
+            ->where('is_active', true)
+            ->whereHas('vehicles', fn ($query) => $query->where('is_active', true)->where('status', 'published'))
+            ->get(['id', 'service_seo', 'updated_at', 'created_at']);
+        foreach ($vehicleGroups as $vehicleGroup) {
+            $lastmod = optional($vehicleGroup->updated_at)->toISOString() ?? optional($vehicleGroup->created_at)->toISOString();
             $urls->push([
-                'loc' => $loc,
-                'lastmod' => optional($vehicle->updated_at)->toISOString() ?? optional($vehicle->created_at)->toISOString(),
+                'loc' => route('vehicle.details', $vehicleGroup->id),
+                'lastmod' => $lastmod,
                 'changefreq' => 'monthly',
                 'priority' => '0.6'
             ]);
+
+            foreach (($vehicleGroup->service_seo ?? []) as $servicePage) {
+                if (empty($servicePage['is_indexable'])
+                    || empty($servicePage['slug'])
+                    || empty($servicePage['title'])
+                    || empty($servicePage['meta_description'])
+                    || empty($servicePage['intro'])
+                    || !in_array((string) ($servicePage['service_type_id'] ?? ''), $activeServiceTypeIds, true)) {
+                    continue;
+                }
+
+                $loc = route('vehicle.details', [
+                    'id' => $vehicleGroup->id,
+                    'serviceSlug' => $servicePage['slug'],
+                ]);
+                $urls->push([
+                    'loc' => $loc,
+                    'lastmod' => $lastmod,
+                    'changefreq' => 'monthly',
+                    'priority' => '0.7'
+                ]);
+            }
         }
 
         // Deduplicate by loc

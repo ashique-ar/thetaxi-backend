@@ -14,9 +14,11 @@ use App\Models\User;
 use App\Models\UserContext;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Payment\PaymentGatewayManager;
+use App\Services\Sms\SmsAutomationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
@@ -82,6 +84,16 @@ function seedGatewayRefundFixture(): array
 function paymentRefundRequest($actor, array $payload): Request
 {
     $request = Request::create('/api/payments/refund-fixture/refund', 'POST', $payload);
+    $request->setUserResolver(fn () => $actor);
+
+    return $request;
+}
+
+function signedPaymentCallbackRequest($actor, array $payload, string $secret): Request
+{
+    ksort($payload);
+    $payload['signature'] = hash_hmac('sha256', json_encode($payload, JSON_THROW_ON_ERROR), $secret);
+    $request = Request::create('/api/payments/callback', 'POST', $payload);
     $request->setUserResolver(fn () => $actor);
 
     return $request;
@@ -240,4 +252,60 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
         ->toThrow(HttpResponseException::class)
         ->and(fn () => app(PaymentController::class)->getPaymentStatus($otherRequest, $transactionId))
         ->toThrow(HttpResponseException::class);
+});
+
+it('fails closed when the payment callback verifier is missing or the signature is invalid', function () {
+    [$actor, , $transactionId] = seedGatewayRefundFixture();
+    DB::table('payment_transactions')->where('transaction_id', $transactionId)->update(['status' => 'pending']);
+    $controller = app(PaymentController::class);
+    $payload = ['transaction_id' => $transactionId, 'status' => 'success', 'payment_id' => 'callback-provider-1'];
+
+    Config::set('booking.payment_callback_secret', '');
+    $unconfiguredRequest = Request::create('/api/payments/callback', 'POST', $payload);
+    $unconfiguredRequest->setUserResolver(fn () => $actor);
+    expect($controller->paymentCallback($unconfiguredRequest)->getStatusCode())->toBe(503);
+
+    $secret = str_repeat('callback-test-key-', 2);
+    Config::set('booking.payment_callback_secret', $secret);
+    $missingSignatureRequest = Request::create('/api/payments/callback', 'POST', $payload);
+    $missingSignatureRequest->setUserResolver(fn () => $actor);
+    expect($controller->paymentCallback($missingSignatureRequest)->getStatusCode())->toBe(422);
+
+    $invalidPayload = [...$payload, 'signature' => str_repeat('0', 64)];
+    $invalidRequest = Request::create('/api/payments/callback', 'POST', $invalidPayload);
+    $invalidRequest->setUserResolver(fn () => $actor);
+    expect($controller->paymentCallback($invalidRequest)->getStatusCode())->toBe(400)
+        ->and(DB::table('payment_transactions')->where('transaction_id', $transactionId)->value('status'))->toBe('pending');
+});
+
+it('applies an authenticated payment callback once and rejects a conflicting final outcome', function () {
+    [$actor, $booking, $transactionId] = seedGatewayRefundFixture();
+    $booking->update(['total_estimated' => 2000]);
+    DB::table('payment_transactions')->where('transaction_id', $transactionId)->update(['status' => 'pending']);
+    $secret = str_repeat('callback-test-key-', 2);
+    Config::set('booking.payment_callback_secret', $secret);
+    $sms = Mockery::mock(SmsAutomationService::class);
+    $sms->shouldReceive('queuePaymentConfirmation')->once();
+    $this->app->instance(SmsAutomationService::class, $sms);
+    $controller = app(PaymentController::class);
+    $payload = ['transaction_id' => $transactionId, 'status' => 'success', 'payment_id' => 'callback-provider-2'];
+
+    $first = $controller->paymentCallback(signedPaymentCallbackRequest($actor, $payload, $secret));
+    $replay = $controller->paymentCallback(signedPaymentCallbackRequest($actor, $payload, $secret));
+    expect($first->getStatusCode())->toBe(200)
+        ->and($replay->getStatusCode())->toBe(200)
+        ->and(DB::table('payment_transactions')->where('transaction_id', $transactionId)->value('status'))->toBe('success')
+        ->and(BookingPaymentReceipt::query()->where('booking_id', $booking->id)->where('provider_event_id', 'callback-provider-2')->count())->toBe(1);
+
+    $conflict = null;
+    try {
+        $controller->paymentCallback(signedPaymentCallbackRequest($actor, [
+            ...$payload,
+            'status' => 'failed',
+        ], $secret));
+    } catch (HttpException $exception) {
+        $conflict = $exception;
+    }
+    expect($conflict?->getStatusCode())->toBe(409)
+        ->and(DB::table('payment_transactions')->where('transaction_id', $transactionId)->value('status'))->toBe('success');
 });

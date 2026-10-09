@@ -35,7 +35,7 @@ class VehicleController extends Controller
     /**
      * Display vehicle details with booking functionality
      */
-    public function show(Request $request, string $id)
+    public function show(Request $request, string $id, ?string $serviceSlug = null)
     {
         // Find the vehicle group
         $vehicleGroup = VehicleGroup::with([
@@ -47,6 +47,22 @@ class VehicleController extends Controller
             'transmission',
             'fuelType',
         ])->withCount('vehicles')->findOrFail($id);
+
+        $serviceSeoPage = null;
+        $seoServiceType = null;
+        if ($serviceSlug !== null) {
+            $serviceSeoPage = collect($vehicleGroup->service_seo ?? [])
+                ->first(fn ($page) => ($page['slug'] ?? null) === $serviceSlug);
+            abort_if(!$serviceSeoPage, 404);
+            $seoServiceType = ServiceType::publicContext()
+                ->where('is_active', true)
+                ->find($serviceSeoPage['service_type_id'] ?? null);
+            abort_if(!$seoServiceType, 404);
+            $serviceSeoPage['is_indexable'] = !empty($serviceSeoPage['is_indexable'])
+                && !empty($serviceSeoPage['title'])
+                && !empty($serviceSeoPage['meta_description'])
+                && !empty($serviceSeoPage['intro']);
+        }
 
         // Get search context if provided (legacy path)
         $searchId = $request->query('search');
@@ -158,6 +174,20 @@ class VehicleController extends Controller
             }
             $search = null;
         }
+
+        // A service landing URL always represents that configured service. It uses
+        // that service's live form defaults and pricing rules, never a fixed service code.
+        if ($serviceSeoPage && $seoServiceType) {
+            $search = null;
+            $searchPricingParams = null;
+            $searchData = [
+                'service_type' => $seoServiceType->code,
+                'pickup_date' => now()->format('Y-m-d'),
+                'return_date' => now()->addDays(in_array(strtolower((string) $seoServiceType->pricing_mode), ['month', 'monthly'], true) ? 29 : 0)->format('Y-m-d'),
+                'date' => now()->format('Y-m-d'),
+                'num_days' => in_array(strtolower((string) $seoServiceType->pricing_mode), ['month', 'monthly'], true) ? 30 : 1,
+            ];
+        }
         
         $configuredDefaultServiceType = (string) $this->websiteSettingsService->get('default_service_type', 'day_rental');
         $defaultServiceTypeQuery = ServiceType::publicContext()->where('is_active', true);
@@ -192,6 +222,14 @@ class VehicleController extends Controller
             ->select('id', 'code', 'name', 'description')
             ->get();
 
+        $activeServiceTypeIds = $serviceTypes->pluck('id')->map(fn ($id) => (string) $id)->all();
+        $indexedServiceSeoPages = collect($vehicleGroup->service_seo ?? [])
+            ->filter(fn ($page) => !empty($page['is_indexable']) && !empty($page['slug']) && !empty($page['title']) && !empty($page['meta_description']) && !empty($page['intro']) && in_array((string) ($page['service_type_id'] ?? ''), $activeServiceTypeIds, true))
+            ->map(function ($page) use ($serviceTypes) {
+                $page['service_name'] = optional($serviceTypes->firstWhere('id', $page['service_type_id']))->name ?? $page['service_type_id'];
+                return $page;
+            })->values();
+
         // Calculate initial pricing based on search data
         if ($searchPricingParams) {
             $cachedSearchPricing = data_get(
@@ -222,7 +260,10 @@ class VehicleController extends Controller
             'pricing',
             'search',
             'searchPricingParams',
-            'preset'
+            'preset',
+            'serviceSeoPage',
+            'seoServiceType',
+            'indexedServiceSeoPages'
         ));
     }
 
