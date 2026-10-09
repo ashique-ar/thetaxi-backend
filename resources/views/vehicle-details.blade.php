@@ -89,21 +89,6 @@
         $vehicleImages = array_values(array_unique(array_filter(array_slice($vehicleImages, 0, 8))));
     @endphp
 
-    @if (!is_theme('default') && !is_theme('theme-02'))
-    <div class="breadcrumb-section three"
-        style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
-        <div class="container banner-content">
-            <div class="">
-                <h1>{{ $vehicleGroup->name ?? 'Vehicle Details' }}</h1>
-                <ul class="breadcrumb-list">
-                    <li><a href="{{ route('home') }}">Home</a></li>
-                    <li>Vehicle Details</li>
-                </ul>
-            </div>
-        </div>
-    </div>
-    @endif
-
     <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('default') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="{{ is_theme('theme-04') ? 'vehicle-details-page-layout vehicle-details-page-layout--theme-04' : 'container' }}">
             @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
@@ -1191,7 +1176,6 @@
                     });
                 });
 
-                requestPriceUpdate();
             });
 
             window.changeMainImage = function(event, imageSrc) {
