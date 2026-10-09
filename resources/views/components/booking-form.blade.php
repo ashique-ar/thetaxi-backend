@@ -331,7 +331,7 @@
     }
 @endphp
 
-<div class="filter-wrapper {{ is_theme('theme-02') ? 't2-filter-wrapper' : theme_class('filter-wrapper') }}">
+<div class="filter-wrapper booking-form-context--{{ $bookingContext ?? 'search' }} {{ is_theme('theme-02') ? 't2-filter-wrapper' : theme_class('filter-wrapper') }}">
     <ul class="filter-item-list">
         @foreach ($bookingTabs as $tab)
             <li class="single-item {{ $currentTabCode === $tab->code ? 'active' : '' }}"

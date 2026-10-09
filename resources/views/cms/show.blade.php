@@ -659,7 +659,7 @@
                         </div>
                         <div class="mb-3">
                             <label for="quotation_message" class="form-label">Message</label>
-                            <textarea class="form-control" id="quotation_message" name="message" rows="4"></textarea>
+                            <textarea class="form-control" id="quotation_message" name="special_requirements" rows="4"></textarea>
                         </div>
                     </div>
                     <div class="modal-footer">
@@ -721,6 +721,14 @@
             }
 
             if (form) {
+                window.prepareQuotationRequestForm = function(target) {
+                    if (!quotationPhoneIti) return;
+                    const countryData = quotationPhoneIti.getSelectedCountryData();
+                    const countryCode = target.querySelector('.quotation-phone-country-code');
+                    const internationalNumber = target.querySelector('.quotation-phone-international');
+                    if (countryCode) countryCode.value = countryData.dialCode || '';
+                    if (internationalNumber) internationalNumber.value = quotationPhoneIti.getNumber() || '';
+                };
                 form.addEventListener('submit', function() {
                     if (!quotationPhoneIti) return;
 

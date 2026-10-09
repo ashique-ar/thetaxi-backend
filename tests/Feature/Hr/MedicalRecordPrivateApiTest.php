@@ -37,7 +37,8 @@ it('stores encrypted, company-scoped records and serves uploaded documents priva
     expect($document->disk)->toBe('local')
         ->and(Storage::disk('local')->get($document->path))->not->toContain('secret document bytes');
 
-    actingAs($admin, 'api')->get('/api/medical-records/'.$id.'/document/'.$document->id)->assertOk()
+    $download = actingAs($admin, 'api')->get('/api/medical-records/'.$id.'/document/'.$document->id);
+    $download->assertOk()
         ->assertStreamedContent('secret document bytes');
     actingAs($admin, 'api')->getJson('/api/medical-records')->assertOk()
         ->assertJsonPath('data.data.0.id', $id);

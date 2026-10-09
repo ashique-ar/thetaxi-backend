@@ -72,7 +72,7 @@
         }
     @endphp
 
-    <div class="search-page-layout">
+    <div class="search-page-layout {{ is_theme('theme-04') ? 'search-page-layout--sidebar' : 'search-page-layout--top-search' }}">
     <!-- Booking Form Section -->
     <div class="search-booking-section mb-5 {{ is_theme('theme-04') ? 't4-booking-panel' : '' }}" id="searchBookingSection">
         <div class="container">
@@ -536,6 +536,23 @@
 
         .search-booking-panel {
             transition: max-height 0.3s ease, opacity 0.25s ease, margin-top 0.25s ease;
+        }
+
+        @media (max-width: 991px) {
+            .search-booking-section:not(.is-open) .search-booking-panel {
+                max-height: 0;
+                opacity: 0;
+                overflow: hidden;
+                margin-top: 0;
+                pointer-events: none;
+            }
+
+            .search-booking-section.is-open .search-booking-panel {
+                max-height: 5000px;
+                opacity: 1;
+                overflow: visible;
+                pointer-events: auto;
+            }
         }
 
         .search-summary-header {
@@ -1167,30 +1184,12 @@
         $(document).ready(function() {
             const $searchBookingSection = $('#searchBookingSection');
             const $toggleSearchFormBtn = $('#toggleSearchFormBtn');
-            const mobileVehicleResultsTarget = document.getElementById('vehicleResultsSection');
-
-            function autoScrollToVehiclesOnMobile() {
-                if (window.innerWidth > 767 || !mobileVehicleResultsTarget || window.location.hash) {
-                    return;
-                }
-
-                window.requestAnimationFrame(function() {
-                    setTimeout(function() {
-                        const top = mobileVehicleResultsTarget.getBoundingClientRect().top + window.scrollY - 16;
-                        window.scrollTo({
-                            top: Math.max(top, 0),
-                            behavior: 'smooth'
-                        });
-                    }, 250);
-                });
-            }
-
             function syncMobileSearchFormState(forceOpen) {
                 if (!$searchBookingSection.length || !$toggleSearchFormBtn.length) {
                     return;
                 }
 
-                if (window.innerWidth > 768) {
+                if (window.innerWidth >= 992) {
                     $searchBookingSection.addClass('is-open');
                     $toggleSearchFormBtn.attr('aria-expanded', 'true');
                     $toggleSearchFormBtn.find('span').text('Modify Search');
@@ -1206,8 +1205,9 @@
                 $toggleSearchFormBtn.find('span').text(isOpen ? 'Hide Search' : 'Modify Search');
             }
 
-            syncMobileSearchFormState(false);
-            autoScrollToVehiclesOnMobile();
+            // On narrow screens, top-search and sidebar themes both stack
+            // the search controls above results. Keep the controls visible.
+            syncMobileSearchFormState(true);
 
             $toggleSearchFormBtn.on('click', function() {
                 const willOpen = !$searchBookingSection.hasClass('is-open');
@@ -1229,7 +1229,7 @@
             });
 
             $(window).on('resize', function() {
-                syncMobileSearchFormState(false);
+                syncMobileSearchFormState(true);
             });
 
             // Sort functionality

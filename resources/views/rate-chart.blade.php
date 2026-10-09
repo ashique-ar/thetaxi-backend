@@ -1019,50 +1019,12 @@
             }
         }
 
-        $(document).on('submit', '#quotationRequestForm', function (event) {
-            event.preventDefault();
-
-            const $form = $(this);
-            const $submitBtn = $form.find('button[type="submit"]');
-            const originalBtnText = $submitBtn.html();
-
-            if (quotationPhoneIti) {
-                const countryData = quotationPhoneIti.getSelectedCountryData();
-                $form.find('.quotation-phone-country-code').val(countryData.dialCode || '');
-                $form.find('.quotation-phone-international').val(quotationPhoneIti.getNumber() || '');
-            }
-
-            $submitBtn.prop('disabled', true).html(
-                '<span class="spinner-border spinner-border-sm me-2"></span> Submitting...'
-            );
-
-            $.ajax({
-                url: $form.attr('action'),
-                method: 'POST',
-                data: $form.serialize(),
-                headers: {
-                    Accept: 'application/json',
-                },
-                success: function (response) {
-                    if (response.success) {
-                        $('#requestQuotationModal').modal('hide');
-                        showRateChartNotification('success', response.message || 'Quotation request submitted successfully! Our team will contact you shortly.');
-                        $form[0].reset();
-                        $('#quotation_service_type').val('day_rental');
-                    } else {
-                        showRateChartNotification('error', response.message || 'Failed to submit quotation request. Please try again.');
-                    }
-                },
-                error: function (xhr) {
-                    const errors = xhr.responseJSON && xhr.responseJSON.errors ? xhr.responseJSON.errors : null;
-                    const firstError = errors ? Object.values(errors).flat()[0] : null;
-                    showRateChartNotification('error', firstError || xhr.responseJSON?.message || 'An error occurred. Please try again.');
-                },
-                complete: function () {
-                    $submitBtn.prop('disabled', false).html(originalBtnText);
-                },
-            });
-        });
+        window.prepareQuotationRequestForm = function (form) {
+            if (!quotationPhoneIti) return;
+            const countryData = quotationPhoneIti.getSelectedCountryData();
+            form.querySelector('.quotation-phone-country-code').value = countryData.dialCode || '';
+            form.querySelector('.quotation-phone-international').value = quotationPhoneIti.getNumber() || '';
+        };
 
         const triggers = document.querySelectorAll('.zoom-trigger');
         const hoverPopup = document.getElementById('zoom-hover-popup');

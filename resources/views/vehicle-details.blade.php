@@ -90,7 +90,7 @@
         </div>
     </div>
 
-    <div class="vehicle-details-wrapper {{ theme_class('vehicle-details') }} py-5">
+    <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} py-5">
         <div class="container">
             <div class="row g-4">
                 <div class="col-lg-8">
@@ -282,7 +282,8 @@
                 </div>
 
                 <div class="col-lg-4">
-                    <div class="booking-form-card">
+                    <div class="booking-form-card booking-form-card--vehicle {{ theme_class('booking-form-card') }}"
+                        data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         <div class="booking-form-shell">
                             <div class="booking-shell-header">
                                 <div>
@@ -302,7 +303,10 @@
                                 </div>
                             </div>
                             <div class="booking-shell-body">
-                                @include('components.booking-form', ['search' => $bookingFormSearch])
+                                @include('components.booking-form', [
+                                    'search' => $bookingFormSearch,
+                                    'bookingContext' => 'vehicle',
+                                ])
                             </div>
                         </div>
 
@@ -378,7 +382,7 @@
 
         .main-vehicle-image img {
             width: 100%;
-            height: 430px;
+            height: clamp(260px, 36vw, 430px);
             object-fit: cover;
             border-radius: 16px;
             box-shadow: var(--vehicle-shadow);
@@ -627,6 +631,17 @@
             border: 1px solid var(--vehicle-border) !important;
         }
 
+        .vehicle-details-wrapper,
+        .vehicle-details-wrapper .container,
+        .vehicle-details-wrapper .row,
+        .vehicle-details-wrapper [class*="col-"] {
+            min-width: 0;
+        }
+
+        .vehicle-details-wrapper img {
+            max-width: 100%;
+        }
+
         .vehicle-actions-card {
             background: var(--vehicle-surface);
             border-radius: 16px;
@@ -733,8 +748,31 @@
         }
 
         @media (max-width: 576px) {
+            .vehicle-details-wrapper {
+                padding-block: 24px !important;
+            }
+
+            .main-vehicle-image img {
+                height: 250px;
+                object-fit: contain;
+            }
+
+            .vehicle-thumbnails .row {
+                display: grid;
+                grid-template-columns: repeat(auto-fit, minmax(56px, 1fr));
+            }
+
+            .vehicle-thumbnails .row > [class*="col-"] {
+                width: 100%;
+            }
+
             .vehicle-info-card {
-                padding: 18px;
+                padding: 16px;
+            }
+
+            .vehicle-title {
+                overflow-wrap: anywhere;
+                font-size: clamp(22px, 7vw, 28px);
             }
 
             .vehicle-actions-card {
@@ -742,7 +780,7 @@
             }
 
             .vehicle-quick-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
             .detail-row {
@@ -756,13 +794,17 @@
             }
 
             .booking-shell-header {
-                flex-direction: column;
-                align-items: flex-start;
+                align-items: center;
             }
 
             .booking-shell-price {
-                text-align: left;
+                text-align: right;
             }
+
+            .vehicle-details-wrapper .booking-shell-body { padding: 8px; }
+            .vehicle-details-wrapper .booking-shell-body .filter-item-list { flex-wrap: wrap; }
+            .vehicle-details-wrapper .booking-shell-body .filter-item-list .single-item { flex: 1 1 44%; }
+            .detail-row { flex-wrap: wrap; }
         }
 
         .booking-form-card .filter-wrapper .filter-input-wrap .filter-input.show {
@@ -861,8 +903,8 @@
                 const form = getActiveBookingForm();
                 const values = getActiveFormValues();
                 const payload = form ? new FormData(form) : new FormData();
-                payload.append('vehicle_group_id', '{{ $vehicleGroup->id }}');
-                payload.append('group_name', '{{ addslashes($vehicleGroup->name ?? 'Vehicle') }}');
+                payload.set('vehicle_group_id', '{{ $vehicleGroup->id }}');
+                payload.set('group_name', '{{ addslashes($vehicleGroup->name ?? 'Vehicle') }}');
                 payload.set('service_type', values.serviceType);
                 payload.set('pickup', values.pickup);
                 payload.set('dropoff', values.dropoff);
@@ -925,9 +967,12 @@
                 return payload;
             }
 
-            function formatMoney(amount) {
+            const currencySymbols = @json(collect(getAvailableCurrencies())->pluck('symbol', 'code'));
+
+            function formatMoney(amount, currencyCode) {
                 const value = Number(amount || 0);
-                const symbol = (priceHeader && priceHeader.dataset.currencySymbol) || '{{ getCurrencySymbol() }}';
+                const code = String(currencyCode || (priceHeader && priceHeader.dataset.currencyCode) || '{{ getSelectedCurrency() }}').toUpperCase();
+                const symbol = currencySymbols[code] || code;
                 return `${symbol} ${Math.floor(Math.max(0, value)).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`;
             }
 
@@ -975,14 +1020,14 @@
                 const packageHours = parseInt(durationInfo.package_hours || 0, 10) || 0;
                 const fixedRateService = isFixedRateService(serviceType);
                 const isWeddingPackage = serviceType === 'wedding_hire' && packageHours > 0;
-                const perDay = numDays > 0 ? (amount / numDays) : amount;
                 const durationLabel = getDurationLabel(serviceType, numDays);
                 const currencyCode = (pricing && pricing.currency) || ((priceHeader && priceHeader.dataset
                     .currencyCode) ||
                     '{{ getSelectedCurrency() }}');
+                const perDay = numDays > 0 ? (amount / numDays) : amount;
 
-                if (priceHeaderValue) priceHeaderValue.textContent = formatMoney(amount);
-                if (summaryPrice) summaryPrice.textContent = formatMoney(amount);
+                if (priceHeaderValue) priceHeaderValue.textContent = formatMoney(amount, currencyCode);
+                if (summaryPrice) summaryPrice.textContent = formatMoney(amount, currencyCode);
                 if (summaryLabel) summaryLabel.textContent = resolveServiceLabel(serviceType);
                 if (summarySubLabel) {
                     if (isWeddingPackage) {
@@ -1003,7 +1048,7 @@
                     } else if (fixedRateService) {
                         summaryUnit.textContent = durationLabel;
                     } else if (numDays > 1) {
-                        summaryUnit.textContent = `${formatMoney(perDay)}/day`;
+                        summaryUnit.textContent = `${formatMoney(perDay, currencyCode)}/day`;
                     } else {
                         summaryUnit.textContent = durationLabel;
                     }
@@ -1012,6 +1057,7 @@
                 if (offerCurrencyMeta) offerCurrencyMeta.setAttribute('content', currencyCode);
                 if (priceHeader) {
                     priceHeader.dataset.currencyCode = currencyCode;
+                    priceHeader.dataset.currencySymbol = currencySymbols[currencyCode] || currencyCode;
                 }
             }
 

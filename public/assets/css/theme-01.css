@@ -176,6 +176,19 @@
     opacity: 0.95;
 }
 
+.theme-default .vehicle-details-wrapper .booking-form-context--vehicle .filter-item-list .single-item.active {
+    background: var(--primary-color1) !important;
+    border-color: var(--primary-color1) !important;
+}
+
+.theme-default .vehicle-details-wrapper .booking-form-context--vehicle .primary-btn1 {
+    width: 100%;
+}
+
+.theme-default.theme-page-search .search-page-layout--top-search { display: flex; flex-direction: column; }
+.theme-default.theme-page-search .search-page-layout--top-search > .search-booking-section { order: 0; width: 100%; }
+.theme-default.theme-page-search .search-page-layout--top-search > #vehicleResultsSection { order: 2; }
+
 @media (max-width: 767px) {
     .filter-wrapper .filter-input-wrap {
         padding: 30px 15px 20px !important;

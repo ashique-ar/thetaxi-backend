@@ -412,10 +412,17 @@
             e.preventDefault();
             
             const $form = $(this);
+            if (!this.checkValidity()) {
+                this.reportValidity();
+                return;
+            }
             if ($form.data('quotation-submitting')) {
                 return;
             }
             $form.data('quotation-submitting', true);
+            $form.find('.is-invalid').removeClass('is-invalid');
+            $form.find('.invalid-feedback.quotation-validation-error').remove();
+            $form.find('.quotation-validation-summary').remove();
 
             const $submitBtn = $form.find('button[type="submit"]');
             const originalBtnText = $submitBtn.html();
@@ -446,8 +453,24 @@
                     }
                 },
                 error: function(xhr) {
-                    const errorMsg = xhr.responseJSON?.message || 'An error occurred. Please try again.';
-                    showErrorNotification(errorMsg);
+                    const errors = xhr.responseJSON?.errors || {};
+                    const messages = Object.values(errors).flat();
+                    Object.entries(errors).forEach(([field, fieldMessages]) => {
+                        const input = $form.find(`[name="${field}"]`).first();
+                        if (!input.length) return;
+                        const visibleInput = input.is(':hidden') ? input.closest('.iti').find('input').first() : input;
+                        visibleInput.addClass('is-invalid');
+                        $('<div>', {
+                            class: 'invalid-feedback quotation-validation-error d-block',
+                            text: fieldMessages[0],
+                        }).insertAfter(visibleInput);
+                    });
+                    if (messages.length) {
+                        $form.prepend(`<div class="alert alert-danger quotation-validation-summary" role="alert">${messages[0]}</div>`);
+                        $form.find('.is-invalid').first().trigger('focus');
+                        return;
+                    }
+                    showErrorNotification(xhr.responseJSON?.message || 'An error occurred. Please try again.');
                 },
                 complete: function() {
                     $form.data('quotation-submitting', false);

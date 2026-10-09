@@ -1380,6 +1380,23 @@ class WebsiteSettingsService
             })
             ->first(['id']);
 
+        if (!$company) {
+            // Tenant domains also serve preview hosts such as dev.casons.lk.
+            // Resolve those to the registered parent domain rather than the
+            // unrelated default company, which would load the wrong menu.
+            $company = Company::query()
+                ->where('is_active', true)
+                ->orderByRaw('LENGTH(domain) DESC')
+                ->get(['id', 'domain', 'website'])
+                ->first(function (Company $candidate) use ($host): bool {
+                    $websiteHost = parse_url((string) $candidate->website, PHP_URL_HOST)
+                        ?: parse_url('//' . (string) $candidate->website, PHP_URL_HOST);
+                    $domain = strtolower(trim((string) ($candidate->domain ?: $websiteHost), '. '));
+
+                    return $domain !== '' && ($host === $domain || str_ends_with($host, '.' . $domain));
+                });
+        }
+
         return $company?->id ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
     }
 

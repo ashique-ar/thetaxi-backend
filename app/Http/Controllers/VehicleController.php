@@ -187,9 +187,47 @@ class VehicleController extends Controller
     {
         $vehicleGroup = VehicleGroup::findOrFail($id);
         $searchData = $request->all();
-        $serviceType = (string) ($searchData['service_type'] ?? 'day_rental');
-        $pickupDate = $this->normalizeDateString($searchData['pickup_date'] ?? ($searchData['date'] ?? ($searchData['from_date'] ?? now()->format('Y-m-d')))) ?? now()->format('Y-m-d');
-        $returnDate = $this->normalizeDateString($searchData['dropoff_date'] ?? ($searchData['return_date'] ?? ($searchData['to_date'] ?? $pickupDate))) ?? $pickupDate;
+        $serviceTypeValue = trim((string) ($searchData['service_type'] ?? ''));
+        $serviceTypeModel = $this->resolveServiceTypeModel($serviceTypeValue);
+        if (!$serviceTypeModel) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Select a valid service before checking the price.',
+                'errors' => ['service_type' => ['The selected service is unavailable.']],
+            ], 422);
+        }
+
+        $dateFields = [
+            'pickup_date' => $searchData['pickup_date'] ?? ($searchData['date'] ?? ($searchData['from_date'] ?? null)),
+            'return_date' => $searchData['dropoff_date'] ?? ($searchData['return_date'] ?? ($searchData['to_date'] ?? null)),
+        ];
+        $normalizedDates = [];
+        foreach ($dateFields as $field => $value) {
+            if ($value === null || trim((string) $value) === '') {
+                continue;
+            }
+            $normalized = $this->normalizeDateString($value);
+            if (!$normalized) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Check the selected travel dates and try again.',
+                    'errors' => [$field => ['Enter a valid travel date.']],
+                ], 422);
+            }
+            $normalizedDates[$field] = $normalized;
+        }
+
+        $pickupDate = $normalizedDates['pickup_date'] ?? now()->format('Y-m-d');
+        $returnDate = $normalizedDates['return_date'] ?? $pickupDate;
+        if ($returnDate < $pickupDate) {
+            return response()->json([
+                'success' => false,
+                'message' => 'The return date must be on or after the pickup date.',
+                'errors' => ['return_date' => ['The return date must be on or after the pickup date.']],
+            ], 422);
+        }
+
+        $serviceType = $serviceTypeModel->code;
 
         $searchData['service_type'] = $serviceType;
         $searchData['pickup_date'] = $pickupDate;

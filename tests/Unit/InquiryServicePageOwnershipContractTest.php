@@ -64,10 +64,12 @@ it('seeds each company theme with its own actual header links', function () {
     expect($themeFour)
         ->toContain("'active_theme' => 'theme-04'")
         ->toContain("['Services',")
+        ->toContain("['Corporate Transport',")
+        ->toContain("['Rate Chart',")
         ->toContain("['About',")
         ->toContain("['Inquiry',")
-        ->not->toContain("['Corporate Transport',")
-        ->not->toContain("['Rate Chart',");
+        ->and(file_get_contents($projectRoot . '/app/Services/WebsiteSettingsService.php'))
+        ->toContain("str_ends_with(\$host, '.' . \$domain)");
 });
 
 it('resolves published cms services before legacy inquiry service pages', function () {
