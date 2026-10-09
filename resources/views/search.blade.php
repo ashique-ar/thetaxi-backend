@@ -72,7 +72,7 @@
         }
     @endphp
 
-    <div class="search-page-layout {{ (is_theme('theme-04') || is_theme('default')) ? 'search-page-layout--sidebar' : 'search-page-layout--top-search' }}">
+    <div class="search-page-layout {{ is_theme('theme-04') ? 'search-page-layout--sidebar' : 'search-page-layout--top-search' }}">
     <!-- Booking Form Section -->
     <div class="search-booking-section mb-5 {{ is_theme('theme-04') ? 't4-booking-panel' : '' }}" id="searchBookingSection">
         <div class="container">

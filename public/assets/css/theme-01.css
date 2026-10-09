@@ -184,54 +184,6 @@
 .theme-default.theme-page-search .search-page-layout--top-search > .search-booking-section { order: 0; width: 100%; }
 .theme-default.theme-page-search .search-page-layout--top-search > #vehicleResultsSection { order: 2; }
 
-/* Keep Theme 01 search consistent with its left-side booking panel reference. */
-.theme-default.theme-page-search .search-page-layout--sidebar {
-    display: grid;
-    grid-template-columns: minmax(320px, 420px) minmax(0, 1fr);
-    align-items: start;
-    gap: 32px;
-    width: min(calc(100% - 48px), 1600px);
-    margin: 0 auto;
-    padding: 36px 0 72px;
-}
-.theme-default.theme-page-search .search-page-layout--sidebar > .search-booking-section {
-    grid-column: 1;
-    grid-row: 1 / span 2;
-    width: 100%;
-    margin: 0 !important;
-}
-.theme-default.theme-page-search .search-page-layout--sidebar > #vehicleResultsSection {
-    grid-column: 2;
-    width: 100%;
-    min-width: 0;
-    margin: 0 !important;
-    padding: 0;
-}
-.theme-default.theme-page-search .search-page-layout--sidebar > .search-booking-section .container,
-.theme-default.theme-page-search .search-page-layout--sidebar > #vehicleResultsSection .container {
-    width: 100%;
-    max-width: none;
-    padding-right: 0;
-    padding-left: 0;
-}
-
-@media (max-width: 991px) {
-    .theme-default.theme-page-search .search-page-layout--sidebar {
-        display: flex;
-        flex-direction: column;
-        gap: 24px;
-        width: min(calc(100% - 32px), 720px);
-        padding: 24px 0 48px;
-    }
-    .theme-default.theme-page-search .search-page-layout--sidebar > :where(.search-booking-section, #vehicleResultsSection) {
-        width: 100%;
-        order: 0;
-    }
-    .theme-default.theme-page-search .search-page-layout--sidebar > #vehicleResultsSection {
-        order: 2;
-    }
-}
-
 @media (max-width: 767px) {
     .filter-wrapper .filter-input-wrap {
         padding: 30px 15px 20px !important;
