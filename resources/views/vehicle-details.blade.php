@@ -42,6 +42,12 @@
         $pickupTime = $searchData['pickup_time'] ?? ($searchData['time'] ?? '10:00');
         $returnTime = $searchData['return_time'] ?? $pickupTime;
         $numDays = max(1, \Carbon\Carbon::parse($pickupDate)->diffInDays(\Carbon\Carbon::parse($returnDate)) + 1);
+        $priceMetadata = $pricing['calculation_metadata'] ?? [];
+        $hasBookablePrice = (float) ($pricing['base_amount'] ?? 0) > 0
+            && empty($pricing['error'])
+            && empty($priceMetadata['requires_quotation'])
+            && empty($priceMetadata['fallback_used'])
+            && empty($priceMetadata['default_structure']);
         $initialServiceTypeCode = $searchData['service_type'] ?? 'day_rental';
         $initialServiceTypeName =
             $serviceTypes->firstWhere('code', $initialServiceTypeCode)->name ??
@@ -104,7 +110,7 @@
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
                             <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
                                 <span class="text-muted small" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</span>
-                                <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }} {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}</strong>
+                                <strong class="vehicle-summary-price d-block" id="vehicleSummaryPrice">{{ $hasBookablePrice ? getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) . ' ' . number_format(floor((float) $pricing['base_amount']), 0) : 'Price on request' }}</strong>
                                 <span class="vehicle-summary-subline" id="vehiclePriceSubLabel">{{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }}</span>
                                 <span class="vehicle-summary-unit" id="vehicleSummaryUnit"></span>
                                 <span class="vehicle-price-status d-none" id="vehiclePriceStatus"></span>
@@ -112,9 +118,12 @@
                                 <meta itemprop="price" id="vehicleOfferPriceMeta" content="{{ number_format((float) ($pricing['base_amount'] ?? 0), 2, '.', '') }}">
                                 <link itemprop="availability" href="https://schema.org/InStock">
                             </div>
-                            <div class="vehicle-top-actions d-flex gap-2">
+                            <div class="vehicle-top-actions d-flex gap-2" id="vehicleDirectBookingActions" @if (!$hasBookablePrice) hidden @endif>
                                 <button type="button" class="btn btn-outline-primary" id="vehicleAddToCartBtn"><i class="bi bi-cart-plus" aria-hidden="true"></i> Add to Cart</button>
                                 <button type="button" class="btn btn-primary" id="vehicleBookNowBtn"><i class="bi bi-calendar-check" aria-hidden="true"></i> Book Now</button>
+                            </div>
+                            <div class="vehicle-top-actions" id="vehicleQuotationActions" @if ($hasBookablePrice) hidden @endif>
+                                <button type="button" class="btn btn-warning vehicle-request-quotation" data-bs-toggle="modal" data-bs-target="#vehicleQuotationModal"><i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation</button>
                             </div>
                         </div>
                     </div>
@@ -251,24 +260,20 @@
                             itemtype="https://schema.org/Offer">
                             <div class="d-flex justify-content-between align-items-start gap-2">
                                 <div>
-                                    <small class="text-uppercase text-muted">Live Price</small>
                                     <h5 class="mb-1" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</h5>
                                     <p class="mb-0 text-muted small" id="vehiclePriceSubLabel">
                                         {{ $numDays }} {{ \Illuminate\Support\Str::plural('day', $numDays) }}
                                     </p>
                                 </div>
                                 <div class="text-end">
-                                    <div class="vehicle-summary-price" id="vehicleSummaryPrice">
-                                        {{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
-                                        {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0))), 0) }}
-                                    </div>
-                                    @if (($pricing['base_amount'] ?? 0) > 0 && $numDays > 1)
+                                    <div class="vehicle-summary-price" id="vehicleSummaryPrice">{{ $hasBookablePrice ? getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) . ' ' . number_format(floor((float) $pricing['base_amount']), 0) : 'Price on request' }}</div>
+                                    @if ($hasBookablePrice && $numDays > 1)
                                         <div class="vehicle-summary-unit" id="vehicleSummaryUnit">
                                             {{ getCurrencySymbol($pricing['currency'] ?? getSelectedCurrency()) }}
                                             {{ number_format(floor(max(0, (float) ($pricing['base_amount'] ?? 0) / $numDays)), 0) }}/day
                                         </div>
                                     @else
-                                        <div class="vehicle-summary-unit" id="vehicleSummaryUnit">per day</div>
+                                        <div class="vehicle-summary-unit" id="vehicleSummaryUnit" @if (!$hasBookablePrice) hidden @endif></div>
                                     @endif
                                 </div>
                             </div>
@@ -281,9 +286,7 @@
                         </div>
 
                         <div class="vehicle-actions-card mt-3">
-                            <h6 class="mb-2">Direct Booking</h6>
-                            <p class="text-muted small mb-3">Uses the selected values in the form above.</p>
-                            <div class="d-grid gap-2">
+                            <div class="d-grid gap-2" id="vehicleDirectBookingActions" @if (!$hasBookablePrice) hidden @endif>
                                 <button type="button" class="btn btn-outline-primary w-100" id="vehicleAddToCartBtn">
                                     <i class="bi bi-cart-plus"></i> Add to Cart
                                 </button>
@@ -291,10 +294,60 @@
                                     <i class="bi bi-calendar-check"></i> Book Now
                                 </button>
                             </div>
+                            <div class="d-grid" id="vehicleQuotationActions" @if ($hasBookablePrice) hidden @endif>
+                                <button type="button" class="btn btn-warning w-100 vehicle-request-quotation" data-bs-toggle="modal" data-bs-target="#vehicleQuotationModal">
+                                    <i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>
                 @endif
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="vehicleQuotationModal" tabindex="-1" aria-labelledby="vehicleQuotationModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title" id="vehicleQuotationModalLabel"><i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <form method="POST" action="{{ route('quotation.request') }}">
+                    @csrf
+                    <div class="modal-body">
+                        <input type="hidden" name="vehicle_group_id" value="{{ $vehicleGroup->id }}">
+                        <input type="hidden" name="service_type" id="quotationServiceType" value="{{ $initialServiceTypeCode }}">
+                        <input type="hidden" name="pickup_location" id="quotationPickupLocation">
+                        <input type="hidden" name="dropoff_location" id="quotationDropoffLocation">
+                        <input type="hidden" name="travel_date" id="quotationTravelDate" value="{{ $pickupDate }}">
+                        <input type="hidden" name="travel_time" id="quotationTravelTime" value="{{ $pickupTime }}">
+                        <input type="hidden" name="return_date" id="quotationReturnDate" value="{{ $returnDate }}">
+                        <input type="hidden" name="return_time" id="quotationReturnTime" value="{{ $returnTime }}">
+                        <p class="mb-3">Send us your details and we will get back to you about the {{ $vehicleGroup->name }}.</p>
+                        <div class="mb-3">
+                            <label for="quotationCustomerName" class="form-label">Name</label>
+                            <input id="quotationCustomerName" type="text" class="form-control" name="customer_name" required maxlength="255">
+                        </div>
+                        <div class="mb-3">
+                            <label for="quotationCustomerEmail" class="form-label">Email</label>
+                            <input id="quotationCustomerEmail" type="email" class="form-control" name="customer_email" required maxlength="255">
+                        </div>
+                        <div class="mb-3">
+                            <label for="quotationCustomerPhone" class="form-label">Phone</label>
+                            <input id="quotationCustomerPhone" type="tel" class="form-control" name="customer_phone" required maxlength="20">
+                        </div>
+                        <div>
+                            <label for="quotationRequirements" class="form-label">Additional details</label>
+                            <textarea id="quotationRequirements" class="form-control" name="special_requirements" rows="3" maxlength="1000"></textarea>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                        <button type="submit" class="btn btn-warning">Send Request</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
@@ -315,6 +368,8 @@
             padding-block: 24px !important;
             background: linear-gradient(180deg, #f8f9fa 0%, #f4f6f8 100%);
         }
+
+        .vehicle-details-wrapper [hidden] { display: none !important; }
 
         .vehicle-details-wrapper .vehicle-details-layout { align-items: start; }
         .vehicle-image-gallery { margin-bottom: 16px !important; }
@@ -744,6 +799,8 @@
             const summaryLabel = document.getElementById('vehiclePriceLabel');
             const summarySubLabel = document.getElementById('vehiclePriceSubLabel');
             const priceStatus = document.getElementById('vehiclePriceStatus');
+            const directBookingActions = document.getElementById('vehicleDirectBookingActions');
+            const quotationActions = document.getElementById('vehicleQuotationActions');
             const offerPriceMeta = document.getElementById('vehicleOfferPriceMeta');
             const offerCurrencyMeta = document.getElementById('vehicleOfferCurrencyMeta');
 
@@ -926,8 +983,16 @@
                 priceStatus.textContent = message;
             }
 
+            function showQuotationActions(show) {
+                if (directBookingActions) directBookingActions.hidden = show;
+                if (quotationActions) quotationActions.hidden = !show;
+            }
+
             function applyPricingToUi(pricing, searchData) {
                 const amount = Number((pricing && pricing.base_amount) || 0);
+                const metadata = (pricing && pricing.calculation_metadata) || {};
+                const hasBookablePrice = amount > 0 && !(pricing && pricing.error) &&
+                    !metadata.requires_quotation && !metadata.fallback_used && !metadata.default_structure;
                 const serviceType = ((pricing && pricing.service_type) || (searchData && searchData.service_type) ||
                     'day_rental').toString();
                 const durationInfo = (pricing && pricing.duration_info) || {};
@@ -944,8 +1009,9 @@
                     '{{ getSelectedCurrency() }}');
                 const perDay = numDays > 0 ? (amount / numDays) : amount;
 
-                if (priceHeaderValue) priceHeaderValue.textContent = formatMoney(amount, currencyCode);
-                if (summaryPrice) summaryPrice.textContent = formatMoney(amount, currencyCode);
+                if (priceHeaderValue) priceHeaderValue.textContent = hasBookablePrice ? formatMoney(amount, currencyCode) : 'Price on request';
+                if (summaryPrice) summaryPrice.textContent = hasBookablePrice ? formatMoney(amount, currencyCode) : 'Price on request';
+                showQuotationActions(!hasBookablePrice);
                 if (summaryLabel) summaryLabel.textContent = resolveServiceLabel(serviceType);
                 if (summarySubLabel) {
                     if (isWeddingPackage) {
@@ -959,7 +1025,10 @@
                     }
                 }
                 if (summaryUnit) {
-                    if (isWeddingPackage) {
+                    summaryUnit.hidden = !hasBookablePrice;
+                    if (!hasBookablePrice) {
+                        summaryUnit.textContent = '';
+                    } else if (isWeddingPackage) {
                         summaryUnit.textContent = `/${packageHours}h package`;
                     } else if (serviceType === 'airport_transfers') {
                         summaryUnit.textContent = '/ transfer';
@@ -991,7 +1060,7 @@
                     pricingRequest.abort();
                 }
 
-                setPriceStatus('Updating price...', 'loading');
+                setPriceStatus('', '');
                 pricingRequest = $.ajax({
                     url: '{{ route('vehicle.updatePricing', ['id' => $vehicleGroup->id]) }}',
                     method: 'POST',
@@ -1001,15 +1070,16 @@
                             applyPricingToUi(response.pricing, response.search_data || payload);
                             setPriceStatus('', '');
                         } else {
-                            setPriceStatus('Unable to update pricing for current selection.', 'error');
+                            showQuotationActions(true);
+                            if (summaryPrice) summaryPrice.textContent = 'Price on request';
+                            if (summaryUnit) summaryUnit.hidden = true;
                         }
                     },
                     error: function(xhr, status) {
                         if (status === 'abort') return;
-                        const message = xhr.responseJSON && xhr.responseJSON.message ?
-                            xhr.responseJSON.message :
-                            'Unable to update pricing right now. Try again in a moment.';
-                        setPriceStatus(message, 'error');
+                        showQuotationActions(true);
+                        if (summaryPrice) summaryPrice.textContent = 'Price on request';
+                        if (summaryUnit) summaryUnit.hidden = true;
                     }
                 });
             }
@@ -1096,6 +1166,23 @@
                 });
                 if (bookBtn) bookBtn.addEventListener('click', function() {
                     postToCart(true);
+                });
+
+                document.querySelectorAll('.vehicle-request-quotation').forEach(function(button) {
+                    button.addEventListener('click', function() {
+                        try {
+                            const values = getActiveFormValues();
+                            document.getElementById('quotationServiceType').value = values.serviceType;
+                            document.getElementById('quotationPickupLocation').value = values.pickup;
+                            document.getElementById('quotationDropoffLocation').value = values.dropoff;
+                            document.getElementById('quotationTravelDate').value = values.pickupDate;
+                            document.getElementById('quotationTravelTime').value = values.pickupTime;
+                            document.getElementById('quotationReturnDate').value = values.returnDate;
+                            document.getElementById('quotationReturnTime').value = values.returnTime;
+                        } catch (error) {
+                            // Keep the initial trip details when the form has no active selection.
+                        }
+                    });
                 });
 
                 requestPriceUpdate();
