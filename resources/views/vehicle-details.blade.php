@@ -93,7 +93,7 @@
     @endif
 
     <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('default') ? 'vehicle-details--theme-01' : '' }} py-5">
-        <div class="container">
+        <div class="{{ is_theme('theme-04') ? 'vehicle-details-page-layout vehicle-details-page-layout--theme-04' : 'container' }}">
             @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
                 <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
                     @if (is_theme('theme-03'))
@@ -121,7 +121,7 @@
                 </div>
             @endif
             <div class="row g-4 vehicle-details-layout">
-                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8 order-2' }}">
+                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8 order-lg-1' }}">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -237,7 +237,7 @@
                 </div>
 
                 @if (is_theme('theme-04'))
-                <div class="col-lg-4 order-1">
+                <div class="col-lg-4 order-lg-2">
                     <div class="booking-form-card booking-form-card--vehicle t4-booking-panel {{ theme_class('booking-form-card') }}"
                         data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         <div class="search-booking-panel t4-booking-panel__card">

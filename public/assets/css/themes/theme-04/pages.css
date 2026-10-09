@@ -426,6 +426,7 @@ body.theme-theme-04.theme-page-search :where(#requestQuotationModal, #newSearchM
 body.theme-theme-04.theme-page-search :where(#requestQuotationModal, #newSearchModal) .modal-header { border-bottom: 3px solid var(--t4-accent); background: var(--t4-text) !important; color: #fff !important; }
 
 body.theme-theme-04.theme-page-vehicle-details .vehicle-details--theme-04 { margin: 0; padding: var(--t4-section) 0 !important; }
+body.theme-theme-04.theme-page-vehicle-details .vehicle-details-page-layout--theme-04 { width: min(calc(100% - 48px), 1600px); margin-inline: auto; }
 body.theme-theme-04.theme-page-vehicle-details .vehicle-image-gallery { padding: clamp(18px, 3vw, 32px); border: 1px solid var(--t4-line); border-top: 4px solid var(--t4-accent); border-radius: 10px; background: #fff; }
 body.theme-theme-04.theme-page-vehicle-details .main-vehicle-image { display: grid; min-height: 400px; padding: clamp(20px, 4vw, 46px); place-items: center; }
 body.theme-theme-04.theme-page-vehicle-details .main-vehicle-image img { max-height: 430px; object-fit: contain; }
