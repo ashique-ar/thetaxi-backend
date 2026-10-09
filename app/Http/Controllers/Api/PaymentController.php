@@ -293,7 +293,7 @@ class PaymentController extends Controller
      * Get payment status
      * GET /api/payments/{id}/status
      */
-    public function getPaymentStatus(string $id): JsonResponse
+    public function getPaymentStatus(Request $request, string $id): JsonResponse
     {
         try {
             $transaction = DB::table('payment_transactions')
@@ -306,6 +306,17 @@ class PaymentController extends Controller
                     'message' => 'Transaction not found'
                 ], 404);
             }
+
+            $companyId = DB::table('sales_booking_attributions')
+                ->where('booking_id', $transaction->booking_id)
+                ->whereNull('deleted_at')
+                ->value('company_id');
+            abort_unless($companyId, 404, 'Transaction not found');
+            app(SalesAccessScope::class)->assertCompany(
+                $request->user(),
+                (string) $companyId,
+                'sales.payment-adjustments.create-all',
+            );
 
             return response()->json([
                 'status' => 'success',
@@ -320,6 +331,8 @@ class PaymentController extends Controller
                     'updated_at' => $transaction->updated_at
                 ]
             ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -685,6 +698,56 @@ class PaymentController extends Controller
                     'total' => $transactions->total()
                 ]
             ]
+        ]);
+    }
+
+    /**
+     * List online refunds that need an operator to reconcile provider evidence.
+     * GET /api/payment-transactions/refunds/reconciliation
+     */
+    public function getRefundReconciliationQueue(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'status' => ['nullable', 'in:pending,manual_required'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $companyIds = app(SalesAccessScope::class)->companyIds(
+            $request->user(),
+            'sales.payment-adjustments.create-all',
+        );
+
+        $refunds = DB::table('payment_refunds as refunds')
+            ->join('payment_transactions as transactions', 'transactions.id', '=', 'refunds.transaction_id')
+            ->join('bookings', 'bookings.id', '=', 'transactions.booking_id')
+            ->join('sales_booking_attributions as attribution', function ($join): void {
+                $join->on('attribution.booking_id', '=', 'bookings.id')->whereNull('attribution.deleted_at');
+            })
+            ->join('companies', 'companies.id', '=', 'attribution.company_id')
+            ->whereIn('refunds.status', ($data['status'] ?? null) ? [$data['status']] : ['pending', 'manual_required'])
+            ->where('companies.is_active', true)
+            ->whereNull('companies.deleted_at')
+            ->when($companyIds !== null, fn ($query) => $query->whereIn('attribution.company_id', $companyIds))
+            ->orderByRaw("CASE refunds.status WHEN 'manual_required' THEN 0 ELSE 1 END")
+            ->orderBy('refunds.created_at')
+            ->select([
+                'refunds.id', 'refunds.amount', 'refunds.reason', 'refunds.status',
+                'refunds.gateway_refund_id', 'refunds.notes', 'refunds.created_at', 'refunds.updated_at',
+                'transactions.id as payment_transaction_id', 'transactions.transaction_id',
+                'transactions.gateway_transaction_id', 'transactions.currency', 'bookings.id as booking_id',
+                'bookings.booking_number', 'companies.id as company_id', 'companies.name as company_name',
+            ])
+            ->paginate($data['per_page'] ?? 25);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'data' => $refunds->items(),
+                'current_page' => $refunds->currentPage(),
+                'last_page' => $refunds->lastPage(),
+                'per_page' => $refunds->perPage(),
+                'total' => $refunds->total(),
+            ],
         ]);
     }
 

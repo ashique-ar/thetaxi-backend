@@ -86,6 +86,7 @@
         initializeLocationPlaceholderExamples();
         loadMapsAPI();
         initializeDatePickers();
+        document.querySelectorAll('.filter-input[data-field-defaults]').forEach(applyConfiguredSearchDefaults);
         setDefaultDatesAndLocations();
         hideFreshDynamicFormDefaults();
         setupAdvanceBookingConstraints();
@@ -103,6 +104,9 @@
                 input.value = '';
                 input.setAttribute('data-place-selected', 'false');
                 input.setAttribute('data-is-default', 'false');
+                const { latInput, lngInput } = getCoordInputs(input);
+                if (latInput) latInput.value = '';
+                if (lngInput) lngInput.value = '';
             });
         });
     }
@@ -186,7 +190,7 @@
                 const minimumDate = minIsoDate;
                 const minimumTime = formatTimeValue(min);
                 timeInput.min = selectedDate === minimumDate ? minimumTime : '00:00';
-                if (correctInvalid && ((setInitial && isFresh) || (selectedDate === minimumDate && timeInput.value < minimumTime))) {
+                if (correctInvalid && selectedDate === minimumDate && (!timeInput.value || timeInput.value < minimumTime)) {
                     timeInput.value = minimumTime;
                 }
             };
@@ -483,14 +487,8 @@
         if (airportForm) {
             const airportDateInput =
                 airportForm.querySelector('input[name="date"]');
-            const airportTimeInput =
-                airportForm.querySelector('input[name="time"]');
-
             if (airportDateInput && !airportDateInput.value) {
                 airportDateInput.value = todayFormatted;
-            }
-            if (airportTimeInput && !airportTimeInput.value) {
-                airportTimeInput.value = "12:00";
             }
 
             // Set proper defaults based on transfer type
@@ -517,15 +515,8 @@
         if (dropPickupForm) {
             const dateInput =
                 dropPickupForm.querySelector('input[name="date"]');
-            const timeSelect = dropPickupForm.querySelector(
-                'select[name="time"]'
-            );
-
             if (dateInput && !dateInput.value) {
                 dateInput.value = todayFormatted;
-            }
-            if (timeSelect && !timeSelect.value) {
-                timeSelect.value = "12:00";
             }
 
         }
@@ -536,28 +527,9 @@
             const pickupDateInput = rideNowForm.querySelector(
                 'input[name="pickup_date"]'
             );
-            // const dropoffDateInput = rideNowForm.querySelector(
-            //     'input[name="dropoff_date"]'
-            // );
-            const pickupTimeInput = rideNowForm.querySelector(
-                'input[name="pickup_time"]'
-            );
-            // const dropoffTimeInput = rideNowForm.querySelector(
-            //     'input[name="dropoff_time"]'
-            // );
-
             if (pickupDateInput && !pickupDateInput.value) {
                 pickupDateInput.value = todayFormatted;
             }
-            // if (dropoffDateInput && !dropoffDateInput.value) {
-            //     dropoffDateInput.value = threeDaysFormatted;
-            // }
-            if (pickupTimeInput && !pickupTimeInput.value) {
-                pickupTimeInput.value = "12:00";
-            }
-            // if (dropoffTimeInput && !dropoffTimeInput.value) {
-            //     dropoffTimeInput.value = "12:00";
-            // }
 
         }
 
@@ -569,26 +541,12 @@
             const dropoffDateInput = dayRentalForm.querySelector(
                 'input[name="dropoff_date"]'
             );
-            const pickupTimeInput = dayRentalForm.querySelector(
-                'input[name="pickup_time"]'
-            );
-            const dropoffTimeInput = dayRentalForm.querySelector(
-                'input[name="dropoff_time"]'
-            );
-
             if (pickupDateInput && !pickupDateInput.value) {
                 pickupDateInput.value = todayFormatted;
             }
             if (dropoffDateInput && !dropoffDateInput.value) {
                 dropoffDateInput.value = threeDaysFormatted;
             }
-            if (pickupTimeInput && !pickupTimeInput.value) {
-                pickupTimeInput.value = "12:00";
-            }
-            if (dropoffTimeInput && !dropoffTimeInput.value) {
-                dropoffTimeInput.value = "12:00";
-            }
-
         }
 
         // Custom Tour - set today and 3 days later
@@ -3844,19 +3802,9 @@
         // Enhance time pickers
         const timePickers = document.querySelectorAll('input[type="time"]');
         timePickers.forEach((picker) => {
-            // Set default time to 12:00 if it's 00:00
-            if (picker.value === "00:00") {
-                picker.value = "12:00";
-            }
-
             picker.addEventListener("focus", function () {
                 this.showPicker();
             });
-
-            // Set reasonable default time if empty
-            if (!picker.value) {
-                picker.value = "12:00";
-            }
         });
     }
 

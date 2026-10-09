@@ -151,16 +151,7 @@ class VehicleController extends Controller
                     'service_type' => $presetServiceType->code,
                     'pickup_date' => $pickupDate->format('Y-m-d'),
                     'return_date' => $returnDate->format('Y-m-d'),
-                    'pickup_time' => '10:00',
-                    'return_time' => '10:00',
-                    'pickup_location' => 'Colombo, Sri Lanka',
-                    'dropoff_location' => 'Colombo, Sri Lanka',
-                    'pickup_lat' => 6.9271,
-                    'pickup_lng' => 79.8612,
-                    'dropoff_lat' => 6.9271,
-                    'dropoff_lng' => 79.8612,
                     'date' => $pickupDate->format('Y-m-d'),
-                    'time' => '10:00',
                     'num_days' => $presetDays,
                 ];
                 $searchPricingParams = null;
@@ -183,18 +174,16 @@ class VehicleController extends Controller
                 'service_type' => $defaultServiceType,
                 'pickup_date' => now()->format('Y-m-d'),
                 'return_date' => now()->format('Y-m-d'),
-                'pickup_time' => '10:00',
-                'return_time' => '10:00',
-                'pickup_location' => 'Colombo, Sri Lanka',
-                'dropoff_location' => 'Colombo, Sri Lanka',
-                'pickup_lat' => 6.9271,
-                'pickup_lng' => 79.8612,
-                'dropoff_lat' => 6.9271,
-                'dropoff_lng' => 79.8612,
                 'date' => now()->format('Y-m-d'),
-                'time' => '10:00',
                 'num_days' => 1,
             ];
+        }
+
+        if (!$search && !$searchPricingParams) {
+            $serviceType = $this->resolveServiceTypeModel((string) ($searchData['service_type'] ?? ''));
+            if ($serviceType) {
+                $searchData = $this->applyConfiguredFormDefaults($searchData, $serviceType);
+            }
         }
 
         // Get available service types
@@ -473,6 +462,90 @@ class VehicleController extends Controller
                 ->where('code', $tab->service_type_code)
                 ->first()
             : null;
+    }
+
+    private function applyConfiguredFormDefaults(array $searchData, ServiceType $serviceType): array
+    {
+        $formConfig = app(\App\Services\DynamicServiceConfigurationService::class)
+            ->getServiceFormConfiguration($serviceType->code);
+        $fields = $formConfig['fields'] ?? [];
+        $mappings = $formConfig['field_mappings'] ?? [];
+        $dateMappings = data_get($mappings, 'dates', []);
+        $locationMappings = data_get($mappings, 'locations', []);
+        $pickupLocationConfigured = false;
+        $dropoffLocationConfigured = false;
+
+        foreach ($fields as $fieldName => $field) {
+            if (!is_array($field) || !array_key_exists('default', $field) || $field['default'] === '') {
+                continue;
+            }
+
+            $submitAs = (string) ($field['submit_as'] ?? $fieldName);
+            $default = $field['default'];
+            $type = $field['type'] ?? '';
+            $searchData[$submitAs] = $default;
+
+            if ($type === 'location') {
+                $isPickup = str_contains((string) $fieldName, 'pickup')
+                    || in_array($submitAs, ['pickup', 'pickup_location', $locationMappings['pickup_location'] ?? null], true)
+                    || ($locationMappings['pickup_location'] ?? null) === $fieldName;
+                $isDropoff = str_contains((string) $fieldName, 'dropoff')
+                    || in_array($submitAs, ['dropoff', 'dropoff_location', $locationMappings['dropoff_location'] ?? null], true)
+                    || ($locationMappings['dropoff_location'] ?? null) === $fieldName;
+
+                if ($isPickup) {
+                    $searchData['pickup_location'] = $default;
+                    $searchData['pickup_lat'] = $field['default_lat'] ?? $searchData['pickup_lat'] ?? null;
+                    $searchData['pickup_lng'] = $field['default_lng'] ?? $searchData['pickup_lng'] ?? null;
+                    $pickupLocationConfigured = true;
+                } elseif ($isDropoff) {
+                    $searchData['dropoff_location'] = $default;
+                    $searchData['dropoff_lat'] = $field['default_lat'] ?? $searchData['dropoff_lat'] ?? null;
+                    $searchData['dropoff_lng'] = $field['default_lng'] ?? $searchData['dropoff_lng'] ?? null;
+                    $dropoffLocationConfigured = true;
+                }
+            } elseif ($type === 'date') {
+                $isDropoff = str_contains((string) $fieldName, 'dropoff')
+                    || str_contains((string) $fieldName, 'return')
+                    || in_array($submitAs, [$dateMappings['to_date'] ?? null, 'to_date', 'return_date', 'dropoff_date'], true)
+                    || ($dateMappings['to_date'] ?? null) === $fieldName;
+                $date = $this->resolveConfiguredDate($default);
+                if ($date) {
+                    $searchData[$isDropoff ? 'return_date' : 'pickup_date'] = $date;
+                }
+            } elseif ($type === 'time') {
+                $isDropoff = str_contains((string) $fieldName, 'dropoff')
+                    || str_contains((string) $fieldName, 'return')
+                    || in_array($submitAs, [$dateMappings['to_time'] ?? null, 'to_time', 'return_time', 'dropoff_time'], true)
+                    || ($dateMappings['to_time'] ?? null) === $fieldName;
+                $searchData[$isDropoff ? 'return_time' : 'pickup_time'] = $default;
+            }
+        }
+
+        if ($pickupLocationConfigured && !$dropoffLocationConfigured) {
+            $searchData['dropoff_location'] = $searchData['pickup_location'];
+            $searchData['dropoff_lat'] = $searchData['pickup_lat'] ?? null;
+            $searchData['dropoff_lng'] = $searchData['pickup_lng'] ?? null;
+        }
+
+        return $searchData;
+    }
+
+    private function resolveConfiguredDate(mixed $value): ?string
+    {
+        if (!is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        $value = trim($value);
+        if (in_array(strtolower($value), ['today', 'tomorrow'], true)) {
+            return Carbon::today()->addDays(strtolower($value) === 'tomorrow' ? 1 : 0)->format('Y-m-d');
+        }
+        if (preg_match('/^\+(\d+)\s*days?$/i', $value, $matches)) {
+            return Carbon::today()->addDays((int) $matches[1])->format('Y-m-d');
+        }
+
+        return $this->normalizeDateString($value);
     }
 
     private function buildAvailabilityParams(array $input, $vehicleGroup, ServiceType $serviceType): array

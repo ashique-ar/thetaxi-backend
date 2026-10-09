@@ -2737,6 +2737,7 @@ Route::middleware(['auth:api'])->group(function () {
 
     Route::prefix('payment-transactions')->middleware(['permission:payments.transactions'])->group(function () {
         Route::get('/', [PaymentController::class, 'getPaymentTransactions']);
+        Route::get('refunds/reconciliation', [PaymentController::class, 'getRefundReconciliationQueue']);
         Route::get('{id}', [PaymentController::class, 'getTransactionDetails']);
         Route::post('{id}/refund', [PaymentController::class, 'refundTransaction'])->middleware('permission:payments.refund');
     });

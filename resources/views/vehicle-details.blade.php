@@ -39,7 +39,7 @@
         $today = now()->format('Y-m-d');
         $pickupDate = $searchData['pickup_date'] ?? ($searchData['date'] ?? $today);
         $returnDate = $searchData['return_date'] ?? $pickupDate;
-        $pickupTime = $searchData['pickup_time'] ?? ($searchData['time'] ?? '10:00');
+        $pickupTime = $searchData['pickup_time'] ?? ($searchData['time'] ?? '');
         $returnTime = $searchData['return_time'] ?? $pickupTime;
         $numDays = max(1, \Carbon\Carbon::parse($pickupDate)->diffInDays(\Carbon\Carbon::parse($returnDate)) + 1);
         $priceMetadata = $pricing['calculation_metadata'] ?? [];
@@ -53,18 +53,18 @@
             $serviceTypes->firstWhere('code', $initialServiceTypeCode)->name ??
             ucwords(str_replace('_', ' ', $initialServiceTypeCode));
 
-        $bookingFormSearch = (object) [
+        $bookingFormSearch = (object) array_merge($searchData, [
             'service_type' => $initialServiceTypeCode,
             'from_date' => $pickupDate,
             'to_date' => $returnDate,
             'from_time' => $pickupTime,
             'to_time' => $returnTime,
-            'pickup_location' => $searchData['pickup_location'] ?? ['address' => 'Colombo, Sri Lanka', 'latitude' => 6.9271, 'longitude' => 79.8612],
-            'dropoff_location' => $searchData['dropoff_location'] ?? ['address' => 'Colombo, Sri Lanka', 'latitude' => 6.9271, 'longitude' => 79.8612],
-            'pickup_latitude' => $searchData['pickup_lat'] ?? 6.9271,
-            'pickup_longitude' => $searchData['pickup_lng'] ?? 79.8612,
-            'dropoff_latitude' => $searchData['dropoff_lat'] ?? 6.9271,
-            'dropoff_longitude' => $searchData['dropoff_lng'] ?? 79.8612,
+            'pickup_location' => $searchData['pickup_location'] ?? null,
+            'dropoff_location' => $searchData['dropoff_location'] ?? null,
+            'pickup_latitude' => $searchData['pickup_lat'] ?? null,
+            'pickup_longitude' => $searchData['pickup_lng'] ?? null,
+            'dropoff_latitude' => $searchData['dropoff_lat'] ?? null,
+            'dropoff_longitude' => $searchData['dropoff_lng'] ?? null,
             'duration_days' => $numDays,
             'passengers' => $searchData['passengers'] ?? 1,
             'transfer_type' => $searchData['transfer_type'] ?? null,
@@ -75,7 +75,7 @@
             'is_return_trip' => $searchData['is_return_trip'] ?? false,
             'return_trip_date' => $searchData['return_trip_date'] ?? $searchData['return_date'] ?? null,
             'return_trip_time' => $searchData['return_trip_time'] ?? $searchData['return_time'] ?? null,
-        ];
+        ]);
 
         $mainImage = $vehicleGroup->thumbnail
             ? s3_asset($vehicleGroup->thumbnail['path'] ?? $vehicleGroup->thumbnail)

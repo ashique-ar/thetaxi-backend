@@ -192,6 +192,9 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
     $detailRequest->setUserResolver(fn () => $actor);
     $detail = app(PaymentController::class)->getTransactionDetails($detailRequest, $transaction->id);
     expect($detail->getData(true)['data']['transaction']['refunds'])->toBeEmpty();
+    $statusRequest = Request::create('/api/payments/'.$transactionId.'/status', 'GET');
+    $statusRequest->setUserResolver(fn () => $actor);
+    expect(app(PaymentController::class)->getPaymentStatus($statusRequest, $transactionId)->getStatusCode())->toBe(200);
 
     DB::table('payment_refunds')->insert([
         'id' => (string) Str::uuid(),
@@ -207,6 +210,12 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
     $detail = app(PaymentController::class)->getTransactionDetails($detailRequest, $transaction->id);
     expect($detail->getData(true)['data']['transaction']['refunds'])->toHaveCount(1)
         ->and($detail->getData(true)['data']['transaction']['refunds'][0]['status'])->toBe('manual_required');
+    $queueRequest = Request::create('/api/payment-transactions/refunds/reconciliation', 'GET');
+    $queueRequest->setUserResolver(fn () => $actor);
+    $queue = app(PaymentController::class)->getRefundReconciliationQueue($queueRequest)->getData(true)['data'];
+    expect($queue['total'])->toBe(1)
+        ->and($queue['data'][0]['status'])->toBe('manual_required')
+        ->and($queue['data'][0]['booking_number'])->toBe($booking->booking_number);
 
     $otherCompany = Company::query()->create(['name' => 'Payment read other company', 'is_default' => false]);
     $otherUser = User::factory()->create();
@@ -223,7 +232,12 @@ it('scopes payment transaction reads to the active Sales legal entity and expose
     $otherRequest->setUserResolver(fn () => $otherUser);
     $list = Request::create('/api/payment-transactions', 'GET');
     $list->setUserResolver(fn () => $otherUser);
+    $otherQueue = Request::create('/api/payment-transactions/refunds/reconciliation', 'GET');
+    $otherQueue->setUserResolver(fn () => $otherUser);
     expect(app(PaymentController::class)->getPaymentTransactions($list)->getData(true)['data']['transactions'])->toBeEmpty()
+        ->and(app(PaymentController::class)->getRefundReconciliationQueue($otherQueue)->getData(true)['data']['data'])->toBeEmpty()
         ->and(fn () => app(PaymentController::class)->getTransactionDetails($otherRequest, $transaction->id))
+        ->toThrow(HttpResponseException::class)
+        ->and(fn () => app(PaymentController::class)->getPaymentStatus($otherRequest, $transactionId))
         ->toThrow(HttpResponseException::class);
 });
