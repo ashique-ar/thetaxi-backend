@@ -1,6 +1,20 @@
 @props(['item', 'index', 'currency' => 'LKR', 'source_currency' => null])
 
 @php
+    $currencyService = app(\App\Services\CurrencyService::class);
+    // Email callers historically pass both ISO codes and display symbols here.
+    // Resolve a valid ISO target before any conversion, and keep its symbol for
+    // presentation only. Symbols such as ₹ are not exchange-rate currency codes.
+    $displayCurrencyCode = $currencyService->isValidCurrency((string) $currency)
+        ? strtoupper(trim((string) $currency))
+        : $currencyService->getBookingBaseCurrency();
+    $displayCurrencyLabel = $currencyService->isValidCurrency((string) $currency)
+        ? getCurrencySymbol($displayCurrencyCode)
+        : (string) $currency;
+    $sourceCurrencyCode = $currencyService->isValidCurrency((string) $source_currency)
+        ? strtoupper(trim((string) $source_currency))
+        : null;
+
     $pickupLoc = is_string($item->pickup_location ?? null)
         ? json_decode($item->pickup_location, true)
         : $item->pickup_location ?? [];
@@ -356,8 +370,8 @@
         $totalLabel = $isReturnTrip ? 'Transfer Total (Drop-off + Return)' : 'Transfer Total (Drop-off)';
     }
 
-    $convertDisplayAmount = fn ($amount) => $source_currency && $source_currency !== $currency
-        ? app(\App\Services\CurrencyService::class)->convert((float) $amount, $source_currency, $currency)
+    $convertDisplayAmount = fn ($amount) => $sourceCurrencyCode && $sourceCurrencyCode !== $displayCurrencyCode
+        ? $currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)
         : (float) $amount;
     $displayUnitPrice = $convertDisplayAmount($unitPrice);
     $displayExtraKmPrice = $convertDisplayAmount($extraKmPrice ?? 0);
@@ -478,7 +492,7 @@
                     Rate per Day
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    {{ $currency }} {{ number_format(floor(max(0, $displayUnitPrice)), 0) }}
+                    {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayUnitPrice)), 0) }}
                 </td>
             </tr>
         @endif
@@ -592,10 +606,10 @@
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                     {{ number_format($extraKilometers) }} km
                     @if ($extraKmPrice > 0)
-                        @ {{ $currency }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}/km
+                        @ {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}/km
                     @endif
                     @if ($extraKmTotal > 0)
-                        <span style="float: right; color: #BF2629;">{{ $currency }} {{ number_format(floor(max(0, $displayExtraKmTotal)), 0) }}</span>
+                        <span style="float: right; color: #BF2629;">{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmTotal)), 0) }}</span>
                     @endif
                 </td>
             </tr>
@@ -619,7 +633,7 @@
         @if ($extraKmPrice)
             <tr>
                 <td>Extra KM Rate</td>
-                <td><strong>{{ $currency }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}</strong> per km</td>
+                <td><strong>{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayExtraKmPrice)), 0) }}</strong> per km</td>
             </tr>
         @endif
 
@@ -636,13 +650,13 @@
                                 <strong>{{ $addon['name'] }}</strong>
                                 <small style="color: #777; margin-left: 4px;">
                                     (Qty: {{ $addon['qty'] }}@if ($addon['rate'] > 0)
-                                        x {{ $currency }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
+                                        x {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $addon['rate'])), 0) }}
                                     @elseif ($addon['total'] > 0 && $addon['qty'] > 0)
-                                        - Avg: {{ $currency }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
+                                        - Avg: {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $addon['total'] / $addon['qty'])), 0) }}
                                     @endif)
                                 </small>
                             </div>
-                            <span style="color: #BF2629; font-weight: 600;">{{ $currency }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
+                            <span style="color: #BF2629; font-weight: 600;">{{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $addon['total'])), 0) }}</span>
                         </div>
                     @endforeach
                 </td>
@@ -654,7 +668,7 @@
                 {{ $totalLabel === 'Item Total' ? 'Base Trip Total' : $totalLabel }}
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
-                {{ $currency }} {{ number_format(floor(max(0, $displayBaseItemTotal)), 0) }}
+                {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayBaseItemTotal)), 0) }}
                 @if ($isReturnTrip && !empty($returnDiscountPct) && $returnDiscountPct > 0)
                     <small class="text-success" style="margin-left: 8px;">({{ $returnDiscountPct }}% return discount applied)</small>
                 @endif
@@ -666,7 +680,7 @@
                     Item Total
                 </td>
                 <td style="padding: 6px 0; color: #111827; font-weight: 700; border-top: 2px solid #e5e7eb;">
-                    {{ $currency }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
+                    {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
                     <small style="display:block; color:#777; font-weight:400; margin-top:2px;">
                         Includes add-ons and extra kilometers
                     </small>

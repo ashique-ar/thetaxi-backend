@@ -136,5 +136,9 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $this->assertSame(4, substr_count($controller, '\'initial_currency\' => getBookingDisplayCurrency($booking)'));
         $this->assertStringContainsString("'source_currency' => null", $paymentSummary);
         $this->assertStringContainsString("'source_currency' => null", $bookingItem);
+        $this->assertStringContainsString('$displayCurrencyCode = $currencyService->isValidCurrency((string) $currency)', $bookingItem);
+        $this->assertStringContainsString('$sourceCurrencyCode = $currencyService->isValidCurrency((string) $source_currency)', $bookingItem);
+        $this->assertStringContainsString('$currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)', $bookingItem);
+        $this->assertStringNotContainsString('->convert((float) $amount, $source_currency, $currency)', $bookingItem);
     }
 }
