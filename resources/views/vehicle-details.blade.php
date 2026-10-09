@@ -299,7 +299,7 @@
     </div>
 
     <div class="modal fade" id="vehicleQuotationModal" tabindex="-1" aria-labelledby="vehicleQuotationModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header bg-warning text-dark">
                     <h5 class="modal-title" id="vehicleQuotationModalLabel"><i class="bi bi-receipt" aria-hidden="true"></i> Request Quotation</h5>
@@ -796,6 +796,11 @@
             const quotationActions = document.getElementById('vehicleQuotationActions');
             const offerPriceMeta = document.getElementById('vehicleOfferPriceMeta');
             const offerCurrencyMeta = document.getElementById('vehicleOfferCurrencyMeta');
+            const quotationModal = document.getElementById('vehicleQuotationModal');
+
+            quotationModal?.addEventListener('show.bs.modal', function() {
+                if (this.parentElement !== document.body) document.body.appendChild(this);
+            });
 
             let pricingRequest = null;
             let pricingDebounce = null;

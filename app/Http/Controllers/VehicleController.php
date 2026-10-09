@@ -119,28 +119,53 @@ class VehicleController extends Controller
             $presetServiceType = $this->resolvePresetServiceType($preset);
         }
         if ($preset !== '' && $presetServiceType) {
-            $presetDays = $preset === 'monthly' ? 30 : 1;
-            $pickupDate = Carbon::today();
-            $returnDate = $pickupDate->copy()->addDays($presetDays - 1);
+            $sessionSearchParams = session('current_search_params', []);
+            $sessionService = (string) session('frontend_service', '');
+            $sessionServiceType = $this->resolveServiceTypeModel($sessionService);
+            $sessionServiceTypeId = $sessionSearchParams['service_type_id'] ?? $sessionSearchParams['service_type'] ?? null;
+            $sessionMatchesPreset = is_array($sessionSearchParams)
+                && $sessionSearchParams
+                && (($sessionServiceType?->id === $presetServiceType->id)
+                    || ((string) $sessionServiceTypeId === (string) $presetServiceType->id));
 
-            $searchData = [
-                'service_type' => $presetServiceType->code,
-                'pickup_date' => $pickupDate->format('Y-m-d'),
-                'return_date' => $returnDate->format('Y-m-d'),
-                'pickup_time' => '10:00',
-                'return_time' => '10:00',
-                'pickup_location' => 'Colombo, Sri Lanka',
-                'dropoff_location' => 'Colombo, Sri Lanka',
-                'pickup_lat' => 6.9271,
-                'pickup_lng' => 79.8612,
-                'dropoff_lat' => 6.9271,
-                'dropoff_lng' => 79.8612,
-                'date' => $pickupDate->format('Y-m-d'),
-                'time' => '10:00',
-                'num_days' => $presetDays,
-            ];
+            if ($sessionMatchesPreset) {
+                $searchId = (string) session('session_id', '');
+                $searchPricingParams = $sessionSearchParams;
+                $searchData = array_merge($sessionSearchParams, [
+                    'service_type' => $presetServiceType->code,
+                    'pickup_date' => $sessionSearchParams['from_date'] ?? $sessionSearchParams['pickup_date'] ?? now()->format('Y-m-d'),
+                    'return_date' => $sessionSearchParams['to_date'] ?? $sessionSearchParams['return_date'] ?? null,
+                    'pickup_time' => $sessionSearchParams['from_time'] ?? $sessionSearchParams['pickup_time'] ?? '10:00',
+                    'return_time' => $sessionSearchParams['to_time'] ?? $sessionSearchParams['return_time'] ?? null,
+                    'pickup_lat' => data_get($sessionSearchParams, 'pickup_location.latitude'),
+                    'pickup_lng' => data_get($sessionSearchParams, 'pickup_location.longitude'),
+                    'dropoff_lat' => data_get($sessionSearchParams, 'dropoff_location.latitude'),
+                    'dropoff_lng' => data_get($sessionSearchParams, 'dropoff_location.longitude'),
+                ]);
+            } else {
+                $presetDays = $preset === 'monthly' ? 30 : 1;
+                $pickupDate = Carbon::today();
+                $returnDate = $pickupDate->copy()->addDays($presetDays - 1);
+
+                $searchData = [
+                    'service_type' => $presetServiceType->code,
+                    'pickup_date' => $pickupDate->format('Y-m-d'),
+                    'return_date' => $returnDate->format('Y-m-d'),
+                    'pickup_time' => '10:00',
+                    'return_time' => '10:00',
+                    'pickup_location' => 'Colombo, Sri Lanka',
+                    'dropoff_location' => 'Colombo, Sri Lanka',
+                    'pickup_lat' => 6.9271,
+                    'pickup_lng' => 79.8612,
+                    'dropoff_lat' => 6.9271,
+                    'dropoff_lng' => 79.8612,
+                    'date' => $pickupDate->format('Y-m-d'),
+                    'time' => '10:00',
+                    'num_days' => $presetDays,
+                ];
+                $searchPricingParams = null;
+            }
             $search = null;
-            $searchPricingParams = null;
         }
         
         $configuredDefaultServiceType = (string) $this->websiteSettingsService->get('default_service_type', 'day_rental');
@@ -474,6 +499,7 @@ class VehicleController extends Controller
             'currency',
             'service_type_id',
         ]));
+        $params['package_type'] = $params['package_type'] ?? 'multi-day';
         $params = array_merge($params, [
             'service_type' => $serviceType->id,
             'service_type_id' => $serviceType->id,
