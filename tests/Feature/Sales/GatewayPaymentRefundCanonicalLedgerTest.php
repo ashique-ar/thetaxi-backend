@@ -183,3 +183,47 @@ it('denies refund attempts from a different active Staff legal entity before con
     ]), $transactionId))->toThrow(HttpResponseException::class);
     expect(DB::table('payment_refunds')->count())->toBe(0);
 });
+
+it('scopes payment transaction reads to the active Sales legal entity and exposes refund state in detail', function () {
+    [$actor, $booking, $transactionId] = seedGatewayRefundFixture();
+    $transaction = DB::table('payment_transactions')->where('transaction_id', $transactionId)->first();
+
+    $detailRequest = Request::create('/api/payment-transactions/'.$transaction->id, 'GET');
+    $detailRequest->setUserResolver(fn () => $actor);
+    $detail = app(PaymentController::class)->getTransactionDetails($detailRequest, $transaction->id);
+    expect($detail->getData(true)['data']['transaction']['refunds'])->toBeEmpty();
+
+    DB::table('payment_refunds')->insert([
+        'id' => (string) Str::uuid(),
+        'transaction_id' => $transaction->id,
+        'amount' => 100,
+        'reason' => 'Provider outcome pending',
+        'status' => 'manual_required',
+        'idempotency_key' => 'reconciliation-visible',
+        'request_payload_checksum' => hash('sha256', 'manual refund'),
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+    $detail = app(PaymentController::class)->getTransactionDetails($detailRequest, $transaction->id);
+    expect($detail->getData(true)['data']['transaction']['refunds'])->toHaveCount(1)
+        ->and($detail->getData(true)['data']['transaction']['refunds'][0]['status'])->toBe('manual_required');
+
+    $otherCompany = Company::query()->create(['name' => 'Payment read other company', 'is_default' => false]);
+    $otherUser = User::factory()->create();
+    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
+    UserContext::query()->create([
+        'user_id' => $otherUser->id,
+        'context_type' => 'staff',
+        'context_id' => $otherStaff->id,
+        'is_active' => true,
+        'created_user_id' => $otherUser->id,
+    ]);
+
+    $otherRequest = Request::create('/api/payment-transactions/'.$transaction->id, 'GET');
+    $otherRequest->setUserResolver(fn () => $otherUser);
+    $list = Request::create('/api/payment-transactions', 'GET');
+    $list->setUserResolver(fn () => $otherUser);
+    expect(app(PaymentController::class)->getPaymentTransactions($list)->getData(true)['data']['transactions'])->toBeEmpty()
+        ->and(fn () => app(PaymentController::class)->getTransactionDetails($otherRequest, $transaction->id))
+        ->toThrow(HttpResponseException::class);
+});

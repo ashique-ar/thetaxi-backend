@@ -140,6 +140,8 @@ class PaymentController extends Controller
                     'gateway_success'        => $gatewayResult['success'] ?? false,
                 ],
             ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -639,6 +641,10 @@ class PaymentController extends Controller
         $limit = $request->get('limit', 20);
         $status = $request->get('status');
         $bookingId = $request->get('booking_id');
+        $companyIds = app(SalesAccessScope::class)->companyIds(
+            $request->user(),
+            'sales.payment-adjustments.create-all',
+        );
 
         $query = DB::table('payment_transactions')
             ->join('bookings', 'payment_transactions.booking_id', '=', 'bookings.id')
@@ -659,6 +665,13 @@ class PaymentController extends Controller
         if ($bookingId) {
             $query->where('payment_transactions.booking_id', $bookingId);
         }
+
+        $query->whereExists(function ($attribution) use ($companyIds): void {
+            $attribution->selectRaw('1')->from('sales_booking_attributions')
+                ->whereColumn('sales_booking_attributions.booking_id', 'payment_transactions.booking_id')
+                ->whereNull('sales_booking_attributions.deleted_at')
+                ->when($companyIds !== null, fn ($scope) => $scope->whereIn('sales_booking_attributions.company_id', $companyIds));
+        });
 
         $transactions = $query->orderBy('payment_transactions.created_at', 'desc')
             ->paginate($limit);
@@ -681,7 +694,7 @@ class PaymentController extends Controller
      * Get transaction details
      * GET /api/payment-transactions/{id}
      */
-    public function getTransactionDetails(string $id): JsonResponse
+    public function getTransactionDetails(Request $request, string $id): JsonResponse
     {
         try {
             $transaction = DB::table('payment_transactions')
@@ -705,6 +718,22 @@ class PaymentController extends Controller
                     'message' => 'Transaction not found'
                 ], 404);
             }
+
+            $companyId = DB::table('sales_booking_attributions')
+                ->where('booking_id', $transaction->booking_id)
+                ->whereNull('deleted_at')
+                ->value('company_id');
+            abort_unless($companyId, 404, 'Transaction not found');
+            app(SalesAccessScope::class)->assertCompany(
+                $request->user(),
+                (string) $companyId,
+                'sales.payment-adjustments.create-all',
+            );
+
+            $transaction->refunds = DB::table('payment_refunds')
+                ->where('transaction_id', $transaction->id)
+                ->orderBy('created_at')
+                ->get(['id', 'amount', 'reason', 'status', 'gateway_refund_id', 'notes', 'created_by', 'created_at', 'updated_at']);
 
             return response()->json([
                 'status' => 'success',

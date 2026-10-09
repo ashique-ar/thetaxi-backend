@@ -8,7 +8,8 @@
     $defaultTabCode = $bookingTabs->first(fn ($tab) => (bool) data_get($tab->metadata, 'is_default', false))?->code
         ?? $bookingTabs->first()?->code
         ?? 'airport_transfers';
-    $hasSearchContext = session()->hasOldInput()
+    $hasSearchContext = (bool) ($hasSearchContext ?? false)
+        || session()->hasOldInput()
         || request()->routeIs('search', 'booking.search')
         || request()->hasAny([
             'service_type', 'pickup', 'dropoff', 'from', 'to',

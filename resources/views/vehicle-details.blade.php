@@ -97,7 +97,7 @@
                         <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
                     @endif
                     <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
-                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles'])
+                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles', 'hasSearchContext' => true])
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
                             <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
                                 <span class="text-muted small" id="vehiclePriceLabel">{{ $initialServiceTypeName }}</span>
@@ -244,7 +244,7 @@
                             <header>
                                 <span class="t4-kicker">Book Your Ride</span>
                             </header>
-                            @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles'])
+                            @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle', 'submitLabel' => 'Show More Vehicles', 'hasSearchContext' => true])
                         </div>
 
                         <div class="vehicle-price-summary mt-3" id="vehiclePriceSummary" itemprop="offers" itemscope
@@ -797,10 +797,9 @@
             const offerPriceMeta = document.getElementById('vehicleOfferPriceMeta');
             const offerCurrencyMeta = document.getElementById('vehicleOfferCurrencyMeta');
             const quotationModal = document.getElementById('vehicleQuotationModal');
-
-            quotationModal?.addEventListener('show.bs.modal', function() {
-                if (this.parentElement !== document.body) document.body.appendChild(this);
-            });
+            if (quotationModal && quotationModal.parentElement !== document.body) {
+                document.body.appendChild(quotationModal);
+            }
 
             let pricingRequest = null;
             let pricingDebounce = null;
