@@ -8,6 +8,10 @@ use App\Models\Booking\BookingPaymentAdjustment;
 use App\Models\Customer;
 use App\Models\Currency;
 use App\Models\Finance\FinancialAuditEvent;
+use App\Models\Company;
+use App\Models\Staff;
+use App\Models\User;
+use App\Models\UserContext;
 use App\Services\BookingPaymentLedgerService;
 use App\Services\Payment\PaymentGatewayManager;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -16,6 +20,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Illuminate\Http\Exceptions\HttpResponseException;
 
 uses(RefreshDatabase::class);
 
@@ -151,4 +156,30 @@ it('posts a provider-confirmed refund exactly once to the canonical receipt ledg
         ->and(BookingPaymentReceipt::query()->where('booking_id', $booking->id)->value('refunded_amount'))->toBe('250.00')
         ->and(BookingPaymentAdjustment::query()->where('booking_id', $booking->id)->count())->toBe(1)
         ->and(FinancialAuditEvent::query()->where('subject_id', $first->getData(true)['data']['refund_id'])->count())->toBe(2);
+});
+
+it('denies refund attempts from a different active Staff legal entity before contacting the gateway', function () {
+    [, , $transactionId] = seedGatewayRefundFixture();
+    $otherCompany = Company::query()->create(['name' => 'Other refund company', 'is_default' => false]);
+    $otherUser = User::factory()->create();
+    $otherStaff = Staff::factory()->create(['user_id' => $otherUser->id, 'company_id' => $otherCompany->id]);
+    UserContext::query()->create([
+        'user_id' => $otherUser->id,
+        'context_type' => 'staff',
+        'context_id' => $otherStaff->id,
+        'is_active' => true,
+        'created_user_id' => $otherUser->id,
+    ]);
+
+    $manager = Mockery::mock(PaymentGatewayManager::class);
+    $manager->shouldNotReceive('resolve');
+    $this->app->instance(PaymentGatewayManager::class, $manager);
+    $controller = app(PaymentController::class);
+
+    expect(fn () => $controller->refundPayment(paymentRefundRequest($otherUser, [
+        'amount' => 100,
+        'reason' => 'Cross-company attempt',
+        'idempotency_key' => 'refund-cross-company',
+    ]), $transactionId))->toThrow(HttpResponseException::class);
+    expect(DB::table('payment_refunds')->count())->toBe(0);
 });

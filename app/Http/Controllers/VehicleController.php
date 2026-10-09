@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\Vehicle\VehicleGroup;
 use App\Models\BookingSearch;
+use App\Models\BookingFormTab;
 use App\Models\Service\ServiceType;
 use App\Models\Service\ServicePackage;
 use App\Services\BookingFlowService;
@@ -56,7 +57,10 @@ class VehicleController extends Controller
         
         if ($searchId) {
             $sessionSearchParams = session('current_search_params', []);
-            if ((string) session('session_id') === (string) $searchId && is_array($sessionSearchParams) && $sessionSearchParams) {
+            if (in_array((string) $searchId, array_filter([
+                (string) session('session_id'),
+                (string) session('booking_session_id'),
+            ]), true) && is_array($sessionSearchParams) && $sessionSearchParams) {
                 $serviceType = ServiceType::publicContext()->find(
                     session('backend_service_type_id') ?? ($sessionSearchParams['service_type_id'] ?? $sessionSearchParams['service_type'] ?? null)
                 );
@@ -339,7 +343,35 @@ class VehicleController extends Controller
             $query->where('code', $serviceTypeValue);
         }
 
-        return $query->where('is_active', true)->first();
+        $serviceType = $query->where('is_active', true)->first();
+        if ($serviceType) {
+            return $serviceType;
+        }
+
+        $tab = BookingFormTab::query()
+            ->where('code', $serviceTypeValue)
+            ->where('enabled', true)
+            ->first();
+
+        if ($tab?->service_type_code) {
+            $mappedServiceType = ServiceType::publicContext()
+                ->where('code', $tab->service_type_code)
+                ->where('is_active', true)
+                ->first();
+            if ($mappedServiceType) {
+                return $mappedServiceType;
+            }
+        }
+
+        $defaultServiceType = (string) $this->websiteSettingsService->get('default_service_type', 'day_rental');
+        $defaultQuery = ServiceType::publicContext()->where('is_active', true);
+        if (Str::isUuid($defaultServiceType)) {
+            $defaultQuery->where('id', $defaultServiceType);
+        } else {
+            $defaultQuery->where('code', $defaultServiceType);
+        }
+
+        return $defaultQuery->first();
     }
 
     private function buildAvailabilityParams(array $input, $vehicleGroup, ServiceType $serviceType): array

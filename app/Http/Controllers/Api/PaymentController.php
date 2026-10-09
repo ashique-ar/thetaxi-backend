@@ -8,6 +8,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Services\Sales\BookingPaymentAdjustmentService;
+use App\Services\Sales\SalesAccessScope;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -350,6 +351,17 @@ class PaymentController extends Controller
             abort_unless($transaction && $transaction->status === 'success', 404,
                 'Transaction not found or not eligible for refund.');
 
+            $companyId = DB::table('sales_booking_attributions')->where('booking_id', $transaction->booking_id)
+                ->whereNull('deleted_at')->value('company_id');
+            abort_unless($companyId, 409, 'This payment has no canonical legal-entity attribution.');
+            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
+                ->whereNull('deleted_at')->exists(), 409, 'This payment legal entity is inactive.');
+            app(SalesAccessScope::class)->assertCompany(
+                $request->user(),
+                (string) $companyId,
+                'sales.payment-adjustments.create-all',
+            );
+
             $existing = DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)
                 ->where('idempotency_key', $data['idempotency_key'])
@@ -377,6 +389,8 @@ class PaymentController extends Controller
             $component = $receipt?->components->firstWhere('component_type', 'booking_payment');
             abort_unless($booking && $component, 409,
                 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.');
+            abort_unless((string) $receipt->company_id === (string) $companyId, 409,
+                'The payment receipt legal entity does not match its booking attribution.');
 
             $reservedAmount = (float) DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)
