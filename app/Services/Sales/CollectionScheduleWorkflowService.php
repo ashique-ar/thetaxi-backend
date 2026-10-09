@@ -216,7 +216,7 @@ class CollectionScheduleWorkflowService
                     && (string) $duplicate->submitted_by_user_id === (string) $owner->staff_user_id,
                     422, 'This submission key was already used with different facts or ownership.');
                 if ($duplicate->evidence_file_id) {
-                    abort_unless(DB::table('domain_evidence_files')->whereKey($duplicate->evidence_file_id)
+                    abort_unless(DB::table('domain_evidence_files')->where('id', $duplicate->evidence_file_id)
                         ->where('domain', 'sales')->where('company_id', $duplicate->company_id)->whereNull('deleted_at')
                         ->where('subject_type', 'booking')->where('subject_id', $duplicate->booking_id)->exists(),
                         409, 'The stored collection evidence is no longer active or bound to this booking and legal entity.');
@@ -231,7 +231,7 @@ class CollectionScheduleWorkflowService
                 abort_unless($validSchedule, 422, 'The selected installment belongs to another booking or is no longer active.');
             }
             if (! empty($data['evidence_file_id'])) {
-                $validEvidence = DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+                $validEvidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                     ->where('domain', 'sales')->where('company_id', $profile->company_id)->whereNull('deleted_at')
                     ->where('subject_type', 'booking')->where('subject_id', $booking->id)->exists();
                 abort_unless($validEvidence, 422, 'Collection evidence must be bound to this booking and Sales legal entity.');

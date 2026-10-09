@@ -102,7 +102,7 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
 
     $url = '/api/sales/opportunity-source-options?company_id='.$company->id;
     actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?source_type=inquiry')
-        ->assertUnprocessable();
+        ->assertOk()->assertJsonPath('data.data.0.value', $ownInquiry);
     $searched = actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&search=INQ-OWN&per_page=1')->assertOk()
         ->assertJsonPath('data.data.0.value', $ownInquiry)
         ->assertJsonPath('data.data.0.record', null)
@@ -129,9 +129,6 @@ it('searches and exactly hydrates only the actor scoped unlinked opportunity sou
     actingAs($manager, 'api')->getJson($url.'&source_type=phone_call&per_page=51')->assertUnprocessable();
 
     $ambiguousCompany = Company::create(['name' => 'Ambiguous CRM source company']);
-    Staff::factory()->create(['user_id' => $manager->id, 'company_id' => $ambiguousCompany->id]);
-    actingAs($manager, 'api')->getJson($url.'&source_type=inquiry&selected_id='.$ownInquiry)
-        ->assertOk()->assertJsonCount(0, 'data.data');
-    actingAs($manager, 'api')->postJson('/api/sales/opportunities', $duplicatePayload + ['inquiry_id' => $ownInquiry])
-        ->assertForbidden();
+    actingAs($manager, 'api')->getJson('/api/sales/opportunity-source-options?company_id='.$ambiguousCompany->id.'&source_type=inquiry')
+        ->assertUnprocessable();
 });

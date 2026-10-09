@@ -36,7 +36,8 @@ class PerformanceController extends Controller
     public function storeCycle(Request $request): JsonResponse
     {
          $data = $request->validate(['company_id'=>['nullable','uuid'],'code'=>['required','string','max:80'],'name'=>['required','string','max:255'],'period_start'=>['required','date'],'period_end'=>['required','date','after_or_equal:period_start'],'stages'=>['required','array','min:1']]); $data['company_id']=$data['company_id']??$this->actor($request)->company_id;$this->company($request, $data['company_id']);
-        $id=(string)Str::uuid(); DB::table('hr_review_cycles')->insert($data+['id'=>$id,'stages'=>json_encode($data['stages'],JSON_THROW_ON_ERROR),'status'=>'draft','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
+         $data['stages'] = json_encode($data['stages'], JSON_THROW_ON_ERROR);
+         $id=(string)Str::uuid(); DB::table('hr_review_cycles')->insert($data+['id'=>$id,'status'=>'draft','created_by'=>$request->user()->id,'created_at'=>now(),'updated_at'=>now()]);
         return response()->json(['status'=>'success','data'=>DB::table('hr_review_cycles')->find($id)],201);
     }
 

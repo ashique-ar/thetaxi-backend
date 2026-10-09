@@ -38,9 +38,11 @@ class SafetyController extends Controller
         $data = $request->validate([
             'search' => ['nullable', 'string', 'max:120'],
             'selected_id' => ['nullable', 'uuid'],
+            'company_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        abort_unless(empty($data['company_id']) || $data['company_id'] === $actor->company_id, 403, 'Safety data is outside your legal entity.');
         // Match issuance eligibility: employment, not login access, owns PPE.
         $query = Staff::query()->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $actor->company_id)->whereNull('staff.employment_ended_at');
@@ -48,13 +50,14 @@ class SafetyController extends Controller
             $query->where('staff.id', $data['selected_id']);
         } elseif (!empty($data['search'])) {
             $term = '%' . addcslashes($data['search'], '%_\\\\') . '%';
-            $query->where(fn ($q) => $q->where('staff.code', 'like', $term)->orWhere('users.name', 'like', $term));
+            $query->where(fn ($q) => $q->where('staff.code', 'like', $term)
+                ->orWhere('users.first_name', 'like', $term)->orWhere('users.last_name', 'like', $term));
         }
-        $rows = $query->select(['staff.id', 'staff.code', 'users.name'])
+        $rows = $query->select(['staff.id', 'staff.code', 'users.first_name', 'users.last_name'])
             ->orderBy('staff.code')->orderBy('staff.id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($row) => [
             'value' => (string) $row->id,
-            'label' => ($row->name ?: 'Staff member') . ' · ' . ($row->code ?: 'No employee code'),
+            'label' => (trim(($row->first_name ?? '') . ' ' . ($row->last_name ?? '')) ?: 'Staff member') . ' · ' . ($row->code ?: 'No employee code'),
             'metadata' => [], 'status' => 'active',
         ]);
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -96,7 +99,7 @@ class SafetyController extends Controller
     {
         $incident = $this->visible($r, $id);
         $ids = DB::table('hr_safety_actions')->where('incident_id', $incident->id)->pluck('owner_staff_id')->push($incident->reporter_staff_id)->push($incident->investigator_staff_id)->filter()->unique()->values();
-        $rows = Staff::withTrashed()->leftJoin('users', 'users.id', '=', 'staff.user_id')->where('staff.company_id', $incident->company_id)->whereIn('staff.id', $ids)->select(['staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.name'])->get()->mapWithKeys(fn($row) => [(string) $row->id => ['label' => trim(($row->name ?: 'Staff record') . ' · ' . ($row->code ?: 'No Staff code')), 'status' => $row->deleted_at ? 'deleted' : ($row->employment_ended_at ? 'ended' : 'active')]]);
+        $rows = Staff::withTrashed()->leftJoin('users', 'users.id', '=', 'staff.user_id')->where('staff.company_id', $incident->company_id)->whereIn('staff.id', $ids)->select(['staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.first_name', 'users.last_name'])->get()->mapWithKeys(fn($row) => [(string) $row->id => ['label' => trim((trim(($row->first_name ?? '') . ' ' . ($row->last_name ?? '')) ?: 'Staff record') . ' · ' . ($row->code ?: 'No Staff code')), 'status' => $row->deleted_at ? 'deleted' : ($row->employment_ended_at ? 'ended' : 'active')]]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function handlerCandidates(Request $r): JsonResponse
@@ -109,10 +112,10 @@ class SafetyController extends Controller
             $q->where('staff.id', $d['selected_id']);
         elseif (!empty($d['search'])) {
             $term = '%' . addcslashes($d['search'], '%_\\') . '%';
-            $q->where(fn($b) => $b->where('staff.code', 'like', $term)->orWhere('users.name', 'like', $term)->orWhere('users.email', 'like', $term));
+            $q->where(fn($b) => $b->where('staff.code', 'like', $term)->orWhere('users.first_name', 'like', $term)->orWhere('users.last_name', 'like', $term)->orWhere('users.email', 'like', $term));
         }
-        $rows = $q->select(['staff.id', 'staff.code', 'staff.staff_type', 'users.name', 'users.email'])->orderBy('users.name')->paginate($d['per_page'] ?? 25);
-        $rows->getCollection()->transform(fn($row) => ['value' => (string) $row->id, 'label' => trim(($row->name ?: 'Authorized Staff member') . ' · ' . ($row->code ?: 'No Staff code')), 'metadata' => ['staff_type' => $row->staff_type, 'email' => $row->email], 'status' => 'active']);
+        $rows = $q->select(['staff.id', 'staff.code', 'staff.staff_type', 'users.first_name', 'users.last_name', 'users.email'])->orderBy('users.first_name')->orderBy('users.last_name')->paginate($d['per_page'] ?? 25);
+        $rows->getCollection()->transform(fn($row) => ['value' => (string) $row->id, 'label' => trim((trim(($row->first_name ?? '') . ' ' . ($row->last_name ?? '')) ?: 'Authorized Staff member') . ' · ' . ($row->code ?: 'No Staff code')), 'metadata' => ['staff_type' => $row->staff_type, 'email' => $row->email], 'status' => 'active']);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
     public function incidents(Request $r): JsonResponse
@@ -154,9 +157,9 @@ class SafetyController extends Controller
         }
         $staffLabels = Staff::withTrashed()->leftJoin('users', 'users.id', '=', 'staff.user_id')
             ->where('staff.company_id', $a->company_id)->whereIn('staff.id', $staffIds->filter()->unique()->values())
-            ->select(['staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.name'])->get()
+            ->select(['staff.id', 'staff.code', 'staff.employment_ended_at', 'staff.deleted_at', 'users.first_name', 'users.last_name'])->get()
             ->mapWithKeys(fn($row) => [(string) $row->id => [
-                'label' => trim(($row->name ?: 'Staff record') . ' · ' . ($row->code ?: 'No Staff code')),
+                'label' => trim((trim(($row->first_name ?? '') . ' ' . ($row->last_name ?? '')) ?: 'Staff record') . ' · ' . ($row->code ?: 'No Staff code')),
                 'status' => $row->deleted_at ? 'deleted' : ($row->employment_ended_at ? 'ended' : 'active'),
             ]]);
         return response()->json(['status' => 'success', 'data' => ['inspections' => $inspections, 'hazards' => $hazards, 'ppe_issuances' => $ppe, 'fitness_restrictions' => $fitness, 'staff_labels' => $staffLabels, 'abilities' => ['fitness_restricted' => $canViewFitness]]]);
@@ -604,8 +607,13 @@ class SafetyController extends Controller
             abort_unless($n->status === 'delivering' && $n->leased_until && now()->lessThan($n->leased_until), 409, 'External notification delivery lease is not active.');
             abort_unless(hash_equals((string) $n->lease_token, $d['lease_token']), 409, 'External notification lease mismatch.');
             abort_unless(hash_equals($n->payload_checksum, $d['payload_checksum']), 409, 'Notification checksum mismatch.');
+            $incidentStatusColumn = match ($n->recipient_type) {
+                'regulator' => 'regulator_status',
+                'insurer' => 'insurance_status',
+                default => abort(409, 'External notification recipient type is unsupported.'),
+            };
             DB::table('hr_safety_external_notifications')->where('id', $id)->update(['status' => 'acknowledged', 'lease_token' => null, 'leased_until' => null, 'external_reference' => $d['external_reference'], 'acknowledged_at' => now(), 'updated_at' => now()]);
-            DB::table('hr_safety_incidents')->where('id', $n->incident_id)->update([$n->recipient_type . '_status' => 'acknowledged', 'updated_at' => now()]);
+            DB::table('hr_safety_incidents')->where('id', $n->incident_id)->update([$incidentStatusColumn => 'acknowledged', 'updated_at' => now()]);
             $this->registerEvent($n->company_id, 'external_notification', $id, 'delivery_acknowledged',
                 'delivering', 'acknowledged', ['incident_id' => $n->incident_id,
                     'payload_checksum' => $n->payload_checksum, 'lease_token_hash' => $leaseHash,

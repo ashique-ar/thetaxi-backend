@@ -14,11 +14,9 @@ it('scopes Learning reads to the selected Staff company and rejects ambiguous id
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.learning.view');
     $secondCompany = Company::create(['name' => 'Second Learning company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $firstCourse = (string) Str::uuid();
     $secondCourse = (string) Str::uuid();
     foreach ([[$firstCourse, $firstCompany->id, 'FIRST'], [$secondCourse, $secondCompany->id, 'SECOND']] as [$id, $companyId, $code]) {
@@ -28,7 +26,7 @@ it('scopes Learning reads to the selected Staff company and rejects ambiguous id
         ]);
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/learning/courses')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/learning/courses')->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/learning/courses')

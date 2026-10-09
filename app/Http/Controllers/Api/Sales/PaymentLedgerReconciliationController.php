@@ -164,7 +164,7 @@ class PaymentLedgerReconciliationController extends Controller
                             ->whereIn('booking.payment_status', ['paid', 'success', 'online_paid']);
                     });
             })
-            ->whereRaw('COALESCE(booking.total_actual, booking.total_estimated, booking.amount_to_pay, 0) > 0')
+            ->whereRaw("COALESCE(booking.total_actual, booking.total_estimated, CASE WHEN booking.amount_to_pay ~ '^[0-9]+(\\.[0-9]+)?$' THEN booking.amount_to_pay::numeric END, 0) > 0")
             ->whereNotExists(fn ($receipts) => $receipts->selectRaw('1')->from('booking_payment_receipts as receipt')
                 ->whereColumn('receipt.booking_id', 'booking.id'));
         if (! empty($data['selected_id'])) {

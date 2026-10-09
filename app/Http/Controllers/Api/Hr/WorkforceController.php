@@ -60,6 +60,8 @@ class WorkforceController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         if (empty($d['company_id'])) return response()->json(['status' => 'success', 'data' => []]);
+        $actorCompanyId = app(StaffAccessService::class)->currentActorStaff($r->user())->company_id;
+        abort_unless($actorCompanyId === $d['company_id'], 403, 'Leave configuration is outside your legal entity.');
         $companyId = $this->company($r, $d['company_id']);
         $q = DB::table('hr_leave_types')->where('company_id', $companyId)
             ->when($d['status'] ?? null, fn ($types, $status) => $types->where('status', $status));
@@ -206,6 +208,10 @@ class WorkforceController extends Controller
             'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+        if (! empty($data['company_id'])) {
+            $actorCompanyId = $access->currentActorStaff($r->user())->company_id;
+            abort_unless($actorCompanyId === $data['company_id'], 403, 'Workforce data is outside your legal entity.');
+        }
         $companyId = $this->company($r, $data['company_id'] ?? null);
         abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
         $query = $access->scope(Staff::query()->with('user:id,first_name,last_name,email')

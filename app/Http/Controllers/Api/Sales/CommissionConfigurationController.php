@@ -149,7 +149,7 @@ class CommissionConfigurationController extends Controller
         $rows = $query->select([
             'version.id', 'version.version', 'version.formula_kind', 'version.effective_from', 'version.status',
             'family.code as family_code', 'family.name as family_name',
-        ])->orderBy('family.code')->orderByDesc('version.version')->orderBy('version.id')->paginate($data['per_page'] ?? 25);
+        ])->orderBy('family.code')->orderBy('version.version')->orderBy('version.id')->paginate($data['per_page'] ?? 25);
         $rows->getCollection()->transform(fn ($row) => [
             'value' => (string) $row->id,
             'label' => $row->family_code . ' v' . $row->version . ' · ' . str_replace('_', ' ', $row->formula_kind),

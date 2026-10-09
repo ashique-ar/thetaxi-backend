@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,6 +24,7 @@ it('limits payroll input facts to the caller company and authorized Staff scope'
     $company = Company::create(['name' => 'Payroll Scope Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Payroll Scope Company', 'is_active' => true, 'is_default' => false]);
     $actorStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true]);
     $peer = Staff::factory()->create(['company_id' => $company->id]);
     $foreignStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
 

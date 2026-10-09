@@ -53,7 +53,7 @@ it('searches and hydrates only companies in the actors effective Profile scope',
         ->assertJsonPath('data.data.0.value', $company->id);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$foreign->id)->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$deleted->id)->assertOk()->assertJsonCount(0, 'data.data');
+    actingAs($staff->user, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
     DB::table('staff')->where('id', $staff->id)->update(['employment_ended_at' => now()]);
     actingAs($staff->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertForbidden();
-    actingAs($staff->user, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
 });

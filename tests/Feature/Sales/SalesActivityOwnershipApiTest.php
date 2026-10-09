@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\Booking\Booking;
+use App\Models\Customer;
 use App\Models\Booking\BookingActivity;
 use App\Models\Sales\SalesActivity;
 use App\Models\Sales\SalesCompanyFeatureSetting;
@@ -52,7 +53,9 @@ it('records an authorized opportunity activity once and rejects cross-company re
         'opportunity_number' => 'ACTIVITY-OPP-B', 'name' => 'Activity opportunity B',
         'source' => 'manual', 'created_user_id' => $actor->id,
     ]);
+    $customer = Customer::create(['user_id' => $actor->id]);
     $booking = Booking::create([
+        'customer_id' => $customer->id,
         'sales_opportunity_id' => $opportunity->id,
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $profile->staff_id,
         'created_user_id' => $actor->id,
@@ -74,7 +77,7 @@ it('records an authorized opportunity activity once and rejects cross-company re
     actingAs($actor, 'api')->postJson('/api/sales/activities', $payload)->assertCreated();
     expect(SalesActivity::query()->count())->toBe(1)
         ->and(SalesMetricFact::query()->where('source_type', 'sales_activity')->count())->toBe(1);
-    actingAs($actor, 'api')->getJson('/api/sales/activities')->assertUnprocessable();
+    actingAs($actor, 'api')->getJson('/api/sales/activities')->assertOk()->assertJsonCount(1, 'data.data');
 
     actingAs($actor, 'api')->postJson('/api/sales/activities', [
         ...$payload, 'subject' => 'Different facts with the same source key',

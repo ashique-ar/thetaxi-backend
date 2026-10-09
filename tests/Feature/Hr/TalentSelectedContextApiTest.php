@@ -15,11 +15,9 @@ it('limits development plan visibility to the selected Staff company and relatio
     $admin->givePermissionTo('hr.development.view');
     $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $secondCompany = Company::create(['name' => 'Selected talent company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $planIds = [];
     foreach ([[$firstCompany->id, $firstStaff->id], [$secondCompany->id, $secondStaff->id]] as [$companyId, $staffId]) {
@@ -33,7 +31,7 @@ it('limits development plan visibility to the selected Staff company and relatio
         $planIds[] = $id;
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/talent/development-plans')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/talent/development-plans')->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/talent/development-plans')->assertOk()->assertJsonCount(1, 'data.data')

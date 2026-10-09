@@ -330,6 +330,8 @@ class AllPermissionsSeeder extends Seeder
         'hr.people.timeline-confidential',
         'hr.people.rehire.prepare',
         'hr.people.rehire.approve',
+        'hr.medical-records.view',
+        'hr.medical-records.manage',
         'hr.organization.view',
         'hr.organization.manage',
         'hr.reporting-lines.view',
@@ -621,6 +623,8 @@ class AllPermissionsSeeder extends Seeder
                 'hr.people.timeline-confidential',
                 'hr.people.rehire.prepare',
                 'hr.people.rehire.approve',
+                'hr.medical-records.view',
+                'hr.medical-records.manage',
                 'hr.organization.view',
                 'hr.organization.manage',
                 'hr.reporting-lines.view',
@@ -1256,6 +1260,8 @@ class AllPermissionsSeeder extends Seeder
     private static function denyByDefaultPermissions(): array
     {
         return [
+            'hr.medical-records.view',
+            'hr.medical-records.manage',
             'staff-sensitive-documents.view',
             'staff-sensitive-documents.create',
             'staff-sensitive-documents.verify',

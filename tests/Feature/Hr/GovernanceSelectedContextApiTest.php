@@ -14,11 +14,9 @@ it('limits approval queues to the selected Staff company', function () {
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo(['hr.governance.view', 'hr.engagement.approve', 'hr.recognition.approve', 'hr.wellness.case.manage']);
     $secondCompany = Company::create(['name' => 'Second Governance company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $announcementIds = [(string) Str::uuid(), (string) Str::uuid()];
     foreach ([[$announcementIds[0], $firstCompany->id], [$announcementIds[1], $secondCompany->id]] as [$id, $companyId]) {
         DB::table('hr_announcements')->insert([
@@ -30,7 +28,7 @@ it('limits approval queues to the selected Staff company', function () {
         ]);
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/governance/queues')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/governance/queues')->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/governance/queues')->assertOk()

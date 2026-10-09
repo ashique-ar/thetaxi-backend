@@ -66,7 +66,7 @@ it('searches active positions in the selected Staff company and idempotently sub
     actingAs($user, 'api')->withHeaders($headers)
         ->getJson('/api/hr/recruitment/position-options?search=OPS-100')->assertOk()
         ->assertJsonPath('data.0.value', $positionId)
-        ->assertJsonPath('data.0.label', 'OPS-100 · Operations officer');
+        ->assertJsonPath('data.0.label', 'OPS-100 Â· Operations officer');
     actingAs($user, 'api')->withHeaders($headers)
         ->getJson('/api/hr/recruitment/position-options?search=OPS-FOREIGN')->assertOk()->assertJsonCount(0, 'data');
 

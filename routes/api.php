@@ -63,6 +63,7 @@ use App\Http\Controllers\Api\Driver\DriverBattaRuleController;
 use App\Http\Controllers\Api\Driver\DriverHireSettlementController;
 use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
 use App\Http\Controllers\Api\Driver\DriverLogController;
+use App\Http\Controllers\Api\MedicalRecordController;
 use App\Http\Controllers\Api\DrivingLicenseController;
 use App\Http\Controllers\Api\DrivingLicenseTypeController;
 use App\Http\Controllers\Api\DocumentController;
@@ -918,6 +919,17 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.performance.view');
         Route::get('staff/{staffId}', [SalesDashboardController::class, 'staff'])
             ->whereUuid('staffId')->middleware('permission:sales.performance.view-team|sales.performance.view-all');
+    });
+
+    Route::prefix('medical-records')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {
+        Route::get('/', [MedicalRecordController::class, 'index'])->middleware('permission:hr.medical-records.view');
+        Route::get('categories', [MedicalRecordController::class, 'categories'])->middleware('permission:hr.medical-records.view');
+        Route::post('/', [MedicalRecordController::class, 'store'])->middleware('permission:hr.medical-records.manage');
+        Route::get('{id}/document', [MedicalRecordController::class, 'downloadDocument'])->whereUuid('id')->middleware('permission:hr.medical-records.view');
+        Route::post('{id}/upload', [MedicalRecordController::class, 'uploadDocument'])->whereUuid('id')->middleware('permission:hr.medical-records.manage');
+        Route::get('{id}', [MedicalRecordController::class, 'show'])->whereUuid('id')->middleware('permission:hr.medical-records.view');
+        Route::put('{id}', [MedicalRecordController::class, 'update'])->whereUuid('id')->middleware('permission:hr.medical-records.manage');
+        Route::delete('{id}', [MedicalRecordController::class, 'destroy'])->whereUuid('id')->middleware('permission:hr.medical-records.manage');
     });
 
     Route::prefix('hr/people')->middleware(['ensure.internal', 'business.module:hr'])->group(function () {

@@ -14,7 +14,8 @@ it('scopes People Core to the selected active Staff identity and rejects ambiguo
     [$user, $firstCompany] = hr_seed_admin_actor();
     config(['hr.features.people_core' => true]);
     $secondCompany = Company::create(['name' => 'Second People Company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
+    $secondStaff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
     $spell = HrEmploymentSpell::factory()->create([
         'staff_id' => $secondStaff->id,
         'company_id' => $secondCompany->id,
@@ -27,16 +28,10 @@ it('scopes People Core to the selected active Staff identity and rejects ambiguo
         'effective_from' => now()->subDay(),
         'effective_until' => null,
     ]);
-    $context = UserContext::create([
-        'user_id' => $user->id,
-        'context_type' => 'staff',
-        'context_id' => $secondStaff->id,
-        'is_active' => true,
-        'created_user_id' => $user->id,
-    ]);
+    $context = UserContext::query()->where('user_id', $user->id)->where('context_type', 'staff')->firstOrFail();
     $url = '/api/hr/people/directory';
 
-    actingAs($user, 'api')->getJson($url)->assertForbidden();
+    actingAs($user, 'api')->getJson($url)->assertOk();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     $response = actingAs($user, 'api')->withHeaders($headers)->getJson($url)->assertOk();
     $rows = collect($response->json('data.data'));

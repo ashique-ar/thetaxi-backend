@@ -12,6 +12,8 @@ it('searches and exactly hydrates only active colleagues in the actor company', 
     $self = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $first = Staff::factory()->create(['company_id' => $company->id, 'code' => 'LOOKUP-NOMINEE-01']);
     $second = Staff::factory()->create(['company_id' => $company->id, 'code' => 'LOOKUP-NOMINEE-02']);
+    $first->user->update(['first_name' => 'Ada', 'last_name' => 'Able']);
+    $second->user->update(['first_name' => 'Bola', 'last_name' => 'Baker']);
     $inactive = Staff::factory()->create(['company_id' => $company->id, 'code' => 'LOOKUP-NOMINEE-03']);
     $inactive->user->update(['is_active' => false]);
     $ended = Staff::factory()->former()->create(['company_id' => $company->id, 'code' => 'LOOKUP-NOMINEE-04']);

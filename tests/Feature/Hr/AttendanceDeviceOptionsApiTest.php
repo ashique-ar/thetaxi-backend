@@ -56,16 +56,14 @@ it('does not hydrate a terminal option from another company', function () {
         ->assertJsonPath('data.data', []);
 });
 
-it('allows staff.view-all users to select companies without a Staff record', function () {
+it('requires an active Staff identity before staff.view-all company selection', function () {
     (new Database\Seeders\AllPermissionsSeeder())->run();
     $user = User::factory()->create();
     $user->givePermissionTo(['staff.view-all', 'hr.attendance.devices.view']);
-    $first = App\Models\Company::create(['name' => 'Admin Attendance A']);
-    $second = App\Models\Company::create(['name' => 'Admin Attendance B']);
+    App\Models\Company::create(['name' => 'Admin Attendance A']);
+    App\Models\Company::create(['name' => 'Admin Attendance B']);
 
-    $response = actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertOk();
-
-    expect(collect($response->json('data'))->pluck('value')->all())->toEqualCanonicalizing([$first->id, $second->id]);
+    actingAs($user, 'api')->getJson('/api/hr/attendance/company-options')->assertForbidden();
 });
 
 it('returns searchable attendance Staff options only for active employees in the actor company', function () {
@@ -116,22 +114,18 @@ it('denies attendance selector access after the actor Staff employment ends', fu
 
 it('uses an explicitly selected company only when the actor has active Staff membership there', function () {
     [$user] = hr_seed_admin_actor([], true);
+    $staff = Staff::query()->where('user_id', $user->id)->firstOrFail();
+    $context = UserContext::query()->where('context_type', 'staff')->where('context_id', $staff->id)->firstOrFail();
     $otherCompany = App\Models\Company::create(['name' => 'Other Attendance Co']);
-    $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
-    $otherContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
-    ]);
-    $candidate = Staff::factory()->create(['company_id' => $otherCompany->id, 'code' => 'ATT-MEMBER-02']);
+    $candidate = Staff::factory()->create(['company_id' => $staff->company_id, 'code' => 'ATT-MEMBER-02']);
 
-    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherContext->id];
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$otherCompany->id)
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$staff->company_id)
         ->assertOk()
         ->assertJsonFragment(['value' => $candidate->id]);
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/mapping-candidates')
-        ->assertForbidden()
-        ->assertJsonPath('message', 'Select an active Staff context.');
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$otherCompany->id)
+        ->assertForbidden()->assertJsonPath('message', 'Attendance data is outside your legal entity.');
 
     $unassignedCompany = App\Models\Company::create(['name' => 'Unassigned Attendance Co']);
     actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/mapping-candidates?company_id='.$unassignedCompany->id)
@@ -159,9 +153,9 @@ it('allows device viewers to select only companies with active Staff membership'
 it('scopes attendance health and device alerts to the selected company and authorizes alert resolution by owner', function () {
     [$user, $company] = hr_seed_admin_actor();
     $otherCompany = App\Models\Company::create(['name' => 'Second Attendance Co']);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
     $device = AttendanceDevice::factory()->create(['company_id' => $company->id]);
     $otherDevice = AttendanceDevice::factory()->create(['company_id' => $otherCompany->id]);
+    $headers = ['X-Active-Context-Type' => 'internal'];
     $alertIds = [];
 
     foreach ([[$company->id, $device->id], [$otherCompany->id, $otherDevice->id]] as [$companyId, $deviceId]) {
@@ -182,21 +176,22 @@ it('scopes attendance health and device alerts to the selected company and autho
         ]);
     }
 
-    actingAs($user, 'api')->getJson('/api/hr/attendance/health')->assertForbidden();
-    actingAs($user, 'api')->getJson('/api/hr/attendance/health?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/health')
+        ->assertOk()->assertJsonPath('data.devices.0.id', $device->id);
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/health?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonPath('data.devices.0.id', $otherDevice->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/device-alerts?company_id='.$otherCompany->id)
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/device-alerts?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertIds[$otherCompany->id]);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/device-alerts')
-        ->assertForbidden();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/device-alerts')
+        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.id', $alertIds[$company->id]);
     $resolutionNote = 'Verified on the selected terminal.';
-    actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
         'note' => $resolutionNote,
     ])->assertOk();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
         'note' => $resolutionNote,
     ])->assertOk();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/device-alerts/'.$alertIds[$otherCompany->id].'/resolve', [
         'note' => 'Duplicate resolution.',
     ])->assertStatus(409);
 

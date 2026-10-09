@@ -191,7 +191,7 @@ class SalesPeriodCloseService
             $companyId, $periodStart, $cutoffAt, $expectedLockVersion, $previewChecksum,
             $reason, $idempotencyKey, $actorUserId, $requestChecksum
         ): object {
-            DB::table('companies')->whereKey($companyId)->where('is_active', true)
+            DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = DB::table('sales_period_close_events')->where('company_id', $companyId)
                 ->where('idempotency_key', $idempotencyKey)->first();
@@ -217,7 +217,7 @@ class SalesPeriodCloseService
                     'period_start' => $startUtc, 'period_end' => $endExclusiveUtc, 'state' => 'open', 'lock_version' => 0,
                     'created_at' => now(), 'updated_at' => now(),
                 ]);
-                $lock = DB::table('domain_period_locks')->whereKey($lockId)->lockForUpdate()->first();
+                $lock = DB::table('domain_period_locks')->where('id', $lockId)->lockForUpdate()->first();
             }
             abort_unless((int) $lock->lock_version === $expectedLockVersion && in_array($lock->state, ['open', 'reopened'], true),
                 409, 'The Sales period is not open for this close operation.');
@@ -237,7 +237,7 @@ class SalesPeriodCloseService
             $snapshot = $this->createSnapshot($lockedPreview, $lock->id, $prior?->id, $kind, $idempotencyKey, $requestChecksum, $actorUserId);
             if ($prior) $prior->update(['status' => 'superseded']);
             $version = (int) $lock->lock_version + 1;
-            DB::table('domain_period_locks')->whereKey($lock->id)->update([
+            DB::table('domain_period_locks')->where('id', $lock->id)->update([
                 'state' => 'locked', 'lock_version' => $version, 'reason' => trim($reason),
                 'locked_by' => $actorUserId, 'locked_at' => now(), 'updated_at' => now(),
             ]);
@@ -258,11 +258,11 @@ class SalesPeriodCloseService
         string $periodLockId, int $expectedVersion, string $reason, string $idempotencyKey, string $actorUserId,
     ): object {
         return DB::transaction(function () use ($periodLockId, $expectedVersion, $reason, $idempotencyKey, $actorUserId): object {
-            $lock = DB::table('domain_period_locks')->whereKey($periodLockId)->where('domain', 'sales')->first();
+            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')->first();
             abort_unless($lock, 404);
-            DB::table('companies')->whereKey($lock->company_id)->where('is_active', true)
+            DB::table('companies')->where('id', $lock->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
-            $lock = DB::table('domain_period_locks')->whereKey($periodLockId)->where('domain', 'sales')->lockForUpdate()->first();
+            $lock = DB::table('domain_period_locks')->where('id', $periodLockId)->where('domain', 'sales')->lockForUpdate()->first();
             abort_unless($lock, 404);
             $requestChecksum = hash('sha256', CanonicalJson::encode([
                 'period_lock_id' => $periodLockId, 'expected_version' => $expectedVersion,
@@ -280,7 +280,7 @@ class SalesPeriodCloseService
             abort_unless($lock->state === 'locked', 409, 'Only a locked Sales period can be reopened.');
             abort_unless((int) $lock->lock_version === $expectedVersion, 409, 'The Sales period lock version is stale.');
             $version = $expectedVersion + 1;
-            DB::table('domain_period_locks')->whereKey($lock->id)->update([
+            DB::table('domain_period_locks')->where('id', $lock->id)->update([
                 'state' => 'reopened', 'lock_version' => $version, 'reason' => trim($reason),
                 'reopened_by' => $actorUserId, 'reopened_at' => now(), 'updated_at' => now(),
             ]);
@@ -336,8 +336,8 @@ class SalesPeriodCloseService
 
     private function result(string $eventId): object
     {
-        $event = DB::table('sales_period_close_events')->whereKey($eventId)->firstOrFail();
-        $event->period_lock = DB::table('domain_period_locks')->whereKey($event->period_lock_id)->first();
+        $event = DB::table('sales_period_close_events')->where('id', $eventId)->firstOrFail();
+        $event->period_lock = DB::table('domain_period_locks')->where('id', $event->period_lock_id)->first();
         $event->snapshot = $event->snapshot_id ? SalesKpiSnapshot::query()->with('rows')->find($event->snapshot_id) : null;
         unset($event->request_payload_checksum, $event->idempotency_key);
         return $event;

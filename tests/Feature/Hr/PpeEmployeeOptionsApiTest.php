@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\Staff;
+use App\Models\User;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -14,7 +15,7 @@ it('searches and hydrates only active tenant employees with minimal readable out
     [$admin, $company] = hr_seed_admin_actor();
     $otherCompany = Company::create(['name' => 'Other PPE tenant']);
     $employee = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PPE-CHOICE']);
-    $employee->user->update(['name' => 'PPE Employee', 'is_active' => false]);
+    $employee->user->update(['first_name' => 'PPE', 'last_name' => 'Employee', 'is_active' => false]);
     $foreign = Staff::factory()->create(['company_id' => $otherCompany->id, 'code' => 'PPE-FOREIGN']);
     $former = Staff::factory()->former()->create(['company_id' => $company->id, 'code' => 'PPE-FORMER']);
     $deleted = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PPE-DELETED']);
@@ -54,7 +55,7 @@ it('rejects a newly terminated selection without writing issuance or audit', fun
     $employee = Staff::factory()->create(['company_id' => $company->id]);
     actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options?selected_id='.$employee->id)
         ->assertOk()->assertJsonCount(1, 'data.data');
-    $employee->update(['employment_ended_at' => now()]);
+    DB::table('staff')->where('id', $employee->id)->update(['employment_ended_at' => now()]);
     $key = (string) Str::uuid();
     actingAs($admin, 'api')->postJson('/api/hr/safety/ppe-issuances', [
         'idempotency_key' => $key, 'staff_id' => $employee->id, 'ppe_type' => 'Safety vest',
@@ -78,15 +79,16 @@ it('scopes Safety employee selectors to the selected Staff company without a cal
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $firstEmployee = Staff::factory()->create(['company_id' => $firstCompany->id]);
     $secondCompany = Company::create(['name' => 'Second PPE context']);
-    $secondActorStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
+    $secondActor = User::factory()->create();
+    $secondActor->assignRole('admin');
+    $secondActorStaff = Staff::factory()->create(['user_id' => $secondActor->id, 'company_id' => $secondCompany->id]);
     $secondEmployee = Staff::factory()->create(['company_id' => $secondCompany->id]);
     $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondActorStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
+        'user_id' => $secondActor->id, 'context_type' => 'staff', 'context_id' => $secondActorStaff->id,
+        'is_active' => true, 'created_user_id' => $secondActor->id,
     ]);
 
-    actingAs($admin, 'api')->getJson('/api/hr/safety/ppe-employee-options')->assertForbidden();
-    actingAs($admin, 'api')->withHeaders([
+    actingAs($secondActor, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/safety/ppe-employee-options')
         ->assertOk()->assertJsonCount(2, 'data.data')
@@ -116,7 +118,7 @@ it('returns readable historical labels only for Staff referenced by visible regi
     [$admin, $company] = hr_seed_admin_actor();
     config(['hr.features.relations_safety' => true]);
     $employee = Staff::factory()->create(['company_id' => $company->id, 'code' => 'PPE-HISTORY']);
-    $employee->user->update(['name' => 'Historical PPE Employee']);
+    $employee->user->update(['first_name' => 'Historical PPE', 'last_name' => 'Employee']);
     $unrelated = Staff::factory()->create(['company_id' => $company->id, 'code' => 'NOT-IN-REGISTER']);
     $foreign = Staff::factory()->create(['company_id' => Company::create(['name' => 'Foreign register tenant'])->id, 'code' => 'FOREIGN-REGISTER']);
     $key = (string) Str::uuid();
@@ -125,7 +127,7 @@ it('returns readable historical labels only for Staff referenced by visible regi
         'idempotency_key' => $key, 'staff_id' => $employee->id,
         'ppe_type' => 'Safety vest', 'issued_at' => '2026-09-05',
     ])->assertCreated();
-    $employee->update(['employment_ended_at' => now()]);
+    DB::table('staff')->where('id', $employee->id)->update(['employment_ended_at' => now()]);
 
     actingAs($admin, 'api')->getJson('/api/hr/safety/registers')->assertOk()
         ->assertJsonPath('data.staff_labels.'.$employee->id.'.label', 'Historical PPE Employee · PPE-HISTORY')

@@ -7,6 +7,7 @@ use App\Services\Payment\WebXPayGateway;
 use App\Services\WebXPayService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Database\Eloquent\Builder as EloquentBuilder;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\Request;
@@ -58,8 +59,8 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->configureDriverApiDocumentation();
 
-        EloquentBuilder::macro('whereLikeInsensitive', function (string $column, string $value, string $boolean = 'and') {
-            $query = $this->getQuery();
+        $whereLikeInsensitive = function (string $column, string $value, string $boolean = 'and') {
+            $query = $this instanceof EloquentBuilder ? $this->getQuery() : $this;
             $driver = $query->getConnection()->getDriverName();
             $wrappedColumn = $query->getGrammar()->wrap($column);
             $searchValue = '%' . $value . '%';
@@ -79,11 +80,16 @@ class AppServiceProvider extends ServiceProvider
                 [mb_strtolower($searchValue)],
                 $boolean
             );
-        });
+        };
 
-        EloquentBuilder::macro('orWhereLikeInsensitive', function (string $column, string $value) {
+        $orWhereLikeInsensitive = function (string $column, string $value) {
             return $this->whereLikeInsensitive($column, $value, 'or');
-        });
+        };
+
+        foreach ([EloquentBuilder::class, QueryBuilder::class] as $builder) {
+            $builder::macro('whereLikeInsensitive', $whereLikeInsensitive);
+            $builder::macro('orWhereLikeInsensitive', $orWhereLikeInsensitive);
+        }
 
         // Register model observers
         Driver::observe(DriverObserver::class);
@@ -198,9 +204,11 @@ class AppServiceProvider extends ServiceProvider
 
         Relation::morphMap([
             'driver' => \App\Models\Driver\Driver::class,
+            'vehicle' => \App\Models\Vehicle\Vehicle::class,
             'customer' => \App\Models\Customer::class,
             'vehicle_owner' => \App\Models\Vehicle\VehicleOwner::class,
             'staff' => \App\Models\Staff::class,
+            'medical_record' => \App\Models\MedicalRecord::class,
         ]);
 
         // Register custom route middleware aliases (fix for missing Kernel routeMiddleware registration)

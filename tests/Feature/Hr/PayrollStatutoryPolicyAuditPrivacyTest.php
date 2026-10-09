@@ -51,9 +51,9 @@ it('keeps statutory policy terms auditable without free-text reasons or actor id
     ]);
 
     $epfProperties = DB::table('activity_log')->where('subject_type', HrEpfEtfContributionPolicy::class)
-        ->where('subject_id', $epf->id)->value('properties');
+        ->where('subject_id', $epf->id)->value('attribute_changes');
     $gratuityProperties = DB::table('activity_log')->where('subject_type', HrGratuityPolicy::class)
-        ->where('subject_id', $gratuity->id)->value('properties');
+        ->where('subject_id', $gratuity->id)->value('attribute_changes');
 
     expect($epfProperties)->not->toBeNull()
         ->and($gratuityProperties)->not->toBeNull()

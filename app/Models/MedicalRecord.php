@@ -7,12 +7,14 @@ use App\Models\Vehicle\Vehicle;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphMany;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Spatie\Activitylog\Support\LogOptions;
 
 class MedicalRecord extends BaseModel
 {
     protected $table = 'medical_records';
 
     protected $fillable = [
+        'company_id',
         'subject_type',
         'subject_id',
         'medical_category_id',
@@ -32,6 +34,7 @@ class MedicalRecord extends BaseModel
     ];
 
     protected $casts = [
+        'description' => 'encrypted',
         'issued_date' => 'date',
         'valid_until' => 'date',
         'status_updated_at' => 'datetime',
@@ -50,5 +53,14 @@ class MedicalRecord extends BaseModel
     public function subject(): MorphTo
     {
         return $this->morphTo(__FUNCTION__, 'subject_type', 'subject_id');
+    }
+
+    public function getActivitylogOptions(): LogOptions
+    {
+        return LogOptions::defaults()
+            ->logOnly(['company_id', 'medical_category_id', 'status'])
+            ->logOnlyDirty()
+            ->dontLogEmptyChanges()
+            ->useLogName('hr-medical-records');
     }
 }

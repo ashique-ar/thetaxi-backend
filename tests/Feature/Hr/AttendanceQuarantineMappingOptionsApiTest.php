@@ -57,6 +57,23 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
     $mapping(['effective_from' => '2026-09-01']);
     $foreign = Company::create(['name' => 'Foreign Attendance Company']);
     $foreignStaff = Staff::factory()->create(['company_id' => $foreign->id]);
+    $foreignConnector = AttendanceConnector::factory()->create(['company_id' => $foreign->id, 'created_user_id' => $admin->id]);
+    $foreignDevice = AttendanceDevice::factory()->create(['company_id' => $foreign->id, 'connector_id' => $foreignConnector->id, 'created_user_id' => $admin->id]);
+    $foreignIngestionId = (string) Str::uuid();
+    DB::table('hr_attendance_ingestion_requests')->insert([
+        'id' => $foreignIngestionId, 'connector_id' => $foreignConnector->id, 'request_id' => 'request-'.Str::uuid(), 'nonce' => 'nonce-'.Str::uuid(),
+        'signed_at' => $now, 'received_at' => $now, 'payload_checksum' => str_repeat('c', 64), 'event_count' => 1, 'status' => 'accepted',
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
+    $foreignEventId = (string) Str::uuid();
+    DB::table('hr_attendance_raw_events')->insert([
+        'id' => $foreignEventId, 'company_id' => $foreign->id, 'connector_id' => $foreignConnector->id, 'device_id' => $foreignDevice->id,
+        'ingestion_request_id' => $foreignIngestionId, 'provider_event_id' => 'foreign-event-1', 'provider_person_id' => 'PERSON-FOREIGN',
+        'employee_number' => 'FOREIGN-42', 'occurred_at' => '2026-08-01 08:00:00+05:30', 'source_timezone' => 'Asia/Colombo',
+        'source_utc_offset_minutes' => 330, 'event_kind' => 'attendance', 'encrypted_raw_payload' => 'encrypted-foreign',
+        'payload_checksum' => str_repeat('d', 64), 'mapping_status' => 'quarantined', 'received_at' => $now,
+        'created_at' => $now, 'updated_at' => $now,
+    ]);
     $foreignMappingId = (string) Str::uuid();
     DB::table('hr_attendance_person_mappings')->insert([
         'id' => $foreignMappingId, 'company_id' => $foreign->id, 'staff_id' => $foreignStaff->id, 'device_id' => null,
@@ -66,7 +83,7 @@ it('offers only event-eligible mappings and resolves without changing the raw ev
     ]);
     $foreignItemId = (string) Str::uuid();
     DB::table('hr_attendance_quarantine_items')->insert([
-        'id' => $foreignItemId, 'company_id' => $foreign->id, 'raw_event_id' => $eventId,
+        'id' => $foreignItemId, 'company_id' => $foreign->id, 'raw_event_id' => $foreignEventId,
         'reason_code' => 'unmatched_identity', 'details' => 'Foreign item.', 'status' => 'open',
         'created_at' => $now, 'updated_at' => $now,
     ]);

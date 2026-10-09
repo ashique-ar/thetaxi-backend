@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,7 +23,8 @@ it('exposes and closes an expired final safety notification lease with an audit 
     $actor->assignRole($role);
     $approver = User::factory()->create();
     $company = Company::create(['name' => 'Safety notification company', 'is_active' => true, 'is_default' => true]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
 
     $incidentId = (string) Str::uuid();
     DB::table('hr_safety_incidents')->insert([

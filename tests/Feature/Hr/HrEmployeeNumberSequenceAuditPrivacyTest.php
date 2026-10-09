@@ -28,7 +28,7 @@ it('audits employee-number sequence status and version without identifiers or al
     $properties = DB::table('activity_log')
         ->where('subject_type', HrEmployeeNumberSequence::class)
         ->where('subject_id', $sequence->id)
-        ->value('properties');
+        ->value('attribute_changes');
 
     expect($properties)->not->toBeNull()
         ->and($properties)->toContain('active')

@@ -59,7 +59,7 @@ class CommissionDisputeService
             $amount = round((float) $data['contested_amount_lkr'], 4);
             abort_if($amount > max(0, (float) $line->net_lkr), 422, 'Contested amount exceeds the positive statement-line amount.');
             if (! empty($data['evidence_file_id'])) {
-                abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+                abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                     ->where('domain', 'sales')->where('company_id', $statement->company_id)->whereNull('deleted_at')
                     ->where('subject_type', 'commission_statement_line')->where('subject_id', $line->id)->exists(), 422,
                     'Dispute evidence must be bound to this statement line and Sales legal entity.');

@@ -11,6 +11,7 @@ use App\Models\Sales\SalesCommissionPlanAssignment;
 use App\Models\Sales\SalesCommissionStaffOverride;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
@@ -22,7 +23,8 @@ it('searches and hydrates only non-deleted companies belonging to an active Staf
         'is_active' => true, 'created_user_id' => $admin->id]);
     $actor->user->givePermissionTo('sales.commission-config.view');
     $foreign = Company::create(['name' => 'Foreign Commission Company']);
-    $deleted = Company::create(['name' => 'Deleted Commission Company', 'deleted_at' => now()]);
+    $deleted = Company::create(['name' => 'Deleted Commission Company']);
+    $deleted->delete();
     $url = '/api/sales/commission-configuration/company-options';
 
     $response = actingAs($actor->user, 'api')->getJson($url.'?search=Scoped&per_page=1')->assertOk()
@@ -34,9 +36,9 @@ it('searches and hydrates only non-deleted companies belonging to an active Staf
         ->assertOk()->assertJsonPath('data.data.0.value', $company->id);
     actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$foreign->id)->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$deleted->id)->assertOk()->assertJsonCount(0, 'data.data');
-    $actor->update(['employment_ended_at' => now()]);
-    actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertOk()->assertJsonCount(0, 'data.data');
     actingAs($actor->user, 'api')->getJson($url.'?per_page=51')->assertUnprocessable();
+    DB::table('staff')->where('id', $actor->id)->update(['employment_ended_at' => now()]);
+    actingAs($actor->user, 'api')->getJson($url.'?selected_id='.$company->id)->assertForbidden();
 });
 
 it('searches and exactly hydrates active commission targets only inside the selected legal entity', function () {
@@ -215,6 +217,8 @@ it('returns readable commission targets without employee IDs, approver IDs, or p
 it('replays commission approval only for its original approver while the company is active', function () {
     [$creator, $company] = hr_seed_admin_actor(['name' => 'Commission Approval Company']);
     $approver = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create(['user_id' => $approver->user_id, 'context_type' => 'staff', 'context_id' => $approver->id,
+        'is_active' => true, 'created_user_id' => $creator->id]);
     $approver->user->givePermissionTo('sales.commission-config.approve');
     $family = SalesCommissionPlanFamily::create(['company_id' => $company->id, 'code' => 'COM-APPROVAL',
         'name' => 'Approval Plan', 'commission_category' => 'one_time', 'status' => 'draft', 'created_by' => $creator->id]);
@@ -226,6 +230,8 @@ it('replays commission approval only for its original approver while the company
     expect($family->fresh()->approved_at->equalTo($approvedAt))->toBeTrue();
 
     $otherApprover = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create(['user_id' => $otherApprover->user_id, 'context_type' => 'staff', 'context_id' => $otherApprover->id,
+        'is_active' => true, 'created_user_id' => $creator->id]);
     $otherApprover->user->givePermissionTo('sales.commission-config.approve');
     actingAs($otherApprover->user, 'api')->postJson($url)->assertConflict();
 

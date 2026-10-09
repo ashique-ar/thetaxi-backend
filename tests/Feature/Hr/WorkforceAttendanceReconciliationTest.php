@@ -9,6 +9,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpKernel\Exception\HttpException;
+use Spatie\Permission\Models\Permission;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
@@ -76,6 +77,7 @@ it('reconciles Work Requests and timesheets against only the latest company-owne
         'period_start' => '2026-11-10', 'period_end' => '2026-11-11', 'status' => 'draft', 'version' => 1,
         'created_at' => now(), 'updated_at' => now(),
     ]);
+    Permission::findOrCreate('hr.timesheets.view', 'api');
     $requester->givePermissionTo('hr.timesheets.view');
     $context = UserContext::create([
         'user_id' => $requester->id, 'context_type' => 'staff', 'context_id' => $staff->id,
@@ -103,13 +105,13 @@ it('rechecks the active company before timesheet creation and transition', funct
     $service = app(WorkforceWorkflowService::class);
     $sheet = $service->saveTimesheet([
         'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-01-01', 'period_end' => '2026-01-31',
-        'entries' => [['work_date' => '2026-01-01', 'minutes' => 60, 'entry_mode' => 'manual', 'billable' => false]],
+        'entries' => [['work_date' => '2026-01-01', 'minutes' => 60, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
     ], $user->id);
     DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
 
     expect(fn () => $service->saveTimesheet([
         'company_id' => $company->id, 'staff_id' => $staff->id, 'period_start' => '2026-02-01', 'period_end' => '2026-02-28',
-        'entries' => [['work_date' => '2026-02-01', 'minutes' => 60, 'entry_mode' => 'manual', 'billable' => false]],
+        'entries' => [['work_date' => '2026-02-01', 'minutes' => 60, 'entry_mode' => 'manual', 'activity_code' => 'operations', 'billable' => false]],
     ], $user->id))->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');
     expect(fn () => $service->transitionTimesheet($sheet->id, 'submit', 'Submit timesheet.', $user->id))
         ->toThrow(HttpException::class, 'Workforce operations require an active legal entity.');

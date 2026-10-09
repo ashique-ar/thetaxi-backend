@@ -1,6 +1,8 @@
 <?php
 
 use App\Models\Staff;
+use App\Models\Company;
+use App\Models\UserContext;
 use App\Models\Booking\Booking;
 use App\Models\Customer;
 use App\Models\Booking\BookingPaymentReceipt;
@@ -39,6 +41,8 @@ it('blocks payment-finality policy writes when the company is inactive or delete
     [, $company] = hr_seed_admin_actor();
     $maker = Staff::factory()->create(['company_id' => $company->id]);
     $checker = Staff::factory()->create(['company_id' => $company->id]);
+    UserContext::create(['user_id' => $maker->user_id, 'context_type' => 'staff', 'context_id' => $maker->id, 'is_active' => true, 'created_user_id' => $maker->user_id]);
+    UserContext::create(['user_id' => $checker->user_id, 'context_type' => 'staff', 'context_id' => $checker->id, 'is_active' => true, 'created_user_id' => $maker->user_id]);
     $maker->user->givePermissionTo('sales.payment-finality.manage');
     $checker->user->givePermissionTo('sales.payment-finality.approve');
 
@@ -90,6 +94,10 @@ it('replays finality-policy approval for its original checker and rejects anothe
     $maker = Staff::factory()->create(['company_id' => $company->id]);
     $checker = Staff::factory()->create(['company_id' => $company->id]);
     $otherChecker = Staff::factory()->create(['company_id' => $company->id]);
+    foreach ([$maker, $checker, $otherChecker] as $staff) {
+        UserContext::create(['user_id' => $staff->user_id, 'context_type' => 'staff', 'context_id' => $staff->id,
+            'is_active' => true, 'created_user_id' => $maker->user_id]);
+    }
     $maker->user->givePermissionTo('sales.payment-finality.manage');
     $checker->user->givePermissionTo('sales.payment-finality.approve');
     $otherChecker->user->givePermissionTo('sales.payment-finality.approve');
@@ -111,15 +119,17 @@ it('replays finality-policy approval for its original checker and rejects anothe
         ->and(DB::table('booking_payment_finality_policies')->where('id', $policyId)->value('updated_at'))->toBe($approved->updated_at)
         ->and(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
     expect(json_decode((string) DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->value('properties'), true, 512, JSON_THROW_ON_ERROR))
-        ->toBe(['company_id' => $company->id, 'status' => 'approved', 'effective_from' => $approved->effective_from, 'version' => 1]);
+        ->toBe(['company_id' => $company->id, 'status' => 'approved',
+            'effective_from' => \Illuminate\Support\Carbon::parse($approved->effective_from)->toISOString(), 'version' => 1]);
 
     actingAs($otherChecker->user, 'api')->postJson($url)->assertStatus(409);
     expect(DB::table('activity_log')->where('description', 'payment_finality_policy_approved')->count())->toBe(1);
 });
 
 it('blocks receipt finality transitions for an inactive or deleted company before touching its booking', function () {
-    foreach (['inactive', 'deleted'] as $state) {
-        [, $company] = hr_seed_admin_actor();
+    [, $activeCompany] = hr_seed_admin_actor();
+    $deletedCompany = Company::create(['name' => 'Deleted finality company', 'is_default' => false]);
+    foreach (['inactive' => $activeCompany, 'deleted' => $deletedCompany] as $state => $company) {
         if ($state === 'inactive') $company->update(['is_active' => false]);
         else $company->delete();
 

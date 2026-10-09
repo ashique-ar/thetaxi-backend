@@ -14,11 +14,13 @@ it('scopes self-service requests and history to the selected active Staff contex
     [$user, $firstCompany] = hr_seed_admin_actor([], true);
     $firstStaff = Staff::query()->where('user_id', $user->id)->firstOrFail();
     $secondCompany = App\Models\Company::create(['name' => 'Second ESS Company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
+    $secondActor = App\Models\User::factory()->create();
+    $secondActor->assignRole('admin');
+    $secondStaff = Staff::factory()->create(['user_id' => $secondActor->id, 'company_id' => $secondCompany->id]);
     $firstContext = UserContext::query()->where('user_id', $user->id)->where('context_type', 'staff')->where('context_id', $firstStaff->id)->firstOrFail();
     $secondContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
+        'user_id' => $secondActor->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
+        'is_active' => true, 'created_user_id' => $secondActor->id,
     ]);
     $firstRequestId = (string) Str::uuid();
     $secondRequestId = (string) Str::uuid();
@@ -45,7 +47,8 @@ it('scopes self-service requests and history to the selected active Staff contex
         'capability_snapshot' => '{}', 'submitted_at' => now(), 'created_at' => now(), 'updated_at' => now(),
     ]);
     $url = '/api/hr/ess/my-requests';
-    actingAs($user, 'api')->getJson($url)->assertForbidden();
+    actingAs($user, 'api')->getJson($url)->assertOk()
+        ->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $firstRequestId);
     actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => (string) Str::uuid(),
     ])->getJson($url)->assertForbidden();
@@ -55,10 +58,10 @@ it('scopes self-service requests and history to the selected active Staff contex
     actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $firstContext->id,
     ])->getJson($url.'/'.$mismatchedCompanyRequestId)->assertNotFound();
-    actingAs($user, 'api')->withHeaders([
+    actingAs($secondActor, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
     ])->getJson($url)->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $secondRequestId);
-    actingAs($user, 'api')->withHeaders([
+    actingAs($secondActor, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $secondContext->id,
     ])->getJson($url.'/'.$firstRequestId)->assertNotFound();
 });

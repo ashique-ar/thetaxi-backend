@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\Booking\Booking;
+use App\Models\Customer;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesOpportunityStageEvent;
@@ -67,7 +68,7 @@ it('replays only the original opportunity transition and transfer command', func
     foreach (['sales.crm.view', 'sales.crm.view-all', 'sales.crm.manage', 'sales.crm.manage-all'] as $permission) {
         $otherActor->givePermissionTo(Permission::findByName($permission, 'api'));
     }
-    actingAs($otherActor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transition', $transition)->assertConflict();
+    actingAs($otherActor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transition', $transition)->assertForbidden();
 
     $transfer = [
         'owner_sales_profile_id' => $newOwner->id, 'expected_version' => 2,
@@ -92,17 +93,21 @@ it('replays only the original opportunity transition and transfer command', func
         'to_stage' => 'qualified', 'expected_version' => 3, 'idempotency_key' => 'opportunity-stage-idem-2',
     ])->assertOk();
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/transfer', $transfer)->assertOk();
+    $customer = Customer::create(['user_id' => $actor->id]);
     $booking = Booking::create([
+        'customer_id' => $customer->id,
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $newOwner->staff_id,
         'created_user_id' => $actor->id,
     ]);
     $otherBooking = Booking::create([
+        'customer_id' => $customer->id,
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $newOwner->staff_id,
         'created_user_id' => $actor->id,
     ]);
     $foreignCompany = Company::create(['name' => 'Foreign booking company', 'is_active' => true, 'is_default' => false]);
     $foreignStaff = Staff::factory()->create(['company_id' => $foreignCompany->id]);
     $foreignBooking = Booking::create([
+        'customer_id' => $customer->id,
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $foreignStaff->id,
         'created_user_id' => $actor->id,
     ]);
@@ -115,7 +120,7 @@ it('replays only the original opportunity transition and transfer command', func
         ...$link, 'booking_id' => $otherBooking->id,
     ])->assertConflict();
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$second->id.'/link-booking', $link)->assertConflict();
-    actingAs($otherActor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', $link)->assertConflict();
+    actingAs($otherActor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', $link)->assertForbidden();
     actingAs($actor, 'api')->postJson('/api/sales/opportunities/'.$first->id.'/link-booking', [
         'booking_id' => $foreignBooking->id, 'idempotency_key' => 'opportunity-booking-foreign-company',
     ])->assertUnprocessable();

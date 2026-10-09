@@ -164,7 +164,7 @@ class SalesCollectionCompanyRepairService
             $snapshot = $this->rollbackSnapshot($booking, $attribution, true);
             abort_unless($snapshot['rows'] !== [] && hash_equals($snapshot['checksum'], $data['preview_checksum']), 409,
                 'Collection company repair rollback preview is stale; create a new preview.');
-            abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                 ->where('domain', 'sales')->where('company_id', $attribution->company_id)->whereNull('deleted_at')
                 ->where('subject_type', 'booking')->where('subject_id', $booking->id)->exists(), 422,
                 'Evidence must be attached to this booking and its established Sales legal entity.');
@@ -253,7 +253,7 @@ class SalesCollectionCompanyRepairService
             abort_unless(! $snapshot['blocked'], 409, 'A linked Sales Profile belongs to another or unresolved legal entity; resolve attribution first.');
             abort_unless($snapshot['rows'] !== [] && hash_equals($snapshot['checksum'], $data['preview_checksum']), 409,
                 'Collection company repair preview is stale; create a new preview.');
-            abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                 ->where('domain', 'sales')->where('company_id', $attribution->company_id)->whereNull('deleted_at')
                 ->where('subject_type', 'booking')->where('subject_id', $booking->id)->exists(), 422,
                 'Evidence must be attached to this booking and its established Sales legal entity.');

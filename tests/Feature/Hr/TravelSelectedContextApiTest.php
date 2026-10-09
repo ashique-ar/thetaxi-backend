@@ -15,11 +15,9 @@ it('lists only travel requests in the selected Staff company', function () {
     $admin->givePermissionTo('hr.travel.view');
     $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $secondCompany = Company::create(['name' => 'Selected travel company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $requestIds = [];
     foreach ([[$firstCompany->id, $firstStaff->id], [$secondCompany->id, $secondStaff->id]] as [$companyId, $staffId]) {
@@ -35,7 +33,7 @@ it('lists only travel requests in the selected Staff company', function () {
         $requestIds[] = $id;
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/travel/requests')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/travel/requests')->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/travel/requests')->assertOk()->assertJsonCount(1, 'data.data')

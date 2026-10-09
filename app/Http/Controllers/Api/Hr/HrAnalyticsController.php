@@ -30,7 +30,7 @@ class HrAnalyticsController extends Controller
             'definition' => ['required', 'string', 'max:10000'], 'source_contract' => ['required', 'array'],
             'source_contract.metric_kind' => ['required', Rule::in(['headcount', 'joiners', 'leavers', 'vacant_positions', 'approved_leave_minutes', 'approved_overtime_minutes', 'learning_completions'])],
             'source_contract.period_kind' => ['required', Rule::in(['day', 'month', 'year_to_date'])], 'source_contract.unit' => ['required', Rule::in(['count', 'minutes'])],
-            'dimension_policy' => ['required', 'array'], 'dimension_policy.allowed_dimensions' => ['required', 'array'],
+            'dimension_policy' => ['required', 'array'], 'dimension_policy.allowed_dimensions' => ['present', 'array'],
             'dimension_policy.allowed_dimensions.*' => ['required', Rule::in(['organization_unit', 'location', 'staff_type', 'tenure_band'])],
             'minimum_group_size' => ['required', 'integer', 'min:5', 'max:1000'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after_or_equal:effective_from'],
         ]);

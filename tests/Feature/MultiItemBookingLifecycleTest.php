@@ -513,6 +513,41 @@ it('requires waiting telemetry when the selected final formula bills waiting tim
     ], 'booking_completion'))->toThrow(DomainException::class, 'Final waiting time is required');
 });
 
+it('accepts split waiting telemetry without a legacy waiting total', function () {
+    $item = $this->items[0];
+    $item->update([
+        'service_type_id' => '44444444-4444-4444-8444-444444444444',
+        'vehicle_group_id' => '55555555-5555-4555-8555-555555555555',
+    ]);
+    $this->bookingFlowService->shouldReceive('calculateDynamicPricing')
+        ->once()
+        ->withArgs(fn (array $params): bool => ($params['pickup_waiting_minutes'] ?? null) === 4
+            && ($params['hire_waiting_minutes'] ?? null) === 7
+            && ($params['waiting_minutes'] ?? null) === 11)
+        ->andReturn([
+            'total_amount' => 100,
+            'calculation_metadata' => ['resolved_variables' => []],
+            'adjustment_details' => ['adjustments' => []],
+            'breakdown' => [],
+        ]);
+
+    $method = new ReflectionMethod($this->lifecycle, 'synchronizeFinalPricing');
+
+    $result = $method->invoke($this->lifecycle, $this->booking->fresh(), [
+        'booking_item' => $item->fresh(),
+        'is_self_driven' => true,
+        'vehicle_id' => $item->vehicle_id,
+    ], null, [
+        'actual_start_time' => now()->subHour()->toIso8601String(),
+        'actual_return_time' => now()->toIso8601String(),
+        'pickup_waiting_minutes' => 4,
+        'hire_waiting_minutes' => 7,
+        'activity_source' => 'system_completion',
+    ], 'booking_completion');
+
+    expect($result)->toBeArray();
+});
+
 it('preserves single-item behavior while recording the same item-owned terminal state', function () {
     $first = $this->items[0];
     $second = $this->items[1];

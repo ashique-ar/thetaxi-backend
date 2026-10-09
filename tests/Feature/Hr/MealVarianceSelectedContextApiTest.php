@@ -17,11 +17,9 @@ it('requires the selected Staff company before handling a meal variance', functi
 
     $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $company = Company::create(['name' => 'Selected meal variance company']);
-    $staff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $company->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $staff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $staff->update(['company_id' => $company->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $program = (string) Str::uuid();
     $vendor = (string) Str::uuid();
@@ -53,10 +51,10 @@ it('requires the selected Staff company before handling a meal variance', functi
     ]);
     $payload = ['reason_code' => 'delivery', 'reason' => 'Delivery variance', 'lines' => [[
         'adjustment_type' => 'wastage', 'quantity_delta' => 0, 'supplier_amount_delta' => 0,
-        'employer_amount_delta' => 0, 'employee_amount_delta' => 0, 'resolution_snapshot' => [], 'reason' => 'Recorded',
+        'employer_amount_delta' => 0, 'employee_amount_delta' => 0, 'resolution_snapshot' => ['evidence' => 'test'], 'reason' => 'Recorded',
     ]]];
 
-    actingAs($admin, 'api')->postJson("/api/hr/meals/vendor-orders/{$order}/variances", $payload)->assertForbidden();
+    actingAs($admin, 'api')->postJson("/api/hr/meals/vendor-orders/{$order}/variances", $payload)->assertStatus(409);
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->postJson("/api/hr/meals/vendor-orders/{$order}/variances", $payload)->assertStatus(409);

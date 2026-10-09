@@ -38,7 +38,9 @@ it('defaults company options to the authorized active default and scopes the opp
         ->assertOk()->assertJsonPath('data.data.0.value', (string) $defaultCompany->id)
         ->assertJsonPath('data.data.0.metadata.is_default', true)
         ->assertJsonPath('default_company_id', $defaultCompany->id);
-    actingAs($actor, 'api')->getJson('/api/sales/opportunities')->assertUnprocessable();
+    actingAs($actor, 'api')->getJson('/api/sales/opportunities')->assertOk()
+        ->assertJsonCount(1, 'data.data')
+        ->assertJsonPath('data.data.0.opportunity_number', 'DEFAULT-OPP');
     actingAs($actor, 'api')->getJson('/api/sales/opportunities?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonCount(1, 'data.data')
         ->assertJsonPath('data.data.0.id', (string) $otherOpportunity->id);

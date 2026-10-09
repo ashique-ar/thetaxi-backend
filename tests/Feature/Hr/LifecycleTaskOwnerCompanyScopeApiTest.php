@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +24,10 @@ it('opens lifecycle tasks only for active owners in the case company', function 
 
     $company = Company::create(['name' => 'Lifecycle Task Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Lifecycle Company', 'is_active' => true, 'is_default' => false]);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $actor = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $context = UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actor->id,
+        'is_active' => true, 'created_user_id' => $user->id]);
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $activeOwner = Staff::factory()->create(['company_id' => $company->id]);
     $formerOwner = Staff::factory()->former()->create(['company_id' => $company->id]);
@@ -43,20 +47,20 @@ it('opens lifecycle tasks only for active owners in the case company', function 
         'idempotency_key' => (string) Str::uuid(),
     ];
 
-    actingAs($user, 'api')->postJson('/api/hr/lifecycle/cases', $payload)->assertStatus(422);
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/lifecycle/cases', $payload)->assertStatus(422);
     $this->assertDatabaseCount('hr_lifecycle_cases', 0);
     $this->assertDatabaseCount('hr_lifecycle_tasks', 0);
 
     DB::table('hr_lifecycle_templates')->where('id', $templateId)->update([
         'task_definitions' => json_encode([['code' => 'setup', 'title' => 'Set up employee record', 'owner_staff_id' => $formerOwner->id]], JSON_THROW_ON_ERROR),
     ]);
-    actingAs($user, 'api')->postJson('/api/hr/lifecycle/cases', $payload)->assertStatus(422);
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/lifecycle/cases', $payload)->assertStatus(422);
     $this->assertDatabaseCount('hr_lifecycle_cases', 0);
     $this->assertDatabaseCount('hr_lifecycle_tasks', 0);
 
     DB::table('hr_lifecycle_templates')->where('id', $templateId)->update([
         'task_definitions' => json_encode([['code' => 'setup', 'title' => 'Set up employee record', 'owner_staff_id' => $activeOwner->id]], JSON_THROW_ON_ERROR),
     ]);
-    actingAs($user, 'api')->postJson('/api/hr/lifecycle/cases', $payload)->assertCreated();
+    actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/lifecycle/cases', $payload)->assertCreated();
     $this->assertDatabaseHas('hr_lifecycle_tasks', ['owner_staff_id' => $activeOwner->id]);
 });

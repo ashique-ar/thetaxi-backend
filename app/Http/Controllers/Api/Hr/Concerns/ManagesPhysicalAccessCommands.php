@@ -54,8 +54,8 @@ trait ManagesPhysicalAccessCommands
                 abort_if(in_array($data['command_type'], ['grant', 'restore'], true) && ($staff->trashed() || filled($staff->employment_ended_at)), 409, 'Former Staff cannot receive physical access.');
                 $device = AttendanceDevice::query()->where('company_id', $data['company_id'])->find($data['device_id']);
                 abort_unless($device, 404);
-                abort_unless(! in_array($data['command_type'], ['grant', 'restore'], true) || filled($data['access_group_code']), 422, 'Grant and restore commands require an access group.');
-                if (filled($data['access_group_code'])) {
+                abort_unless(! in_array($data['command_type'], ['grant', 'restore'], true) || filled($data['access_group_code'] ?? null), 422, 'Grant and restore commands require an access group.');
+                if (filled($data['access_group_code'] ?? null)) {
                     abort_unless(DB::table('hr_attendance_access_groups')->where('company_id', $data['company_id'])->where('device_id', $data['device_id'])->where('code', $data['access_group_code'])->where('status', 'active')->exists(), 422, 'The selected access group is not active for this device.');
                 }
                 $id = (string) Str::uuid();

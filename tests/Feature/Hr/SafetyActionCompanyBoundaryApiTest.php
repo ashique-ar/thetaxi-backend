@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +24,11 @@ it('hides foreign safety actions and serializes same-company completion and veri
 
     $company = Company::create(['name' => 'Safety Action Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Safety Action Company', 'is_active' => true, 'is_default' => false]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create([
+        'user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id,
+        'is_active' => true, 'created_user_id' => $actor->id,
+    ]);
     $sameCompanyOwner = Staff::factory()->create(['company_id' => $company->id]);
     $foreignOwner = Staff::factory()->create(['company_id' => $otherCompany->id]);
 

@@ -14,11 +14,9 @@ it('scopes integration deliveries to the selected Staff company and keeps acknow
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo(['hr.integrations.deliver', 'hr.integrations.acknowledge']);
     $secondCompany = Company::create(['name' => 'Second Integration company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $outboxIds = [(string) Str::uuid(), (string) Str::uuid()];
     $checksums = [hash('sha256', 'first payload'), hash('sha256', 'second payload')];
     foreach ([[$outboxIds[0], $firstCompany->id, $checksums[0]], [$outboxIds[1], $secondCompany->id, $checksums[1]]] as [$id, $companyId, $checksum]) {
@@ -32,7 +30,7 @@ it('scopes integration deliveries to the selected Staff company and keeps acknow
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     $pendingUrl = '/api/hr/integration-deliveries/pending?target_system=accounting';
 
-    actingAs($admin, 'api')->getJson($pendingUrl)->assertForbidden();
+    actingAs($admin, 'api')->getJson($pendingUrl)->assertOk();
     actingAs($admin, 'api')->withHeaders($headers)->getJson($pendingUrl)
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.id', $outboxIds[1]);
     $payload = [

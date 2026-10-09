@@ -77,7 +77,16 @@ class ActingAppointmentController extends Controller
             $search = trim((string) ($data['search'] ?? ''));
             if ($search !== '') {
                 if ($data['record_type'] === 'staff') {
-                    $query->where(fn ($matches) => $matches->whereRaw("LOWER(COALESCE(users.first_name, '')) LIKE ?", ['%' . mb_strtolower($search) . '%'])->orWhereRaw("LOWER(COALESCE(users.last_name, '')) LIKE ?", ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(staff.code) LIKE ?', ['%' . mb_strtolower($search) . '%']));
+                    $terms = preg_split('/\s+/', mb_strtolower($search), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+                    $query->where(fn ($matches) => $matches
+                        ->where(function ($name) use ($terms) {
+                            foreach ($terms as $term) {
+                                $name->where(fn ($part) => $part
+                                    ->whereRaw("LOWER(COALESCE(users.first_name, '')) LIKE ?", ['%' . $term . '%'])
+                                    ->orWhereRaw("LOWER(COALESCE(users.last_name, '')) LIKE ?", ['%' . $term . '%']));
+                            }
+                        })
+                        ->orWhereRaw('LOWER(staff.code) LIKE ?', ['%' . mb_strtolower($search) . '%']));
                 } else {
                     $query->where(fn ($matches) => $matches->whereRaw('LOWER(hr_positions.title) LIKE ?', ['%' . mb_strtolower($search) . '%'])->orWhereRaw('LOWER(hr_positions.position_number) LIKE ?', ['%' . mb_strtolower($search) . '%']));
                 }

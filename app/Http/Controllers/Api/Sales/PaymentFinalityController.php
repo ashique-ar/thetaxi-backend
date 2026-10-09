@@ -218,7 +218,7 @@ class PaymentFinalityController extends Controller
             abort_unless(! empty($data['evidence_file_id']), 422, 'This finality policy requires private evidence.');
         }
         if (! empty($data['evidence_file_id'])) {
-            $evidence = DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])->whereNull('deleted_at')
+            $evidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->whereNull('deleted_at')
                 ->where('domain', 'sales')->where('company_id', $receipt->company_id)
                 ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)->first();
             abort_unless($evidence, 422, 'Finality evidence must be bound to this receipt and legal entity.');

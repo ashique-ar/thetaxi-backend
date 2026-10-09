@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -23,7 +24,8 @@ it('starts probation only from the active employment spell in the selected Staff
 
     $company = Company::create(['name' => 'Probation Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Probation Company', 'is_active' => true, 'is_default' => false]);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $user->id]);
     $subject = Staff::factory()->create(['company_id' => $company->id]);
 
     $addSpell = function (string $companyId, int $number) use ($subject, $user): string {

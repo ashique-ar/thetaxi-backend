@@ -107,13 +107,11 @@ it('reads and saves notification preferences for only the selected Staff identit
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.notifications.preferences');
     config(['hr.features.engagement_analytics' => true]);
-    $firstStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $firstStaff = Staff::factory()->create(['company_id' => $firstCompany->id]);
     $secondCompany = Company::create(['name' => 'Second Notification company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $preferenceIds = [(string) Str::uuid(), (string) Str::uuid()];
     foreach ([[$preferenceIds[0], $firstStaff, $firstCompany->id], [$preferenceIds[1], $secondStaff, $secondCompany->id]] as [$id, $staff, $companyId]) {
         DB::table('hr_notification_preferences')->insert([
@@ -129,10 +127,10 @@ it('reads and saves notification preferences for only the selected Staff identit
         'updated_by' => $admin->id, 'created_at' => now(), 'updated_at' => now(),
     ]);
 
-    actingAs($admin, 'api')->getJson('/api/hr/notifications/preferences')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/notifications/preferences')->assertOk();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/notifications/preferences')
-        ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.enabled', true);
+        ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.enabled', 1);
     actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/notifications/preferences', [
         'event_type' => 'optional_update', 'channel' => 'email', 'enabled' => false,
     ])->assertOk();

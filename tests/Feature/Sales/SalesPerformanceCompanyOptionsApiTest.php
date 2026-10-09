@@ -51,7 +51,8 @@ it('searches and hydrates only authorized active Sales Profiles for performance 
         'id' => (string) Str::uuid(), 'company_id' => $otherCompany->id, 'staff_id' => $otherStaff->id,
         'sales_code' => 'PERF-OTHER', 'status' => 'active', 'effective_from' => now()->subDay(),
     ]);
-    $deletedCompany = Company::create(['name' => 'Deleted Performance Profile Company', 'deleted_at' => now()]);
+    $deletedCompany = Company::create(['name' => 'Deleted Performance Profile Company']);
+    $deletedCompany->delete();
     $url = '/api/sales/performance/profile-options?company_id='.$company->id;
 
     actingAs($admin, 'api')->getJson('/api/sales/performance/administration-context')->assertOk()->assertJsonMissingPath('data.profiles');

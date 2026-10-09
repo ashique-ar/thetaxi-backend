@@ -6,6 +6,8 @@ use App\Models\BaseModel;
 
 class BookingPaymentFinalityPolicy extends BaseModel
 {
+    protected $useUserTracking = false;
+
     protected $fillable = [
         'company_id', 'payment_method', 'official_collection_state', 'can_earn_before_final',
         'hold_payout_until_final', 'clearance_timeout_hours', 'required_evidence_type',

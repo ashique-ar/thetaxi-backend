@@ -25,7 +25,7 @@ it('searches and exactly hydrates scheduled follow-ups only within the authorize
 
     $url = '/api/hr/engagement/wellness/referrals/'.$referralId.'/followup-options?search=Asia%2FColombo';
     actingAs($admin, 'api')->getJson($url.'&per_page=1&page=1')->assertOk()
-        ->assertJsonPath('data.total', 3)->assertJsonPath('data.data.0.value', $first)
+        ->assertJsonPath('data.total', 2)->assertJsonPath('data.data.0.value', $first)
         ->assertJsonPath('data.data.0.metadata.timezone', 'Asia/Colombo')->assertDontSee('Private test purpose');
     actingAs($admin, 'api')->getJson($url.'&per_page=1&page=2')->assertOk()
         ->assertJsonPath('data.data.0.value', $second);

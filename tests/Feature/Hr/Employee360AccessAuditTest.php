@@ -80,7 +80,7 @@ it('records an HR employee detail view after authorized scope succeeds', functio
     $this->assertDatabaseHas('activity_log', [
         'log_name' => 'hr-sensitive-data',
         'description' => 'employee_360_viewed',
-        'subject_type' => Staff::class,
+        'subject_type' => 'staff',
         'subject_id' => $employee->id,
         'causer_type' => User::class,
         'causer_id' => $admin->id,

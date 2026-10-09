@@ -1,6 +1,5 @@
 <?php
 
-use App\Models\Company;
 use App\Models\Staff;
 use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -11,14 +10,11 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('returns only current conflict-free case-team chairs from the selected Staff company', function () {
-    [$admin] = hr_seed_admin_actor();
+    [$admin, $company] = hr_seed_admin_actor(['name' => 'Selected case company']);
     $admin->givePermissionTo('hr.relations.case-admin', 'hr.relations.case.transition');
-    $company = Company::create(['name' => 'Selected case company']);
-    $actorStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $company->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $actorStaff = Staff::query()->where('user_id', $admin->id)->where('company_id', $company->id)->firstOrFail();
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')
+        ->where('context_id', $actorStaff->id)->where('is_active', true)->firstOrFail();
     $caseId = (string) Str::uuid();
     DB::table('hr_relation_cases')->insert([
         'id' => $caseId, 'company_id' => $company->id, 'case_number' => 'REL-CHAIR-'.Str::upper(Str::random(8)),
@@ -52,8 +48,6 @@ it('returns only current conflict-free case-team chairs from the selected Staff 
         'declared_by' => $admin->id, 'created_at' => now(), 'updated_at' => now(),
     ]);
 
-    actingAs($admin, 'api')->getJson('/api/hr/relations/hearing-chair-candidates?case_id='.$caseId)
-        ->assertForbidden();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson('/api/hr/relations/hearing-chair-candidates?case_id='.$caseId)

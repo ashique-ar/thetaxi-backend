@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -19,12 +20,14 @@ it('lists only the actor company clearance queue and replays exact completion on
     $actor->givePermissionTo('hr.lifecycle.clearance');
     $company = Company::create(['name' => 'Exit clearance company', 'is_active' => true, 'is_default' => true]);
     $foreign = Company::create(['name' => 'Foreign exit clearance company', 'is_active' => true]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $foreignSubject = Staff::factory()->create(['company_id' => $foreign->id]);
     $otherActor = User::factory()->create();
     $otherActor->givePermissionTo('hr.lifecycle.clearance');
-    Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    $otherActorStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherActorStaff->id, 'is_active' => true, 'created_user_id' => $otherActor->id]);
 
     $makeItem = function (string $companyId, string $staffId) use ($actor): string {
         $exitId = (string) Str::uuid();

@@ -55,7 +55,7 @@ it('keeps leave balance posting details out of generic activity logs', function 
     $audit = DB::table('activity_log')
         ->where('subject_type', LeaveBalanceEntry::class)
         ->where('subject_id', $entry->id)
-        ->value('properties');
+        ->value('attribute_changes');
 
     expect($audit)->not->toBeNull()
         ->and($audit)->toContain('adjustment')

@@ -15,11 +15,9 @@ it('scopes HR analytics to the selected Staff company and writes definitions the
     $admin->givePermissionTo(['hr.analytics.view', 'hr.analytics.configure']);
     config(['hr.features.engagement_analytics' => true]);
     $secondCompany = Company::create(['name' => 'Second Analytics company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $definitionIds = [(string) Str::uuid(), (string) Str::uuid()];
     foreach ([[$definitionIds[0], $firstCompany->id, 'FIRST'], [$definitionIds[1], $secondCompany->id, 'SECOND']] as [$id, $companyId, $code]) {
         DB::table('hr_analytics_definition_versions')->insert([
@@ -31,7 +29,7 @@ it('scopes HR analytics to the selected Staff company and writes definitions the
         ]);
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/analytics/definitions')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/analytics/definitions')->assertOk();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/analytics/definitions')
         ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $definitionIds[1]);

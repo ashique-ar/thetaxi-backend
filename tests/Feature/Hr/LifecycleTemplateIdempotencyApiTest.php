@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -20,7 +21,8 @@ it('replays a lifecycle template submission without duplicating rows or audit', 
     $user = User::factory()->create();
     $user->givePermissionTo(['hr.lifecycle.manage', 'hr.lifecycle.view']);
     $company = Company::create(['name' => 'Template Idempotency Company', 'is_active' => true, 'is_default' => true]);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $userStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $userStaff->id, 'is_active' => true, 'created_user_id' => $user->id]);
     $payload = [
         'company_id' => $company->id, 'case_type' => 'onboarding', 'code' => 'SAFE-ONBOARDING', 'version' => 1,
         'applicability' => ['staff_type' => 'employee'],

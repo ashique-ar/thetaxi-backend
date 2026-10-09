@@ -14,11 +14,9 @@ it('limits workforce planning selector options to the selected Staff company', f
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.workforce-planning.manage');
     $secondCompany = Company::create(['name' => 'Selected workforce planning company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $firstUnit = (string) Str::uuid();
     $secondUnit = (string) Str::uuid();
@@ -31,7 +29,7 @@ it('limits workforce planning selector options to the selected Staff company', f
     }
 
     $url = '/api/hr/analytics/workforce-planning/reference-options?record_type=organization_unit';
-    actingAs($admin, 'api')->getJson($url)->assertForbidden();
+    actingAs($admin, 'api')->getJson($url)->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson($url.'&search=company')->assertOk()->assertJsonCount(1, 'data.data')

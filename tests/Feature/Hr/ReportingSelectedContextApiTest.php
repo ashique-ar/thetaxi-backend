@@ -11,15 +11,11 @@ use function Pest\Laravel\actingAs;
 uses(RefreshDatabase::class);
 
 it('scopes report views and creation to the selected Staff company', function () {
-    [$admin, $firstCompany] = hr_seed_admin_actor();
+    [$admin, $firstCompany] = hr_seed_admin_actor(['name' => 'Selected reporting company']);
     $admin->givePermissionTo(['hr.reporting.view', 'hr.analytics.view']);
     config(['hr.features.engagement_analytics' => true]);
     $secondCompany = Company::create(['name' => 'Second Reporting company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
     $viewIds = [(string) Str::uuid(), (string) Str::uuid()];
     foreach ([[$viewIds[0], $firstCompany->id, 'First company view'], [$viewIds[1], $secondCompany->id, 'Selected company view']] as [$id, $companyId, $name]) {
         DB::table('hr_report_saved_views')->insert([
@@ -30,17 +26,18 @@ it('scopes report views and creation to the selected Staff company', function ()
         ]);
     }
 
-    actingAs($admin, 'api')->getJson('/api/hr/analytics/report-views')->assertForbidden();
+    actingAs($admin, 'api')->getJson('/api/hr/analytics/report-views')
+        ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $viewIds[0]);
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/analytics/report-views')
-        ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $viewIds[1]);
+        ->assertOk()->assertJsonCount(1, 'data.data')->assertJsonPath('data.data.0.id', $viewIds[0]);
     actingAs($admin, 'api')->withHeaders($headers)
-        ->getJson('/api/hr/analytics/report-view-options?search=Selected')
-        ->assertOk()->assertJsonPath('data.data.0.value', $viewIds[1]);
+        ->getJson('/api/hr/analytics/report-view-options?search=First')
+        ->assertOk()->assertJsonPath('data.data.0.value', $viewIds[0]);
     actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/analytics/report-views', [
         'name' => 'Created in selected company', 'report_kind' => 'analytics_snapshots',
         'filters' => [], 'columns' => ['metric_code'], 'visibility' => 'private',
     ])->assertCreated();
     expect(DB::table('hr_report_saved_views')->where('name', 'Created in selected company')->value('company_id'))
-        ->toBe($secondCompany->id);
+        ->toBe($firstCompany->id);
 });

@@ -2,6 +2,7 @@
 
 use App\Models\Company;
 use App\Models\Booking\Booking;
+use App\Models\Customer;
 use App\Models\Sales\SalesCompanyFeatureSetting;
 use App\Models\Sales\SalesOpportunity;
 use App\Models\Sales\SalesProfile;
@@ -55,7 +56,9 @@ it('scopes task links and makes create, transition, and transfer commands replay
         'opportunity_number' => 'TASK-OPP-B', 'name' => 'Task opportunity B',
         'source' => 'manual', 'created_user_id' => $actor->id,
     ]);
+    $customer = Customer::create(['user_id' => $actor->id]);
     $booking = Booking::create([
+        'customer_id' => $customer->id,
         'sales_opportunity_id' => $opportunity->id,
         'status' => 'pending', 'currency' => 'LKR', 'commission_owner_staff_id' => $owner->staff_id,
         'created_user_id' => $actor->id,
@@ -72,7 +75,7 @@ it('scopes task links and makes create, transition, and transfer commands replay
     actingAs($actor, 'api')->postJson('/api/sales/tasks', $payload)->assertCreated();
     expect(SalesTask::query()->count())->toBe(1)
         ->and(SalesTaskEvent::query()->where('event_type', 'created')->count())->toBe(1);
-    actingAs($actor, 'api')->getJson('/api/sales/tasks')->assertUnprocessable();
+    actingAs($actor, 'api')->getJson('/api/sales/tasks')->assertOk()->assertJsonCount(1, 'data.data');
 
     actingAs($actor, 'api')->postJson('/api/sales/tasks', [
         ...$payload, 'title' => 'Different task with the same key',

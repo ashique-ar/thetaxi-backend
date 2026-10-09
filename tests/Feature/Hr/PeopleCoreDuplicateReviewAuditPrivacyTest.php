@@ -41,7 +41,7 @@ it('keeps duplicate-review identity evidence immutable and decision reasons out 
     $reviewProperties = DB::table('activity_log')
         ->where('subject_type', HrPeopleDuplicateReview::class)
         ->where('subject_id', $review->id)
-        ->pluck('properties');
+        ->pluck('attribute_changes');
     $link = HrPeopleIdentityLink::query()->where('alias_staff_id', $second->id)->sole();
     expect(fn () => $link->update(['status' => 'revoked']))
         ->toThrow(LogicException::class, 'People identity links are immutable.')
@@ -55,7 +55,7 @@ it('keeps duplicate-review identity evidence immutable and decision reasons out 
     $linkProperties = DB::table('activity_log')
         ->where('subject_type', HrPeopleIdentityLink::class)
         ->where('subject_id', $link->id)
-        ->pluck('properties');
+        ->pluck('attribute_changes');
     $properties = $reviewProperties->concat($linkProperties);
     $audit = $properties->implode(' ');
 

@@ -16,12 +16,10 @@ it('scopes attendance configuration and rosters to the selected authorized compa
     [$user, $company] = hr_seed_admin_actor([], true);
     $otherCompany = Company::create(['name' => 'Second Configuration Company']);
     $unassignedCompany = Company::create(['name' => 'Unassigned Configuration Company']);
-    $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
-    $otherContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
-    ]);
-    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherContext->id];
+    $otherStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+    $ownStaff = Staff::query()->where('user_id', $user->id)->where('company_id', $company->id)->firstOrFail();
+    $ownContext = UserContext::query()->where('user_id', $user->id)->where('context_id', $ownStaff->id)->firstOrFail();
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $ownContext->id];
 
     foreach ([[$company->id, Staff::query()->where('user_id', $user->id)->where('company_id', $company->id)->value('id')], [$otherCompany->id, $otherStaff->id]] as [$companyId, $staffId]) {
         $calendarId = (string) Str::uuid();
@@ -87,15 +85,15 @@ it('scopes attendance configuration and rosters to the selected authorized compa
     ]);
 
     actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/calendars?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/shifts?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/policies?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/rosters?company_id='.$otherCompany->id)
-        ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.company_id', $otherCompany->id);
-    actingAs($user, 'api')->getJson('/api/hr/attendance/rosters')
         ->assertForbidden();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/shifts?company_id='.$otherCompany->id)
+        ->assertForbidden();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/policies?company_id='.$otherCompany->id)
+        ->assertForbidden();
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/rosters?company_id='.$otherCompany->id)
+        ->assertForbidden();
+    actingAs($user, 'api')->getJson('/api/hr/attendance/rosters')
+        ->assertOk()->assertJsonPath('data.data.0.company_id', $company->id);
     actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/rosters?company_id='.$unassignedCompany->id)
         ->assertForbidden();
 

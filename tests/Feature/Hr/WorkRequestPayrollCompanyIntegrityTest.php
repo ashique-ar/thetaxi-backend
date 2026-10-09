@@ -5,6 +5,7 @@ use App\Models\Hr\Leave\LeaveBalanceEntry;
 use App\Models\Staff;
 use App\Models\User;
 use App\Services\Hr\Workforce\WorkforceWorkflowService;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -105,7 +106,7 @@ it('blocks overtime payroll and time-off writes when their company links disagre
         ->and(DB::table('hr_leave_balance_entries')->where('source_type', 'work_request')->where('source_id', $validTimeOffRequestId)
             ->where('entry_type', 'time_off_credit')->count())->toBe(1)
         ->and((int) $timeOffCredit->minutes)->toBe(60)
-        ->and($timeOffCredit->effective_date)->toBe($today)
+        ->and(CarbonImmutable::parse($timeOffCredit->effective_date)->toDateString())->toBe($today)
         ->and($timeOffCredit->company_id)->toBe($company->id)
         ->and($timeOffCredit->staff_id)->toBe($staff->id)
         ->and($timeOffCredit->leave_type_id)->toBe($validTimeOffTypeId)
@@ -114,11 +115,19 @@ it('blocks overtime payroll and time-off writes when their company links disagre
         ->toThrow(HttpException::class, 'Work-request retry does not match the original action, note and actor.');
 
     DB::table('hr_payroll_input_facts')->where('source_id', $validPayrollRequestId)->delete();
-    expect(fn () => $service->decideWorkRequest($validPayrollRequestId, 'approve', 'Approve', $actor->id))
-        ->toThrow(HttpException::class, 'The approved overtime payroll fact no longer matches its work request.');
     DB::table('hr_leave_balance_entries')->where('source_type', 'work_request')->where('source_id', $validTimeOffRequestId)->delete();
     expect(fn () => $service->decideWorkRequest($validTimeOffRequestId, 'approve', 'Approve time off', $actor->id))
         ->toThrow(HttpException::class, 'The approved time-off credit no longer matches its work request.');
+
+    $replayException = null;
+    try {
+        $service->decideWorkRequest($validPayrollRequestId, 'approve', 'Approve', $actor->id);
+    } catch (HttpException $exception) {
+        $replayException = $exception;
+    }
+    expect($replayException)->toBeInstanceOf(HttpException::class)
+        ->and($replayException->getStatusCode())->toBe(409)
+        ->and($replayException->getMessage())->toBe('The approved overtime payroll fact no longer matches its work request.');
 });
 
 it('requires an active locked company for work-request submission, approval and replay', function () {

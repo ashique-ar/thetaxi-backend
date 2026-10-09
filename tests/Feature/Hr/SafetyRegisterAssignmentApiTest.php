@@ -76,6 +76,10 @@ it('rejects inspection actions assigned to a disabled user without partially com
     safety_seed_location($admin, $company, Staff::query()->where('user_id', $admin->id)->firstOrFail(), 'WORKSHOP');
     $lead = Staff::factory()->create(['company_id' => $company->id]);
     $lead->user->givePermissionTo('hr.safety.investigate');
+    \App\Models\UserContext::create([
+        'user_id' => $lead->user_id, 'context_type' => 'staff', 'context_id' => $lead->id,
+        'is_active' => true, 'created_user_id' => $admin->id,
+    ]);
     $owner = Staff::factory()->create(['company_id' => $company->id]);
     $owner->user->givePermissionTo('hr.safety.action');
     $inspectionId = (string) Str::uuid();

@@ -60,7 +60,7 @@ class CommissionPayoutService
             $amount = round((float) $data['amount_lkr'], 4);
             abort_if($amount > $available, 422, "Payout exceeds the uncontested approved balance of {$available} LKR.");
             if (! empty($data['evidence_file_id'])) {
-                $validEvidence = DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+                $validEvidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                     ->where('domain', 'sales')->where('company_id', $statements->first()->company_id)->whereNull('deleted_at')
                     ->where('subject_type', 'commission_statement')->whereIn('subject_id', $statements->pluck('id'))->exists();
                 abort_unless($validEvidence, 422, 'Payout evidence must be bound to one selected statement and its Sales legal entity.');
@@ -125,7 +125,7 @@ class CommissionPayoutService
         $checksum = $this->checksum(['original_payout_id' => $original->id, ...$data]);
         try {
             return DB::transaction(function () use ($original, $data, $actorUserId, $checksum) {
-            $companyId = DB::table('sales_commission_payouts')->whereKey($original->id)->value('company_id');
+            $companyId = DB::table('sales_commission_payouts')->where('id', $original->id)->value('company_id');
             abort_unless($companyId, 404, 'Original commission payout not found.');
             $this->lockActiveCompany((string) $companyId);
             $original = SalesCommissionPayout::query()->lockForUpdate()->findOrFail($original->id);
@@ -139,7 +139,7 @@ class CommissionPayoutService
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');
             abort_unless(! empty($data['evidence_file_id']), 422, 'Payout-reversal evidence is required.');
-            abort_unless(DB::table('domain_evidence_files')->whereKey($data['evidence_file_id'])
+            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
                 ->where('domain', 'sales')->where('company_id', $original->company_id)->whereNull('deleted_at')
                 ->where('subject_type', 'commission_payout')->where('subject_id', $original->id)->exists(), 422,
                 'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');

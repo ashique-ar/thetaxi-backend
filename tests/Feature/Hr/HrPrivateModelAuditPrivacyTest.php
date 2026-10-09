@@ -16,7 +16,6 @@ use App\Models\User;
 use App\Services\Hr\PeopleCoreService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
-use LogicException;
 
 use function Pest\Laravel\actingAs;
 
@@ -101,11 +100,11 @@ it('keeps encrypted employee records and profile details out of activity logs', 
         'expires_at' => now()->addDay(),
     ]);
 
-    $recordProperties = DB::table('activity_log')->where('subject_type', HrEmployeeRecord::class)->where('subject_id', $record->id)->value('properties');
-    $profileProperties = DB::table('activity_log')->where('subject_type', HrStaffProfileVersion::class)->where('subject_id', $profile->id)->value('properties');
-    $aliasProperties = DB::table('activity_log')->where('subject_type', HrEmployeeNumberAlias::class)->where('subject_id', $alias->id)->value('properties');
-    $importProperties = DB::table('activity_log')->where('subject_type', HrPeopleImportJob::class)->where('subject_id', $import->id)->value('properties');
-    $exportProperties = DB::table('activity_log')->where('subject_type', HrPeopleExport::class)->where('subject_id', $export->id)->value('properties');
+    $recordProperties = DB::table('activity_log')->where('subject_type', HrEmployeeRecord::class)->where('subject_id', $record->id)->value('attribute_changes');
+    $profileProperties = DB::table('activity_log')->where('subject_type', HrStaffProfileVersion::class)->where('subject_id', $profile->id)->value('attribute_changes');
+    $aliasProperties = DB::table('activity_log')->where('subject_type', HrEmployeeNumberAlias::class)->where('subject_id', $alias->id)->value('attribute_changes');
+    $importProperties = DB::table('activity_log')->where('subject_type', HrPeopleImportJob::class)->where('subject_id', $import->id)->value('attribute_changes');
+    $exportProperties = DB::table('activity_log')->where('subject_type', HrPeopleExport::class)->where('subject_id', $export->id)->value('attribute_changes');
     $audit = $recordProperties.' '.$profileProperties.' '.$aliasProperties.' '.$importProperties.' '.$exportProperties;
 
     expect($recordProperties)->not->toBeNull()
@@ -211,11 +210,11 @@ it('keeps HR history snapshots out of activity logs', function () {
         'request_payload_checksum' => hash('sha256', $privateMarker),
     ]);
 
-    $spellAudit = DB::table('activity_log')->where('subject_type', HrEmploymentSpell::class)->where('subject_id', $spell->id)->value('properties');
-    $reportingAudit = DB::table('activity_log')->where('subject_type', HrReportingLine::class)->where('subject_id', $reportingLine->id)->value('properties');
-    $assignmentAudit = DB::table('activity_log')->where('subject_type', HrEmploymentAssignment::class)->where('subject_id', $assignment->id)->value('properties');
-    $timelineAudit = DB::table('activity_log')->where('subject_type', HrEmployeeTimelineEvent::class)->where('subject_id', $event->id)->value('properties');
-    $rehireAudit = DB::table('activity_log')->where('subject_type', HrRehireCase::class)->where('subject_id', $case->id)->value('properties');
+    $spellAudit = DB::table('activity_log')->where('subject_type', HrEmploymentSpell::class)->where('subject_id', $spell->id)->value('attribute_changes');
+    $reportingAudit = DB::table('activity_log')->where('subject_type', HrReportingLine::class)->where('subject_id', $reportingLine->id)->value('attribute_changes');
+    $assignmentAudit = DB::table('activity_log')->where('subject_type', HrEmploymentAssignment::class)->where('subject_id', $assignment->id)->value('attribute_changes');
+    $timelineAudit = DB::table('activity_log')->where('subject_type', HrEmployeeTimelineEvent::class)->where('subject_id', $event->id)->value('attribute_changes');
+    $rehireAudit = DB::table('activity_log')->where('subject_type', HrRehireCase::class)->where('subject_id', $case->id)->value('attribute_changes');
 
     expect($reportingAudit)->not->toBeNull()
         ->and($reportingAudit)->toContain((string) $company->id)

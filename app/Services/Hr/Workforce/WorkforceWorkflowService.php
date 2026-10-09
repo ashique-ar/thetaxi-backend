@@ -163,7 +163,7 @@ class WorkforceWorkflowService
             $fact = DB::table('hr_payroll_input_facts')->where('company_id', $row->company_id)->where('staff_id', $row->staff_id)
                 ->where('source_type', 'work_request')->where('source_id', $row->id)->where('fact_kind', 'approved_overtime')->first();
             abort_unless($fact && (int) $fact->quantity_minutes === (int) $row->requested_minutes
-                && $fact->effective_date === CarbonImmutable::parse($row->ends_at)->toDateString()
+                && CarbonImmutable::parse($fact->effective_date)->toDateString() === CarbonImmutable::parse($row->ends_at)->toDateString()
                 && $fact->rate_category === $row->rate_category && $fact->status === 'staged',
                 409, 'The approved overtime payroll fact no longer matches its work request.');
         }
@@ -182,7 +182,7 @@ class WorkforceWorkflowService
             $payload = ['work_request_id' => $row->id, 'minutes' => (int) $row->requested_minutes, 'rules' => $snapshot];
             $checksum = hash('sha256', json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
             abort_unless($credit && (int) $credit->minutes === (int) $row->requested_minutes
-                && $credit->effective_date === CarbonImmutable::parse($row->ends_at)->toDateString()
+                && CarbonImmutable::parse($credit->effective_date)->toDateString() === CarbonImmutable::parse($row->ends_at)->toDateString()
                 && json_decode($credit->rule_snapshot, true, 512, JSON_THROW_ON_ERROR) == $snapshot
                 && hash_equals($checksum, (string) $credit->entry_checksum),
                 409, 'The approved time-off credit no longer matches its work request.');

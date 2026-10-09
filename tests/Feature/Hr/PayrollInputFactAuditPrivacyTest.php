@@ -35,7 +35,7 @@ it('audits payroll fact type and status without private source or Staff details'
     $properties = DB::table('activity_log')
         ->where('subject_type', PayrollInputFact::class)
         ->where('subject_id', $fact->id)
-        ->value('properties');
+        ->value('attribute_changes');
 
     expect($properties)->not->toBeNull()
         ->and($properties)->toContain('approved_leave_minutes')

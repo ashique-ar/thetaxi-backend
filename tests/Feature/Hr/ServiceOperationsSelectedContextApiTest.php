@@ -14,11 +14,9 @@ it('limits expense policy options to the selected Staff company', function () {
     [$admin, $firstCompany] = hr_seed_admin_actor();
     $admin->givePermissionTo('hr.expenses.submit');
     $secondCompany = Company::create(['name' => 'Selected service operations company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $admin->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $admin->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $admin->id,
-    ]);
+    $secondStaff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
+    $secondStaff->update(['company_id' => $secondCompany->id]);
+    $context = UserContext::query()->where('user_id', $admin->id)->where('context_type', 'staff')->firstOrFail();
 
     $firstPolicy = (string) Str::uuid();
     $secondPolicy = (string) Str::uuid();
@@ -31,7 +29,7 @@ it('limits expense policy options to the selected Staff company', function () {
     }
 
     $url = '/api/hr/service-operations/expense-policy-options?search=';
-    actingAs($admin, 'api')->getJson($url)->assertForbidden();
+    actingAs($admin, 'api')->getJson($url)->assertOk();
     actingAs($admin, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id,
     ])->getJson($url)->assertOk()->assertJsonCount(1, 'data.data')

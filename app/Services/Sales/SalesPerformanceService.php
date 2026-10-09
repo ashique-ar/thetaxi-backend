@@ -50,7 +50,7 @@ class SalesPerformanceService
     ): SalesTargetVersion
     {
         return DB::transaction(function () use ($data, $idempotencyKey, $actorUserId, $sourceIp) {
-            DB::table('companies')->whereKey($data['company_id'])->where('is_active', true)
+            DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $profile = SalesProfile::query()->lockForUpdate()->findOrFail($data['sales_profile_id']);
             abort_unless($profile->company_id === $data['company_id'], 422, 'Target and Sales Profile legal entities must match.');
@@ -187,7 +187,7 @@ class SalesPerformanceService
     ): SalesTargetVersion
     {
         return DB::transaction(function () use ($target, $expectedVersion, $reason, $idempotencyKey, $actorUserId, $sourceIp, ) {
-            DB::table('companies')->whereKey($target->company_id)->where('is_active', true)
+            DB::table('companies')->where('id', $target->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $locked = SalesTargetVersion::query()->lockForUpdate()->findOrFail($target->id);
             $requestChecksum = hash('sha256', CanonicalJson::encode([
@@ -440,7 +440,7 @@ class SalesPerformanceService
         ]));
 
         return DB::transaction(function () use ($companyId, $sourcePeriodStart, $targetPeriodStart, $profileIds, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum) {
-            DB::table('companies')->whereKey($companyId)->where('is_active', true)
+            DB::table('companies')->where('id', $companyId)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $existing = SalesTargetCopyBatch::query()->where('idempotency_key', $idempotencyKey)->first();
             if ($existing) {
@@ -651,7 +651,7 @@ class SalesPerformanceService
 
         try {
             return DB::transaction(function () use ($companyId, $targetPeriodStart, $file, $authorizedProfileIds, $preview, $previewChecksum, $reason, $idempotencyKey, $actorUserId, $requestChecksum, &$storedPath): object {
-                DB::table('companies')->whereKey($companyId)->where('is_active', true)
+                DB::table('companies')->where('id', $companyId)->where('is_active', true)
                     ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
                 $existing = DB::table('domain_transfer_jobs')->where('domain', 'sales')
                     ->where('job_type', 'sales_target_csv')->where('company_id', $companyId)
@@ -885,7 +885,7 @@ class SalesPerformanceService
 
     private function targetImportResult(string $jobId): object
     {
-        $job = DB::table('domain_transfer_jobs')->whereKey($jobId)->firstOrFail();
+        $job = DB::table('domain_transfer_jobs')->where('id', $jobId)->firstOrFail();
         $job->errors = DB::table('domain_transfer_job_errors')->where('transfer_job_id', $jobId)
             ->orderBy('row_number')->orderBy('field_name')->get();
         $job->targets = SalesTargetVersion::query()->where('import_job_id', $jobId)
@@ -921,7 +921,7 @@ class SalesPerformanceService
     {
         $data['rules'] = $this->alertPolicyContract->normalize($data['rules']);
         return DB::transaction(function () use ($data, $actorUserId) {
-            DB::table('companies')->whereKey($data['company_id'])->where('is_active', true)
+            DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             abort_unless($this->activeAlertOwnerIdentity(
                 $data['company_id'], $data['rules']['evaluation']['owner_user_id'], true,
@@ -1421,7 +1421,7 @@ class SalesPerformanceService
     public function evaluateSnapshotAlerts(SalesKpiSnapshot $snapshot): object
     {
         return DB::transaction(function () use ($snapshot): object {
-            DB::table('companies')->whereKey($snapshot->company_id)->where('is_active', true)
+            DB::table('companies')->where('id', $snapshot->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->firstOrFail();
             $snapshot = SalesKpiSnapshot::query()->with('rows')->lockForUpdate()->findOrFail($snapshot->id);
             $context = $this->alertEvaluationContext($snapshot);

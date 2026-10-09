@@ -20,11 +20,12 @@ class SyncHikvisionPeople extends Command
         
 
         $failed = false;
+        $deviceOption = isset($this->input) ? $this->input->getOption('device') : null;
         $devices = AttendanceDevice::query()
             ->where('provider', 'hikvision')
             ->where('integration_mode', 'direct_isapi')
             ->where('status', 'active')
-            ->when($this->option('device'), fn ($query, $id) => $query->whereKey($id))
+            ->when($deviceOption, fn ($query, $id) => $query->whereKey($id))
             ->cursor();
 
         foreach ($devices as $device) {

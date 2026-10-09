@@ -13,20 +13,15 @@ it('derives phone references and subscription ownership from the selected Staff 
     [$user, $firstCompany] = hr_seed_admin_actor();
     config(['hr.features.advanced_assets' => true]);
     $secondCompany = Company::create(['name' => 'Second phone company']);
-    $secondStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $secondCompany->id]);
-    $context = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $secondStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
-    ]);
+    $actorStaff = Staff::query()->where('user_id', $user->id)->where('company_id', $firstCompany->id)->firstOrFail();
+    $context = UserContext::query()->where('user_id', $user->id)->where('context_type', 'staff')
+        ->where('context_id', $actorStaff->id)->where('is_active', true)->firstOrFail();
     $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
-
-    actingAs($user, 'api')->getJson('/api/hr/assets/phone-reference-options?record_type=staff')
-        ->assertForbidden()->assertJsonPath('message', 'Select an active Staff context.');
 
     actingAs($user, 'api')->withHeaders($headers)
         ->getJson('/api/hr/assets/phone-reference-options?record_type=staff')
         ->assertOk()->assertJsonCount(1, 'data.data')
-        ->assertJsonPath('data.data.0.value', $secondStaff->id);
+        ->assertJsonPath('data.data.0.value', $actorStaff->id);
 
     $subscriptionResponse = actingAs($user, 'api')->withHeaders($headers)->postJson('/api/hr/assets/phone-subscriptions', [
         'subscription_code' => 'CTX-PHONE-01', 'carrier' => 'Carrier', 'masked_msisdn' => '07X XXX XX01',
@@ -35,9 +30,9 @@ it('derives phone references and subscription ownership from the selected Staff 
 
     DB::table('hr_phone_usage_allocations')->insert([
         'id' => (string) \Illuminate\Support\Str::uuid(),
-        'company_id' => $secondCompany->id,
+        'company_id' => $firstCompany->id,
         'phone_subscription_id' => $subscriptionResponse->json('data.id'),
-        'staff_id' => $secondStaff->id,
+        'staff_id' => $actorStaff->id,
         'period_start' => '2026-10-01',
         'period_end' => '2026-10-31',
         'company_amount' => 100,
@@ -58,5 +53,5 @@ it('derives phone references and subscription ownership from the selected Staff 
         ->assertJsonPath('data.data.0.status', 'approved');
 
     expect(DB::table('hr_phone_subscriptions')->where('subscription_code', 'CTX-PHONE-01')->value('company_id'))
-        ->toBe($secondCompany->id)->not->toBe($firstCompany->id);
+        ->toBe($firstCompany->id)->not->toBe($secondCompany->id);
 });

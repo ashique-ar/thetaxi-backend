@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -22,6 +23,9 @@ it('replays a lifecycle case submission for the same company and key without dup
     $user->givePermissionTo(['hr.lifecycle.manage', 'hr.lifecycle.view', 'staff.view-all']);
     $company = Company::create(['name' => 'Lifecycle Idempotency Company', 'is_active' => true, 'is_default' => true]);
     $actor = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $context = UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actor->id,
+        'is_active' => true, 'created_user_id' => $user->id]);
+    $headers = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $context->id];
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $templateId = (string) Str::uuid();
     DB::table('hr_lifecycle_templates')->insert([
@@ -37,9 +41,9 @@ it('replays a lifecycle case submission for the same company and key without dup
         'effective_date' => today()->toDateString(), 'idempotency_key' => (string) Str::uuid(),
     ];
     $url = '/api/hr/lifecycle/cases';
-    $first = actingAs($user, 'api')->postJson($url, $payload)->assertCreated();
-    $replay = actingAs($user, 'api')->postJson($url, $payload)->assertOk();
-    actingAs($user, 'api')->postJson($url, array_replace($payload, ['effective_date' => today()->addDay()->toDateString()]))
+    $first = actingAs($user, 'api')->withHeaders($headers)->postJson($url, $payload)->assertCreated();
+    $replay = actingAs($user, 'api')->withHeaders($headers)->postJson($url, $payload)->assertOk();
+    actingAs($user, 'api')->withHeaders($headers)->postJson($url, array_replace($payload, ['effective_date' => today()->addDay()->toDateString()]))
         ->assertConflict();
 
     $unitId = (string) Str::uuid();
@@ -92,7 +96,7 @@ it('replays a lifecycle case submission for the same company and key without dup
         ->and(DB::table('hr_lifecycle_tasks')->where('case_id', $first->json('data.id'))->count())->toBe(1)
         ->and(DB::table('activity_log')->where('log_name', 'hr-lifecycle')->where('description', 'lifecycle_case_opened')->count())->toBe(1);
 
-    actingAs($user, 'api')->getJson('/api/hr/lifecycle/cases')->assertOk()
+    actingAs($user, 'api')->withHeaders($headers)->getJson('/api/hr/lifecycle/cases')->assertOk()
         ->assertJsonFragment(['id' => $preHireCaseId])
         ->assertJsonMissingPath('data.data.0.idempotency_key')
         ->assertJsonMissingPath('data.data.0.request_payload_checksum');

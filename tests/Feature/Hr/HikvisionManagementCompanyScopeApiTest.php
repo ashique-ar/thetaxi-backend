@@ -67,10 +67,12 @@ it('scopes terminal options, access groups, and maintenance commands to an expli
     [$user, $company] = hr_seed_admin_actor([], true);
     $otherCompany = Company::create(['name' => 'Second Hikvision Company']);
     $unassignedCompany = Company::create(['name' => 'Unassigned Hikvision Company']);
-    $otherStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $otherCompany->id]);
+    $otherActor = User::factory()->create();
+    $otherActor->assignRole('admin');
+    $otherStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $otherCompany->id]);
     $otherContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
+        'user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherStaff->id,
+        'is_active' => true, 'created_user_id' => $otherActor->id,
     ]);
     $otherHeaders = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $otherContext->id];
     $localStaff = Staff::query()->where('user_id', $user->id)->firstOrFail();
@@ -110,33 +112,33 @@ it('scopes terminal options, access groups, and maintenance commands to an expli
         ]);
     }
 
-    actingAs($user, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/device-options?company_id='.$otherCompany->id)
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/device-options?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonPath('data.data.0.value', $otherDevice->id);
     actingAs($user, 'api')->getJson('/api/hr/attendance/device-options')
         ->assertForbidden();
-    actingAs($user, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/access-groups?company_id='.$otherCompany->id.'&device_id='.$otherDevice->id)
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/access-groups?company_id='.$otherCompany->id.'&device_id='.$otherDevice->id)
         ->assertOk()->assertJsonCount(1, 'data')->assertJsonPath('data.0.device_id', $otherDevice->id);
-    actingAs($user, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/access-groups?company_id='.$unassignedCompany->id)
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/access-groups?company_id='.$unassignedCompany->id)
         ->assertForbidden();
-    actingAs($user, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/maintenance-commands?company_id='.$otherCompany->id)
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->getJson('/api/hr/attendance/maintenance-commands?company_id='.$otherCompany->id)
         ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.company_id', $otherCompany->id);
     actingAs($user, 'api')->getJson('/api/hr/attendance/maintenance-commands')
         ->assertForbidden();
 
     config(['hr.features.attendance_ingestion' => true]);
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/sync', ['days' => 2])
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/sync', ['days' => 2])
         ->assertUnprocessable();
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/probe')
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/probe')
         ->assertUnprocessable();
-    actingAs($user, 'api')->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/sync', [
+    actingAs($otherActor, 'api')->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/sync', [
         'company_id' => $company->id,
         'days' => 2,
     ])->assertForbidden();
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/probe', [
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/probe', [
         'company_id' => $company->id,
     ])->assertForbidden();
 
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/access-groups', [
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/access-groups', [
         'device_id' => $otherDevice->id,
         'code' => 'VISITOR-ACCESS',
         'name' => 'Visitor entry',
@@ -155,11 +157,11 @@ it('scopes terminal options, access groups, and maintenance commands to an expli
         'typed_confirmation' => $otherDevice->site_code,
         'idempotency_key' => 'selected-company-reboot',
     ];
-    $created = actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', $payload)
+    $created = actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', $payload)
         ->assertCreated()->assertJsonPath('data.company_id', $otherCompany->id)->json('data');
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', $payload)
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', $payload)
         ->assertOk()->assertJsonPath('data.id', $created['id']);
-    actingAs($user, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', array_replace($payload, ['reason' => 'Different request']))
+    actingAs($otherActor, 'api')->withHeaders($otherHeaders)->postJson('/api/hr/attendance/devices/'.$otherDevice->id.'/reboot-requests', array_replace($payload, ['reason' => 'Different request']))
         ->assertConflict();
 
     $device->forceFill(['capabilities' => [

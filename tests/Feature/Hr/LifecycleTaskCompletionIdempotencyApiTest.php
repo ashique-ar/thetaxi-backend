@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -20,15 +21,17 @@ it('lists only company tasks without evidence and safely replays completion', fu
     $user->givePermissionTo(['hr.lifecycle.manage', 'hr.lifecycle.view']);
     $company = Company::create(['name' => 'Lifecycle task company', 'is_active' => true, 'is_default' => true]);
     $foreign = Company::create(['name' => 'Foreign lifecycle task company', 'is_active' => true]);
-    Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $userStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $userStaff->id, 'is_active' => true, 'created_user_id' => $user->id]);
     $otherActor = User::factory()->create();
     $otherActor->givePermissionTo(['hr.lifecycle.manage', 'hr.lifecycle.view']);
-    Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    $otherActorStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherActorStaff->id, 'is_active' => true, 'created_user_id' => $otherActor->id]);
 
-    $createTask = function (string $companyId) use ($user): string {
+    $createTask = function (string $companyId) use ($user, $company, $userStaff): string {
         $caseId = (string) Str::uuid();
         DB::table('hr_lifecycle_cases')->insert([
-            'id' => $caseId, 'company_id' => $companyId, 'case_type' => 'onboarding', 'status' => 'open',
+            'id' => $caseId, 'company_id' => $companyId, 'staff_id' => $companyId === $company->id ? $userStaff->id : null, 'case_type' => 'onboarding', 'status' => 'open',
             'effective_date' => today()->toDateString(), 'case_snapshot' => '{}', 'opened_by' => $user->id,
             'created_at' => now(), 'updated_at' => now(),
         ]);

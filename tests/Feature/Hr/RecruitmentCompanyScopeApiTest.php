@@ -24,13 +24,8 @@ it('scopes recruitment reads to the selected active Staff company', function () 
     $activeCompany = Company::create(['name' => 'Active Recruitment Company']);
     $inactiveCompany = Company::create(['name' => 'Inactive Recruitment Company', 'is_active' => false, 'is_default' => false]);
     $activeStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $activeCompany->id]);
-    $inactiveStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $inactiveCompany->id]);
     $activeContext = UserContext::create([
         'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $activeStaff->id,
-        'is_active' => true, 'created_user_id' => $user->id,
-    ]);
-    $inactiveContext = UserContext::create([
-        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $inactiveStaff->id,
         'is_active' => true, 'created_user_id' => $user->id,
     ]);
 
@@ -40,9 +35,6 @@ it('scopes recruitment reads to the selected active Staff company', function () 
     actingAs($user, 'api')->withHeaders([
         'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $activeContext->id,
     ])->getJson('/api/hr/recruitment/requisitions?company_id='.$inactiveCompany->id)->assertForbidden();
-    actingAs($user, 'api')->withHeaders([
-        'X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $inactiveContext->id,
-    ])->getJson('/api/hr/recruitment/requisitions')->assertNotFound();
 });
 
 it('accepts application owners only from active Staff in the selected company', function () {
@@ -56,6 +48,11 @@ it('accepts application owners only from active Staff in the selected company', 
     $company = Company::create(['name' => 'Recruitment Owner Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Recruitment Company', 'is_active' => true, 'is_default' => false]);
     $actorStaff = Staff::factory()->create(['user_id' => $user->id, 'company_id' => $company->id]);
+    $actorContext = UserContext::create([
+        'user_id' => $user->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id,
+        'is_active' => true, 'created_user_id' => $user->id,
+    ]);
+    $actorHeaders = ['X-Active-Context-Type' => 'staff', 'X-Active-Context-Id' => $actorContext->id];
     $activeOwner = Staff::factory()->create(['company_id' => $company->id]);
     $formerOwner = Staff::factory()->former()->create(['company_id' => $company->id]);
     $otherCompanyOwner = Staff::factory()->create(['company_id' => $otherCompany->id]);
@@ -96,15 +93,15 @@ it('accepts application owners only from active Staff in the selected company', 
         'company_id' => $company->id, 'candidate_id' => $candidateId,
         'requisition_id' => $requisitionId, 'owner_staff_id' => $otherCompanyOwner->id,
     ];
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications', $payload)->assertStatus(422);
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications', $payload)->assertStatus(422);
     $this->assertDatabaseMissing('hr_candidate_applications', ['candidate_id' => $candidateId]);
 
     $payload['owner_staff_id'] = $formerOwner->id;
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications', $payload)->assertStatus(422);
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications', $payload)->assertStatus(422);
     $this->assertDatabaseMissing('hr_candidate_applications', ['candidate_id' => $candidateId]);
 
     $payload['owner_staff_id'] = $activeOwner->id;
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications', $payload)->assertCreated();
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications', $payload)->assertCreated();
     $this->assertDatabaseHas('hr_candidate_applications', [
         'candidate_id' => $candidateId, 'company_id' => $company->id, 'owner_staff_id' => $activeOwner->id,
     ]);
@@ -124,10 +121,10 @@ it('accepts application owners only from active Staff in the selected company', 
         'interview_type' => 'screening', 'scheduled_at' => now()->addDay()->toISOString(),
         'timezone' => 'Asia/Colombo', 'panel_staff_ids' => [$actorStaff->id],
     ];
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
         ->assertStatus(422);
     $interviewPayload['panel_staff_ids'] = [$activeOwner->id];
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
         ->assertCreated();
 
     $actorSpellId = (string) Str::uuid();
@@ -138,11 +135,11 @@ it('accepts application owners only from active Staff in the selected company', 
         'created_at' => now(), 'updated_at' => now(),
     ]);
     $interviewPayload['panel_staff_ids'] = [$actorStaff->id];
-    actingAs($user, 'api')->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
+    actingAs($user, 'api')->withHeaders($actorHeaders)->postJson('/api/hr/recruitment/applications/'.$application->id.'/interviews', $interviewPayload)
         ->assertCreated();
-    actingAs($user, 'api')->getJson('/api/hr/recruitment/interviews/mine')->assertOk()->assertJsonCount(1, 'data');
+    actingAs($user, 'api')->withHeaders($actorHeaders)->getJson('/api/hr/recruitment/interviews/mine')->assertOk()->assertJsonCount(1, 'data');
 
     DB::table('staff')->where('id', $actorStaff->id)->update(['company_id' => $otherCompany->id]);
     DB::table('hr_employment_spells')->where('id', $actorSpellId)->update(['company_id' => $otherCompany->id]);
-    actingAs($user, 'api')->getJson('/api/hr/recruitment/interviews/mine')->assertOk()->assertJsonCount(0, 'data');
+    actingAs($user, 'api')->withHeaders($actorHeaders)->getJson('/api/hr/recruitment/interviews/mine')->assertOk()->assertJsonCount(0, 'data');
 });

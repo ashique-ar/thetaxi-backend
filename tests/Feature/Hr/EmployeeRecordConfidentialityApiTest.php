@@ -15,7 +15,7 @@ it('withholds encrypted employee-record and profile data without confidential pe
     $staff = Staff::factory()->create(['company_id' => $company->id]);
     $privateMarker = 'confidential-record-payload-marker';
 
-    $created = actingAs($admin, 'api')->postJson('/api/hr/employees/'.$staff->id.'/records', [
+    $created = actingAs($admin, 'api')->postJson('/api/hr/people/staff/'.$staff->id.'/records', [
         'record_type' => 'qualification',
         'title' => 'Restricted qualification record',
         'data' => ['details' => $privateMarker],
@@ -32,7 +32,7 @@ it('withholds encrypted employee-record and profile data without confidential pe
         ->not->toHaveKey('verified_by')
         ->and($listed->getContent())->not->toContain($privateMarker);
 
-    $profile = actingAs($admin, 'api')->postJson('/api/hr/employees/'.$staff->id.'/profile-versions', [
+    $profile = actingAs($admin, 'api')->postJson('/api/hr/people/staff/'.$staff->id.'/profile-versions', [
         'profile' => ['address' => $privateMarker],
         'change_reason' => 'Private profile update',
     ])->assertCreated();

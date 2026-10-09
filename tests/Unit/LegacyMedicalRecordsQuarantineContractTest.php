@@ -1,12 +1,12 @@
 <?php
 
-it('keeps the unowned legacy medical-record surface unreachable', function () {
+it('keeps medical record exports and reminder endpoints out of the mounted contract', function () {
     $api = file_get_contents(base_path('routes/api.php'));
     $portal = file_get_contents(base_path('../portal-thetaxi/src/app/app.routes.ts'));
-    $legacy = file_get_contents(app_path('Http/Controllers/Api/MedicalRecordController.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/MedicalRecordController.php'));
 
-    expect($api)->not->toContain("prefix' => 'medical-records", 'MedicalRecordController::class')
-        ->and($portal)->not->toContain("path: 'medical-records'", 'medicalRecordsRoutes')
-        ->and($legacy)->toContain("'subject_id' => 'required|string'", 'MedicalRecord::count()', "Storage::disk('public')->delete")
-        ->and($legacy)->not->toContain("where('company_id'", 'lockForUpdate()', 'encrypt(');
+    expect($api)->toContain("prefix('medical-records')", 'hr.medical-records.view', 'hr.medical-records.manage')
+        ->and($portal)->toContain("path: 'medical-records'", 'medicalRecordsRoutes')
+        ->and($controller)->toContain('activeDefaultCompany()', 'Crypt::encryptString', "Storage::disk('local')")
+        ->and($controller)->not->toContain('sendExpiryReminders', 'bulkExport', "Storage::disk('public')");
 });

@@ -255,7 +255,7 @@ class CommissionHoldAdjustmentService
         }
         if ($policy->required_evidence_type) {
             $evidence = $finalityEvent->evidence_reference
-                ? DB::table('domain_evidence_files')->whereKey($finalityEvent->evidence_reference)
+                ? DB::table('domain_evidence_files')->where('id', $finalityEvent->evidence_reference)
                     ->whereNull('deleted_at')->where('domain', 'sales')
                     ->where('company_id', $decision->company_id)
                     ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)
@@ -445,7 +445,7 @@ class CommissionHoldAdjustmentService
         }
         if ($policy->required_evidence_type) {
             $evidence = $finalityEvent->evidence_reference
-                ? DB::table('domain_evidence_files')->whereKey($finalityEvent->evidence_reference)
+                ? DB::table('domain_evidence_files')->where('id', $finalityEvent->evidence_reference)
                     ->whereNull('deleted_at')->where('domain', 'sales')
                     ->where('company_id', $decision->company_id)
                     ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)

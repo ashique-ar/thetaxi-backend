@@ -30,7 +30,7 @@ class PayrollStatutoryController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => [
-                'company' => DB::table('companies')->whereKey($companyId)->first(['id', 'name']),
+                'company' => DB::table('companies')->where('id', $companyId)->first(['id', 'name']),
             ]
         ]);
     }

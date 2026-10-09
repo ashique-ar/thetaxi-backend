@@ -10,7 +10,6 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use LogicException;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
@@ -90,7 +89,7 @@ it('keeps attendance credentials, raw punch data and employee identifiers out of
         AttendanceRawEvent::class => $event->id,
         AttendanceDailyResult::class => $result->id,
     ];
-    $properties = collect($subjects)->map(fn ($id, $type) => DB::table('activity_log')->where('subject_type', $type)->where('subject_id', $id)->value('properties'));
+    $properties = collect($subjects)->map(fn ($id, $type) => DB::table('activity_log')->where('subject_type', $type)->where('subject_id', $id)->value('attribute_changes'));
     $audit = $properties->filter()->implode(' ');
 
     expect($properties->filter())->toHaveCount(4)

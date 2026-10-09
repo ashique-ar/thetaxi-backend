@@ -8,8 +8,8 @@ use App\Services\Sales\CommissionStatementService;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Str;
-use Mockery;
 use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
@@ -138,7 +138,7 @@ it('returns minimized commission and accounting views without source or owner id
     DB::table('sales_commission_payouts')->insert([
         'id' => $payoutId, 'company_id' => $company->id, 'staff_id' => $staff->id,
         'payout_number' => 'SCP-DETAIL-PRIVACY', 'amount_lkr' => 500, 'payment_method' => 'bank',
-        'payment_account_snapshot' => 'confidential account snapshot', 'payment_reference' => 'PAY-DETAIL-PRIVACY',
+        'payment_account_snapshot' => Crypt::encrypt(['account' => 'confidential account snapshot']), 'payment_reference' => 'PAY-DETAIL-PRIVACY',
         'paid_at' => $now, 'status' => 'confirmed', 'accounting_status' => 'pending_delivery',
         'paid_by' => $admin->id, 'idempotency_key' => (string) Str::uuid(),
         'request_payload_checksum' => str_repeat('c', 64), 'reason' => 'confidential payout reason',

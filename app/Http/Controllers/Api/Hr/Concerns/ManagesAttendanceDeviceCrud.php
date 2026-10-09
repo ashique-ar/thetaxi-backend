@@ -29,6 +29,7 @@ trait ManagesAttendanceDeviceCrud
         $data = $request->validate(['company_id' => ['nullable', 'uuid']]);
         $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
         abort_unless($device->status === 'active', 409, 'Only an active attendance device can be tested.');
+        $this->assertDirectIsapiCredentialsConfigured($device);
 
         try {
             $adapter = $providers->adapterFor($device);
@@ -66,6 +67,7 @@ trait ManagesAttendanceDeviceCrud
         
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'days' => ['nullable', 'integer', 'min:1', 'max:31']]);
         $device = $this->authorizedDevice($request, $deviceId, $data['company_id'] ?? null);
+        $this->assertDirectIsapiCredentialsConfigured($device);
         $to = CarbonImmutable::now();
         $days = (int) ($data['days'] ?? 2);
 
@@ -331,5 +333,16 @@ trait ManagesAttendanceDeviceCrud
             'status' => 'success',
             'message' => 'Attendance terminal removed. Historical evidence was retained.',
         ]);
+    }
+
+    private function assertDirectIsapiCredentialsConfigured(AttendanceDevice $device): void
+    {
+        if ($device->provider !== 'hikvision' || $device->integration_mode !== 'direct_isapi') {
+            return;
+        }
+
+        $configuration = (array) $device->encrypted_configuration;
+        abort_unless(! empty($configuration['username']) && ! empty($configuration['password']), 422,
+            'Configure Hikvision credentials before testing or syncing this terminal.');
     }
 }

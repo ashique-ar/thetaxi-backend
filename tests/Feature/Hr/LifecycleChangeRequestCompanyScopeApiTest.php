@@ -5,6 +5,7 @@ use App\Models\Hr\HrEmploymentAssignment;
 use App\Models\Hr\HrEmploymentSpell;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -24,7 +25,8 @@ it('keeps employee change requests and their approver in the actor legal entity'
 
     $company = Company::create(['name' => 'Change Request Company', 'is_active' => true, 'is_default' => true]);
     $otherCompany = Company::create(['name' => 'Other Change Company', 'is_active' => true, 'is_default' => false]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $otherSubject = Staff::factory()->create(['company_id' => $otherCompany->id]);
     $validApprover = Staff::factory()->create(['company_id' => $company->id]);
@@ -63,7 +65,8 @@ it('keeps employee change requests and their approver in the actor legal entity'
         ->assertUnprocessable();
     $this->assertDatabaseCount('hr_employee_change_requests', 0);
 
-    $createdChange = actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))
+    $validPayload = $payload($validApprover->id);
+    $createdChange = actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $validPayload)
         ->assertCreated();
     $this->assertDatabaseHas('hr_request_index', [
         'requester_staff_id' => $subject->id,
@@ -84,7 +87,8 @@ it('keeps employee change requests and their approver in the actor legal entity'
     expect(fn () => $lifecycle->approveChange($changeId, (string) $validApprover->user_id, (string) $company->id))
         ->toThrow(\Symfony\Component\HttpKernel\Exception\HttpException::class);
 
-    actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $payload($validApprover->id))
-        ->assertStatus(409);
+    $replayedChange = actingAs($actor, 'api')->postJson("/api/hr/lifecycle/staff/{$subject->id}/changes", $validPayload)
+        ->assertCreated();
+    expect($replayedChange->json('data.id'))->toBe($createdChange->json('data.id'));
     $this->assertDatabaseCount('hr_employee_change_requests', 1);
 });

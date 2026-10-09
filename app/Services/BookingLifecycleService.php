@@ -2280,7 +2280,7 @@ class BookingLifecycleService
             || (array_key_exists('hire_waiting_minutes', $resolvedTelemetry)
                 && is_numeric($resolvedTelemetry['hire_waiting_minutes']));
         $waitingMinutes = $hasWaitingSource
-            ? max(0, (int) $resolvedTelemetry['waiting_minutes'])
+            ? max(0, (int) ($resolvedTelemetry['waiting_minutes'] ?? 0))
             : null;
         $pickupWaitingMinutes = max(0, (int) ($resolvedTelemetry['pickup_waiting_minutes'] ?? 0));
         $hireWaitingMinutes = max(0, (int) ($resolvedTelemetry['hire_waiting_minutes']

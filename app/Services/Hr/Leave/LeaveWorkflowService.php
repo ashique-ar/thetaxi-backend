@@ -255,9 +255,9 @@ class LeaveWorkflowService
             foreach ($newDays as $day)
                 DB::table('hr_leave_request_days')->insert(['id' => (string) Str::uuid(), 'leave_request_id' => $row->id, 'leave_date' => $day['date'], 'minutes' => $day['minutes'], 'day_kind' => $day['kind'], 'rule_evidence' => json_encode($day, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now()]);
             $snapshot = json_decode($row->calculation_snapshot, true, 512, JSON_THROW_ON_ERROR);
-            $this->entry($account->id, $row->id, 'reservation', -$addedMinutes, $extensionStart, 'leave_extension', $row->id, 'Leave extension reservation', $snapshot + ['extended_to' => $newEndDate], $actorUserId);
-            $type = DB::table('hr_leave_types')->find($row->leave_type_id);
             $extensionEventId = (string) Str::uuid();
+            $this->entry($account->id, $row->id, 'reservation', -$addedMinutes, $extensionStart, 'leave_extension', $extensionEventId, 'Leave extension reservation', $snapshot + ['extended_to' => $newEndDate], $actorUserId);
+            $type = DB::table('hr_leave_types')->find($row->leave_type_id);
             $extensionSnapshot = ['previous_end_date' => $row->end_date, 'extended_to' => $newEndDate, 'added_minutes' => $addedMinutes];
             $this->event($row->id, 'extended', 'approved', 'approved', $reason, $snapshot + $extensionSnapshot, $actorUserId, $extensionEventId);
             if (!$type->paid)

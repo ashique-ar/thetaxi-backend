@@ -3,6 +3,7 @@
 use App\Models\Company;
 use App\Models\Staff;
 use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -21,8 +22,10 @@ it('replays the same probation extension only for its original actor and company
     $otherActor->givePermissionTo('hr.lifecycle.approve');
     $company = Company::create(['name' => 'Probation decision company', 'is_active' => true, 'is_default' => true]);
     $foreign = Company::create(['name' => 'Foreign probation decision company', 'is_active' => true]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
-    Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
+    $otherActorStaff = Staff::factory()->create(['user_id' => $otherActor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $otherActor->id, 'context_type' => 'staff', 'context_id' => $otherActorStaff->id, 'is_active' => true, 'created_user_id' => $otherActor->id]);
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $foreignSubject = Staff::factory()->create(['company_id' => $foreign->id]);
 
@@ -72,7 +75,8 @@ it('replays a final probation decision without writing the confirmation twice', 
     $actor = User::factory()->create();
     $actor->givePermissionTo('hr.lifecycle.approve');
     $company = Company::create(['name' => 'Probation confirmation company', 'is_active' => true, 'is_default' => true]);
-    Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    $actorStaff = Staff::factory()->create(['user_id' => $actor->id, 'company_id' => $company->id]);
+    UserContext::create(['user_id' => $actor->id, 'context_type' => 'staff', 'context_id' => $actorStaff->id, 'is_active' => true, 'created_user_id' => $actor->id]);
     $subject = Staff::factory()->create(['company_id' => $company->id]);
     $spellId = (string) Str::uuid();
     DB::table('hr_employment_spells')->insert([

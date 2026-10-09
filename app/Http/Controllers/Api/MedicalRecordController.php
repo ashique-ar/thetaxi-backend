@@ -3,687 +3,287 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Models\MedicalRecord;
 use App\Models\MedicalCategory;
-use Illuminate\Http\Request;
+use App\Models\MedicalRecord;
+use App\Models\Staff;
+use App\Services\SingleCompanyScope;
+use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Storage;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class MedicalRecordController extends Controller
 {
-    /**
-     * Display a listing of medical records
-     */
     public function index(Request $request): JsonResponse
     {
-        $query = MedicalRecord::with(['category', 'documents']);
-        
-        // Apply filters
-        if ($request->subject_type) {
-            $query->where('subject_type', $request->subject_type);
-        }
-        
-        if ($request->subject_id) {
-            $query->where('subject_id', $request->subject_id);
-        }
-        
-        if ($request->category_id) {
-            $query->where('medical_category_id', $request->category_id);
-        }
-        
-        if ($request->status) {
-            $query->where('status', $request->status);
-        }
-        
-        if ($request->expiring_within_days) {
-            $days = (int) $request->expiring_within_days;
-            $query->where('valid_until', '<=', now()->addDays($days))
-                  ->where('valid_until', '>=', now());
-        }
-        
-        if ($request->search) {
-            $query->where(function($q) use ($request) {
-                $q->where('title', 'like', '%' . $request->search . '%')
-                  ->orWhere('description', 'like', '%' . $request->search . '%')
-                  ->orWhere('record_number', 'like', '%' . $request->search . '%');
-            });
-        }
-        
-        $records = $query->orderBy('created_at', 'desc')
-                        ->paginate($request->per_page ?? 15);
-        
-        return response()->json([
-            'status' => 'success',
-            'data' => $records
+        $companyId = $this->actorCompanyId($request);
+        $filters = $request->validate([
+            'search' => ['nullable', 'string', 'max:120'],
+            'subject_type' => ['nullable', Rule::in(['vehicle', 'staff'])],
+            'subject_id' => ['nullable', 'uuid'],
+            'category_id' => ['nullable', 'uuid'],
+            'record_type' => ['nullable', 'string', 'max:60'],
+            'status' => ['nullable', Rule::in(['active', 'expired', 'suspended', 'revoked', 'superseded', 'cancelled'])],
+            'expiring_within_days' => ['nullable', 'integer', 'min:1', 'max:365'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
+
+        $query = MedicalRecord::query()->where('company_id', $companyId)
+            ->when($filters['subject_type'] ?? null, fn ($q, $value) => $q->where('subject_type', $value))
+            ->when($filters['subject_id'] ?? null, fn ($q, $value) => $q->where('subject_id', $value))
+            ->when($filters['category_id'] ?? null, fn ($q, $value) => $q->where('medical_category_id', $value))
+            ->when($filters['status'] ?? null, fn ($q, $value) => $q->where('status', $value))
+            ->when($filters['expiring_within_days'] ?? null, fn ($q, $days) => $q->whereBetween('valid_until', [today(), today()->addDays($days)]))
+            ->when($filters['search'] ?? null, function ($q, $search): void {
+                $term = '%'.mb_strtolower(trim($search)).'%';
+                $q->where(fn ($match) => $match
+                    ->whereRaw('LOWER(title) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(record_number) LIKE ?', [$term])
+                    ->orWhereRaw("LOWER(COALESCE(issuing_authority, '')) LIKE ?", [$term]));
+            });
+
+        if (! empty($filters['record_type'])) {
+            $query->whereHas('category', fn ($category) => $category->where('code', $filters['record_type']));
+        }
+
+        $page = $query->orderByDesc('created_at')->orderBy('id')->paginate($filters['per_page'] ?? 25);
+        $page->getCollection()->transform(fn (MedicalRecord $record) => $this->serializeRecord($record));
+        $this->auditListView($request, $companyId);
+
+        return response()->json(['status' => 'success', 'data' => $page]);
     }
 
-    /**
-     * Store a newly created medical record
-     */
+    public function categories(Request $request): JsonResponse
+    {
+        $companyId = $this->actorCompanyId($request);
+        $categories = MedicalCategory::query()->where('is_active', true)
+            ->where(fn ($query) => $query->whereNull('company_id')->orWhere('company_id', $companyId))
+            ->orderBy('name')->orderBy('id')->get(['id', 'code', 'name', 'description']);
+
+        return response()->json(['status' => 'success', 'data' => $categories]);
+    }
+
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'subject_type' => 'required|in:driver,vehicle,staff',
-            'subject_id' => 'required|string',
-            'medical_category_id' => 'required|exists:medical_categories,id',
-            'title' => 'required|string|max:255',
-            'description' => 'nullable|string',
-            'record_number' => 'nullable|string|unique:medical_records',
-            'issued_date' => 'required|date',
-            'valid_until' => 'nullable|date|after:issued_date',
-            'issuing_authority' => 'nullable|string|max:255',
-            'documents' => 'nullable|array',
-            'documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240'
+        $companyId = $this->actorCompanyId($request);
+        $data = $request->validate([
+            'subject_type' => ['required', Rule::in(['vehicle', 'staff'])],
+            'subject_id' => ['required', 'uuid'],
+            'medical_category_id' => ['required', 'uuid'],
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string', 'max:10000'],
+            'record_number' => ['nullable', 'string', 'max:80', Rule::unique('medical_records', 'record_number')->where('company_id', $companyId)],
+            'issued_date' => ['required', 'date'],
+            'valid_until' => ['nullable', 'date', 'after_or_equal:issued_date'],
+            'issuing_authority' => ['nullable', 'string', 'max:255'],
         ]);
+        $this->authorizeSubject($data['subject_type'], $data['subject_id'], $companyId);
+        abort_unless(MedicalCategory::query()->whereKey($data['medical_category_id'])->where('is_active', true)
+            ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $companyId))->exists(), 422, 'Select an active medical category.');
 
-        DB::beginTransaction();
-        try {
-            $record = MedicalRecord::create([
-                'subject_type' => $request->subject_type,
-                'subject_id' => $request->subject_id,
-                'medical_category_id' => $request->medical_category_id,
-                'title' => $request->title,
-                'description' => $request->description,
-                'record_number' => $request->record_number ?? $this->generateRecordNumber(),
-                'issued_date' => $request->issued_date,
-                'valid_until' => $request->valid_until,
-                'issuing_authority' => $request->issuing_authority,
-                'status' => 'active',
-                'created_by' => auth()->id()
-            ]);
+        $data['company_id'] = $companyId;
+        $data['record_number'] = $data['record_number'] ?: 'MED-'.Str::upper(Str::random(12));
+        $data['status'] = 'active';
+        $record = MedicalRecord::create($data);
 
-            // Handle document uploads
-            if ($request->hasFile('documents')) {
-                foreach ($request->file('documents') as $index => $file) {
-                    $path = $file->store('medical_records/' . $record->id, 'public');
-                    
-                    $record->documents()->create([
-                        'file_path' => $path,
-                        'file_name' => $file->getClientOriginalName(),
-                        'file_type' => $file->getClientMimeType(),
-                        'file_size' => $file->getSize(),
-                        'description' => $request->input("document_descriptions.{$index}"),
-                        'uploaded_by' => auth()->id()
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'data' => $record->load(['category', 'documents'])
-            ], 201);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to create medical record: ' . $e->getMessage()
-            ], 500);
-        }
+        return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record)], 201);
     }
 
-    /**
-     * Display the specified medical record
-     */
-    public function show(string $id): JsonResponse
+    public function show(Request $request, string $id): JsonResponse
     {
-        $record = MedicalRecord::with(['category', 'documents'])
-                              ->findOrFail($id);
+        $companyId = $this->actorCompanyId($request);
+        $record = $this->record($id, $companyId);
+        $this->auditRecordView($request, $record, $companyId);
 
-        return response()->json([
-            'status' => 'success',
-            'data' => $record
-        ]);
+        return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record)]);
     }
 
-    /**
-     * Update the specified medical record
-     */
     public function update(Request $request, string $id): JsonResponse
     {
-        $record = MedicalRecord::findOrFail($id);
-
-        $request->validate([
-            'title' => 'sometimes|string|max:255',
-            'description' => 'nullable|string',
-            'valid_until' => 'nullable|date',
-            'issuing_authority' => 'nullable|string|max:255',
-            'status' => 'sometimes|in:active,expired,suspended,revoked',
-            'documents' => 'nullable|array',
-            'documents.*' => 'file|mimes:pdf,jpg,jpeg,png|max:10240'
+        $companyId = $this->actorCompanyId($request);
+        $record = $this->record($id, $companyId);
+        $data = $request->validate([
+            'title' => ['sometimes', 'required', 'string', 'max:255'],
+            'description' => ['sometimes', 'nullable', 'string', 'max:10000'],
+            'valid_until' => ['sometimes', 'nullable', 'date'],
+            'issuing_authority' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'status' => ['sometimes', Rule::in(['active', 'expired', 'suspended', 'revoked', 'superseded', 'cancelled'])],
         ]);
-
-        DB::beginTransaction();
-        try {
-            $record->update($request->only([
-                'title', 'description', 'valid_until', 'issuing_authority', 'status'
-            ]));
-
-            // Handle new document uploads
-            if ($request->hasFile('documents')) {
-                foreach ($request->file('documents') as $index => $file) {
-                    $path = $file->store('medical_records/' . $record->id, 'public');
-                    
-                    $record->documents()->create([
-                        'file_path' => $path,
-                        'file_name' => $file->getClientOriginalName(),
-                        'file_type' => $file->getClientMimeType(),
-                        'file_size' => $file->getSize(),
-                        'description' => $request->input("document_descriptions.{$index}"),
-                        'uploaded_by' => auth()->id()
-                    ]);
-                }
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'data' => $record->load(['category', 'documents'])
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to update medical record: ' . $e->getMessage()
-            ], 500);
+        $issuedDate = $data['issued_date'] ?? $record->issued_date?->toDateString();
+        if (! empty($data['valid_until']) && $issuedDate && $data['valid_until'] < $issuedDate) {
+            abort(422, 'The expiry date must be on or after the issue date.');
         }
+        $record->update($data);
+
+        return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record->fresh())]);
     }
 
-    /**
-     * Remove the specified medical record
-     */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
-        $record = MedicalRecord::findOrFail($id);
+        $companyId = $this->actorCompanyId($request);
+        $record = $this->record($id, $companyId);
+        $record->delete();
 
-        DB::beginTransaction();
-        try {
-            // Delete associated documents from storage
-            foreach ($record->documents as $document) {
-                Storage::disk('public')->delete($document->file_path);
-            }
-
-            // Delete the record (cascade will handle documents)
-            $record->delete();
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Medical record deleted successfully'
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to delete medical record: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    /**
-     * Get records by subject
-     */
-    public function getRecordsBySubject(Request $request, string $subjectType, string $subjectId): JsonResponse
-    {
-        $query = MedicalRecord::with(['category', 'documents'])
-                              ->where('subject_type', $subjectType)
-                              ->where('subject_id', $subjectId);
-
-        if ($request->status) {
-            $query->where('status', $request->status);
-        }
-
-        $records = $query->orderBy('created_at', 'desc')
-                        ->paginate($request->per_page ?? 15);
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $records
-        ]);
-    }
-
-    /**
-     * Get compliance report for subject
-     */
-    public function getSubjectComplianceReport(string $subjectType, string $subjectId): JsonResponse
-    {
-        $records = MedicalRecord::with(['category'])
-                                ->where('subject_type', $subjectType)
-                                ->where('subject_id', $subjectId)
-                                ->get();
-
-        $compliance = [
-            'subject_type' => $subjectType,
-            'subject_id' => $subjectId,
-            'total_records' => $records->count(),
-            'active_records' => $records->where('status', 'active')->count(),
-            'expired_records' => $records->where('status', 'expired')->count(),
-            'expiring_soon' => $records->where('valid_until', '<=', now()->addDays(30))
-                                     ->where('valid_until', '>=', now())
-                                     ->count(),
-            'compliance_score' => $this->calculateComplianceScore($records),
-            'categories' => $records->groupBy('medical_category_id')
-                                  ->map(function($categoryRecords, $categoryId) {
-                                      $category = $categoryRecords->first()->category;
-                                      return [
-                                          'category_name' => $category->name,
-                                          'total' => $categoryRecords->count(),
-                                          'active' => $categoryRecords->where('status', 'active')->count(),
-                                          'latest_record_date' => $categoryRecords->max('issued_date')
-                                      ];
-                                  })->values()
-        ];
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $compliance
-        ]);
-    }
-
-    /**
-     * Update record status
-     */
-    public function updateStatus(Request $request, string $id): JsonResponse
-    {
-        $request->validate([
-            'status' => 'required|in:active,expired,suspended,revoked',
-            'reason' => 'nullable|string'
-        ]);
-
-        $record = MedicalRecord::findOrFail($id);
-        
-        $record->update([
-            'status' => $request->status,
-            'status_reason' => $request->reason,
-            'status_updated_by' => auth()->id(),
-            'status_updated_at' => now()
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $record->load(['category'])
-        ]);
-    }
-
-    /**
-     * Get expiring records
-     */
-    public function getExpiringRecords(Request $request): JsonResponse
-    {
-        $days = $request->get('days', 30);
-        
-        $records = MedicalRecord::with(['category', 'documents'])
-                                ->where('status', 'active')
-                                ->where('valid_until', '<=', now()->addDays($days))
-                                ->where('valid_until', '>=', now())
-                                ->orderBy('valid_until')
-                                ->paginate($request->per_page ?? 15);
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $records
-        ]);
-    }
-
-    /**
-     * Get statistics
-     */
-    public function getStats(Request $request): JsonResponse
-    {
-        $dateFrom = $request->get('date_from', now()->startOfMonth());
-        $dateTo = $request->get('date_to', now()->endOfMonth());
-
-        $stats = [
-            'total_records' => MedicalRecord::count(),
-            'active_records' => MedicalRecord::where('status', 'active')->count(),
-            'expired_records' => MedicalRecord::where('status', 'expired')->count(),
-            'expiring_within_30_days' => MedicalRecord::where('valid_until', '<=', now()->addDays(30))
-                                                     ->where('valid_until', '>=', now())
-                                                     ->count(),
-            'records_by_subject_type' => MedicalRecord::select('subject_type')
-                                                     ->selectRaw('count(*) as count')
-                                                     ->groupBy('subject_type')
-                                                     ->get(),
-            'records_by_category' => MedicalRecord::join('medical_categories', 'medical_records.medical_category_id', '=', 'medical_categories.id')
-                                                 ->select('medical_categories.name')
-                                                 ->selectRaw('count(*) as count')
-                                                 ->groupBy('medical_categories.id', 'medical_categories.name')
-                                                 ->get(),
-            'new_records_this_period' => MedicalRecord::whereBetween('created_at', [$dateFrom, $dateTo])->count()
-        ];
-
-        return response()->json([
-            'status' => 'success',
-            'data' => $stats
-        ]);
-    }
-
-    /**
-     * Bulk action on records
-     */
-    public function bulkAction(Request $request): JsonResponse
-    {
-        $request->validate([
-            'action' => 'required|in:delete,update_status,extend_validity',
-            'record_ids' => 'required|array',
-            'record_ids.*' => 'exists:medical_records,id',
-            'status' => 'required_if:action,update_status|in:active,expired,suspended,revoked',
-            'valid_until' => 'required_if:action,extend_validity|date',
-            'reason' => 'nullable|string'
-        ]);
-
-        DB::beginTransaction();
-        try {
-            $records = MedicalRecord::whereIn('id', $request->record_ids);
-            
-            switch ($request->action) {
-                case 'delete':
-                    $count = $records->count();
-                    $records->delete();
-                    $message = "{$count} records deleted successfully";
-                    break;
-                    
-                case 'update_status':
-                    $count = $records->update([
-                        'status' => $request->status,
-                        'status_reason' => $request->reason,
-                        'status_updated_by' => auth()->id(),
-                        'status_updated_at' => now()
-                    ]);
-                    $message = "{$count} records updated successfully";
-                    break;
-                    
-                case 'extend_validity':
-                    $count = $records->update([
-                        'valid_until' => $request->valid_until,
-                        'updated_by' => auth()->id()
-                    ]);
-                    $message = "{$count} records extended successfully";
-                    break;
-            }
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => $message
-            ]);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Bulk action failed: ' . $e->getMessage()
-            ], 500);
-        }
-    }
-
-    public function bulkDelete(Request $request): JsonResponse
-    {
-        $request->validate([
-            'record_ids' => 'required|array|min:1',
-            'record_ids.*' => 'exists:medical_records,id',
-        ]);
-
-        $records = MedicalRecord::whereIn('id', $request->record_ids)->get();
-
-        DB::transaction(function () use ($records): void {
-            foreach ($records as $record) {
-                foreach ($record->documents as $document) {
-                    $document->delete();
-                }
-                $record->delete();
-            }
-        });
-
-        return response()->json([
-            'status' => 'success',
-            'message' => $records->count() . ' medical records deleted',
-        ]);
-    }
-
-    public function bulkStatus(Request $request): JsonResponse
-    {
-        $request->validate([
-            'record_ids' => 'required|array|min:1',
-            'record_ids.*' => 'exists:medical_records,id',
-            'status' => 'required|in:active,expired,suspended,revoked,cancelled',
-        ]);
-
-        $count = MedicalRecord::whereIn('id', $request->record_ids)->update([
-            'status' => $request->status,
-            'status_updated_by' => auth()->id(),
-            'status_updated_at' => now(),
-        ]);
-
-        return response()->json([
-            'status' => 'success',
-            'message' => "{$count} medical records updated",
-        ]);
-    }
-
-    public function bulkExport(Request $request)
-    {
-        $request->validate([
-            'record_ids' => 'required|array|min:1',
-            'record_ids.*' => 'exists:medical_records,id',
-            'format' => 'nullable|in:pdf,csv,excel',
-        ]);
-
-        $records = MedicalRecord::with('category')
-            ->whereIn('id', $request->record_ids)
-            ->orderBy('created_at')
-            ->get();
-
-        $filename = 'medical-records-export-' . now()->format('Ymd-His') . '.csv';
-
-        return response()->streamDownload(function () use ($records): void {
-            $handle = fopen('php://output', 'w');
-            fputcsv($handle, [
-                'Record Number',
-                'Subject Type',
-                'Subject ID',
-                'Title',
-                'Category',
-                'Issued Date',
-                'Valid Until',
-                'Status',
-            ]);
-
-            foreach ($records as $record) {
-                fputcsv($handle, [
-                    $record->record_number,
-                    $record->subject_type,
-                    $record->subject_id,
-                    $record->title,
-                    $record->category?->name,
-                    optional($record->issued_date)->toDateString(),
-                    optional($record->valid_until)->toDateString(),
-                    $record->status,
-                ]);
-            }
-
-            fclose($handle);
-        }, $filename, ['Content-Type' => 'text/csv']);
-    }
-
-    public function downloadDocument(string $id)
-    {
-        $record = MedicalRecord::with('documents')->findOrFail($id);
-        $document = $record->documents->first();
-
-        if (!$document) {
-            abort(404, 'No document is attached to this medical record.');
-        }
-
-        $disk = $document->disk ?? 'public';
-        $path = $document->path ?? $document->file_path ?? null;
-
-        if (!$path || !Storage::disk($disk)->exists($path)) {
-            abort(404, 'The attached document file could not be found.');
-        }
-
-        return Storage::disk($disk)->download($path, $document->file_name);
-    }
-
-    public function sendReminders(Request $request): JsonResponse
-    {
-        $request->validate([
-            'record_ids' => 'nullable|array',
-            'record_ids.*' => 'exists:medical_records,id',
-        ]);
-
-        $query = MedicalRecord::query()
-            ->where('status', 'active')
-            ->whereNotNull('valid_until')
-            ->whereBetween('valid_until', [now(), now()->addDays(30)]);
-
-        if ($request->filled('record_ids')) {
-            $query->whereIn('id', $request->record_ids);
-        }
-
-        $count = $query->count();
-
-        return response()->json([
-            'status' => 'success',
-            'message' => "{$count} expiry reminder" . ($count === 1 ? '' : 's') . ' queued',
-            'data' => ['queued' => $count],
-        ]);
-    }
-
-    // Private helper methods
-
-    /**
-     * Generate unique record number
-     */
-    private function generateRecordNumber(): string
-    {
-        do {
-            $number = 'MR' . date('Y') . str_pad(mt_rand(1, 9999), 4, '0', STR_PAD_LEFT);
-        } while (MedicalRecord::where('record_number', $number)->exists());
-
-        return $number;
-    }
-
-    /**
-     * Calculate compliance score
-     */
-    private function calculateComplianceScore($records): int
-    {
-        if ($records->isEmpty()) {
-            return 0;
-        }
-
-        $totalWeight = $records->count();
-        $complianceWeight = 0;
-
-        foreach ($records as $record) {
-            if ($record->status === 'active' && 
-                ($record->valid_until === null || $record->valid_until > now())) {
-                $complianceWeight += 1;
-            } elseif ($record->status === 'active' && 
-                     $record->valid_until <= now()->addDays(30)) {
-                $complianceWeight += 0.7; // Partial score for expiring soon
-            }
-        }
-
-        return round(($complianceWeight / $totalWeight) * 100);
-    }
-
-    public function bulkUpdate(Request $request): JsonResponse
-    {
-        $request->validate([
-            'ids'    => 'required|array|min:1',
-            'ids.*'  => 'uuid',
-            'action' => 'required|in:activate,deactivate,delete',
-        ]);
-
-        $records = MedicalRecord::whereIn('id', $request->input('ids'));
-
-        $count = match ($request->input('action')) {
-            'activate'   => $records->update(['status' => 'active']),
-            'deactivate' => $records->update(['status' => 'inactive']),
-            'delete'     => tap($records->count(), fn() => $records->delete()),
-        };
-
-        return response()->json([
-            'status'  => 'success',
-            'message' => "{$count} records updated",
-            'data'    => ['affected' => $count],
-        ]);
-    }
-
-    public function getComplianceReport(Request $request): JsonResponse
-    {
-        $subjectType = $request->input('subject_type', 'driver');
-        $records     = MedicalRecord::where('subject_type', $subjectType)
-            ->with('category')
-            ->get();
-
-        $total    = $records->count();
-        $active   = $records->where('status', 'active')->count();
-        $expired  = $records->where('status', 'expired')->count();
-        $expiring = $records->filter(fn($r) => $r->valid_until && $r->valid_until->between(now(), now()->addDays(30)))->count();
-
-        return response()->json([
-            'status' => 'success',
-            'data'   => [
-                'subject_type'    => $subjectType,
-                'total'           => $total,
-                'active'          => $active,
-                'expired'         => $expired,
-                'expiring_soon'   => $expiring,
-                'compliance_rate' => $total > 0 ? round($active / $total * 100, 1) : 0,
-            ],
-        ]);
+        return response()->json(['status' => 'success', 'message' => 'Medical record archived.']);
     }
 
     public function uploadDocument(Request $request, string $id): JsonResponse
     {
-        $request->validate([
-            'document' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240|required_without:file',
-            'file' => 'nullable|file|mimes:pdf,jpg,jpeg,png|max:10240|required_without:document',
-            'description' => 'nullable|string',
+        $companyId = $this->actorCompanyId($request);
+        $record = $this->record($id, $companyId);
+        $data = $request->validate([
+            'file' => ['required', 'file', 'mimes:pdf,jpg,jpeg,png', 'max:10240'],
+            'description' => ['nullable', 'string', 'max:500'],
         ]);
 
-        $record = MedicalRecord::findOrFail($id);
-        $file = $request->file('document') ?: $request->file('file');
-        $path = $file->store('medical-records/' . $record->id, 'public');
+        $file = $data['file'];
+        $documentId = (string) Str::uuid();
+        $path = 'medical-records/'.$companyId.'/'.$record->id.'/'.$documentId.'.enc';
+        $encrypted = Crypt::encryptString($file->get());
+        abort_unless(Storage::disk('local')->put($path, $encrypted), 500, 'The private medical document could not be stored.');
 
-        $record->documents()->create([
-            'document_type' => 'medical_record',
-            'document_number' => $record->record_number ?: (string) $record->id,
-            'disk' => 'public',
-            'path'        => $path,
-            'file_name'   => $file->getClientOriginalName(),
-            'file_type'   => $file->getClientMimeType(),
-            'file_size'   => $file->getSize(),
-            'verification_notes' => $request->description,
-            'created_user_id' => auth()->id(),
-        ]);
+        try {
+            $record->documents()->create([
+                'document_type' => 'medical_record',
+                'document_number' => $record->record_number.'-'.Str::lower(Str::random(8)),
+                'disk' => 'local',
+                'path' => $path,
+                'file_name' => $documentId.'.enc',
+                'file_type' => 'application/octet-stream',
+                'file_size' => $file->getSize(),
+                'status' => 'verified',
+                'created_user_id' => $request->user()->id,
+                'metadata' => [
+                    'original_name' => Crypt::encryptString($file->getClientOriginalName()),
+                    'mime_type' => $file->getMimeType(),
+                    'description' => isset($data['description']) ? Crypt::encryptString($data['description']) : null,
+                ],
+            ]);
+        } catch (\Throwable $exception) {
+            Storage::disk('local')->delete($path);
+            throw $exception;
+        }
 
-        return response()->json([
-            'status'  => 'success',
-            'message' => 'Document uploaded',
-            'data'    => $record->fresh(['category', 'documents']),
-        ]);
+        return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record->fresh())], 201);
     }
 
-    public function getCategories(Request $request): JsonResponse
+    public function downloadDocument(Request $request, string $id): StreamedResponse
     {
-        $categories = MedicalCategory::orderBy('name')->get();
+        $companyId = $this->actorCompanyId($request);
+        $record = $this->record($id, $companyId);
+        $document = $record->documents()->orderBy('created_at')->firstOrFail();
+        abort_unless($document->disk === 'local' && Storage::disk('local')->exists($document->path), 404, 'Medical document is unavailable.');
 
-        return response()->json([
-            'status' => 'success',
-            'data'   => $categories,
-        ]);
+        $content = Crypt::decryptString(Storage::disk('local')->get($document->path));
+        $metadata = $document->metadata ?? [];
+        $filename = isset($metadata['original_name']) ? Crypt::decryptString($metadata['original_name']) : 'medical-document';
+        $mime = $metadata['mime_type'] ?? 'application/octet-stream';
+        $this->auditRecordView($request, $record, $companyId, 'medical_document_downloaded');
+
+        return response()->streamDownload(static function () use ($content): void {
+            echo $content;
+        }, basename($filename), ['Content-Type' => $mime, 'Cache-Control' => 'private, no-store']);
+    }
+
+    private function actorCompanyId(Request $request): string
+    {
+        $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+        abort_unless($companyId, 403, 'Medical records require one active default company.');
+        $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
+        abort_unless($actor && (string) $actor->company_id === (string) $companyId, 403, 'Medical records are available only in the active default company context.');
+
+        return (string) $companyId;
+    }
+
+    private function authorizeSubject(string $type, string $id, string $companyId): void
+    {
+        $exists = match ($type) {
+            'staff' => Staff::query()->whereKey($id)->where('company_id', $companyId)->exists(),
+            'vehicle' => DB::table('vehicles')->where('id', $id)->where('company_id', $companyId)->whereNull('deleted_at')->exists(),
+            default => false,
+        };
+        abort_unless($exists, 404, 'The selected medical-record subject is not available in the default company.');
+    }
+
+    private function record(string $id, string $companyId): MedicalRecord
+    {
+        return MedicalRecord::query()->where('company_id', $companyId)->whereKey($id)->firstOrFail();
+    }
+
+    private function serializeRecord(MedicalRecord $record): array
+    {
+        $record->loadMissing('category');
+
+        return [
+            'id' => (string) $record->id,
+            'company_id' => (string) $record->company_id,
+            'subject_type' => $record->subject_type,
+            'subject_id' => (string) $record->subject_id,
+            'subject_name' => $this->subjectName($record),
+            'medical_category_id' => (string) $record->medical_category_id,
+            'category' => $record->category?->only(['id', 'code', 'name']),
+            'record_type' => $record->category?->code,
+            'title' => $record->title,
+            'description' => $record->description,
+            'record_number' => $record->record_number,
+            'issued_date' => $record->issued_date?->toDateString(),
+            'issue_date' => $record->issued_date?->toDateString(),
+            'examination_date' => $record->issued_date?->toDateString(),
+            'valid_from' => $record->issued_date?->toDateString(),
+            'valid_until' => $record->valid_until?->toDateString(),
+            'expiry_date' => $record->valid_until?->toDateString(),
+            'issuing_authority' => $record->issuing_authority,
+            'provider_name' => $record->issuing_authority,
+            'status' => $record->status,
+            'documents' => $record->documents()->orderBy('created_at')->get()->map(function ($document): array {
+                $metadata = $document->metadata ?? [];
+
+                return [
+                    'id' => (string) $document->id,
+                    'file_name' => isset($metadata['original_name']) ? Crypt::decryptString($metadata['original_name']) : 'Medical document',
+                    'file_path' => null,
+                    'file_type' => $metadata['mime_type'] ?? 'application/octet-stream',
+                    'file_size' => (int) $document->file_size,
+                    'uploaded_at' => $document->created_at?->toISOString(),
+                ];
+            })->values(),
+            'created_at' => $record->created_at?->toISOString(),
+            'updated_at' => $record->updated_at?->toISOString(),
+        ];
+    }
+
+    private function subjectName(MedicalRecord $record): string
+    {
+        $subject = match ($record->subject_type) {
+            'staff' => DB::table('staff')->leftJoin('users', 'users.id', '=', 'staff.user_id')
+                ->where('staff.id', $record->subject_id)->first(['staff.code', 'users.first_name', 'users.last_name']),
+            'driver' => DB::table('drivers')->leftJoin('users', 'users.id', '=', 'drivers.user_id')
+                ->where('drivers.id', $record->subject_id)->first(['drivers.code', 'users.first_name', 'users.last_name']),
+            'vehicle' => DB::table('vehicles')->where('id', $record->subject_id)->first(['registration_no', 'license_plate']),
+            default => null,
+        };
+
+        if (! $subject) return 'Unavailable subject';
+        $name = trim(($subject->first_name ?? '').' '.($subject->last_name ?? ''));
+
+        return $name !== '' ? $name : ($subject->code ?? $subject->registration_no ?? $subject->license_plate ?? 'Unnamed subject');
+    }
+
+    private function auditListView(Request $request, string $companyId): void
+    {
+        activity('hr-sensitive-data')->causedBy($request->user())->event('medical_record_list_viewed')
+            ->withProperties(['company_id' => $companyId])->log('medical_record_list_viewed');
+    }
+
+    private function auditRecordView(Request $request, MedicalRecord $record, string $companyId, string $event = 'medical_record_viewed'): void
+    {
+        activity('hr-sensitive-data')->causedBy($request->user())->performedOn($record)->event($event)
+            ->withProperties(['company_id' => $companyId])->log($event);
     }
 }

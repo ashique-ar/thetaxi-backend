@@ -350,7 +350,7 @@ class SalesPerformanceController extends Controller
 
     public function reopenPeriod(Request $request, string $periodLock, SalesPeriodCloseService $periodClose): JsonResponse
     {
-        $lock = DB::table('domain_period_locks')->whereKey($periodLock)->where('domain', 'sales')->first();
+        $lock = DB::table('domain_period_locks')->where('id', $periodLock)->where('domain', 'sales')->first();
         abort_unless($lock, 404);
         $this->assertCompanyWideScope($request, $lock->company_id);
         $data = $request->validate([

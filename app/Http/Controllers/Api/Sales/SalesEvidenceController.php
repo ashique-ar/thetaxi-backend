@@ -77,7 +77,7 @@ class SalesEvidenceController extends Controller
         $companyId = $this->authorizeSubject($request, $data['subject_type'], $data['subject_id'], true);
         $superseded = null;
         if (! empty($data['supersedes_id'])) {
-            $superseded = DB::table('domain_evidence_files')->whereKey($data['supersedes_id'])->whereNull('deleted_at')->first();
+            $superseded = DB::table('domain_evidence_files')->where('id', $data['supersedes_id'])->whereNull('deleted_at')->first();
             abort_unless($superseded && $superseded->domain === 'sales' && $superseded->company_id === $companyId
                 && $superseded->subject_type === $data['subject_type'] && $superseded->subject_id === $data['subject_id'],
                 422, 'Superseded evidence must belong to the same Sales subject and legal entity.');
@@ -126,7 +126,7 @@ class SalesEvidenceController extends Controller
 
     public function download(Request $request, string $evidence): StreamedResponse
     {
-        $row = DB::table('domain_evidence_files')->whereKey($evidence)->where('domain', 'sales')->whereNull('deleted_at')->first();
+        $row = DB::table('domain_evidence_files')->where('id', $evidence)->where('domain', 'sales')->whereNull('deleted_at')->first();
         abort_unless($row, 404);
         $companyId = $this->authorizeSubject($request, $row->subject_type, $row->subject_id, false, $row->uploaded_by);
         abort_unless(hash_equals((string) $companyId, (string) $row->company_id), 404);
@@ -221,7 +221,7 @@ class SalesEvidenceController extends Controller
 
     private function publicRow(string $id): object
     {
-        return DB::table('domain_evidence_files')->whereKey($id)->select([
+        return DB::table('domain_evidence_files')->where('id', $id)->select([
             'id', 'subject_type', 'subject_id', 'evidence_type', 'classification', 'file_name', 'mime_type',
             'file_size', 'file_checksum', 'version', 'supersedes_id', 'retention_until', 'created_at',
         ])->first();

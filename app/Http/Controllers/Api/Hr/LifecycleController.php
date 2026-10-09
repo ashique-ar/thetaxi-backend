@@ -76,7 +76,7 @@ class LifecycleController extends Controller{
      $data = $r->validate([
          'company_id' => ['nullable', 'uuid'], 'case_type' => ['required', Rule::in(['preboarding', 'onboarding', 'probation', 'transfer', 'offboarding'])],
          'code' => ['required', 'string', 'max:80'], 'version' => ['required', 'integer', 'min:1'],
-         'applicability' => ['required', 'array'], 'task_definitions' => ['required', 'array', 'min:1'],
+         'applicability' => ['present', 'array'], 'task_definitions' => ['required', 'array', 'min:1'],
          'task_definitions.*.code' => ['required', 'string', 'max:80'], 'task_definitions.*.title' => ['required', 'string', 'max:255'],
          'idempotency_key' => ['required', 'uuid'],
      ]);
@@ -147,8 +147,8 @@ class LifecycleController extends Controller{
  {
      
      $data = $r->validate([
-         'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid', 'required_without:application_id', 'prohibited_with:application_id'],
-         'application_id' => ['nullable', 'uuid', 'required_without:staff_id', 'prohibited_with:staff_id'],
+         'company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid', 'required_without:application_id', 'prohibits:application_id'],
+         'application_id' => ['nullable', 'uuid', 'required_without:staff_id', 'prohibits:staff_id'],
          'template_id' => ['required', 'uuid'], 'effective_date' => ['required', 'date'], 'idempotency_key' => ['required', 'uuid'],
      ]);
      $data['company_id']=$data['company_id']??$this->actorCompanyId($r);$this->company($r, $data['company_id']);
@@ -258,7 +258,7 @@ class LifecycleController extends Controller{
          abort_unless($spell, 409, 'The probation employment spell does not match this Staff legal entity.');
          $summary = fn () => DB::table('hr_probation_cases')->select([
              'id', 'starts_at', 'review_due_at', 'current_end_at', 'status', 'proposed_outcome', 'final_outcome', 'decided_at',
-         ])->findOrFail($id);
+         ])->where('id', $id)->firstOrFail();
 
          if ($data['outcome'] === 'extended' && $row->proposed_outcome === 'extended'
              && $row->current_end_at === $data['new_end_at']) {
