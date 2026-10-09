@@ -783,6 +783,8 @@
     <script>
         (function() {
             const serviceTypeNames = @json($serviceTypes->pluck('name', 'code'));
+            const originalSearchParams = @json($searchPricingParams ?? []);
+            const originalSearchService = @json($initialServiceTypeCode);
             const priceHeader = document.getElementById('vehiclePriceHeader');
             const priceHeaderValue = document.getElementById('vehicleHeaderPriceValue');
             const summaryPrice = document.getElementById('vehicleSummaryPrice');
@@ -906,6 +908,7 @@
                 const values = getActiveFormValues();
                 const fd = new FormData(form);
                 const payload = {
+                    ...(values.serviceType === originalSearchService ? originalSearchParams : {}),
                     _token: '{{ csrf_token() }}',
                 };
 
@@ -916,16 +919,22 @@
                 payload.service_type = values.serviceType;
                 payload.pickup = values.pickup;
                 payload.dropoff = values.dropoff;
-                payload.pickup_location = values.pickup;
-                payload.dropoff_location = values.dropoff;
-                payload.pickup_date = values.pickupDate;
-                payload.return_date = values.returnDate;
-                payload.pickup_time = values.pickupTime;
-                payload.return_time = values.returnTime;
-                payload.pickup_lat = values.pickupLat;
-                payload.pickup_lng = values.pickupLng;
-                payload.dropoff_lat = values.dropoffLat;
-                payload.dropoff_lng = values.dropoffLng;
+                const useOriginalSearch = values.serviceType === originalSearchService;
+                const originalPickup = originalSearchParams.pickup_location || {};
+                const originalDropoff = originalSearchParams.dropoff_location || {};
+                payload.service_type_id = useOriginalSearch
+                    ? (originalSearchParams.service_type_id || originalSearchParams.service_type || '')
+                    : '';
+                payload.pickup_location = values.pickup || originalPickup.address || '';
+                payload.dropoff_location = values.dropoff || originalDropoff.address || '';
+                payload.pickup_date = values.pickupDate || originalSearchParams.from_date || '';
+                payload.return_date = values.returnDate || originalSearchParams.to_date || '';
+                payload.pickup_time = values.pickupTime || originalSearchParams.from_time || '';
+                payload.return_time = values.returnTime || originalSearchParams.to_time || '';
+                payload.pickup_lat = values.pickupLat || originalPickup.latitude || '';
+                payload.pickup_lng = values.pickupLng || originalPickup.longitude || '';
+                payload.dropoff_lat = values.dropoffLat || originalDropoff.latitude || '';
+                payload.dropoff_lng = values.dropoffLng || originalDropoff.longitude || '';
                 payload.num_days = values.numDays;
 
                 if (values.packageId) payload.package_id = values.packageId;
@@ -1126,15 +1135,22 @@
 
             document.addEventListener('DOMContentLoaded', function() {
                 const bookingCard = document.querySelector('.booking-form-card--vehicle');
+                let bookingFormTouched = false;
                 if (bookingCard) {
+                    bookingCard.addEventListener('pointerdown', function(e) {
+                        if (e.target.closest('input, select, button, .single-item')) bookingFormTouched = true;
+                    }, true);
+                    bookingCard.addEventListener('keydown', function(e) {
+                        if (e.target.matches('input, select')) bookingFormTouched = true;
+                    }, true);
                     bookingCard.addEventListener('change', function(e) {
-                        if (e.target && (e.target.matches('input') || e.target.matches('select'))) {
+                        if (bookingFormTouched && e.target && (e.target.matches('input') || e.target.matches('select'))) {
                             requestPriceUpdate();
                         }
                     });
 
                     bookingCard.addEventListener('input', function(e) {
-                        if (e.target && e.target.matches(
+                        if (bookingFormTouched && e.target && e.target.matches(
                                 'input[name=\"pickup\"], input[name=\"dropoff\"], input[name=\"pickup_date\"], input[name=\"dropoff_date\"], input[name=\"date\"], input[name=\"pickup_time\"], input[name=\"dropoff_time\"], input[name=\"time\"]'
                                 )) {
                             requestPriceUpdate();
@@ -1144,7 +1160,8 @@
 
                 document.querySelectorAll('.booking-form-card--vehicle .single-item[data-service]').forEach(function(
                 tab) {
-                    tab.addEventListener('click', function() {
+                tab.addEventListener('click', function() {
+                    bookingFormTouched = true;
                         setTimeout(requestPriceUpdate, 450);
                     });
                 });

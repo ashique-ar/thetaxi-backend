@@ -188,6 +188,7 @@ class VehicleController extends Controller
             'serviceTypes',
             'pricing',
             'search',
+            'searchPricingParams',
             'preset'
         ));
     }
@@ -234,7 +235,7 @@ class VehicleController extends Controller
     {
         $vehicleGroup = VehicleGroup::findOrFail($id);
         $searchData = $request->all();
-        $serviceTypeValue = trim((string) ($searchData['service_type'] ?? ''));
+        $serviceTypeValue = trim((string) ($searchData['service_type_id'] ?? $searchData['service_type'] ?? ''));
         $serviceTypeModel = $this->resolveServiceTypeModel($serviceTypeValue);
         if (!$serviceTypeModel) {
             return response()->json([
@@ -395,6 +396,8 @@ class VehicleController extends Controller
             'contract_type',
             'rental_mode',
             'passengers',
+            'currency',
+            'service_type_id',
         ]));
         $params = array_merge($params, [
             'service_type' => $serviceType->id,
