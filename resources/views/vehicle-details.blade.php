@@ -77,7 +77,7 @@
         $vehicleImages = array_values(array_unique(array_filter(array_slice($vehicleImages, 0, 8))));
     @endphp
 
-    @if (!is_theme('theme-01') && !is_theme('theme-02'))
+    @if (!is_theme('default') && !is_theme('theme-02'))
     <div class="breadcrumb-section three"
         style="background-image:linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url({{ asset('assets/img/innerpages/breadcrumb-bg.jpg') }});">
         <div class="container banner-content">
@@ -92,10 +92,10 @@
     </div>
     @endif
 
-    <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('theme-01') ? 'vehicle-details--theme-01' : '' }} py-5">
+    <div class="vehicle-details-section vehicle-details-wrapper {{ theme_class('vehicle-details') }} {{ is_theme('default') ? 'vehicle-details--theme-01' : '' }} py-5">
         <div class="container">
             <div class="row g-4 vehicle-details-layout">
-                <div class="vehicle-details-main {{ is_theme('theme-01') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8' }}">
+                <div class="vehicle-details-main {{ is_theme('default') || is_theme('theme-02') || is_theme('theme-03') ? 'col-12' : 'col-lg-8' }}">
                     <div class="vehicle-image-gallery mb-4">
                         <div class="main-vehicle-image">
                             <img src="{{ $vehicleImages[0] ?? $mainImage }}" alt="{{ $vehicleGroup->name }}"
@@ -361,7 +361,7 @@
                 </div>
                 @endif
             </div>
-            @if (is_theme('theme-01') || is_theme('theme-02') || is_theme('theme-03'))
+            @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
                 <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mt-4">
                     @if (is_theme('theme-03'))
                         <div class="t3-journey-desk__masthead" aria-hidden="true">
