@@ -10,6 +10,16 @@ beforeEach(function () {
     $this->theme04Pages = file_get_contents($projectRoot . '/public/assets/css/themes/theme-04/pages.css');
 });
 
+it('imports FAQ model names with the exact filesystem casing used on Linux', function () {
+    preg_match_all('/use (App\\\\Models\\\\Website\\\\[^;]+);/', $this->controller, $matches);
+    expect($matches[1])->toHaveCount(2);
+    foreach ($matches[1] as $class) {
+        $modelName = substr($class, strrpos($class, '\\') + 1);
+        expect(scandir(app_path('Models/Website')))->toContain($modelName . '.php')
+            ->and(class_exists($class))->toBeTrue();
+    }
+});
+
 it('keeps the public FAQ URI owned by its controller and established route name', function () {
     expect($this->routes)
         ->toContain("Route::get('/faq', [FAQController::class, 'index'])->name('faq')")

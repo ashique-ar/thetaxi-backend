@@ -33,19 +33,7 @@
             </ul>
 
             <div class="t4-navigation__utilities">
-                <details class="t4-currency">
-                    <summary aria-label="Change currency">{{ getSelectedCurrency() }}</summary>
-                    <ul>
-                        @foreach (getAvailableCurrencies() as $currency)
-                            <li>
-                                <a href="#" class="currency-option {{ getSelectedCurrency() === $currency['code'] ? 'is-active' : '' }}" data-currency="{{ $currency['code'] }}">
-                                    <strong>{{ $currency['code'] }}</strong>
-                                    <span>{{ $currency['name'] }} ({{ $currency['symbol'] ?? $currency['code'] }})</span>
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
-                </details>
+
 
                 @if ($theme04PhoneHref !== '')
                     <a href="tel:{{ $theme04PhoneHref }}" class="t4-header__phone">
@@ -67,6 +55,8 @@
                 </a>
             </div>
         </nav>
+
+        @include('components.header-currency-switcher')
 
         <button class="t4-navigation__backdrop" type="button" aria-label="Close navigation" tabindex="-1" data-t4-menu-backdrop></button>
     </div>

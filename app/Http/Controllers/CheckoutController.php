@@ -1202,6 +1202,7 @@ class CheckoutController extends Controller
      */
     public function webxpayCallback(Request $request)
     {
+        $initialTransactionLevel = DB::transactionLevel();
         try {
             // record callback received
             $this->paymentEventService->recordEvent('callback_received', [
@@ -1460,10 +1461,7 @@ class CheckoutController extends Controller
                             : [];
                     }
                     $gatewayPayment = (array) $gatewayPayment;
-                    $gatewayAmount = (float) ($gatewayPayment['amount'] ?? 0);
                     $bookingAmount = (float) ($gatewayPayment['booking_amount'] ?? 0);
-                    $gatewayCurrency = strtoupper((string) ($gatewayPayment['currency'] ?? ''));
-                    $bookingCurrency = strtoupper((string) ($gatewayPayment['booking_currency'] ?? $lockedBooking->currency ?? $this->currencyService->getDefaultCurrency()));
                     $gatewayOrderId = (string) ($verificationResult['order_id'] ?? $gatewayPayment['order_id'] ?? '');
                     $transactionId = (string) ($verificationResult['transaction_id'] ?? '');
 
@@ -1485,29 +1483,7 @@ class CheckoutController extends Controller
                         return view('checkout.callback-error', ['message' => 'Your payment was approved, but we could not match it to the amount requested. Please contact support with your transaction details so we can confirm your booking.']);
                     }
 
-                    if ($bookingAmount > 0) {
-                        app(\App\Services\BookingPaymentLedgerService::class)->receive($lockedBooking, [
-                            'amount' => $bookingAmount,
-                            'payment_method' => 'online',
-                            'payment_stage' => 'full',
-                            'payment_purpose' => 'booking_payment',
-                            'reference' => $transactionId !== '' ? $transactionId : $gatewayOrderId,
-                            'idempotency_key' => 'webxpay:' . ($transactionId !== '' ? $transactionId : $gatewayOrderId),
-                            'received_at' => $verificationResult['paid_at'] ?? now(),
-                            'received_via' => 'company',
-                            'notes' => 'Verified WebXPay payment.',
-                            'metadata' => [
-                                'gateway' => 'webxpay',
-                                'gateway_order_id' => $gatewayOrderId,
-                                'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
-                                'gateway_amount' => $gatewayAmount,
-                                'gateway_currency' => $gatewayCurrency,
-                                'booking_amount' => $bookingAmount,
-                                'booking_currency' => $bookingCurrency,
-                                'verification_status' => $verificationResult['status'] ?? null,
-                            ],
-                        ], null);
-                    }
+                    $this->recordVerifiedWebXPayReceipt($lockedBooking, $verificationResult);
 
                     $lockedBooking->update([
                         'status' => config('booking.status.confirmed'),
@@ -1574,6 +1550,9 @@ class CheckoutController extends Controller
                 return redirect()->route('checkout')->with('error', 'Payment verification failed. Please try again.');
             }
         } catch (\Exception $e) {
+            while (DB::transactionLevel() > $initialTransactionLevel) {
+                DB::rollBack();
+            }
             Log::error('WebXPay callback error', [
                 'error' => $e->getMessage(),
                 'request' => $request->all()
@@ -2296,6 +2275,9 @@ class CheckoutController extends Controller
             'booking_amount' => (float) ($gatewayResult['booking_amount'] ?? $booking->amount_to_pay ?? 0),
             'booking_currency' => strtoupper((string) ($gatewayResult['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency())),
             'order_id' => $gatewayResult['order_id'] ?? null,
+            'fx_rate_to_lkr' => $gatewayResult['fx_rate_to_lkr'] ?? null,
+            'gateway_fx_rate_to_lkr' => $gatewayResult['gateway_fx_rate_to_lkr'] ?? null,
+            'fx_rate_at' => $gatewayResult['fx_rate_at'] ?? null,
         ];
         $workflowData['gateway_payment'] = $snapshot;
         $attempts = (array) ($workflowData['gateway_payment_attempts'] ?? []);
@@ -2329,6 +2311,7 @@ class CheckoutController extends Controller
         $bookingCurrency = strtoupper((string) ($snapshot['booking_currency'] ?? $booking->currency ?? $this->currencyService->getDefaultCurrency()));
         app(\App\Services\BookingPaymentLedgerService::class)->receive($booking, [
             'amount' => $bookingAmount,
+            ...$this->gatewayReceiptCurrencyFacts($snapshot),
             'payment_method' => 'online',
             'payment_stage' => ($verification['payment_type'] ?? $booking->payment_type) === 'advance' ? 'advance' : 'full',
             'payment_purpose' => 'booking_payment',
@@ -2343,11 +2326,40 @@ class CheckoutController extends Controller
                 'gateway_transaction_id' => $transactionId !== '' ? $transactionId : null,
                 'gateway_amount' => (float) ($snapshot['amount'] ?? 0),
                 'gateway_currency' => $gatewayCurrency,
+                'gateway_fx_rate_to_lkr' => $snapshot['gateway_fx_rate_to_lkr'] ?? ($gatewayCurrency === 'LKR' ? 1.0 : null),
                 'booking_amount' => $bookingAmount,
                 'booking_currency' => $bookingCurrency,
                 'verification_status' => $verification['status'] ?? null,
             ],
         ], null);
+    }
+
+    private function gatewayReceiptCurrencyFacts(array $snapshot): array
+    {
+        $bookingAmount = (float) ($snapshot['booking_amount'] ?? 0);
+        $gatewayAmount = (float) ($snapshot['amount'] ?? 0);
+        $bookingCurrency = strtoupper(trim((string) ($snapshot['booking_currency'] ?? '')));
+        $gatewayCurrency = strtoupper(trim((string) ($snapshot['currency'] ?? '')));
+        if (!is_finite($bookingAmount) || $bookingAmount <= 0 || !is_finite($gatewayAmount) || $gatewayAmount <= 0
+            || !preg_match('/^[A-Z]{3}$/', $bookingCurrency) || !preg_match('/^[A-Z]{3}$/', $gatewayCurrency)) {
+            throw new \RuntimeException('The saved WebXPay charge has invalid currency or amount evidence.');
+        }
+
+        // Recover older LKR charge snapshots using the exact amount sent to the gateway.
+        $rate = $bookingCurrency === 'LKR' ? 1.0 : ($gatewayCurrency === 'LKR'
+            ? $gatewayAmount / $bookingAmount
+            : (float) ($snapshot['fx_rate_to_lkr'] ?? 0));
+        if (!is_finite($rate) || $rate <= 0) {
+            throw new \RuntimeException('The saved WebXPay charge has no approved LKR conversion rate.');
+        }
+
+        return [
+            'source_amount' => $bookingAmount,
+            'source_currency' => $bookingCurrency,
+            'fx_rate_to_lkr' => $rate,
+            'fx_rate_at' => $snapshot['fx_rate_at'] ?? null,
+            'fx_source' => $gatewayCurrency === 'LKR' ? 'webxpay_charge_snapshot' : 'configured_currency_rate_at_payment',
+        ];
     }
 
     /** Bind a verified WebXPay response to the booking, including legacy rows without an order snapshot. */

@@ -119,6 +119,13 @@ class WebXPayService
             $bookingAmount = app(CurrencyService::class)->roundAmount($amount, $bookingCurrency);
             $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
             $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
+            if ($bookingAmount <= 0 || $amount <= 0) {
+                throw new \InvalidArgumentException('Payment amount must be positive.');
+            }
+            $gatewayFxRateToLkr = $this->currency === 'LKR' ? 1.0
+                : app(CurrencyService::class)->getExchangeRate($this->currency, 'LKR');
+            $fxRateToLkr = $bookingCurrency === 'LKR' ? 1.0
+                : ($amount * $gatewayFxRateToLkr) / $bookingAmount;
             $orderId = $booking->booking_number . '-' . time();
 
             // Step 1: Create plaintext payment data
@@ -165,6 +172,9 @@ class WebXPayService
                 'amount'       => $amountFormatted,
                 'currency'     => $this->currency,
                 'booking_currency' => $bookingCurrency,
+                'fx_rate_to_lkr' => $fxRateToLkr,
+                'gateway_fx_rate_to_lkr' => $gatewayFxRateToLkr,
+                'fx_rate_at' => now()->toIso8601String(),
             ]);
 
             // Step 5: Return all data for form submission
@@ -176,6 +186,9 @@ class WebXPayService
                 'currency' => $this->currency,
                 'booking_amount' => (float) $bookingAmount,
                 'booking_currency' => $bookingCurrency,
+                'fx_rate_to_lkr' => $fxRateToLkr,
+                'gateway_fx_rate_to_lkr' => $gatewayFxRateToLkr,
+                'fx_rate_at' => now()->toIso8601String(),
                 'encrypted_payment' => $encryptedPayment,
                 'secret_key' => $this->secretKey,
                 'custom_fields' => $encryptedCustomFields,

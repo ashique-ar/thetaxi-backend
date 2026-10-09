@@ -35,24 +35,7 @@
             </ul>
 
             <div class="t3-navigation__utilities">
-                <details class="t3-currency">
-                    <summary aria-label="Change currency">
-                        <span>{{ getSelectedCurrency() }}</span>
-                    </summary>
-                    <ul>
-                        @foreach (getAvailableCurrencies() as $currency)
-                            <li>
-                                <a
-                                    href="#"
-                                    class="currency-option {{ getSelectedCurrency() === $currency['code'] ? 'is-active' : '' }}"
-                                    data-currency="{{ $currency['code'] }}">
-                                    <strong>{{ $currency['code'] }}</strong>
-                                    <span>{{ $currency['name'] }} ({{ $currency['symbol'] ?? $currency['code'] }})</span>
-                                </a>
-                            </li>
-                        @endforeach
-                    </ul>
-                </details>
+
 
                 @if ($theme03PhoneHref !== '')
                     <a class="t3-header__contact" href="tel:{{ $theme03PhoneHref }}">
@@ -75,6 +58,8 @@
                 </a>
             </div>
         </nav>
+
+        @include('components.header-currency-switcher')
 
         <button class="t3-navigation__backdrop" type="button" aria-label="Close navigation" tabindex="-1" data-t3-menu-backdrop></button>
     </div>

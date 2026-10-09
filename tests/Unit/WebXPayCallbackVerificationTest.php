@@ -36,7 +36,8 @@ it('records each verified WebXPay callback through one canonical receipt write',
     $callback = substr($controller, strpos($controller, 'public function webxpayCallback'), strpos($controller, 'public function webxpayNotify') - strpos($controller, 'public function webxpayCallback'));
     $notify = substr($controller, strpos($controller, 'public function webxpayNotify'), strpos($controller, 'public function mockGateway') - strpos($controller, 'public function webxpayNotify'));
 
-    expect($callback)->toContain("'idempotency_key' => 'webxpay:'")
+    expect($callback)->toContain('$this->recordVerifiedWebXPayReceipt($lockedBooking, $verificationResult)')
+        ->and($controller)->toContain("'idempotency_key' => 'webxpay:'")
         ->and(substr_count($callback, '$this->recordGatewayReceipt('))->toBe(1)
         ->and($notify)->toContain('$this->recordVerifiedWebXPayReceipt(')
         ->and($notify)->not->toContain('$this->recordGatewayReceipt(');

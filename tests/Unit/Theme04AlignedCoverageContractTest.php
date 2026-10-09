@@ -6,6 +6,8 @@ beforeEach(function () {
     $this->projectRoot = $projectRoot;
     $this->home = file_get_contents($projectRoot . '/resources/views/home.blade.php');
     $this->header = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-04/header.blade.php');
+    $this->header .= file_get_contents($projectRoot . '/resources/views/partials/header-navigation.blade.php');
+    $this->header .= file_get_contents($projectRoot . '/resources/views/components/header-currency-switcher.blade.php');
     $this->hero = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-04/hero.blade.php');
     $this->booking = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-04/booking-form.blade.php');
     $this->footer = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-04/footer.blade.php');

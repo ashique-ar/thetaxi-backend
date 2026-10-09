@@ -271,6 +271,7 @@
     @if (is_theme('theme-04'))
         <link rel="stylesheet" href="{{ assetVersion('assets/css/ui-ux.css') }}">
     @endif
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/header-currency.css') }}">
 </head>
 
 <?php
@@ -361,13 +362,37 @@
     <!-- Currency Switching JavaScript -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            let currencySwitchPending = false;
+            const currencyControls = document.querySelectorAll('.header-currency');
+            document.addEventListener('click', function(event) {
+                currencyControls.forEach(control => {
+                    if (!control.contains(event.target)) control.open = false;
+                });
+            });
+            document.addEventListener('keydown', function(event) {
+                if (event.key !== 'Escape') return;
+                currencyControls.forEach(control => {
+                    if (!control.open) return;
+                    control.open = false;
+                    control.querySelector('summary').focus();
+                });
+            });
             // Handle currency switching
             document.querySelectorAll('.currency-option').forEach(function(link) {
                 link.addEventListener('click', function(e) {
                     e.preventDefault();
+                    if (currencySwitchPending) return;
+
+                    if (this.getAttribute('aria-current') === 'true') {
+                        this.closest('details').open = false;
+                        return;
+                    }
 
                     const currencyCode = this.getAttribute('data-currency');
                     if (!currencyCode) return;
+                    currencySwitchPending = true;
+                    const summary = this.closest('details')?.querySelector('summary');
+                    summary?.setAttribute('aria-busy', 'true');
 
                     // Show loading state
                     const originalText = this.innerHTML;
@@ -393,12 +418,16 @@
                             } else {
                                 console.error('Currency switch failed:', data.message);
                                 this.innerHTML = originalText;
+                                currencySwitchPending = false;
+                                summary?.setAttribute('aria-busy', 'false');
                                 alert('Failed to switch currency. Please try again.');
                             }
                         })
                         .catch(error => {
                             console.error('Error switching currency:', error);
                             this.innerHTML = originalText;
+                            currencySwitchPending = false;
+                            summary?.setAttribute('aria-busy', 'false');
                             alert(
                                 'An error occurred while switching currency. Please try again.'
                             );

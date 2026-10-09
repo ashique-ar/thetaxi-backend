@@ -110,28 +110,8 @@
         </div>
         <div class="nav-right">
             <div class="contact-and-search-area">
-                <!-- Currency Selector -->
-                <div class="currency-selector align-items-center me-3">
-                    <div class="dropdown">
-                        <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button"
-                            id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false"
-                            style="color: #333; font-weight: 500;">
-                            <span class="currency-code">{{ getSelectedCurrency() }}</span>
-                        </button>
-                        <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="currencyDropdown">
-                            @foreach (getAvailableCurrencies() as $currency)
-                                <li>
-                                    <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}"
-                                        href="#" data-currency="{{ $currency['code'] }}"
-                                        style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: var(--primary-color1);' : '' }}">
-                                        <span class="currency-code me-2">{{ $currency['code'] }}</span>
-                                        <span class="currency-name">{{ $currency['name'] }} <span class="currency-symbol">({{ $currency['symbol'] ?? $currency['code'] }})</span></span>
-                                    </a>
-                                </li>
-                            @endforeach
-                        </ul>
-                    </div>
-                </div>
+                @include('components.header-currency-switcher')
+
 
                 <!-- Cart Icon -->
                 <div class="cart-icon-container d-flex align-items-center me-3">

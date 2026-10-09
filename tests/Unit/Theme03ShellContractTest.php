@@ -4,6 +4,8 @@ beforeEach(function () {
     $projectRoot = dirname(__DIR__, 2);
 
     $this->header = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-03/header.blade.php');
+    $this->header .= file_get_contents($projectRoot . '/resources/views/partials/header-navigation.blade.php');
+    $this->header .= file_get_contents($projectRoot . '/resources/views/components/header-currency-switcher.blade.php');
     $this->footer = file_get_contents($projectRoot . '/resources/views/partials/themes/theme-03/footer.blade.php');
     $this->script = file_get_contents($projectRoot . '/public/assets/js/themes/theme-03/shell.js');
     $this->styles = file_get_contents($projectRoot . '/public/assets/css/themes/theme-03/theme-03.css');

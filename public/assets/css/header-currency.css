@@ -1,0 +1,82 @@
+.header-currency {
+    --currency-accent: var(--t4-accent, var(--t3-accent, var(--primary-color1)));
+    --currency-surface: var(--t4-surface, var(--t3-paper, var(--white-color, #fff)));
+    --currency-text: var(--t4-text, var(--t3-ink, var(--title-color, #222)));
+    --currency-line: var(--t4-line, var(--t3-line, #e5e7eb));
+    position: relative;
+    flex-shrink: 0;
+    color: var(--currency-text);
+}
+.header-currency > summary {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 46px;
+    padding: 7px 12px;
+    border: 1px solid var(--currency-accent);
+    border-radius: 8px;
+    background: var(--currency-surface);
+    color: var(--currency-text);
+    list-style: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+.header-currency > summary::-webkit-details-marker { display: none; }
+.header-currency > summary > .bi-globe2 { color: var(--currency-accent); font-size: 18px; }
+.header-currency__selection { display: grid; gap: 2px; line-height: 1.1; }
+.header-currency__label { font-size: 11px; font-weight: 500; }
+.header-currency__selection strong { font-size: 14px; font-weight: 750; }
+.header-currency__arrow { font-size: 11px; }
+.header-currency[open] .header-currency__arrow { transform: rotate(180deg); }
+.header-currency > summary:is(:hover, :focus-visible), .header-currency[open] > summary {
+    outline: 2px solid var(--currency-accent);
+    outline-offset: 2px;
+}
+.header-currency__panel {
+    position: absolute;
+    z-index: 1100;
+    top: calc(100% + 10px);
+    right: 0;
+    width: min(300px, calc(100vw - 32px));
+    padding: 12px;
+    border: 1px solid var(--currency-line);
+    border-radius: 10px;
+    background: var(--currency-surface);
+    box-shadow: var(--t4-shadow, var(--t3-shadow, 0 10px 30px rgb(0 0 0 / 12%)));
+}
+.header-currency:not([open]) > .header-currency__panel { display: none; }
+.header-currency__panel > p { margin: 0 0 10px; padding: 0 8px; font-size: 13px; font-weight: 700; color: var(--currency-text); }
+.header-currency__panel ul { max-height: min(400px, 60dvh); overflow-y: auto; margin: 0; padding: 0; list-style: none; }
+.header-currency__panel .currency-option {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+    min-height: 52px;
+    padding: 9px 10px;
+    border-radius: 6px;
+    color: var(--currency-text);
+    text-decoration: none;
+    font-size: 14px;
+}
+.header-currency__name { display: block; margin-top: 3px; font-size: 12px; }
+.header-currency__panel .currency-option:is(:hover, :focus-visible, .is-active) { background: var(--currency-accent); color: var(--white-color, #fff); }
+.header-currency__panel .currency-option:focus-visible { outline: 2px solid var(--currency-accent); outline-offset: -2px; }
+body.theme-theme-03 .t3-header__frame { grid-template-columns: minmax(140px, 210px) minmax(0, 1fr) auto; }
+body.theme-theme-04 .t4-header__frame { grid-template-columns: minmax(170px, 220px) minmax(0, 1fr) auto; }
+.t3-header__frame > .header-currency, .t4-header__frame > .header-currency { grid-column: 3; grid-row: 1; align-self: center; margin-left: 16px; }
+@media (max-width: 1199px) {
+    body.theme-theme-03 .t3-header__frame, body.theme-theme-04 .t4-header__frame { grid-template-columns: minmax(0, 1fr) auto auto; }
+    .t3-header__frame > .header-currency, .t4-header__frame > .header-currency { grid-column: 2; margin: auto 12px auto 0; }
+    body.theme-theme-03 .t3-header__menu-toggle, body.theme-theme-04 .t4-header__menu-toggle { grid-column: 3; grid-row: 1; }
+}
+@media (max-width: 575px) {
+    .header-currency > summary { gap: 6px; padding-inline: 8px; }
+    .header-currency > summary > .bi-globe2 { display: none; }
+    .t3-header__frame > .header-currency, .t4-header__frame > .header-currency { margin-right: 8px; }
+    body.theme-theme-03 .t3-header__logo img, body.theme-theme-04 .t4-header__logo img { max-width: 130px; }
+    .header-area .header-currency { margin: 0; }
+    .header-area .header-logo img { max-width: 130px; }
+    .header-area .nav-right, .header-area .nav-right :is(.contact-and-search-area, .contact-and-wishlist-area) { gap: 8px; }
+    .header-area .cart-icon-container { margin-right: 0 !important; }
+}

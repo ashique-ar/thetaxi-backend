@@ -2,8 +2,8 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Website\Faq;
-use App\Models\Website\FaqCategory;
+use App\Models\Website\FAQ;
+use App\Models\Website\FAQCategory;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\View\View;
