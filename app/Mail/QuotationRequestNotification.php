@@ -17,15 +17,17 @@ class QuotationRequestNotification extends Mailable
     public Inquiry $inquiry;
     public array $requestData;
     public VehicleGroup $vehicleGroup;
+    public string $quotationNumber;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup)
+    public function __construct(Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup, string $quotationNumber)
     {
         $this->inquiry = $inquiry;
         $this->requestData = $requestData;
         $this->vehicleGroup = $vehicleGroup;
+        $this->quotationNumber = $quotationNumber;
     }
 
     /**
@@ -33,10 +35,8 @@ class QuotationRequestNotification extends Mailable
      */
     public function envelope(): Envelope
     {
-        $reference = $this->inquiry->inquiry_number ?? $this->inquiry->id;
-
         return new Envelope(
-            subject: "New Quotation Request {$reference} - {$this->vehicleGroup->name}",
+            subject: "New Quotation Request {$this->quotationNumber} - {$this->vehicleGroup->name}",
         );
     }
 

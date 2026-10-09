@@ -24,6 +24,10 @@ class DatabaseSeeder extends Seeder
             // matters — StaffSeeder attaches each User's Staff row to the
             // default Company created by CompanySeeder.
             CompanySeeder::class,
+            // Seed the public-site tenant records and their managed header menus
+            // before the web app renders navigation for either domain.
+            ThemeOneCompanySeeder::class,
+            ThemeFourCompanySeeder::class,
             StaffSeeder::class,
             StaffRoleContextSeeder::class,
 

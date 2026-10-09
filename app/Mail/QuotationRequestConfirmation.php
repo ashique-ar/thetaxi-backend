@@ -17,15 +17,17 @@ class QuotationRequestConfirmation extends Mailable
     public Inquiry $inquiry;
     public array $requestData;
     public VehicleGroup $vehicleGroup;
+    public string $quotationNumber;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup)
+    public function __construct(Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup, string $quotationNumber)
     {
         $this->inquiry = $inquiry;
         $this->requestData = $requestData;
         $this->vehicleGroup = $vehicleGroup;
+        $this->quotationNumber = $quotationNumber;
     }
 
     /**
@@ -33,10 +35,8 @@ class QuotationRequestConfirmation extends Mailable
      */
     public function envelope(): Envelope
     {
-        $reference = $this->inquiry->inquiry_number ?? $this->inquiry->id;
-
         return new Envelope(
-            subject: "Quotation Request {$reference} Received - {$this->vehicleGroup->name}",
+            subject: "Quotation Request {$this->quotationNumber} Received - {$this->vehicleGroup->name}",
         );
     }
 
@@ -54,7 +54,7 @@ class QuotationRequestConfirmation extends Mailable
                 'requestData' => $this->requestData,
                 'vehicleGroup' => $this->vehicleGroup,
                 'customerName' => $this->requestData['customer_name'] ?? 'Dear Customer',
-                'inquiryNumber' => $this->inquiry->inquiry_number ?? $this->inquiry->id,
+                'quotationNumber' => $this->quotationNumber,
                 'estimatedResponseTime' => '2 business hours',
                 'supportEmail' => $settings->get('company_email', config('mail.support_email', '')),
                 'supportPhone' => $settings->get('company_phone', ''),

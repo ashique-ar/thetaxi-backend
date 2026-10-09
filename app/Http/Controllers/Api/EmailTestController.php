@@ -155,7 +155,7 @@ class EmailTestController
 
         return view('emails.quotation-request-confirmation', [
             'customerName' => 'Robert Wilson',
-            'inquiryNumber' => 'QR' . date('YmdHis'),
+            'quotationNumber' => 'QT' . date('YmdHis'),
             'vehicleGroup' => $vehicleGroup,
             'inquiry' => $inquiry,
             'estimatedResponseTime' => 'Within 24 hours',
@@ -180,6 +180,7 @@ class EmailTestController
 
         return view('emails.quotation-request-notification', [
             'inquiry' => $inquiry,
+            'quotationNumber' => 'QT' . date('YmdHis'),
             'vehicleGroup' => $vehicleGroup,
             'customerName' => 'Robert Wilson',
             'customerEmail' => 'robert@example.com',

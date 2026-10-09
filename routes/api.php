@@ -925,7 +925,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/', [MedicalRecordController::class, 'index'])->middleware('permission:hr.medical-records.view');
         Route::get('categories', [MedicalRecordController::class, 'categories'])->middleware('permission:hr.medical-records.view');
         Route::post('/', [MedicalRecordController::class, 'store'])->middleware('permission:hr.medical-records.manage');
-        Route::get('{id}/document', [MedicalRecordController::class, 'downloadDocument'])->whereUuid('id')->middleware('permission:hr.medical-records.view');
+        Route::get('{id}/document/{documentId}', [MedicalRecordController::class, 'downloadDocument'])->whereUuid('id')->whereUuid('documentId')->middleware('permission:hr.medical-records.view');
         Route::post('{id}/upload', [MedicalRecordController::class, 'uploadDocument'])->whereUuid('id')->middleware('permission:hr.medical-records.manage');
         Route::get('{id}', [MedicalRecordController::class, 'show'])->whereUuid('id')->middleware('permission:hr.medical-records.view');
         Route::put('{id}', [MedicalRecordController::class, 'update'])->whereUuid('id')->middleware('permission:hr.medical-records.manage');

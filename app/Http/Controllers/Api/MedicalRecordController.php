@@ -88,7 +88,7 @@ class MedicalRecordController extends Controller
             ->where(fn ($q) => $q->whereNull('company_id')->orWhere('company_id', $companyId))->exists(), 422, 'Select an active medical category.');
 
         $data['company_id'] = $companyId;
-        $data['record_number'] = $data['record_number'] ?: 'MED-'.Str::upper(Str::random(12));
+        $data['record_number'] = ($data['record_number'] ?? null) ?: 'MED-'.Str::upper(Str::random(12));
         $data['status'] = 'active';
         $record = MedicalRecord::create($data);
 
@@ -173,11 +173,11 @@ class MedicalRecordController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->serializeRecord($record->fresh())], 201);
     }
 
-    public function downloadDocument(Request $request, string $id): StreamedResponse
+    public function downloadDocument(Request $request, string $id, string $documentId): StreamedResponse
     {
         $companyId = $this->actorCompanyId($request);
         $record = $this->record($id, $companyId);
-        $document = $record->documents()->orderBy('created_at')->firstOrFail();
+        $document = $record->documents()->whereKey($documentId)->firstOrFail();
         abort_unless($document->disk === 'local' && Storage::disk('local')->exists($document->path), 404, 'Medical document is unavailable.');
 
         $content = Crypt::decryptString(Storage::disk('local')->get($document->path));
@@ -205,7 +205,13 @@ class MedicalRecordController extends Controller
     {
         $exists = match ($type) {
             'staff' => Staff::query()->whereKey($id)->where('company_id', $companyId)->exists(),
-            'vehicle' => DB::table('vehicles')->where('id', $id)->where('company_id', $companyId)->whereNull('deleted_at')->exists(),
+            'vehicle' => DB::table('vehicles')->where('id', $id)->whereNull('deleted_at')
+                ->where(fn ($query) => $query->where('company_id', $companyId)
+                    ->orWhereExists(fn ($company) => $company->selectRaw('1')->from('vehicle_companies')
+                        ->whereColumn('vehicle_companies.vehicle_id', 'vehicles.id')
+                        ->where('vehicle_companies.company_id', $companyId)
+                        ->where('vehicle_companies.is_active', true)->whereNull('vehicle_companies.deleted_at')))
+                ->exists(),
             default => false,
         };
         abort_unless($exists, 404, 'The selected medical-record subject is not available in the default company.');

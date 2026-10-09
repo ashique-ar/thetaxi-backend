@@ -33,7 +33,7 @@
 
     <div class="reference-box">
         <div class="reference-label">Quotation Reference</div>
-        <div class="reference-number">{{ $inquiryNumber }}</div>
+        <div class="reference-number">{{ $quotationNumber }}</div>
     </div>
 
     <div class="section">

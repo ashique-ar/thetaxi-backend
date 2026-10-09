@@ -1,6 +1,9 @@
 <?php
 
 use App\Models\Staff;
+use App\Models\Company;
+use App\Models\User;
+use App\Models\UserContext;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Crypt;
@@ -34,8 +37,41 @@ it('stores encrypted, company-scoped records and serves uploaded documents priva
     expect($document->disk)->toBe('local')
         ->and(Storage::disk('local')->get($document->path))->not->toContain('secret document bytes');
 
-    actingAs($admin, 'api')->get('/api/medical-records/'.$id.'/document')->assertOk()
+    actingAs($admin, 'api')->get('/api/medical-records/'.$id.'/document/'.$document->id)->assertOk()
         ->assertStreamedContent('secret document bytes');
     actingAs($admin, 'api')->getJson('/api/medical-records')->assertOk()
         ->assertJsonPath('data.data.0.id', $id);
+});
+
+it('rejects cross-company records, subjects, and actors outside the default company context', function (): void {
+    [$admin, $company] = hr_seed_admin_actor();
+    $otherCompany = Company::create(['name' => 'Other medical tenant']);
+    $foreignStaff = Staff::factory()->create(['company_id' => $otherCompany->id]);
+    $category = DB::table('medical_categories')->where('code', 'medical_certificate')->first();
+
+    actingAs($admin, 'api')->postJson('/api/medical-records', [
+        'subject_type' => 'staff', 'subject_id' => $foreignStaff->id,
+        'medical_category_id' => $category->id,
+        'title' => 'Foreign subject', 'issued_date' => '2026-10-01',
+    ])->assertNotFound();
+
+    $homeStaff = Staff::factory()->create(['company_id' => $company->id]);
+    $created = actingAs($admin, 'api')->postJson('/api/medical-records', [
+        'subject_type' => 'staff', 'subject_id' => $homeStaff->id,
+        'medical_category_id' => $category->id,
+        'title' => 'Default company record', 'issued_date' => '2026-10-01',
+    ])->assertCreated();
+    $recordId = $created->json('data.id');
+    actingAs($admin, 'api')->getJson('/api/medical-records/'.$recordId)->assertOk();
+
+    $foreignActor = User::factory()->create();
+    $foreignActor->assignRole('admin');
+    $foreignIdentity = Staff::factory()->create([
+        'user_id' => $foreignActor->id, 'company_id' => $otherCompany->id,
+    ]);
+    UserContext::create([
+        'user_id' => $foreignActor->id, 'context_type' => 'staff', 'context_id' => $foreignIdentity->id,
+        'is_active' => true, 'created_user_id' => $foreignActor->id,
+    ]);
+    actingAs($foreignActor, 'api')->getJson('/api/medical-records/'.$recordId)->assertForbidden();
 });

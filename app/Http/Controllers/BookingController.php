@@ -2420,8 +2420,15 @@ class BookingController extends Controller
                 $inquiry = $this->createQuotationInquiryWithRetry($baseInquiryData);
             }
 
+            // Keep the INQ number for the inquiry record and give the quotation its own QT reference.
+            $quotationNumber = \App\Models\Booking\Booking::generateQuotationNumber();
+            $inquiry->payload = array_merge((array) $inquiry->payload, [
+                'quotation_number' => $quotationNumber,
+            ]);
+            $inquiry->save();
+
             // Trigger email notifications
-            $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup);
+            $this->sendQuotationRequestEmails($inquiry, $request->all(), $vehicleGroup, $quotationNumber);
 
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
@@ -2533,20 +2540,20 @@ class BookingController extends Controller
     /**
      * Send email notifications for quotation requests
      */
-    private function sendQuotationRequestEmails(\App\Models\Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup): void
+    private function sendQuotationRequestEmails(\App\Models\Inquiry $inquiry, array $requestData, VehicleGroup $vehicleGroup, string $quotationNumber): void
     {
         try {
             // Send notification to corporate transport admin
             $adminEmail = config('mail.corporate_transport_admin', '');
             $this->mailDispatchService->sendToInternal(
                 $adminEmail,
-                new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup)
+                new \App\Mail\QuotationRequestNotification($inquiry, $requestData, $vehicleGroup, $quotationNumber)
             );
 
             // Send confirmation to customer
             $this->mailDispatchService->sendToCustomer(
                 $requestData['customer_email'],
-                new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup)
+                new \App\Mail\QuotationRequestConfirmation($inquiry, $requestData, $vehicleGroup, $quotationNumber)
             );
 
 

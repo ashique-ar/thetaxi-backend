@@ -55,13 +55,14 @@ it('uses the admin-managed navigation as every theme header owner', function () 
 it('seeds each company theme with its own actual header links', function () {
     $projectRoot = dirname(__DIR__, 2);
     $themeOne = file_get_contents($projectRoot . '/database/seeders/ThemeOneCompanySeeder.php');
-    $themeTwo = file_get_contents($projectRoot . '/database/seeders/ThemeTwoCompanySeeder.php');
+    $themeFour = file_get_contents($projectRoot . '/database/seeders/ThemeFourCompanySeeder.php');
 
     foreach (['Services', 'Corporate Transport', 'Rate Chart', 'About', 'Inquiry'] as $label) {
         expect($themeOne)->toContain("['{$label}',");
     }
 
-    expect($themeTwo)
+    expect($themeFour)
+        ->toContain("'active_theme' => 'theme-04'")
         ->toContain("['Services',")
         ->toContain("['About',")
         ->toContain("['Inquiry',")

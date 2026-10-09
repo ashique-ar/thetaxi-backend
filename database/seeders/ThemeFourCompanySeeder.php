@@ -7,7 +7,7 @@ use App\Models\NavigationMenu;
 use App\Models\Website\WebsiteSetting;
 use Illuminate\Database\Seeder;
 
-class ThemeTwoCompanySeeder extends Seeder
+class ThemeFourCompanySeeder extends Seeder
 {
     public function run(): void
     {
@@ -16,12 +16,11 @@ class ThemeTwoCompanySeeder extends Seeder
             ['name' => 'Casons', 'website' => 'https://casons.lk', 'is_active' => true, 'is_default' => false]
         );
 
-        foreach (['active_theme' => 'theme-02', 'site_name' => 'Casons', 'header_help_label' => 'Call Us', 'header_cart_label' => 'Booking Cart'] as $type => $value) {
+        foreach (['active_theme' => 'theme-04', 'site_name' => 'Casons', 'header_help_label' => 'Call Us', 'header_cart_label' => 'Booking Cart'] as $type => $value) {
             WebsiteSetting::setValue($type, $value, $company->id);
         }
 
         $this->seedHeader($company->id);
-        $this->seedHeader(null);
     }
 
     private function seedHeader(?string $companyId): void
