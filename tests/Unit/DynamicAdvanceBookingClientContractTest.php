@@ -39,6 +39,16 @@ class DynamicAdvanceBookingClientContractTest extends TestCase
         $this->assertStringContainsString('Earliest available time is', $script);
     }
 
+    public function test_client_refreshes_untouched_default_but_keeps_explicit_pickup_selection(): void
+    {
+        $script = file_get_contents(public_path('assets/js/booking-form.js'));
+
+        $this->assertStringContainsString('form.__hasExplicitPickupTime = false', $script);
+        $this->assertStringContainsString('form.__hasExplicitPickupTime = true', $script);
+        $this->assertStringContainsString('if (!form.__hasExplicitPickupTime && typeof form.__applyAdvanceBookingConstraints', $script);
+        $this->assertStringContainsString('form.__applyAdvanceBookingConstraints(true)', $script);
+    }
+
     public function test_server_still_enforces_the_same_database_setting_and_site_timezone(): void
     {
         $request = file_get_contents(app_path('Http/Requests/BookingSearchRequest.php'));

@@ -196,12 +196,33 @@
             };
 
             form.__applyAdvanceBookingConstraints = applyConstraints;
+            // Remember whether the pickup date/time came from the customer or
+            // from the form defaults. An untouched default can safely move
+            // forward while the page is open; an edited value must be validated.
+            const initialStartDate = dateInput.value;
+            const initialStartTime = timeInput?.value || '';
+            form.__hasExplicitPickupTime = false;
+            const markExplicitPickupTime = () => {
+                if (dateInput.value !== initialStartDate || (timeInput?.value || '') !== initialStartTime) {
+                    form.__hasExplicitPickupTime = true;
+                }
+            };
+            dateInput.addEventListener('input', markExplicitPickupTime);
+            dateInput.addEventListener('change', markExplicitPickupTime);
+            timeInput?.addEventListener('input', markExplicitPickupTime);
+            timeInput?.addEventListener('change', markExplicitPickupTime);
             dateInput.addEventListener('change', () => applyConstraints(false));
             applyConstraints(true);
         });
     }
 
     function validateAdvanceBookingSelection(form) {
+        // Refresh untouched defaults at submit time. This avoids rejecting a
+        // page left open past the configured advance window, while preserving
+        // an explicit customer selection for validation below.
+        if (!form.__hasExplicitPickupTime && typeof form.__applyAdvanceBookingConstraints === 'function') {
+            form.__applyAdvanceBookingConstraints(true);
+        }
         if (typeof form.__applyAdvanceBookingConstraints === 'function') {
             form.__applyAdvanceBookingConstraints(false, false);
         }
