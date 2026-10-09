@@ -34,7 +34,7 @@ class PaymentController extends Controller
         $this->middleware('permission:payments.view')->only(['getPaymentStatus']);
         $this->middleware('permission:payments.refund')->only(['refundPayment', 'refundTransaction']);
         $this->middleware('permission:payments.methods')->only(['getPaymentMethods']);
-        $this->middleware('permission:payments.transactions')->only(['getPaymentTransactions', 'getTransactionDetails']);
+        $this->middleware('permission:payments.transactions')->only(['getPaymentTransactions', 'getRefundReconciliationQueue', 'getTransactionDetails']);
     }
 
     /**

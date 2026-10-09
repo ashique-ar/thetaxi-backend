@@ -37,8 +37,7 @@
             <div class="t3-navigation__utilities">
                 <details class="t3-currency">
                     <summary aria-label="Change currency">
-                        <span>{{ getCurrencySymbol() }}</span>
-                        <small>{{ getSelectedCurrency() }}</small>
+                        <span>{{ getSelectedCurrency() }}</span>
                     </summary>
                     <ul>
                         @foreach (getAvailableCurrencies() as $currency)
@@ -47,9 +46,8 @@
                                     href="#"
                                     class="currency-option {{ getSelectedCurrency() === $currency['code'] ? 'is-active' : '' }}"
                                     data-currency="{{ $currency['code'] }}">
-                                    <span>{{ $currency['symbol'] ?? $currency['code'] }}</span>
-                                    {{ $currency['name'] }}
-                                    <small>{{ $currency['code'] }}</small>
+                                    <strong>{{ $currency['code'] }}</strong>
+                                    <span>{{ $currency['name'] }} ({{ $currency['symbol'] ?? $currency['code'] }})</span>
                                 </a>
                             </li>
                         @endforeach

@@ -116,8 +116,7 @@
                         <button class="btn btn-link dropdown-toggle p-0 text-decoration-none" type="button"
                             id="currencyDropdown" data-bs-toggle="dropdown" aria-expanded="false"
                             style="color: #333; font-weight: 500;">
-                            <span class="currency-symbol">{{ getCurrencySymbol() }}</span>
-                            {{-- <span class="currency-code ms-1">{{ getSelectedCurrency() }}</span> --}}
+                            <span class="currency-code">{{ getSelectedCurrency() }}</span>
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end shadow-sm" aria-labelledby="currencyDropdown">
                             @foreach (getAvailableCurrencies() as $currency)
@@ -125,10 +124,8 @@
                                     <a class="dropdown-item currency-option {{ getSelectedCurrency() === $currency['code'] ? 'active' : '' }}"
                                         href="#" data-currency="{{ $currency['code'] }}"
                                         style="{{ getSelectedCurrency() === $currency['code'] ? 'background-color: var(--primary-color1);' : '' }}">
-                                        <span
-                                            class="currency-symbol me-2">{{ $currency['symbol'] ?? $currency['code'] }}</span>
-                                        <span class="currency-name">{{ $currency['name'] }}</span>
-                                        <small class="text-muted ms-auto">({{ $currency['code'] }})</small>
+                                        <span class="currency-code me-2">{{ $currency['code'] }}</span>
+                                        <span class="currency-name">{{ $currency['name'] }} <span class="currency-symbol">({{ $currency['symbol'] ?? $currency['code'] }})</span></span>
                                     </a>
                                 </li>
                             @endforeach

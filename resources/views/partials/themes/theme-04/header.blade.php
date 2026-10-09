@@ -39,9 +39,8 @@
                         @foreach (getAvailableCurrencies() as $currency)
                             <li>
                                 <a href="#" class="currency-option {{ getSelectedCurrency() === $currency['code'] ? 'is-active' : '' }}" data-currency="{{ $currency['code'] }}">
-                                    <span>{{ $currency['symbol'] ?? $currency['code'] }}</span>
-                                    {{ $currency['name'] }}
-                                    <small>{{ $currency['code'] }}</small>
+                                    <strong>{{ $currency['code'] }}</strong>
+                                    <span>{{ $currency['name'] }} ({{ $currency['symbol'] ?? $currency['code'] }})</span>
                                 </a>
                             </li>
                         @endforeach

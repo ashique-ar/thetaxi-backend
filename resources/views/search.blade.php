@@ -332,6 +332,7 @@
             @endif
         </div>
     </div>
+    </div>
 
     <!-- Cart Summary Float Component (Requirements: 3.1, 3.2) -->
     <x-cart-summary-float />
