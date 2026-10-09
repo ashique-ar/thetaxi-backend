@@ -913,7 +913,7 @@
                 };
 
                 fd.forEach((value, key) => {
-                    payload[key] = value;
+                    if (value !== '' || !(key in payload)) payload[key] = value;
                 });
 
                 payload.service_type = values.serviceType;

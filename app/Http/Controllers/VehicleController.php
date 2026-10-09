@@ -57,10 +57,16 @@ class VehicleController extends Controller
         
         if ($searchId) {
             $sessionSearchParams = session('current_search_params', []);
-            if (in_array((string) $searchId, array_filter([
+            $useSessionSearchParams = in_array((string) $searchId, array_filter([
                 (string) session('session_id'),
                 (string) session('booking_session_id'),
-            ]), true) && is_array($sessionSearchParams) && $sessionSearchParams) {
+            ]), true);
+            if (!$useSessionSearchParams) {
+                $search = BookingSearch::find($searchId);
+                $useSessionSearchParams = !$search && is_array($sessionSearchParams) && !empty($sessionSearchParams);
+            }
+
+            if ($useSessionSearchParams && is_array($sessionSearchParams) && $sessionSearchParams) {
                 $serviceType = ServiceType::publicContext()->find(
                     session('backend_service_type_id') ?? ($sessionSearchParams['service_type_id'] ?? $sessionSearchParams['service_type'] ?? null)
                 );
@@ -85,8 +91,6 @@ class VehicleController extends Controller
                     'dropoff_lng' => data_get($sessionSearchParams, 'dropoff_location.longitude'),
                 ]);
                 $searchPricingParams = $sessionSearchParams;
-            } else {
-                $search = BookingSearch::find($searchId);
             }
 
             if ($search) {
@@ -235,7 +239,10 @@ class VehicleController extends Controller
     {
         $vehicleGroup = VehicleGroup::findOrFail($id);
         $searchData = $request->all();
-        $serviceTypeValue = trim((string) ($searchData['service_type_id'] ?? $searchData['service_type'] ?? ''));
+        $serviceTypeValue = trim((string) ($searchData['service_type_id'] ?? ''));
+        if ($serviceTypeValue === '') {
+            $serviceTypeValue = trim((string) ($searchData['service_type'] ?? ''));
+        }
         $serviceTypeModel = $this->resolveServiceTypeModel($serviceTypeValue);
         if (!$serviceTypeModel) {
             return response()->json([
@@ -333,26 +340,27 @@ class VehicleController extends Controller
 
     private function resolveServiceTypeModel(string $serviceTypeValue): ?ServiceType
     {
-        if ($serviceTypeValue === '') {
-            return null;
-        }
+        $serviceType = null;
+        if ($serviceTypeValue !== '') {
+            $query = ServiceType::publicContext();
+            if (Str::isUuid($serviceTypeValue)) {
+                $query->where('id', $serviceTypeValue);
+            } else {
+                $query->where('code', $serviceTypeValue);
+            }
 
-        $query = ServiceType::publicContext();
-        if (Str::isUuid($serviceTypeValue)) {
-            $query->where('id', $serviceTypeValue);
-        } else {
-            $query->where('code', $serviceTypeValue);
+            $serviceType = $query->where('is_active', true)->first();
         }
-
-        $serviceType = $query->where('is_active', true)->first();
         if ($serviceType) {
             return $serviceType;
         }
 
-        $tab = BookingFormTab::query()
-            ->where('code', $serviceTypeValue)
-            ->where('enabled', true)
-            ->first();
+        $tab = $serviceTypeValue !== ''
+            ? BookingFormTab::query()
+                ->where('code', $serviceTypeValue)
+                ->where('enabled', true)
+                ->first()
+            : null;
 
         if ($tab?->service_type_code) {
             $mappedServiceType = ServiceType::publicContext()
