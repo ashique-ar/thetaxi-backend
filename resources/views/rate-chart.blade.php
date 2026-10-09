@@ -7,7 +7,7 @@
 @endphp
 
 @push('meta')
-@include('partials.seo')
+@include('partials.seo', ['metaDescription' => $settings['rate_chart_page_description'] ?? 'Compare available vehicle rental rates, including daily and monthly pricing, before planning your trip.'])
 @endpush
 
 @push('styles')

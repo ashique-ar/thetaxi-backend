@@ -3,7 +3,7 @@
 @section('title', 'Corporate Transfers')
 
 @push('meta')
-    @include('partials.seo')
+    @include('partials.seo', ['metaDescription' => $settings['corporate_transfers_page_description'] ?? 'Explore transport support for business travel, staff journeys, and corporate transfers.'])
 @endpush
 
 @section('content')

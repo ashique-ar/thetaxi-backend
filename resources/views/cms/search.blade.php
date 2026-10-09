@@ -4,7 +4,7 @@
 @section('title', 'Search Results - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
 
 @push('meta')
-    @include('partials.seo', ['managedSeo' => true])
+    @include('partials.seo', ['managedSeo' => true, 'seoOverride' => ['is_indexable' => false]])
 @endpush
 
 @section('content')

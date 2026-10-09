@@ -1,6 +1,21 @@
 @extends('layouts.app')
 
 @section('title', $settings['faq_page_title'] ?? 'FAQ - Frequently Asked Questions')
+@section('seo_exact_title', 'true')
+
+@push('meta')
+    @php
+        $faqIsFiltered = !empty($search) || !empty($categoryId) || request()->has('page');
+        $faqDescription = $category->description ?? ($settings['faq_section_description'] ?? 'Find answers to common questions about our transport services, bookings, payments, and vehicle hire.');
+        $faqCanonical = isset($category) ? route('faq.category', $category) : route('faq');
+    @endphp
+    @include('partials.seo', [
+        'pageTitle' => isset($category) ? $category->name . ' FAQs' : ($settings['faq_page_title'] ?? 'Frequently Asked Questions'),
+        'metaDescription' => $faqDescription,
+        'canonicalUrl' => $faqCanonical,
+        'seoOverride' => ['is_indexable' => !$faqIsFiltered],
+    ])
+@endpush
 
 @section('content')
     <div class="breadcrumb-section"

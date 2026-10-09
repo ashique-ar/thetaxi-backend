@@ -1,6 +1,11 @@
 @extends('layouts.app')
 
 @section('title', 'Booking Confirmation - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+@section('seo_exact_title', 'true')
+
+@push('meta')
+    @include('partials.seo', ['seoOverride' => ['is_indexable' => false]])
+@endpush
 
 @section('content')
     @php

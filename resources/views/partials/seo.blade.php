@@ -12,7 +12,8 @@
 
     if (!empty($model)) {
         $pageTitle = !empty($seoOverride['title']) ? $seoOverride['title'] : ($model->seo_title ?: ($model->meta_title ?: ($model->title ?: ($model->name ?: $pageTitle))));
-        $metaDescription = !empty($seoOverride['meta_description']) ? $seoOverride['meta_description'] : ($model->seo_description ?: ($model->meta_description ?: ($model->excerpt ?: '')));
+        $bodyDescription = isset($model->body) ? \Illuminate\Support\Str::limit(trim(preg_replace('/\s+/', ' ', strip_tags((string) $model->body))), 160, '') : '';
+        $metaDescription = !empty($seoOverride['meta_description']) ? $seoOverride['meta_description'] : ($model->seo_description ?: ($model->meta_description ?: ($model->excerpt ?: $bodyDescription)));
         $metaKeywords = $model->seo_keywords ?: ($model->meta_tags ?: ($model->meta_keywords ?: ''));
         $ogImage = !empty($seoOverride['og_image']) ? $seoOverride['og_image'] : ($model->seo_og_image ?: ($model->featured_image ?: ($model->thumbnail ?: ($model->og_image ?: null))));
 
@@ -76,10 +77,14 @@
     $enabled = static fn ($value, bool $default = true): bool => filter_var($value ?? $default, FILTER_VALIDATE_BOOLEAN);
     $canonicalEnabled = $enabled($settings['seo_canonical_enabled'] ?? true);
     $schemaEnabled = $enabled($settings['seo_schema_enabled'] ?? true);
-    $robots = !empty($seoOverride) && empty($seoOverride['is_indexable'])
+    $robots = array_key_exists('is_indexable', $seoOverride) && !$enabled($seoOverride['is_indexable'])
         ? 'noindex, follow'
         : ($settings['seo_robots'] ?? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1');
     $locale = $settings['seo_default_locale'] ?? 'en_LK';
+    $ogTypeSlug = !empty($model) && $model instanceof \App\Models\Website\CmsContent
+        ? ($model->contentType->slug ?? null)
+        : null;
+    $ogType = in_array($ogTypeSlug, ['blog', 'blogs', 'article', 'articles', 'news'], true) ? 'article' : 'website';
     $organizationSummary = $replaceSeoTokens($settings['seo_ai_summary'] ?? '');
     $topicSource = $managedSeo ? $metaKeywords : ($settings['seo_ai_topics'] ?? $metaKeywords);
     $topics = array_values(array_filter(array_map('trim', explode(',', (string) $topicSource))));
@@ -99,7 +104,7 @@
 <meta property="og:title" content="{{ $computedTitle }}">
 <meta property="og:site_name" content="{{ $siteName }}">
 <meta property="og:url" content="{{ $canonical }}">
-<meta property="og:type" content="website">
+<meta property="og:type" content="{{ $ogType }}">
 <meta property="og:locale" content="{{ $locale }}">
 @if ($metaDescription)<meta property="og:description" content="{{ $metaDescription }}">@endif
 @if ($ogImageUrl)
@@ -211,7 +216,11 @@
             }
         }
 
-        if (!empty($model) && $model instanceof \App\Models\Website\CmsContent) {
+        $contentTypeSlug = !empty($model) && $model instanceof \App\Models\Website\CmsContent
+            ? ($model->contentType->slug ?? null)
+            : null;
+        if (!empty($model) && $model instanceof \App\Models\Website\CmsContent
+            && in_array($contentTypeSlug, ['blog', 'blogs', 'article', 'articles', 'news'], true)) {
             $jsonLd['@graph'][] = array_filter([
                 '@type' => 'Article',
                 'headline' => $model->title ?? $pageTitle,

@@ -1,6 +1,14 @@
 @extends('layouts.app')
 
 @section('title', 'Search Results')
+@section('seo_exact_title', 'true')
+
+@push('meta')
+    @include('partials.seo', [
+        'pageTitle' => 'Available Vehicles',
+        'seoOverride' => ['is_indexable' => false],
+    ])
+@endpush
 
 @php
     $quotationCountries = $countries ?? \App\Models\Country::orderBy('name')->get(['id', 'name', 'code', 'callcode']);

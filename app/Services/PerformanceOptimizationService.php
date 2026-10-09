@@ -341,19 +341,35 @@ class PerformanceOptimizationService
     {
         $urls = collect();
 
-        // Add pages
-        $pages = Page::where('status', 'published')
-            ->where('is_active', true)
-            ->where('visibility', 'public')
-            ->select('slug', 'updated_at', 'created_at')
-            ->get();
+        // Include the public, named landing pages that have indexable content.
+        foreach (['home', 'contact', 'faq', 'point-to-point', 'rate-chart'] as $routeName) {
+            if (!\Illuminate\Support\Facades\Route::has($routeName)) {
+                continue;
+            }
 
-        foreach ($pages as $page) {
             $urls->push([
-                'loc' => url("/{$page->slug}"),
-                'lastmod' => optional($page->updated_at)->toISOString() ?? optional($page->created_at)->toISOString(),
+                'loc' => route($routeName),
+                'lastmod' => null,
                 'changefreq' => 'weekly',
-                'priority' => $page->slug === 'home' ? '1.0' : '0.8'
+                'priority' => $routeName === 'home' ? '1.0' : '0.8'
+            ]);
+        }
+
+        // CMS type indexes are public landing pages when the type has published content.
+        $reservedCmsPaths = ['about', 'contact', 'inquiry', 'faq', 'point-to-point', 'corporate-transfers', 'rate-chart', 'checkout', 'search', 'vehicle', 'vehicles', 'content'];
+        $contentTypes = \App\Models\Website\CmsContentType::query()
+            ->where('is_active', true)
+            ->whereDoesntHave('parent', fn ($query) => $query->where('is_active', false))
+            ->whereNotIn('slug', $reservedCmsPaths)
+            ->whereHas('contents', fn ($query) => $query->published())
+            ->get(['slug', 'updated_at', 'created_at']);
+
+        foreach ($contentTypes as $contentType) {
+            $urls->push([
+                'loc' => route('cms.index', $contentType->slug),
+                'lastmod' => optional($contentType->updated_at)->toISOString() ?? optional($contentType->created_at)->toISOString(),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
             ]);
         }
 
@@ -373,7 +389,14 @@ class PerformanceOptimizationService
         }
 
         // Add CMS content (blog/articles) - include content type for correct URL
-        $cmsContents = \App\Models\Website\CmsContent::published()->with('contentType')->select('slug', 'published_at', 'updated_at', 'created_at', 'cms_content_type_id')->get();
+        $cmsContents = \App\Models\Website\CmsContent::published()
+            ->whereHas('contentType', function ($query) {
+                $query->where('is_active', true)
+                    ->whereDoesntHave('parent', fn ($parentQuery) => $parentQuery->where('is_active', false));
+            })
+            ->with('contentType')
+            ->select('slug', 'published_at', 'updated_at', 'created_at', 'cms_content_type_id')
+            ->get();
         foreach ($cmsContents as $content) {
             $typeSlug = $content->contentType->slug ?? 'blog';
             $loc = url("/{$typeSlug}/{$content->slug}");
@@ -441,7 +464,9 @@ class PerformanceOptimizationService
         foreach ($urls as $url) {
             $xml .= "  <url>\n";
             $xml .= "    <loc>" . htmlspecialchars($url['loc']) . "</loc>\n";
-            $xml .= "    <lastmod>{$url['lastmod']}</lastmod>\n";
+            if (!empty($url['lastmod'])) {
+                $xml .= "    <lastmod>{$url['lastmod']}</lastmod>\n";
+            }
             $xml .= "    <changefreq>{$url['changefreq']}</changefreq>\n";
             $xml .= "    <priority>{$url['priority']}</priority>\n";
             $xml .= "  </url>\n";

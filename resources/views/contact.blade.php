@@ -3,7 +3,7 @@
 @section('title', $settings['contact_page_title'] ?? 'Inquiry')
 
 @push('meta')
-    @include('partials.seo')
+    @include('partials.seo', ['metaDescription' => $settings['contact_page_description'] ?? 'Contact our team for help with transport services, bookings, and travel arrangements.'])
 @endpush
 
 @section('content')

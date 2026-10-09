@@ -1,6 +1,11 @@
 @extends('layouts.app')
 
 @section('title', 'Booking Status')
+@section('seo_exact_title', 'true')
+
+@push('meta')
+    @include('partials.seo', ['seoOverride' => ['is_indexable' => false]])
+@endpush
 
 @section('content')
 <div class="container {{ theme_class('booking-status') }} py-5">

@@ -90,3 +90,40 @@ it('counts matching direct events as duplicates and rejects changed evidence for
         ->toThrow(HttpException::class, 'Provider event ID was reused with different attendance evidence.');
     expect(DB::table('hr_attendance_sync_runs')->where('id', '!=', $result['run_id'])->value('status'))->toBe('failed');
 });
+
+it('rejects direct provider events with contradictory timezone offset evidence', function () {
+    config(['hr.features.attendance_ingestion' => true]);
+    $company = Company::create(['name' => 'Direct attendance timezone company', 'is_active' => true]);
+    $device = AttendanceDevice::factory()->create([
+        'company_id' => $company->id,
+        'provider' => 'hikvision',
+        'integration_mode' => 'direct_isapi',
+        'serial_number' => 'DIRECT-TIMEZONE-1',
+    ]);
+    $event = [
+        'provider_event_id' => 'direct-event-timezone-1',
+        'device_serial' => $device->serial_number,
+        'provider_person_id' => 'person-timezone-1',
+        'employee_number' => 'employee-timezone-1',
+        'occurred_at' => '2026-10-09T08:00:00+05:30',
+        'source_timezone' => 'Asia/Colombo',
+        'source_utc_offset_minutes' => 300,
+        'event_kind' => 'punch',
+        'direction' => 'in',
+        'authentication_method' => 'card',
+        'verification_result' => 'success',
+    ];
+    $adapter = Mockery::mock(HikvisionIsapiAdapter::class);
+    $adapter->shouldReceive('attendanceEvents')->once()->andReturn([
+        'events' => [$event], 'next_position' => 1, 'has_more' => false, 'total_matches' => 1,
+    ]);
+    app()->instance(HikvisionIsapiAdapter::class, $adapter);
+
+    expect(fn () => app(DirectAttendanceSyncService::class)->sync(
+        $device,
+        CarbonImmutable::parse('2026-10-09T07:00:00+05:30'),
+        CarbonImmutable::parse('2026-10-09T09:00:00+05:30'),
+    ))->toThrow(HttpException::class, 'Attendance event timezone and UTC offset evidence do not agree.');
+    expect(DB::table('hr_attendance_raw_events')->where('provider_event_id', $event['provider_event_id'])->exists())->toBeFalse()
+        ->and(DB::table('hr_attendance_sync_runs')->value('status'))->toBe('failed');
+});

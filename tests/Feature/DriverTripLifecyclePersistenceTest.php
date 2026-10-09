@@ -111,6 +111,7 @@ beforeEach(function () {
         $table->decimal('dropoff_longitude', 10, 7)->nullable();
         $table->decimal('unit_price', 12, 2)->nullable();
         $table->decimal('total_price', 12, 2)->nullable();
+        $table->string('status')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -118,6 +119,8 @@ beforeEach(function () {
     Schema::create('booking_dispatches', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('booking_id');
+        $table->uuid('booking_item_id')->nullable();
+        $table->uuid('driver_id')->nullable();
         $table->string('dispatch_status')->nullable();
         $table->timestamp('dispatched_at')->nullable();
         $table->timestamp('actual_return_at')->nullable();
@@ -600,6 +603,10 @@ it('runs configured contractual pricing through approval dispatch driver complet
     ]);
 
     $driver = Driver::create(['code' => 'E2E-DRIVER']);
+    DB::table('booking_dispatches')->where('id', 'dispatch-e2e')->update([
+        'booking_item_id' => $item->id,
+        'driver_id' => $driver->id,
+    ]);
     $assignment = DriverAssignment::create([
         'driver_id' => $driver->id,
         'booking_id' => $booking->id,
@@ -762,6 +769,84 @@ it('rejects accept and decline mutations for an assignment owned by another driv
 
     expect($assignment->fresh()->status)->toBe('active')
         ->and($assignment->fresh()->trip_phase)->toBe(TripPhase::ACTIVE);
+});
+
+it('rejects accepting an assignment for a completed booking item', function () {
+    $bookingId = '00000000-0000-0000-0000-000000000111';
+    $driver = Driver::create(['code' => 'STALE-OFFER-DRIVER']);
+    $item = BookingItem::create([
+        'booking_id' => $bookingId,
+        'driver_id' => $driver->id,
+        'status' => 'completed',
+    ]);
+    DB::table('booking_dispatches')->insert([
+        'id' => 'stale-item-dispatch',
+        'booking_id' => $bookingId,
+        'booking_item_id' => $item->id,
+        'driver_id' => $driver->id,
+        'dispatch_status' => 'dispatched',
+        'dispatched_at' => now(),
+    ]);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $bookingId,
+        'booking_item_id' => $item->id,
+        'trip_phase' => TripPhase::ACTIVE,
+        'status' => 'active',
+    ]);
+
+    expect(fn () => $this->assignmentService->acceptAssignment($driver, $assignment))
+        ->toThrow(InvalidArgumentException::class, 'ASSIGNMENT_SUPERSEDED')
+        ->and($assignment->fresh()->status)->toBe('active');
+});
+
+it('only lists offers with a dispatch for that booking item and driver', function () {
+    $driver = Driver::create(['code' => 'ITEM-DISPATCH-DRIVER']);
+    $bookingId = '00000000-0000-0000-0000-000000000121';
+    $otherItemId = '00000000-0000-0000-0000-000000000122';
+    $assignedItemId = '00000000-0000-0000-0000-000000000123';
+    DB::table('bookings')->insert(['id' => $bookingId, 'status' => 'confirmed']);
+    DB::table('booking_items')->insert([
+        ['id' => $otherItemId, 'booking_id' => $bookingId, 'driver_id' => $driver->id, 'status' => 'confirmed'],
+        ['id' => $assignedItemId, 'booking_id' => $bookingId, 'driver_id' => $driver->id, 'status' => 'confirmed'],
+    ]);
+    DB::table('booking_dispatches')->insert([
+        'id' => 'dispatch-for-other-item',
+        'booking_id' => $bookingId,
+        'booking_item_id' => $otherItemId,
+        'driver_id' => $driver->id,
+        'dispatch_status' => 'dispatched',
+        'dispatched_at' => now(),
+    ]);
+    $staleOffer = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $bookingId,
+        'booking_item_id' => $assignedItemId,
+        'status' => 'active',
+        'trip_phase' => TripPhase::ACTIVE,
+        'assigned_from' => now(),
+        'assigned_to' => now()->addHour(),
+    ]);
+    $validOffer = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $bookingId,
+        'booking_item_id' => $otherItemId,
+        'status' => 'active',
+        'trip_phase' => TripPhase::ACTIVE,
+        'assigned_from' => now(),
+        'assigned_to' => now()->addHour(),
+    ]);
+    $query = DriverAssignment::query()
+        ->where('driver_id', $driver->id)
+        ->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
+        ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+    foreach (['excludeTerminalBookings', 'excludeStaleOffers'] as $guard) {
+        $method = new ReflectionMethod($this->assignmentService, $guard);
+        $method->invoke($this->assignmentService, $query);
+    }
+
+    expect($query->pluck('id')->all())->toBe([$validOffer->id])
+        ->and($staleOffer->fresh()->status)->toBe('active');
 });
 
 it('records the mobile decline reason and releases the booking item for reassignment', function () {
@@ -1057,6 +1142,10 @@ it('preserves the enabled contractual snapshot through the full operational life
         'dispatched_at' => $dispatchedAt,
     ]);
     $driver = Driver::create(['code' => 'POLICY-DRIVER']);
+    DB::table('booking_dispatches')->where('id', 'dispatch-policy-a')->update([
+        'booking_item_id' => $item->id,
+        'driver_id' => $driver->id,
+    ]);
     $assignment = DriverAssignment::create([
         'driver_id' => $driver->id,
         'booking_id' => $booking->id,

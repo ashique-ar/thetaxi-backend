@@ -3,7 +3,7 @@
 @section('title', 'Point-to-Point Transfers')
 
 @push('meta')
-    @include('partials.seo')
+    @include('partials.seo', ['metaDescription' => $settings['point_to_point_page_description'] ?? 'Arrange a point-to-point transfer with pickup and drop-off locations, travel dates, and vehicle options.'])
 @endpush
 
 @section('content')

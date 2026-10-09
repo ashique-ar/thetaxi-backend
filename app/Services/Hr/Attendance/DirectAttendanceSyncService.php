@@ -78,6 +78,9 @@ class DirectAttendanceSyncService
                 return false;
             }
             $occurred = CarbonImmutable::parse($event['occurred_at']);
+            $sourceOffset = (int) $occurred->setTimezone($event['source_timezone'])->utcOffset();
+            abort_unless($sourceOffset === (int) $event['source_utc_offset_minutes'], 422,
+                'Attendance event timezone and UTC offset evidence do not agree.');
             $date = $occurred->setTimezone($event['source_timezone'])->toDateString();
             $mappings = DB::table('hr_attendance_person_mappings')->where('company_id', $device->company_id)->where('provider_person_id', $event['provider_person_id'])->where('enrollment_status', 'verified')->where(fn($q) => $q->where('device_id', $device->id)->orWhereNull('device_id'))->whereDate('effective_from', '<=', $date)->where(fn($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $date))->get();
             $mapping = $mappings->count() === 1 ? $mappings->first() : null;

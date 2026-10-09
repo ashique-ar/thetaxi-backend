@@ -134,6 +134,7 @@ class MobileAssignmentService
             ->whereIn('status', ['active', 'confirmed', 'approved'])
             ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
         $this->excludeTerminalBookings($query);
+        $this->excludeStaleOffers($query);
 
         return $query
             ->where('assigned_from', '<=', $now)
@@ -231,10 +232,19 @@ class MobileAssignmentService
                     ->whereNotIn('status', $this->terminalBookingStatuses()));
         })
             ->where(function (Builder $assignmentQuery) {
-                // Require associated dispatch row or active trip phase already in progress
                 $assignmentQuery->whereHas('booking.dispatches', function (Builder $dispatchQuery) {
                     $dispatchQuery->whereNotNull('dispatched_at')
-                        ->where('dispatch_status', '!=', 'cancelled');
+                        ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                        ->where(function (Builder $dispatchQuery) {
+                            $dispatchQuery->whereColumn('booking_dispatches.driver_id', 'driver_assignments.driver_id')
+                                ->where(function (Builder $itemQuery) {
+                                    $itemQuery->where(function (Builder $legacyItemQuery) {
+                                        $legacyItemQuery
+                                            ->whereNull('driver_assignments.booking_item_id')
+                                            ->whereNull('booking_dispatches.booking_item_id');
+                                    })->orWhereColumn('booking_dispatches.booking_item_id', 'driver_assignments.booking_item_id');
+                                });
+                        });
                 })
                     ->orWhereIn('trip_phase', [
                         TripPhase::ACCEPTED,
@@ -265,8 +275,15 @@ class MobileAssignmentService
                     $offerQuery->where(function (Builder $itemQuery) {
                         $itemQuery->whereNull('driver_assignments.booking_item_id')
                             ->orWhereHas('bookingItem', function (Builder $relatedItemQuery) {
-                                $relatedItemQuery->whereNull('booking_items.driver_id')
-                                    ->orWhereColumn('booking_items.driver_id', 'driver_assignments.driver_id');
+                                $relatedItemQuery
+                                    ->where(function (Builder $driverQuery) {
+                                        $driverQuery->whereNull('booking_items.driver_id')
+                                            ->orWhereColumn('booking_items.driver_id', 'driver_assignments.driver_id');
+                                    })
+                                    ->where(function (Builder $statusQuery) {
+                                        $statusQuery->whereNull('booking_items.status')
+                                            ->orWhereNotIn('booking_items.status', ['cancelled', 'completed', 'returned']);
+                                    });
                             });
                     })->where(function (Builder $dateQuery) use ($now) {
                         $dateQuery->whereNull('assigned_to')->orWhere('assigned_to', '>=', $now);
@@ -399,7 +416,19 @@ class MobileAssignmentService
             if (
                 !$item
                 || ($item->driver_id && (string) $item->driver_id !== (string) $assignment->driver_id)
+                || in_array((string) $item?->status, ['cancelled', 'completed', 'returned'], true)
             ) {
+                throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
+            }
+
+            $dispatchIsCurrent = DB::table('booking_dispatches')
+                ->where('booking_id', $assignment->booking_id)
+                ->where('booking_item_id', $assignment->booking_item_id)
+                ->where('driver_id', $assignment->driver_id)
+                ->whereNotNull('dispatched_at')
+                ->whereIn('dispatch_status', ['dispatched', 'in_progress'])
+                ->exists();
+            if (!$dispatchIsCurrent) {
                 throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
             }
         }

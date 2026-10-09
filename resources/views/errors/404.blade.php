@@ -2,7 +2,12 @@
 
 @section('title', in_array(get_active_theme(), ['theme-03', 'theme-04'], true)
     ? 'Page Not Found - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company')
-    : 'Your Cart - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+    : 'Page Not Found - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company') . '')
+@section('seo_exact_title', 'true')
+
+@push('meta')
+    @include('partials.seo', ['seoOverride' => ['is_indexable' => false]])
+@endpush
 
 @section('content')
 

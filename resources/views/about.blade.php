@@ -3,7 +3,7 @@
 @section('title', $settings['about_page_title'] ?? 'About - ' . ($settings['site_name'] ?? $settings['brand_name'] ?? 'Company'))
 
 @push('meta')
-    @include('partials.seo')
+    @include('partials.seo', ['metaDescription' => $settings['about_page_description'] ?? 'Learn about our transport services, local experience, and the team supporting your journey.'])
 @endpush
 
 @section('content')

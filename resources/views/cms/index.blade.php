@@ -7,6 +7,7 @@
     @include('partials.seo', [
         'pageTitle' => $contentType->title,
         'metaDescription' => $contentType->description ?? '',
+        'seoOverride' => ['is_indexable' => !(request()->filled('search') || request()->filled('featured'))],
         'managedSeo' => true,
     ])
 @endpush
