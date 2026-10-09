@@ -99,8 +99,7 @@
                     @if (is_theme('theme-03'))
                         <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
                     @endif
-                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}"
-                        data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
+                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
                         @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
                         <div class="vehicle-top-price d-flex justify-content-between align-items-center gap-3 mt-3">
                             <div class="vehicle-price-summary" id="vehiclePriceSummary" itemprop="offers" itemscope itemtype="https://schema.org/Offer">
@@ -117,16 +116,6 @@
                                 <button type="button" class="btn btn-primary" id="vehicleBookNowBtn">Book Now</button>
                             </div>
                         </div>
-                    </div>
-                </div>
-            @endif
-            @if (is_theme('default') || is_theme('theme-02') || is_theme('theme-03'))
-                <div class="vehicle-booking-top vehicle-booking-top--{{ get_active_theme() }} mb-4">
-                    @if (is_theme('theme-03'))
-                        <div class="t3-journey-desk__masthead" aria-hidden="true"><span>Journey desk</span><i></i><b>Search / enquire</b></div>
-                    @endif
-                    <div class="booking-form-card booking-form-card--vehicle booking-form-card--top {{ theme_class('booking-form-card') }}" data-booking-context="vehicle" data-vehicle-group-id="{{ $vehicleGroup->id }}">
-                        @include('components.booking-form', ['search' => $bookingFormSearch, 'bookingContext' => 'vehicle'])
                     </div>
                 </div>
             @endif
@@ -757,10 +746,11 @@
             width: 100%;
         }
 
-        .vehicle-details-wrapper .booking-form-card--top .booking-shell-header,
-        .vehicle-details-wrapper .booking-form-card--top .vehicle-price-summary,
-        .vehicle-details-wrapper .booking-form-card--top .vehicle-actions-card {
-            display: none;
+        .vehicle-details-wrapper .booking-form-card--top .vehicle-price-summary {
+            margin: 0;
+            padding: 0;
+            border: 0;
+            box-shadow: none;
         }
 
         .vehicle-details-wrapper .vehicle-booking-top .filter-wrapper {
@@ -773,6 +763,11 @@
             border-radius: 16px !important;
             background: #fff !important;
             box-shadow: 0 14px 34px rgba(15, 23, 42, 0.08) !important;
+        }
+
+        .vehicle-details--theme-01 .vehicle-top-price {
+            padding: 12px 18px;
+            border-top: 1px solid rgba(15, 23, 42, 0.08);
         }
 
         .vehicle-details--theme-01 .vehicle-booking-top .booking-form-context--vehicle .single-item.active {
