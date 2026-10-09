@@ -275,6 +275,9 @@
 
 <?php
     $themeRouteName = request()->route()?->getName() ?? 'unrouted';
+    if (request()->routeIs('vehicle.details', 'vehicle.details.seo')) {
+        $themeRouteName = 'vehicle.details';
+    }
     $themePageSlug = \Illuminate\Support\Str::slug(str_replace('.', '-', $themeRouteName));
     $themeContentType = request()->route('contentType');
 ?>
