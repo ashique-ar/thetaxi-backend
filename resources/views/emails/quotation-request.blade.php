@@ -105,11 +105,11 @@
         </h2>
         @php
             // Keep all persisted checkout amounts paired with their snapshot currency.
-            $currencySymbol = getBookingDisplayCurrency($booking);
+            $currencyCode = getBookingDisplayCurrency($booking);
         @endphp
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
-                <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
+                <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" />
             @endforeach
         @endif
     </div>
@@ -119,7 +119,7 @@
         <h2 class="section-title">
             <span class="icon">💳</span> Quotation Summary
         </h2>
-        <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :show_method="false" />
+        <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :show_method="false" />
     </div>
     @if ($booking->special_requirements)
         <div class="section">

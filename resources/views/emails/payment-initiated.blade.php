@@ -10,7 +10,7 @@
     @php
         // Use the checkout snapshot currency for every amount in this email.
         // The ISO code is intentionally shown instead of an ambiguous symbol.
-        $currencySymbol = getBookingDisplayCurrency($booking);
+        $currencyCode = getBookingDisplayCurrency($booking);
         $customerName = $booking->customer?->full_name ?? 'Valued Customer';
         $paymentLink = \App\Helpers\BookingLinkHelper::getPaymentLink($booking);
         $isFallbackPaymentLink = $paymentLink === route('checkout');
@@ -77,7 +77,7 @@
         </h2>
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
-                <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
+                <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" />
             @endforeach
         @endif
     </div>
@@ -87,7 +87,7 @@
         <h2 class="section-title">
             <span class="icon">💳</span> Payment Summary
         </h2>
-        <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :amount_due="$amount" />
+        <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :amount_due="$amount" />
     </div>
     @php
         $paymentType = $booking->payment_type ?? null;
@@ -140,7 +140,7 @@
         @if (!$isFallbackPaymentLink)
             <a href="{{ $paymentLink }}" class="btn"
                 style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; margin: 0; font-size: 16px;">
-                Pay {{ $currencySymbol }} {{ number_format(floor(max(0, $amount)), 0) }}
+                Pay {{ $currencyCode }} {{ number_format(floor(max(0, $amount)), 0) }}
             </a>
             <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
                 <span style="color: #28a745;">✓ Secure SSL Encryption</span> •

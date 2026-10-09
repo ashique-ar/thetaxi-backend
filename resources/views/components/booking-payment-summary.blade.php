@@ -9,8 +9,15 @@
 ])
 
 @php
+    $currencyService = app(\App\Services\CurrencyService::class);
+    $currency = strtoupper(trim((string) $currency));
+    $source_currency = $source_currency ? strtoupper(trim((string) $source_currency)) : null;
+    if (!$currencyService->isValidCurrency($currency)
+        || ($source_currency && !$currencyService->isValidCurrency($source_currency))) {
+        throw new \InvalidArgumentException('Payment summaries require configured currency codes.');
+    }
     $convertDisplayAmount = fn ($amount) => $source_currency && $source_currency !== $currency
-        ? app(\App\Services\CurrencyService::class)->convert((float) $amount, $source_currency, $currency)
+        ? $currencyService->convert((float) $amount, $source_currency, $currency)
         : (float) $amount;
 
     $bookingAddons = collect($booking->bookingAddons ?? []);

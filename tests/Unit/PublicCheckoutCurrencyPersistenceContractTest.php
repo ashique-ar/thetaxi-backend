@@ -71,7 +71,7 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
             $contents = file_get_contents(__DIR__ . '/../../resources/views/emails/' . $template);
 
             $this->assertStringContainsString(
-                '$currencySymbol = getBookingDisplayCurrency($booking);',
+                '$currencyCode = getBookingDisplayCurrency($booking);',
                 $contents,
                 $template . ' must use the booking snapshot currency for every displayed amount.'
             );
@@ -82,20 +82,39 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
     {
         require_once __DIR__ . '/../../app/Helpers/CurrencyHelpers.php';
 
-        $booking = (object) [
-            'currency' => 'LKR',
-            'workflow_data' => ['display_currency' => 'usd'],
-        ];
+        $previousContainer = \Illuminate\Container\Container::getInstance();
+        $container = new \Illuminate\Container\Container();
+        $container->instance(\App\Services\CurrencyService::class, new class extends \App\Services\CurrencyService {
+            public function isValidCurrency(string $currencyCode): bool
+            {
+                return in_array($currencyCode, ['LKR', 'USD', 'EUR'], true);
+            }
 
-        $this->assertSame('USD', getBookingDisplayCurrency($booking));
-        $this->assertSame('EUR', getBookingDisplayCurrency((object) [
-            'currency' => 'eur',
-            'workflow_data' => [],
-        ]));
-        $this->assertSame('LKR', getBookingDisplayCurrency((object) [
-            'currency' => 'invalid',
-            'workflow_data' => null,
-        ]));
+            public function getDefaultCurrency(): string
+            {
+                return 'LKR';
+            }
+        });
+        \Illuminate\Container\Container::setInstance($container);
+
+        try {
+            $booking = (object) [
+                'currency' => 'LKR',
+                'workflow_data' => ['display_currency' => 'usd'],
+            ];
+
+            $this->assertSame('USD', getBookingDisplayCurrency($booking));
+            $this->assertSame('EUR', getBookingDisplayCurrency((object) [
+                'currency' => 'eur',
+                'workflow_data' => [],
+            ]));
+            $this->assertSame('LKR', getBookingDisplayCurrency((object) [
+                'currency' => 'invalid',
+                'workflow_data' => null,
+            ]));
+        } finally {
+            \Illuminate\Container\Container::setInstance($previousContainer);
+        }
     }
 
     public function test_success_and_email_components_receive_explicit_persisted_currency(): void
@@ -109,7 +128,7 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
             $contents = file_get_contents($template);
 
             $this->assertStringContainsString(
-                ':currency="$currencySymbol"',
+                ':currency="$currencyCode"',
                 $contents,
                 basename($template) . ' must pass the currency prop through to the payment summary.'
             );
@@ -136,8 +155,8 @@ class PublicCheckoutCurrencyPersistenceContractTest extends TestCase
         $this->assertSame(4, substr_count($controller, '\'initial_currency\' => getBookingDisplayCurrency($booking)'));
         $this->assertStringContainsString("'source_currency' => null", $paymentSummary);
         $this->assertStringContainsString("'source_currency' => null", $bookingItem);
-        $this->assertStringContainsString('$displayCurrencyCode = $currencyService->isValidCurrency((string) $currency)', $bookingItem);
-        $this->assertStringContainsString('$sourceCurrencyCode = $currencyService->isValidCurrency((string) $source_currency)', $bookingItem);
+        $this->assertStringContainsString('$displayCurrencyCode = strtoupper(trim((string) $currency));', $bookingItem);
+        $this->assertStringContainsString('$sourceCurrencyCode = $source_currency ? strtoupper(trim((string) $source_currency)) : null;', $bookingItem);
         $this->assertStringContainsString('$currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)', $bookingItem);
         $this->assertStringNotContainsString('->convert((float) $amount, $source_currency, $currency)', $bookingItem);
     }

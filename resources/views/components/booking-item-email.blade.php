@@ -2,18 +2,13 @@
 
 @php
     $currencyService = app(\App\Services\CurrencyService::class);
-    // Email callers historically pass both ISO codes and display symbols here.
-    // Resolve a valid ISO target before any conversion, and keep its symbol for
-    // presentation only. Symbols such as ₹ are not exchange-rate currency codes.
-    $displayCurrencyCode = $currencyService->isValidCurrency((string) $currency)
-        ? strtoupper(trim((string) $currency))
-        : $currencyService->getBookingBaseCurrency();
-    $displayCurrencyLabel = $currencyService->isValidCurrency((string) $currency)
-        ? getCurrencySymbol($displayCurrencyCode)
-        : (string) $currency;
-    $sourceCurrencyCode = $currencyService->isValidCurrency((string) $source_currency)
-        ? strtoupper(trim((string) $source_currency))
-        : null;
+    $displayCurrencyCode = strtoupper(trim((string) $currency));
+    $sourceCurrencyCode = $source_currency ? strtoupper(trim((string) $source_currency)) : null;
+    if (!$currencyService->isValidCurrency($displayCurrencyCode)
+        || ($sourceCurrencyCode && !$currencyService->isValidCurrency($sourceCurrencyCode))) {
+        throw new \InvalidArgumentException('Booking items require configured currency codes.');
+    }
+    $displayCurrencyLabel = $displayCurrencyCode;
 
     $pickupLoc = is_string($item->pickup_location ?? null)
         ? json_decode($item->pickup_location, true)

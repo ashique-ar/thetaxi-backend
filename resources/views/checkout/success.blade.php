@@ -140,7 +140,7 @@
                                 </h2>
                                 @if ($booking->bookingItems->count() > 0)
                                     @foreach ($booking->bookingItems as $index => $item)
-                                        <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" :source_currency="$bookingCurrencyCode" />
+                                        <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" :source_currency="$bookingCurrencyCode" />
                                     @endforeach
                                 @endif
                             </div>
@@ -195,7 +195,7 @@
                                 <h2 class="section-title">
                                     <span class="icon">💳</span> Payment Summary
                                 </h2>
-                                <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :source_currency="$bookingCurrencyCode" :advance_percentage="$advancePercentage" />
+                                <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :source_currency="$bookingCurrencyCode" :advance_percentage="$advancePercentage" />
                             </div>
                             @if ($booking->special_requirements)
                                 <div class="section">

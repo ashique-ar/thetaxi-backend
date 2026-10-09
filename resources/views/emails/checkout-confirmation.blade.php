@@ -17,7 +17,7 @@
 @section('content')
     @php
         // Keep all persisted checkout amounts paired with their snapshot currency.
-        $currencySymbol = getBookingDisplayCurrency($booking);
+        $currencyCode = getBookingDisplayCurrency($booking);
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];
@@ -83,7 +83,7 @@
         </h2>
         @if ($booking->bookingItems->count() > 0)
             @foreach ($booking->bookingItems as $index => $item)
-                <x-booking-item-email :item="$item" :index="$index" :currency="$currencySymbol" />
+                <x-booking-item-email :item="$item" :index="$index" :currency="$currencyCode" />
             @endforeach
         @endif
     </div>
@@ -138,7 +138,7 @@
         <h2 class="section-title">
             <span class="icon">💳</span> Payment Summary
         </h2>
-        <x-booking-payment-summary :booking="$booking" :currency="$currencySymbol" :advance_percentage="$advancePercentage" />
+        <x-booking-payment-summary :booking="$booking" :currency="$currencyCode" :advance_percentage="$advancePercentage" />
     </div>
 
     @php
@@ -266,12 +266,12 @@
                 </p>
                 @if($actualPercentagePaid >= 100)
                     <p>You have successfully paid the <strong>full amount</strong>
-                        ({{ $currencySymbol }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
+                        ({{ $currencyCode }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
                 @else
                     <p>You have successfully paid {{ $actualPercentagePaid }}% advance
-                        ({{ $currencySymbol }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
+                        ({{ $currencyCode }} {{ number_format(floor(max(0, $actualAmountPaid)), 0) }}).</p>
                     <p><strong>Balance Due at Pickup:</strong>
-                        {{ $currencySymbol }}
+                        {{ $currencyCode }}
                         {{ number_format(floor(max(0, $booking->total_estimated - $actualAmountPaid)), 0) }}
                     </p>
                 @endif
@@ -280,7 +280,7 @@
             <div class="highlight-box success">
                 <h3>✓ Pay on Check-in</h3>
                 <p>Your booking is confirmed. Please pay the full amount when you check-in to collect the vehicle.</p>
-                <p><strong>Amount Due at Check-in:</strong> {{ $currencySymbol }}
+                <p><strong>Amount Due at Check-in:</strong> {{ $currencyCode }}
                     {{ number_format(floor(max(0, $booking->total_estimated)), 0) }}</p>
             </div>
         @elseif($booking->payment_status === 'pending')
@@ -298,7 +298,7 @@
                         <a href="{{ $paymentLink }}" class="btn"
                             style="display: inline-block; background-color: #15803d; background-image: linear-gradient(135deg, #15803d 0%, #166534 100%); box-shadow: 0 4px 12px rgba(21, 128, 61, 0.24); color: #FFFFFF; padding: 15px 40px; text-decoration: none; border-radius: 8px; font-weight: bold; font-size: 16px;">
                             🔒 Pay
-                            {{ $currencySymbol }}
+                            {{ $currencyCode }}
                             {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated)), 0) }}
                         </a>
                         <p style="text-align: center; color: #717171; font-size: 13px; margin: 10px 0;">
@@ -393,7 +393,7 @@
             @endphp
             @if (!$isFallbackPaymentLink)
                 <a href="{{ $paymentLink }}" class="btn">Complete Payment -
-                    {{ $currencySymbol }}
+                    {{ $currencyCode }}
                     {{ number_format(floor(max(0, $booking->amount_to_pay ?? $booking->total_estimated - ($booking->amount_paid ?? 0))), 0) }}</a>
             @else
                 <a href="mailto:{{ config('mail.from.address', 'bookings@example.com') }}" class="btn">Contact
