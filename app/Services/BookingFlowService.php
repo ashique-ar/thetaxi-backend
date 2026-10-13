@@ -32,6 +32,7 @@ use App\Models\Vehicle\VehiclePricing\DistrictPricingAdjustment;
 use App\Models\Vehicle\VehiclePricing\PriceAdjustment;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Schema;
@@ -844,6 +845,8 @@ class BookingFlowService
         $availabilityDbConnection = DB::connection();
         $availabilityDbQueryDurationAtStart = $availabilityDbConnection->totalQueryDuration();
         $pricingCallCount = 0;
+        $pricingCacheHitCount = 0;
+        $pricingCacheFailureLogged = false;
         $pricingCalculationDurationMs = 0.0;
 
         // Reset request-local pricing metadata caches for long-lived workers.
@@ -888,7 +891,7 @@ class BookingFlowService
             ? $sortBy
             : 'price_low';
         $deferAvailabilityForCards = filter_var($params['defer_availability'] ?? false, FILTER_VALIDATE_BOOL);
-        $forceRefresh = $params['force_refresh'] ?? false;
+        $forceRefresh = filter_var($params['force_refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 
         $baseQuery = $this->buildVehicleSearchQuery($fromDate, $toDate, $excludeBookingId, $isPublic);
@@ -997,12 +1000,6 @@ class BookingFlowService
                 'is_active',
                 'is_inquiry_only',
                 'force_quotation_request',
-                'supports_self_driven',
-                'requires_driver',
-                'passengers_count',
-                'hand_luggages',
-                'air_conditioning',
-                'refundable_deposit',
             ]);
         }
         if ($canPaginateBeforePricing) {
@@ -1161,7 +1158,46 @@ class BookingFlowService
                     $pricingCallCount++;
                     $pricingStartedAt = microtime(true);
                     try {
-                        $pricingResult = $this->calculatePricing($pricingParams);
+                        if ($deferAvailabilityForCards && !$forceRefresh) {
+                            // The portal requests price-sorted pages separately. Cache
+                            // each card's preview briefly so page 2 does not rerun the
+                            // same database-heavy pricing calculation for every group.
+                            $pricingCacheKey = 'booking-flow.availability-pricing.' . hash(
+                                'sha256',
+                                serialize($pricingParams)
+                            );
+                            $pricingCache = null;
+                            $pricingResult = null;
+                            try {
+                                $pricingCache = Cache::store('file');
+                                $pricingResult = $pricingCache->get($pricingCacheKey);
+                            } catch (\Throwable $cacheException) {
+                                if (!$pricingCacheFailureLogged) {
+                                    Log::notice('Availability price cache unavailable; calculating previews without cache', [
+                                        'error' => $cacheException->getMessage(),
+                                    ]);
+                                    $pricingCacheFailureLogged = true;
+                                }
+                            }
+
+                            if ($pricingResult !== null) {
+                                $pricingCacheHitCount++;
+                            } else {
+                                $pricingResult = $this->calculatePricing($pricingParams);
+                                try {
+                                    $pricingCache?->put($pricingCacheKey, $pricingResult, now()->addSeconds(60));
+                                } catch (\Throwable $cacheException) {
+                                    if (!$pricingCacheFailureLogged) {
+                                        Log::notice('Availability price cache unavailable; calculating previews without cache', [
+                                            'error' => $cacheException->getMessage(),
+                                        ]);
+                                        $pricingCacheFailureLogged = true;
+                                    }
+                                }
+                            }
+                        } else {
+                            $pricingResult = $this->calculatePricing($pricingParams);
+                        }
                     } finally {
                         $pricingCalculationDurationMs += (microtime(true) - $pricingStartedAt) * 1000;
                     }
@@ -1575,6 +1611,7 @@ class BookingFlowService
                 'price_calculation_duration_ms' => (int) round($pricingCalculationDurationMs),
                 'candidate_group_count' => $vehicleGroups->count(),
                 'pricing_call_count' => $pricingCallCount,
+                'pricing_cache_hit_count' => $pricingCacheHitCount,
                 'returned_group_count' => count($availability),
                 'sort_by' => $sortBy,
                 'page' => $page,
