@@ -29,6 +29,11 @@ class VehiclePricingCalculationDefinition extends Model
     /** @var array<string, array<string, mixed>> */
     private array $resolvedRateSources = [];
 
+    /** Reused while this definition ranks multiple groups in one request. */
+    private array $resolvedSlabInformationCache = [];
+    private array $resolvedVehicleGroupSlabPricingCache = [];
+    private array $resolvedCommonRatePricingCache = [];
+
     protected $keyType = 'string';
     public $incrementing = false;
 
@@ -125,8 +130,10 @@ class VehiclePricingCalculationDefinition extends Model
             $kmCalculations = $this->calculateKmOverages($inputs, $slabInfo, $servicePackageInfo);
             try {
                 $resolvedVariables = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, $appliedCustomizations, $servicePackageInfo, $districtInfo);
-
-                $resolvedVariablesWithoutCustomizations = $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, [], $servicePackageInfo, $districtInfo);
+                $hasAppliedCustomizations = !empty($appliedCustomizations);
+                $resolvedVariablesWithoutCustomizations = $hasAppliedCustomizations
+                    ? $this->resolveAllVariables($inputs, $slabInfo, $kmCalculations, [], $servicePackageInfo, $districtInfo)
+                    : $resolvedVariables;
             } catch (\InvalidArgumentException $ex) {
                 // A definition with unresolved required inputs is not a valid
                 // pricing candidate. In particular, do not let the caller
@@ -158,7 +165,9 @@ class VehiclePricingCalculationDefinition extends Model
             $metadata['variables_used'] = array_keys($resolvedVariables);
 
             $totalAmount = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariables);
-            $totalAmountWithoutCustomizations = $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations);
+            $totalAmountWithoutCustomizations = $hasAppliedCustomizations
+                ? $this->evaluateFormulaWithVariables($this->formula, $resolvedVariablesWithoutCustomizations)
+                : $totalAmount;
 
             // Apply price adjustments and KM range pricing rules after base calculation
             $adjustmentResults = $this->applyPricingAdjustments(
@@ -171,14 +180,16 @@ class VehiclePricingCalculationDefinition extends Model
             );
 
             $finalAmount = $adjustmentResults['final_amount'];
-            $finalAmountWithoutCustomizations = $this->applyPricingAdjustments(
-                $totalAmountWithoutCustomizations,
-                $inputs,
-                $servicePackageInfo,
-                $districtInfo,
-                $kmCalculations,
-                $resolvedVariablesWithoutCustomizations
-            )['final_amount'];
+            $finalAmountWithoutCustomizations = $hasAppliedCustomizations
+                ? $this->applyPricingAdjustments(
+                    $totalAmountWithoutCustomizations,
+                    $inputs,
+                    $servicePackageInfo,
+                    $districtInfo,
+                    $kmCalculations,
+                    $resolvedVariablesWithoutCustomizations
+                )['final_amount']
+                : $finalAmount;
 
             // A row-level minimum floors the completed formula. Applying it to
             // slab_rate itself would incorrectly multiply the minimum again in
@@ -529,25 +540,39 @@ class VehiclePricingCalculationDefinition extends Model
             $durationMinutes = $durationHours * 60;
         }
 
-        $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
-            ->where('is_active', true)
-            ->when(
-                $inputs['slab_definition_id'] ?? null,
-                fn ($query, $slabId) => $query->whereKey($slabId),
-                fn ($query) => $query->when(
-                    $servicePackageId,
-                    fn ($query) => $query->where('service_package_id', $servicePackageId),
-                    fn ($query) => $query->whereNull('service_package_id')
-                )
-            )
-            ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
-            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));
-
-        $slabDefinition = app(VehiclePricingSlabConfigurationService::class)->resolve(
-            $slabQuery,
+        $slabCacheKey = hash('sha256', serialize([
+            $this->service_type_id,
             (float) $durationMinutes,
-            $durationDays > 0 ? (float) $durationDays : null
-        );
+            $durationDays > 0 ? (float) $durationDays : null,
+            $ownerType,
+            $ownerId,
+            $servicePackageId,
+            $inputs['slab_definition_id'] ?? null,
+        ]));
+
+        if (!array_key_exists($slabCacheKey, $this->resolvedSlabInformationCache)) {
+            $slabQuery = VehiclePricingSlabDefinition::where('service_type_id', $this->service_type_id)
+                ->where('is_active', true)
+                ->when(
+                    $inputs['slab_definition_id'] ?? null,
+                    fn ($query, $slabId) => $query->whereKey($slabId),
+                    fn ($query) => $query->when(
+                        $servicePackageId,
+                        fn ($query) => $query->where('service_package_id', $servicePackageId),
+                        fn ($query) => $query->whereNull('service_package_id')
+                    )
+                )
+                ->tap(fn ($query) => $this->applyOwnerScope($query, $ownerType, $ownerId))
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId));
+
+            $this->resolvedSlabInformationCache[$slabCacheKey] = app(VehiclePricingSlabConfigurationService::class)->resolve(
+                $slabQuery,
+                (float) $durationMinutes,
+                $durationDays > 0 ? (float) $durationDays : null
+            );
+        }
+
+        $slabDefinition = $this->resolvedSlabInformationCache[$slabCacheKey];
 
         if (!$slabDefinition) {
             return null;
@@ -1089,13 +1114,12 @@ class VehiclePricingCalculationDefinition extends Model
             }
 
             $vehicleGroupPricing = $slabDefinition
-                ? VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
-                    ->where('slab_definition_id', $slabDefinition->id)
-                    ->where('is_active', true)
-                    ->forOwner($inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null)
-                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $inputs['owner_type'] ?? null, $inputs['owner_id'] ?? null))
-                    ->orderByDesc('priority')
-                    ->first()
+                ? $this->resolveVehicleGroupSlabPricing(
+                    (string) $vehicleGroupId,
+                    (string) $slabDefinition->id,
+                    $inputs['owner_type'] ?? null,
+                    $inputs['owner_id'] ?? null
+                )
                 : null;
 
             if (!$vehicleGroupPricing) {
@@ -1164,19 +1188,42 @@ class VehiclePricingCalculationDefinition extends Model
             return null;
         }
 
-        $ownerType = $inputs['owner_type'] ?? null;
-        $ownerId = $inputs['owner_id'] ?? null;
-        $pricing = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
-            ->where('slab_definition_id', $slabDefinition->id)
-            ->where('is_active', true)
-            ->forOwner($ownerType, $ownerId)
-            ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-            ->orderByDesc('priority')
-            ->first();
+        $pricing = $this->resolveVehicleGroupSlabPricing(
+            (string) $vehicleGroupId,
+            (string) $slabDefinition->id,
+            $inputs['owner_type'] ?? null,
+            $inputs['owner_id'] ?? null
+        );
 
         return $pricing?->minimum_charge !== null
             ? (float) $pricing->minimum_charge
             : null;
+    }
+
+    private function resolveVehicleGroupSlabPricing(
+        string $vehicleGroupId,
+        string $slabDefinitionId,
+        ?string $ownerType,
+        ?string $ownerId
+    ): ?VehicleGroupPricing {
+        $cacheKey = hash('sha256', serialize([
+            $vehicleGroupId,
+            $slabDefinitionId,
+            $ownerType,
+            $ownerId,
+        ]));
+
+        if (!array_key_exists($cacheKey, $this->resolvedVehicleGroupSlabPricingCache)) {
+            $this->resolvedVehicleGroupSlabPricingCache[$cacheKey] = VehicleGroupPricing::where('vehicle_group_id', $vehicleGroupId)
+                ->where('slab_definition_id', $slabDefinitionId)
+                ->where('is_active', true)
+                ->forOwner($ownerType, $ownerId)
+                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
+                ->orderByDesc('priority')
+                ->first();
+        }
+
+        return $this->resolvedVehicleGroupSlabPricingCache[$cacheKey];
     }
 
     /**
@@ -1199,46 +1246,58 @@ class VehiclePricingCalculationDefinition extends Model
             $ownerType = $inputs['owner_type'] ?? null;
             $ownerId = $inputs['owner_id'] ?? null;
 
-            // Get vehicle group specific common rate pricing first
-            $commonRatePricing = VehicleGroupCommonRatePricing::with('commonRateDefinition')
-                ->whereHas('commonRateDefinition', function ($query) use ($rateKey) {
-                $query->where(function ($q) use ($rateKey) {
-                    $q->where('code', $rateKey)
-                        ->orWhere('name', $rateKey);
-                })
-                    ->where(function ($serviceQuery) {
-                        $serviceQuery->where('service_type_id', $this->service_type_id)
-                            ->orWhereNull('service_type_id');
+            $cacheKey = hash('sha256', serialize([
+                $this->service_type_id,
+                $rateKey,
+                (string) $vehicleGroupId,
+                $ownerType,
+                $ownerId,
+            ]));
+
+            if (!array_key_exists($cacheKey, $this->resolvedCommonRatePricingCache)) {
+                // Get vehicle group specific common rate pricing first
+                $this->resolvedCommonRatePricingCache[$cacheKey] = VehicleGroupCommonRatePricing::with('commonRateDefinition')
+                    ->whereHas('commonRateDefinition', function ($query) use ($rateKey) {
+                    $query->where(function ($q) use ($rateKey) {
+                        $q->where('code', $rateKey)
+                            ->orWhere('name', $rateKey);
                     })
-                    ->where('is_active', true);
-            })
-                ->where('vehicle_group_id', $vehicleGroupId)
-                ->where('is_active', true)
-                ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
-                    $this->applyOwnerScope($query, $ownerType, $ownerId);
-                }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
-                ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
-                ->orderBy('priority', 'desc')
-                ->get()
-                ->sort(function ($left, $right) use ($ownerType, $ownerId) {
-                    $rank = function ($pricing) use ($ownerType, $ownerId): array {
-                        $definition = $pricing->commonRateDefinition;
-                        $ownerExact = $ownerType && $ownerId
-                            && $pricing->owner_type === $ownerType
-                            && (string) $pricing->owner_id === (string) $ownerId;
-
-                        return [
-                            (string) $definition?->service_type_id === (string) $this->service_type_id ? 0 : 1,
-                            $ownerExact ? 0 : 1,
-                            -((int) $pricing->priority),
-                            -((int) ($definition?->priority ?? 0)),
-                            (string) $pricing->id,
-                        ];
-                    };
-
-                    return $rank($left) <=> $rank($right);
+                        ->where(function ($serviceQuery) {
+                            $serviceQuery->where('service_type_id', $this->service_type_id)
+                                ->orWhereNull('service_type_id');
+                        })
+                        ->where('is_active', true);
                 })
-                ->first();
+                    ->where('vehicle_group_id', $vehicleGroupId)
+                    ->where('is_active', true)
+                    ->when($ownerType && $ownerId, function ($query) use ($ownerType, $ownerId) {
+                        $this->applyOwnerScope($query, $ownerType, $ownerId);
+                    }, fn ($query) => $query->whereNull('owner_type')->whereNull('owner_id'))
+                    ->tap(fn ($query) => $this->applyOwnerPriorityOrder($query, $ownerType, $ownerId))
+                    ->orderBy('priority', 'desc')
+                    ->get()
+                    ->sort(function ($left, $right) use ($ownerType, $ownerId) {
+                        $rank = function ($pricing) use ($ownerType, $ownerId): array {
+                            $definition = $pricing->commonRateDefinition;
+                            $ownerExact = $ownerType && $ownerId
+                                && $pricing->owner_type === $ownerType
+                                && (string) $pricing->owner_id === (string) $ownerId;
+
+                            return [
+                                (string) $definition?->service_type_id === (string) $this->service_type_id ? 0 : 1,
+                                $ownerExact ? 0 : 1,
+                                -((int) $pricing->priority),
+                                -((int) ($definition?->priority ?? 0)),
+                                (string) $pricing->id,
+                            ];
+                        };
+
+                        return $rank($left) <=> $rank($right);
+                    })
+                    ->first();
+            }
+
+            $commonRatePricing = $this->resolvedCommonRatePricingCache[$cacheKey];
 
             if ($commonRatePricing && isset($commonRatePricing->value)) {
                 $value = (float) $commonRatePricing->value;

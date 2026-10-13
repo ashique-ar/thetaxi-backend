@@ -30,6 +30,19 @@ class VehiclePricingSlabConfigurationService
         float $durationMinutes = 0,
         ?float $durationDays = null
     ): array {
+        $cacheKey = hash('sha256', serialize([
+            $serviceTypeId,
+            $packageId,
+            $slabId,
+            $durationMinutes,
+            $durationDays,
+        ]));
+        $request = request();
+        $requestCache = $request->attributes->get('vehicle_pricing.package_slab_resolutions', []);
+        if (array_key_exists($cacheKey, $requestCache)) {
+            return $requestCache[$cacheKey];
+        }
+
         $slab = $slabId ? VehiclePricingSlabDefinition::query()
             ->whereKey($slabId)->where('service_type_id', $serviceTypeId)
             ->where('is_active', true)->first() : null;
@@ -72,7 +85,11 @@ class VehiclePricingSlabConfigurationService
             }
         }
 
-        return ['package' => $package, 'slab' => $slab];
+        $selection = ['package' => $package, 'slab' => $slab];
+        $requestCache[$cacheKey] = $selection;
+        $request->attributes->set('vehicle_pricing.package_slab_resolutions', $requestCache);
+
+        return $selection;
     }
 
     /**

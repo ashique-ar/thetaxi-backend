@@ -13,6 +13,23 @@ trait BookingAvailabilityTrait
     {
         try {
             $params = $this->bookingFlowService->normalizeDynamicCalculationParams($request->all());
+            if (
+                array_key_exists('defer_availability', $params)
+                && $params['defer_availability'] !== null
+                && is_scalar($params['defer_availability'])
+            ) {
+                // Query-string booleans arrive as the strings "true"/"false",
+                // while Laravel's boolean rule accepts only booleans, 0/1, and
+                // "0"/"1". Normalize valid boolean text before validating it.
+                $deferAvailability = filter_var(
+                    $params['defer_availability'],
+                    FILTER_VALIDATE_BOOLEAN,
+                    FILTER_NULL_ON_FAILURE
+                );
+                if ($deferAvailability !== null) {
+                    $params['defer_availability'] = $deferAvailability;
+                }
+            }
             if (array_key_exists('include_unavailable', $params)) {
                 $params['include_unavailable'] = filter_var($params['include_unavailable'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             }

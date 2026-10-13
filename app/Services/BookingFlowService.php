@@ -841,6 +841,8 @@ class BookingFlowService
     public function getAvailableVehicleGroups(array $params, bool $isPublic = false): array
     {
         $availabilityRequestStartedAt = microtime(true);
+        $availabilityDbConnection = DB::connection();
+        $availabilityDbQueryDurationAtStart = $availabilityDbConnection->totalQueryDuration();
         $pricingCallCount = 0;
         $pricingCalculationDurationMs = 0.0;
 
@@ -985,6 +987,23 @@ class BookingFlowService
         $vehicleGroupsQuery = clone $baseQuery;
         if ($deferAvailabilityAnalysis) {
             $vehicleGroupsQuery->setEagerLoads([]);
+            // Price sorts must load every candidate to preserve global price
+            // ordering, but ranking only reads these scalar fields. Keep large
+            // descriptions, JSON features, and other display columns out of the
+            // all-candidate query; the returned page is hydrated below.
+            $vehicleGroupsQuery->select([
+                'id',
+                'name',
+                'is_active',
+                'is_inquiry_only',
+                'force_quotation_request',
+                'supports_self_driven',
+                'requires_driver',
+                'passengers_count',
+                'hand_luggages',
+                'air_conditioning',
+                'refundable_deposit',
+            ]);
         }
         if ($canPaginateBeforePricing) {
             $vehicleGroupsQuery->orderBy('name', $sortBy === 'name_desc' ? 'desc' : 'asc')->orderBy('id', 'asc');
@@ -1031,6 +1050,31 @@ class BookingFlowService
             || (bool) data_get($selectedServiceTypeModel?->form_config, 'fields.service_package_id.required', false);
         $hasSelectedPackage = !empty($params['service_package_id']) || !empty($params['package_id']);
 
+        // These values are identical for every group in this request. Compute
+        // them once instead of repeating Carbon/date work for every candidate.
+        $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
+        $usesDropoffTime = $selectedServiceTypeModel?->uses_dropoff_time ?? true;
+        $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
+        $effectiveToTime = $usesDropoffTime
+            ? ($toTime ? $toTime->format('H:i') : null)
+            : $fromTime;
+        $pricingFromDate = $fromDate->format('Y-m-d');
+        $pricingToDate = $effectiveToDate->format('Y-m-d');
+        $shouldCalculateGroupPricing = $selectedServiceTypeModel
+            && $hasRequiredPricingLocations
+            && (!$packageSelectionRequired || $hasSelectedPackage);
+        $availabilityHolidayContext = $shouldCalculateGroupPricing
+            ? app(PricingHolidayCalendarService::class)->evaluate($fromDate)
+            : null;
+        $availabilityCustomerProfile = null;
+        if ($shouldCalculateGroupPricing && $customerId) {
+            $customer = Customer::find($customerId);
+            $availabilityCustomerProfile = $customer ? [
+                'customer_type' => $customer->customer_type ?? 'regular',
+                'customer_tier' => $customer->tier ?? 'standard',
+            ] : [];
+        }
+
         $availability = [];
 
         foreach ($vehicleGroups as $group) {
@@ -1065,29 +1109,15 @@ class BookingFlowService
             $serviceTypeModel = $selectedServiceTypeModel;
 
             try {
-                // Calculate duration
-                $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
-
-                if ($serviceTypeModel && $hasRequiredPricingLocations && (!$packageSelectionRequired || $hasSelectedPackage)) {
-                    // Check if service type uses dropoff time
-                    $usesDropoffTime = $serviceTypeModel->uses_dropoff_time ?? true;
-
-                    // Services without a drop-off time still need a valid pricing
-                    // window. Mirror the pickup date/time so a same-day pickup is
-                    // not interpreted as ending at midnight before it starts.
-                    $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
-                    $effectiveToTime = $usesDropoffTime
-                        ? ($toTime ? $toTime->format('H:i') : null)
-                        : $fromTime;
-
+                if ($shouldCalculateGroupPricing) {
                     // Use the same comprehensive pricing calculation as the final pricing API
                     // This ensures vehicle card prices match the final calculated prices
                     $pricingParams = [
                         'service_type_id' => $serviceTypeModel->id,
                         'service_type' => $serviceType,
                         'vehicle_group_id' => $group->id,
-                        'from_date' => $fromDate->format('Y-m-d'),
-                        'to_date' => $effectiveToDate->format('Y-m-d'),
+                        'from_date' => $pricingFromDate,
+                        'to_date' => $pricingToDate,
                         'from_time' => $fromTime,
                         'to_time' => $effectiveToTime,
                         'pickup_location' => $pickupLocation,
@@ -1118,6 +1148,11 @@ class BookingFlowService
                             : $this->currencyService->getBookingBaseCurrency(),
                         'base_currency' => $this->currencyService->getBookingBaseCurrency(),
                         'is_preview_calculation' => true,
+                        // Shared request inputs: avoid repeating identical
+                        // holiday-setting and customer lookups for each group.
+                        'precomputed_holiday_context' => $availabilityHolidayContext,
+                        'pricing_customer_profile_resolved' => (bool) $customerId,
+                        'pricing_customer_profile' => $availabilityCustomerProfile,
                     ];
 
                     // Debug logging for pricing params
@@ -1529,9 +1564,14 @@ class BookingFlowService
         $availability = $pageEntries->values()->all();
 
         $totalDurationMs = (microtime(true) - $availabilityRequestStartedAt) * 1000;
+        $databaseQueryDurationMs = max(
+            0,
+            $availabilityDbConnection->totalQueryDuration() - $availabilityDbQueryDurationAtStart
+        );
         if ($totalDurationMs >= 1000) {
             Log::warning('Slow vehicle-group availability request', [
                 'duration_ms' => (int) round($totalDurationMs),
+                'database_query_duration_ms' => (int) round($databaseQueryDurationMs),
                 'price_calculation_duration_ms' => (int) round($pricingCalculationDurationMs),
                 'candidate_group_count' => $vehicleGroups->count(),
                 'pricing_call_count' => $pricingCallCount,
@@ -2495,13 +2535,22 @@ class BookingFlowService
             return null;
         }
 
+        $request = request();
+        $packageCacheKey = (string) $packageId;
+        $packageCache = $request->attributes->get('booking_flow.service_package_information', []);
+        if (array_key_exists($packageCacheKey, $packageCache)) {
+            return $packageCache[$packageCacheKey];
+        }
+
         $servicePackage = ServicePackage::find($packageId);
 
         if (!$servicePackage) {
+            $packageCache[$packageCacheKey] = null;
+            $request->attributes->set('booking_flow.service_package_information', $packageCache);
             return null;
         }
 
-        return [
+        $packageInformation = [
             'id' => $servicePackage->id,
             'name' => $servicePackage->name,
             'code' => $servicePackage->code,
@@ -2515,6 +2564,10 @@ class BookingFlowService
             'charges_extra_hours' => (bool) $servicePackage->charges_extra_hours,
             'charges_extra_km' => (bool) $servicePackage->charges_extra_km,
         ];
+        $packageCache[$packageCacheKey] = $packageInformation;
+        $request->attributes->set('booking_flow.service_package_information', $packageCache);
+
+        return $packageInformation;
     }
 
     /**
@@ -5288,7 +5341,13 @@ class BookingFlowService
         }
 
         // Add customer-specific inputs
-        if (isset($params['customer_id'])) {
+        if (!empty($params['pricing_customer_profile_resolved'])) {
+            $customerProfile = $params['pricing_customer_profile'] ?? [];
+            if (is_array($customerProfile) && $customerProfile !== []) {
+                $inputs['customer_type'] = $customerProfile['customer_type'] ?? 'regular';
+                $inputs['customer_tier'] = $customerProfile['customer_tier'] ?? 'standard';
+            }
+        } elseif (isset($params['customer_id'])) {
             $customer = Customer::find($params['customer_id']);
             if ($customer) {
                 $inputs['customer_type'] = $customer->customer_type ?? 'regular';
@@ -5299,7 +5358,8 @@ class BookingFlowService
         // Add time-based factors
         if (isset($params['from_date'])) {
             $fromDate = Carbon::parse($params['from_date']);
-            $holidayContext = app(PricingHolidayCalendarService::class)->evaluate($fromDate);
+            $holidayContext = $params['precomputed_holiday_context']
+                ?? app(PricingHolidayCalendarService::class)->evaluate($fromDate);
             $inputs['is_weekend'] = $fromDate->isWeekend() ? 1 : 0;
             $inputs['is_holiday'] = $holidayContext['is_holiday'] ? 1 : 0;
             $inputs['holiday_context'] = $holidayContext;

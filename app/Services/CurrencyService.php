@@ -8,6 +8,12 @@ use Illuminate\Support\Facades\Log;
 
 class CurrencyService
 {
+    private array $currencyValidityCache = [];
+    private array $usableExchangeRateCache = [];
+    private ?string $defaultCurrencyCache = null;
+    private ?string $bookingBaseCurrencyCache = null;
+    private ?string $selectedCurrencyCache = null;
+
     private function fractionDigits(string $currencyCode): int
     {
         // Currency codes and rates come from the system's currencies table.
@@ -127,12 +133,16 @@ class CurrencyService
      */
     public function getDefaultCurrency(): string
     {
+        if ($this->defaultCurrencyCache !== null) {
+            return $this->defaultCurrencyCache;
+        }
+
         $configured = strtoupper(trim((string) (
             app(WebsiteSettingsService::class)->get('default_currency')
             ?: config('app.default_currency', '')
         )));
         if ($configured !== '' && $this->hasUsableExchangeRate($configured)) {
-            return $configured;
+            return $this->defaultCurrencyCache = $configured;
         }
 
         $available = Currency::query()
@@ -141,7 +151,7 @@ class CurrencyService
             ->orderBy('code')
             ->value('code');
         if ($available) {
-            return strtoupper((string) $available);
+            return $this->defaultCurrencyCache = strtoupper((string) $available);
         }
 
         throw new \RuntimeException('No valid currencies are configured in system settings.');
@@ -149,15 +159,21 @@ class CurrencyService
 
     public function getBookingBaseCurrency(): string
     {
+        if ($this->bookingBaseCurrencyCache !== null) {
+            return $this->bookingBaseCurrencyCache;
+        }
+
         $settings = app(WebsiteSettingsService::class)->getBookingSettings();
         $configured = strtoupper(trim((string) (
             $settings['booking_base_currency']
             ?? config('booking.base_currency', '')
         )));
 
-        return $configured !== '' && $this->isValidCurrency($configured)
+        $this->bookingBaseCurrencyCache = $configured !== '' && $this->isValidCurrency($configured)
             ? $configured
             : $this->getDefaultCurrency();
+
+        return $this->bookingBaseCurrencyCache;
     }
 
     /**
@@ -165,16 +181,26 @@ class CurrencyService
      */
     public function isValidCurrency(string $currencyCode): bool
     {
-        return Currency::where('code', strtoupper(trim($currencyCode)))->exists();
+        $currencyCode = strtoupper(trim($currencyCode));
+        if (!array_key_exists($currencyCode, $this->currencyValidityCache)) {
+            $this->currencyValidityCache[$currencyCode] = Currency::where('code', $currencyCode)->exists();
+        }
+
+        return $this->currencyValidityCache[$currencyCode];
     }
 
     private function hasUsableExchangeRate(string $currencyCode): bool
     {
-        return Currency::query()
-            ->where('code', strtoupper(trim($currencyCode)))
-            ->whereNotNull('exrate')
-            ->where('exrate', '>', 0)
-            ->exists();
+        $currencyCode = strtoupper(trim($currencyCode));
+        if (!array_key_exists($currencyCode, $this->usableExchangeRateCache)) {
+            $this->usableExchangeRateCache[$currencyCode] = Currency::query()
+                ->where('code', $currencyCode)
+                ->whereNotNull('exrate')
+                ->where('exrate', '>', 0)
+                ->exists();
+        }
+
+        return $this->usableExchangeRateCache[$currencyCode];
     }
 
     /**
@@ -231,10 +257,16 @@ class CurrencyService
      */
     public function getSelectedCurrency(): string
     {
+        if ($this->selectedCurrencyCache !== null) {
+            return $this->selectedCurrencyCache;
+        }
+
         $selected = strtoupper(trim((string) session('selected_currency', '')));
-        return $selected !== '' && $this->isValidCurrency($selected)
+        $this->selectedCurrencyCache = $selected !== '' && $this->isValidCurrency($selected)
             ? $selected
             : $this->getDefaultCurrency();
+
+        return $this->selectedCurrencyCache;
     }
 
     /**
@@ -245,6 +277,7 @@ class CurrencyService
         $currencyCode = strtoupper(trim($currencyCode));
         if ($this->isValidCurrency($currencyCode)) {
             session(['selected_currency' => $currencyCode]);
+            $this->selectedCurrencyCache = $currencyCode;
         }
     }
 
