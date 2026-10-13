@@ -72,6 +72,9 @@ class BookingFlowService
      */
     private array $companyDistanceCache = [];
 
+    /** Reuse pricing metadata while ranking groups in one availability request. */
+    private array $availabilityPricingDefinitionCache = [];
+
     protected CurrencyService $currencyService;
     protected PricingVariableService $pricingVariableService;
     protected AssignmentService $assignmentService;
@@ -830,8 +833,6 @@ class BookingFlowService
                 'fuelType',
                 'category',
                 'class',
-                // Keep conflicts visible; availability analysis reports their status.
-                'vehicles' => fn($query) => $query->where('is_active', true),
             ]);
         }
 
@@ -839,6 +840,13 @@ class BookingFlowService
     }
     public function getAvailableVehicleGroups(array $params, bool $isPublic = false): array
     {
+        $availabilityRequestStartedAt = microtime(true);
+        $pricingCallCount = 0;
+        $pricingCalculationDurationMs = 0.0;
+
+        // Reset request-local pricing metadata caches for long-lived workers.
+        $this->availabilityPricingDefinitionCache = [];
+
         $params = $this->sanitizeCanonicalLocationParam($params, 'pickup_location');
         $params = $this->sanitizeCanonicalLocationParam($params, 'dropoff_location');
         $serviceType = $params['service_type'];
@@ -873,6 +881,11 @@ class BookingFlowService
 
         $page = (int) ($params['page'] ?? 1);
         $perPage = (int) ($params['per_page'] ?? 20);
+        $sortBy = $params['sort_by'] ?? 'price_low';
+        $sortBy = in_array($sortBy, ['price_low', 'price_high', 'name_asc', 'name_desc'], true)
+            ? $sortBy
+            : 'price_low';
+        $deferAvailabilityForCards = filter_var($params['defer_availability'] ?? false, FILTER_VALIDATE_BOOL);
         $forceRefresh = $params['force_refresh'] ?? false;
 
 
@@ -940,15 +953,14 @@ class BookingFlowService
             $baseQuery->whereIn('id', $assignedVehicleGroupIds);
         }
 
-        // Staff assignment selectors only need the group identity and a count.
-        // Skip full fleet conflict analysis and per-group pricing, both of which
-        // are required for customer booking cards but make allocation searches
-        // needlessly expensive.
+        // Resource assignment selectors need identity and active vehicle counts,
+        // not pricing previews or conflict details for every vehicle.
         if (filter_var($params['resource_lookup'] ?? false, FILTER_VALIDATE_BOOL)) {
             $groupsPage = (clone $baseQuery)
                 ->setEagerLoads([])
                 ->select(['id', 'name'])
-                ->withCount(['vehicles' => fn ($query) => $query->where('is_active', true)])
+                ->whereHas('vehicles', fn ($query) => $query->where('is_active', true)->where('status', 'active'))
+                ->withCount(['vehicles' => fn ($query) => $query->where('is_active', true)->where('status', 'active')])
                 ->orderBy('name')
                 ->paginate($perPage, ['*'], 'page', $page);
 
@@ -965,13 +977,26 @@ class BookingFlowService
             ];
         }
 
-        // Get total count for pagination
-        $total = $baseQuery->count();
-
-        // Pricing is calculated per group below, so fetch the full result set
-        // before sorting and slicing. Paginating here would sort each page in
-        // isolation and produce a globally incorrect price order.
-        $vehicleGroups = $baseQuery->orderBy('id', 'asc')->get();
+        $total = (clone $baseQuery)->count();
+        $canPaginateBeforePricing = in_array($sortBy, ['name_asc', 'name_desc'], true);
+        // Price ranking evaluates every candidate group, but related display
+        // metadata is only needed for the page returned to the caller.
+        $deferAvailabilityAnalysis = !$canPaginateBeforePricing || $deferAvailabilityForCards;
+        $vehicleGroupsQuery = clone $baseQuery;
+        if ($deferAvailabilityAnalysis) {
+            $vehicleGroupsQuery->setEagerLoads([]);
+        }
+        if ($canPaginateBeforePricing) {
+            $vehicleGroupsQuery->orderBy('name', $sortBy === 'name_desc' ? 'desc' : 'asc')->orderBy('id', 'asc');
+            $vehicleGroupsQuery->skip(max(0, ($page - 1) * $perPage))->take($perPage);
+        } else {
+            // Price ordering depends on calculated prices, so it needs all groups.
+            $vehicleGroupsQuery->orderBy('id', 'asc');
+        }
+        $vehicleGroups = $vehicleGroupsQuery->get();
+        if ($canPaginateBeforePricing && !$deferAvailabilityForCards) {
+            $vehicleGroups->load(['vehicles' => fn ($query) => $query->where('is_active', true)->where('status', 'active')]);
+        }
 
         $selectedServiceTypeModel = (($isPublic || $this->shouldUsePublicServiceContext($params))
         ? ServiceType::publicContext()
@@ -1016,10 +1041,10 @@ class BookingFlowService
 
             // In sales-first public mode the administrator deliberately bypasses
             // date conflicts. Internal and corporate allocation remains unchanged.
-            $vehicleAnalysis = $bypassPublicAvailability
+            $vehicleAnalysis = ($bypassPublicAvailability || $deferAvailabilityAnalysis)
                 ? [
-                    'available_count' => $group->vehicles->count(),
-                    'total_count' => $group->vehicles->count(),
+                    'available_count' => 0,
+                    'total_count' => 0,
                     'booked_count' => 0,
                     'conflict_count' => 0,
                     'vehicle_details' => [],
@@ -1098,7 +1123,13 @@ class BookingFlowService
                     // Debug logging for pricing params
 
                     // Use the same calculatePricing method as the final pricing API
-                    $pricingResult = $this->calculatePricing($pricingParams);
+                    $pricingCallCount++;
+                    $pricingStartedAt = microtime(true);
+                    try {
+                        $pricingResult = $this->calculatePricing($pricingParams);
+                    } finally {
+                        $pricingCalculationDurationMs += (microtime(true) - $pricingStartedAt) * 1000;
+                    }
 
                     // Debug logging for pricing result
 
@@ -1138,23 +1169,7 @@ class BookingFlowService
                 $pricingError = 'Pricing calculation failed: ' . $e->getMessage();
                 Log::warning("Pricing calculation failed for vehicle group {$group->id}: " . $e->getMessage());
             }
-            $sampleVehicle = $group->vehicles->first();
             $hasLongTermAssignments = false;
-
-            if ($sampleVehicle && !$bypassPublicAvailability) {
-                $hasLongTermAssignments = BookingItem::query()
-                    ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
-                    ->whereIn('booking_items.vehicle_id', $group->vehicles->pluck('id'))
-                    ->whereNotIn('bookings.status', ['cancelled', 'completed'])
-                    ->where(function ($q) use ($fromDate, $toDate) {
-                        $q->whereBetween('booking_items.from_date', [$fromDate, $toDate])
-                            ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
-                            ->orWhere(function ($inner) use ($fromDate, $toDate) {
-                                $inner->where('booking_items.from_date', '<=', $fromDate)
-                                    ->where('booking_items.to_date', '>=', $toDate);
-                            });
-                    })->exists();
-            }
 
             // Check if service type requires inquiry (is_inquiry flag)
             $serviceTypeRequiresInquiry = false;
@@ -1223,7 +1238,7 @@ class BookingFlowService
             $availabilityEntry = [
                 'id' => $group->id,
                 'name' => $group->name,
-                'category' => $group->category,
+                'category' => $deferAvailabilityAnalysis ? null : $group->category,
                 'description' => $group->description,
                 'thumbnail' => $group->thumbnail,
                 'features' => $group->features ?? [],
@@ -1258,21 +1273,17 @@ class BookingFlowService
                 'air_conditioning' => $group->air_conditioning,
                 'refundable_deposit' => $group->refundable_deposit,
                 // Add make, model, grade for easier access
-                'make' => $group->make,
-                'model' => $group->model,
-                'grade' => $group->grade,
-                'transmission' => $group->transmission,
-                'fuel_type' => $group->fuelType,
-                'class' => $group->class,
+                'make' => $deferAvailabilityAnalysis ? null : $group->make,
+                'model' => $deferAvailabilityAnalysis ? null : $group->model,
+                'grade' => $deferAvailabilityAnalysis ? null : $group->grade,
+                'transmission' => $deferAvailabilityAnalysis ? null : $group->transmission,
+                'fuel_type' => $deferAvailabilityAnalysis ? null : $group->fuelType,
+                'class' => $deferAvailabilityAnalysis ? null : $group->class,
             ];
 
             $availability[] = $availabilityEntry;
         }
 
-        $sortBy = $params['sort_by'] ?? 'price_low';
-        $sortBy = in_array($sortBy, ['price_low', 'price_high', 'name_asc', 'name_desc'], true)
-            ? $sortBy
-            : 'price_low';
         $availability = collect($availability)->sort(function ($left, $right) use ($sortBy) {
             $leftPrice = $left['pricing_info']['base_amount'] ?? null;
             $rightPrice = $right['pricing_info']['base_amount'] ?? null;
@@ -1293,6 +1304,137 @@ class BookingFlowService
             }
             return $comparison ?: ((string) $left['id'] <=> (string) $right['id']);
         })->values();
+
+        if ($deferAvailabilityAnalysis) {
+            // Name sorts were already sliced by the database before pricing.
+            // Price sorts contain the full ranked set and must be sliced here.
+            $pageEntries = $canPaginateBeforePricing
+                ? $availability->values()
+                : $availability->forPage($page, $perPage)->values();
+            $pageGroupsQuery = VehicleGroup::with([
+                'grade', 'make', 'model', 'transmission', 'fuelType', 'category', 'class',
+            ])->withCount(['vehicles as active_vehicles_count' => fn ($query) => $query
+                ->where('is_active', true)
+                ->where('status', 'active')]);
+            if (!$deferAvailabilityForCards) {
+                $pageGroupsQuery->with(['vehicles' => fn ($query) => $query->where('is_active', true)]);
+            }
+            $pageGroups = $pageGroupsQuery->whereIn('id', $pageEntries->pluck('id'))->get()->keyBy('id');
+
+            $pageEntries = $pageEntries->map(function (array $entry) use ($pageGroups, $fromDate, $toDate, $excludeBookingId, $isPublic, $bypassPublicAvailability, $deferAvailabilityForCards) {
+                $group = $pageGroups->get($entry['id']);
+                if (!$group) {
+                    return $entry;
+                }
+
+                // Hydrate display fields only for the selected page. The full
+                // candidate set above is used only to calculate global price rank.
+                $entry['name'] = $group->name;
+                $entry['description'] = $group->description;
+                $entry['thumbnail'] = $group->thumbnail;
+                $entry['features'] = $group->features ?? [];
+                $entry['category'] = $group->category;
+                $entry['make'] = $group->make;
+                $entry['model'] = $group->model;
+                $entry['grade'] = $group->grade;
+                $entry['transmission'] = $group->transmission;
+                $entry['fuel_type'] = $group->fuelType;
+                $entry['class'] = $group->class;
+                $entry['supports_self_driven'] = $group->supports_self_driven ?? false;
+                $entry['requires_driver'] = $group->requires_driver ?? true;
+                $entry['passengers_count'] = $group->passengers_count;
+                $entry['hand_luggages'] = $group->hand_luggages;
+                $entry['air_conditioning'] = $group->air_conditioning;
+                $entry['refundable_deposit'] = $group->refundable_deposit;
+
+                if ($deferAvailabilityForCards) {
+                    $reasons = array_values(array_filter(
+                        $entry['quotation_only_reasons'] ?? [],
+                        fn ($reason) => $reason !== 'no_vehicles_available'
+                    ));
+                    $isQuotationOnly = count($reasons) > 0;
+                    $entry['available_count'] = null;
+                    $entry['total_count'] = (int) $group->active_vehicles_count;
+                    $entry['booked_count'] = null;
+                    $entry['conflict_count'] = null;
+                    $entry['vehicle_details'] = [];
+                    $entry['has_long_term'] = false;
+                    $entry['availability_status'] = 'not_checked';
+                    $entry['availability_deferred'] = true;
+                    $entry['quotation_only_reasons'] = $reasons;
+                    $entry['quotation_only'] = $isQuotationOnly;
+                    $entry['allow_request_quotation'] = $isQuotationOnly;
+                    $entry['show_request_quotation'] = $isQuotationOnly;
+                    $entry['allow_booking'] = !$isQuotationOnly
+                        && !empty($entry['is_group_active'])
+                        && (int) $group->active_vehicles_count > 0
+                        && !empty($entry['pricing_configured'])
+                        && (float) ($entry['pricing_info']['base_amount'] ?? 0) > 0;
+                    return $entry;
+                }
+
+                $analysis = $bypassPublicAvailability
+                    ? [
+                        'available_count' => $group->vehicles->count(),
+                        'total_count' => $group->vehicles->count(),
+                        'booked_count' => 0,
+                        'conflict_count' => 0,
+                        'vehicle_details' => [],
+                        'concurrent_possible' => false,
+                        'override_available' => false,
+                    ]
+                    : $this->analyzeVehicleAvailability($group, $fromDate, $toDate, $excludeBookingId, $isPublic);
+                $entry['available_count'] = $analysis['available_count'];
+                $entry['total_count'] = $analysis['total_count'];
+                $entry['booked_count'] = $analysis['booked_count'];
+                $entry['conflict_count'] = $analysis['conflict_count'];
+                $entry['vehicle_details'] = $analysis['vehicle_details'];
+                $entry['availability_status'] = $this->determineGroupAvailabilityStatus(
+                    $analysis['available_count'],
+                    $analysis['total_count'],
+                    $analysis['conflict_count']
+                );
+                $entry['concurrent_bookings_possible'] = $analysis['concurrent_possible'];
+                $entry['override_options_available'] = $analysis['override_available'];
+                $available = $analysis['available_count'] > 0;
+                $reasons = array_values(array_filter(
+                    $entry['quotation_only_reasons'] ?? [],
+                    fn ($reason) => $reason !== 'no_vehicles_available'
+                ));
+                if (!$bypassPublicAvailability && !$available && $analysis['total_count'] > 0) {
+                    $reasons[] = 'no_vehicles_available';
+                }
+                $hasPricing = !empty($entry['pricing_configured'])
+                    && (float) ($entry['pricing_info']['base_amount'] ?? 0) > 0;
+                $active = (bool) ($entry['is_group_active'] ?? true);
+                $isQuotationOnly = count($reasons) > 0;
+                $entry['quotation_only_reasons'] = $reasons;
+                $entry['quotation_only'] = $isQuotationOnly;
+                $entry['allow_request_quotation'] = $isQuotationOnly;
+                $entry['show_request_quotation'] = $isQuotationOnly;
+                $entry['allow_booking'] = !$isQuotationOnly && $available && $hasPricing && $active;
+                $entry['has_long_term'] = false;
+                if (!$bypassPublicAvailability && $group->vehicles->isNotEmpty()) {
+                    $entry['has_long_term'] = BookingItem::query()
+                        ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+                        ->whereIn('booking_items.vehicle_id', $group->vehicles->pluck('id'))
+                        ->whereNotIn('bookings.status', ['cancelled', 'completed'])
+                        ->where(function ($query) use ($fromDate, $toDate) {
+                            $query->whereBetween('booking_items.from_date', [$fromDate, $toDate])
+                                ->orWhereBetween('booking_items.to_date', [$fromDate, $toDate])
+                                ->orWhere(function ($inner) use ($fromDate, $toDate) {
+                                    $inner->where('booking_items.from_date', '<=', $fromDate)
+                                        ->where('booking_items.to_date', '>=', $toDate);
+                                });
+                        })->exists();
+                }
+                return $entry;
+            });
+
+            $availability = $pageEntries;
+        } else {
+            $pageEntries = $availability->values();
+        }
 
         // Calculate total journey distance if locations are provided
         $totalJourneyDistance = null;
@@ -1372,6 +1514,7 @@ class BookingFlowService
             // route could not be verified. A minimum charge is valid only after
             // an actual distance has been calculated.
             $availability = [];
+            $pageEntries = collect();
             $total = 0;
             $minimumKmApplied = false;
             Log::error('Public vehicle pricing withheld because route distance is unavailable', [
@@ -1381,9 +1524,24 @@ class BookingFlowService
             ]);
         }
 
-        // Pagination must happen after availability and price calculation so
-        // every page is a slice of the same globally sorted result set.
-        $availability = collect($availability)->forPage($page, $perPage)->values()->all();
+        // Name-sorted rows were paginated before expensive per-group work;
+        // calculated-price sorts still need a global sort before slicing.
+        $availability = $pageEntries->values()->all();
+
+        $totalDurationMs = (microtime(true) - $availabilityRequestStartedAt) * 1000;
+        if ($totalDurationMs >= 1000) {
+            Log::warning('Slow vehicle-group availability request', [
+                'duration_ms' => (int) round($totalDurationMs),
+                'price_calculation_duration_ms' => (int) round($pricingCalculationDurationMs),
+                'candidate_group_count' => $vehicleGroups->count(),
+                'pricing_call_count' => $pricingCallCount,
+                'returned_group_count' => count($availability),
+                'sort_by' => $sortBy,
+                'page' => $page,
+                'per_page' => $perPage,
+                'availability_deferred' => $deferAvailabilityForCards,
+            ]);
+        }
 
         // Return with pagination if requested
         if (isset($params['page']) || isset($params['per_page'])) {
@@ -4635,13 +4793,15 @@ class BookingFlowService
 
             // Calculation structure is shared. Corporate ownership is applied
             // only while resolving vehicle-group pricing values below.
-            $calculationDefinitionQuery = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
-                ->where('status', 'active');
-
-            $calculationDefinitions = $calculationDefinitionQuery
-                ->orderBy('priority', 'desc')
-                ->orderBy('created_at', 'desc')
-                ->get();
+            $definitionsCacheKey = (string) $serviceTypeId;
+            if (!array_key_exists($definitionsCacheKey, $this->availabilityPricingDefinitionCache)) {
+                $this->availabilityPricingDefinitionCache[$definitionsCacheKey] = VehiclePricingCalculationDefinition::where('service_type_id', $serviceTypeId)
+                    ->where('status', 'active')
+                    ->orderBy('priority', 'desc')
+                    ->orderBy('created_at', 'desc')
+                    ->get();
+            }
+            $calculationDefinitions = $this->availabilityPricingDefinitionCache[$definitionsCacheKey];
 
             if ($calculationDefinitions->isEmpty()) {
                 Log::warning("No active calculation definition found for service type", [
@@ -4820,6 +4980,48 @@ class BookingFlowService
      * Prepare inputs for calculation definition execution
      * Enhanced to support company-specific distance calculations and airport pricing
      */
+    private function resolveCalculationServiceType(mixed $serviceTypeId, array $params): ?ServiceType
+    {
+        if (!$serviceTypeId) {
+            return null;
+        }
+
+        $isUuid = is_string($serviceTypeId) && Str::isUuid($serviceTypeId);
+        $requestedContext = $isUuid ? null : $this->resolvePricingContext($params);
+        $cacheKey = $isUuid
+            ? 'id:' . strtolower($serviceTypeId)
+            : 'lookup:' . $requestedContext . ':' . (string) $serviceTypeId;
+        $request = request();
+        $cache = $request->attributes->get('booking_flow.calculation_service_types', []);
+
+        if (array_key_exists($cacheKey, $cache)) {
+            return $cache[$cacheKey];
+        }
+
+        if ($isUuid) {
+            // UUID inputs retain the exact persisted service type, independent
+            // of the current pricing surface.
+            $serviceType = ServiceType::query()->where('id', $serviceTypeId)->first();
+        } else {
+            $serviceTypeQuery = match ($requestedContext) {
+                'portal' => ServiceType::portalContext(),
+                'public' => ServiceType::publicContext(),
+                default => ServiceType::query(),
+            };
+            $serviceType = $serviceTypeQuery
+                ->where(function ($query) use ($serviceTypeId) {
+                    $query->where('code', $serviceTypeId)
+                        ->orWhere('name', $serviceTypeId);
+                })
+                ->first();
+        }
+
+        $cache[$cacheKey] = $serviceType;
+        $request->attributes->set('booking_flow.calculation_service_types', $cache);
+
+        return $serviceType;
+    }
+
     private function prepareCalculationInputs(array $params): array
     {
         $hasDurationMinutes = array_key_exists('duration_minutes', $params) && is_numeric($params['duration_minutes']);
@@ -4935,36 +5137,13 @@ class BookingFlowService
 
         // Get service type for minimum KM lookup
         $serviceTypeId = $params['service_type_id'] ?? $params['service_type'] ?? null;
-        $serviceType = null;
         $minimumKm = null;
 
-        if ($serviceTypeId) {
-            // Avoid UUID comparison errors in PostgreSQL when service type is passed as code.
-            if (is_string($serviceTypeId) && Str::isUuid($serviceTypeId)) {
-                // A persisted booking item already owns an exact service UUID.
-                // Do not hide it by re-scoping to a different request surface
-                // during final pricing; the booking context controls rates.
-                $serviceTypeQuery = ServiceType::query()->where('id', $serviceTypeId);
-            } else {
-                $requestedContext = $this->resolvePricingContext($params);
-                $serviceTypeQuery = match ($requestedContext) {
-                    'portal' => ServiceType::portalContext(),
-                    'public' => ServiceType::publicContext(),
-                    default => ServiceType::query(),
-                };
-                $serviceTypeQuery->where(function ($query) use ($serviceTypeId) {
-                    $query->where('code', $serviceTypeId)
-                        ->orWhere('name', $serviceTypeId);
-                });
-            }
-            $serviceType = $serviceTypeQuery->first();
-
-            if ($serviceType && $serviceType->minimum_km > 0) {
-                $minimumKm = (float) $serviceType->minimum_km;
-                $inputs['minimum_km'] = $minimumKm;
-                $inputs['minimum_km_source'] = 'service_type';
-
-            }
+        $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
+        if ($serviceType && $serviceType->minimum_km > 0) {
+            $minimumKm = (float) $serviceType->minimum_km;
+            $inputs['minimum_km'] = $minimumKm;
+            $inputs['minimum_km_source'] = 'service_type';
         }
 
         if ($serviceType !== null && $minimumKm === null) {

@@ -29,6 +29,7 @@ trait BookingAvailabilityTrait
                 'from_date' => 'required|date',
                 'from_time' => 'required|string',
                 'resource_lookup' => 'nullable|boolean',
+                'defer_availability' => 'nullable|boolean',
                 'pickup_location' => (!$resourceLookup && $pickupRequired) ? 'required|array' : 'nullable|array',
                 'pickup_location.latitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
                 'pickup_location.longitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),

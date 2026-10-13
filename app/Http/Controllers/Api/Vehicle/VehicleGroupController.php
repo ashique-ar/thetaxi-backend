@@ -38,6 +38,18 @@ class VehicleGroupController extends Controller
             'class'
         );
 
+        // The admin table only needs the group fields it displays. Avoid sending
+        // SEO metadata and gallery images for every row in every list response.
+        if ($request->boolean('summary')) {
+            $q->select([
+                'id', 'grade_id', 'make_id', 'model_id', 'transmission_id',
+                'fuel_type_id', 'category_id', 'class_id', 'name', 'description',
+                'specs', 'thumbnail', 'is_active', 'passengers_count',
+                'hand_luggages', 'air_conditioning', 'refundable_deposit',
+                'created_at', 'updated_at',
+            ]);
+        }
+
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
 

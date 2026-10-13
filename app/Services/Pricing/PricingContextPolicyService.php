@@ -12,6 +12,8 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class PricingContextPolicyService
 {
+    private const REQUEST_LOOKUP_CACHE = 'pricing_context_policy.lookup_cache';
+
     public const SETTING_KEY = 'internal_pricing_mode';
     public const MODE_INHERIT_WEBSITE = 'inherit_website';
     public const MODE_SEPARATE = 'separate';
@@ -232,14 +234,14 @@ class PricingContextPolicyService
             );
         }
 
-        return ServicePackage::query()
+        return $this->requestCachedLookup('effective_service_packages', (string) $package->getKey(), fn () => ServicePackage::query()
             ->where('service_type_id', $websiteServiceType->id)
             ->where(function ($query) use ($package) {
                 $query->where('code', $package->code)
                     ->orWhere('name', $package->name);
             })
             ->orderByDesc('is_active')
-            ->first()
+            ->first())
             ?? throw new HttpException(
                 409,
                 "Internal package {$package->name} has no matching Website package. Create it under the Website service type, or enable separate Internal pricing in Business Settings."
@@ -316,18 +318,23 @@ class PricingContextPolicyService
 
         $value = trim($value);
 
-        if (Str::isUuid($value)) {
-            return ServiceType::withInactive()->whereKey($value)->first();
-        }
+        $isUuid = Str::isUuid($value);
+        $cacheKey = ($isUuid ? 'id:' . strtolower($value) : 'lookup:' . $value);
 
-        return ServiceType::withInactive()
-            ->where(function ($query) use ($value) {
-                $query->where('code', $value)
-                    ->orWhere('name', $value)
-                    ->orWhere('slug', $value);
-            })
-            ->orderByRaw("CASE WHEN context = 'portal' THEN 0 WHEN context = 'public' THEN 1 ELSE 2 END")
-            ->first();
+        return $this->requestCachedLookup('service_types', $cacheKey, function () use ($isUuid, $value) {
+            if ($isUuid) {
+                return ServiceType::withInactive()->whereKey($value)->first();
+            }
+
+            return ServiceType::withInactive()
+                ->where(function ($query) use ($value) {
+                    $query->where('code', $value)
+                        ->orWhere('name', $value)
+                        ->orWhere('slug', $value);
+                })
+                ->orderByRaw("CASE WHEN context = 'portal' THEN 0 WHEN context = 'public' THEN 1 ELSE 2 END")
+                ->first();
+        });
     }
 
     private function findServicePackage(mixed $value): ?ServicePackage
@@ -336,10 +343,12 @@ class PricingContextPolicyService
             return null;
         }
 
-        return ServicePackage::query()
+        $packageId = trim($value);
+
+        return $this->requestCachedLookup('service_packages', strtolower($packageId), fn () => ServicePackage::query()
             ->with('serviceType')
-            ->whereKey(trim($value))
-            ->first();
+            ->whereKey($packageId)
+            ->first());
     }
 
     private function effectiveVehicleAddonId(mixed $value): mixed
@@ -358,17 +367,37 @@ class PricingContextPolicyService
 
     private function websiteServiceTypeFor(ServiceType $serviceType): ?ServiceType
     {
-        return ServiceType::withInactive()
-            ->publicContext()
-            ->where(function ($query) use ($serviceType) {
-                $query->where('code', $serviceType->code);
+        return $this->requestCachedLookup('website_service_types', (string) $serviceType->getKey(), function () use ($serviceType) {
+            return ServiceType::withInactive()
+                ->publicContext()
+                ->where(function ($query) use ($serviceType) {
+                    $query->where('code', $serviceType->code);
 
-                if ($serviceType->slug) {
-                    $query->orWhere('slug', $serviceType->slug);
-                }
-            })
-            ->orderByDesc('is_active')
-            ->orderBy('priority')
-            ->first();
+                    if ($serviceType->slug) {
+                        $query->orWhere('slug', $serviceType->slug);
+                    }
+                })
+                ->orderByDesc('is_active')
+                ->orderBy('priority')
+                ->first();
+        });
+    }
+
+    private function requestCachedLookup(string $bucket, string $key, callable $resolve): mixed
+    {
+        $request = request();
+        $cache = $request->attributes->get(self::REQUEST_LOOKUP_CACHE, []);
+        $bucketCache = $cache[$bucket] ?? [];
+
+        if (array_key_exists($key, $bucketCache)) {
+            return $bucketCache[$key];
+        }
+
+        $value = $resolve();
+        $bucketCache[$key] = $value;
+        $cache[$bucket] = $bucketCache;
+        $request->attributes->set(self::REQUEST_LOOKUP_CACHE, $cache);
+
+        return $value;
     }
 }
