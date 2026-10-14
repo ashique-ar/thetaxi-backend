@@ -324,6 +324,9 @@ Route::prefix('places')->middleware(['throttle:60,1'])->group(function () {
     Route::get('reverse-geocode', [GooglePlacesController::class, 'reverseGeocode']);
 });
 
+Route::post('observability/frontend-log', [ObservabilityController::class, 'frontend'])
+    ->middleware('throttle:30,1');
+
 Route::middleware(['auth:api'])->group(function () {
 
     Route::get('system/client-cache-clears', [SystemController::class, 'pendingClientCacheClears'])

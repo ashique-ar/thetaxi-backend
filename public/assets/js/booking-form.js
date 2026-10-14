@@ -682,9 +682,98 @@
     };
 
     /**
+     * Setup modern styling and custom markup for jQuery UI autocomplete dropdown
+     */
+    function setupCustomAutocompleteRenderer() {
+        if (typeof $ === "undefined" || !$.ui || !$.ui.autocomplete) {
+            return;
+        }
+
+        if ($.ui.autocomplete.prototype.__hasCustomRenderer) {
+            return;
+        }
+        $.ui.autocomplete.prototype.__hasCustomRenderer = true;
+
+        $.ui.autocomplete.prototype._renderItem = function (ul, item) {
+            var label = item.label || item.value || "";
+            var mainText = item.main_text;
+            var secondaryText = item.secondary_text;
+
+            if (!mainText) {
+                var commaIdx = label.indexOf(",");
+                if (commaIdx !== -1) {
+                    mainText = label.substring(0, commaIdx).trim();
+                    secondaryText = label.substring(commaIdx + 1).trim();
+                } else {
+                    mainText = label;
+                    secondaryText = "";
+                }
+            }
+
+            var isAirport =
+                item.is_airport ||
+                (item.data && (item.data.code || item.data.airport_code)) ||
+                /\b(airport|international airport|bia|cmb|aerodrome)\b/i.test(label);
+
+            var escapeHtml = function (str) {
+                if (!str) return "";
+                return String(str)
+                    .replace(/&/g, "&amp;")
+                    .replace(/</g, "&lt;")
+                    .replace(/>/g, "&gt;")
+                    .replace(/"/g, "&quot;")
+                    .replace(/'/g, "&#039;");
+            };
+
+            var iconSvg = isAirport
+                ? '<svg class="custom-autocomplete-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.8 19.2 16 11l3.5-3.5C21 6 21.5 4 21 3c-1-.5-3 0-4.5 1.5L13 8 4.8 6.2c-.5-.1-.9.1-1.1.5l-.3.5c-.2.5-.1 1 .3 1.3L9 12l-2 3H4l-1 1 3 2 2 3 1-1v-3l3-2 3.5 5.3c.3.4.8.5 1.3.3l.5-.2c.4-.3.6-.7.5-1.2z"/></svg>'
+                : '<svg class="custom-autocomplete-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>';
+
+            var badgeHtml = isAirport
+                ? '<span class="custom-autocomplete-badge">Airport</span>'
+                : "";
+
+            var subHtml = secondaryText
+                ? '<div class="custom-autocomplete-sub">' + escapeHtml(secondaryText) + "</div>"
+                : "";
+
+            var $wrapper = $("<div>")
+                .addClass("ui-menu-item-wrapper custom-autocomplete-item")
+                .toggleClass("is-airport", !!isAirport)
+                .append(
+                    $("<div>")
+                        .addClass("custom-autocomplete-icon")
+                        .toggleClass("is-airport", !!isAirport)
+                        .html(iconSvg)
+                )
+                .append(
+                    $("<div>")
+                        .addClass("custom-autocomplete-content")
+                        .append(
+                            $("<div>")
+                                .addClass("custom-autocomplete-main-row")
+                                .append(
+                                    $("<span>")
+                                        .addClass("custom-autocomplete-main")
+                                        .text(mainText)
+                                )
+                                .append(badgeHtml)
+                        )
+                        .append(subHtml)
+                );
+
+            return $("<li>")
+                .addClass("ui-menu-item custom-autocomplete-li")
+                .append($wrapper)
+                .appendTo(ul);
+        };
+    }
+
+    /**
      * Initialize location search functionality
      */
     function initializeLocationSearch() {
+        setupCustomAutocompleteRenderer();
         const locationInputs = document.querySelectorAll(".location-search");
 
         locationInputs.forEach((input) => {
@@ -992,6 +1081,7 @@
      */
     function initializeBasicAutocompleteForModal(input) {
         if (typeof $ !== "undefined" && $.fn.autocomplete) {
+            setupCustomAutocompleteRenderer();
             $(input).autocomplete({
                 source: function (request, response) {
                     fetch(
@@ -1007,6 +1097,8 @@
                                         label: item.description,
                                         value: item.description,
                                         place_id: item.place_id,
+                                        main_text: item.main_text || item.description,
+                                        secondary_text: item.secondary_text || "",
                                     }))
                                 );
                             } else {
@@ -1015,7 +1107,15 @@
                                         .filter((city) =>
                                             city.toLowerCase().includes(request.term.toLowerCase())
                                         )
-                                        .map((city) => ({ label: city, value: city }))
+                                        .map((city) => {
+                                            const commaIdx = city.indexOf(",");
+                                            return {
+                                                label: city,
+                                                value: city,
+                                                main_text: commaIdx !== -1 ? city.substring(0, commaIdx).trim() : city,
+                                                secondary_text: commaIdx !== -1 ? city.substring(commaIdx + 1).trim() : "Sri Lanka",
+                                            };
+                                        })
                                 );
                             }
                         })
@@ -1025,7 +1125,15 @@
                                     .filter((city) =>
                                         city.toLowerCase().includes(request.term.toLowerCase())
                                     )
-                                    .map((city) => ({ label: city, value: city }))
+                                    .map((city) => {
+                                        const commaIdx = city.indexOf(",");
+                                        return {
+                                            label: city,
+                                            value: city,
+                                            main_text: commaIdx !== -1 ? city.substring(0, commaIdx).trim() : city,
+                                            secondary_text: commaIdx !== -1 ? city.substring(commaIdx + 1).trim() : "Sri Lanka",
+                                        };
+                                    })
                             );
                         });
                 },
@@ -1083,6 +1191,8 @@
                 return;
             }
 
+            setupCustomAutocompleteRenderer();
+
             // Check if this input should be filtered for airports only
             const isAirportField = input.classList.contains(
                 "airport-search-field"
@@ -1114,6 +1224,9 @@
                                         data.data.map((airport) => ({
                                             label: airport.description,
                                             value: airport.description,
+                                            main_text: airport.main_text || airport.name || airport.description,
+                                            secondary_text: airport.secondary_text || airport.city || "Sri Lanka",
+                                            is_airport: true,
                                             data: airport,
                                         }))
                                     );
@@ -1131,6 +1244,9 @@
                                             .map((airport) => ({
                                                 label: airport,
                                                 value: airport,
+                                                main_text: airport,
+                                                secondary_text: "Sri Lanka",
+                                                is_airport: true,
                                             }))
                                     );
                                 }
@@ -1150,6 +1266,9 @@
                                         .map((airport) => ({
                                             label: airport,
                                             value: airport,
+                                            main_text: airport,
+                                            secondary_text: "Sri Lanka",
+                                            is_airport: true,
                                         }))
                                 );
                             });
@@ -1207,6 +1326,8 @@
                                             label: item.description,
                                             value: item.description,
                                             place_id: item.place_id,
+                                            main_text: item.main_text || item.description,
+                                            secondary_text: item.secondary_text || "",
                                         }))
                                     );
                                 } else {
@@ -1216,10 +1337,15 @@
                                             .filter((city) =>
                                                 city.toLowerCase().includes(request.term.toLowerCase())
                                             )
-                                            .map((city) => ({
-                                                label: city,
-                                                value: city,
-                                            }))
+                                            .map((city) => {
+                                                const commaIdx = city.indexOf(",");
+                                                return {
+                                                    label: city,
+                                                    value: city,
+                                                    main_text: commaIdx !== -1 ? city.substring(0, commaIdx).trim() : city,
+                                                    secondary_text: commaIdx !== -1 ? city.substring(commaIdx + 1).trim() : "Sri Lanka",
+                                                };
+                                            })
                                     );
                                 }
                             })
@@ -1230,10 +1356,15 @@
                                         .filter((city) =>
                                             city.toLowerCase().includes(request.term.toLowerCase())
                                         )
-                                        .map((city) => ({
-                                            label: city,
-                                            value: city,
-                                        }))
+                                        .map((city) => {
+                                            const commaIdx = city.indexOf(",");
+                                            return {
+                                                label: city,
+                                                value: city,
+                                                main_text: commaIdx !== -1 ? city.substring(0, commaIdx).trim() : city,
+                                                secondary_text: commaIdx !== -1 ? city.substring(commaIdx + 1).trim() : "Sri Lanka",
+                                            };
+                                        })
                                 );
                             });
                     },
@@ -4466,7 +4597,10 @@
         }, 1000);
     }, 1500);
 
+    setupCustomAutocompleteRenderer();
+
     // Expose functions globally for use in Blade templates
+    window.setupCustomAutocompleteRenderer = setupCustomAutocompleteRenderer;
     window.updateAirportTransferLocations = updateAirportTransferLocations;
     window.logCoordinateValues = logCoordinateValues;
 })();

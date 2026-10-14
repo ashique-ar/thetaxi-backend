@@ -74,7 +74,7 @@ class GooglePlacesController extends Controller
         }
 
         // Cache key
-        $cacheKey = "places_autocomplete:v3:" . md5($query . $countryCode . $limit);
+        $cacheKey = "places_autocomplete:v4:" . md5($query . $countryCode . $limit);
         if ($cached = Cache::get($cacheKey)) {
             return response()->json([
                 'status' => 'success',
@@ -148,17 +148,19 @@ class GooglePlacesController extends Controller
                     $placeId = str_replace('places/', '', $pred['place']);
                 }
 
+                $mainText = $pred['structuredFormat']['mainText']['text'] ?? '';
+                $secondaryText = $pred['structuredFormat']['secondaryText']['text'] ?? '';
                 $description = $pred['text']['text'] ?? '';
-                if (empty($description) && !empty($pred['structuredFormat']['mainText']['text'])) {
-                    $main = $pred['structuredFormat']['mainText']['text'];
-                    $secondary = $pred['structuredFormat']['secondaryText']['text'] ?? '';
-                    $description = $secondary ? "{$main}, {$secondary}" : $main;
+                if (empty($description) && !empty($mainText)) {
+                    $description = $secondaryText ? "{$mainText}, {$secondaryText}" : $mainText;
                 }
 
                 if (!empty($placeId)) {
                     $places[] = [
                         'description' => $description,
                         'place_id' => $placeId,
+                        'main_text' => $mainText ?: $description,
+                        'secondary_text' => $secondaryText,
                     ];
                 }
             }
@@ -256,7 +258,9 @@ class GooglePlacesController extends Controller
                 'code' => 'CMB',
                 'city' => 'Katunayake',
                 'latitude' => 7.1808,
-                'longitude' => 79.8841
+                'longitude' => 79.8841,
+                'main_text' => 'Bandaranaike International Airport (CMB)',
+                'secondary_text' => 'Katunayake, Sri Lanka',
             ],
             [
                 'description' => 'Mattala Rajapaksa International Airport, Hambantota, Sri Lanka',
@@ -265,7 +269,9 @@ class GooglePlacesController extends Controller
                 'code' => 'HRI',
                 'city' => 'Hambantota',
                 'latitude' => 6.2844,
-                'longitude' => 81.1247
+                'longitude' => 81.1247,
+                'main_text' => 'Mattala Rajapaksa International Airport (HRI)',
+                'secondary_text' => 'Hambantota, Sri Lanka',
             ],
             [
                 'description' => 'Jaffna Airport, Jaffna, Sri Lanka',
@@ -274,7 +280,9 @@ class GooglePlacesController extends Controller
                 'code' => 'JAF',
                 'city' => 'Jaffna',
                 'latitude' => 9.7923,
-                'longitude' => 80.0700
+                'longitude' => 80.0700,
+                'main_text' => 'Jaffna Airport (JAF)',
+                'secondary_text' => 'Jaffna, Sri Lanka',
             ],
             // [
             //     'description' => 'Koggala Airport, Koggala, Sri Lanka',

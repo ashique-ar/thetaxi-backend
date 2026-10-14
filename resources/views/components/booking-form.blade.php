@@ -500,7 +500,13 @@
                                 .then(function(data) {
                                     if (data.status === 'success' && Array.isArray(data.data)) {
                                         response(data.data.map(function(item) {
-                                            return { label: item.description, value: item.description, place_id: item.place_id };
+                                            return {
+                                                label: item.description,
+                                                value: item.description,
+                                                place_id: item.place_id,
+                                                main_text: item.main_text || item.description,
+                                                secondary_text: item.secondary_text || ''
+                                            };
                                         }));
                                     } else {
                                         response([]);
