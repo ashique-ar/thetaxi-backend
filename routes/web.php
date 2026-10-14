@@ -74,6 +74,12 @@ Route::get('/vehicle/{vehicleSlug}/{id}/{serviceSlug?}', [VehicleController::cla
 Route::get('/vehicle/{id}/{serviceSlug?}', [VehicleController::class, 'show'])->name('vehicle.details');
 Route::post('/vehicle/{id}/update-pricing', [VehicleController::class, 'updatePricing'])->name('vehicle.updatePricing');
 
+// Public customer vehicle preview (unranked, token-based, valid for 6 months)
+Route::get('/v/{token}', [\App\Http\Controllers\VehicleShareController::class, 'show'])
+    ->name('vehicle.share');
+Route::get('/shared-vehicles/{token}', [\App\Http\Controllers\VehicleShareController::class, 'show'])
+    ->name('vehicle.share.long');
+
 Route::get('/about', [CmsController::class, 'index'])
     ->defaults('contentType', 'about')
     ->name('about');

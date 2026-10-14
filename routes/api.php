@@ -1927,6 +1927,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('/vehicles/check-plate-availability', [VehicleController::class, 'checkPlateAvailability']);
         Route::put('/vehicles/{vehicle}/handover', [VehicleController::class, 'recordHandover'])
             ->middleware('permission:vehicles.edit');
+        Route::post('/vehicles/{vehicle}/share-links', [VehicleController::class, 'createShareLink']);
+        Route::get('/vehicles/{vehicle}/share-links', [VehicleController::class, 'getShareLinks']);
         Route::apiResource('vehicles', VehicleController::class);
 
         // Default driver management for vehicles

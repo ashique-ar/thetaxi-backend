@@ -34,7 +34,7 @@ class VehicleController extends Controller
 {
     public function __construct()
     {
-        $this->middleware('permission:vehicles.view')->only(['index', 'show']);
+        $this->middleware('permission:vehicles.view')->only(['index', 'show', 'createShareLink', 'getShareLinks']);
         $this->middleware('permission:vehicles.create')->only(['store']);
         $this->middleware('permission:vehicles.edit')->only(['update']);
         $this->middleware('permission:vehicles.delete')->only(['destroy']);
@@ -1157,6 +1157,67 @@ class VehicleController extends Controller
         return response()->json([
             'status' => 'success',
             'data' => $insuranceTypes
+        ]);
+    }
+
+    /**
+     * Generate a new temporary public share link for a vehicle (valid for ~6 months).
+     */
+    public function createShareLink(Request $request, string $id): JsonResponse
+    {
+        $vehicle = Vehicle::findOrFail($id);
+        $shareLink = \App\Models\Vehicle\VehicleShareLink::createForVehicle($vehicle, $request->user()?->id);
+
+        $baseUrl = rtrim(config('app.url') ?: $request->getSchemeAndHttpHost(), '/');
+        $relativeUrl = route('vehicle.share', ['token' => $shareLink->token], false);
+        $fullUrl = $baseUrl . $relativeUrl;
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'id' => $shareLink->id,
+                'vehicle_id' => $shareLink->vehicle_id,
+                'token' => $shareLink->token,
+                'url' => $fullUrl,
+                'expires_at' => $shareLink->expires_at?->toISOString(),
+                'created_at' => $shareLink->created_at?->toISOString(),
+                'access_count' => $shareLink->access_count,
+            ],
+            'message' => 'Vehicle share link generated successfully',
+        ]);
+    }
+
+    /**
+     * List active share links for a vehicle.
+     */
+    public function getShareLinks(Request $request, string $id): JsonResponse
+    {
+        $vehicle = Vehicle::findOrFail($id);
+        $links = \App\Models\Vehicle\VehicleShareLink::where('vehicle_id', $vehicle->id)
+            ->where('is_active', true)
+            ->where('expires_at', '>', \Illuminate\Support\Carbon::now())
+            ->orderByDesc('created_at')
+            ->limit(10)
+            ->get();
+
+        $baseUrl = rtrim(config('app.url') ?: $request->getSchemeAndHttpHost(), '/');
+
+        $data = $links->map(function ($link) use ($baseUrl) {
+            $relativeUrl = route('vehicle.share', ['token' => $link->token], false);
+            return [
+                'id' => $link->id,
+                'token' => $link->token,
+                'url' => $baseUrl . $relativeUrl,
+                'expires_at' => $link->expires_at?->toISOString(),
+                'created_at' => $link->created_at?->toISOString(),
+                'accessed_at' => $link->accessed_at?->toISOString(),
+                'access_count' => $link->access_count,
+            ];
+        });
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $data,
         ]);
     }
 }
