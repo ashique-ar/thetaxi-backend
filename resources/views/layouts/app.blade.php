@@ -674,7 +674,6 @@
         }
     </style>
     @endif
-    @endif
 
 </body>
 
