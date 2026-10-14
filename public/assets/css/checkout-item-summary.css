@@ -51,7 +51,7 @@ body[class] .checkout-page .checkout-cart-item .item-img {
     border-radius: 12px !important;
     background: #f8eeee;
 }
-body[class] .checkout-page .checkout-cart-item .item-img img { display: block; width: 100%; height: 100%; padding: 0; object-fit: cover; transform: scale(1.12); }
+body[class] .checkout-page .checkout-cart-item .item-img img { display: block; width: 100%; height: 100%; padding: 0; object-fit: contain; }
 body[class] .checkout-page .checkout-cart-item :where(.content-and-quantity, .content) { min-width: 0; }
 body[class] .checkout-page .checkout-cart-item .content { margin: 0 !important; line-height: 1.45 !important; }
 body[class] .checkout-page .checkout-cart-item .content > .vehicle-rate { display: none !important; }
