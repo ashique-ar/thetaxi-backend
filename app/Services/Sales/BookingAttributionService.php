@@ -22,7 +22,7 @@ class BookingAttributionService
         private readonly SalesProfileEligibilityService $profileEligibility,
     ) {}
 
-    public function captureConfirmation(Booking $booking): ?SalesBookingAttribution
+    public function captureConfirmation(Booking $booking, bool $stageUnownedHistorical = false): ?SalesBookingAttribution
     {
         if (! $this->isConfirmed($booking)) {
             return null;
@@ -36,6 +36,13 @@ class BookingAttributionService
 
             $securedAt = $booking->confirmed_at ?? $booking->updated_at ?? now();
             $resolved = $this->resolveProfiles($booking, $securedAt);
+            if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
+                $resolved['company_id'] = null;
+                $resolved['acquisition_profile'] = null;
+                $resolved['acquisition_profile_id'] = null;
+                $resolved['collection_profile'] = null;
+                $resolved['collection_profile_id'] = null;
+            }
             $rootAttribution = $resolved['root'];
             $acquisitionProfile = $resolved['acquisition_profile'];
             $acquisitionProfileId = $resolved['acquisition_profile_id'];

@@ -68,6 +68,7 @@ class BookingDistancePresentationTest extends TestCase
         $summaryStyles = file_get_contents(public_path('assets/css/checkout-item-summary.css'));
         $this->assertStringContainsString('body[class] .checkout-page', $summaryStyles);
         $this->assertStringNotContainsString('body.theme-theme-04', $summaryStyles);
+        $this->assertStringContainsString('body.theme-default .checkout-page .checkout-item-addons', $summaryStyles);
         $this->assertStringContainsString('container-type: inline-size', $summaryStyles);
         $this->assertStringNotContainsString('vw', $summaryStyles);
         $this->assertStringContainsString('class="checkout-item-route-details"', $itemView);

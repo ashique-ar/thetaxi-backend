@@ -148,3 +148,18 @@ body[class] .checkout-page .checkout-cart-item.is-collapsed .trip-location { mar
     body[class] .checkout-page .checkout-cart-item .checkout-item-price-rate { margin: 0 !important; }
     body[class] .checkout-page .checkout-cart-item .checkout-remove-item-btn { margin: 0; }
 }
+
+body.theme-default .checkout-page .checkout-cart-item { padding-block: 12px !important; }
+body.theme-default .checkout-page .checkout-item-toolbar { margin-bottom: 8px; }
+body.theme-default .checkout-page .checkout-item-route-details { margin-top: 12px; padding-top: 12px; }
+body.theme-default .checkout-page .checkout-item-route-details .trip-location { gap: 8px; margin: 8px 0 !important; }
+body.theme-default .checkout-page .checkout-cart-item .checkout-item-discount-badge { margin: 0 5px 2px 0; padding: 2px 6px; }
+body.theme-default .checkout-page .checkout-cart-item .checkout-original-price { display: inline-block; margin: 0 0 2px; }
+body.theme-default .checkout-page .checkout-cart-item .checkout-final-price { line-height: 1.2; }
+body.theme-default .checkout-page .checkout-cart-item .checkout-savings { margin-top: 0; }
+body.theme-default .checkout-page .checkout-cart-item .checkout-remove-item-btn { min-height: 32px; margin-top: 4px; padding: 4px 8px !important; }
+body.theme-default .checkout-page .checkout-item-addons,
+body.theme-default .checkout-page .checkout-item-extra-km { margin-top: 8px !important; padding: 8px 10px !important; }
+body.theme-default .checkout-page .checkout-addon-header,
+body.theme-default .checkout-page .checkout-extra-km-header { padding-bottom: 6px; }
+body.theme-default .checkout-page .checkout-selected-addons { margin-top: 6px; padding-top: 6px; }

@@ -77,6 +77,8 @@ class SalesBookingAttributionController extends Controller
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
+        $includeUnassignedOwnerReviews = $this->scope->hasPermission($request->user(), 'sales.attributions.view-all')
+            && (string) $data['company_id'] === (string) (app(SingleCompanyScope::class)->activeDefaultCompany()?->id ?? '');
 
         $query = DB::table('sales_attribution_exceptions as exception')
             ->join('bookings as booking', 'booking.id', '=', 'exception.booking_id')
@@ -93,7 +95,17 @@ class SalesBookingAttributionController extends Controller
         $this->applyActorScope($query, $request, 'attribution', $data['company_id'] ?? null);
 
         $rows = $query
-            ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('attribution.company_id', $id))
+            ->when($data['company_id'] ?? null, function ($q, $id) use ($includeUnassignedOwnerReviews): void {
+                $q->where(function ($scope) use ($id, $includeUnassignedOwnerReviews): void {
+                    $scope->where('attribution.company_id', $id);
+                    if ($includeUnassignedOwnerReviews) {
+                        $scope->orWhere(fn ($unassigned) => $unassigned->whereNull('attribution.company_id')
+                            ->whereNotNull('attribution.id')->whereNull('attribution.acquisition_sales_profile_id')
+                            ->whereNull('attribution.collection_sales_profile_id')->where('attribution.status', 'held')
+                            ->where('exception.exception_type', 'legal_entity_missing'));
+                    }
+                });
+            })
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('exception.status', $status))
             ->when($data['exception_type'] ?? null, fn ($q, $type) => $q->where('exception.exception_type', $type))
             ->orderByDesc('exception.detected_at')
@@ -162,10 +174,9 @@ class SalesBookingAttributionController extends Controller
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
             $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>$row['company_id']===$data['company_id']&&($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
             abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized legal-entity scope.');
-            abort_unless($rows->every(fn (array $row) => ! in_array('historical_company_owner_review_required', $row['holds'], true)), 409,
-                'Historical bookings without an explicit legal-entity source require reviewed owner disposition before attribution.');
             $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id'],'rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
-            $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking);$created++;}}
+            $ownerReviewIds=$rows->filter(fn(array$row)=>in_array('historical_company_owner_review_required',$row['holds'],true))->pluck('booking_id')->flip();
+            $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking,$ownerReviewIds->has($booking->id));$created++;}}
             $result=['requested'=>count($data['booking_ids']),'created'=>$created,'preview_checksum'=>$checksum,'reconciliation'=>['remaining_confirmed_without_attribution'=>Booking::query()->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->count()]];
             DB::table('sales_attribution_migration_batches')->insert(['id'=>(string)\Illuminate\Support\Str::uuid(),'company_id'=>$data['company_id'],'idempotency_key'=>$data['idempotency_key'],'preview_checksum'=>$checksum,'booking_scope_checksum'=>$scopeChecksum,'requested_count'=>count($data['booking_ids']),'created_count'=>$created,'result_snapshot'=>json_encode($result,JSON_THROW_ON_ERROR),'applied_by'=>$request->user()->id,'applied_at'=>now(),'created_at'=>now(),'updated_at'=>now()]);
             return response()->json(['status'=>'success','data'=>$result]);
