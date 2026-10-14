@@ -59,12 +59,12 @@ class GoogleMapsService
         }
 
         $blockedKey = 'gm:routes:permission-denied:' . md5($this->apiKey);
-        if (Cache::has($blockedKey)) {
-            throw new \RuntimeException('Google Routes API access is blocked for this key.');
-        }
-
         $cacheKey = 'gm:routes:v1:' . md5(json_encode([$o, $d, $mode, $avoidTolls, $avoidHighways]));
         return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways, $blockedKey) {
+            if (Cache::has($blockedKey)) {
+                throw new \RuntimeException('Google Routes API access is blocked for this key.');
+            }
+
             try {
                 $travelMode = match (strtolower($mode)) {
                     'driving' => 'DRIVE',

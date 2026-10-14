@@ -52,6 +52,22 @@ it('backs off after Google denies Routes API access', function () {
     Http::assertSentCount(1);
 });
 
+it('serves verified cached routes while Google access is in backoff', function () {
+    config()->set('services.google.places_api_key', 'test-key');
+    Cache::flush();
+    Http::fake(['routes.googleapis.com/*' => Http::response(['routes' => [['distanceMeters' => 10_000, 'duration' => '900s']]])]);
+    $maps = app(GoogleMapsService::class);
+    $origin = ['latitude' => 7.1808, 'longitude' => 79.8841];
+    $destination = ['latitude' => 6.9271, 'longitude' => 79.8612];
+    $verifiedRoute = ['distance_km' => 10.0, 'duration_seconds' => 900];
+
+    expect($maps->distanceAndDuration($origin, $destination))->toBe($verifiedRoute);
+    Cache::put('gm:routes:permission-denied:' . md5('test-key'), true, now()->addMinutes(5));
+
+    expect($maps->distanceAndDuration($origin, $destination))->toBe($verifiedRoute);
+    Http::assertSentCount(1);
+});
+
 it('keeps place detail database cache keys bounded', function () {
     $source = file_get_contents(app_path('Http/Controllers/Api/GooglePlacesController.php'));
 
