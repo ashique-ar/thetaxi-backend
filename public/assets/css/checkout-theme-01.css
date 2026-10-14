@@ -110,7 +110,7 @@ body.theme-default .checkout-page .checkout-item-toggle i { transition: transfor
 body.theme-default .checkout-page .checkout-cart-item.is-expanded .checkout-item-toggle i { transform: rotate(180deg); }
 body.theme-default .checkout-page .checkout-cart-item.is-expanded .item-total { padding-top: 34px; }
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed { padding: 12px 48px 12px 12px !important; border-top-width: 1px !important; border-left: 3px solid var(--primary-color1) !important; box-shadow: none !important; }
-body.theme-default .checkout-page .checkout-cart-item.is-collapsed .content > :not(.vehicle-rate):not(.vehicle-title),
+body.theme-default .checkout-page .checkout-cart-item.is-collapsed .content > :not(.vehicle-rate):not(.vehicle-title):not(.trip-meta),
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .item-total,
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .checkout-item-addons,
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .checkout-item-extra-km { display: none !important; }

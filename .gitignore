@@ -27,3 +27,4 @@ Thumbs.db
 !composer.lock
 
 /storage/*.json
+/.tmp-*

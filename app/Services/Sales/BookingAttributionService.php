@@ -28,7 +28,7 @@ class BookingAttributionService
             return null;
         }
 
-        return DB::transaction(function () use ($booking) {
+        return DB::transaction(function () use ($booking, $stageUnownedHistorical) {
             $existing = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
             if ($existing) {
                 return $existing;
@@ -100,6 +100,18 @@ class BookingAttributionService
                 $companyId,
                 $currency,
             );
+            if ($stageUnownedHistorical && ! $this->hasHistoricalCompanySource($booking)) {
+                DB::table('sales_attribution_exceptions')->insertOrIgnore([
+                    'id' => (string) Str::uuid(),
+                    'booking_id' => $booking->id,
+                    'exception_type' => 'historical_company_owner_review_required',
+                    'status' => 'open',
+                    'details' => 'Historical booking ownership must be established by an authorized owner before assigning a legal entity.',
+                    'detected_at' => now(),
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            }
             $attribution = $this->commissionPlans->freezeFamilyForAttribution($attribution) ?? $attribution;
             $this->events->record(
                 'sales',

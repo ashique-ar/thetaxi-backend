@@ -140,7 +140,7 @@ class BookingAttributionMutationService
 
             $this->resolveExceptions(
                 $locked->booking_id,
-                ['legal_entity_missing', 'acquisition_owner_missing', 'acquisition_owner_ineligible'],
+                ['legal_entity_missing', 'historical_company_owner_review_required', 'acquisition_owner_missing', 'acquisition_owner_ineligible'],
                 $reason,
                 $actorUserId,
             );
