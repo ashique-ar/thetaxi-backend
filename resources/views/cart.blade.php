@@ -271,7 +271,7 @@
                                                             // Minimum KM charge info
                                                             $minimumKm = $distanceDetails['minimum_km'] ?? null;
                                                             $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
-                                                            $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
+                                                            $actualJourneyDistance = $distanceDetails['actual_journey_distance'] ?? ($minimumKmApplied ? null : ($distanceDetails['journey_distance'] ?? null));
 
                                                             // Calculate per-day km if only total is available
                                                             if (
@@ -284,11 +284,13 @@
                                                             }
                                                         @endphp
                                                         {{-- Display minimum KM charge notice --}}
-                                                        @if ($minimumKmApplied && $minimumKm)
+                                                        @if (!isServiceDurationBased($item['service_type'] ?? null, data_get($item, 'service_type_data.pricing_mode')) && $minimumKmApplied && $minimumKm)
                                                             <p class="text-warning" style="margin-top: 6px; background: #fef3c7; padding: 4px 8px; border-radius: 4px; display: inline-block;">
                                                                 <i class="bi bi-info-circle" style="color: #92400e;"></i>
                                                                 <strong style="color: #92400e;">Minimum {{ number_format($minimumKm, 0) }} km</strong>
-                                                                <small style="color: #92400e;">(Actual: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                                                                @if (is_numeric($actualJourneyDistance))
+                                                                    <small style="color: #92400e;">(Actual: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                                                                @endif
                                                             </p>
                                                         @endif
                                                         

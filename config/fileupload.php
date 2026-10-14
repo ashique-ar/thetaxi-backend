@@ -44,6 +44,9 @@ return [
     |
     */
 
+    'max_image_size' => 51200, // 50 MB before compression
+    'max_video_size' => 102400, // 100 MB
+
     'size_limits' => [
         'general' => 10240,      // 10MB
         'vehicles' => 5120,      // 5MB
@@ -121,12 +124,12 @@ return [
     */
 
     'image_processing' => [
-        'default_quality' => 90,
+        'default_quality' => 80,
         'convert_to_webp' => env('CONVERT_IMAGES_TO_WEBP', true),
         'thumbnail_size' => [150, 150],
         'max_dimensions' => [
-            'width' => 4096,
-            'height' => 4096,
+            'width' => 2560,
+            'height' => 2560,
         ],
     ],
 

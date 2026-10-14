@@ -7,6 +7,8 @@ use App\Services\AssignmentService;
 use App\Services\BookingFlowService;
 use App\Services\ContractualDistanceSnapshotProjector;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\Sales\SalesAccessScope;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
@@ -448,8 +450,22 @@ class AssignmentController extends Controller
             'fx_source' => ['nullable', 'string', 'max:120'],
         ]);
 
-        $booking = Booking::findOrFail($bookingId);
-        $summary = $this->paymentLedger->receive($booking, $data, Auth::id());
+        $summary = DB::transaction(function () use ($request, $bookingId, $data): array {
+            $booking = Booking::query()->whereKey($bookingId)->lockForUpdate()->firstOrFail();
+            $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
+            abort_unless($attribution?->company_id, 409,
+                'The booking needs a reviewed legal-entity attribution before payment collection.');
+            $company = DB::table('companies')->where('id', $attribution->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+            abort_unless($company, 409, 'The booking legal entity is inactive.');
+            app(SalesAccessScope::class)->assertCompany(
+                $request->user(), (string) $company->id, 'sales.collections.view-all',
+            );
+            app(SalesCollectionCompanyIntegrity::class)->assertConsistent($booking, (string) $company->id);
+
+            return $this->paymentLedger->receive($booking, $data, Auth::id());
+        }, 3);
 
         return response()->json([
             'status' => 'success',

@@ -2708,6 +2708,8 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::prefix('files')->group(function () {
+        Route::get('/', [FileUploadController::class, 'index'])->name('api.files.index');
+        Route::patch('/{id}', [FileUploadController::class, 'updateFile'])->name('api.files.update');
         Route::post('/upload', [FileUploadController::class, 'uploadFile'])
             ->name('api.files.upload');
 

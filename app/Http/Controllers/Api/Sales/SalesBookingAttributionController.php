@@ -63,7 +63,7 @@ class SalesBookingAttributionController extends Controller
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('secured_at', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('secured_at', '<', $to))
             ->latest('secured_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate($this->paginationSize($request, 25));
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -97,7 +97,7 @@ class SalesBookingAttributionController extends Controller
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('exception.status', $status))
             ->when($data['exception_type'] ?? null, fn ($q, $type) => $q->where('exception.exception_type', $type))
             ->orderByDesc('exception.detected_at')
-            ->paginate($request->integer('per_page', 25));
+            ->paginate($this->paginationSize($request, 25));
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -532,10 +532,7 @@ class SalesBookingAttributionController extends Controller
         $candidate = SalesBookingAttribution::query()->findOrFail($attributionId);
 
         return DB::transaction(function () use ($request, $candidate, $operation): JsonResponse {
-            app(\App\Services\BookingPaymentLedgerService::class)
-                ->ensureBookingCompanyAttribution($candidate->booking);
-            $candidate->refresh();
-            abort_unless($candidate->company_id, 409, 'This attribution has no resolved legal entity.');
+            abort_unless($candidate->company_id, 409, 'This attribution needs a reviewed legal entity before commercial adjustments.');
             $company = DB::table('companies')->where('id', $candidate->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
             abort_unless($company, 422, 'Select an active legal entity.');

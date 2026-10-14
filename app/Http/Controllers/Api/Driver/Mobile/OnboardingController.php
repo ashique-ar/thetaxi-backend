@@ -145,25 +145,37 @@ class OnboardingController extends Controller
         $old = $application->documents()->where('document_type', $data['document_type'])->whereIn('status', ['pending', 'changes_requested'])->latest()->first();
         $file = $data['file'];
         $disk = config('filesystems.default', 's3');
-        $path = $file->store("driver-onboarding/{$application->id}", $disk);
-        abort_unless($path, 500, 'The document could not be stored. Please try again.');
-        $document = $application->documents()->create([
-            'documentable_type' => DriverOnboardingApplication::class,
-            'documentable_id' => $application->id,
-            'document_type' => $data['document_type'],
-            'document_number' => $data['document_number'] ?? data_get($application->payload, 'identity.nic', 'pending'),
-            'expiry_date' => $data['expiry_date'] ?? null,
-            'reminder_days' => $data['reminder_days'] ?? 30,
-            'disk' => $disk,
-            'path' => $path,
-            'file_name' => $file->getClientOriginalName(),
-            'file_size' => $file->getSize(),
-            'file_type' => $file->getMimeType(),
-            'status' => 'pending',
-            'replaces_document_id' => $old?->id,
-        ]);
-        $old?->update(['status' => 'superseded']);
-        $application->update(['current_step' => max($application->current_step, 5)]);
+        $processed = app(\App\Services\MediaImageProcessor::class)->process($file);
+        $bytes = $processed['bytes'] ?? file_get_contents($file->getRealPath());
+        $fileName = \Illuminate\Support\Str::uuid() . '.' . ($processed['extension'] ?? $file->getClientOriginalExtension());
+        $path = "driver-onboarding/{$application->id}/{$fileName}";
+        abort_unless(Storage::disk($disk)->put($path, $bytes), 500,
+            'The document could not be stored. Please try again.');
+        try {
+            $document = DB::transaction(function () use ($application, $data, $file, $disk, $path, $old, $processed, $bytes) {
+                $document = $application->documents()->create([
+                    'documentable_type' => DriverOnboardingApplication::class,
+                    'documentable_id' => $application->id,
+                    'document_type' => $data['document_type'],
+                    'document_number' => $data['document_number'] ?? data_get($application->payload, 'identity.nic', 'pending'),
+                    'expiry_date' => $data['expiry_date'] ?? null,
+                    'reminder_days' => $data['reminder_days'] ?? 30,
+                    'disk' => $disk,
+                    'path' => $path,
+                    'file_name' => $file->getClientOriginalName(),
+                    'file_size' => strlen($bytes),
+                    'file_type' => $processed['mime_type'] ?? $file->getMimeType(),
+                    'status' => 'pending',
+                    'replaces_document_id' => $old?->id,
+                ]);
+                $old?->update(['status' => 'superseded']);
+                $application->update(['current_step' => max($application->current_step, 5)]);
+                return $document;
+            });
+        } catch (\Throwable $e) {
+            Storage::disk($disk)->delete($path);
+            throw $e;
+        }
 
         return response()->json(['status' => 'success', 'data' => $this->documentData($document)], 201);
     }

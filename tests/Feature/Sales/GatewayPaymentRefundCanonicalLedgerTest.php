@@ -64,10 +64,12 @@ function seedGatewayRefundFixture(): array
 
     $transactionId = (string) Str::uuid();
     $providerTransactionId = 'gateway-refund-fixture';
+    $companyId = DB::table('sales_booking_attributions')->where('booking_id', $bookingId)->value('company_id');
     DB::table('payment_transactions')->insert([
         'id' => (string) Str::uuid(),
         'attempt_id' => (string) Str::uuid(),
         'booking_id' => $bookingId,
+        'company_id' => $companyId,
         'amount' => 1000,
         'currency' => 'LKR',
         'requested_amount' => 1000,

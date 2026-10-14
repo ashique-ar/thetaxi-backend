@@ -365,7 +365,7 @@ class AuthController extends Controller
     public function updateProfilePhoto(Request $request): JsonResponse
     {
         $data = $request->validate([
-            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:10240'],
+            'photo' => ['required', 'image', 'mimes:jpg,jpeg,png,webp', 'max:' . config('fileupload.max_image_size', 51200)],
         ]);
 
         $driver = $this->authService->getDriver($request->user());
@@ -375,13 +375,16 @@ class AuthController extends Controller
 
         $file = $data['photo'];
         $disk = config('filesystems.default', 's3');
-        $path = $file->store("driver-profile/{$driver->id}", $disk);
-        if (!$path) {
+        $processed = app(\App\Services\MediaImageProcessor::class)->process($file);
+        $bytes = $processed['bytes'] ?? file_get_contents($file->getRealPath());
+        $fileName = \Illuminate\Support\Str::uuid() . '.' . ($processed['extension'] ?? $file->getClientOriginalExtension());
+        $path = "driver-profile/{$driver->id}/{$fileName}";
+        if (!Storage::disk($disk)->put($path, $bytes)) {
             return response()->json(['status' => 'error', 'message' => 'The profile photo could not be stored.'], 500);
         }
 
         try {
-            $photo = DB::transaction(function () use ($driver, $file, $disk, $path) {
+            $photo = DB::transaction(function () use ($driver, $file, $disk, $path, $processed, $bytes) {
                 $previousPhoto = $driver->profilePhotoDocument;
                 $document = $driver->documents()->create([
                     'document_type' => 'driver_photo',
@@ -389,8 +392,8 @@ class AuthController extends Controller
                     'disk' => $disk,
                     'path' => $path,
                     'file_name' => $file->getClientOriginalName(),
-                    'file_size' => $file->getSize(),
-                    'file_type' => $file->getMimeType(),
+                    'file_size' => strlen($bytes),
+                    'file_type' => $processed['mime_type'] ?? $file->getMimeType(),
                     'status' => 'pending',
                 ]);
                 $driver->update(['profile_photo_document_id' => $document->id]);

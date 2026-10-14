@@ -1736,6 +1736,7 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet"
         href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
+    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-item-summary.css') }}">
 @endpush
 
 @push('scripts')
@@ -2283,6 +2284,8 @@
                 const cartKey = button.data('cart-key');
                 const serviceType = button.data('service-type');
                 $('.checkout-addon-modal-vehicle').text(button.data('vehicle-name') || 'Selected vehicle');
+                // Keep the dialog above Bootstrap's backdrop outside isolated theme wrappers.
+                $('#checkoutAddonModal').appendTo(document.body);
                 bootstrap.Modal.getOrCreateInstance(document.getElementById('checkoutAddonModal')).show();
                 loadCheckoutAddons(cartKey, serviceType, false);
             });

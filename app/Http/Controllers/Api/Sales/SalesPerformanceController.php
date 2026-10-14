@@ -345,7 +345,7 @@ class SalesPerformanceController extends Controller
                 'period_lock.locked_at', 'period_lock.reopened_at', 'snapshot.id as current_snapshot_id',
                 'snapshot.snapshot_checksum as current_snapshot_checksum']);
         return response()->json(['status' => 'success', 'data' => $query->orderByDesc('period_lock.period_end')
-            ->paginate($request->integer('per_page', 12))]);
+            ->paginate($this->paginationSize($request, 12))]);
     }
 
     public function reopenPeriod(Request $request, string $periodLock, SalesPeriodCloseService $periodClose): JsonResponse
@@ -376,7 +376,7 @@ class SalesPerformanceController extends Controller
             $query->whereIn('company_id', $companyIds);
         }
         $page = $query->where('company_id', $data['company_id'])
-            ->latest('period_end')->paginate($request->integer('per_page', 12));
+            ->latest('period_end')->paginate($this->paginationSize($request, 12));
         if ($ids !== null) {
             $page->getCollection()->each(fn (SalesKpiSnapshot $snapshot) => $snapshot->makeHidden([
                 'snapshot_checksum', 'generation_payload_checksum', 'generation_idempotency_key',
@@ -402,7 +402,7 @@ class SalesPerformanceController extends Controller
             $query->where(fn ($q) => $q->whereNull('snoozed_until')->orWhere('snoozed_until', '<=', now()));
         }
         $page = $query->orderByRaw("CASE severity WHEN 'high' THEN 1 WHEN 'medium' THEN 2 ELSE 3 END")
-            ->latest('detected_at')->paginate($request->integer('per_page', 25));
+            ->latest('detected_at')->paginate($this->paginationSize($request, 25));
         $page->setCollection($page->getCollection()->map(function (SalesPerformanceAlert $alert): array {
             $row = [
                 'id' => $alert->id,

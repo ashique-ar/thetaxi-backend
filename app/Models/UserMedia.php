@@ -46,6 +46,8 @@ class UserMedia extends BaseModel
      */
     protected $table = 'user_media';
 
+    protected $attributes = ['is_active' => true];
+
     /**
      * The attributes that are mass assignable.
      */
@@ -125,7 +127,7 @@ class UserMedia extends BaseModel
      */
     public function thumbnails(): HasMany
     {
-        return $this->hasMany(UserMedia::class, 'parent_id')->where('is_thumbnail', true);
+        return $this->hasMany(UserMedia::class, 'parent_id')->withInactive()->where('is_thumbnail', true);
     }
 
     // ========== SCOPES ==========
@@ -185,11 +187,10 @@ class UserMedia extends BaseModel
      */
     public function getUrlAttribute(): string
     {
-        if ($this->storage_type === 's3') {
-            return \Storage::disk('s3')->url($this->full_path);
-        } else {
-            return \Storage::disk('public')->url($this->full_path);
-        }
+        $disk = \Storage::disk($this->storage_type ?: config('filesystems.default'));
+        return $disk->providesTemporaryUrls()
+            ? $disk->temporaryUrl($this->full_path, now()->addMinutes(15))
+            : $disk->url($this->full_path);
     }
 
     /**
@@ -220,11 +221,7 @@ class UserMedia extends BaseModel
      */
     public function getExistsAttribute(): bool
     {
-        if ($this->storage_type === 's3') {
-            return \Storage::disk('s3')->exists($this->full_path);
-        } else {
-            return \Storage::disk('public')->exists($this->full_path);
-        }
+        return \Storage::disk($this->storage_type ?: config('filesystems.default'))->exists($this->full_path);
     }
 
     // ========== METHODS ==========
@@ -250,11 +247,7 @@ class UserMedia extends BaseModel
      */
     public function getContent(): string
     {
-        if ($this->storage_type === 's3') {
-            return \Storage::disk('s3')->get($this->full_path);
-        } else {
-            return \Storage::disk('public')->get($this->full_path);
-        }
+        return \Storage::disk($this->storage_type ?: config('filesystems.default'))->get($this->full_path);
     }
 
     /**
@@ -263,10 +256,8 @@ class UserMedia extends BaseModel
     public function deleteFromStorage(): bool
     {
         try {
-            if ($this->storage_type === 's3') {
-                \Storage::disk('s3')->delete($this->full_path);
-            } else {
-                \Storage::disk('public')->delete($this->full_path);
+            if (!\Storage::disk($this->storage_type ?: config('filesystems.default'))->delete($this->full_path)) {
+                return false;
             }
             return true;
         } catch (\Exception $e) {
@@ -284,12 +275,13 @@ class UserMedia extends BaseModel
         static::deleting(function ($media) {
             // Delete thumbnails first
             $media->thumbnails()->each(function ($thumbnail) {
-                $thumbnail->deleteFromStorage();
                 $thumbnail->delete();
             });
 
             // Delete the main file from storage
-            $media->deleteFromStorage();
+            if (!$media->deleteFromStorage()) {
+                throw new \RuntimeException('Could not delete media from storage');
+            }
         });
     }
 }

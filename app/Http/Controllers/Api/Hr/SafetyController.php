@@ -124,7 +124,7 @@ class SafetyController extends Controller
         $q = DB::table('hr_safety_incidents')->where('company_id', $a->company_id);
         if (!$r->user()->can('hr.safety.manage') && !$r->user()->can('hr.safety.approve'))
             $q->where(fn($b) => $b->where('reporter_staff_id', $a->id)->orWhere('investigator_staff_id', $a->id));
-        return response()->json(['status' => 'success', 'data' => $q->select(['id', 'incident_number', 'reporter_staff_id', 'incident_type', 'severity', 'location_code', 'occurred_at', 'status', 'regulator_status', 'insurance_status', 'investigator_staff_id', 'closed_at'])->latest('occurred_at')->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $q->select(['id', 'incident_number', 'reporter_staff_id', 'incident_type', 'severity', 'location_code', 'occurred_at', 'status', 'regulator_status', 'insurance_status', 'investigator_staff_id', 'closed_at'])->latest('occurred_at')->paginate($this->paginationSize($r, 50))]);
     }
     public function show(Request $r, string $id): JsonResponse
     {

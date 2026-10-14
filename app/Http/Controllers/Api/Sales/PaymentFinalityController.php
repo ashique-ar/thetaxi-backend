@@ -126,7 +126,7 @@ class PaymentFinalityController extends Controller
                     ->join('sales_commission_hold_releases as release', 'release.commission_decision_id', '=', 'decision.id')
                     ->whereColumn('component.receipt_id', 'booking_payment_receipts.id')->select('release.release_kind')->limit(1),
             ])
-            ->latest('booking_payment_receipts.received_at')->paginate($request->integer('per_page', 25));
+            ->latest('booking_payment_receipts.received_at')->paginate($this->paginationSize($request, 25));
         return response()->json(['status' => 'success', 'data' => $query]);
     }
 

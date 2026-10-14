@@ -1021,7 +1021,7 @@ class SalesDashboardController extends Controller
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         $query = SalesBookingAttribution::query()->with(['booking.customer.user'])
             ->where(fn ($q) => $ids === null ? $q : $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids));
-        $page = $query->latest('secured_at')->paginate($request->integer('per_page', 25));
+        $page = $query->latest('secured_at')->paginate($this->paginationSize($request, 25));
         return response()->json(['status' => 'success', 'data' => $page->through(fn (SalesBookingAttribution $row) => [
             'id' => $row->id, 'booking_id' => $row->booking_id, 'business_classification' => $row->business_classification,
             'commission_category' => $row->commission_category, 'secured_at' => $row->secured_at,
@@ -1198,6 +1198,8 @@ class SalesDashboardController extends Controller
     {
         $companyId = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($companyId, 409, 'No active default legal entity is configured.');
+        abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
 
         return (string) $companyId;
     }

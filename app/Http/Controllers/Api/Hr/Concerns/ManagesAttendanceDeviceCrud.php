@@ -76,8 +76,12 @@ trait ManagesAttendanceDeviceCrud
 
     public function syncRuns(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
-        $runs = DB::table('hr_attendance_sync_runs')->where('company_id', $companyId)->latest('started_at')->paginate($request->integer('per_page', 50));
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
+        $runs = DB::table('hr_attendance_sync_runs')->where('company_id', $companyId)->latest('started_at')->paginate($data['per_page'] ?? 50);
 
         return response()->json(['status' => 'success', 'data' => $runs]);
     }

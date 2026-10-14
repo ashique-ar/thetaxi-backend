@@ -13,8 +13,12 @@ return new class extends Migration {
 
     public function down(): void
     {
-        DB::table('corporates')
-            ->where('booking_notification_emails', json_encode(['info@thetaxi.lk']))
-            ->update(['booking_notification_emails' => null]);
+        $query = DB::table('corporates');
+        if (DB::getDriverName() === 'pgsql') {
+            $query->whereRaw('booking_notification_emails::jsonb = ?::jsonb', [json_encode(['info@thetaxi.lk'])]);
+        } else {
+            $query->where('booking_notification_emails', json_encode(['info@thetaxi.lk']));
+        }
+        $query->update(['booking_notification_emails' => null]);
     }
 };

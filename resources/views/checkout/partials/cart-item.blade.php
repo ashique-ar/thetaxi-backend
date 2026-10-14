@@ -23,14 +23,20 @@
                                                         $itemDiscountAmount = $item['discount_amount'] ?? 0;
                                                         $itemDiscountPercentage = $item['discount_percentage'] ?? 0;
                                                     @endphp
+                                                    @php
+                                                        $checkoutServiceCode = data_get($item, 'service_type_data.code', $item['service_type'] ?? null);
+                                                        $isDayService = isServiceDurationBased($checkoutServiceCode, data_get($item, 'service_type_data.pricing_mode'));
+                                                    @endphp
                                                     <li class="single-item checkout-cart-item {{ $loop->first ? 'is-expanded' : 'is-collapsed' }}"
                                                         data-cart-key="{{ $key }}">
-                                                        <button type="button" class="checkout-item-toggle"
-                                                            aria-expanded="{{ $loop->first ? 'true' : 'false' }}"
-                                                            title="{{ $loop->first ? 'Hide' : 'Show' }} booking details">
-                                                            <span class="checkout-item-toggle-label">{{ $loop->first ? 'Less' : 'Details' }}</span>
-                                                            <i class="bi bi-chevron-down" aria-hidden="true"></i>
-                                                        </button>
+                                                        <div class="checkout-item-toolbar">
+                                                            <button type="button" class="checkout-item-toggle"
+                                                                aria-expanded="{{ $loop->first ? 'true' : 'false' }}"
+                                                                title="{{ $loop->first ? 'Hide' : 'Show' }} booking details">
+                                                                <span class="checkout-item-toggle-label">{{ $loop->first ? 'Less' : 'Details' }}</span>
+                                                                <i class="bi bi-chevron-down" aria-hidden="true"></i>
+                                                            </button>
+                                                        </div>
                                                         <div class="item-area">
                                                             <div class="main-item">
                                                                 <div class="item-img">
@@ -50,9 +56,7 @@
                                                                             $isFixedRate = isServiceFixedRate(
                                                                                 $serviceType,
                                                                             );
-                                                                            $pricingLabel = getServicePricingLabel(
-                                                                                $serviceType,
-                                                                            );
+                                                                            $pricingLabel = getServicePricingLabel($serviceType);
                                                                             $durationLabel = getServiceDurationLabel(
                                                                                 $serviceType,
                                                                                 $calculatedDays,
@@ -70,8 +74,7 @@
                                                                         <h6 class="vehicle-title">
                                                                             <a
                                                                                 href="#">{{ $item['name'] ?? '' }}</a>
-                                                                            <span
-                                                                                class="service-type-badge">{{ $item['service_type_data']['name'] ?? ($item['service_type'] ?? 'Service') }}</span>
+                                                                            <span class="service-type-badge"><i class="bi bi-steering-wheel" aria-hidden="true"></i> {{ data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
                                                                         </h6>
                                                                         <p class="trip-meta"><small>
                                                                                 <i class="bi bi-calendar-event"></i>
@@ -85,7 +88,10 @@
                                                                                 @endif
                                                                                 <span>({{ $durationLabel }})</span>
                                                                             </small></p>
-
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div class="checkout-item-route-details">
                                                                         @php
                                                                             // Distance details for km information display
                                                                             $distanceDetails =
@@ -142,20 +148,21 @@
                                                                                 $distanceDetails[
                                                                                     'actual_journey_distance'
                                                                                 ] ??
-                                                                                ($distanceDetails['journey_distance'] ??
-                                                                                    null);
+                                                                                ($minimumKmApplied ? null : ($distanceDetails['journey_distance'] ?? null));
                                                                         @endphp
 
-                                                                        @if ($minimumKmApplied && $minimumKm)
+                                                                        @if (!$isDayService && $minimumKmApplied && $minimumKm)
                                                                             <p><small
                                                                                     style="color: #92400e; background: #fef3c7; padding: 2px 6px; border-radius: 4px;">
                                                                                     <i class="bi bi-info-circle"></i>
                                                                                     <strong>Minimum
                                                                                         {{ number_format($minimumKm, 0) }}
                                                                                         km</strong>
-                                                                                    (Actual:
-                                                                                    {{ number_format($actualJourneyDistance, 1) }}
-                                                                                    km)
+                                                                                    @if (is_numeric($actualJourneyDistance))
+                                                                                        (Actual:
+                                                                                        {{ number_format($actualJourneyDistance, 1) }}
+                                                                                        km)
+                                                                                    @endif
                                                                                 </small></p>
                                                                         @endif
                                                                         
@@ -182,7 +189,7 @@
                                                                         @endif
 
                                                                         @if ($allowedTotalKm || $freeKmPerDay)
-                                                                            <p><small style="color: #0066cc;">
+                                                                            <p class="checkout-item-km"><small style="color: #0066cc;">
                                                                                     <i class="bi bi-speedometer2"></i>
                                                                                     @if ($freeKmPerDay && $calculatedDays > 1)
                                                                                         {{ number_format($freeKmPerDay, 0) }}
@@ -283,8 +290,6 @@
                                                                                 @endif
                                                                             </div>
                                                                         @endif
-                                                                    </div>
-                                                                </div>
                                                             </div>
                                                             <div class="item-total">
                                                                 @php

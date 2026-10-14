@@ -82,7 +82,7 @@ class SalesProfileController extends Controller
             $allPermission,
             $teamPermission,
             $companyId,
-        )->orderBy('sales_code')->orderBy('id')->paginate($request->integer('per_page', 25));
+        )->orderBy('sales_code')->orderBy('id')->paginate($this->paginationSize($request, 25));
         $manageableIds = $this->scope->authorizedProfileIds(
             $request->user(),
             'sales.profiles.manage',

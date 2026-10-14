@@ -18,7 +18,7 @@ trait ManagesAttendanceQuarantine
 {
     public function rawEvents(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $query = DB::table('hr_attendance_raw_events')
             ->select(['id', 'company_id', 'device_id', 'staff_id', 'provider_event_id', 'provider_person_id', 'employee_number', 'occurred_at', 'source_timezone', 'event_kind', 'direction', 'authentication_method', 'verification_result', 'payload_checksum', 'mapping_status', 'received_at'])
@@ -28,20 +28,25 @@ trait ManagesAttendanceQuarantine
             ->when($data['to'] ?? null, fn ($builder, $value) => $builder->whereDate('occurred_at', '<=', $value))
             ->latest('occurred_at');
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($data['per_page'] ?? 50)]);
     }
 
     public function quarantine(Request $request): JsonResponse
     {
-        $companyId = $this->authorizedCompanyId($request, $request->input('company_id'));
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid'],
+            'status' => ['nullable', 'string', 'in:open,resolved'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $companyId = $this->authorizedCompanyId($request, $data['company_id'] ?? null);
         $query = DB::table('hr_attendance_quarantine_items as item')
             ->join('hr_attendance_raw_events as event', 'event.id', '=', 'item.raw_event_id')
             ->select('item.*', 'event.provider_event_id', 'event.provider_person_id', 'event.employee_number', 'event.occurred_at', 'event.device_id')
             ->where('item.company_id', $companyId)
-            ->where('item.status', $request->input('status', 'open'))
+            ->where('item.status', $data['status'] ?? 'open')
             ->orderBy('event.occurred_at');
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($data['per_page'] ?? 50)]);
     }
 
     public function quarantineMappingOptions(Request $request, string $itemId): JsonResponse

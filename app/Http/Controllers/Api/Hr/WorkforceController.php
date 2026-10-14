@@ -249,7 +249,7 @@ class WorkforceController extends Controller
                 ->whereColumn('hr_leave_policies.leave_type_id', 'request.leave_type_id'))
             ->select(['request.id', 'type.name as leave_type_name', 'request.start_date', 'request.end_date', 'request.requested_minutes', 'request.status', 'request.requested_by', 'request.actual_return_date', 'request.recalled_at'])
             ->when($r->status, fn ($query, $status) => $query->where('request.status', $status))->latest('request.created_at');
-        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows = $q->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn ($row) => [
             'id' => $row->id,
             'leave_type_name' => $row->leave_type_name,
@@ -371,7 +371,7 @@ class WorkforceController extends Controller
     {
         $companyId = $this->company($r, $r->input('company_id'));
         $q = DB::table('hr_leave_types')->where('company_id', $companyId)->when($r->status, fn($b, $v) => $b->where('status', $v))->orderBy('name');
-        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
     }
     public function leavePolicies(Request $r): JsonResponse
     {
@@ -379,7 +379,7 @@ class WorkforceController extends Controller
         $q = DB::table('hr_leave_policies as policy')->join('hr_leave_types as type', 'type.id', '=', 'policy.leave_type_id')->where('policy.company_id', $companyId)
             ->select(['policy.id', 'policy.leave_type_id', 'type.code as leave_type_code', 'type.name as leave_type_name', 'policy.code', 'policy.version', 'policy.rules', 'policy.status', 'policy.effective_from', 'policy.effective_until', 'policy.created_by', 'policy.approved_by', 'policy.approved_at'])
             ->when($r->status, fn($b, $v) => $b->where('policy.status', $v))->latest('policy.created_at');
-        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows = $q->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn($row) => (array) $row + ['rules' => json_decode($row->rules, true, 512, JSON_THROW_ON_ERROR)]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -392,7 +392,7 @@ class WorkforceController extends Controller
             ->where('assignment.company_id', $companyId)->whereIn('assignment.staff_id', $staffIds)
             ->select(['assignment.id', 'assignment.staff_id', 'assignment.policy_id', 'policy.code as policy_code', 'assignment.effective_from', 'assignment.effective_until', 'assignment.reason', 'assignment.created_by', 'assignment.approved_by', 'assignment.approved_at', 'staff.code as staff_code', 'users.first_name as staff_first_name', 'users.last_name as staff_last_name'])
             ->when($r->staff_id, fn($b, $v) => $b->where('assignment.staff_id', $v))->latest('assignment.created_at');
-        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
     }
 
     public function storeLeaveType(Request $r): JsonResponse
@@ -466,7 +466,7 @@ class WorkforceController extends Controller
             ->select(['id', 'request_kind', 'starts_at', 'ends_at', 'requested_minutes', 'settlement_kind', 'status', 'requested_by'])
             ->when($r->request_kind, fn ($query, $kind) => $query->where('request_kind', $kind))
             ->when($r->status, fn ($query, $status) => $query->where('status', $status))->latest('starts_at');
-        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows = $q->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn ($row) => [
             'id' => $row->id,
             'request_kind' => $row->request_kind,
@@ -512,7 +512,7 @@ class WorkforceController extends Controller
         $q = DB::table('hr_work_request_policies')->where('company_id', $companyId)
             ->select(['id', 'company_id', 'request_kind', 'code', 'version', 'rules', 'status', 'effective_from', 'effective_until', 'created_by', 'approved_by', 'approved_at'])
             ->when($r->request_kind, fn($b, $v) => $b->where('request_kind', $v))->when($r->status, fn($b, $v) => $b->where('status', $v))->latest('created_at');
-        $rows = $q->paginate($r->integer('per_page', 50));
+        $rows = $q->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn($row) => (array) $row + ['rules' => json_decode($row->rules, true, 512, JSON_THROW_ON_ERROR)]);
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -544,7 +544,7 @@ class WorkforceController extends Controller
                 ->whereColumn('staff.id', 'timesheet.staff_id')
                 ->whereColumn('staff.company_id', 'timesheet.company_id'))
             ->select(['timesheet.id', 'timesheet.submitted_by', 'timesheet.period_start', 'timesheet.period_end', 'timesheet.status', 'timesheet.version', 'timesheet.submitted_at'])
-            ->latest('timesheet.period_start')->paginate($r->integer('per_page', 50));
+            ->latest('timesheet.period_start')->paginate($this->paginationSize($r, 50));
         $rows->getCollection()->transform(fn ($row) => [
             'id' => $row->id,
             'period_start' => $row->period_start,
@@ -598,7 +598,7 @@ class WorkforceController extends Controller
                 'id', 'staff_id', 'fact_kind', 'effective_date', 'quantity_minutes',
                 'quantity_units', 'rate_category', 'status', 'created_at', 'updated_at',
             ]);
-        return response()->json(['status' => 'success', 'data' => $q->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $q->paginate($this->paginationSize($r, 50))]);
     }
 
     private function approveConfig(Request $r, string $table, string $id, ?callable $validate = null): JsonResponse

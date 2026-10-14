@@ -752,7 +752,7 @@ class PeopleCoreController extends Controller
         $query = HrEmployeeRecord::query()->where('staff_id', $staff->id);
         if (!$request->user()->can('hr.people.timeline-confidential'))
             $query->whereIn('confidentiality', ['employee', 'manager', 'internal']);
-        $page = $query->latest('effective_date')->paginate($request->integer('per_page', 50));
+        $page = $query->latest('effective_date')->paginate($this->paginationSize($request, 50));
         if ($request->user()->can('hr.people.timeline-confidential'))
             $page->getCollection()->each(fn($row) => $row->makeVisible('encrypted_data'));
         return response()->json(['status' => 'success', 'data' => $page]);

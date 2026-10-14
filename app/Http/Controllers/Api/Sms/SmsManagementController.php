@@ -16,6 +16,7 @@ use App\Services\SingleCompanyScope;
 use App\Services\StaffAccessService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use RuntimeException;
@@ -270,7 +271,14 @@ class SmsManagementController extends Controller
     public function messages(Request $request): JsonResponse
     {
         $company = $this->campaignCompany($request);
-        $messages = $this->smsService->getMessages($request->all(), $company->id);
+        $filters = $request->validate([
+            'status' => ['nullable', 'string', 'max:30'],
+            'channel' => ['nullable', 'string', 'max:30'],
+            'campaign_id' => ['nullable', 'uuid'],
+            'search' => ['nullable', 'string', 'max:120'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $messages = $this->smsService->getMessages($filters, $company->id);
         $canManageMessages = $this->canManageMessages($request);
         $messages->setCollection($messages->getCollection()->map(
             fn (SmsMessage $message): array => $this->messagePayload($message, $canManageMessages)
@@ -359,8 +367,14 @@ class SmsManagementController extends Controller
     public function bookingOptions(Request $request): JsonResponse
     {
         abort_unless($request->user()->can('bookings.view'), 403);
+        $company = $this->campaignCompany($request);
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50']]);
-        $query = Booking::query()->when($data['selected_id'] ?? null, fn ($q, $id) => $q->whereKey($id));
+        $companyBookingIds = DB::table('sales_booking_attributions')
+            ->where('company_id', $company->id)
+            ->whereNull('deleted_at')
+            ->select('booking_id');
+        $query = Booking::query()->whereIn('id', $companyBookingIds)
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->whereKey($id));
         if (empty($data['selected_id']) && !empty($data['search'])) {
             $term = '%' . addcslashes($data['search'], '%_\\') . '%';
             $query->where(fn ($q) => $q->where('booking_number', 'like', $term)->orWhere('log_code', 'like', $term));
@@ -379,7 +393,14 @@ class SmsManagementController extends Controller
     {
         if (!$bookingId) return null;
         abort_unless($request->user()->can('bookings.view'), 403);
-        return Booking::query()->findOrFail($bookingId);
+        $company = $this->campaignCompany($request);
+
+        return Booking::query()->whereKey($bookingId)
+            ->whereIn('id', DB::table('sales_booking_attributions')
+                ->where('company_id', $company->id)
+                ->whereNull('deleted_at')
+                ->select('booking_id'))
+            ->firstOrFail();
     }
 
     public function retryMessage(Request $request, SmsMessage $smsMessage): JsonResponse
@@ -406,7 +427,12 @@ class SmsManagementController extends Controller
     public function campaigns(Request $request): JsonResponse
     {
         $company = $this->campaignCompany($request);
-        $campaigns = $this->smsService->getCampaigns($request->all(), $company->id);
+        $filters = $request->validate([
+            'status' => ['nullable', 'string', 'max:30'],
+            'search' => ['nullable', 'string', 'max:120'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $campaigns = $this->smsService->getCampaigns($filters, $company->id);
 
         return response()->json([
             'status' => 'success',

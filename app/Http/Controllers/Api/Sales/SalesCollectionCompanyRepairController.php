@@ -118,9 +118,10 @@ class SalesCollectionCompanyRepairController extends Controller
     private function authorizeBooking(Request $request, string $bookingNumber): string
     {
         $booking = Booking::query()->where('booking_number', $bookingNumber)->firstOrFail();
-        app(\App\Services\BookingPaymentLedgerService::class)->ensureBookingCompanyAttribution($booking);
         $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first();
-        abort_unless($attribution?->company_id, 409, 'The booking has no established legal entity and is outside this repair workflow.');
+        abort_unless($attribution?->company_id && DB::table('companies')->where('id', $attribution->company_id)
+            ->where('is_active', true)->whereNull('deleted_at')->exists(), 409,
+            'The booking needs a reviewed active legal-entity attribution before collection repair.');
         $this->scope->assertCompany($request->user(), $attribution->company_id, 'sales.collections.view-all');
 
         return (string) $attribution->company_id;

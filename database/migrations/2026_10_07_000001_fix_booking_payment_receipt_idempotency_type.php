@@ -26,6 +26,12 @@ return new class extends Migration
             throw new RuntimeException('Rollback refused: receipt idempotency keys now contain non-UUID values.');
         }
 
+        if (DB::getDriverName() === 'pgsql') {
+            DB::statement('ALTER TABLE booking_payment_receipts ALTER COLUMN idempotency_key TYPE uuid USING idempotency_key::uuid');
+
+            return;
+        }
+
         Schema::table('booking_payment_receipts', function (Blueprint $table): void {
             $table->uuid('idempotency_key')->nullable()->change();
         });

@@ -188,9 +188,11 @@ if (!function_exists('getServiceDurationLabel')) {
  * @return bool Whether the service uses duration-based pricing
  */
 if (!function_exists('isServiceDurationBased')) {
-    function isServiceDurationBased(?string $serviceType): bool
+    function isServiceDurationBased(?string $serviceType, ?string $pricingMode = null): bool
     {
-        return in_array($serviceType, ['corporate', 'day_rental']);
+        return $pricingMode !== null
+            ? $pricingMode === 'day'
+            : in_array($serviceType, ['corporate', 'day_rental', 'self_drive', 'with_driver']);
     }
 }
 

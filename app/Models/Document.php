@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Facades\URL;
 
 class Document extends BaseModel
 {
@@ -65,7 +66,10 @@ class Document extends BaseModel
     public function resourceUrl(): ?string
     {
         return $this->path
-            ? route('resources.assets', ['path' => ltrim($this->path, '/')])
+            ? URL::temporarySignedRoute('resources.assets', now()->addMinutes(15), [
+                'path' => ltrim($this->path, '/'),
+                'disk' => $this->disk,
+            ])
             : null;
     }
 

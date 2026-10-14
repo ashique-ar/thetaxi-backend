@@ -39,7 +39,11 @@ return new class extends Migration
         }
 
         Schema::table('hr_approval_delegations', function (Blueprint $table): void {
-            $table->dropUnique('hr_delegations_company_idempotency_unique');
+            if (DB::getDriverName() === 'mysql') {
+                $table->dropUnique('hr_delegations_company_idempotency_unique');
+            } else {
+                $table->dropIndex('hr_delegations_company_idempotency_unique');
+            }
             $table->dropColumn(['idempotency_key', 'request_payload_checksum']);
         });
     }

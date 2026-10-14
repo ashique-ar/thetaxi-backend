@@ -19,7 +19,7 @@ class HrAnalyticsController extends Controller
     public function definitions(Request $request): JsonResponse
     {
         $actor = $this->actor($request);
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->where('company_id', $actor->company_id)->select(['id', 'metric_code', 'version', 'name', 'definition', 'dimension_policy', 'minimum_group_size', 'effective_from', 'effective_until', 'status', 'definition_checksum'])->orderBy('metric_code')->orderByDesc('version')->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_analytics_definition_versions')->where('company_id', $actor->company_id)->select(['id', 'metric_code', 'version', 'name', 'definition', 'dimension_policy', 'minimum_group_size', 'effective_from', 'effective_until', 'status', 'definition_checksum'])->orderBy('metric_code')->orderByDesc('version')->paginate($this->paginationSize($request, 50))]);
     }
 
     public function storeDefinition(Request $request): JsonResponse
@@ -85,7 +85,7 @@ class HrAnalyticsController extends Controller
         $actor = $this->actor($request);
         $query = DB::table('hr_analytics_snapshots as s')->join('hr_analytics_definition_versions as d', 'd.id', '=', 's.definition_version_id')->where('s.company_id', $actor->company_id);
         if ($request->filled('metric_code')) $query->where('d.metric_code', $request->string('metric_code'));
-        return response()->json(['status' => 'success', 'data' => $query->select(['s.id', 's.definition_version_id', 'd.metric_code', 'd.name', 's.as_of_date', 's.cutoff_at', 's.filter_snapshot', 's.aggregate_payload', 's.suppression_snapshot', 's.source_checksum', 's.snapshot_checksum', 's.generated_at'])->latest('s.generated_at')->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->select(['s.id', 's.definition_version_id', 'd.metric_code', 'd.name', 's.as_of_date', 's.cutoff_at', 's.filter_snapshot', 's.aggregate_payload', 's.suppression_snapshot', 's.source_checksum', 's.snapshot_checksum', 's.generated_at'])->latest('s.generated_at')->paginate($this->paginationSize($request, 50))]);
     }
 
     private function actor(Request $request): Staff { return app(StaffAccessService::class)->currentActorStaff($request->user()); }

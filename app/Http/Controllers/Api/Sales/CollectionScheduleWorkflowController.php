@@ -325,7 +325,7 @@ class CollectionScheduleWorkflowController extends Controller
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('due_at', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('due_at', '<=', $to))
-            ->orderBy('due_at')->paginate($request->integer('per_page', 25));
+            ->orderBy('due_at')->paginate($this->paginationSize($request, 25));
 
         $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
 
@@ -395,7 +395,8 @@ class CollectionScheduleWorkflowController extends Controller
             'staff_notes' => ['nullable', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
-        $this->ledger->ensureBookingCompanyAttribution($booking);
+        abort_unless(SalesBookingAttribution::query()->where('booking_id', $booking->id)->whereNotNull('company_id')->exists(), 409,
+            'The booking needs a reviewed legal-entity attribution before collection submission.');
         $profile = $this->actorProfile($request, $booking);
         abort_unless($profile, 409, 'An active collection Sales Profile is not configured for this user in the default company.');
 
@@ -425,7 +426,7 @@ class CollectionScheduleWorkflowController extends Controller
             $query->whereIn('submitted_by_sales_profile_id', $profileIds);
         }
         $rows = $query->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->latest('received_at')->paginate($request->integer('per_page', 25));
+            ->latest('received_at')->paginate($this->paginationSize($request, 25));
         $this->assertCollectionPageCompanyIntegrity($rows->getCollection());
         $rows->setCollection($rows->getCollection()->map(fn ($row) => [
             'id' => $row->id,

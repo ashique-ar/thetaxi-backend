@@ -27,7 +27,7 @@ trait ManagesPhysicalAccessCommands
             ->when($request->input('status'), fn ($builder, $status) => $builder->where('status', $status))
             ->latest();
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($this->paginationSize($request, 50))]);
     }
 
     public function requestAccess(Request $request): JsonResponse

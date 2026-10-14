@@ -307,7 +307,6 @@ class PaymentLedgerReconciliationController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.collections.view-all');
 
-        $this->ledger->ensureBookingCompanyAttribution($booking);
         $result = $this->ledger->repairLegacyPaidBooking($booking, $data, (string) $request->user()->id, $data['company_id']);
         return response()->json([
             'status' => 'success',
@@ -329,7 +328,6 @@ class PaymentLedgerReconciliationController extends Controller
 
         $result = DB::transaction(function () use ($receipt, $data, $request): array {
             $booking = Booking::query()->lockForUpdate()->findOrFail($receipt->booking_id);
-            $this->ledger->ensureBookingCompanyAttribution($booking);
             $attribution = SalesBookingAttribution::query()->where('booking_id', $booking->id)->lockForUpdate()->first();
             abort_unless($attribution?->company_id && hash_equals($data['company_id'], (string) $attribution->company_id), 409,
                 'The booking legal entity is missing or changed; refresh the authorized reconciliation scope.');

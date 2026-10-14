@@ -72,7 +72,7 @@ class CommissionRecoveryController extends Controller
             ->when($data['company_id'] ?? null, fn ($q, $id) => $q->where('company_id', $id))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['recovery_kind'] ?? null, fn ($q, $kind) => $q->where('recovery_kind', $kind))
-            ->latest('opened_at')->paginate($request->integer('per_page', 25));
+            ->latest('opened_at')->paginate($this->paginationSize($request, 25));
         $cases->getCollection()->transform(static function (SalesCommissionRecoveryCase $case): array {
             $profile = $case->beneficiarySalesProfile;
             return $case->only([

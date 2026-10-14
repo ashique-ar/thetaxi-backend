@@ -333,8 +333,7 @@ class BookingAttributionMutationService
             }
         }
 
-        $lockedCandidate = SalesBookingAttribution::query()->with('booking')->findOrFail($attribution->id);
-        app(\App\Services\BookingPaymentLedgerService::class)->ensureBookingCompanyAttribution($lockedCandidate->booking);
+        $lockedCandidate = SalesBookingAttribution::query()->findOrFail($attribution->id);
         $companyId = SalesBookingAttribution::query()->whereKey($attribution->id)->value('company_id');
         abort_unless($companyId, 409, 'This attribution has no resolved legal entity.');
 

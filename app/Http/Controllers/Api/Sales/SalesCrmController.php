@@ -61,7 +61,7 @@ class SalesCrmController extends Controller
             }))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('expected_close_date', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('expected_close_date', '<=', $to))
-            ->latest()->paginate($request->integer('per_page', 25));
+            ->latest()->paginate($this->paginationSize($request, 25));
         $rows->setCollection($rows->getCollection()->map(fn ($row) => $this->opportunityPayload($row)));
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -171,7 +171,7 @@ class SalesCrmController extends Controller
                 $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($data['search'])).'%';
                 $query->where(fn ($match) => $match->where('booking.booking_number', 'like', $term)->orWhere('booking.log_code', 'like', $term));
             })
-            ->orderByDesc('booking.created_at')->paginate($request->integer('per_page', 25));
+            ->orderByDesc('booking.created_at')->paginate($this->paginationSize($request, 25));
         $rows->getCollection()->transform(fn ($booking) => [
             'value' => (string) $booking->id,
             'label' => $booking->booking_number ?: ($booking->log_code ? 'Draft '.$booking->log_code : 'Draft booking '.substr((string) $booking->created_at, 0, 10)),
@@ -393,7 +393,7 @@ class SalesCrmController extends Controller
             ->when($data['activity_type'] ?? null, fn ($q, $type) => $q->where('activity_type', $type))
             ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('occurred_at', '>=', $date))
             ->when($data['to'] ?? null, fn ($q, $date) => $q->whereDate('occurred_at', '<=', $date))
-            ->latest('occurred_at')->paginate($request->integer('per_page', 25));
+            ->latest('occurred_at')->paginate($this->paginationSize($request, 25));
         $rows->setCollection($rows->getCollection()->map(fn (SalesActivity $activity): array => [
             'activity_type' => $activity->activity_type, 'subject' => $activity->subject,
             'outcome' => $activity->outcome, 'next_action' => $activity->next_action,
@@ -477,7 +477,7 @@ class SalesCrmController extends Controller
             ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('due_at', '>=', $date))
             ->when($data['to'] ?? null, fn ($q, $date) => $q->whereDate('due_at', '<=', $date))
             ->orderByRaw("CASE WHEN status IN ('completed','cancelled') THEN 1 ELSE 0 END")
-            ->orderBy('due_at')->paginate($request->integer('per_page', 25));
+            ->orderBy('due_at')->paginate($this->paginationSize($request, 25));
         $rows->setCollection($rows->getCollection()->map(fn (SalesTask $task): array => [
             'id' => (string) $task->id,
             'title' => $task->title,

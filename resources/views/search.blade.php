@@ -210,7 +210,7 @@
                                 $returnKm = $search->return_distance_km ?? null;
                                 $hasReturnData = $isReturnTrip && $outboundKm && $returnKm;
                             @endphp
-                            @if ($minimumKmApplied && $minimumKm)
+                            @if (!isServiceDurationBased($serviceType, $search->serviceType?->pricing_mode) && $minimumKmApplied && $minimumKm)
                                 <span class="distance-info"
                                     style="background: rgba(251, 191, 36, 0.3); border: 1px solid rgba(251, 191, 36, 0.5);">
                                     <i class="bi bi-info-circle"></i>

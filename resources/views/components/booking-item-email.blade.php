@@ -50,12 +50,13 @@
 
     $vehicleGroupName = $item->vehicleGroup?->name ?? 'N/A';
     $serviceTypeName = $item->serviceType?->name ?? 'N/A';
-    $servicePricingMode = $item->serviceType?->pricing_mode ?? 'transfer';
+    $servicePricingMode = $item->serviceType?->pricing_mode;
     $durationDays = (int) ($item->duration_days ?? 0);
     $pickupAddress = $pickupLoc['address'] ?? 'N/A';
     $dropoffAddress = $dropoffLoc['address'] ?? 'N/A';
 
     $vehicleThumbnail = $item->vehicleGroup?->thumbnail ?? null;
+    $thumb = null;
     if (isset($vehicleThumbnail)) {
         $thumbRaw = $vehicleThumbnail;
         if (is_array($thumbRaw)) {
@@ -260,7 +261,7 @@
     $minimumKm = $distanceDetails['minimum_km'] ?? null;
     $minimumKmApplied = $distanceDetails['minimum_km_applied'] ?? false;
     $actualJourneyDistance =
-        $distanceDetails['actual_journey_distance'] ?? ($distanceDetails['journey_distance'] ?? null);
+        $distanceDetails['actual_journey_distance'] ?? ($minimumKmApplied ? null : ($distanceDetails['journey_distance'] ?? null));
     $pickupDistance = $distanceDetails['pickup_distance'] ?? null;
     $deliveryDistance = $distanceDetails['delivery_distance'] ?? null;
     $totalDistance = $distanceDetails['total_distance'] ?? null;
@@ -270,7 +271,7 @@
     $returnKm =
         $distanceDetails['return_distance_km'] ?? ($item->return_distance_km ?? ($item['return_distance_km'] ?? null));
     $hasReturnKmData = $isReturnTrip && $outboundKm && $returnKm;
-    $isDayPackage = $servicePricingMode === 'day';
+    $isDayPackage = isServiceDurationBased($serviceCode, $servicePricingMode);
 
     $includedTotalKmForExtra = null;
     if ($freeKmPerDay) {
@@ -361,7 +362,7 @@
     }
 
     $totalLabel = 'Item Total';
-    if ($servicePricingMode !== 'day') {
+    if (!$isDayPackage) {
         $totalLabel = $isReturnTrip ? 'Transfer Total (Drop-off + Return)' : 'Transfer Total (Drop-off)';
     }
 
@@ -481,7 +482,7 @@
                 </td>
             </tr>
         @endif
-        @if ($servicePricingMode === 'day')
+        @if ($isDayPackage)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                     Rate per Day
@@ -529,7 +530,9 @@
                 </td>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #92400e; background: #fef3c7;">
                     <strong>{{ number_format($minimumKm, 0) }} km</strong>
-                    <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                    @if (is_numeric($actualJourneyDistance))
+                        <small style="color: #92400e;">(Actual distance: {{ number_format($actualJourneyDistance, 1) }} km)</small>
+                    @endif
                 </td>
             </tr>
         @endif

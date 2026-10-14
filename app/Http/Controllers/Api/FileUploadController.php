@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\UserMedia;
 use App\Models\ImageGallery;
+use App\Services\MediaImageProcessor;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Storage;
@@ -13,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 use Intervention\Image\Laravel\Facades\Image;
 
 class FileUploadController extends Controller
@@ -24,9 +26,9 @@ class FileUploadController extends Controller
     {
         // $this->middleware('auth:api');
         // Apply permission middleware based on category
-        $this->middleware('permission:uploads.manage')->only(['uploadFile']);
+        $this->middleware('permission:uploads.manage')->only(['uploadFile', 'updateFile']);
         $this->middleware('permission:uploads.delete')->only(['deleteFile']);
-        $this->middleware('permission:uploads.view')->only(['getFile']);
+        $this->middleware('permission:uploads.view|uploads.manage')->only(['getFile', 'index', 'serveFile']);
     }
 
     /**
@@ -40,9 +42,9 @@ class FileUploadController extends Controller
     {
         // Validate basic requirements
         $validator = Validator::make($request->all(), [
-            'file' => 'required|file|max:51200', // 50MB max
-            'category' => 'string',
-            'path' => 'string|max:255',
+            'file' => 'required|file|max:' . config('fileupload.max_video_size', 102400),
+            'category' => 'string|max:50|regex:/^[a-z0-9_-]+$/',
+            'path' => ['string', 'max:255', 'regex:/^[a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)*$/'],
             'thumbnail' => 'boolean',
             'width' => 'integer|min:1|max:4096',
             'height' => 'integer|min:1|max:4096',
@@ -56,6 +58,8 @@ class FileUploadController extends Controller
                 'errors' => $validator->errors()
             ], 422);
         }
+
+        $this->validateFileByCategory($request->file('file'), $request->get('category', 'general'));
 
         try {
             DB::beginTransaction();
@@ -71,7 +75,8 @@ class FileUploadController extends Controller
             $fileSize = $file->getSize();
             $extension = $file->getClientOriginalExtension();
             $isImage = str_starts_with($mimeType, 'image/');
-            $shouldProcessImage = $isImage && !in_array(strtolower($extension), ['svg', 'ico', 'gif'], true);
+            // Preserve animation and vector/icon formats; compress raster photos automatically.
+            $shouldProcessImage = in_array($mimeType, ['image/jpeg', 'image/png', 'image/webp'], true);
 
             // Generate unique filename
             $fileName = $this->generateUniqueFilename($originalName, $extension);
@@ -80,9 +85,6 @@ class FileUploadController extends Controller
             $storagePath = $this->buildStoragePath($category, $customPath);
             $fullPath = $storagePath . '/' . $fileName;
             $originalFullPath = $fullPath;
-
-            // Validate file type based on category
-            $this->validateFileByCategory($file, $category);
 
             // Process and store the file
             $uploadResult = $this->processAndStoreFile($file, $fullPath, $shouldProcessImage, $request);
@@ -103,7 +105,8 @@ class FileUploadController extends Controller
                 'file_path' => $storagePath,
                 'full_path' => $fullPath,
                 'mime_type' => $mimeType,
-                'size' => $fileSize,
+                'size' => $uploadResult['size'],
+                'metadata' => ['original_size' => $fileSize],
                 'user_id' => $user?->id,
                 'category' => $category,
                 'is_image' => $isImage,
@@ -129,8 +132,6 @@ class FileUploadController extends Controller
                 $thumbnailData = $this->createThumbnail($file, $storagePath, $fileName, $userMedia->id, $user);
             }
 
-            DB::commit();
-
             // Prepare response
             $response = [
                 'status' => 'success',
@@ -142,7 +143,8 @@ class FileUploadController extends Controller
                     'path' => $fullPath,
                     'url' => $this->getFileUrl($fullPath),
                     'mime_type' => $userMedia->mime_type, // Use actual stored MIME type
-                    'size' => $fileSize,
+                    'size' => $uploadResult['size'],
+                    'original_size' => $fileSize,
                     'category' => $category,
                     'is_image' => $isImage,
                     'storage_type' => $this->storageDisk(),
@@ -160,10 +162,17 @@ class FileUploadController extends Controller
                 $response['data']['thumbnail'] = $thumbnailData;
             }
 
+            DB::commit();
             return response()->json($response, 201);
 
         } catch (\Throwable $e) {
             DB::rollBack();
+            if (isset($fullPath)) {
+                Storage::disk($this->storageDisk())->delete($fullPath);
+                if (!empty($createThumbnail)) {
+                    Storage::disk($this->storageDisk())->delete($storagePath . '/thumbnails/thumb_' . pathinfo($fileName, PATHINFO_FILENAME) . '.webp');
+                }
+            }
 
             Log::error('File upload failed', [
                 'message' => $e->getMessage(),
@@ -184,6 +193,59 @@ class FileUploadController extends Controller
         }
     }
 
+    public function index(Request $request): JsonResponse
+    {
+        $filters = $request->validate([
+            'search' => 'nullable|string|max:255',
+            'category' => 'nullable|string|max:50',
+            'type' => 'nullable|in:image,video,document',
+            'page' => 'nullable|integer|min:1',
+            'per_page' => 'nullable|integer|min:1|max:100',
+        ]);
+        // Images and videos are shared library assets; private documents remain owner scoped.
+        $query = UserMedia::withInactive()->mainFiles()->where(function ($query) use ($request) {
+            $query->where('is_image', true)
+                ->orWhere('mime_type', 'like', 'video/%')
+                ->orWhere('user_id', $request->user()->id);
+        });
+        if (!empty($filters['search'])) {
+            $query->where('original_name', 'like', '%' . $filters['search'] . '%');
+        }
+        if (!empty($filters['category'])) {
+            $query->where('category', $filters['category']);
+        }
+        if (!empty($filters['type'])) {
+            match ($filters['type']) {
+                'image' => $query->where('is_image', true),
+                'video' => $query->where('mime_type', 'like', 'video/%'),
+                'document' => $query->where('is_image', false)->where('mime_type', 'not like', 'video/%'),
+            };
+        }
+        $media = $query->latest()->paginate($filters['per_page'] ?? 24);
+        return response()->json([
+            'status' => 'success',
+            'data' => $media->getCollection()->map(fn (UserMedia $file) => [
+                'id' => $file->id,
+                'filename' => $file->file_name,
+                'original_name' => $file->original_name,
+                'path' => $file->full_path,
+                'url' => $file->url,
+                'mime_type' => $file->mime_type,
+                'size' => $file->size,
+                'original_size' => $file->metadata['original_size'] ?? $file->size,
+                'category' => $file->category,
+                'width' => $file->width,
+                'height' => $file->height,
+                'can_rename' => $file->user_id === $request->user()->id,
+                'can_delete' => $file->user_id === $request->user()->id
+                    || $request->user()->hasRole('super-admin')
+                    || $request->user()->can('uploads.delete-any'),
+                'created_at' => $file->created_at,
+            ]),
+            'meta' => ['total' => $media->total(), 'per_page' => $media->perPage(), 'current_page' => $media->currentPage()],
+        ]);
+    }
+
     /**
      * Get file details
      * GET /api/files/{id}
@@ -191,13 +253,17 @@ class FileUploadController extends Controller
     public function getFile(string $id): JsonResponse
     {
         try {
-            $media = UserMedia::find($id);
+            $media = UserMedia::withInactive()->find($id);
 
             if (!$media) {
                 return response()->json([
                     'status' => 'error',
                     'message' => 'File not found'
                 ], 404);
+            }
+
+            if ($media->user_id !== auth()->id()) {
+                return response()->json(['status' => 'error', 'message' => 'Access denied'], 403);
             }
 
             return response()->json([
@@ -207,7 +273,7 @@ class FileUploadController extends Controller
                     'filename' => $media->file_name,
                     'original_name' => $media->original_name,
                     'path' => $media->full_path,
-                    'url' => $this->getFileUrl($media->full_path),
+                    'url' => $media->url,
                     'mime_type' => $media->mime_type,
                     'size' => $media->size,
                     'category' => $media->category,
@@ -227,6 +293,15 @@ class FileUploadController extends Controller
         }
     }
 
+    public function updateFile(Request $request, string $id): JsonResponse
+    {
+        $data = $request->validate(['original_name' => 'required|string|max:255']);
+        $media = UserMedia::withInactive()->findOrFail($id);
+        abort_unless($media->user_id === $request->user()->id, 403);
+        $media->update($data);
+        return response()->json(['status' => 'success', 'message' => 'Media renamed']);
+    }
+
     /**
      * Delete file
      * DELETE /api/files/{id}
@@ -234,9 +309,7 @@ class FileUploadController extends Controller
     public function deleteFile(string $id): JsonResponse
     {
         try {
-            DB::beginTransaction();
-
-            $media = UserMedia::find($id);
+            $media = UserMedia::withInactive()->find($id);
 
             if (!$media) {
                 return response()->json([
@@ -253,17 +326,8 @@ class FileUploadController extends Controller
                 ], 403);
             }
 
-            // Delete from storage
-            $this->deleteFromStorage($media->full_path);
-
-            // Delete thumbnail if exists
-            $thumbnail = UserMedia::where('parent_id', $media->id)->where('is_thumbnail', true)->first();
-            if ($thumbnail) {
-                $this->deleteFromStorage($thumbnail->full_path);
-                $thumbnail->delete();
-            }
-
-            // Delete media record
+            DB::beginTransaction();
+            // The model deletes the file and thumbnails using their recorded storage disk.
             $media->delete();
 
             DB::commit();
@@ -290,47 +354,49 @@ class FileUploadController extends Controller
      */
     public function serveFile(Request $request, string $path): \Illuminate\Http\Response
     {
-        try {
-            // Decode the path
-            $decodedPath = base64_decode($path);
+        $decodedPath = base64_decode($path, true);
+        abort_unless($decodedPath !== false, 404, 'File not found.');
 
-            // Check if user has access to this file
-            if (!$this->canAccessFile($decodedPath)) {
-                abort(403, 'Access denied');
-            }
+        $media = UserMedia::withInactive()->where('full_path', $decodedPath)->firstOrFail();
+        $user = $request->user();
+        abort_unless($user && ($media->user_id === $user->id || $user->hasRole('super-admin') || $user->can('uploads.delete-any')), 403,
+            'Access denied.');
 
-            $disk = Storage::disk($this->storageDisk());
-            if (!$disk->exists($decodedPath)) abort(404, 'File not found');
-            $fileContent = $disk->get($decodedPath);
-            $mimeType = $disk->mimeType($decodedPath);
+        $disk = Storage::disk($media->storage_type ?: config('filesystems.default'));
+        abort_unless($disk->exists($decodedPath), 404, 'File not found.');
+        $mimeType = $disk->mimeType($decodedPath) ?: 'application/octet-stream';
 
-            return response($fileContent, 200, [
-                'Content-Type' => $mimeType,
-                'Content-Disposition' => 'inline; filename="' . basename($decodedPath) . '"',
-                'Cache-Control' => 'public, max-age=31536000', // 1 year cache
-            ]);
-
-        } catch (\Exception $e) {
-            abort(500, 'Error serving file');
-        }
+        return response($disk->get($decodedPath), 200, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . basename($decodedPath) . '"',
+            'Cache-Control' => 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
     }
 
     public function assets(Request $request, string $path): \Illuminate\Http\Response
     {
-        try {
-            $disk = Storage::disk($this->storageDisk());
-            if (!$disk->exists($path)) abort(404, 'File not found');
-            $fileContent = $disk->get($path);
-            $mimeType = $disk->mimeType($path);
+        $media = UserMedia::query()->where('full_path', $path)->first();
+        $publicCategories = ['general', 'vehicles', 'gallery', 'branding', 'logos', 'banners', 'breadcrumbs', 'sliders', 'team', 'vectors', 'icons', 'sections', 'heroes', 'maps', 'popups', 'seo', 'videos'];
+        $isPublicMedia = $media
+            && in_array($media->category, $publicCategories, true)
+            && ($media->is_image || str_starts_with($media->mime_type, 'video/'));
+        abort_unless($isPublicMedia || $request->hasValidSignature(), 404, 'File not found');
 
-            return response($fileContent, 200, [
-                'Content-Type' => $mimeType,
-                'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
-                'Cache-Control' => 'public, max-age=31536000', // 1 year cache
-            ]);
-        } catch (\Exception $e) {
-            abort(500, 'Error serving file');
-        }
+        $diskName = $isPublicMedia ? $media->storage_type : $request->query('disk', $this->storageDisk());
+        abort_unless(is_string($diskName) && config('filesystems.disks.' . $diskName), 404, 'File not found');
+        $disk = Storage::disk($diskName);
+        abort_unless($disk->exists($path), 404, 'File not found');
+        $fileContent = $disk->get($path);
+        $mimeType = $disk->mimeType($path) ?: 'application/octet-stream';
+
+        return response($fileContent, 200, [
+            'Content-Type' => $mimeType,
+            'Content-Disposition' => 'inline; filename="' . basename($path) . '"',
+            'Cache-Control' => $isPublicMedia ? 'public, max-age=31536000' : 'private, no-store',
+            'X-Content-Type-Options' => 'nosniff',
+            'Content-Security-Policy' => "default-src 'none'; sandbox",
+        ]);
     }
 
     // ========== PRIVATE HELPER METHODS ==========
@@ -398,39 +464,83 @@ class FileUploadController extends Controller
         $sizeLimits = config('fileupload.size_limits', []);
 
         $rules = [
-            'general' => ['mimes:jpg,jpeg,png,gif,pdf,doc,docx,xls,xlsx,txt', 'max:' . ($sizeLimits['general'] ?? 10240)],
+            'general' => ['mimes:jpg,jpeg,png,gif,webp,pdf,doc,docx,xls,xlsx,txt,mp4,webm,ogg,mov', 'max:' . ($sizeLimits['general'] ?? 10240)],
             'vehicles' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['vehicles'] ?? 5120)],
             'gallery' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['gallery'] ?? 10240)],
-            'documents' => ['mimes:pdf,doc,docx,xls,xlsx,txt,rtf', 'max:' . ($sizeLimits['documents'] ?? 20480)],
-            'avatars' => ['image', 'mimes:jpg,jpeg,png,gif', 'max:' . ($sizeLimits['avatars'] ?? 2048)],
+            'documents' => ['mimes:pdf,doc,docx,xls,xlsx,txt,rtf,jpg,jpeg,png,webp', 'max:' . ($sizeLimits['documents'] ?? 20480)],
+            'avatars' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['avatars'] ?? 2048)],
             'thumbnails' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnails'] ?? 10240)],
             'thumbnail' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:' . ($sizeLimits['thumbnail'] ?? ($sizeLimits['thumbnails'] ?? 10240))],
-            'branding' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
-            'logos' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
-            'logo' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
-            'banners' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
-            'breadcrumbs' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
-            'sliders' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'branding' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'logos' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'logo' => ['mimes:jpg,jpeg,png,gif,webp,svg,ico', 'max:10240'],
+            'banners' => ['mimes:jpg,jpeg,png,gif,webp,svg,mp4,webm,mov', 'max:20480'],
+            'breadcrumbs' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'sliders' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
             'team' => ['image', 'mimes:jpg,jpeg,png,gif,webp', 'max:10240'],
             'vectors' => ['mimes:svg,png,jpg,jpeg,webp', 'max:10240'],
             'icons' => ['mimes:svg,png,jpg,jpeg,webp,ico', 'max:5120'],
             'sections' => ['mimes:jpg,jpeg,png,gif,webp,svg,mp4,webm,pdf', 'max:51200'],
-            'heroes' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
-            'maps' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
-            'popups' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
-            'seo' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
+            'heroes' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:20480'],
+            'maps' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
+            'popups' => ['mimes:jpg,jpeg,png,gif,webp,svg,mp4,webm,mov', 'max:10240'],
+            'seo' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:10240'],
             'videos' => ['mimes:mp4,webm,ogg,mov,avi', 'max:51200'],
-            'signatures' => ['image', 'mimes:jpg,jpeg,png,gif,webp,svg', 'max:5120'],
+            'signatures' => ['mimes:jpg,jpeg,png,gif,webp,svg', 'max:5120'],
         ];
 
         $categoryRules = $rules[$category] ?? $rules['general'];
+        $mime = $file->getMimeType() ?? '';
+        if (str_starts_with($mime, 'image/') || str_starts_with($mime, 'video/')) {
+            $limit = str_starts_with($mime, 'video/')
+                ? config('fileupload.max_video_size', 102400)
+                : config('fileupload.max_image_size', 51200);
+            $categoryRules = array_filter($categoryRules, fn ($rule) => !str_starts_with($rule, 'max:'));
+            $categoryRules[] = 'max:' . $limit;
+        }
 
         $validator = Validator::make(['file' => $file], [
-            'file' => ['required', 'file'] + $categoryRules
+            'file' => array_merge(['required', 'file'], $categoryRules)
         ]);
 
         if ($validator->fails()) {
-            throw new \InvalidArgumentException($validator->errors()->first());
+            throw new ValidationException($validator);
+        }
+        if ($mime === 'image/svg+xml') {
+            $xml = file_get_contents($file->getRealPath());
+            $document = new \DOMDocument;
+            $previous = libxml_use_internal_errors(true);
+            $valid = !str_contains(strtoupper($xml), '<!DOCTYPE')
+                && $document->loadXML($xml, LIBXML_NONET)
+                && $document->documentElement?->localName === 'svg';
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+            if ($valid) {
+                foreach ($document->getElementsByTagName('*') as $element) {
+                    if (in_array(strtolower($element->localName), ['script', 'foreignobject', 'iframe', 'object', 'embed', 'animate', 'set'], true)) {
+                        $valid = false;
+                    }
+                    foreach ($element->attributes as $attribute) {
+                        if (str_starts_with(strtolower($attribute->localName), 'on')
+                            || ($attribute->localName === 'href' && !str_starts_with($attribute->value, '#'))
+                            || preg_match('/(?:javascript:|@import|url\(\s*[\'"]?[^#])/i', $attribute->value)) {
+                            $valid = false;
+                        }
+                    }
+                    if ($element->localName === 'style' && preg_match('/(?:@import|url\(\s*[\'"]?[^#])/i', $element->textContent)) {
+                        $valid = false;
+                    }
+                }
+            }
+            if (!$valid) {
+                throw ValidationException::withMessages(['file' => 'SVG must be a valid image without scripts or external content.']);
+            }
+        }
+        if (in_array($mime, ['image/jpeg', 'image/png', 'image/webp'], true)) {
+            $dimensions = @getimagesize($file->getRealPath());
+            if (!$dimensions || $dimensions[0] * $dimensions[1] > 40000000) {
+                throw ValidationException::withMessages(['file' => 'Image must be valid and contain at most 40 megapixels.']);
+            }
         }
     }
 
@@ -443,51 +553,35 @@ class FileUploadController extends Controller
         $convertedPath = $path; // Track if path changes due to conversion
 
         if ($isImage) {
-            // Process image with Intervention Image
-            $width = $request->get('width');
-            $height = $request->get('height');
-            $quality = $request->get('quality', 90);
+            // Raster processing is shared with direct photo upload endpoints.
+            $width = $request->integer('width') ?: config('fileupload.image_processing.max_dimensions.width', 2560);
+            $height = $request->integer('height') ?: config('fileupload.image_processing.max_dimensions.height', 2560);
+            $quality = $request->integer('quality') ?: config('fileupload.image_processing.default_quality', 80);
 
-            $image = Image::decode($file);
-            $dimensions = [
-                'width' => $image->width(),
-                'height' => $image->height()
-            ];
-
-            // Resize if dimensions specified
-            if ($width || $height) {
-                // $image->resize($width, $height, function ($constraint) {
-                //     $constraint->aspectRatio();
-                //     $constraint->upsize();
-                // });
-                $image->scaleDown(width: $width, height: $height);
-                $dimensions = [
-                    'width' => $image->width(),
-                    'height' => $image->height()
-                ];
-            }
-
-            // Encode to WebP for better compression (if supported)
-            if (extension_loaded('gd') && function_exists('imagewebp')) {
-                $encoded = $image->encodeUsingFileExtension('webp', quality: $quality);
-                $convertedPath = preg_replace('/\.[^.]+$/', '.webp', $path);
-            } else {
-                $ext = pathinfo($file->getClientOriginalName(), PATHINFO_EXTENSION);
-                $encoded = $image->encodeUsingFileExtension($ext, quality: $quality);
-            }
-
-            $imageData = (string) $encoded;
-
-            // store those bytes
+            $processed = app(MediaImageProcessor::class)->process($file, $width, $height, $quality);
+            $dimensions = ['width' => $processed['width'], 'height' => $processed['height']];
+            $convertedPath = preg_replace('/\.[^.]+$/', '.' . $processed['extension'], $path);
+            $imageData = $processed['bytes'];
             $this->storeFile($convertedPath, $imageData);
         } else {
-            // Store file as-is
-            $this->storeFile($path, file_get_contents($file));
+            $stream = fopen($file->getRealPath(), 'rb');
+            if ($stream === false) {
+                throw new \RuntimeException('Unable to read uploaded file.');
+            }
+
+            try {
+                if (!Storage::disk($this->storageDisk())->writeStream($path, $stream)) {
+                    throw new \RuntimeException("File upload failed for {$path}");
+                }
+            } finally {
+                fclose($stream);
+            }
         }
 
         return [
             'dimensions' => $dimensions,
-            'converted_path' => $convertedPath
+            'converted_path' => $convertedPath,
+            'size' => $isImage ? strlen($imageData) : $file->getSize(),
         ];
     }
 
@@ -507,7 +601,7 @@ class FileUploadController extends Controller
     private function createThumbnail($file, string $basePath, string $originalFileName, string $parentId, $user): array
     {
         $thumbnailPath = $basePath . '/thumbnails';
-        $thumbnailFileName = 'thumb_' . $originalFileName;
+        $thumbnailFileName = 'thumb_' . pathinfo($originalFileName, PATHINFO_FILENAME) . '.webp';
         $fullThumbnailPath = $thumbnailPath . '/' . $thumbnailFileName;
 
         // Create thumbnail image
@@ -593,13 +687,4 @@ class FileUploadController extends Controller
         return $user->can('uploads.delete-any');
     }
 
-    /**
-     * Check if user can access file
-     */
-    private function canAccessFile(string $path): bool
-    {
-        // For now, allow all authenticated users to access files
-        // You can implement more granular permissions here
-        return auth()->check();
-    }
 }

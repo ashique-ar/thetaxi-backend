@@ -29,7 +29,7 @@ class EssController extends Controller
             ->select(['i.id', 'i.request_type', 'i.source_type', 'i.source_id', 'i.status', 'i.summary', 'i.current_owner_staff_id', 'i.due_at', 'i.result_type', 'i.result_id', 'i.submitted_at', 'i.closed_at', 'owner.code as current_owner_staff_code', 'owner_user.first_name as current_owner_first_name', 'owner_user.last_name as current_owner_last_name'])
             ->latest('i.submitted_at');
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($this->paginationSize($r, 50))]);
     }
 
     public function requestHistory(Request $r, string $id): JsonResponse
@@ -78,7 +78,7 @@ class EssController extends Controller
             ->select(['hr_request_index.id', 'hr_request_index.requester_staff_id', 'hr_request_index.request_type', 'hr_request_index.source_type', 'hr_request_index.source_id', 'hr_request_index.status', 'hr_request_index.summary', 'hr_request_index.current_owner_staff_id', 'hr_request_index.due_at', 'hr_request_index.submitted_at', 'requester_staff.code as requester_staff_code', DB::raw("TRIM(CONCAT_WS(' ', requester_user.first_name, requester_user.last_name)) as requester_name")])
             ->orderByRaw('hr_request_index.due_at asc nulls last');
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($this->paginationSize($r, 50))]);
     }
 
     public function delegationOptions(Request $r): JsonResponse

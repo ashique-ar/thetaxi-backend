@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Booking\Booking;
 use App\Models\Sales\SalesBookingAttribution;
 use App\Services\Sales\BookingPaymentAdjustmentService;
-use App\Services\BookingPaymentLedgerService;
 use App\Services\Sales\SalesAccessScope;
 use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Sales\SalesPolicySettingsService;
@@ -23,7 +22,6 @@ class BookingPaymentAdjustmentController extends Controller
         private readonly SalesAccessScope $access,
         private readonly SalesPolicySettingsService $policySettings,
         private readonly SalesCollectionCompanyIntegrity $companyIntegrity,
-        private readonly BookingPaymentLedgerService $paymentLedger,
     ) {}
 
     public function companyOptions(Request $request): JsonResponse
@@ -101,7 +99,7 @@ class BookingPaymentAdjustmentController extends Controller
         }
 
         return response()->json(['status' => 'success', 'data' => $query
-            ->orderByDesc('receipt.received_at')->paginate($request->integer('per_page', 25)), 'meta' => [
+            ->orderByDesc('receipt.received_at')->paginate($this->paginationSize($request, 25)), 'meta' => [
             'fx_corrections_enabled' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections'),
             'policy_ready' => $this->policySettings->featureEnabled($data['company_id'], 'fx_corrections') && ! empty($policy['approved_quote_base'])
                 && in_array($policy['calculation_mode'] ?? null, ['multiply_source_by_rate', 'divide_source_by_rate'], true)
@@ -204,9 +202,8 @@ class BookingPaymentAdjustmentController extends Controller
     private function withinBookingScope(Request $request, Booking $booking, Closure $operation): JsonResponse
     {
         return DB::transaction(function () use ($request, $booking, $operation): JsonResponse {
-            $this->paymentLedger->ensureBookingCompanyAttribution($booking);
             $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
-            abort_unless($tenant?->company_id, 409, 'This booking has no resolved legal entity.');
+            abort_unless($tenant?->company_id, 409, 'This booking needs a reviewed legal-entity attribution before payment adjustment.');
             $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)
                 ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
             abort_unless($company, 422, 'Select an active legal entity.');

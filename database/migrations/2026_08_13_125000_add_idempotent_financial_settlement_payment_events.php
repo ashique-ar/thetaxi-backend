@@ -49,9 +49,19 @@ return new class extends Migration
         }
 
         Schema::dropIfExists('financial_settlement_payment_events');
-        Schema::table('booking_payment_receipts', function (Blueprint $table): void {
-            $table->dropUnique('booking_receipt_idempotency_unique');
-            $table->dropColumn('idempotency_key');
-        });
+        if (Schema::hasIndex('booking_payment_receipts', 'booking_receipt_idempotency_unique', 'unique')) {
+            Schema::table('booking_payment_receipts', function (Blueprint $table): void {
+                if (DB::getDriverName() === 'pgsql') {
+                    $table->dropIndex('booking_receipt_idempotency_unique');
+                } else {
+                    $table->dropUnique('booking_receipt_idempotency_unique');
+                }
+            });
+        }
+        if (! Schema::hasIndex('booking_payment_receipts', 'booking_payment_receipts_idempotency_key_unique', 'unique')) {
+            Schema::table('booking_payment_receipts', function (Blueprint $table): void {
+                $table->dropColumn('idempotency_key');
+            });
+        }
     }
 };

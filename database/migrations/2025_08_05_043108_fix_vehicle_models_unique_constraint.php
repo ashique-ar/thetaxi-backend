@@ -23,10 +23,10 @@ return new class extends Migration
         }
 
         Schema::table('vehicle_models', function (Blueprint $table) {
-            // Drop the incorrect unique constraint on make_id
-            $table->dropUnique(['make_id']);
-            
-            // Add correct composite unique constraint on make_id and name
+            if (Schema::hasIndex('vehicle_models', ['make_id'], 'unique')) {
+                $table->dropUnique(['make_id']);
+            }
+
             $table->unique(['make_id', 'name'], 'vehicle_models_make_name_unique');
         });
     }

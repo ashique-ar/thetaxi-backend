@@ -38,14 +38,23 @@ return new class extends Migration
 
         $this->transform(true);
 
-        Schema::table('staff', function (Blueprint $table) {
-            $table->dropColumn('license_no_fingerprint');
-            $table->date('dob')->nullable()->change();
-            $table->string('license_no', 100)->nullable()->change();
-            $table->date('license_expiry')->nullable()->change();
-            $table->string('address', 255)->nullable()->change();
-            $table->unique('license_no');
-        });
+        if (DB::getDriverName() === 'pgsql') {
+            Schema::table('staff', fn (Blueprint $table) => $table->dropColumn('license_no_fingerprint'));
+            DB::statement("ALTER TABLE staff ALTER COLUMN dob TYPE date USING NULLIF(dob, '')::date");
+            DB::statement('ALTER TABLE staff ALTER COLUMN license_no TYPE varchar(100) USING license_no::varchar(100)');
+            DB::statement("ALTER TABLE staff ALTER COLUMN license_expiry TYPE date USING NULLIF(license_expiry, '')::date");
+            DB::statement('ALTER TABLE staff ALTER COLUMN address TYPE varchar(255) USING address::varchar(255)');
+            Schema::table('staff', fn (Blueprint $table) => $table->unique('license_no'));
+        } else {
+            Schema::table('staff', function (Blueprint $table) {
+                $table->dropColumn('license_no_fingerprint');
+                $table->date('dob')->nullable()->change();
+                $table->string('license_no', 100)->nullable()->change();
+                $table->date('license_expiry')->nullable()->change();
+                $table->string('address', 255)->nullable()->change();
+                $table->unique('license_no');
+            });
+        }
     }
 
     private function transform(bool $decrypt): void

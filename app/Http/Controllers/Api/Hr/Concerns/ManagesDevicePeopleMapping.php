@@ -305,7 +305,7 @@ trait ManagesDevicePeopleMapping
     public function legacyStaffGaps(Request $request): JsonResponse
     {
         $actor = app(StaffAccessService::class)->currentActorStaff($request->user());
-        $rows = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->whereNull('staff.deleted_at')->where(fn ($q) => $q->whereNull('staff.company_id')->orWhereNull('staff.code'))->select('staff.id', 'staff.company_id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->paginate($request->integer('per_page', 100));
+        $rows = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')->whereNull('staff.deleted_at')->where(fn ($q) => $q->whereNull('staff.company_id')->orWhereNull('staff.code'))->select('staff.id', 'staff.company_id', 'staff.code', 'users.first_name', 'users.last_name', 'users.email')->orderBy('users.first_name')->paginate($this->paginationSize($request, 100));
 
         return response()->json(['status' => 'success', 'data' => $rows, 'meta' => ['actor_staff_id' => $actor->id]]);
     }
@@ -375,7 +375,7 @@ trait ManagesDevicePeopleMapping
             ->when($data['provider_person_id'] ?? null, fn ($builder, $value) => $builder->where('provider_person_id', $value))
             ->latest('created_at');
 
-        return response()->json(['status' => 'success', 'data' => $query->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->paginate($this->paginationSize($request, 50))]);
     }
 
     public function approveMapping(Request $request, string $mappingId): JsonResponse

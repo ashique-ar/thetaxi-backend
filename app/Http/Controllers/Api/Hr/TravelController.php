@@ -2,7 +2,7 @@
 namespace App\Http\Controllers\Api\Hr;
 use App\Http\Controllers\Controller;use App\Models\Staff;use App\Services\StaffAccessService;use Illuminate\Http\JsonResponse;use Illuminate\Http\Request;use Illuminate\Support\Facades\DB;use Illuminate\Support\Str;use Illuminate\Validation\Rule;
 class TravelController extends Controller{
- public function index(Request$r):JsonResponse{$a=$this->actor($r);$q=DB::table('hr_travel_requests')->where('company_id',$a->company_id)->select(['id','staff_id','request_number','origin','destination','departs_at','returns_at','currency','estimated_cost','requested_advance','status','booking_reference','unused_advance_amount','requested_by','settlement_claim_id']);if(!$r->user()->can('hr.travel.view-all'))$q->where('staff_id',$a->id);return response()->json(['status'=>'success','data'=>$q->latest('departs_at')->paginate($r->integer('per_page',50))]);}
+ public function index(Request$r):JsonResponse{$a=$this->actor($r);$q=DB::table('hr_travel_requests')->where('company_id',$a->company_id)->select(['id','staff_id','request_number','origin','destination','departs_at','returns_at','currency','estimated_cost','requested_advance','status','booking_reference','unused_advance_amount','requested_by','settlement_claim_id']);if(!$r->user()->can('hr.travel.view-all'))$q->where('staff_id',$a->id);return response()->json(['status'=>'success','data'=>$q->latest('departs_at')->paginate($this->paginationSize($r, 50))]);}
  public function settlementClaimOptions(Request $r, string $id): JsonResponse
  {
   $d = $r->validate([

@@ -120,7 +120,7 @@ class HikvisionManagementController extends Controller
     {
         $company = $this->authorizedCompanyId($r, $r->input('company_id'));
 
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_alerts')->where('company_id', $company)->latest('detected_at')->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_alerts')->where('company_id', $company)->latest('detected_at')->paginate($this->paginationSize($r, 50))]);
     }
 
     public function resolveAlert(Request $r, string $id): JsonResponse
@@ -185,7 +185,7 @@ class HikvisionManagementController extends Controller
         $data = $r->validate(['company_id' => ['nullable', 'uuid']]);
         $company = $this->authorizedCompanyId($r, $data['company_id'] ?? null);
 
-        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $company)->latest('requested_at')->paginate($r->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_device_maintenance_commands')->where('company_id', $company)->latest('requested_at')->paginate($this->paginationSize($r, 50))]);
     }
 
     public function requestReboot(Request $r, string $id): JsonResponse

@@ -9,7 +9,7 @@ use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
-use App\Services\SingleCompanyScope;
+use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -77,9 +77,8 @@ class PaymentController extends Controller
             $tenantCompanyIsActive = $tenantCompanyId && DB::table('companies')->where('id', $tenantCompanyId)
                 ->where('is_active', true)->whereNull('deleted_at')->exists();
             if (! $tenantCompanyIsActive) {
-                $tenantCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
+                abort(409, 'The booking needs a reviewed active legal-entity attribution before payment initiation.');
             }
-            abort_unless($tenantCompanyId, 409, 'No active default company is configured.');
             app(SalesAccessScope::class)->assertCompany(
                 $request->user(),
                 (string) $tenantCompanyId,
@@ -99,19 +98,21 @@ class PaymentController extends Controller
                     'message' => 'No configured online gateway is available for this payment method.',
                 ], 503);
             }
-            $resolvedCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($initialBooking);
-            abort_unless((string) $resolvedCompanyId === (string) $tenantCompanyId, 409,
-                'The booking legal entity changed before payment initiation.');
             $reservation = DB::transaction(function () use ($request, $tenantCompanyId): array {
                 $booking = Booking::query()->lockForUpdate()->findOrFail($request->booking_id);
                 $collectionMethod = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? ''));
                 abort_unless($collectionMethod === 'online', 422,
                     'Online payment can only be initiated for bookings with online payment method.');
 
-                $currentCompanyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                    ->whereNull('deleted_at')->value('company_id');
+                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                    ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
+                $currentCompanyId = $attribution?->company_id;
                 abort_unless((string) $currentCompanyId === (string) $tenantCompanyId, 409,
                     'The booking legal entity changed before payment initiation.');
+                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
+                abort_unless($company, 409, 'The booking legal entity is inactive; reconcile its attribution before payment initiation.');
+                app(SalesCollectionCompanyIntegrity::class)->assertConsistent($booking, (string) $company->id);
                 app(SalesAccessScope::class)->assertCompany(
                     $request->user(),
                     (string) $tenantCompanyId,
@@ -153,6 +154,7 @@ class PaymentController extends Controller
                     'id' => $recordId,
                     'attempt_id' => $recordId,
                     'booking_id' => $booking->id,
+                    'company_id' => $tenantCompanyId,
                     'amount' => $requestedAmount,
                     'currency' => $paymentCurrency,
                     'requested_amount' => $requestedAmount,
@@ -320,9 +322,7 @@ class PaymentController extends Controller
                 ], 400);
             }
 
-            $tenantBooking = Booking::query()->findOrFail($transaction->booking_id);
-            $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($tenantBooking);
-            $callbackOutcome = DB::transaction(function () use ($request, $transaction, $tenantBooking, $tenantCompanyId): array {
+            $callbackOutcome = DB::transaction(function () use ($request, $transaction): array {
                 $lockedTransaction = DB::table('payment_transactions')
                     ->where('id', $transaction->id)
                     ->lockForUpdate()
@@ -339,14 +339,20 @@ class PaymentController extends Controller
                 abort_unless($lockedTransaction->status === 'pending', 409,
                     'The payment transaction is not awaiting a provider outcome.');
 
-                $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
+                $booking = Booking::query()->whereKey($lockedTransaction->booking_id)->lockForUpdate()->first();
+                abort_unless($booking, 409, 'The payment booking no longer exists; reconcile this callback manually.');
+                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                    ->whereNull('deleted_at')->lockForUpdate()->first(['company_id']);
+                abort_unless($attribution?->company_id, 409,
+                    'The booking has no reviewed legal-entity attribution; reconcile this callback manually.');
+                abort_unless($lockedTransaction->company_id
+                    && (string) $lockedTransaction->company_id === (string) $attribution->company_id, 409,
+                    'The payment attempt has no matching company snapshot; reconcile this callback manually.');
+                $company = DB::table('companies')->where('id', $attribution->company_id)->where('is_active', true)
                     ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                if (! $company) {
-                    $tenantCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($tenantBooking);
-                    $company = DB::table('companies')->where('id', $tenantCompanyId)->where('is_active', true)
-                        ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                }
-                abort_unless($company, 409, 'No active default company is configured.');
+                abort_unless($company, 409, 'The booking legal entity is inactive; reconcile this callback manually.');
+                abort_unless((string) $attribution->company_id === (string) $company->id, 409,
+                    'The booking legal entity changed before payment could be recorded.');
                 DB::table('payment_transactions')
                     ->where('id', $lockedTransaction->id)
                     ->update([
@@ -355,12 +361,6 @@ class PaymentController extends Controller
                         'updated_at' => now(),
                     ]);
 
-                $booking = Booking::query()->lockForUpdate()->find($transaction->booking_id);
-                abort_unless($booking, 409, 'The payment booking no longer exists; reconcile this callback manually.');
-                $attribution = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
-                    ->lockForUpdate()->first(['company_id']);
-                abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
-                    'The booking legal entity changed before payment could be recorded.');
                 if ($request->input('status') === 'success') {
                     $snapshot = json_decode((string) ($lockedTransaction->gateway_payment_snapshot ?? ''), true);
                     abort_unless(is_array($snapshot), 409, 'The provider settlement snapshot is missing; reconcile this payment manually.');
@@ -419,7 +419,7 @@ class PaymentController extends Controller
                 }
 
                 return ['applied' => true, 'sms_confirmation' => null];
-            });
+            }, 3);
             if ($callbackOutcome['sms_confirmation']) {
                 $this->smsAutomation->queuePaymentConfirmation(
                     $callbackOutcome['sms_confirmation']['booking'], $callbackOutcome['sms_confirmation']['amount'],
@@ -815,9 +815,14 @@ class PaymentController extends Controller
      */
     public function getPaymentTransactions(Request $request): JsonResponse
     {
-        $limit = $request->get('limit', 20);
-        $status = $request->get('status');
-        $bookingId = $request->get('booking_id');
+        $filters = $request->validate([
+            'limit' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'status' => ['sometimes', 'nullable', 'string', 'max:32'],
+            'booking_id' => ['sometimes', 'nullable', 'uuid'],
+        ]);
+        $limit = (int) ($filters['limit'] ?? 20);
+        $status = $filters['status'] ?? null;
+        $bookingId = $filters['booking_id'] ?? null;
         $companyIds = app(SalesAccessScope::class)->companyIds(
             $request->user(),
             'sales.payment-adjustments.create-all',

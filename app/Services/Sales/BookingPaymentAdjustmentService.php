@@ -29,9 +29,8 @@ class BookingPaymentAdjustmentService
 
     public function record(Booking $booking, array $data, string $actorUserId): BookingPaymentAdjustment
     {
-        $this->ledger->ensureBookingCompanyAttribution($booking);
         $tenant = SalesBookingAttribution::query()->where('booking_id', $booking->id)->first(['company_id']);
-        abort_unless($tenant?->company_id, 422, 'This booking has no resolved legal entity.');
+        abort_unless($tenant?->company_id, 422, 'This booking needs a reviewed legal-entity attribution before payment adjustment.');
 
         return DB::transaction(function () use ($booking, $data, $actorUserId, $tenant) {
             $company = DB::table('companies')->where('id', $tenant->company_id)->where('is_active', true)

@@ -71,7 +71,7 @@ class CommissionStatementController extends Controller
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('period_end', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('period_start', '<=', $to))
-            ->latest('period_end')->paginate($request->integer('per_page', 25));
+            ->latest('period_end')->paginate($this->paginationSize($request, 25));
         $page->getCollection()->transform(static fn (SalesCommissionStatement $statement): array => [
             'id' => (string) $statement->id,
             'statement_number' => $statement->statement_number,
@@ -180,7 +180,7 @@ class CommissionStatementController extends Controller
             ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where('company_id', $companyId));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->orderByRaw("CASE status WHEN 'open' THEN 1 ELSE 2 END")->latest('raised_at')->paginate($request->integer('per_page', 25));
+            ->orderByRaw("CASE status WHEN 'open' THEN 1 ELSE 2 END")->latest('raised_at')->paginate($this->paginationSize($request, 25));
         $page->getCollection()->transform(static fn (SalesCommissionDispute $dispute): array => [
             'id' => (string) $dispute->id,
             'category' => $dispute->category,
@@ -207,7 +207,7 @@ class CommissionStatementController extends Controller
             ->when($data['company_id'] ?? null, fn ($q, $companyId) => $q->where('company_id', $companyId));
         $page = $query
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
-            ->latest('paid_at')->paginate($request->integer('per_page', 25));
+            ->latest('paid_at')->paginate($this->paginationSize($request, 25));
         $page->getCollection()->transform(static fn (SalesCommissionPayout $payout): array => [
             'id' => (string) $payout->id,
             'payout_number' => $payout->payout_number,

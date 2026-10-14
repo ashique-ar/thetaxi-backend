@@ -55,7 +55,7 @@ class EngagementController extends Controller
 
         return response()->json(['status' => 'success', 'data' => $query
             ->select(['id', 'title', 'body', 'priority', 'acknowledgement_required', 'publish_at', 'expires_at', 'content_checksum'])
-            ->latest('publish_at')->paginate($request->integer('per_page', 50))]);
+            ->latest('publish_at')->paginate($this->paginationSize($request, 50))]);
     }
 
     public function storeAnnouncement(Request $request): JsonResponse
@@ -149,7 +149,7 @@ class EngagementController extends Controller
         $actor = $this->actor($request);
         $query = DB::table('hr_survey_versions')->where('company_id', $actor->company_id)->where('status', 'approved')->where('opens_at', '<=', now())->where('closes_at', '>=', now());
         $this->audience($query, $actor);
-        $page = $query->select(['id', 'code', 'version', 'title', 'survey_type', 'anonymous', 'questions', 'opens_at', 'closes_at', 'survey_checksum'])->latest('opens_at')->paginate($request->integer('per_page', 50));
+        $page = $query->select(['id', 'code', 'version', 'title', 'survey_type', 'anonymous', 'questions', 'opens_at', 'closes_at', 'survey_checksum'])->latest('opens_at')->paginate($this->paginationSize($request, 50));
         $page->setCollection($page->getCollection()->map(function ($survey) use ($actor) {
             $survey->questions = json_decode($survey->questions, true) ?: [];
             $survey->responded = DB::table('hr_survey_participations')->where('survey_version_id', $survey->id)->where('staff_id', $actor->id)->exists();
@@ -285,7 +285,7 @@ class EngagementController extends Controller
 
     public function recognitionNominations(Request $request): JsonResponse
     {
-        $actor = $this->actor($request); $assignment = DB::table('hr_employment_assignments')->where('staff_id', $actor->id)->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))->latest('effective_from')->first(); $query = DB::table('hr_recognition_nominations as n')->leftJoin('staff as nominee', 'nominee.id', '=', 'n.nominee_staff_id')->leftJoin('users as nominee_user', 'nominee_user.id', '=', 'nominee.user_id')->where('n.company_id', $actor->company_id)->where(function ($scope) use ($actor, $assignment) { $scope->where('n.nominator_staff_id', $actor->id)->orWhere(function ($approved) use ($actor, $assignment) { $approved->where('n.status', 'approved')->where(function ($visible) use ($actor, $assignment) { $visible->where('n.nominee_staff_id', $actor->id)->orWhere('n.visibility', 'company'); if ($assignment?->organization_unit_id) $visible->orWhere(function ($team) use ($assignment) { $team->where('n.visibility', 'team')->whereExists(fn ($q) => $q->selectRaw('1')->from('hr_employment_assignments as nominee_assignment')->whereColumn('nominee_assignment.staff_id', 'n.nominee_staff_id')->where('nominee_assignment.organization_unit_id', $assignment->organization_unit_id)->whereDate('nominee_assignment.effective_from', '<=', now())->where(fn ($dates) => $dates->whereNull('nominee_assignment.effective_until')->orWhereDate('nominee_assignment.effective_until', '>=', now()))); }); }); }); }); $page = $query->select(['n.id', 'n.nominee_staff_id', 'nominee.code as nominee_code', 'nominee_user.first_name as nominee_first_name', 'nominee_user.last_name as nominee_last_name', 'n.nominator_staff_id', 'n.category', 'n.citation', 'n.visibility', 'n.status', 'n.nomination_checksum', 'n.approved_at', 'n.decision_reason', 'n.created_at'])->latest('n.created_at')->paginate($request->integer('per_page', 50)); return response()->json(['status' => 'success', 'data' => $page]);
+        $actor = $this->actor($request); $assignment = DB::table('hr_employment_assignments')->where('staff_id', $actor->id)->whereDate('effective_from', '<=', now())->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>=', now()))->latest('effective_from')->first(); $query = DB::table('hr_recognition_nominations as n')->leftJoin('staff as nominee', 'nominee.id', '=', 'n.nominee_staff_id')->leftJoin('users as nominee_user', 'nominee_user.id', '=', 'nominee.user_id')->where('n.company_id', $actor->company_id)->where(function ($scope) use ($actor, $assignment) { $scope->where('n.nominator_staff_id', $actor->id)->orWhere(function ($approved) use ($actor, $assignment) { $approved->where('n.status', 'approved')->where(function ($visible) use ($actor, $assignment) { $visible->where('n.nominee_staff_id', $actor->id)->orWhere('n.visibility', 'company'); if ($assignment?->organization_unit_id) $visible->orWhere(function ($team) use ($assignment) { $team->where('n.visibility', 'team')->whereExists(fn ($q) => $q->selectRaw('1')->from('hr_employment_assignments as nominee_assignment')->whereColumn('nominee_assignment.staff_id', 'n.nominee_staff_id')->where('nominee_assignment.organization_unit_id', $assignment->organization_unit_id)->whereDate('nominee_assignment.effective_from', '<=', now())->where(fn ($dates) => $dates->whereNull('nominee_assignment.effective_until')->orWhereDate('nominee_assignment.effective_until', '>=', now()))); }); }); }); }); $page = $query->select(['n.id', 'n.nominee_staff_id', 'nominee.code as nominee_code', 'nominee_user.first_name as nominee_first_name', 'nominee_user.last_name as nominee_last_name', 'n.nominator_staff_id', 'n.category', 'n.citation', 'n.visibility', 'n.status', 'n.nomination_checksum', 'n.approved_at', 'n.decision_reason', 'n.created_at'])->latest('n.created_at')->paginate($this->paginationSize($request, 50)); return response()->json(['status' => 'success', 'data' => $page]);
     }
 
     public function decideRecognition(Request $request, string $id): JsonResponse
@@ -360,7 +360,7 @@ class EngagementController extends Controller
         $actor = $this->actor($request);
         $query = DB::table('hr_wellness_referrals')->where('company_id', $actor->company_id);
         if (!$request->user()->can('hr.wellness.case.manage')) $query->where('staff_id', $actor->id);
-        return response()->json(['status' => 'success', 'data' => $query->select(['id', 'staff_id', 'program_id', 'referral_type', 'status', 'consent_status', 'case_owner_staff_id', 'closed_at', 'created_at'])->latest()->paginate($request->integer('per_page', 50))]);
+        return response()->json(['status' => 'success', 'data' => $query->select(['id', 'staff_id', 'program_id', 'referral_type', 'status', 'consent_status', 'case_owner_staff_id', 'closed_at', 'created_at'])->latest()->paginate($this->paginationSize($request, 50))]);
     }
 
     public function wellnessHandlerOptions(Request $request): JsonResponse

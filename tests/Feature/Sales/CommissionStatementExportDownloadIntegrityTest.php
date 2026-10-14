@@ -1,7 +1,8 @@
 <?php
 
-use App\Models\Sales\SalesCommissionStatementExport;
+use App\Models\Sales\SalesCommissionStatement;
 use App\Models\Sales\SalesProfile;
+use App\Services\Sales\CommissionStatementExportService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
@@ -48,17 +49,15 @@ it('downloads only the scoped export path after verifying its saved size and che
         'generation_payload_checksum' => str_repeat('a', 64), 'created_at' => $now, 'updated_at' => $now,
     ]);
 
-    $exportId = (string) Str::uuid();
-    $content = "statement,amount\nSCS-EXPORT-INTEGRITY,1250\n";
-    $path = 'commission-statements/'.$company->id.'/'.$staffId.'/'.$exportId.'.csv';
     Storage::fake('sales_private');
-    Storage::disk('sales_private')->put($path, $content);
-    $export = SalesCommissionStatementExport::query()->create([
-        'id' => $exportId, 'statement_id' => $statementId, 'format' => 'csv', 'disk' => 'sales_private',
-        'path' => $path, 'file_name' => 'SCS-EXPORT-INTEGRITY.csv', 'file_checksum' => hash('sha256', $content),
-        'file_size' => strlen($content), 'generated_by' => $actor->id, 'generated_at' => $now,
-        'idempotency_key' => (string) Str::uuid(),
-    ]);
+    $export = app(CommissionStatementExportService::class)->generate(
+        SalesCommissionStatement::query()->findOrFail($statementId), 'csv', (string) Str::uuid(), (string) $actor->id,
+    );
+    $path = $export->path;
+    $content = Storage::disk('sales_private')->get($path);
+    expect(basename($path))->toBe($export->id.'.csv')
+        ->and($export->file_checksum)->toBe(hash('sha256', $content))
+        ->and((int) $export->file_size)->toBe(strlen($content));
 
     $download = actingAs($actor, 'api')->get('/api/sales/commission-statement-exports/'.$export->id.'/download');
     ob_start();
@@ -69,6 +68,16 @@ it('downloads only the scoped export path after verifying its saved size and che
         ->and($streamedContent)->toBe($content);
     expect(DB::table('sales_commission_statement_exports')->where('id', $export->id)->value('last_downloaded_by'))
         ->toBe($actor->id);
+
+    $legacyPath = 'commission-statements/'.$company->id.'/'.$staffId.'/'.Str::uuid().'.csv';
+    Storage::disk('sales_private')->put($legacyPath, $content);
+    DB::table('sales_commission_statement_exports')->where('id', $export->id)->update(['path' => $legacyPath]);
+    $legacyDownload = actingAs($actor, 'api')->get('/api/sales/commission-statement-exports/'.$export->id.'/download');
+    ob_start();
+    $legacyDownload->sendContent();
+    expect($legacyDownload->getStatusCode())->toBe(200)
+        ->and(ob_get_clean())->toBe($content);
+    DB::table('sales_commission_statement_exports')->where('id', $export->id)->update(['path' => $path]);
 
     Storage::disk('sales_private')->put($path, 'tampered export bytes');
     DB::table('sales_commission_statement_exports')->where('id', $export->id)->update([

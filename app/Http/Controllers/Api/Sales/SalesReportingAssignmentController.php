@@ -40,7 +40,7 @@ class SalesReportingAssignmentController extends Controller
                 ->whereIn('manager_sales_profile_id', $profileIds)
                 ->whereIn('member_sales_profile_id', $profileIds))
             ->orderByDesc('effective_from')
-            ->paginate($request->integer('per_page', 50));
+            ->paginate($this->paginationSize($request, 50));
         $rows->setCollection($rows->getCollection()->map(fn ($row) => [
             'id' => $row->id, 'company_id' => $row->company_id,
             'manager_sales_profile_id' => $row->manager_sales_profile_id,

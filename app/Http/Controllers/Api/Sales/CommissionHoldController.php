@@ -88,7 +88,7 @@ class CommissionHoldController extends Controller
             ->when($resolution === 'released', fn ($q) => $q->where(fn ($resolved) => $resolved
                 ->whereHas('holdRelease')->orWhereHas('holdAdjustment')->orWhereHas('holdResolution')));
 
-        $rows = $query->latest('decision_at')->paginate($request->integer('per_page', 25));
+        $rows = $query->latest('decision_at')->paginate($this->paginationSize($request, 25));
         $rows->getCollection()->transform(function (SalesCommissionDecision $decision) use ($request): array {
             return $decision->only([
                 'id', 'eligible_lkr_amount', 'status', 'hold_code', 'calculation_explanation', 'decision_at', 'event_version',

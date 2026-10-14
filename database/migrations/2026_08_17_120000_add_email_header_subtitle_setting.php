@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
@@ -29,9 +30,10 @@ return new class extends Migration
 
     public function down(): void
     {
-        DB::table('website_settings')
+        $query = DB::table('website_settings')
             ->where('type', 'email_header_subtitle')
-            ->whereNull('company_id')
-            ->delete();
+            ->when(Schema::hasColumn('website_settings', 'company_id'), fn ($query) => $query->whereNull('company_id'));
+
+        $query->delete();
     }
 };

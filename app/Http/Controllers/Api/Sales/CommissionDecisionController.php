@@ -28,7 +28,7 @@ class CommissionDecisionController extends Controller
             ->when($data['commission_category'] ?? null, fn ($q, $category) => $q->where('commission_category', $category))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->where('decision_at', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->where('decision_at', '<=', $to))
-            ->latest('decision_at')->paginate($request->integer('per_page', 25));
+            ->latest('decision_at')->paginate($this->paginationSize($request, 25));
         $page->getCollection()->transform(fn (SalesCommissionDecision $decision): array => $this->projection($decision));
         return response()->json(['status' => 'success', 'data' => $page]);
     }
