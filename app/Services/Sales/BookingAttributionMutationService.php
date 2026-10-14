@@ -36,10 +36,14 @@ class BookingAttributionMutationService
     ): SalesBookingAttribution {
         return DB::transaction(function () use ($attribution, $toProfile, $reason, $idempotencyKey, $actorUserId) {
             $locked = SalesBookingAttribution::query()->lockForUpdate()->findOrFail($attribution->id);
+            $stagedOwnerReview = DB::table('sales_attribution_exceptions')
+                ->where('booking_id', $locked->booking_id)
+                ->where('exception_type', 'historical_company_owner_review_required')
+                ->where('status', 'open')->exists();
             if ($locked->company_id !== null) {
                 throw new RuntimeException('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.');
             }
-            if ($locked->acquisition_sales_profile_id !== null) {
+            if ($locked->acquisition_sales_profile_id !== null || ($locked->status !== 'held' && ! $stagedOwnerReview)) {
                 throw new RuntimeException('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.');
             }
 
@@ -61,6 +65,8 @@ class BookingAttributionMutationService
             if (! $target) {
                 throw new RuntimeException('The target Sales Profile no longer exists.');
             }
+            abort_unless(DB::table('companies')->where('id', $target->company_id)->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->exists(), 422, 'Select an active legal entity.');
             if (! $this->profileEligibility->isEligibleAt($target, ['acquisition'], $locked->secured_at)) {
                 throw new RuntimeException(
                     'The target Sales Profile must be explicitly acquisition-eligible with a governed reporting currency at the original secured time.'
@@ -138,12 +144,16 @@ class BookingAttributionMutationService
                 $idempotencyKey,
             );
 
+            $this->metricFacts->projectBookingConfirmation($locked);
             $this->resolveExceptions(
                 $locked->booking_id,
-                ['legal_entity_missing', 'historical_company_owner_review_required', 'acquisition_owner_missing', 'acquisition_owner_ineligible'],
+                ['legal_entity_missing', 'acquisition_owner_missing', 'acquisition_owner_ineligible'],
                 $reason,
                 $actorUserId,
             );
+            if ($stagedOwnerReview) {
+                $this->resolveExceptions($locked->booking_id, ['historical_company_owner_review_required'], $reason, $actorUserId);
+            }
 
             return $locked;
         }, 3);

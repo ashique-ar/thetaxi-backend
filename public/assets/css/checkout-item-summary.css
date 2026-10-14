@@ -164,3 +164,15 @@ body.theme-default .checkout-page .checkout-item-extra-km { margin-top: 8px !imp
 body.theme-default .checkout-page .checkout-addon-header,
 body.theme-default .checkout-page .checkout-extra-km-header { padding-bottom: 6px; }
 body.theme-default .checkout-page .checkout-selected-addons { margin-top: 6px; padding-top: 6px; }
+
+@container (max-width: 520px) {
+    body[class] .checkout-page .checkout-cart-item .item-area,
+    body[class] .checkout-page .checkout-cart-item.is-collapsed .item-area { grid-template-columns: minmax(0, 1fr) !important; gap: 0 !important; }
+    body[class] .checkout-page .checkout-cart-item .main-item { grid-column: 1; grid-row: 1; grid-template-columns: clamp(76px, 18cqw, 96px) minmax(0, 1fr) !important; gap: 10px !important; }
+    body[class] .checkout-page .checkout-cart-item.is-collapsed .main-item { grid-template-columns: 56px minmax(0, 1fr) !important; }
+    body[class] .checkout-page .checkout-cart-item.is-collapsed .item-img { width: 56px !important; min-width: 56px !important; height: 56px !important; }
+    body[class] .checkout-page .checkout-cart-item .item-total,
+    body[class] .checkout-page .checkout-cart-item.is-collapsed .item-total { grid-column: 1; grid-row: 2; display: flex !important; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 10px; min-width: 0; margin-top: 8px; text-align: right; }
+    body[class] .checkout-page .checkout-cart-item .checkout-item-price-rate { margin: 0 auto 0 0 !important; }
+    body[class] .checkout-page .checkout-cart-item .checkout-remove-item-btn { margin-top: 0; }
+}

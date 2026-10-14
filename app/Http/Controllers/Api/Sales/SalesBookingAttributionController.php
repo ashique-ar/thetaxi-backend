@@ -222,8 +222,7 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id
-            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id);
+        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
 
         $updated = $this->mutations->correctAcquisitionOwner(
             $attribution,
@@ -244,8 +243,17 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id
-            ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id);
+        $ownerReviewDisposition = ! $attribution->company_id
+            && DB::table('sales_attribution_exceptions')->where('booking_id', $attribution->booking_id)
+                ->where('exception_type', 'historical_company_owner_review_required')->where('status', 'open')->exists();
+        if ($ownerReviewDisposition) {
+            abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.view-all'), 404);
+            $target = SalesProfile::query()->whereKey($data['to_sales_profile_id'])->first();
+            $authorizedCompanyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+            abort_unless($target && ($authorizedCompanyIds === null || in_array($target->company_id, $authorizedCompanyIds, true)), 404);
+        } else {
+            $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+        }
 
         $updated = $this->mutations->establishLegalEntity(
             $attribution,
@@ -267,7 +275,17 @@ class SalesBookingAttributionController extends Controller
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
-        $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+        $ownerReviewDisposition = ! $attribution->company_id
+            && DB::table('sales_attribution_exceptions')->where('booking_id', $attribution->booking_id)
+                ->where('exception_type', 'historical_company_owner_review_required')->where('status', 'open')->exists();
+        if ($ownerReviewDisposition) {
+            abort_unless($this->scope->hasPermission($request->user(), 'sales.attributions.view-all'), 404);
+            $target = SalesProfile::query()->whereKey($data['to_sales_profile_id'])->first();
+            $authorizedCompanyIds = $this->scope->companyIds($request->user(), 'sales.attributions.view-all');
+            abort_unless($target && ($authorizedCompanyIds === null || in_array($target->company_id, $authorizedCompanyIds, true)), 404);
+        } else {
+            $target = $this->scopedProfile($request, $data['to_sales_profile_id'], $attribution->company_id);
+        }
 
         $updated = $this->mutations->correctCollectionHandler(
             $attribution,

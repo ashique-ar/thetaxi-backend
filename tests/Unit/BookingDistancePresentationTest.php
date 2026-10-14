@@ -69,6 +69,8 @@ class BookingDistancePresentationTest extends TestCase
         $this->assertStringContainsString('body[class] .checkout-page', $summaryStyles);
         $this->assertStringNotContainsString('body.theme-theme-04', $summaryStyles);
         $this->assertStringContainsString('body.theme-default .checkout-page .checkout-item-addons', $summaryStyles);
+        $this->assertStringContainsString('@container (max-width: 520px)', $summaryStyles);
+        $this->assertStringContainsString('.checkout-cart-item.is-collapsed .item-total { grid-column: 1; grid-row: 2; display: flex', $summaryStyles);
         $this->assertStringContainsString('.checkout-cart-item.is-collapsed .item-img { width: 56px !important; min-width: 56px !important;', $summaryStyles);
         $this->assertStringContainsString('content > :not(.vehicle-rate):not(.vehicle-title):not(.trip-meta)', file_get_contents(public_path('assets/css/checkout-theme-01.css')));
         $this->assertStringContainsString('container-type: inline-size', $summaryStyles);
