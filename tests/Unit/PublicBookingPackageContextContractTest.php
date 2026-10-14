@@ -15,7 +15,10 @@ it('uses the public service type context consistently for package rendering and 
         ->and($formSource)
         ->toContain('->publicContext()')
         ->toContain("->whereIn('code', \$serviceTypeCodesForConfig)")
-        ->and($controllerSource)->toContain('$this->resolveServiceType((string) $serviceTypeValue)');
+        ->and($controllerSource)
+        ->toContain('$this->resolveServiceType((string) $serviceTypeValue)')
+        ->toContain("Str::isUuid(\$code) ? 'id' : 'code'")
+        ->toContain("'service_type_code' => \$serviceType->code");
     expect($pricingSource)->toContain("forContext('public', 'company'")
         ->toContain('$this->resolveServiceTypeFromParams([')
         ->toContain('$pricingServiceTypeModel = $selectedServiceTypeModel')
