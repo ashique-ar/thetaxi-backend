@@ -142,6 +142,8 @@ class BusinessSettingController extends Controller
                     : ($legacyValues[$key] ?? null);
             }
         }
+        $categories['booking']['feature_hr_attendance_ingestion_enabled'] =
+            $this->websiteSettingsService->get('feature_hr_attendance_ingestion_enabled', false);
 
         return response()->json([
             'status' => 'success',
@@ -236,7 +238,11 @@ class BusinessSettingController extends Controller
             );
 
             // Keep existing runtime consumers working while business-owned reads migrate.
-            $this->websiteSettingsService->set($type, $normalizedValue);
+            if ($type === 'feature_hr_attendance_ingestion_enabled') {
+                $this->websiteSettingsService->setGlobal($type, $normalizedValue);
+            } else {
+                $this->websiteSettingsService->set($type, $normalizedValue);
+            }
         }
 
         if ($category === 'driverMobile' && array_key_exists('driver_mobile_latest_version', $settings)) {
@@ -272,6 +278,9 @@ class BusinessSettingController extends Controller
         $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
         $data['created_user_id'] = $request->user()->id;
         $setting = BusinessSetting::create($data);
+        if ($setting->type === 'feature_hr_attendance_ingestion_enabled') {
+            $this->websiteSettingsService->setGlobal($setting->type, $setting->value);
+        }
 
         return response()->json([
             'status'=>'success',
@@ -299,6 +308,9 @@ class BusinessSettingController extends Controller
         );
         $data['updated_user_id'] = $request->user()->id;
         $businessSetting->update($data);
+        if ($businessSetting->type === 'feature_hr_attendance_ingestion_enabled') {
+            $this->websiteSettingsService->setGlobal($businessSetting->type, $businessSetting->value);
+        }
         if ($businessSetting->type === 'driver_mobile_latest_version') {
             $this->notifyDriversAboutAppUpdate(
                 $previousValue,

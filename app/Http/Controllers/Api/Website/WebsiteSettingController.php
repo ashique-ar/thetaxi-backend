@@ -75,9 +75,15 @@ class WebsiteSettingController extends Controller
         $data = $request->validated();
         $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
         $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
-        $data['company_id'] = $this->settingsService->resolveCurrentCompanyId();
+        $data['company_id'] = $data['type'] === 'feature_hr_attendance_ingestion_enabled'
+            ? null : $this->settingsService->resolveCurrentCompanyId();
         $data['created_user_id'] = $request->user()->id;
-        $setting = WebsiteSetting::create($data);
+        $setting = $data['type'] === 'feature_hr_attendance_ingestion_enabled'
+            ? WebsiteSetting::updateOrCreate(
+                ['type' => $data['type'], 'company_id' => null],
+                ['value' => $data['value'], 'updated_user_id' => $request->user()->id],
+            )
+            : WebsiteSetting::create($data);
         $this->settingsService->clearCache($setting->type, $setting->company_id);
 
         return response()->json([
@@ -98,6 +104,9 @@ class WebsiteSettingController extends Controller
     public function update(UpdateWebsiteSettingRequest $request, WebsiteSetting $websiteSetting): JsonResponse
     {
         $data = $request->validated();
+        $this->attendanceActivation->assertTypeCanChange(
+            (string) $websiteSetting->type, (string) ($data['type'] ?? $websiteSetting->type),
+        );
         $this->attendanceActivation->assertCanEnable(
             $request->user(), $data['type'] ?? $websiteSetting->type,
             array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
@@ -106,6 +115,16 @@ class WebsiteSettingController extends Controller
             $data['value'] = WebsiteSetting::normalizeValue($data['value']);
         }
         $data['updated_user_id'] = $request->user()->id;
+        if (($data['type'] ?? $websiteSetting->type) === 'feature_hr_attendance_ingestion_enabled') {
+            $setting = WebsiteSetting::updateOrCreate(
+                ['type' => 'feature_hr_attendance_ingestion_enabled', 'company_id' => null],
+                ['value' => $data['value'] ?? $websiteSetting->value, 'updated_user_id' => $request->user()->id],
+            );
+            $this->settingsService->clearCache($setting->type, null);
+
+            return response()->json(['status' => 'success', 'message' => 'Website setting updated',
+                'data' => ['setting' => new WebsiteSettingResource($setting)]]);
+        }
         $websiteSetting->update($data);
 
         $this->settingsService->clearCache($websiteSetting->type, $websiteSetting->company_id);
@@ -165,6 +184,7 @@ class WebsiteSettingController extends Controller
 
     public function destroy(WebsiteSetting $websiteSetting): JsonResponse
     {
+        $this->attendanceActivation->assertNotDeletable((string) $websiteSetting->type);
         $type = $websiteSetting->type;
         $websiteSetting->delete();
 
@@ -206,8 +226,9 @@ class WebsiteSettingController extends Controller
         }
 
         foreach ($settings as $settingData) {
+            $settingCompanyId = $settingData['type'] === 'feature_hr_attendance_ingestion_enabled' ? null : $companyId;
             $setting = WebsiteSetting::updateOrCreate(
-                ['type' => $settingData['type'], 'company_id' => $companyId],
+                ['type' => $settingData['type'], 'company_id' => $settingCompanyId],
                 [
                     'value' => WebsiteSetting::normalizeValue($settingData['value'] ?? null),
                     'updated_user_id' => $request->user()->id,
@@ -220,7 +241,9 @@ class WebsiteSettingController extends Controller
 
         // Clear cache for all updated types
         foreach ($types as $type) {
-            $this->settingsService->clearCache($type, $companyId);
+            $this->settingsService->clearCache(
+                $type, $type === 'feature_hr_attendance_ingestion_enabled' ? null : $companyId,
+            );
         }
 
         return response()->json([
@@ -428,8 +451,9 @@ class WebsiteSettingController extends Controller
             $companyId = $this->settingsService->resolveCurrentCompanyId();
 
             foreach ($settings as $type => $value) {
+                $settingCompanyId = $type === 'feature_hr_attendance_ingestion_enabled' ? null : $companyId;
                 $setting = WebsiteSetting::updateOrCreate(
-                    ['type' => $type, 'company_id' => $companyId],
+                    ['type' => $type, 'company_id' => $settingCompanyId],
                     [
                         'value' => WebsiteSetting::normalizeValue($value),
                         'updated_user_id' => $request->user()->id,
@@ -437,7 +461,7 @@ class WebsiteSettingController extends Controller
                 );
 
                 $updatedSettings[] = new WebsiteSettingResource($setting);
-                $this->settingsService->clearCache($type, $companyId);
+                $this->settingsService->clearCache($type, $settingCompanyId);
             }
 
             return response()->json([

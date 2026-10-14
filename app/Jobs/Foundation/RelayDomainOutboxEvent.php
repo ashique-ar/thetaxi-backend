@@ -80,6 +80,8 @@ class RelayDomainOutboxEvent implements ShouldQueue
     public function failed(Throwable $exception): void
     {
         DB::table('domain_outbox_events')->where('id', $this->outboxEventId)->update([
+            'published_at' => null,
+            'available_at' => now()->addHour(),
             'attempt_count' => DB::raw('attempt_count + 1'),
             'last_error' => Str::limit($exception->getMessage(), 2000),
             'updated_at' => now(),

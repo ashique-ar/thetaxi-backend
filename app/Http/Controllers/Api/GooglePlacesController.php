@@ -118,7 +118,10 @@ class GooglePlacesController extends Controller
                         $statusCode = 403;
                         break;
                 }
-
+                Log::error($message, [
+                    'status' => $data['status'] ?? 'UNKNOWN',
+                    'body'=> $response->body(),
+                ]);
                 return response()->json([
                     'status' => 'error',
                     'message' => $message,

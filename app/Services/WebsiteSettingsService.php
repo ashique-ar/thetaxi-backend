@@ -114,6 +114,11 @@ class WebsiteSettingsService
      */
     public function get(string $type, $default = null)
     {
+        if ($type === 'feature_hr_attendance_ingestion_enabled') {
+            // Legacy business_settings values predate the separate activation permission.
+            return WebsiteSetting::getValue($type, false, null);
+        }
+
         if (in_array($type, self::BUSINESS_OWNED_KEYS, true)) {
             $businessSetting = BusinessSetting::query()->where('type', $type)->first();
             if ($businessSetting) {
@@ -166,6 +171,10 @@ class WebsiteSettingsService
         $cachedValues = Cache::many(array_values($cacheKeysByType));
 
         foreach ($cacheKeysByType as $type => $cacheKey) {
+            if ($type === 'feature_hr_attendance_ingestion_enabled') {
+                $result[$type] = WebsiteSetting::getValue($type, false, null);
+                continue;
+            }
             $cachedValue = $cachedValues[$cacheKey] ?? null;
 
             if ($cachedValue !== null) {
@@ -211,6 +220,9 @@ class WebsiteSettingsService
             ->all();
 
         foreach ($businessValues as $type => $value) {
+            if ($type === 'feature_hr_attendance_ingestion_enabled') {
+                continue;
+            }
             $result[$type] = $value;
         }
 
