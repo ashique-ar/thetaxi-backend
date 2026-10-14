@@ -126,6 +126,10 @@ class TermsController extends Controller
         $legacyServiceType = array_key_exists('service_type', $payload) ? $payload['service_type'] : $term->service_type;
         $paymentType = array_key_exists('payment_type', $payload) ? $payload['payment_type'] : $term->payment_type;
 
+        if (!empty($serviceTypeId)) {
+            $payload['service_type'] = null;
+        }
+
         $hasService = !empty($serviceTypeId) || !empty($legacyServiceType);
         $hasPayment = !empty($paymentType);
 

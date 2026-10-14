@@ -17,6 +17,7 @@ class TermsAndCondition extends BaseModel
         'slug',
         'content',
         'service_type_id',
+        'service_type',
         'payment_type',
         'version',
         'is_active',
