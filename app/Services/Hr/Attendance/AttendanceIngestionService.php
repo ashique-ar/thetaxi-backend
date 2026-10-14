@@ -5,6 +5,7 @@ namespace App\Services\Hr\Attendance;
 use App\Models\Hr\Attendance\AttendanceConnector;
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Models\Hr\Attendance\AttendanceRawEvent;
+use App\Services\WebsiteSettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -25,9 +26,13 @@ use Symfony\Component\HttpFoundation\IpUtils;
  */
 class AttendanceIngestionService
 {
+    public function __construct(private readonly WebsiteSettingsService $settings) {}
+
     public function ingest(array $headers, string $rawBody, array $events, ?string $sourceIp): array
     {
-        
+        $enabled = filter_var($this->settings->get('feature_hr_attendance_ingestion_enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
+        abort_unless($enabled, 403, 'Hikvision attendance ingestion is disabled.');
+
         $connector = AttendanceConnector::query()->where('connector_key', $headers['connector_key'])->where('status', 'active')->firstOrFail();
         abort_unless(DB::table('companies')->where('id', $connector->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance ingestion requires an active legal entity.');
         $this->verify($connector, $headers, $rawBody, $sourceIp);
