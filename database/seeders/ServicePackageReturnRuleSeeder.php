@@ -50,7 +50,7 @@ class ServicePackageReturnRuleSeeder extends Seeder
         ];
 
         // Only ride_now service type supports return trips
-        $serviceType = ServiceType::where('code', 'ride_now')->first();
+        $serviceType = ServiceType::where('code', 'ride_now')->first() ?? ServiceType::where('code', 'drop_and_pickup')->first();
 
         if (!$serviceType) {
             $this->command->error("❌ ride_now service type not found. Cannot proceed.");
