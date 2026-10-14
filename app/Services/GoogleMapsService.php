@@ -58,8 +58,13 @@ class GoogleMapsService
             throw new \RuntimeException('Google route distance cannot be calculated from the supplied locations.');
         }
 
+        $blockedKey = 'gm:routes:permission-denied:' . md5($this->apiKey);
+        if (Cache::has($blockedKey)) {
+            throw new \RuntimeException('Google Routes API access is blocked for this key.');
+        }
+
         $cacheKey = 'gm:routes:v1:' . md5(json_encode([$o, $d, $mode, $avoidTolls, $avoidHighways]));
-        return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways) {
+        return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways, $blockedKey) {
             try {
                 $travelMode = match (strtolower($mode)) {
                     'driving' => 'DRIVE',
@@ -85,6 +90,9 @@ class GoogleMapsService
                 ]);
 
                 if (!$response->successful()) {
+                    if ($response->status() === 403) {
+                        Cache::put($blockedKey, true, now()->addMinutes(5));
+                    }
                     Log::warning('Google Routes API request failed', [
                         'status' => $response->status(),
                         'error_status' => $response->json('error.status'),

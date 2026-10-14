@@ -38,6 +38,20 @@ it('fails route distance instead of returning zero when the routing API is unava
     ))->toThrow(RuntimeException::class);
 });
 
+it('backs off after Google denies Routes API access', function () {
+    config()->set('services.google.places_api_key', 'test-key');
+    Cache::flush();
+    Http::fake(['routes.googleapis.com/*' => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403)]);
+    $maps = app(GoogleMapsService::class);
+    $origin = ['latitude' => 7.1808, 'longitude' => 79.8841];
+    $destination = ['latitude' => 6.9271, 'longitude' => 79.8612];
+
+    expect(fn () => $maps->distanceAndDuration($origin, $destination))->toThrow(RuntimeException::class);
+    expect(fn () => $maps->distanceAndDuration($origin, $destination))->toThrow(RuntimeException::class);
+
+    Http::assertSentCount(1);
+});
+
 it('keeps place detail database cache keys bounded', function () {
     $source = file_get_contents(app_path('Http/Controllers/Api/GooglePlacesController.php'));
 

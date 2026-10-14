@@ -100,9 +100,8 @@
     @if($distanceCalculationFailed ?? false)
         <div class="container mb-4" id="distanceCalculationAlert">
             <div class="alert alert-danger" role="alert">
-                <strong>We could not verify the journey distance.</strong>
-                No price has been displayed because an unverified distance could produce an incorrect fare.
-                Please confirm both locations and search again.
+                <strong>We could not calculate a verified journey distance.</strong>
+                Fares are temporarily unavailable. Please try again later.
             </div>
         </div>
     @endif
