@@ -77,6 +77,10 @@ class BookingDistancePresentationTest extends TestCase
         foreach (['cart', 'search'] as $view) {
             $this->assertStringContainsString('@if (!isServiceDurationBased(', file_get_contents(resource_path("views/{$view}.blade.php")));
         }
+        $searchView = file_get_contents(resource_path('views/search.blade.php'));
+        $this->assertStringNotContainsString('$search->serviceType', $searchView);
+        $this->assertStringContainsString("data_get(\$search, 'pricing_mode')", $searchView);
+        $this->assertStringContainsString("'pricing_mode' => \$serviceType?->pricing_mode", file_get_contents(app_path('Http/Controllers/BookingController.php')));
         foreach (['checkout/success', 'emails/checkout-confirmation', 'emails/payment-initiated', 'emails/quotation-request'] as $view) {
             $this->assertStringContainsString('<x-booking-item-email', file_get_contents(resource_path("views/{$view}.blade.php")));
         }

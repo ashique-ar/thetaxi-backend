@@ -1036,6 +1036,7 @@ class BookingController extends Controller
             $searchTimestamp = session()->get('search_timestamp');
             $pricingContext = session()->get('pricing_context');
             $frontendService = session()->get('frontend_service');
+            $serviceType = $frontendService ? $this->resolveServiceType($frontendService) : null;
 
             if (!$searchParams) {
                 return redirect()->route('home')
@@ -1089,6 +1090,7 @@ class BookingController extends Controller
                     'pricing_context' => $pricingContext,
                     'frontend_service' => $frontendService,
                     'service_type' => $frontendService, // Form needs this
+                    'pricing_mode' => $serviceType?->pricing_mode,
                     'created_at' => $searchTimestamp,
                     'total_distance_km' => $totalJourneyDistance, // Add distance information
                     'total_duration_seconds' => $totalJourneyDuration, // Add duration information
