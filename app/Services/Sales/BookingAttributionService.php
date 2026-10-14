@@ -133,7 +133,9 @@ class BookingAttributionService
                 "booking:{$booking->id}",
             );
 
-            $this->crm->markWonFromBooking($booking);
+            if (! $stageUnownedHistorical || $companyId) {
+                $this->crm->markWonFromBooking($booking);
+            }
             $this->metricFacts->projectBookingConfirmation($attribution);
 
             return $attribution;
