@@ -581,11 +581,7 @@ class BookingSearchRequest extends FormRequest
         }
 
         try {
-            $serviceType = ServiceType::query()
-                ->where('code', $serviceCode)
-                ->orWhere('id', $serviceCode)
-                ->orWhere('name', $serviceCode)
-                ->first();
+            $serviceType = $this->findPublicServiceType($serviceCode);
 
             $config = is_array($serviceType?->form_config) ? $serviceType->form_config : [];
             $mode = $config['trip_mode'] ?? $config['booking_mode'] ?? $config['service_mode'] ?? null;
@@ -924,11 +920,7 @@ class BookingSearchRequest extends FormRequest
 
         $serviceType = null;
         foreach ($candidateCodes as $candidateCode) {
-            $serviceType = ServiceType::query()
-                ->publicContext()
-                ->where('code', $candidateCode)
-                ->where('is_active', true)
-                ->first();
+            $serviceType = $this->findPublicServiceType($candidateCode);
 
             if ($serviceType) {
                 break;
@@ -950,6 +942,17 @@ class BookingSearchRequest extends FormRequest
             : [];
 
         return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id, $fieldMappings];
+    }
+
+    private function findPublicServiceType(string $code): ?ServiceType
+    {
+        $query = ServiceType::query()->where('code', $code)->where('is_active', true);
+        $companyId = app(WebsiteSettingsService::class)->resolveCompanyId();
+        $serviceType = $companyId
+            ? (clone $query)->forContext('public', 'company', (string) $companyId)->first()
+            : null;
+
+        return $serviceType ?? $query->publicContext()->first();
     }
 
     /**

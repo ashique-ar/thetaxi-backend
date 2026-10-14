@@ -592,14 +592,22 @@ class BookingFlowService
             return null;
         }
 
-        $query = $this->shouldUsePublicServiceContext($params)
-            ? ServiceType::publicContext()
-            : ServiceType::query();
-        $serviceType = $query->where('id', $candidate)
-            ->orWhere('code', $candidate)
-            ->orWhere('name', $candidate)
-            ->orWhere('slug', $candidate)
-            ->first();
+        $query = ServiceType::query();
+        $find = fn ($query) => $query->where(function ($query) use ($candidate) {
+            $query->where('id', $candidate)
+                ->orWhere('code', $candidate)
+                ->orWhere('name', $candidate)
+                ->orWhere('slug', $candidate);
+        });
+        if ($this->shouldUsePublicServiceContext($params)) {
+            $companyId = app(WebsiteSettingsService::class)->resolveCompanyId();
+            $serviceType = $companyId
+                ? $find((clone $query)->forContext('public', 'company', (string) $companyId))->first()
+                : null;
+            $serviceType ??= $find((clone $query)->publicContext())->first();
+        } else {
+            $serviceType = $find($query)->first();
+        }
 
         return $serviceType;
     }
@@ -1014,15 +1022,11 @@ class BookingFlowService
             $vehicleGroups->load(['vehicles' => fn ($query) => $query->where('is_active', true)->where('status', 'active')]);
         }
 
-        $selectedServiceTypeModel = (($isPublic || $this->shouldUsePublicServiceContext($params))
-        ? ServiceType::publicContext()
-        : ServiceType::query())
-            ->where(function ($query) use ($serviceType) {
-                $query->where('id', $serviceType)
-                    ->orWhere('code', $serviceType)
-                    ->orWhere('name', $serviceType);
-            })
-            ->first();
+        $selectedServiceTypeModel = $this->resolveServiceTypeFromParams([
+            ...$params,
+            'service_type' => $serviceType,
+            'service_type_context' => ($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : null,
+        ]);
 
         $servicePricingSettings = $selectedServiceTypeModel
             ? VehicleGroupServicePricingSetting::query()

@@ -1290,14 +1290,7 @@ class BookingController extends Controller
         $serviceType = null;
         if (isset($searchParams['service_type'])) {
             $serviceTypeValue = $searchParams['service_type'];
-            $serviceTypeModel = ServiceType::publicContext()
-                ->where(function ($query) use ($serviceTypeValue) {
-                    $query->where('id', $serviceTypeValue)
-                        ->orWhere('code', $serviceTypeValue)
-                        ->orWhere('name', $serviceTypeValue);
-                })
-                ->first();
-            $serviceType = $serviceTypeModel?->code ?? 'point_to_point';
+            $serviceType = $this->resolveServiceType((string) $serviceTypeValue)?->code ?? 'point_to_point';
         }
 
 
