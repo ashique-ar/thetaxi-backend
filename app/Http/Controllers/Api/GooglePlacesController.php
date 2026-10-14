@@ -16,7 +16,10 @@ class GooglePlacesController extends Controller
 
     public function __construct()
     {
-        $this->googleApiKey = config('services.google.maps_api_key');
+        $this->googleApiKey = config('services.google.maps_api_key')
+            ?: config('services.google.places_api_key')
+            ?: env('GOOGLE_MAPS_API_KEY')
+            ?: env('GOOGLE_PLACES_API_KEY');
 
         if (!$this->googleApiKey) {
             Log::warning('Google Places API key not configured');

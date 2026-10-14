@@ -316,6 +316,13 @@ Route::prefix('utility')->group(function () {
     Route::get('states', [UtilityController::class, 'searchStates']);
     Route::get('constants', [UtilityController::class, 'constants']);
 });
+Route::prefix('places')->middleware(['throttle:60,1'])->group(function () {
+    Route::get('config', [GooglePlacesController::class, 'getConfig']);
+    Route::get('search', [GooglePlacesController::class, 'searchPlaces']);
+    Route::get('airports', [GooglePlacesController::class, 'searchAirports']);
+    Route::get('details', [GooglePlacesController::class, 'getPlaceDetails']);
+    Route::get('reverse-geocode', [GooglePlacesController::class, 'reverseGeocode']);
+});
 
 Route::middleware(['auth:api'])->group(function () {
 
@@ -2552,13 +2559,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('configure-approval-workflows', [BookingFlowController::class, 'getApprovalStatus']);
     });
 
-    Route::prefix('places')->group(function () {
-        Route::get('config', [GooglePlacesController::class, 'getConfig']);
-        Route::get('search', [GooglePlacesController::class, 'searchPlaces']);
-        Route::get('airports', [GooglePlacesController::class, 'searchAirports']);
-        Route::get('details', [GooglePlacesController::class, 'getPlaceDetails']);
-        Route::get('reverse-geocode', [GooglePlacesController::class, 'reverseGeocode']);
-    });
 
     Route::group([
         'prefix' => 'mobile/booking-flow',
