@@ -768,6 +768,7 @@ class CorporateBookingService
             'booking.corporateDepartment',
             'booking.corporateDivision',
             'booking.employee.user',
+            'booking.employeeUser',
             'booking.latestApproval.approver',
             'booking.createdBy',
             'booking.bookingItems:id,booking_id,vehicle_id,driver_id,is_self_driven,from_date,from_time,created_at',
@@ -811,7 +812,7 @@ class CorporateBookingService
     private function mapBookingItem(BookingItem $item, bool $canViewPayments = false): array
     {
         $booking = $item->booking;
-        $employeeUser = $booking?->employee?->user;
+        $employeeUser = $booking?->employee?->user ?: $booking?->employeeUser;
         $lifecycleContract = $booking
             ? app(BookingLifecycleService::class)->getLifecycleContract($booking, (string) $item->id)
             : null;
@@ -836,8 +837,8 @@ class CorporateBookingService
             'corporate_name' => $booking?->corporateAccount?->name,
             'employee_id' => $booking?->employee_id,
             'employee_name' => $employeeUser
-                ? trim($employeeUser->first_name . ' ' . $employeeUser->last_name)
-                : ($booking?->customer?->name ?? null),
+                ? trim(($employeeUser->first_name ?? '') . ' ' . ($employeeUser->last_name ?? ''))
+                : ($booking?->customer?->name ?? $booking?->corporateAccount?->name ?? null),
             'employee_email' => $employeeUser?->email,
             'corporate_department_id' => $booking?->corporate_department_id,
             'corporate_division_id' => $booking?->corporate_division_id,
@@ -909,7 +910,7 @@ class CorporateBookingService
 
     private function mapBooking(Booking $booking, bool $canViewPayments = false): array
     {
-        $employeeUser = $booking->employee?->user;
+        $employeeUser = $booking->employee?->user ?: $booking->employeeUser;
         $approval = $booking->latestApproval;
         $lifecycleContract = app(BookingLifecycleService::class)->getLifecycleContract($booking);
 
@@ -921,8 +922,8 @@ class CorporateBookingService
             'corporate_name' => $booking->corporateAccount?->name,
             'employee_id' => $booking->employee_id,
             'employee_name' => $employeeUser
-                ? trim($employeeUser->first_name . ' ' . $employeeUser->last_name)
-                : ($booking->customer?->name ?? null),
+                ? trim(($employeeUser->first_name ?? '') . ' ' . ($employeeUser->last_name ?? ''))
+                : ($booking->customer?->name ?? $booking->corporateAccount?->name ?? null),
             'employee_email' => $employeeUser?->email,
             'corporate_department_id' => $booking->corporate_department_id,
             'corporate_division_id' => $booking->corporate_division_id,

@@ -3085,6 +3085,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/{id}/toggle', [BookingFormTabController::class, 'toggle'])
             ->middleware('permission:settings.edit');
+        Route::post('booking-form-tabs/{id}/default', [BookingFormTabController::class, 'setDefault'])
+            ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/reorder', [BookingFormTabController::class, 'reorder'])
             ->middleware('permission:settings.edit');
         Route::post('booking-form-tabs/bulk-update', [BookingFormTabController::class, 'bulkUpdate'])

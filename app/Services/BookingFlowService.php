@@ -9761,7 +9761,7 @@ class BookingFlowService
         $booking = $item->booking;
         $customer = $booking?->customer;
         $customerUser = $customer?->user;
-        $employeeUser = $booking?->employeeUser;
+        $employeeUser = $booking?->employeeUser ?: $booking?->employee?->user;
         $bookingSource = $this->resolveBookingListSource($booking);
 
         $itemVehicle = $item->vehicle;
@@ -9828,7 +9828,9 @@ class BookingFlowService
             $customerName = $customer?->name ?? 'Unknown Customer';
         }
         if ($bookingSource === 'corporate') {
-            $customerName = trim((string) ($booking?->corporateAccount?->name ?? '')) ?: 'Corporate account';
+            $corporateName = trim((string) ($booking?->corporateAccount?->name ?? '')) ?: 'Corporate account';
+            $employeeName = trim(($employeeUser?->first_name ?? '') . ' ' . ($employeeUser?->last_name ?? ''));
+            $customerName = $employeeName !== '' ? "{$employeeName} ({$corporateName})" : $corporateName;
         }
 
         $driverName = trim(($itemDriverUser?->first_name ?? '') . ' ' . ($itemDriverUser?->last_name ?? ''));

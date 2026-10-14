@@ -29,18 +29,28 @@ class GooglePlacesController extends Controller
     /**
      * Get request headers for Google API calls, forwarding Referer to satisfy GCP HTTP referrer restrictions
      */
-    private function getGoogleHeaders(Request $request, array $extraHeaders = []): array
+    private function getGoogleHeaders(Request $request, array $extraHeaders = [], ?string $overrideReferer = null): array
     {
         $headers = array_merge([
             'X-Goog-Api-Key' => $this->googleApiKey,
             'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
         ], $extraHeaders);
 
-        // Satisfy Google Cloud Console HTTP Referrer (Websites) restriction
-        $referer = $request->header('referer')
+        if ($overrideReferer !== null) {
+            if ($overrideReferer !== '') {
+                $headers['Referer'] = $overrideReferer;
+            }
+            return $headers;
+        }
+
+        $configuredReferer = config('services.google.maps_referer') ?: env('GOOGLE_MAPS_REFERER');
+        if (in_array(strtolower((string)$configuredReferer), ['none', 'false', 'off', 'null'], true)) {
+            return $headers;
+        }
+
+        $referer = $configuredReferer
+            ?: $request->header('referer')
             ?: $request->header('origin')
-            ?: config('services.google.maps_referer')
-            ?: env('GOOGLE_MAPS_REFERER')
             ?: config('app.url');
 
         if ($referer) {
@@ -107,6 +117,35 @@ class GooglePlacesController extends Controller
             $response = Http::withHeaders($headers)
                 ->timeout(10)
                 ->post('https://places.googleapis.com/v1/places:autocomplete', $body);
+
+            // If referer is blocked by Google Cloud Console, try intelligent fallbacks (www vs non-www, or without referer)
+            if (!$response->successful() && $response->status() === 403 && str_contains($response->body(), 'API_KEY_HTTP_REFERRER_BLOCKED')) {
+                $currentReferer = $headers['Referer'] ?? '';
+                $fallbacks = [];
+                if (!empty($currentReferer)) {
+                    if (!str_contains($currentReferer, '://www.')) {
+                        $fallbacks[] = str_replace('://', '://www.', $currentReferer);
+                    } else {
+                        $fallbacks[] = str_replace('://www.', '://', $currentReferer);
+                    }
+                    $fallbacks[] = ''; // Try without Referer header (for IP or unrestricted server keys)
+                }
+
+                foreach ($fallbacks as $fallbackReferer) {
+                    $retryHeaders = $this->getGoogleHeaders($request, [
+                        'Content-Type' => 'application/json',
+                    ], $fallbackReferer);
+
+                    $retryResponse = Http::withHeaders($retryHeaders)
+                        ->timeout(8)
+                        ->post('https://places.googleapis.com/v1/places:autocomplete', $body);
+
+                    if ($retryResponse->successful()) {
+                        $response = $retryResponse;
+                        break;
+                    }
+                }
+            }
 
             if (!$response->successful()) {
                 Log::error('Places Autocomplete (New) failed', [
@@ -366,6 +405,35 @@ class GooglePlacesController extends Controller
             $response = Http::withHeaders($headers)
                 ->timeout(10)
                 ->get("https://places.googleapis.com/v1/places/{$cleanPlaceId}");
+
+            // If referer is blocked by Google Cloud Console, try intelligent fallbacks (www vs non-www, or without referer)
+            if (!$response->successful() && $response->status() === 403 && str_contains($response->body(), 'API_KEY_HTTP_REFERRER_BLOCKED')) {
+                $currentReferer = $headers['Referer'] ?? '';
+                $fallbacks = [];
+                if (!empty($currentReferer)) {
+                    if (!str_contains($currentReferer, '://www.')) {
+                        $fallbacks[] = str_replace('://', '://www.', $currentReferer);
+                    } else {
+                        $fallbacks[] = str_replace('://www.', '://', $currentReferer);
+                    }
+                    $fallbacks[] = ''; // Try without Referer header
+                }
+
+                foreach ($fallbacks as $fallbackReferer) {
+                    $retryHeaders = $this->getGoogleHeaders($request, [
+                        'X-Goog-FieldMask' => 'id,displayName,formattedAddress,location,addressComponents',
+                    ], $fallbackReferer);
+
+                    $retryResponse = Http::withHeaders($retryHeaders)
+                        ->timeout(8)
+                        ->get("https://places.googleapis.com/v1/places/{$cleanPlaceId}");
+
+                    if ($retryResponse->successful()) {
+                        $response = $retryResponse;
+                        break;
+                    }
+                }
+            }
 
             if (!$response->successful()) {
                 Log::error('Place details (New) failed', [
