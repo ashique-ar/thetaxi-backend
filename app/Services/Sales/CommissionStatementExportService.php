@@ -35,7 +35,7 @@ class CommissionStatementExportService
                 $exportPath = $path;
                 abort_unless(Storage::disk($disk)->put($path, $content), 500, 'Commission statement export could not be stored.');
                 return SalesCommissionStatementExport::create([
-                    'statement_id' => $statement->id, 'format' => $format, 'disk' => $disk,
+                    'id' => $exportId, 'statement_id' => $statement->id, 'format' => $format, 'disk' => $disk,
                     'path' => $path, 'file_name' => $fileName, 'file_checksum' => hash('sha256', $content),
                     'file_size' => strlen($content), 'generated_by' => $actorUserId, 'generated_at' => now(),
                     'idempotency_key' => $key,

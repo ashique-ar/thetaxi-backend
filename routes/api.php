@@ -794,6 +794,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:sales.commission-disputes.resolve');
         Route::get('commission-payouts', [CommissionStatementController::class, 'payouts'])
             ->middleware('permission:sales.commission-payouts.pay|sales.commission-payouts.reverse|sales.commission-accounting.acknowledge');
+        Route::get('commission-accounting/reconciliation', [CommissionStatementController::class, 'accountingReconciliation'])
+            ->middleware('permission:sales.payment-ledger.reconcile|sales.commission-accounting.acknowledge');
         Route::post('commission-payouts', [CommissionStatementController::class, 'pay'])
             ->middleware('permission:sales.commission-payouts.pay');
         Route::post('commission-payouts/{payout}/reverse', [CommissionStatementController::class, 'reversePayout'])
@@ -1077,6 +1079,7 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('rosters/bulk', [AttendanceResultController::class, 'storeRosterBulk'])->middleware('permission:hr.attendance.config.manage');
         Route::post('rosters/{rosterId}/approve', [AttendanceResultController::class, 'approveRoster'])->whereUuid('rosterId')->middleware('permission:hr.attendance.config.approve');
         Route::get('corrections', [AttendanceResultController::class, 'corrections'])->middleware('permission:hr.attendance.results.view');
+        Route::get('correction-options', [AttendanceResultController::class, 'correctionOptions'])->middleware('permission:hr.attendance.corrections.request');
         Route::post('corrections', [AttendanceResultController::class, 'requestCorrection'])->middleware('permission:hr.attendance.corrections.request');
         Route::post('corrections/{correctionId}/approve', [AttendanceResultController::class, 'approveCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
         Route::post('corrections/{correctionId}/reject', [AttendanceResultController::class, 'rejectCorrection'])->whereUuid('correctionId')->middleware('permission:hr.attendance.corrections.approve');
@@ -2739,6 +2742,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('payment-transactions')->middleware(['permission:payments.transactions'])->group(function () {
         Route::get('/', [PaymentController::class, 'getPaymentTransactions']);
         Route::get('refunds/reconciliation', [PaymentController::class, 'getRefundReconciliationQueue']);
+    Route::get('initiations/reconciliation', [PaymentController::class, 'getPaymentInitiationReconciliationQueue']);
         Route::get('{id}', [PaymentController::class, 'getTransactionDetails']);
         Route::post('{id}/refund', [PaymentController::class, 'refundTransaction'])->middleware('permission:payments.refund');
     });

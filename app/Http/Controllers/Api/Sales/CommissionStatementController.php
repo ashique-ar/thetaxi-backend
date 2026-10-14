@@ -15,6 +15,7 @@ use App\Services\Sales\CommissionDisputeService;
 use App\Services\Sales\CommissionBusinessCalendarService;
 use App\Services\Sales\CommissionCycleResolver;
 use App\Services\Sales\CommissionPayoutService;
+use App\Services\Sales\CommissionAccountingOutboxReconciliationService;
 use App\Services\Sales\CommissionStatementService;
 use App\Services\Sales\CommissionStatementExportService;
 use Carbon\CarbonImmutable;
@@ -219,6 +220,21 @@ class CommissionStatementController extends Controller
         return response()->json(['status' => 'success', 'data' => $page]);
     }
 
+    public function accountingReconciliation(Request $request, CommissionAccountingOutboxReconciliationService $reconciliation): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid', Rule::exists('companies', 'id')->whereNull('deleted_at')->where('is_active', true)],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $companyId = $this->resolveCompanyId($data['company_id'] ?? null);
+        $this->assertManagementCompany($request, $companyId);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $reconciliation->preview($companyId, $data['per_page'] ?? 50),
+        ]);
+    }
+
     public function preview(Request $request, CommissionStatementService $statements): JsonResponse
     {
         $data = $this->statementInput($request);
@@ -329,9 +345,8 @@ class CommissionStatementController extends Controller
     {
         $this->assertManagementCompany($request, $payout->company_id);
         $data = $request->validate([
-            'status' => ['required', Rule::in(['accepted', 'failed'])],
-            'external_reference' => ['nullable', 'required_if:status,accepted', 'prohibited_if:status,failed', 'string', 'max:160'],
-            'message' => ['nullable', 'required_if:status,failed', 'prohibited_if:status,accepted', 'string', 'max:2000'],
+            'status' => ['required', Rule::in(['failed'])],
+            'message' => ['required', 'string', 'max:2000'],
             'idempotency_key' => ['required', 'string', 'max:160'],
         ]);
         $delivery = $payouts->recordAccountingDelivery(
@@ -365,10 +380,23 @@ class CommissionStatementController extends Controller
     {
         $statement = SalesCommissionStatement::query()->whereKey($export->statement_id);
         $this->applyScope($statement, $request);
-        $statement->firstOrFail();
-        abort_unless(Storage::disk($export->disk)->exists($export->path), 404, 'Statement export file is unavailable.');
+        $statement = $statement->firstOrFail();
+        $expectedPath = '#^commission-statements/'.preg_quote((string) $statement->company_id, '#').'/'.preg_quote((string) $statement->staff_id, '#').'/[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\\.'.preg_quote((string) $export->format, '#').'$#i';
+        abort_unless($export->disk === 'sales_private'
+            && in_array($export->format, ['pdf', 'csv'], true)
+            && preg_match($expectedPath, (string) $export->path) === 1, 404, 'Statement export file is unavailable.');
+        $disk = Storage::disk($export->disk);
+        abort_unless($disk->exists($export->path), 404, 'Statement export file is unavailable.');
+        $content = $disk->get($export->path);
+        abort_unless(is_string($content)
+            && strlen($content) === (int) $export->file_size
+            && hash_equals((string) $export->file_checksum, hash('sha256', $content)), 409,
+            'Statement export integrity verification failed.');
         $export->update(['last_downloaded_at' => now(), 'last_downloaded_by' => $request->user()->id]);
-        return Storage::disk($export->disk)->download($export->path, $export->file_name);
+
+        return response()->streamDownload(static function () use ($content): void {
+            echo $content;
+        }, $export->file_name, ['Content-Length' => (string) strlen($content)]);
     }
 
     private function statementInput(Request $request, bool $requireKey = false): array
@@ -435,6 +463,8 @@ class CommissionStatementController extends Controller
 
     private function applyScope($query, Request $request): void
     {
+        $companyIds = $this->actorCompanyIds($request);
+        $query->whereIn('company_id', $companyIds);
         if ($request->user()->can('sales.commission-statements.view-all')) return;
         $staff = app(StaffAccessService::class)->currentActorStaff($request->user());
         $profile = SalesProfile::query()->where('staff_id', $staff->id)->where('company_id', $staff->company_id)->activeAt(now())->firstOrFail();
@@ -454,8 +484,8 @@ class CommissionStatementController extends Controller
 
     private function assertManagementCompany(Request $request, string $companyId): void
     {
-        if ($request->user()->can('sales.commission-statements.view-all')) return;
-        abort_unless(in_array($companyId, $this->actorCompanyIds($request), true), 403, 'Commission operation is outside your legal entity.');
+        abort_unless(in_array($companyId, $this->actorCompanyIds($request), true), 403,
+            'Commission operation is outside your active legal entity.');
     }
 
     private function resolveCompanyId(?string $companyId): string
@@ -469,9 +499,12 @@ class CommissionStatementController extends Controller
     private function actorCompanyIds(Request $request): array
     {
         if ($request->user()->can('sales.commission-statements.view-all')) {
-            return DB::table('companies')->whereNull('deleted_at')->pluck('id')->all();
+            return DB::table('companies')->where('is_active', true)->whereNull('deleted_at')->pluck('id')->all();
         }
         $companyId = app(StaffAccessService::class)->currentActorStaff($request->user())->company_id;
-        return $companyId ? [(string) $companyId] : [];
+        if (! $companyId) return [];
+
+        return DB::table('companies')->where('id', $companyId)->where('is_active', true)
+            ->whereNull('deleted_at')->exists() ? [(string) $companyId] : [];
     }
 }

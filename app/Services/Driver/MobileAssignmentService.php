@@ -226,11 +226,7 @@ class MobileAssignmentService
      */
     private function excludeTerminalBookings(Builder $query): void
     {
-        $query->where(function (Builder $assignmentQuery) {
-            $assignmentQuery->whereDoesntHave('booking')
-                ->orWhereHas('booking', fn(Builder $bookingQuery) => $bookingQuery
-                    ->whereNotIn('status', $this->terminalBookingStatuses()));
-        })
+        $query->nonTerminalBooking()
             ->where(function (Builder $assignmentQuery) {
                 $assignmentQuery->whereHas('booking.dispatches', function (Builder $dispatchQuery) {
                     $dispatchQuery->whereNotNull('dispatched_at')
@@ -252,11 +248,6 @@ class MobileAssignmentService
                         TripPhase::IN_PROGRESS,
                     ]);
             });
-    }
-
-    private function terminalBookingStatuses(): array
-    {
-        return ['completed', 'cancelled', 'booking_cancelled', 'booking_rejected', 'rejected'];
     }
 
     /** Keep replaced and expired unaccepted assignments out of the driver's inbox. */
@@ -282,7 +273,7 @@ class MobileAssignmentService
                                     })
                                     ->where(function (Builder $statusQuery) {
                                         $statusQuery->whereNull('booking_items.status')
-                                            ->orWhereNotIn('booking_items.status', ['cancelled', 'completed', 'returned']);
+                                            ->orWhereNotIn('booking_items.status', DriverAssignment::TERMINAL_ITEM_STATUSES);
                                     });
                             });
                     })->where(function (Builder $dateQuery) use ($now) {
@@ -401,7 +392,7 @@ class MobileAssignmentService
     {
         if ($assignment->booking_id && DB::table('bookings')
             ->where('id', $assignment->booking_id)
-            ->whereIn('status', $this->terminalBookingStatuses())
+            ->whereIn('status', DriverAssignment::TERMINAL_BOOKING_STATUSES)
             ->exists()) {
             throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
         }
@@ -416,7 +407,7 @@ class MobileAssignmentService
             if (
                 !$item
                 || ($item->driver_id && (string) $item->driver_id !== (string) $assignment->driver_id)
-                || in_array((string) $item?->status, ['cancelled', 'completed', 'returned'], true)
+                || in_array((string) $item?->status, DriverAssignment::TERMINAL_ITEM_STATUSES, true)
             ) {
                 throw new \InvalidArgumentException('ASSIGNMENT_SUPERSEDED');
             }

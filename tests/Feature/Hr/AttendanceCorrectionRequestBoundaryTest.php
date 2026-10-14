@@ -13,7 +13,7 @@ use function Pest\Laravel\actingAs;
 
 uses(RefreshDatabase::class);
 
-it('fails closed on attendance correction submission and approval until the field mapping is approved', function () {
+it('requires a configured approved roster and mapping before accepting a correction', function () {
     [$admin, $company] = hr_seed_admin_actor();
     $staff = Staff::query()->where('user_id', $admin->id)->firstOrFail();
     $context = UserContext::query()->where('user_id', $admin->id)->where('context_id', $staff->id)->firstOrFail();
@@ -21,14 +21,12 @@ it('fails closed on attendance correction submission and approval until the fiel
     $correctionsBefore = DB::table('hr_attendance_correction_requests')->count();
 
     actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/attendance/corrections', [
-        'staff_id' => $staff->id,
-        'work_date' => '2026-06-01',
+        'result_id' => (string) Str::uuid(),
         'correction_type' => 'worked_minutes',
         'requested_values' => ['worked_minutes' => 420],
         'reason' => 'Corrected from approved evidence',
         'idempotency_key' => 'attendance-correction-1',
-    ])->assertStatus(409)
-        ->assertJsonPath('message', 'Attendance correction submission is unavailable until the correction-type-to-field mapping is approved.');
+    ])->assertNotFound();
     expect(DB::table('hr_attendance_correction_requests')->count())->toBe($correctionsBefore)
         ->and(DB::table('hr_attendance_correction_requests')->where('idempotency_key', 'attendance-correction-1')->exists())->toBeFalse();
 
@@ -67,7 +65,7 @@ it('fails closed on attendance correction submission and approval until the fiel
     ]);
     $correctionList = actingAs($admin, 'api')->withHeaders($headers)->getJson('/api/hr/attendance/corrections?company_id='.$company->id)
         ->assertOk()->assertJsonPath('data.total', 1)->assertJsonPath('data.data.0.is_requester', true)
-        ->assertJsonMissingPath('data.data.0.requested_values')
+        ->assertJsonPath('data.data.0.requested_values.worked_minutes', 420)
         ->assertJsonMissingPath('data.data.0.staff_id')
         ->assertJsonMissingPath('data.data.0.requested_by')
         ->assertJsonMissingPath('data.data.0.decided_by');

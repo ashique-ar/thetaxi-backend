@@ -22,6 +22,8 @@ class AttendanceResultController extends Controller
 {
     use AuthorizesAttendanceRequests;
 
+    private const CORRECTION_FIELDS = ['day_status', 'first_in_at', 'last_out_at', 'worked_minutes', 'late_minutes', 'early_leave_minutes', 'payable_minutes'];
+
     public function companyOptions(Request $request): JsonResponse
     {
         $data = $request->validate(['search' => ['nullable', 'string', 'max:120'], 'selected_id' => ['nullable', 'uuid']]);
@@ -52,7 +54,7 @@ class AttendanceResultController extends Controller
             ->where('result.company_id', $companyId)
             ->join('staff as subject_staff', fn($join) => $join->on('subject_staff.id', '=', 'result.staff_id')->on('subject_staff.company_id', '=', 'result.company_id'))
             ->join('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
-            ->select(['subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'result.work_date', 'result.result_version', 'result.day_status', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.payable_minutes', 'result.source_kind'])
+            ->select(['result.id as attendance_result_id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'result.work_date', 'result.result_version', 'result.day_status', 'result.first_in_at', 'result.last_out_at', 'result.worked_minutes', 'result.late_minutes', 'result.early_leave_minutes', 'result.payable_minutes', 'result.source_kind'])
             ->when($data['from'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '>=', $v))->when($data['to'] ?? null, fn($q, $v) => $q->whereDate('result.work_date', '<=', $v))->when($data['status'] ?? null, fn($q, $v) => $q->where('result.day_status', $v))->orderByDesc('result.work_date')->orderBy('result.staff_id');
         $page = $query->paginate($request->integer('per_page', 50));
         $companyIds = Staff::query()->whereIn('id', clone $staffIds)->distinct()->pluck('company_id');
@@ -302,7 +304,7 @@ class AttendanceResultController extends Controller
 
     public function storePolicy(Request $request): JsonResponse
     {
-        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'code' => ['required', 'string', 'max:80'], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'rules.correction_mappings' => ['sometimes', 'array', 'max:20'], 'rules.correction_mappings.*.type' => ['required', 'string', 'alpha_dash', 'max:50', 'distinct'], 'rules.correction_mappings.*.field' => ['required', Rule::in(self::CORRECTION_FIELDS)], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         $data['company_id'] = $this->sameCompany($request, $data['company_id'] ?? null);
         $id = (string) Str::uuid();
         return DB::transaction(function () use ($request, $data, $id) {
@@ -319,7 +321,7 @@ class AttendanceResultController extends Controller
     {
         $row = DB::table('hr_attendance_policies')->whereIn('company_id', $this->authorizedCompanyIds($request))->find($policyId);
         abort_unless($row, 404);
-        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where('company_id', $row->company_id)->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
+        $data = $request->validate(['code' => ['required', 'string', 'max:80', Rule::unique('hr_attendance_policies', 'code')->where('company_id', $row->company_id)->ignore($policyId)], 'name' => ['required', 'string', 'max:255'], 'rules' => ['required', 'array'], 'rules.maximum_payable_minutes' => ['nullable', 'integer', 'min:1', 'max:1440'], 'rules.correction_mappings' => ['sometimes', 'array', 'max:20'], 'rules.correction_mappings.*.type' => ['required', 'string', 'alpha_dash', 'max:50', 'distinct'], 'rules.correction_mappings.*.field' => ['required', Rule::in(self::CORRECTION_FIELDS)], 'effective_from' => ['required', 'date'], 'effective_until' => ['nullable', 'date', 'after:effective_from']]);
         return DB::transaction(function () use ($request, $policyId, $data) {
             $candidate = DB::table('hr_attendance_policies')->where('id', $policyId)
                 ->whereIn('company_id', $this->authorizedCompanyIds($request))->first();
@@ -464,9 +466,93 @@ class AttendanceResultController extends Controller
         });
     }
 
-    public function requestCorrection(): JsonResponse
+    public function correctionOptions(Request $request, StaffAccessService $access): JsonResponse
     {
-        abort(409, 'Attendance correction submission is unavailable until the correction-type-to-field mapping is approved.');
+        $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'result_id' => ['required', 'uuid']]);
+        $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
+        $result = DB::table('hr_attendance_daily_results')->where('id', $data['result_id'])->where('company_id', $companyId)->first();
+        abort_unless($result, 404);
+        abort_unless($access->scope(Staff::query()->where('company_id', $companyId), $request->user())->whereKey($result->staff_id)->exists(), 404);
+        $workDate = CarbonImmutable::parse($result->work_date)->toDateString();
+        $latestVersion = DB::table('hr_attendance_daily_results')->where('company_id', $companyId)->where('staff_id', $result->staff_id)->whereDate('work_date', $workDate)->max('result_version');
+        abort_unless((int) $latestVersion === (int) $result->result_version, 409, 'Only the latest attendance result can be corrected.');
+        $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
+        abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
+        $roster = DB::table('hr_roster_assignments')->where('company_id', $companyId)->where('staff_id', $result->staff_id)->whereNotNull('approved_at')
+            ->whereDate('effective_from', '<=', $workDate)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $workDate))->latest('effective_from')->first();
+        abort_unless($roster, 422, 'No approved roster applies to this Staff work date.');
+        $policy = DB::table('hr_attendance_policies')->where('id', $roster->policy_id)->where('company_id', $companyId)->where('status', 'approved')
+            ->whereDate('effective_from', '<=', $workDate)->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $workDate))->first();
+        abort_unless($policy, 422, 'No approved attendance policy applies to this Staff work date.');
+        $rules = is_array($policy->rules) ? $policy->rules : json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
+
+        return response()->json(['status' => 'success', 'data' => ['policy_id' => $policy->id, 'mappings' => array_values($rules['correction_mappings'] ?? [])]]);
+    }
+
+    public function requestCorrection(Request $request, StaffAccessService $access): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['nullable', 'uuid'], 'result_id' => ['required', 'uuid'],
+            'correction_type' => ['required', 'string', 'alpha_dash', 'max:50'],
+            'requested_values' => ['required', 'array', 'size:1'], 'reason' => ['required', 'string', 'min:10', 'max:2000'],
+            'evidence_references' => ['nullable', 'array', 'max:20'], 'evidence_references.*' => ['string', 'max:500'],
+            'idempotency_key' => ['required', 'string', 'max:160'],
+        ]);
+        $companyId = $this->sameCompany($request, $data['company_id'] ?? null);
+        $resultCandidate = DB::table('hr_attendance_daily_results')->where('id', $data['result_id'])->where('company_id', $companyId)->first();
+        abort_unless($resultCandidate, 404);
+        abort_unless($access->scope(Staff::query()->where('company_id', $companyId), $request->user())->whereKey($resultCandidate->staff_id)->exists(), 404);
+        return DB::transaction(function () use ($request, $data, $companyId, $resultCandidate) {
+            $this->lockActiveCompany($companyId);
+            $staff = DB::table('staff')->where('id', $resultCandidate->staff_id)->where('company_id', $companyId)->lockForUpdate()->first();
+            abort_unless($staff, 404);
+            $workDate = CarbonImmutable::parse($resultCandidate->work_date)->toDateString();
+            $latest = DB::table('hr_attendance_daily_results')->where('id', $data['result_id'])->where('company_id', $companyId)->where('staff_id', $staff->id)->whereDate('work_date', $workDate)->lockForUpdate()->first();
+            abort_unless($latest, 404);
+            $roster = DB::table('hr_roster_assignments')->where('company_id', $companyId)->where('staff_id', $staff->id)
+                ->whereNotNull('approved_at')->whereDate('effective_from', '<=', $workDate)
+                ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $workDate))
+                ->latest('effective_from')->lockForUpdate()->first();
+            abort_unless($roster, 422, 'No approved roster applies to this Staff work date.');
+            $policy = DB::table('hr_attendance_policies')->where('id', $roster->policy_id)->where('company_id', $companyId)
+                ->where('status', 'approved')->whereDate('effective_from', '<=', $workDate)
+                ->where(fn ($q) => $q->whereNull('effective_until')->orWhereDate('effective_until', '>', $workDate))->lockForUpdate()->first();
+            abort_unless($policy, 422, 'No approved attendance policy applies to this Staff work date.');
+            $rules = is_array($policy->rules) ? $policy->rules : json_decode($policy->rules, true, 512, JSON_THROW_ON_ERROR);
+            $mapping = collect($rules['correction_mappings'] ?? [])->firstWhere('type', $data['correction_type']);
+            abort_unless($mapping, 409, 'No approved correction mapping applies to this request type.');
+            abort_unless(in_array($mapping['field'] ?? null, self::CORRECTION_FIELDS, true), 409, 'The approved correction mapping contains an unsupported result field.');
+            abort_unless(array_keys($data['requested_values']) === [$mapping['field']], 422, 'Requested values must contain exactly the field approved for this correction type.');
+            $valueRules = match ($mapping['field']) {
+                'day_status' => [Rule::in(['present', 'absent', 'incomplete', 'half_day', 'insufficient_hours', 'non_working', 'paid_leave', 'unpaid_leave', 'partial_paid_leave', 'partial_unpaid_leave'])],
+                'first_in_at', 'last_out_at' => ['nullable', 'date'],
+                default => ['required', 'integer', 'min:0', 'max:1440'],
+            };
+            $request->validate(['requested_values.'.$mapping['field'] => $valueRules]);
+            $snapshot = ['policy_id' => $policy->id, 'policy_approved_at' => $policy->approved_at, 'policy_rules_checksum' => hash('sha256', json_encode($rules, JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR)), 'type' => $mapping['type'], 'field' => $mapping['field']];
+            $checksum = hash('sha256', json_encode([$companyId, $data['result_id'], $staff->id, $workDate, $data['correction_type'], $data['requested_values'], $data['reason'], $snapshot], JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
+            $existing = DB::table('hr_attendance_correction_requests')->where('idempotency_key', $data['idempotency_key'])->first();
+            if ($existing) {
+                abort_unless((string) $existing->company_id === $companyId && hash_equals($existing->request_checksum, $checksum), 409, 'The idempotency key was already used for different correction facts.');
+                return response()->json(['status' => 'success', 'data' => $existing, 'idempotent_replay' => true]);
+            }
+            $latestVersion = DB::table('hr_attendance_daily_results')->where('company_id', $companyId)->where('staff_id', $staff->id)->whereDate('work_date', $workDate)->max('result_version');
+            abort_unless((int) $latestVersion === (int) $latest->result_version, 409, 'Only the latest attendance result can be corrected.');
+            $period = DB::table('hr_attendance_periods')->where('company_id', $companyId)->whereDate('period_start', '<=', $workDate)->whereDate('period_end', '>=', $workDate)->first();
+            abort_if($period?->status === 'locked', 409, 'The attendance period is locked.');
+            $id = (string) Str::uuid();
+            DB::table('hr_attendance_correction_requests')->insert([
+                'id' => $id, 'company_id' => $companyId, 'staff_id' => $staff->id, 'work_date' => $workDate,
+                'current_result_id' => $latest->id, 'correction_type' => $data['correction_type'],
+                'requested_values' => json_encode($data['requested_values'], JSON_THROW_ON_ERROR), 'reason' => $data['reason'],
+                'evidence_references' => isset($data['evidence_references']) ? json_encode($data['evidence_references'], JSON_THROW_ON_ERROR) : null,
+                'status' => 'pending_approval', 'idempotency_key' => $data['idempotency_key'], 'request_checksum' => $checksum,
+                'requested_by' => $request->user()->id, 'mapping_policy_id' => $policy->id,
+                'mapping_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR), 'created_at' => now(), 'updated_at' => now(),
+            ]);
+            activity('hr-attendance')->causedBy($request->user())->withProperties(['correction_id' => $id, 'company_id' => $companyId, 'staff_id' => $staff->id, 'work_date' => $workDate, 'correction_type' => $data['correction_type'], 'mapping_policy_id' => $policy->id])->log('attendance_correction_requested');
+            return response()->json(['status' => 'success', 'data' => DB::table('hr_attendance_correction_requests')->find($id)], 201);
+        });
     }
 
     public function corrections(Request $request, StaffAccessService $access): JsonResponse
@@ -474,16 +560,27 @@ class AttendanceResultController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid'], 'staff_id' => ['nullable', 'uuid'], 'status' => ['nullable', Rule::in(['pending_approval', 'approved', 'rejected'])]]);
         $companyId = $this->actorCompany($request, $data['company_id'] ?? null);
         $staffIds = $access->scope(Staff::query(), $request->user())->where('company_id', $companyId)->when($data['staff_id'] ?? null, fn($q, $id) => $q->whereKey($id))->select('id');
+        $canReview = $request->user()->can('hr.attendance.corrections.approve');
         $query = DB::table('hr_attendance_correction_requests as correction')
             ->leftJoin('staff as subject_staff', fn($join) => $join->on('subject_staff.id', '=', 'correction.staff_id')->on('subject_staff.company_id', '=', 'correction.company_id'))
             ->leftJoin('users as subject_user', 'subject_user.id', '=', 'subject_staff.user_id')
+            ->leftJoin('hr_attendance_daily_results as current_result', fn ($join) => $join->on('current_result.id', '=', 'correction.current_result_id')->on('current_result.company_id', '=', 'correction.company_id')->on('current_result.staff_id', '=', 'correction.staff_id'))
             ->where('correction.company_id', $companyId)
             ->whereIn('correction.staff_id', $staffIds)
-            ->select(['correction.id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'correction.work_date', 'correction.correction_type', 'correction.reason', 'correction.status', 'correction.requested_by'])
+            ->select(['correction.id', 'subject_staff.code as staff_code', 'subject_user.first_name as staff_first_name', 'subject_user.last_name as staff_last_name', 'correction.work_date', 'correction.correction_type', 'correction.reason', 'correction.status', 'correction.requested_by', 'correction.requested_values', 'correction.evidence_references', 'correction.mapping_snapshot', 'current_result.day_status as current_day_status', 'current_result.first_in_at as current_first_in_at', 'current_result.last_out_at as current_last_out_at', 'current_result.worked_minutes as current_worked_minutes', 'current_result.late_minutes as current_late_minutes', 'current_result.early_leave_minutes as current_early_leave_minutes', 'current_result.payable_minutes as current_payable_minutes'])
             ->when($data['status'] ?? null, fn($q, $v) => $q->where('correction.status', $v))->latest('correction.created_at');
         $rows = $query->paginate($request->integer('per_page', 50));
-        $rows->getCollection()->transform(function ($row) use ($request) {
+        $rows->getCollection()->transform(function ($row) use ($request, $canReview) {
             $row->is_requester = (string) $row->requested_by === (string) $request->user()->id;
+            if ($canReview) {
+                $row->requested_values = json_decode((string) $row->requested_values, true, 512, JSON_THROW_ON_ERROR);
+                $row->evidence_references = $row->evidence_references ? json_decode((string) $row->evidence_references, true, 512, JSON_THROW_ON_ERROR) : [];
+                $row->mapping_snapshot = $row->mapping_snapshot ? json_decode((string) $row->mapping_snapshot, true, 512, JSON_THROW_ON_ERROR) : null;
+                $row->current_result = ['day_status' => $row->current_day_status, 'first_in_at' => $row->current_first_in_at, 'last_out_at' => $row->current_last_out_at, 'worked_minutes' => $row->current_worked_minutes, 'late_minutes' => $row->current_late_minutes, 'early_leave_minutes' => $row->current_early_leave_minutes, 'payable_minutes' => $row->current_payable_minutes];
+            } else {
+                unset($row->requested_values, $row->evidence_references, $row->mapping_snapshot, $row->current_result);
+            }
+            unset($row->current_day_status, $row->current_first_in_at, $row->current_last_out_at, $row->current_worked_minutes, $row->current_late_minutes, $row->current_early_leave_minutes, $row->current_payable_minutes);
             unset($row->requested_by);
 
             return $row;

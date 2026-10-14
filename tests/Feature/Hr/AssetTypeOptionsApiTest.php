@@ -42,6 +42,112 @@ it('rejects a type deactivated after lookup without creating an asset request or
         ->and(DB::table('hr_asset_request_events')->exists())->toBeFalse();
 });
 
+it('rejects a replacement request tied to custody data outside the actor company', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.advanced_assets' => true]);
+    $type = asset_type_option_seed($company, 'LAPTOP', 'Laptop');
+    $foreignCompany = Company::create(['name' => 'Other custody tenant']);
+    $staff = DB::table('staff')->where('user_id', $admin->id)->first();
+    $custodyId = (string) Str::uuid();
+    DB::table('hr_custody_assignments')->insert([
+        'id' => $custodyId, 'company_id' => $foreignCompany->id, 'staff_id' => $staff->id,
+        'custody_type' => 'asset', 'item_code' => 'FOREIGN-DEVICE', 'item_name' => 'Foreign device',
+        'assigned_at' => today()->toDateString(), 'status' => 'assigned', 'assigned_by' => $admin->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($admin, 'api')->postJson('/api/hr/assets/requests', [
+        'asset_type_id' => $type, 'replaces_custody_assignment_id' => $custodyId,
+        'request_kind' => 'replacement', 'reason_code' => 'device_failure',
+        'reason' => 'Replacement required', 'required_from' => today()->toDateString(),
+    ])->assertUnprocessable();
+    actingAs($admin, 'api')->postJson('/api/hr/assets/custody/'.$custodyId.'/acknowledge', [])->assertNotFound();
+
+    expect(DB::table('hr_asset_requests')->exists())->toBeFalse()
+        ->and(DB::table('hr_asset_request_events')->exists())->toBeFalse()
+        ->and(DB::table('hr_custody_assignments')->where('id', $custodyId)->value('acknowledged_at'))->toBeNull();
+});
+
+it('rejects a requested inventory item outside the actor company', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.advanced_assets' => true]);
+    $type = asset_type_option_seed($company, 'LAPTOP', 'Laptop');
+    $foreignCompany = Company::create(['name' => 'Other inventory tenant']);
+    $foreignType = asset_type_option_seed($foreignCompany, 'LAPTOP', 'Laptop');
+    $itemId = (string) Str::uuid();
+    DB::table('hr_asset_items')->insert([
+        'id' => $itemId, 'company_id' => $foreignCompany->id, 'asset_type_id' => $foreignType,
+        'asset_tag' => 'FOREIGN-ITEM', 'status' => 'available', 'condition_code' => 'serviceable',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($admin, 'api')->postJson('/api/hr/assets/requests', [
+        'asset_type_id' => $type, 'requested_asset_item_id' => $itemId, 'request_kind' => 'new_issue',
+        'reason_code' => 'equipment', 'reason' => 'Work equipment required', 'required_from' => today()->toDateString(),
+    ])->assertUnprocessable();
+
+    expect(DB::table('hr_asset_requests')->exists())->toBeFalse()
+        ->and(DB::table('hr_asset_request_events')->exists())->toBeFalse();
+});
+
+it('does not issue an approved request from an inventory item outside its legal entity', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    config(['hr.features.advanced_assets' => true]);
+    $type = asset_type_option_seed($company, 'LAPTOP', 'Laptop');
+    $foreignCompany = Company::create(['name' => 'Other reserved inventory tenant']);
+    $foreignType = asset_type_option_seed($foreignCompany, 'LAPTOP', 'Laptop');
+    $itemId = (string) Str::uuid();
+    DB::table('hr_asset_items')->insert([
+        'id' => $itemId, 'company_id' => $foreignCompany->id, 'asset_type_id' => $foreignType,
+        'asset_tag' => 'FOREIGN-RESERVED', 'status' => 'reserved', 'condition_code' => 'serviceable',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $staffId = DB::table('staff')->where('user_id', $admin->id)->value('id');
+    $requestId = (string) Str::uuid();
+    DB::table('hr_asset_requests')->insert([
+        'id' => $requestId, 'company_id' => $company->id, 'staff_id' => $staffId, 'asset_type_id' => $type,
+        'request_kind' => 'new_issue', 'reason_code' => 'equipment', 'reason' => 'Work equipment required',
+        'required_from' => today()->toDateString(), 'status' => 'approved', 'requested_by' => $admin->id,
+        'approved_by' => $admin->id, 'approved_at' => now(), 'allocated_asset_item_id' => $itemId,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($admin, 'api')->postJson('/api/hr/assets/requests/'.$requestId.'/issue', [
+        'condition_snapshot' => ['condition_code' => 'serviceable'],
+    ])->assertConflict();
+
+    expect(DB::table('hr_custody_assignments')->where('asset_request_id', $requestId)->exists())->toBeFalse()
+        ->and(DB::table('hr_asset_requests')->where('id', $requestId)->value('status'))->toBe('approved');
+});
+
+it('does not return or update an asset item linked from another legal entity', function () {
+    [$admin, $company] = hr_seed_admin_actor();
+    $foreignCompany = Company::create(['name' => 'Other linked asset tenant']);
+    $foreignType = asset_type_option_seed($foreignCompany, 'LAPTOP', 'Laptop');
+    $itemId = (string) Str::uuid();
+    DB::table('hr_asset_items')->insert([
+        'id' => $itemId, 'company_id' => $foreignCompany->id, 'asset_type_id' => $foreignType,
+        'asset_tag' => 'FOREIGN-CUSTODY-ASSET', 'status' => 'assigned', 'condition_code' => 'serviceable',
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+    $staffId = DB::table('staff')->where('user_id', $admin->id)->value('id');
+    $custodyId = (string) Str::uuid();
+    DB::table('hr_custody_assignments')->insert([
+        'id' => $custodyId, 'company_id' => $company->id, 'staff_id' => $staffId, 'asset_item_id' => $itemId,
+        'custody_type' => 'asset', 'item_code' => 'FOREIGN-CUSTODY-ASSET', 'item_name' => 'Foreign device',
+        'assigned_at' => today()->toDateString(), 'status' => 'assigned', 'assigned_by' => $admin->id,
+        'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($admin, 'api')->postJson('/api/hr/assets/custody/'.$custodyId.'/return', [
+        'disposition' => 'available', 'condition_snapshot' => ['condition_code' => 'serviceable'],
+        'reason' => 'Return requested',
+    ])->assertConflict();
+
+    expect(DB::table('hr_custody_assignments')->where('id', $custodyId)->value('status'))->toBe('assigned')
+        ->and(DB::table('hr_asset_items')->where('id', $itemId)->value('status'))->toBe('assigned');
+});
+
 function asset_type_option_seed(Company $company, string $code, string $name, string $status = 'active'): string
 {
     $id = (string) Str::uuid();

@@ -82,7 +82,7 @@ it('returns readable statement preview facts without source identifiers or snaps
 
 it('returns minimized commission and accounting views without source or owner identifiers', function () {
     [$admin, $company] = hr_seed_admin_actor(['name' => 'Statement Detail Company']);
-    $admin->givePermissionTo('sales.commission-statements.view-all');
+    $admin->givePermissionTo(['sales.commission-statements.view-all', 'sales.commission-payouts.reverse']);
     $staff = Staff::factory()->create(['company_id' => $company->id]);
     $profileId = (string) Str::uuid();
     $cycleId = (string) Str::uuid();
@@ -241,4 +241,8 @@ it('returns minimized commission and accounting views without source or owner id
         (string) $company->id, (string) $staff->id, (string) $admin->id, $payoutId,
         $deliveryKey, 'PRIVATE-FAILURE-DETAIL',
     );
+
+    DB::table('companies')->where('id', $company->id)->update(['is_active' => false]);
+    actingAs($admin, 'api')->getJson('/api/sales/commission-statements/'.$statementId)->assertNotFound();
+    actingAs($admin, 'api')->postJson('/api/sales/commission-payouts/'.$payoutId.'/reverse', [])->assertForbidden();
 });

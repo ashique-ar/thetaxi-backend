@@ -33,14 +33,14 @@ it('locks an active company before payout, reversal, and delivery rows', functio
     expect($service)->toContain("where('is_active', true)", "whereNull('deleted_at')");
 });
 
-it('requires reversal evidence and keeps result-only delivery fields separate', function () {
+it('requires reversal evidence and limits manual delivery reports to failures', function () {
     $controller = file_get_contents(app_path('Http/Controllers/Api/Sales/CommissionStatementController.php'));
     $service = file_get_contents(app_path('Services/Sales/CommissionPayoutService.php'));
 
     expect($controller)
         ->toContain("'evidence_file_id' => ['required', 'uuid', 'exists:domain_evidence_files,id']")
-        ->toContain("'external_reference' => ['nullable', 'required_if:status,accepted', 'prohibited_if:status,failed'")
-        ->toContain("'message' => ['nullable', 'required_if:status,failed', 'prohibited_if:status,accepted'")
+        ->toContain("'status' => ['required', Rule::in(['failed'])]")
+        ->toContain("'message' => ['required', 'string', 'max:2000']")
         ->and($service)
         ->toContain("abort_unless(! empty(\$data['evidence_file_id'])")
         ->toContain("->where('subject_type', 'commission_payout')->where('subject_id', \$original->id)");

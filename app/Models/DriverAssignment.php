@@ -14,6 +14,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class DriverAssignment extends BaseModel
 {
+    public const TERMINAL_BOOKING_STATUSES = ['completed', 'cancelled', 'canceled', 'booking_cancelled', 'inquiry_cancelled', 'inquiry_canceled', 'booking_rejected', 'rejected'];
+    public const TERMINAL_ITEM_STATUSES = ['completed', 'returned', 'cancelled', 'canceled', 'booking_cancelled', 'rejected'];
 
     protected $fillable = [
         'driver_id',
@@ -314,11 +316,16 @@ class DriverAssignment extends BaseModel
                 TripPhase::PICKUP_ARRIVED,
                 TripPhase::IN_PROGRESS,
             ])
-            ->where(function ($q) {
-                $q->whereDoesntHave('booking')
-                    ->orWhereHas('booking', fn ($bookingQuery) => $bookingQuery
-                        ->whereNotIn('status', ['completed', 'cancelled', 'booking_cancelled', 'booking_rejected', 'rejected']));
-            });
+            ->nonTerminalBooking();
+    }
+
+    public function scopeNonTerminalBooking($query)
+    {
+        return $query
+            ->whereDoesntHave('booking', fn ($bookingQuery) => $bookingQuery
+                ->whereIn('status', self::TERMINAL_BOOKING_STATUSES))
+            ->whereDoesntHave('bookingItem', fn ($itemQuery) => $itemQuery
+                ->whereIn('status', self::TERMINAL_ITEM_STATUSES));
     }
 
     /**

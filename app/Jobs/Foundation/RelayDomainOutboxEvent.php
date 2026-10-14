@@ -53,6 +53,11 @@ class RelayDomainOutboxEvent implements ShouldQueue
         $domainSubscribers = config("foundation.outbox_subscribers.{$row->domain}", []);
         $subscriberClass = is_array($domainSubscribers) ? ($domainSubscribers[$row->event_type] ?? null) : null;
         if (! $subscriberClass || ! is_string($subscriberClass) || ! is_subclass_of($subscriberClass, DomainOutboxSubscriber::class)) {
+            DB::table('domain_outbox_events')->where('id', $row->id)->update([
+                'published_at' => null,
+                'updated_at' => now(),
+            ]);
+
             return;
         }
 

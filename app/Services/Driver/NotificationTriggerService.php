@@ -141,6 +141,10 @@ class NotificationTriggerService
      */
     public function processAssignmentNotificationAttempt(DriverAssignment $assignment, int $attempt = 1, array $context = []): void
     {
+        if (!DriverAssignment::query()->whereKey($assignment->id)->nonTerminalBooking()->exists()) {
+            return;
+        }
+
         $assignment->loadMissing(['driver', 'booking.customer.user', 'bookingItem']);
 
         $driver = $assignment->driver;

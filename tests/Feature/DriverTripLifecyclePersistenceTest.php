@@ -1023,6 +1023,62 @@ it('does not expose terminal parent bookings as upcoming or current assignments'
         ->and($staleSession->fresh()->assignment_id)->toBeNull();
 });
 
+it('keeps cancelled bookings and trips out of every operational mobile assignment feed', function (string $status, string $subject) {
+    $driver = Driver::create(['code' => 'CANCELLED-FILTER']);
+    $bookingId = '00000000-0000-0000-0000-000000000131';
+    DB::table('bookings')->insert(['id' => $bookingId, 'status' => $subject === 'booking' ? $status : 'confirmed']);
+    $item = BookingItem::create([
+        'booking_id' => $bookingId,
+        'driver_id' => $driver->id,
+        'status' => $subject === 'item' ? $status : 'confirmed',
+    ]);
+    DB::table('booking_dispatches')->insert([
+        'id' => 'cancelled-dispatch',
+        'booking_id' => $bookingId,
+        'booking_item_id' => $item->id,
+        'driver_id' => $driver->id,
+        'dispatch_status' => 'dispatched',
+        'dispatched_at' => now(),
+    ]);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $bookingId,
+        'booking_item_id' => $item->id,
+        'trip_phase' => TripPhase::ACTIVE,
+        'status' => 'active',
+        'assigned_from' => now()->subHour(),
+        'assigned_to' => now()->addHour(),
+    ]);
+
+    expect(fn () => $this->assignmentService->acceptAssignment($driver, $assignment))
+        ->toThrow(InvalidArgumentException::class, 'ASSIGNMENT_SUPERSEDED');
+
+    foreach ([TripPhase::ACTIVE, TripPhase::ACCEPTED, TripPhase::PICKUP_ARRIVED, TripPhase::IN_PROGRESS] as $phase) {
+        $assignment->update(['trip_phase' => $phase]);
+        foreach ([[], ['status' => 'upcoming'], ['status' => 'in_progress'], ['status' => 'active']] as $filters) {
+            expect($this->assignmentService->getDriverAssignments($driver, $filters)->total())->toBe(0);
+        }
+        expect($this->assignmentService->getPendingAssignments($driver))->toBeEmpty()
+            ->and($this->assignmentService->getCurrentAssignment($driver))->toBeNull()
+            ->and($this->assignmentService->getActiveTripAssignment($driver))->toBeNull();
+    }
+
+    // No notification dependencies should be reached for a queued cancelled offer.
+    $notifications = Mockery::mock(NotificationTriggerService::class)->makePartial();
+    $notifications->shouldNotReceive('buildPayload');
+    $notifications->processAssignmentNotificationAttempt($assignment);
+})->with([
+    ['cancelled', 'booking'],
+    ['canceled', 'booking'],
+    ['booking_cancelled', 'booking'],
+    ['inquiry_cancelled', 'booking'],
+    ['inquiry_canceled', 'booking'],
+    ['cancelled', 'item'],
+    ['canceled', 'item'],
+    ['booking_cancelled', 'item'],
+    ['rejected', 'item'],
+]);
+
 it('uses lifecycle final pricing as the single open package charge owner', function () {
     $booking = Booking::create([
         'status' => 'confirmed',

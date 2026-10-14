@@ -55,3 +55,27 @@ it('derives phone references and subscription ownership from the selected Staff 
     expect(DB::table('hr_phone_subscriptions')->where('subscription_code', 'CTX-PHONE-01')->value('company_id'))
         ->toBe($firstCompany->id)->not->toBe($secondCompany->id);
 });
+
+it('does not expose phone usage whose joined subscription belongs to another company', function () {
+    [$user, $company] = hr_seed_admin_actor();
+    $foreignCompany = Company::create(['name' => 'Foreign phone subscription tenant']);
+    $staff = Staff::query()->where('user_id', $user->id)->where('company_id', $company->id)->firstOrFail();
+    $subscriptionId = (string) \Illuminate\Support\Str::uuid();
+    DB::table('hr_phone_subscriptions')->insert([
+        'id' => $subscriptionId, 'company_id' => $foreignCompany->id, 'subscription_code' => 'FOREIGN-PHONE-01',
+        'carrier' => 'Carrier', 'masked_msisdn' => 'PRIVATE-NUMBER', 'encrypted_identifiers' => encrypt(['imei' => 'x']),
+        'roaming_allowed' => false, 'data_allowed' => true, 'status' => 'available', 'created_at' => now(), 'updated_at' => now(),
+    ]);
+    DB::table('hr_phone_usage_allocations')->insert([
+        'id' => (string) \Illuminate\Support\Str::uuid(), 'company_id' => $company->id,
+        'phone_subscription_id' => $subscriptionId, 'staff_id' => $staff->id,
+        'period_start' => '2026-10-01', 'period_end' => '2026-10-31', 'company_amount' => 100,
+        'employee_excess_amount' => 0, 'currency' => 'LKR', 'policy_snapshot' => '{}',
+        'status' => 'pending_review', 'source_checksum' => str_repeat('b', 64), 'created_at' => now(), 'updated_at' => now(),
+    ]);
+
+    actingAs($user, 'api')->getJson('/api/hr/assets/phone-usage')->assertOk()
+        ->assertJsonPath('data.total', 0)
+        ->assertJsonMissing(['subscription_code' => 'FOREIGN-PHONE-01'])
+        ->assertJsonMissing(['masked_msisdn' => 'PRIVATE-NUMBER']);
+});

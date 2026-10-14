@@ -9,6 +9,8 @@ it('limits statement access and company actions to the selected Staff context', 
         ->toContain("where('company_id', \$staff->company_id)")
         ->toContain("where('member.company_id', \$staff->company_id)")
         ->toContain("where('reporting.company_id', \$staff->company_id)->whereNull('reporting.deleted_at')")
+        ->toContain("where('is_active', true)->whereNull('deleted_at')->pluck('id')")
+        ->toContain("\$query->whereIn('company_id', \$companyIds)")
         ->not->toContain("Staff::query()->where('user_id', \$request->user()->id)");
 });
 

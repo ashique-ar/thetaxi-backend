@@ -9,6 +9,7 @@ use App\Models\Booking\BookingPaymentReceipt;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Services\Sales\BookingPaymentAdjustmentService;
 use App\Services\Sales\SalesAccessScope;
+use App\Services\SingleCompanyScope;
 use App\Services\Payment\PaymentGatewayManager;
 use App\Services\Sms\SmsAutomationService;
 use Illuminate\Http\Request;
@@ -18,6 +19,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
 use App\Services\BookingPaymentLedgerService;
+use App\Services\CurrencyService;
 
 class PaymentController extends Controller
 {
@@ -33,7 +35,9 @@ class PaymentController extends Controller
         $this->middleware('permission:payments.view')->only(['getPaymentStatus']);
         $this->middleware('permission:payments.refund')->only(['refundPayment', 'refundTransaction']);
         $this->middleware('permission:payments.methods')->only(['getPaymentMethods']);
-        $this->middleware('permission:payments.transactions')->only(['getPaymentTransactions', 'getRefundReconciliationQueue', 'getTransactionDetails']);
+        $this->middleware('permission:payments.transactions')->only([
+            'getPaymentTransactions', 'getRefundReconciliationQueue', 'getPaymentInitiationReconciliationQueue', 'getTransactionDetails',
+        ]);
     }
 
     /**
@@ -46,7 +50,7 @@ class PaymentController extends Controller
             'booking_id' => 'required|exists:bookings,id',
             'amount' => 'required|numeric|min:0.01',
             'currency' => 'required|string|size:3',
-            'payment_method' => 'required|string|in:credit_card,debit_card,paypal,stripe,bank_transfer',
+            'payment_method' => 'required|string|in:webxpay,credit_card,debit_card,paypal,stripe,bank_transfer',
             'return_url' => 'nullable|url',
             'cancel_url' => 'nullable|url'
         ]);
@@ -60,65 +64,181 @@ class PaymentController extends Controller
         }
 
         try {
-            $booking = Booking::findOrFail($request->booking_id);
-            $collectionMethod = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? ''));
-            if ($collectionMethod !== 'online') {
+            $initialBooking = Booking::query()->findOrFail($request->booking_id);
+            $initialCollectionMethod = strtolower((string) ($initialBooking->payment_collection_method ?? $initialBooking->payment_method ?? ''));
+            if ($initialCollectionMethod !== 'online') {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Online payment can only be initiated for bookings with online payment method',
+                    'message' => 'Online payment can only be initiated for bookings with online payment method.',
                 ], 422);
             }
+            $tenantCompanyId = DB::table('sales_booking_attributions')->where('booking_id', $initialBooking->id)
+                ->whereNull('deleted_at')->value('company_id');
+            $tenantCompanyIsActive = $tenantCompanyId && DB::table('companies')->where('id', $tenantCompanyId)
+                ->where('is_active', true)->whereNull('deleted_at')->exists();
+            if (! $tenantCompanyIsActive) {
+                $tenantCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id;
+            }
+            abort_unless($tenantCompanyId, 409, 'No active default company is configured.');
+            app(SalesAccessScope::class)->assertCompany(
+                $request->user(),
+                (string) $tenantCompanyId,
+                'sales.payment-adjustments.create-all',
+            );
+            try {
+                $gateway = $this->gatewayManager->resolve((string) $request->payment_method);
+            } catch (\InvalidArgumentException) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'This payment method has no configured gateway.',
+                ], 422);
+            }
+            if (! $gateway->isEnabled()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'No configured online gateway is available for this payment method.',
+                ], 503);
+            }
+            $resolvedCompanyId = $this->paymentLedger->ensureBookingCompanyAttribution($initialBooking);
+            abort_unless((string) $resolvedCompanyId === (string) $tenantCompanyId, 409,
+                'The booking legal entity changed before payment initiation.');
+            $reservation = DB::transaction(function () use ($request, $tenantCompanyId): array {
+                $booking = Booking::query()->lockForUpdate()->findOrFail($request->booking_id);
+                $collectionMethod = strtolower((string) ($booking->payment_collection_method ?? $booking->payment_method ?? ''));
+                abort_unless($collectionMethod === 'online', 422,
+                    'Online payment can only be initiated for bookings with online payment method.');
 
-            $transactionId = $this->generateTransactionId();
-            $recordId = (string) Str::uuid();
+                $currentCompanyId = DB::table('sales_booking_attributions')->where('booking_id', $booking->id)
+                    ->whereNull('deleted_at')->value('company_id');
+                abort_unless((string) $currentCompanyId === (string) $tenantCompanyId, 409,
+                    'The booking legal entity changed before payment initiation.');
+                app(SalesAccessScope::class)->assertCompany(
+                    $request->user(),
+                    (string) $tenantCompanyId,
+                    'sales.payment-adjustments.create-all',
+                );
 
-            DB::table('payment_transactions')->insert([
-                'id'             => $recordId,
-                'attempt_id'     => $recordId,
-                'booking_id'     => $booking->id,
-                'amount'         => $request->amount,
-                'currency'       => $request->currency,
-                'payment_method' => $request->payment_method,
-                'gateway'        => $request->payment_method,
-                'status'         => 'pending',
-                'transaction_id' => $transactionId,
-                'created_at'     => now(),
-                'updated_at'     => now(),
-            ]);
+                $workflowData = is_array($booking->workflow_data)
+                    ? $booking->workflow_data
+                    : (json_decode((string) $booking->workflow_data, true) ?: []);
+                $currencyService = app(CurrencyService::class);
+                $paymentCurrency = strtoupper(trim((string) (
+                    $workflowData['display_currency']
+                    ?? $booking->currency
+                    ?? $currencyService->getDefaultCurrency()
+                )));
+                abort_unless(strtoupper(trim((string) $request->currency)) === $paymentCurrency, 422,
+                    'Payment currency must match the booking currency.');
+
+                $summary = $this->paymentLedger->summary($booking);
+                $pending = DB::table('payment_transactions')
+                    ->where('booking_id', $booking->id)
+                    ->where('status', 'pending')
+                    ->get(['requested_amount', 'requested_currency']);
+                foreach ($pending as $attempt) {
+                    abort_unless($attempt->requested_amount !== null
+                        && strtoupper((string) $attempt->requested_currency) === $paymentCurrency, 409,
+                        'An earlier payment attempt lacks a verified booking-currency reservation; reconcile it before retrying.');
+                }
+
+                $reservedAmount = (float) $pending->sum('requested_amount');
+                $availableAmount = max(0, round((float) $summary['due_amount'] - $reservedAmount, 2));
+                $requestedAmount = $currencyService->roundAmount((float) $request->amount, $paymentCurrency);
+                abort_if($requestedAmount <= 0 || $requestedAmount > $availableAmount, 422,
+                    'Payment amount cannot exceed the remaining canonical booking balance.');
+
+                $transactionId = $this->generateTransactionId();
+                $recordId = (string) Str::uuid();
+                DB::table('payment_transactions')->insert([
+                    'id' => $recordId,
+                    'attempt_id' => $recordId,
+                    'booking_id' => $booking->id,
+                    'amount' => $requestedAmount,
+                    'currency' => $paymentCurrency,
+                    'requested_amount' => $requestedAmount,
+                    'requested_currency' => $paymentCurrency,
+                    'payment_method' => $request->payment_method,
+                    'gateway' => $request->payment_method,
+                    'status' => 'pending',
+                    'transaction_id' => $transactionId,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+
+                return compact('booking', 'transactionId', 'recordId', 'requestedAmount', 'paymentCurrency');
+            }, 3);
+
+            $booking = $reservation['booking'];
+            $transactionId = $reservation['transactionId'];
+            $recordId = $reservation['recordId'];
+            $requestedAmount = $reservation['requestedAmount'];
+            $paymentCurrency = $reservation['paymentCurrency'];
 
             $transaction = DB::table('payment_transactions')->where('id', $recordId)->first();
 
-            // Delegate to the appropriate payment gateway
+            // Delegate to the already-resolved and enabled payment gateway.
             try {
-                $gateway    = $this->gatewayManager->resolve($request->payment_method);
                 $gatewayResult = $gateway->initiatePayment(
                     $booking,
-                    (float) $request->amount,
-                    $request->currency,
+                    (float) $requestedAmount,
+                    $paymentCurrency,
                     ['payment_type' => $request->get('payment_type', 'full')]
                 );
-            } catch (\InvalidArgumentException $e) {
-                $gatewayResult = [
-                    'success'        => false,
-                    'payment_url'    => config('app.url') . "/payments/{$request->payment_method}/{$transactionId}",
+            } catch (\Throwable $e) {
+                Log::warning('Payment gateway initiation failed after reserving the booking balance.', [
+                    'booking_id' => $booking->id,
                     'transaction_id' => $transactionId,
-                    'message'        => $e->getMessage(),
-                ];
+                    'error' => $e->getMessage(),
+                ]);
+                $gatewayResult = ['success' => false, 'payment_url' => ''];
             }
 
-            $chargedAmount = data_get($gatewayResult, 'gateway_data.amount', $request->amount);
-            $chargedCurrency = data_get($gatewayResult, 'gateway_data.currency', strtoupper($request->currency));
+            $chargedAmount = data_get($gatewayResult, 'gateway_data.amount', $requestedAmount);
+            $chargedCurrency = data_get($gatewayResult, 'gateway_data.currency', $paymentCurrency);
+            $providerData = is_array($gatewayResult['gateway_data'] ?? null) ? $gatewayResult['gateway_data'] : [];
+            $hasProviderSourceFacts = array_key_exists('booking_amount', $providerData)
+                || array_key_exists('booking_currency', $providerData);
+            $providerSourceAmount = data_get($providerData, 'booking_amount');
+            $providerSourceCurrency = strtoupper(trim((string) data_get($providerData, 'booking_currency', '')));
+            $sourceFactsMatchReservation = ! $hasProviderSourceFacts
+                || (is_numeric($providerSourceAmount)
+                    && is_finite((float) $providerSourceAmount)
+                    && abs((float) $providerSourceAmount - (float) $requestedAmount) < 0.005
+                    && $providerSourceCurrency === $paymentCurrency);
+            $snapshot = [
+                'source_amount' => (float) $requestedAmount,
+                'source_currency' => $paymentCurrency,
+                'source_evidence_valid' => $sourceFactsMatchReservation,
+                'provider_amount' => (float) $chargedAmount,
+                'provider_currency' => strtoupper((string) $chargedCurrency),
+                'order_id' => data_get($providerData, 'order_id', $gatewayResult['transaction_id'] ?? null),
+                'fx_rate_to_lkr' => data_get($providerData, 'fx_rate_to_lkr'),
+                'fx_rate_at' => data_get($providerData, 'fx_rate_at'),
+                'gateway_fx_rate_to_lkr' => data_get($providerData, 'gateway_fx_rate_to_lkr'),
+            ];
 
-            // Persist gateway transaction ID if provided
-            if (!empty($gatewayResult['transaction_id']) && $gatewayResult['transaction_id'] !== $transactionId) {
-                DB::table('payment_transactions')
-                    ->where('id', $recordId)
-                    ->update([
-                        'gateway_transaction_id' => $gatewayResult['transaction_id'],
-                        'amount' => $chargedAmount,
-                        'currency' => $chargedCurrency,
-                        'updated_at' => now(),
-                    ]);
+            DB::table('payment_transactions')->where('id', $recordId)->update([
+                'gateway_transaction_id' => $gatewayResult['transaction_id'] ?? null,
+                'amount' => $chargedAmount,
+                'currency' => $chargedCurrency,
+                'gateway_payment_snapshot' => json_encode($snapshot, JSON_THROW_ON_ERROR),
+                'updated_at' => now(),
+            ]);
+
+            if (empty($gatewayResult['success']) || empty($gatewayResult['payment_url']) || ! $sourceFactsMatchReservation) {
+                $message = $sourceFactsMatchReservation
+                    ? 'The gateway did not return a checkout session. The pending amount remains reserved until the provider outcome is reconciled.'
+                    : 'The gateway charge details conflict with the reserved booking amount. The pending attempt requires manual reconciliation.';
+                return response()->json([
+                    'status' => 'error',
+                    'message' => $message,
+                    'data' => [
+                        'transaction_id' => $transactionId,
+                        'record_id' => $recordId,
+                        'status' => 'pending',
+                        'gateway_success' => false,
+                    ],
+                ], 502);
             }
 
             return response()->json([
@@ -129,16 +249,20 @@ class PaymentController extends Controller
                     'record_id'              => $recordId,
                     'payment_url'            => $gatewayResult['payment_url'] ?? '',
                     'gateway_data'           => $gatewayResult['gateway_data'] ?? null,
-                    'amount'                 => $request->amount,
-                    'currency'               => strtoupper($request->currency),
-                    'requested_amount'       => $request->amount,
-                    'requested_currency'     => strtoupper($request->currency),
+                    'amount'                 => $requestedAmount,
+                    'currency'               => $paymentCurrency,
+                    'requested_amount'       => $requestedAmount,
+                    'requested_currency'     => $paymentCurrency,
                     'gateway_amount'         => $chargedAmount,
                     'gateway_currency'       => $chargedCurrency,
                     'status'                 => 'pending',
                     'gateway_success'        => $gatewayResult['success'] ?? false,
                 ],
             ]);
+        } catch (\Illuminate\Http\Exceptions\HttpResponseException $e) {
+            throw $e;
+        } catch (\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',
@@ -238,20 +362,41 @@ class PaymentController extends Controller
                 abort_unless((string) $attribution?->company_id === (string) $company->id, 409,
                     'The booking legal entity changed before payment could be recorded.');
                 if ($request->input('status') === 'success') {
-                    $amount = (float) ($lockedTransaction->amount ?? 0);
-                    $currency = (string) ($lockedTransaction->currency ?? 'LKR');
+                    $snapshot = json_decode((string) ($lockedTransaction->gateway_payment_snapshot ?? ''), true);
+                    abort_unless(is_array($snapshot), 409, 'The provider settlement snapshot is missing; reconcile this payment manually.');
+                    $amount = (float) ($snapshot['source_amount'] ?? 0);
+                    $currency = strtoupper((string) ($snapshot['source_currency'] ?? ''));
+                    $providerAmount = (float) ($snapshot['provider_amount'] ?? 0);
+                    $providerCurrency = strtoupper((string) ($snapshot['provider_currency'] ?? ''));
+                    abort_unless(is_finite($amount) && $amount > 0
+                        && ($snapshot['source_evidence_valid'] ?? false) === true
+                        && abs($amount - (float) $lockedTransaction->requested_amount) < 0.005
+                        && $currency === strtoupper((string) $lockedTransaction->requested_currency)
+                        && is_finite($providerAmount) && abs($providerAmount - (float) $lockedTransaction->amount) < 0.005
+                        && $providerCurrency === strtoupper((string) $lockedTransaction->currency)
+                        && preg_match('/^[A-Z]{3}$/', $currency) && preg_match('/^[A-Z]{3}$/', $providerCurrency),
+                        409, 'The provider settlement snapshot does not match the reserved payment; reconcile manually.');
+                    $fxRate = $currency === 'LKR' ? 1.0 : (float) ($snapshot['fx_rate_to_lkr'] ?? 0);
+                    abort_unless(is_finite($fxRate) && $fxRate > 0, 409,
+                        'The settlement snapshot has no approved LKR conversion rate; reconcile manually.');
                     $reference = (string) ($request->input('payment_id') ?? $request->input('transaction_id'));
                     $this->paymentLedger->receive($booking, [
                         'amount' => $amount,
                         'source_amount' => $amount,
-                        'source_currency' => strtoupper($currency),
+                        'source_currency' => $currency,
+                        'fx_rate_to_lkr' => $fxRate,
+                        'fx_rate_at' => $snapshot['fx_rate_at'] ?? now(),
+                        'fx_source' => $currency === 'LKR' ? 'gateway_payment_snapshot' : 'configured_currency_rate_at_payment',
                         'payment_method' => (string) ($transaction->payment_method ?? 'online'),
                         'payment_stage' => 'gateway_settlement',
                         'payment_purpose' => 'booking_payment',
                         'reference' => $reference,
                         'idempotency_key' => 'gateway:'.(string) $request->input('transaction_id'),
                         'provider_event_id' => $reference,
-                        'provider_payload_checksum' => hash('sha256', json_encode($request->except(['signature']), JSON_THROW_ON_ERROR)),
+                        'provider_payload_checksum' => hash('sha256', json_encode([
+                            'callback' => $request->except(['signature']), 'snapshot' => $snapshot,
+                            'gateway_fx_rate_to_lkr' => $snapshot['gateway_fx_rate_to_lkr'] ?? null,
+                        ], JSON_THROW_ON_ERROR)),
                         'received_at' => now(),
                         'received_via' => 'company',
                         'finalized_at' => now(),
@@ -422,12 +567,22 @@ class PaymentController extends Controller
                 'Canonical payment receipt is missing. Reconcile this transaction before refunding it.');
             abort_unless((string) $receipt->company_id === (string) $companyId, 409,
                 'The payment receipt legal entity does not match its booking attribution.');
+            abort_unless(is_string($transaction->currency) && $transaction->currency !== ''
+                && strtoupper($transaction->currency) === strtoupper((string) $receipt->source_currency), 409,
+                'The payment transaction currency does not match its canonical receipt. Reconcile before refunding it.');
 
             $reservedAmount = (float) DB::table('payment_refunds')
                 ->where('transaction_id', $transaction->id)
                 ->whereIn('status', ['pending', 'completed', 'manual_required'])
                 ->sum('amount');
-            $remaining = max(0, round((float) $transaction->amount - $reservedAmount, 2));
+            $transactionRemaining = max(0, round((float) $transaction->amount - $reservedAmount, 2));
+            $componentRemaining = max(0, round(
+                (float) $component->source_amount - (float) $component->adjusted_source_amount,
+                2,
+            ));
+            // A gateway transaction can exceed or drift from its canonical receipt.
+            // Never reserve provider cash that the receipt ledger cannot represent.
+            $remaining = min($transactionRemaining, $componentRemaining);
             $amount = round((float) ($data['amount'] ?? $remaining), 2);
             abort_if($amount <= 0, 422, 'This transaction has no remaining refundable amount.');
             abort_if($amount > $remaining, 422,
@@ -639,24 +794,17 @@ class PaymentController extends Controller
     {
         $enabled = $this->gatewayManager->available();
 
-        $methods = array_merge(
-            // Gateways that are actually configured and enabled
-            array_map(fn ($gw) => [
-                'id'          => $gw['method'],
-                'name'        => $gw['gateway'],
-                'description' => "Pay via {$gw['gateway']}",
-                'icon'        => strtolower(str_replace(' ', '-', $gw['method'])),
-                'is_active'   => true,
-            ], $enabled)
-        );
-
-        // Always include at least one method so UI doesn't break
-        if (empty($methods)) {
-            $methods = [['id' => 'bank_transfer', 'name' => 'Bank Transfer', 'description' => 'Pay via bank transfer', 'icon' => 'bank', 'is_active' => true]];
-        }
+        $methods = array_map(fn ($gw) => [
+            'id' => $gw['method'],
+            'name' => $gw['gateway'],
+            'description' => "Pay via {$gw['gateway']}",
+            'icon' => strtolower(str_replace(' ', '-', $gw['method'])),
+            'is_active' => true,
+        ], $enabled);
 
         return response()->json([
             'status' => 'success',
+            'message' => empty($methods) ? 'No online payment gateway is currently configured.' : null,
             'data'   => ['payment_methods' => $methods],
         ]);
     }
@@ -765,6 +913,63 @@ class PaymentController extends Controller
                 'last_page' => $refunds->lastPage(),
                 'per_page' => $refunds->perPage(),
                 'total' => $refunds->total(),
+            ],
+        ]);
+    }
+
+    /**
+     * List pending online payment attempts with missing or known source reservation facts.
+     * GET /api/payment-transactions/initiations/reconciliation
+     */
+    public function getPaymentInitiationReconciliationQueue(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'reservation_state' => ['nullable', 'in:unverified,reserved'],
+            'page' => ['nullable', 'integer', 'min:1'],
+            'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
+        ]);
+        $companyIds = app(SalesAccessScope::class)->companyIds(
+            $request->user(),
+            'sales.payment-adjustments.create-all',
+        );
+
+        $attempts = DB::table('payment_transactions as transactions')
+            ->join('bookings', 'bookings.id', '=', 'transactions.booking_id')
+            ->join('sales_booking_attributions as attribution', function ($join): void {
+                $join->on('attribution.booking_id', '=', 'bookings.id')->whereNull('attribution.deleted_at');
+            })
+            ->join('companies', 'companies.id', '=', 'attribution.company_id')
+            ->where('transactions.status', 'pending')
+            ->where('companies.is_active', true)
+            ->whereNull('companies.deleted_at')
+            ->when($companyIds !== null, fn ($query) => $query->whereIn('attribution.company_id', $companyIds))
+            ->when(($data['reservation_state'] ?? 'unverified') === 'unverified', fn ($query) => $query
+                ->where(function ($reservation): void {
+                    $reservation->whereNull('transactions.requested_amount')
+                        ->orWhereNull('transactions.requested_currency');
+                }))
+            ->when(($data['reservation_state'] ?? 'unverified') === 'reserved', fn ($query) => $query
+                ->whereNotNull('transactions.requested_amount')->whereNotNull('transactions.requested_currency'))
+            ->orderByRaw('CASE WHEN transactions.requested_amount IS NULL OR transactions.requested_currency IS NULL THEN 0 ELSE 1 END')
+            ->orderBy('transactions.created_at')
+            ->select([
+                'transactions.id', 'transactions.transaction_id', 'transactions.gateway_transaction_id',
+                'transactions.payment_method', 'transactions.amount', 'transactions.currency',
+                'transactions.requested_amount', 'transactions.requested_currency', 'transactions.created_at',
+                'bookings.id as booking_id', 'bookings.booking_number',
+                'companies.id as company_id', 'companies.name as company_name',
+            ])
+            ->selectRaw("CASE WHEN transactions.requested_amount IS NULL OR transactions.requested_currency IS NULL THEN 'unverified' ELSE 'reserved' END as reservation_state")
+            ->paginate($data['per_page'] ?? 25);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => [
+                'data' => $attempts->items(),
+                'current_page' => $attempts->currentPage(),
+                'last_page' => $attempts->lastPage(),
+                'per_page' => $attempts->perPage(),
+                'total' => $attempts->total(),
             ],
         ]);
     }

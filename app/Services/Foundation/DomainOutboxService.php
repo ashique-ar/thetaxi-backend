@@ -3,6 +3,7 @@
 namespace App\Services\Foundation;
 
 use App\Contracts\Foundation\DomainEventPublisher;
+use App\Contracts\Foundation\DomainOutboxSubscriber;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Collection;
@@ -50,19 +51,21 @@ class DomainOutboxService implements DomainEventPublisher
     }
 
     /**
-     * Count due, unpublished events without claiming them. Used for
-     * dry-run/preview reporting only.
+     * Count due, unpublished events with a registered subscriber without
+     * claiming them. Used for dry-run/preview reporting only.
      */
     public function countDuePublications(): int
     {
-        return DB::table('domain_outbox_events')
+        $query = DB::table('domain_outbox_events')
             ->whereNull('published_at')
-            ->where('available_at', '<=', now())
-            ->count();
+            ->where('available_at', '<=', now());
+        $this->whereSubscriberRegistered($query);
+
+        return $query->count();
     }
 
     /**
-     * Atomically claim up to $limit due, unpublished events and mark them
+     * Atomically claim up to $limit due, subscribed events and mark them
      * published in the same transaction as the claim lock, so two
      * overlapping relay runs never dispatch the same event twice. The
      * caller is responsible for actually handing each claimed row to the
@@ -76,10 +79,9 @@ class DomainOutboxService implements DomainEventPublisher
             $rows = DB::table('domain_outbox_events')
                 ->whereNull('published_at')
                 ->where('available_at', '<=', now())
-                ->orderBy('available_at')
-                ->limit($limit)
-                ->lockForUpdate()
-                ->get();
+                ->orderBy('available_at');
+            $this->whereSubscriberRegistered($rows);
+            $rows = $rows->limit($limit)->lockForUpdate()->get();
 
             if ($rows->isEmpty()) {
                 return $rows;
@@ -106,5 +108,29 @@ class DomainOutboxService implements DomainEventPublisher
             'last_error' => Str::limit($error, 2000),
             'updated_at' => now(),
         ]);
+    }
+
+    private function whereSubscriberRegistered($query): void
+    {
+        $bindings = [];
+        foreach (config('foundation.outbox_subscribers', []) as $domain => $eventMap) {
+            if (! is_array($eventMap)) continue;
+            foreach ($eventMap as $eventType => $subscriberClass) {
+                if (! is_string($subscriberClass) || ! is_subclass_of($subscriberClass, DomainOutboxSubscriber::class)) continue;
+                $bindings[] = [(string) $domain, (string) $eventType];
+            }
+        }
+
+        if ($bindings === []) {
+            $query->whereRaw('1 = 0');
+
+            return;
+        }
+
+        $query->where(function ($events) use ($bindings): void {
+            foreach ($bindings as [$domain, $eventType]) {
+                $events->orWhere(fn ($event) => $event->where('domain', $domain)->where('event_type', $eventType));
+            }
+        });
     }
 }

@@ -97,13 +97,14 @@ class CommissionPayoutService
                 ]);
                 $remaining = round($remaining - $allocated, 4);
             }
-            $this->events->record('sales', $payout->company_id, 'commission_payout', $payout->id,
+            $paidEventId = $this->events->record('sales', $payout->company_id, 'commission_payout', $payout->id,
                 'sales.commission.paid', 1, 1, [
                     'staff_id' => $payout->staff_id, 'amount_lkr' => (string) $payout->amount_lkr,
                     'payment_reference' => $payout->payment_reference,
                     'allocations' => SalesCommissionPayoutAllocation::query()->where('payout_id', $payout->id)->get()->toArray(),
                     'accounting_delivery_required' => true, 'payroll_adapter_used' => false,
                 ], $payout->paid_at, $data['idempotency_key']);
+            $this->recordAccountingReadyEvent($payout, $paidEventId, $data['idempotency_key']);
             return $payout;
             });
         } catch (QueryException $exception) {
@@ -184,11 +185,12 @@ class CommissionPayoutService
                 ]);
             }
             $original->update(['status' => 'reversed', 'reason' => trim(($original->reason ? $original->reason."\n" : '').'Reversed by '.$reversal->id.': '.$data['reason'])]);
-            $this->events->record('sales', $reversal->company_id, 'commission_payout', $reversal->id,
+            $reversalEventId = $this->events->record('sales', $reversal->company_id, 'commission_payout', $reversal->id,
                 'sales.commission.payout_reversed', 1, 1, [
                     'original_payout_id' => $original->id, 'amount_lkr' => '-'.(string) $reversal->amount_lkr,
                     'payment_reference' => $reversal->payment_reference, 'accounting_delivery_required' => true,
                 ], $reversal->paid_at, $data['idempotency_key']);
+            $this->recordAccountingReadyEvent($reversal, $reversalEventId, $data['idempotency_key']);
             return $reversal;
             });
         } catch (QueryException $exception) {
@@ -224,6 +226,10 @@ class CommissionPayoutService
                     'This accounting-delivery key is already bound to different or unverified facts.');
                 return $duplicate;
             }
+            abort_unless($data['status'] === 'failed', 409,
+                'A manual reference cannot verify accounting delivery; successful delivery requires a verified QuickBooks response.');
+            abort_unless(in_array($payout->status, ['confirmed', 'reversal'], true), 409,
+                'Accounting delivery can only be recorded for a confirmed payout or its reversal.');
             $eventType = $payout->status === 'reversal' ? 'payout_reversal' : 'payout';
             $checksum = $this->checksum([
                 'company_id' => (string) $payout->company_id,
@@ -243,9 +249,10 @@ class CommissionPayoutService
                 'event_type' => $eventType,
                 'status' => $data['status'], 'external_reference' => $data['external_reference'] ?? null,
                 'message' => $data['message'] ?? null, 'idempotency_key' => $data['idempotency_key'],
+                'verification_source' => 'manual',
                 'recorded_by' => $actorUserId, 'recorded_at' => now(), 'request_payload_checksum' => $checksum,
             ]);
-            $payout->update(['accounting_status' => $data['status'] === 'accepted' ? 'delivered' : 'delivery_failed']);
+            $payout->update(['accounting_status' => 'delivery_failed']);
             $this->events->record('sales', $payout->company_id, 'commission_accounting_delivery', $delivery->id,
                 'sales.commission.accounting_delivery_recorded', 1, 1, [
                     'payout_id' => $payout->id, 'event_type' => $eventType, 'status' => $delivery->status,
@@ -276,6 +283,49 @@ class CommissionPayoutService
 
     private function checksum(array $facts): string
     { return hash('sha256', json_encode($facts, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)); }
+
+    private function recordAccountingReadyEvent(SalesCommissionPayout $payout, string $causationId, string $idempotencyKey): void
+    {
+        $reversal = (bool) $payout->reverses_payout_id;
+        $allocations = DB::table('sales_commission_payout_allocations as allocation')
+            ->join('sales_commission_statements as statement', 'statement.id', '=', 'allocation.statement_id')
+            ->where('statement.company_id', $payout->company_id)
+            ->where('allocation.payout_id', $payout->id)
+            ->orderBy('statement.period_start')->orderBy('statement.id')
+            ->get(['statement.statement_number', 'allocation.amount_lkr'])
+            ->map(static function (object $row): array {
+                $allocationAmount = (float) $row->amount_lkr;
+
+                return [
+                    'statement_number' => $row->statement_number,
+                    'amount_lkr' => ($allocationAmount < 0 ? '-' : '').number_format(abs($allocationAmount), 4, '.', ''),
+                ];
+            })->all();
+
+        $allocationTotal = round(array_sum(array_map(
+            static fn (array $allocation): float => (float) $allocation['amount_lkr'],
+            $allocations,
+        )), 4);
+        $expectedTotal = $reversal ? -abs((float) $payout->amount_lkr) : abs((float) $payout->amount_lkr);
+        abort_unless($allocations !== [] && $allocationTotal === round($expectedTotal, 4), 409,
+            'Accounting-ready event allocations must reconcile to the payout within its legal entity.');
+
+        $amount = number_format(abs((float) $payout->amount_lkr), 4, '.', '');
+        $this->events->record('sales', $payout->company_id, 'commission_payout', $payout->id,
+            'sales.commission.accounting_ready', 2, 1, [
+                'document_type' => $reversal ? 'payout_reversal' : 'payout',
+                'document_id' => $payout->id,
+                'document_number' => $payout->payout_number,
+                'amount_lkr' => $reversal ? '-'.$amount : $amount,
+                'currency' => 'LKR',
+                'effective_at' => $payout->paid_at->toIso8601String(),
+                'payment_reference' => $payout->payment_reference,
+                'reverses_document_id' => $payout->reverses_payout_id,
+                'evidence_file_id' => $payout->evidence_file_id,
+                'statement_allocations' => $allocations,
+                'accounting_status' => 'pending_delivery',
+            ], $payout->paid_at, $idempotencyKey, $causationId);
+    }
 
     private function lockActiveCompany(string $companyId): void
     {

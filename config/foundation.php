@@ -9,11 +9,10 @@ return [
     |--------------------------------------------------------------------------
     |
     | Maps domain => event_type => a class implementing
-    | App\Contracts\Foundation\DomainOutboxSubscriber. An event whose domain
-    | or event_type has no entry here is still relayed to the queue (so
-    | delivery is never lost) but is intentionally left unconsumed until the
-    | owning domain's integration gate registers a subscriber. Never invent
-    | a subscriber binding for a domain rule that has not been approved.
+    | App\Contracts\Foundation\DomainOutboxSubscriber. Events without a
+    | registered subscriber remain durable and unpublished until the owning
+    | domain's integration gate registers a subscriber. Never invent a
+    | subscriber binding for a domain rule that has not been approved.
     |
     */
     'outbox_subscribers' => [

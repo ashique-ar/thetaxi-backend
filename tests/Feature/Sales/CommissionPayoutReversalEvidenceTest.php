@@ -5,8 +5,11 @@ use App\Models\Company;
 use App\Models\Sales\SalesCommissionPayout;
 use App\Models\Staff;
 use App\Models\User;
+use App\Services\Foundation\DomainOutboxService;
+use App\Services\Sales\CommissionAccountingOutboxReconciliationService;
 use App\Services\Sales\CommissionPayoutService;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\Sales\VerifiedCommissionAccountingDeliveryService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -78,7 +81,7 @@ function payout_reversal_fixture(string $accountingStatus = 'delivered'): array
     $events = Mockery::mock(DomainEventPublisher::class);
     $service = new CommissionPayoutService($events, $policy);
 
-    return [$service, $payout, $actor, $events];
+    return [$service, $payout, $actor, $events, $policy];
 }
 
 it('rejects payout execution when a statement profile belongs to another company', function () {
@@ -194,7 +197,7 @@ it('rejects payout evidence attached to a different legal entity', function () {
 it('reverses the payout only with evidence bound to that payout and company', function () {
     [$service, $payout, $actor, $events] = payout_reversal_fixture();
     $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
-    $events->shouldReceive('record')->once()->andReturn((string) Str::uuid());
+    $events->shouldReceive('record')->twice()->andReturn((string) Str::uuid());
 
     $reversal = $service->reverse($payout, [
         'payment_method' => 'bank',
@@ -211,9 +214,122 @@ it('reverses the payout only with evidence bound to that payout and company', fu
         ->and($payout->fresh()->status)->toBe('reversed');
 });
 
-it('binds accounting delivery retries to exact facts and preserves each result immutably', function () {
+it('writes an immutable, causally linked accounting-ready event for a payout reversal', function () {
+    [, $payout, $actor, , $policy] = payout_reversal_fixture();
+    $evidenceId = payout_reversal_evidence($payout, $payout->company_id, $actor);
+    $service = new CommissionPayoutService(new DomainOutboxService(), $policy);
+
+    $reversal = $service->reverse($payout, [
+        'payment_method' => 'bank', 'payment_reference' => 'reversal-'.Str::uuid(),
+        'reversed_at' => now()->toIso8601String(), 'evidence_file_id' => $evidenceId,
+        'reason' => 'Reverse the original payout with supporting evidence',
+        'idempotency_key' => (string) Str::uuid(),
+    ], $actor->id);
+
+    $events = DB::table('domain_outbox_events')->where('aggregate_type', 'commission_payout')
+        ->where('aggregate_id', $reversal->id)->orderBy('event_version')->get();
+    $accountingEvent = $events->last();
+    $payload = json_decode($accountingEvent->payload, true, 512, JSON_THROW_ON_ERROR);
+
+    expect($events)->toHaveCount(2)
+        ->and(config('foundation.outbox_subscribers.sales'))->not->toHaveKey('sales.commission.accounting_ready')
+        ->and($accountingEvent->event_type)->toBe('sales.commission.accounting_ready')
+        ->and($accountingEvent->event_version)->toBe(2)
+        ->and($accountingEvent->causation_id)->toBe($events->first()->id)
+        ->and(hash('sha256', $accountingEvent->payload))->toBe($accountingEvent->payload_checksum)
+        ->and($payload)->toMatchArray([
+            'document_type' => 'payout_reversal', 'document_id' => $reversal->id,
+            'document_number' => $reversal->payout_number, 'amount_lkr' => '-1000.0000',
+            'currency' => 'LKR', 'payment_reference' => $reversal->payment_reference,
+            'reverses_document_id' => $payout->id, 'evidence_file_id' => $evidenceId,
+            'accounting_status' => 'pending_delivery',
+        ])
+        ->and($payload['statement_allocations'])->toBe([
+            ['amount_lkr' => '-1000.0000', 'statement_number' => DB::table('sales_commission_statements')->where('id',
+                DB::table('sales_commission_payout_allocations')->where('payout_id', $reversal->id)->value('statement_id')
+            )->value('statement_number')],
+        ]);
+
+    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    $reconciledReversal = $reconciliation['data']->getCollection()
+        ->firstWhere('payout_number', $reversal->payout_number);
+    expect($reconciledReversal['issues'])->toBe([])
+        ->and($reconciledReversal['integration_status'])->toBe('awaiting_subscriber');
+});
+
+it('writes an immutable accounting-ready event when a commission payout is confirmed', function () {
+    [, $existingPayout, $actor, , $policy] = payout_reversal_fixture('pending_delivery');
+    $statementId = DB::table('sales_commission_payout_allocations')->value('statement_id');
+    DB::table('sales_commission_payout_allocations')->where('payout_id', $existingPayout->id)->delete();
+    DB::table('sales_commission_payouts')->where('id', $existingPayout->id)->delete();
+    DB::table('sales_commission_statements')->where('id', $statementId)->update([
+        'status' => 'approved', 'paid_lkr' => 0, 'settlement_at' => now()->subMinute(),
+    ]);
+    $service = new CommissionPayoutService(new DomainOutboxService(), $policy);
+
+    $payout = $service->pay([$statementId], [
+        'amount_lkr' => 1000, 'payment_method' => 'bank',
+        'payment_account_snapshot' => ['holder' => 'Approved payee snapshot'],
+        'payment_reference' => 'payout-'.Str::uuid(), 'paid_at' => now()->toIso8601String(),
+        'idempotency_key' => (string) Str::uuid(),
+    ], $actor->id);
+
+    $events = DB::table('domain_outbox_events')->where('aggregate_type', 'commission_payout')
+        ->where('aggregate_id', $payout->id)->orderBy('event_version')->get();
+    $accountingEvent = $events->last();
+    $payload = json_decode($accountingEvent->payload, true, 512, JSON_THROW_ON_ERROR);
+
+    expect($events)->toHaveCount(2)
+        ->and(config('foundation.outbox_subscribers.sales'))->not->toHaveKey('sales.commission.accounting_ready')
+        ->and($accountingEvent->event_type)->toBe('sales.commission.accounting_ready')
+        ->and($accountingEvent->event_version)->toBe(2)
+        ->and($accountingEvent->causation_id)->toBe($events->first()->id)
+        ->and(hash('sha256', $accountingEvent->payload))->toBe($accountingEvent->payload_checksum)
+        ->and($payload)->toMatchArray([
+            'document_type' => 'payout', 'document_id' => $payout->id,
+            'document_number' => $payout->payout_number, 'amount_lkr' => '1000.0000',
+            'currency' => 'LKR', 'payment_reference' => $payout->payment_reference,
+            'reverses_document_id' => null, 'accounting_status' => 'pending_delivery',
+        ]);
+
+    $reconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    expect($reconciliation['summary']['page_issue_count'])->toBe(0)
+        ->and($reconciliation['data']->getCollection()->first()['accounting_event_checksum_valid'])->toBeTrue();
+
+    $foreignCompany = Company::create(['name' => 'Foreign allocation statement company']);
+    DB::table('sales_commission_statements')->where('id', $statementId)->update(['company_id' => $foreignCompany->id]);
+    $corruptedReconciliation = (new CommissionAccountingOutboxReconciliationService())->preview($payout->company_id);
+    $corruptedIssues = $corruptedReconciliation['data']->getCollection()->first()['issues'];
+    expect($corruptedIssues)->toContain('payout_allocations_missing', 'payout_allocation_total_mismatch', 'accounting_event_facts_mismatch');
+    DB::table('sales_commission_statements')->where('id', $statementId)->update(['company_id' => $payout->company_id]);
+
+    $verifier = new VerifiedCommissionAccountingDeliveryService(
+        new DomainOutboxService(), new CommissionAccountingOutboxReconciliationService(),
+    );
+    $deliveryKey = (string) Str::uuid();
+    $delivery = $verifier->recordQuickBooksAcceptance(
+        $payout, (string) $accountingEvent->id, 'QB-TX-'.Str::uuid(), str_repeat('d', 64), $deliveryKey,
+    );
+    $retry = $verifier->recordQuickBooksAcceptance(
+        $payout, (string) $accountingEvent->id, $delivery->provider_transaction_id,
+        $delivery->provider_response_checksum, $deliveryKey,
+    );
+
+    expect($payout->fresh()->accounting_status)->toBe('delivered')
+        ->and($delivery->verification_source)->toBe('quickbooks')
+        ->and($delivery->source_outbox_event_id)->toBe($accountingEvent->id)
+        ->and($delivery->recorded_by)->toBeNull()
+        ->and($retry->id)->toBe($delivery->id)
+        ->and(DB::table('sales_commission_accounting_deliveries')->where('payout_id', $payout->id)->count())->toBe(1)
+        ->and(fn () => $verifier->recordQuickBooksAcceptance(
+            $payout, (string) $accountingEvent->id, $delivery->provider_transaction_id,
+            str_repeat('e', 64), $deliveryKey,
+        ))->toThrow(HttpException::class, 'This accounting-delivery key is already bound to different provider evidence.');
+});
+
+it('binds manual accounting failure retries to exact facts without claiming delivery', function () {
     [$service, $payout, $actor, $events] = payout_reversal_fixture('pending_delivery');
-    $events->shouldReceive('record')->twice()->andReturn((string) Str::uuid());
+    $events->shouldReceive('record')->once()->andReturn((string) Str::uuid());
     $failed = [
         'status' => 'failed',
         'message' => 'Accounting system did not acknowledge the payout',
@@ -224,25 +340,29 @@ it('binds accounting delivery retries to exact facts and preserves each result i
     $stalePayout->status = 'reversal';
     $failedDelivery = $service->recordAccountingDelivery($stalePayout, $failed, $actor->id);
     $failedRetry = $service->recordAccountingDelivery($payout, $failed, $actor->id);
-    $accepted = [
-        'status' => 'accepted',
-        'external_reference' => 'ERP-PAYOUT-REFERENCE-1',
-        'idempotency_key' => (string) Str::uuid(),
-    ];
-    $acceptedDelivery = $service->recordAccountingDelivery($payout, $accepted, $actor->id);
-    $changedRetry = [...$accepted, 'external_reference' => 'ERP-PAYOUT-REFERENCE-2'];
-
     expect($failedRetry->id)->toBe($failedDelivery->id)
         ->and($failedDelivery->event_type)->toBe('payout')
-        ->and($acceptedDelivery->id)->not->toBe($failedDelivery->id)
-        ->and($payout->fresh()->accounting_status)->toBe('delivered')
-        ->and(DB::table('sales_commission_accounting_deliveries')->where('payout_id', $payout->id)->count())->toBe(2)
-        ->and(fn () => $service->recordAccountingDelivery($payout, $changedRetry, $actor->id))
-        ->toThrow(HttpException::class, 'This accounting-delivery key is already bound to different or unverified facts.')
+        ->and($failedDelivery->verification_source)->toBe('manual')
+        ->and($payout->fresh()->accounting_status)->toBe('delivery_failed')
+        ->and(DB::table('sales_commission_accounting_deliveries')->where('payout_id', $payout->id)->count())->toBe(1)
         ->and(fn () => $service->recordAccountingDelivery($payout, [
-            'status' => 'failed',
-            'message' => 'Attempt to overwrite accepted delivery',
+            'status' => 'accepted',
+            'external_reference' => 'ERP-PAYOUT-REFERENCE-1',
             'idempotency_key' => (string) Str::uuid(),
         ], $actor->id))
-        ->toThrow(HttpException::class, 'Accounting delivery is already accepted; its status cannot be overwritten.');
+        ->toThrow(HttpException::class, 'A manual reference cannot verify accounting delivery; successful delivery requires a verified QuickBooks response.');
+});
+
+it('rejects accounting acknowledgements for payouts that have already been reversed', function () {
+    [$service, $payout, $actor] = payout_reversal_fixture('pending_delivery');
+    $payout->update(['status' => 'reversed']);
+
+    expect(fn () => $service->recordAccountingDelivery($payout, [
+        'status' => 'failed',
+        'message' => 'Attempt against reversed payout',
+        'idempotency_key' => (string) Str::uuid(),
+    ], $actor->id))->toThrow(HttpException::class,
+        'Accounting delivery can only be recorded for a confirmed payout or its reversal.')
+        ->and(DB::table('sales_commission_accounting_deliveries')->where('payout_id', $payout->id)->exists())->toBeFalse()
+        ->and($payout->fresh()->accounting_status)->toBe('pending_delivery');
 });
