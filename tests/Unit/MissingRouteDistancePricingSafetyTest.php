@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use Tests\TestCase;
+use App\Http\Controllers\BookingController;
+use App\Models\Service\ServiceType;
 
 class MissingRouteDistancePricingSafetyTest extends TestCase
 {
@@ -10,7 +12,8 @@ class MissingRouteDistancePricingSafetyTest extends TestCase
     {
         $service = file_get_contents(app_path('Services/BookingFlowService.php'));
 
-        $this->assertStringContainsString('$distanceCalculationFailed = $pickupLocation', $service);
+        $this->assertStringContainsString('$distanceCalculationFailed = $hasUsablePickup', $service);
+        $this->assertStringContainsString('$this->isLocationPayloadUsable($params[\'dropoff_location\'])', $service);
         $this->assertStringContainsString('$availability = [];', $service);
         $this->assertStringContainsString("'distance_calculation_failed' => \$distanceCalculationFailed", $service);
         $this->assertStringContainsString('Verified journey distance is required before route pricing', $service);
@@ -24,7 +27,43 @@ class MissingRouteDistancePricingSafetyTest extends TestCase
         $controller = file_get_contents(app_path('Http/Controllers/BookingController.php'));
 
         $this->assertStringContainsString('$distanceCalculationFailed', $controller);
-        $this->assertStringContainsString('We could not verify the journey distance.', $view);
-        $this->assertStringContainsString('No price has been displayed', $view);
+        $this->assertStringContainsString('We could not calculate a verified journey distance.', $view);
+        $this->assertStringContainsString('Fares are temporarily unavailable.', $view);
+    }
+
+    public function test_day_rental_search_does_not_promote_pickup_to_a_missing_dropoff(): void
+    {
+        $controller = new class extends BookingController {
+            public function __construct()
+            {
+            }
+
+            public function transform(array $data, ServiceType $serviceType): array
+            {
+                return $this->transformSearchParams($data, $serviceType, 'day_rental');
+            }
+
+            protected function resolveServiceFormConfiguration(ServiceType $serviceType): array
+            {
+                return [
+                    'fields' => [],
+                    'field_mappings' => ['locations' => ['pickup_location' => 'pickup']],
+                    'uses_dropoff_time' => false,
+                    'allow_return_trip' => false,
+                ];
+            }
+        };
+
+        $params = $controller->transform([
+            'date' => '2026-10-14',
+            'pickup' => 'Colombo, Sri Lanka',
+            'pickup_lat' => '6.9271',
+            'pickup_lng' => '79.8612',
+        ], new ServiceType(['id' => 'test-day-rental', 'code' => 'day_rental']));
+
+        $this->assertSame('Colombo, Sri Lanka', $params['pickup_location']['address']);
+        $this->assertEmpty($params['dropoff_location']['address']);
+        $this->assertNull($params['dropoff_location']['latitude']);
+        $this->assertNull($params['dropoff_location']['longitude']);
     }
 }

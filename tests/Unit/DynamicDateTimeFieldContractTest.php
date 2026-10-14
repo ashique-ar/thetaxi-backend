@@ -139,11 +139,16 @@ class DynamicDateTimeFieldContractTest extends TestCase
     public function test_dynamic_mapping_resolves_config_keys_to_submitted_date_and_time_names(): void
     {
         $request = file_get_contents(app_path('Http/Requests/BookingSearchRequest.php'));
+        $form = file_get_contents(resource_path('views/components/dynamic-booking-form.blade.php'));
 
         $this->assertStringContainsString("data_get(\$fieldMappings, 'dates.from_date')", $request);
         $this->assertStringContainsString("data_get(\$fieldMappings, 'dates.from_time')", $request);
         $this->assertStringContainsString('resolveMappedRequestField', $request);
         $this->assertStringContainsString("['submit_as'] ?? \$mapping", $request);
+        $this->assertStringContainsString("\$locationMappings['pickup_location']", $form);
+        $this->assertStringContainsString("\$locationMappings['dropoff_location']", $form);
+        $this->assertStringContainsString("\$dateMappings['from_date']", $form);
+        $this->assertStringContainsString("\$dateMappings['from_time']", $form);
     }
 
     public function test_date_picker_minimum_uses_unambiguous_iso_format(): void
