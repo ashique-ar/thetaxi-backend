@@ -108,6 +108,7 @@ class TermsController extends Controller
             'title' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|required|string|max:255|unique:terms_and_conditions,slug,' . $term->id,
             'content' => 'sometimes|required|string',
+            'service_type_id' => 'sometimes|nullable|uuid|exists:service_types,id',
             'service_type' => 'nullable|string|max:100',
             'payment_type' => 'nullable|string|in:full,advance,quotation,checkin',
             'version' => 'nullable|integer',
