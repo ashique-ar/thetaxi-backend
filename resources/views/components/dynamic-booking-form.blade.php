@@ -522,7 +522,17 @@
                         var pickupDate = form.querySelector('input[name="pickup_date"], input[name="date"]');
                         var returnDate = form.querySelector('input[name="return_date"]');
                         if (pickupDate && returnDate && !returnDate.value) {
-                            returnDate.value = pickupDate.value;
+                            var pickupParts = pickupDate.value.split('/');
+                            var returnDateValue = pickupParts.length === 3
+                                ? new Date(Number(pickupParts[2]), Number(pickupParts[1]) - 1, Number(pickupParts[0]))
+                                : new Date();
+                            returnDateValue.setDate(returnDateValue.getDate() + 3);
+                            returnDate.value = [
+                                String(returnDateValue.getDate()).padStart(2, '0'),
+                                String(returnDateValue.getMonth() + 1).padStart(2, '0'),
+                                returnDateValue.getFullYear()
+                            ].join('/');
+                            returnDate.dispatchEvent(new Event('change', { bubbles: true }));
                         }
                     }
                 }

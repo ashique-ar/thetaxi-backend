@@ -1094,8 +1094,8 @@ class BookingFlowService
             // date conflicts. Internal and corporate allocation remains unchanged.
             $vehicleAnalysis = ($bypassPublicAvailability || $deferAvailabilityAnalysis)
                 ? [
-                    'available_count' => 0,
-                    'total_count' => 0,
+                    'available_count' => $bypassPublicAvailability ? $group->vehicles->count() : 0,
+                    'total_count' => $bypassPublicAvailability ? $group->vehicles->count() : 0,
                     'booked_count' => 0,
                     'conflict_count' => 0,
                     'vehicle_details' => [],

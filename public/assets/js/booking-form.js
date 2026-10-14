@@ -4264,7 +4264,7 @@
                 returnDetails.style.display = 'grid';
                 // Initialize return date picker if needed
                 initReturnDatePicker();
-                // Set default return date to pickup date
+                // Keep the historical three-day default relative to the selected pickup date.
                 syncReturnDateWithPickup();
                 // Update return route locations
                 updateReturnRouteLocations();
@@ -4413,19 +4413,24 @@
     }
 
     /**
-     * Sync return date with pickup date (set return date = pickup date by default)
+     * Default return date to three days after the selected pickup date.
      */
     function syncReturnDateWithPickup() {
         const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');
         const returnDateInput = document.getElementById('ride_now-return-date');
 
         if (pickupDateInput && returnDateInput) {
-            returnDateInput.value = pickupDateInput.value;
+            const pickupDate = pickupDateInput.value
+                ? parseDDMMYYYY(pickupDateInput.value)
+                : new Date();
+            if (!pickupDate || Number.isNaN(pickupDate.getTime())) return;
+            pickupDate.setDate(pickupDate.getDate() + 3);
+            returnDateInput.value = formatDate(pickupDate);
             // Update datepicker (Flatpickr or Bootstrap)
             if (returnDateInput._flatpickr) {
-                returnDateInput._flatpickr.setDate(pickupDateInput.value, false, 'd/m/Y');
+                returnDateInput._flatpickr.setDate(returnDateInput.value, false, 'd/m/Y');
             } else if (typeof $ !== 'undefined' && $.fn.datepicker) {
-                $(returnDateInput).datepicker('update', pickupDateInput.value);
+                $(returnDateInput).datepicker('update', returnDateInput.value);
             }
         }
     }
