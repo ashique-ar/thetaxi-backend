@@ -41,7 +41,8 @@
         <script src="https://cdn.tailwindcss.com"></script>
         <link data-theme-presentation="theme-02" rel="stylesheet" href="{{ assetVersion('assets/css/theme-02-tw.css') }}">
     @elseif (in_array(get_active_theme(), ['theme-03', 'theme-04'], true))
-        <link data-theme-presentation="{{ get_active_theme() }}" rel="stylesheet" href="{{ assetVersion(theme_asset('stylesheet')) }}">
+        <link data-theme-presentation="{{ get_active_theme() }}" rel="stylesheet"
+            href="{{ assetVersion(theme_asset('stylesheet')) }}">
     @else
         <link data-theme-presentation="default" rel="stylesheet" href="{{ assetVersion('assets/css/theme-01.css') }}">
     @endif
@@ -104,14 +105,12 @@
         {!! $metaStack !!}
     @endif
     @php($favicon = $settings['brand_favicon'] ?? $settings['favicon'] ?? null)
-    <link rel="icon"
-        href="{{ $favicon ? s3_asset($favicon) : asset('assets/img/favicon.ico') }}"
-        type="image/x-icon">
+    <link rel="icon" href="{{ $favicon ? s3_asset($favicon) : asset('assets/img/favicon.ico') }}" type="image/x-icon">
 
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager -->
         <script>
-            (function(w, d, s, l, i) {
+            (function (w, d, s, l, i) {
                 w[l] = w[l] || [];
                 w[l].push({
                     'gtm.start': new Date().getTime(),
@@ -144,9 +143,9 @@
     @if (!empty($settings['facebook_pixel_id']))
         <!-- Facebook Pixel -->
         <script>
-            ! function(f, b, e, v, n, t, s) {
+            ! function (f, b, e, v, n, t, s) {
                 if (f.fbq) return;
-                n = f.fbq = function() {
+                n = f.fbq = function () {
                     n.callMethod ? n.callMethod.apply(n, arguments) : n.queue.push(arguments);
                 };
                 if (!f._fbq) f._fbq = n;
@@ -185,9 +184,15 @@
     @endif
     <style>
         :root {
-            --primary-color1: {{ $settings['primary_color'] ?? '#BF2629' }} !important;
-            --black-color: {{ $settings['secondary_color'] ?? '#717171' }} !important;
-            --tertiary-color: {{ $settings['tertiary_color'] ?? '#FFFFFF' }} !important;
+            --primary-color1:
+                {{ $settings['primary_color'] ?? '#BF2629' }}
+                !important;
+            --black-color:
+                {{ $settings['secondary_color'] ?? '#717171' }}
+                !important;
+            --tertiary-color:
+                {{ $settings['tertiary_color'] ?? '#FFFFFF' }}
+                !important;
         }
 
         /* Cart Icon Styles */
@@ -275,20 +280,22 @@
 </head>
 
 <?php
-    $themeRouteName = request()->route()?->getName() ?? 'unrouted';
-    if (request()->routeIs('vehicle.details', 'vehicle.details.seo')) {
-        $themeRouteName = 'vehicle.details';
-    }
-    $themePageSlug = \Illuminate\Support\Str::slug(str_replace('.', '-', $themeRouteName));
-    $themeContentType = request()->route('contentType');
+$themeRouteName = request()->route()?->getName() ?? 'unrouted';
+if (request()->routeIs('vehicle.details', 'vehicle.details.seo')) {
+    $themeRouteName = 'vehicle.details';
+}
+$themePageSlug = \Illuminate\Support\Str::slug(str_replace('.', '-', $themeRouteName));
+$themeContentType = request()->route('contentType');
 ?>
-<body class="tt-magic-cursor theme-{{ get_active_theme() }} theme-page-{{ $themePageSlug }}"
-    @if (is_theme('theme-04')) data-theme-page="{{ $themePageSlug }}" @if ($themeContentType) data-theme-content-type="{{ $themeContentType }}" @endif @endif>
+
+<body class="tt-magic-cursor theme-{{ get_active_theme() }} theme-page-{{ $themePageSlug }}" @if (is_theme('theme-04'))
+    data-theme-page="{{ $themePageSlug }}" @if ($themeContentType) data-theme-content-type="{{ $themeContentType }}"
+@endif @endif>
     @if (!empty($settings['google_tag_manager_id']))
         <!-- Google Tag Manager (noscript) -->
         <noscript>
-            <iframe src="https://www.googletagmanager.com/ns.html?id={{ $settings['google_tag_manager_id'] }}"
-                height="0" width="0" style="display:none;visibility:hidden"></iframe>
+            <iframe src="https://www.googletagmanager.com/ns.html?id={{ $settings['google_tag_manager_id'] }}" height="0"
+                width="0" style="display:none;visibility:hidden"></iframe>
         </noscript>
     @endif
 
@@ -328,7 +335,7 @@
     <script src="{{ asset('assets/js/jquery-ui.js') }}"></script>
     <script src="{{ asset('assets/js/moment.min.js') }}"></script>
     <script src="{{ asset('assets/js/daterangepicker.min.js') }}"></script>
-    
+
     <!-- Litepicker for better date picking with month/year selectors -->
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/litepicker/dist/css/litepicker.css">
     <script src="https://cdn.jsdelivr.net/npm/litepicker/dist/litepicker.js"></script>
@@ -362,15 +369,15 @@
 
     <!-- Currency Switching JavaScript -->
     <script>
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             let currencySwitchPending = false;
             const currencyControls = document.querySelectorAll('.header-currency');
-            document.addEventListener('click', function(event) {
+            document.addEventListener('click', function (event) {
                 currencyControls.forEach(control => {
                     if (!control.contains(event.target)) control.open = false;
                 });
             });
-            document.addEventListener('keydown', function(event) {
+            document.addEventListener('keydown', function (event) {
                 if (event.key !== 'Escape') return;
                 currencyControls.forEach(control => {
                     if (!control.open) return;
@@ -379,8 +386,8 @@
                 });
             });
             // Handle currency switching
-            document.querySelectorAll('.currency-option').forEach(function(link) {
-                link.addEventListener('click', function(e) {
+            document.querySelectorAll('.currency-option').forEach(function (link) {
+                link.addEventListener('click', function (e) {
                     e.preventDefault();
                     if (currencySwitchPending) return;
 
@@ -402,15 +409,15 @@
 
                     // Make AJAX request to switch currency
                     fetch('{{ route('currency.switch') }}', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/x-www-form-urlencoded',
-                                'X-CSRF-TOKEN': document.querySelector(
-                                    'meta[name="csrf-token"]').getAttribute('content'),
-                                'Accept': 'application/json'
-                            },
-                            body: 'currency=' + encodeURIComponent(currencyCode)
-                        })
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/x-www-form-urlencoded',
+                            'X-CSRF-TOKEN': document.querySelector(
+                                'meta[name="csrf-token"]').getAttribute('content'),
+                            'Accept': 'application/json'
+                        },
+                        body: 'currency=' + encodeURIComponent(currencyCode)
+                    })
                         .then(response => response.json())
                         .then(data => {
                             if (data.success) {
@@ -440,12 +447,12 @@
             updateCartIcon();
 
             // Listen for cart update events instead of polling
-            window.addEventListener('cartUpdated', function() {
+            window.addEventListener('cartUpdated', function () {
                 updateCartIcon();
             });
 
             // Update cart on page focus (in case cart was updated in another tab)
-            window.addEventListener('focus', function() {
+            window.addEventListener('focus', function () {
                 updateCartIcon();
             });
         });
@@ -456,12 +463,12 @@
 
             // Make AJAX request to get cart count
             fetch('{{ route('cart.get') }}', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
-                    }
-                })
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute('content')
+                }
+            })
                 .then(response => response.json())
                 .then(data => {
                     if (data.success) {
@@ -523,7 +530,7 @@
         window.refreshCartIcon = updateCartIcon;
 
         // Global notification function
-        window.showSuccessNotification = function(message, duration = 3000) {
+        window.showSuccessNotification = function (message, duration = 3000) {
             // Create notification if it doesn't exist
             let notification = document.getElementById('cart-notification');
             if (!notification) {
@@ -577,8 +584,8 @@
     <!-- Popup Display Engine JS -->
     <script src="{{ assetVersion('assets/js/popup-display.js') }}"></script>
     <script type="text/javascript">
-        (function(c, l, a, r, i, t, y) {
-            c[a] = c[a] || function() {
+        (function (c, l, a, r, i, t, y) {
+            c[a] = c[a] || function () {
                 (c[a].q = c[a].q || []).push(arguments)
             };
             t = l.createElement(r);
@@ -592,89 +599,96 @@
 
     @php($floatingWhatsappNumber = preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? ''))
     @if (!empty($floatingWhatsappNumber))
-    <!-- WhatsApp Floating Button -->
-    <a href="https://wa.me/{{ $floatingWhatsappNumber }}" target="_blank" rel="noopener noreferrer" class="whatsapp-float" aria-label="Chat on WhatsApp">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
-            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/>
-        </svg>
-    </a>
-    <style>
-        .whatsapp-float {
-            position: fixed;
-            bottom: 30px;
-            right: 30px;
-            z-index: 9999;
-            background: #25D366;
-            color: #fff;
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 16px rgba(37,211,102,0.45);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            text-decoration: none;
-        }
-        .whatsapp-float:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(37,211,102,0.6);
-            color: #fff;
-        }
-        @media (max-width: 767px) {
+        <!-- WhatsApp Floating Button -->
+        <a href="https://wa.me/{{ $floatingWhatsappNumber }}" target="_blank" rel="noopener noreferrer"
+            class="whatsapp-float" aria-label="Chat on WhatsApp">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="28" height="28">
+                <path
+                    d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z" />
+            </svg>
+        </a>
+        <style>
             .whatsapp-float {
-                bottom: 20px;
-                right: 20px;
-                width: 48px;
-                height: 48px;
+                position: fixed;
+                bottom: 30px;
+                right: 30px;
+                z-index: 9999;
+                background: #25D366;
+                color: #fff;
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 16px rgba(37, 211, 102, 0.45);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                text-decoration: none;
             }
-        }
-    </style>
+
+            .whatsapp-float:hover {
+                transform: scale(1.1);
+                box-shadow: 0 6px 20px rgba(37, 211, 102, 0.6);
+                color: #fff;
+            }
+
+            @media (max-width: 767px) {
+                .whatsapp-float {
+                    bottom: 20px;
+                    right: 20px;
+                    width: 48px;
+                    height: 48px;
+                }
+            }
+        </style>
     @endif
 
     @php($floatingPhone = preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? ''))
     @if (!empty($floatingPhone))
-    <!-- 24/7 Support Call Floating Button -->
-    <a href="tel:{{ $floatingPhone }}" class="call-float" aria-label="24/7 Support Call" title="24/7 Support: {{ $settings['company_phone'] ?? '' }}">
-        <i class="bi bi-telephone-fill" style="font-size: 24px;"></i>
-    </a>
-    <style>
-        .call-float {
-            position: fixed;
-            bottom: 96px;
-            right: 30px;
-            z-index: 9999;
-            background: #BF2629;
-            color: #fff;
-            width: 56px;
-            height: 56px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            box-shadow: 0 4px 16px rgba(191,38,41,0.45);
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-            text-decoration: none;
-        }
-        .call-float:hover {
-            transform: scale(1.1);
-            box-shadow: 0 6px 20px rgba(191,38,41,0.6);
-            color: #fff;
-        }
-        @media (max-width: 767px) {
+        <!-- 24/7 Support Call Floating Button -->
+        <a href="tel:{{ $floatingPhone }}" class="call-float" aria-label="24/7 Support Call"
+            title="24/7 Support: {{ $settings['company_phone'] ?? '' }}">
+            <i class="bi bi-telephone-fill" style="font-size: 24px;"></i>
+        </a>
+        <style>
             .call-float {
-                bottom: 78px;
-                right: 20px;
-                width: 48px;
-                height: 48px;
+                position: fixed;
+                bottom: 96px;
+                right: 30px;
+                z-index: 9999;
+                background: #BF2629;
+                color: #fff;
+                width: 56px;
+                height: 56px;
+                border-radius: 50%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                box-shadow: 0 4px 16px rgba(191, 38, 41, 0.45);
+                transition: transform 0.2s ease, box-shadow 0.2s ease;
+                text-decoration: none;
             }
-            .call-float i {
-                font-size: 20px !important;
+
+            .call-float:hover {
+                transform: scale(1.1);
+                box-shadow: 0 6px 20px rgba(191, 38, 41, 0.6);
+                color: #fff;
             }
-        }
-    </style>
+
+            @media (max-width: 767px) {
+                .call-float {
+                    bottom: 78px;
+                    right: 20px;
+                    width: 48px;
+                    height: 48px;
+                }
+
+                .call-float i {
+                    font-size: 20px !important;
+                }
+            }
+        </style>
     @endif
 
 </body>
-
 </html>
