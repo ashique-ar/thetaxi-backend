@@ -1046,6 +1046,9 @@ class BookingFlowService
             ...$params,
             'service_type_id' => $pricingServiceTypeModel?->id,
         ]);
+        $routeDistanceRequired = $selectedServiceTypeModel?->pricing_mode !== 'day'
+            && ($calculationRequirements['trip_mode'] ?? null) !== 'open_package'
+            && !($calculationRequirements['disable_distance_estimate'] ?? false);
         $hasUsablePickup = is_array($pickupLocation) && $this->isLocationPayloadUsable($pickupLocation);
         $hasUsableDropoff = is_array($dropoffLocation) && $this->isLocationPayloadUsable($dropoffLocation);
         $hasRequiredPricingLocations =
@@ -1531,7 +1534,7 @@ class BookingFlowService
         $returnDurationSeconds = null;
         $isReturnTrip = $params['is_return_trip'] ?? false;
 
-        if ($hasUsablePickup && $hasUsableDropoff) {
+        if ($routeDistanceRequired && $hasUsablePickup && $hasUsableDropoff) {
             $distanceData = $this->calculateCompanyDistances(
                 $pickupLocation,
                 $dropoffLocation,
@@ -1586,7 +1589,8 @@ class BookingFlowService
             }
         }
 
-        $distanceCalculationFailed = $hasUsablePickup
+        $distanceCalculationFailed = $routeDistanceRequired
+            && $hasUsablePickup
             && $hasUsableDropoff
             && !is_numeric($outboundDistanceKm);
 
@@ -5318,7 +5322,13 @@ class BookingFlowService
             $inputs['package_included_km'] = (float) $params['package_included_km'];
         }
 
-        if (is_array($params['pickup_location'] ?? null)
+        $calculationRequirements = $this->getDynamicCalculationRequirements($params);
+        $routeDistanceRequired = $serviceType?->pricing_mode !== 'day'
+            && ($calculationRequirements['trip_mode'] ?? null) !== 'open_package'
+            && !($calculationRequirements['disable_distance_estimate'] ?? false);
+
+        if ($routeDistanceRequired
+            && is_array($params['pickup_location'] ?? null)
             && is_array($params['dropoff_location'] ?? null)
             && $this->isLocationPayloadUsable($params['pickup_location'])
             && $this->isLocationPayloadUsable($params['dropoff_location'])) {
