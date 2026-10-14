@@ -4,6 +4,7 @@ namespace App\Console\Commands;
 
 use App\Models\Hr\Attendance\AttendanceDevice;
 use App\Services\Hr\Attendance\DirectAttendanceSyncService;
+use App\Services\WebsiteSettingsService;
 use Carbon\CarbonImmutable;
 use Illuminate\Console\Command;
 
@@ -12,9 +13,15 @@ class SyncHikvisionAttendance extends Command
     protected $signature = 'hr:hikvision-sync {--device=} {--lookback-minutes=15} {--days=}';
     protected $description = 'Pull and reconcile attendance events from active direct-ISAPI Hikvision terminals';
 
-    public function handle(DirectAttendanceSyncService $sync): int
+    public function handle(DirectAttendanceSyncService $sync, WebsiteSettingsService $settings): int
     {
-        
+        $enabled = filter_var($settings->get('feature_hr_attendance_ingestion_enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
+        if (! $enabled) {
+            $this->warn('Hikvision attendance ingestion is disabled.');
+
+            return self::SUCCESS;
+        }
+
         $query=AttendanceDevice::query()->where('provider','hikvision')->where('integration_mode','direct_isapi')->where('status','active')->when($this->option('device'),fn($q,$id)=>$q->whereKey($id));
         $failed=false;
         foreach($query->cursor() as $device){

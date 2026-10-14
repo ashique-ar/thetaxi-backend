@@ -17,6 +17,7 @@ class EnsureBusinessModuleEnabled
     {
         $setting = match ($module) {
             'hr' => 'feature_hr_management_enabled',
+            'hr-attendance-ingestion' => 'feature_hr_attendance_ingestion_enabled',
             'sales' => 'feature_sales_management_enabled',
             default => null,
         };
@@ -25,8 +26,9 @@ class EnsureBusinessModuleEnabled
             abort(404);
         }
 
-        $value = $this->settings->get($setting, true);
-        $enabled = filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true;
+        $default = $module === 'hr-attendance-ingestion' ? false : true;
+        $value = $this->settings->get($setting, $default);
+        $enabled = filter_var($value, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? $default;
 
         if (!$enabled) {
             return response()->json([

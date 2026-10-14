@@ -67,6 +67,7 @@ class BusinessSettingController extends Controller
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
             'feature_hr_management_enabled',
+            'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',

@@ -851,6 +851,11 @@ class SettingsCategoryService
                     'type' => 'toggle',
                     'description' => 'Enable or disable the complete HR module.'
                 ],
+                'feature_hr_attendance_ingestion_enabled' => [
+                    'label' => 'Hikvision Attendance Ingestion',
+                    'type' => 'toggle',
+                    'description' => 'Allow signed attendance connectors to submit raw attendance events after HR, privacy, and site approval.'
+                ],
                 'feature_sales_management_enabled' => [
                     'label' => 'Sales Management',
                     'type' => 'toggle',

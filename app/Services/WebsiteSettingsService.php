@@ -60,6 +60,7 @@ class WebsiteSettingsService
         'late_return_fee_per_minute',
         'feature_corporate_management_enabled',
         'feature_hr_management_enabled',
+        'feature_hr_attendance_ingestion_enabled',
         'feature_sales_management_enabled',
         'assignment_enable_maintenance_stage',
         'internal_pricing_mode',
@@ -1090,6 +1091,7 @@ class WebsiteSettingsService
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
             'feature_hr_management_enabled',
+            'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
         ];
 
@@ -1141,6 +1143,7 @@ class WebsiteSettingsService
             'feature_corporate_management_enabled',
             'feature_vehicle_return_management_enabled',
             'feature_hr_management_enabled',
+            'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
         ]);
     }

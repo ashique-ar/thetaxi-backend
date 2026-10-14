@@ -3025,7 +3025,7 @@ Route::middleware(['auth:api'])->group(function () {
 |
 */
 
-Route::post('hr/attendance/ingest', AttendanceIngestionController::class)->middleware(['business.module:hr', 'throttle:60,1']);
+Route::post('hr/attendance/ingest', AttendanceIngestionController::class)->middleware(['business.module:hr', 'business.module:hr-attendance-ingestion', 'throttle:60,1']);
 Route::get('health', HealthController::class);
 
 /*
