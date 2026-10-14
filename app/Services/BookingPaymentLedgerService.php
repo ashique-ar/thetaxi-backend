@@ -748,12 +748,13 @@ class BookingPaymentLedgerService
                 abort_unless($duplicate->legacy_repair_request_checksum
                     && hash_equals((string) $duplicate->legacy_repair_request_checksum, $requestChecksum), 409,
                     'This repair key was already used with different payment facts.');
-                $originalEvidence = DB::table('domain_evidence_files')->where('id', $duplicate->legacy_repair_evidence_file_id)
-                    ->where('domain', 'sales')->where('company_id', $attribution->company_id)
-                    ->where('subject_type', 'booking')->where('subject_id', $booking->id)
-                    ->where('evidence_type', 'legacy_paid_receipt_repair')->where('classification', 'restricted')
-                    ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-                abort_unless($originalEvidence, 409, 'The original restricted repair evidence is unavailable.');
+                $originalEvidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                    (string) $duplicate->legacy_repair_evidence_file_id, (string) $attribution->company_id,
+                    'booking', [$booking->id], true,
+                );
+                abort_unless($originalEvidence->evidence_type === 'legacy_paid_receipt_repair'
+                    && $originalEvidence->classification === 'restricted', 409,
+                    'The original restricted repair evidence is unavailable.');
                 $events = FinancialAuditEvent::query()->where('booking_id', $booking->id)
                     ->where('subject_type', 'booking_payment')->where('subject_id', $duplicate->id)
                     ->where('event_type', 'legacy_payment_receipt_repaired')->limit(2)->get();
@@ -769,12 +770,11 @@ class BookingPaymentLedgerService
 
                 return ['summary' => $this->summary($booking->fresh()), 'replayed' => true];
             }
-            $evidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
-                ->where('domain', 'sales')->where('company_id', $attribution->company_id)
-                ->where('subject_type', 'booking')->where('subject_id', $booking->id)
-                ->where('evidence_type', 'legacy_paid_receipt_repair')->where('classification', 'restricted')
-                ->whereNull('deleted_at')->lockForUpdate()->first(['id']);
-            abort_unless($evidence, 422,
+            $evidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                $data['evidence_file_id'], (string) $attribution->company_id, 'booking', [$booking->id], true,
+            );
+            abort_unless($evidence->evidence_type === 'legacy_paid_receipt_repair'
+                && $evidence->classification === 'restricted', 422,
                 'Attach restricted receipt evidence to this booking before repairing its payment ledger.');
             $beforeChecksum = $this->legacyRepairStateChecksum($booking, (string) $attribution->company_id);
 

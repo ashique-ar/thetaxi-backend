@@ -40,25 +40,35 @@ class BookingAttributionMutationService
                 ->where('booking_id', $locked->booking_id)
                 ->where('exception_type', 'historical_company_owner_review_required')
                 ->where('status', 'open')->exists();
-            if ($locked->company_id !== null) {
-                throw new RuntimeException('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.');
-            }
-            if ($locked->acquisition_sales_profile_id !== null || ($locked->status !== 'held' && ! $stagedOwnerReview)) {
-                throw new RuntimeException('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.');
-            }
 
             $entityKey = "{$idempotencyKey}:entity";
             $existingEntity = DB::table('sales_booking_attribution_events')
                 ->where('attribution_id', $locked->id)->where('idempotency_key', $entityKey)->first();
             if ($existingEntity) {
+                $existingOwner = DB::table('sales_booking_attribution_events')
+                    ->where('attribution_id', $locked->id)->where('idempotency_key', "{$idempotencyKey}:owner")->first();
                 if ($existingEntity->event_type !== 'legal_entity_established'
                     || (string) ($existingEntity->to_value ?? '') !== (string) $toProfile->company_id
                     || (string) ($existingEntity->reason ?? '') !== $reason
-                    || $existingEntity->actor_user_id !== $actorUserId) {
-                    throw new RuntimeException('The attribution idempotency key was already used for a different legal-entity establishment.');
+                    || $existingEntity->actor_user_id !== $actorUserId
+                    || ! $existingOwner
+                    || $existingOwner->event_type !== 'acquisition_owner_corrected'
+                    || (string) ($existingOwner->to_value ?? '') !== (string) $toProfile->id
+                    || (string) ($existingOwner->reason ?? '') !== $reason
+                    || $existingOwner->actor_user_id !== $actorUserId
+                    || (string) $locked->company_id !== (string) $toProfile->company_id
+                    || (string) $locked->acquisition_sales_profile_id !== (string) $toProfile->id) {
+                    throw new RuntimeException('The attribution idempotency key was already used for different or incomplete legal-entity evidence.');
                 }
 
                 return $locked;
+            }
+
+            if ($locked->company_id !== null) {
+                throw new RuntimeException('The attribution already has an immutable legal entity; use the acquisition-owner correction instead.');
+            }
+            if ($locked->acquisition_sales_profile_id !== null || ($locked->status !== 'held' && ! $stagedOwnerReview)) {
+                throw new RuntimeException('The attribution has an acquisition owner but no legal entity; this state is not supported by this command.');
             }
 
             $target = SalesProfile::query()->lockForUpdate()->find($toProfile->id);

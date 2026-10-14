@@ -358,11 +358,12 @@ class PaymentLedgerReconciliationController extends Controller
                 abort_unless((string) $duplicate->receipt_id === (string) $receipt->id
                     && hash_equals((string) $duplicate->repair_request_checksum, $requestChecksum), 409,
                     'This component repair key was already used with different facts.');
-                abort_unless(DB::table('domain_evidence_files')->where('id', $duplicate->repair_evidence_file_id)
-                    ->where('domain', 'sales')->where('company_id', $attribution->company_id)
-                    ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)
-                    ->where('evidence_type', 'legacy_payment_component_repair')
-                    ->where('classification', 'restricted')->whereNull('deleted_at')->exists(), 409,
+                $originalEvidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                    (string) $duplicate->repair_evidence_file_id, (string) $attribution->company_id,
+                    'booking_payment_receipt', [$receipt->id], true,
+                );
+                abort_unless($originalEvidence->evidence_type === 'legacy_payment_component_repair'
+                    && $originalEvidence->classification === 'restricted', 409,
                     'Original restricted component repair evidence is missing or unavailable.');
                 $afterChecksum = $this->componentRepairChecksum($duplicate);
                 $events = DB::table('domain_audit_events')->where('domain', 'sales')
@@ -386,11 +387,12 @@ class PaymentLedgerReconciliationController extends Controller
                 'Component repair audit evidence exists without its source row; replay is held.');
             abort_if($receipt->components()->exists(), 422,
                 'Receipt components already exist; create an adjustment instead of rewriting classification.');
-            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
-                ->where('domain', 'sales')->where('company_id', $attribution->company_id)
-                ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)
-                ->where('evidence_type', 'legacy_payment_component_repair')
-                ->where('classification', 'restricted')->whereNull('deleted_at')->exists(), 422,
+            $evidence = app(\App\Services\Sales\SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                $data['evidence_file_id'], (string) $attribution->company_id,
+                'booking_payment_receipt', [$receipt->id], true,
+            );
+            abort_unless($evidence->evidence_type === 'legacy_payment_component_repair'
+                && $evidence->classification === 'restricted', 422,
                 'Restricted evidence must be attached to this receipt and legal entity.');
             $beforeChecksum = hash('sha256', json_encode([
                 'booking_id' => (string) $booking->id, 'company_id' => (string) $attribution->company_id,

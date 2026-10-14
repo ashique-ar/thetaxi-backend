@@ -47,6 +47,7 @@ class BookingFormTabController extends Controller
     {
         $validator = Validator::make($request->all(), [
             'label' => 'sometimes|string|max:255',
+            'service_type_code' => 'sometimes|nullable|string|exists:service_types,code',
             'enabled' => 'sometimes|boolean',
             'sort_order' => 'sometimes|integer|min:0',
             'icon_type' => 'sometimes|string|in:svg,icon-class,image',
@@ -79,6 +80,7 @@ class BookingFormTabController extends Controller
         }
         $tab->update($request->only([
             'label',
+            'service_type_code',
             'enabled',
             'sort_order',
             'icon_type',
@@ -92,7 +94,7 @@ class BookingFormTabController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Tab updated successfully',
-            'data' => $tab->fresh(),
+            'data' => $tab->fresh()->load('serviceType'),
         ]);
     }
 

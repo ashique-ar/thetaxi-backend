@@ -275,8 +275,12 @@ class CommissionConfigurationController extends Controller
     {
         $family = SalesCommissionPlanFamily::query()->findOrFail($version->plan_family_id);
         $this->assertCompanyScope($request, $family->company_id);
-        $version = $this->approveDraft($version, $request, $family->company_id, 'plan version', function ($locked) {
-            SalesCommissionPlanFamily::query()->whereKey($locked->plan_family_id)->lockForUpdate()->firstOrFail();
+        $familyId = (string) $family->id;
+        $companyId = (string) $family->company_id;
+        $version = $this->approveDraft($version, $request, $companyId, 'plan version', function ($locked) use ($familyId, $companyId) {
+            $lockedFamily = SalesCommissionPlanFamily::query()->whereKey($locked->plan_family_id)->lockForUpdate()->firstOrFail();
+            abort_unless((string) $locked->plan_family_id === $familyId && (string) $lockedFamily->company_id === $companyId, 422,
+                'Plan version and family must belong to the same legal entity.');
             $overlap = SalesCommissionPlanVersion::query()->where('plan_family_id', $locked->plan_family_id)->where('status', 'approved')
                 ->where('effective_from', '<', $locked->effective_until ?? '9999-12-31')
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
@@ -331,8 +335,9 @@ class CommissionConfigurationController extends Controller
         $this->assertCompanyScope($request, $assignment->company_id);
         $assignment = $this->approveDraft($assignment, $request, $assignment->company_id, 'plan assignment', function ($locked) {
             $this->validateScopedTarget($locked->only(['company_id', 'scope_type', 'staff_category', 'sales_profile_id', 'staff_id']));
-            $family = SalesCommissionPlanFamily::query()->findOrFail($locked->plan_family_id);
-            abort_unless($family->status === 'approved', 422, 'The assigned family is not approved.');
+            $family = SalesCommissionPlanFamily::query()->lockForUpdate()->findOrFail($locked->plan_family_id);
+            abort_unless($family->status === 'approved' && (string) $family->company_id === (string) $locked->company_id,
+                422, 'The assigned family must be approved in the same legal entity.');
             $overlap = SalesCommissionPlanAssignment::query()->where('company_id', $locked->company_id)
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->where('sales_profile_id', $locked->sales_profile_id)->where('staff_id', $locked->staff_id)
@@ -362,7 +367,10 @@ class CommissionConfigurationController extends Controller
     {
         $this->assertCompanyScope($request, $override->company_id);
         $override = $this->approveDraft($override, $request, $override->company_id, 'Staff override', function ($locked) {
-            Staff::query()->whereKey($locked->staff_id)->lockForUpdate()->firstOrFail();
+            $staff = Staff::query()->whereKey($locked->staff_id)->lockForUpdate()->firstOrFail();
+            abort_unless($staff->company_id === $locked->company_id && ! $staff->trashed()
+                && (! $staff->employment_ended_at || $staff->employment_ended_at->gt(now())), 422,
+                'Staff override target must remain active in the same legal entity.');
             $overlap = SalesCommissionStaffOverride::query()->where('staff_id', $locked->staff_id)->where('status', 'approved')
                 ->where('effective_from', '<', $locked->effective_until ?? '9999-12-31')
                 ->where(fn ($q) => $q->whereNull('effective_until')->orWhere('effective_until', '>', $locked->effective_from))->exists();
@@ -435,21 +443,25 @@ class CommissionConfigurationController extends Controller
     public function storeBusinessCalendarDate(Request $request, SalesCommissionBusinessCalendar $calendar): JsonResponse
     {
         $this->assertCompanyScope($request, $calendar->company_id);
-        abort_unless($calendar->status === 'draft', 409, 'Approved business calendars are immutable; create a new effective version.');
         $data = $request->validate([
-            'calendar_date' => ['required', 'date', 'after_or_equal:'.$calendar->effective_from->toDateString()],
+            'calendar_date' => ['required', 'date_format:Y-m-d'],
             'day_type' => ['required', Rule::in(['working_day', 'holiday'])],
             'name' => ['required', 'string', 'max:160'],
         ]);
-        if ($calendar->effective_until) {
-            abort_if($data['calendar_date'] >= $calendar->effective_until->toDateString(), 422,
+        $date = DB::transaction(function () use ($calendar, $data, $request) {
+            $locked = SalesCommissionBusinessCalendar::query()->whereKey($calendar->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'draft', 409, 'Approved business calendars are immutable; create a new effective version.');
+            abort_if($data['calendar_date'] < $locked->effective_from->toDateString()
+                || ($locked->effective_until && $data['calendar_date'] >= $locked->effective_until->toDateString()), 422,
                 'Calendar exception must fall inside the calendar effective interval.');
-        }
-        abort_if(SalesCommissionBusinessCalendarDate::query()->where('calendar_id', $calendar->id)
-            ->whereDate('calendar_date', $data['calendar_date'])->exists(), 422, 'A calendar exception already exists for this date.');
-        return $this->confirmation(SalesCommissionBusinessCalendarDate::create(
-            $data + ['calendar_id' => $calendar->id, 'created_by' => $request->user()->id]
-        ), 201);
+            abort_if(SalesCommissionBusinessCalendarDate::query()->where('calendar_id', $locked->id)
+                ->whereDate('calendar_date', $data['calendar_date'])->exists(), 422, 'A calendar exception already exists for this date.');
+
+            return SalesCommissionBusinessCalendarDate::create(
+                $data + ['calendar_id' => $locked->id, 'created_by' => $request->user()->id]
+            );
+        });
+        return $this->confirmation($date, 201);
     }
 
     public function approveBusinessCalendar(Request $request, SalesCommissionBusinessCalendar $calendar): JsonResponse
@@ -470,8 +482,12 @@ class CommissionConfigurationController extends Controller
     {
         $calendar = SalesCommissionBusinessCalendar::query()->findOrFail($calendarDate->calendar_id);
         $this->assertCompanyScope($request, $calendar->company_id);
-        abort_unless($calendar->status === 'draft', 409, 'Approved business-calendar evidence is immutable.');
-        $calendarDate->delete();
+        DB::transaction(function () use ($calendar, $calendarDate): void {
+            $locked = SalesCommissionBusinessCalendar::query()->whereKey($calendar->id)->lockForUpdate()->firstOrFail();
+            abort_unless($locked->status === 'draft', 409, 'Approved business-calendar evidence is immutable.');
+            SalesCommissionBusinessCalendarDate::query()->where('calendar_id', $locked->id)
+                ->lockForUpdate()->findOrFail($calendarDate->id)->delete();
+        });
         return response()->json(['status' => 'success', 'message' => 'Draft calendar exception removed.']);
     }
 
@@ -499,8 +515,10 @@ class CommissionConfigurationController extends Controller
     {
         $this->assertCompanyScope($request, $assignment->company_id);
         $assignment = $this->approveDraft($assignment, $request, $assignment->company_id, 'cycle assignment', function ($locked) {
-            $cycle = SalesCommissionCycleVersion::query()->findOrFail($locked->cycle_version_id);
-            abort_unless($cycle->status === 'approved', 422, 'The assigned cycle version is not approved.');
+            $this->validateScopedTarget($locked->only(['company_id', 'scope_type', 'staff_category', 'sales_profile_id', 'staff_id']));
+            $cycle = SalesCommissionCycleVersion::query()->whereKey($locked->cycle_version_id)->lockForUpdate()->firstOrFail();
+            abort_unless($cycle->status === 'approved' && (string) $cycle->company_id === (string) $locked->company_id,
+                422, 'The assigned cycle must be approved in the same legal entity.');
             $overlap = SalesCommissionCycleAssignment::query()->where('company_id', $locked->company_id)
                 ->where('scope_type', $locked->scope_type)->where('status', 'approved')->where('id', '!=', $locked->id)
                 ->where('sales_profile_id', $locked->sales_profile_id)->where('staff_id', $locked->staff_id)

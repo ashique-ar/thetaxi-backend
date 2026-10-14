@@ -419,7 +419,9 @@ class SalesCrmController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['sales_profile_id']);
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
+        $authorizedProfileIds = $this->scope->profileIds(
+            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
+        );
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->recordActivity($data, (string) $request->user()->id, $authorizedProfileIds))], 201);
     }
 
@@ -547,7 +549,9 @@ class SalesCrmController extends Controller
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']); $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
-        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team');
+        $authorizedProfileIds = $this->scope->profileIds(
+            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
+        );
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createTask($data, (string) $request->user()->id, $authorizedProfileIds))], 201);
     }
 

@@ -295,9 +295,13 @@ class SalesPerformanceController extends Controller
     public function preview(Request $request, SalesPerformanceService $performance): JsonResponse
     {
         $data = $this->periodInput($request);
+        $this->assertCompanyScope($request, $data['company_id']);
         $result = $performance->preview($data['company_id'], $data['period_start'], $data['period_end'], $data['cutoff_at']);
-        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
-        if ($ids !== null) $result['rows'] = array_values(array_filter($result['rows'], fn ($row) => in_array($row['sales_profile_id'], $ids, true)));
+        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $data['company_id']);
+        if ($ids !== null) {
+            $result['rows'] = array_values(array_filter($result['rows'], fn ($row) => in_array($row['sales_profile_id'], $ids, true)));
+            $result['aging_missing_lineage_count'] = (int) (collect($result['rows'])->max('aging_profile_lineage_missing_count') ?? 0);
+        }
         return response()->json(['status' => 'success', 'data' => $result]);
     }
 
@@ -369,11 +373,10 @@ class SalesPerformanceController extends Controller
         $data = $request->validate(['company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $this->assertCompanyScope($request, $data['company_id']);
-        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
+        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $data['company_id']);
         $query = SalesKpiSnapshot::query()->with(['rows' => fn ($q) => $ids === null ? $q : $q->whereIn('sales_profile_id', $ids)]);
         if ($ids !== null) {
-            $companyIds = SalesProfile::query()->withTrashed()->whereIn('id', $ids)->pluck('company_id')->unique();
-            $query->whereIn('company_id', $companyIds);
+            $query->whereHas('rows', fn ($q) => $q->whereIn('sales_profile_id', $ids));
         }
         $page = $query->where('company_id', $data['company_id'])
             ->latest('period_end')->paginate($this->paginationSize($request, 12));
@@ -589,7 +592,7 @@ class SalesPerformanceController extends Controller
 
     private function assertCompanyScope(Request $request, string $companyId): void
     {
-        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
+        $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team', $companyId);
         if ($ids === null) return;
         abort_unless(SalesProfile::query()->whereIn('id', $ids)->where('company_id', $companyId)->exists(), 403, 'Sales performance administration is outside your legal entity or team scope.');
     }

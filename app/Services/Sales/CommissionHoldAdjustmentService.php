@@ -20,6 +20,7 @@ use App\Models\Sales\SalesProfile;
 use App\Support\Foundation\CanonicalJson;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
+use Symfony\Component\HttpKernel\Exception\HttpExceptionInterface;
 
 class CommissionHoldAdjustmentService
 {
@@ -254,14 +255,8 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The confirmed finality event predates the original receipt.');
         }
         if ($policy->required_evidence_type) {
-            $evidence = $finalityEvent->evidence_reference
-                ? DB::table('domain_evidence_files')->where('id', $finalityEvent->evidence_reference)
-                    ->whereNull('deleted_at')->where('domain', 'sales')
-                    ->where('company_id', $decision->company_id)
-                    ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)
-                    ->where('evidence_type', $policy->required_evidence_type)->first()
-                : null;
-            if (! $evidence) {
+            if (! $this->hasIntactFinalityEvidence($finalityEvent->evidence_reference, $decision->company_id,
+                $receipt->id, $policy->required_evidence_type)) {
                 return $this->blocked($decision,
                     'The confirmed finality event lacks the private evidence required by the approved policy.');
             }
@@ -444,14 +439,8 @@ class CommissionHoldAdjustmentService
             return $this->blocked($decision, 'The confirmed finality event predates the original receipt.');
         }
         if ($policy->required_evidence_type) {
-            $evidence = $finalityEvent->evidence_reference
-                ? DB::table('domain_evidence_files')->where('id', $finalityEvent->evidence_reference)
-                    ->whereNull('deleted_at')->where('domain', 'sales')
-                    ->where('company_id', $decision->company_id)
-                    ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)
-                    ->where('evidence_type', $policy->required_evidence_type)->first()
-                : null;
-            if (! $evidence) {
+            if (! $this->hasIntactFinalityEvidence($finalityEvent->evidence_reference, $decision->company_id,
+                $receipt->id, $policy->required_evidence_type)) {
                 return $this->blocked($decision,
                     'The confirmed finality event lacks the private evidence required by the approved policy.');
             }
@@ -1383,6 +1372,19 @@ class CommissionHoldAdjustmentService
 
             return $adjustment;
         }, 3);
+    }
+
+    private function hasIntactFinalityEvidence(?string $evidenceId, string $companyId, string $receiptId, string $requiredType): bool
+    {
+        if (! $evidenceId) return false;
+        try {
+            $evidence = app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                $evidenceId, $companyId, 'booking_payment_receipt', [$receiptId],
+            );
+        } catch (HttpExceptionInterface) {
+            return false;
+        }
+        return $evidence->evidence_type === $requiredType;
     }
 
     private function blocked(SalesCommissionDecision $decision, string $blocker): array

@@ -60,10 +60,10 @@ class CommissionPayoutService
             $amount = round((float) $data['amount_lkr'], 4);
             abort_if($amount > $available, 422, "Payout exceeds the uncontested approved balance of {$available} LKR.");
             if (! empty($data['evidence_file_id'])) {
-                $validEvidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
-                    ->where('domain', 'sales')->where('company_id', $statements->first()->company_id)->whereNull('deleted_at')
-                    ->where('subject_type', 'commission_statement')->whereIn('subject_id', $statements->pluck('id'))->exists();
-                abort_unless($validEvidence, 422, 'Payout evidence must be bound to one selected statement and its Sales legal entity.');
+                app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                    $data['evidence_file_id'], (string) $statements->first()->company_id,
+                    'commission_statement', $statements->pluck('id')->all(),
+                );
             }
             $payout = SalesCommissionPayout::create([
                 'company_id' => $statements->first()->company_id, 'staff_id' => $statements->first()->staff_id,
@@ -140,10 +140,9 @@ class CommissionPayoutService
             abort_unless($original->status === 'confirmed' && ! $original->reverses_payout_id, 422, 'Only a confirmed original payout can be reversed once.');
             abort_if($original->paid_by === $actorUserId, 403, 'The original payer cannot approve their own payout reversal.');
             abort_unless(! empty($data['evidence_file_id']), 422, 'Payout-reversal evidence is required.');
-            abort_unless(DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])
-                ->where('domain', 'sales')->where('company_id', $original->company_id)->whereNull('deleted_at')
-                ->where('subject_type', 'commission_payout')->where('subject_id', $original->id)->exists(), 422,
-                'Payout-reversal evidence must be bound to the original payout and Sales legal entity.');
+            app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                $data['evidence_file_id'], (string) $original->company_id, 'commission_payout', [$original->id],
+            );
             $allocations = SalesCommissionPayoutAllocation::query()->where('payout_id', $original->id)->lockForUpdate()->get();
             abort_if($allocations->isEmpty(), 422, 'A payout without statement allocations cannot be reversed.');
             $statementIds = $allocations->pluck('statement_id')->unique();

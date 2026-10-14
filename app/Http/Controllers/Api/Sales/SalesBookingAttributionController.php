@@ -248,7 +248,7 @@ class SalesBookingAttributionController extends Controller
         $data = $request->validate([
             'to_sales_profile_id' => ['required', 'uuid'],
             'reason' => ['required', 'string', 'max:2000'],
-            'idempotency_key' => ['required', 'string', 'max:160'],
+            'idempotency_key' => ['required', 'string', 'max:153'],
         ]);
         $attribution = $this->scopedAttribution($request, $attribution);
         $ownerReviewDisposition = ! $attribution->company_id

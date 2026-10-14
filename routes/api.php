@@ -1192,6 +1192,7 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('hr/performance')->middleware('business.module:hr')->group(function () {
         Route::get('reviews', [PerformanceController::class, 'index'])->middleware('permission:hr.performance.view');
         Route::get('reviews/{id}', [PerformanceController::class, 'show'])->whereUuid('id')->middleware('permission:hr.performance.view');
+        Route::get('reviews/{id}/sales-kpi-options', [PerformanceController::class, 'salesKpiOptions'])->whereUuid('id')->middleware('permission:hr.performance.view');
         Route::post('cycles', [PerformanceController::class, 'storeCycle'])->middleware('permission:hr.performance.configure');
         Route::post('cycles/{id}/approve', [PerformanceController::class, 'approveCycle'])->whereUuid('id')->middleware('permission:hr.performance.approve-config');
         Route::post('templates', [PerformanceController::class, 'storeTemplate'])->middleware('permission:hr.performance.configure');

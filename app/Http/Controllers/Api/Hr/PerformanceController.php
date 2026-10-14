@@ -25,12 +25,15 @@ class PerformanceController extends Controller
 
     public function show(Request $request, string $id, SalesKpiReviewEvidenceService $salesEvidence): JsonResponse
     {
-        $actor = $this->actor($request);
-        $review = DB::table('hr_performance_reviews')->where('id', $id)->where('company_id', $actor->company_id)->first();
-        abort_unless($review, 404);
-        abort_unless($request->user()->can('hr.performance.view-all') || $review->staff_id===$actor->id || $review->manager_staff_id===$actor->id,403);
+        $review = $this->visibleReview($request, $id);
         $link = $salesEvidence->forReview($id);
         return response()->json(['status' => 'success', 'data' => ['review' => $review, 'responses' => DB::table('hr_review_responses')->where('review_id', $id)->get(), 'goals' => DB::table('hr_goals')->where('review_id', $id)->get(), 'sales_kpi_evidence' => $link, 'events' => DB::table('hr_performance_review_events')->where('review_id', $id)->orderBy('occurred_at')->get()]]);
+    }
+
+    public function salesKpiOptions(Request $request, string $id, SalesKpiReviewEvidenceService $salesEvidence): JsonResponse
+    {
+        $review = $this->visibleReview($request, $id);
+        return response()->json(['status' => 'success', 'data' => $salesEvidence->optionsForReview($review)]);
     }
 
     public function storeCycle(Request $request): JsonResponse
@@ -109,6 +112,16 @@ class PerformanceController extends Controller
 
     private function achievementEvent(string$id,string$type,?string$from,?string$to,?string$reason,string$actor):void{DB::table('hr_achievement_events')->insert(['id'=>(string)Str::uuid(),'achievement_id'=>$id,'event_type'=>$type,'from_status'=>$from,'to_status'=>$to,'reason'=>$reason,'actor_user_id'=>$actor,'occurred_at'=>now()]);}
     private function actor(Request$request):Staff{return app(StaffAccessService::class)->currentActorStaff($request->user());}
+    private function visibleReview(Request $request, string $id): object
+    {
+        $actor = $this->actor($request);
+        $review = DB::table('hr_performance_reviews')->where('id', $id)->where('company_id', $actor->company_id)->first();
+        abort_unless($review, 404);
+        abort_unless($request->user()->can('hr.performance.view-all') || $review->staff_id === $actor->id || $review->manager_staff_id === $actor->id, 403);
+
+        return $review;
+    }
+
     private function company(Request$request,string$id):void{abort_unless($this->actor($request)->company_id===$id,403,'Performance data is outside your legal entity.');}
     private function owns(Request$request,string$table,string$id):void{$company=DB::table($table)->where('id',$id)->value('company_id');abort_unless($company,404);$this->company($request,$company);}
     

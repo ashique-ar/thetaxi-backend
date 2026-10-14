@@ -54,6 +54,13 @@ class CommissionAccountingOutboxReconciliationService
         if (! $source) $issues[] = 'source_event_missing';
         if (! $accounting) $issues[] = 'accounting_event_missing';
 
+        $sourcePayload = $source ? json_decode($source->payload, true) : null;
+        $sourceChecksumValid = $source && is_array($sourcePayload)
+            && hash_equals($source->payload_checksum, hash('sha256', CanonicalJson::encode($sourcePayload)));
+        if ($source && ! $sourceChecksumValid) $issues[] = 'source_event_checksum_invalid';
+        if ($source && (string) $source->company_id !== (string) $payout->company_id) $issues[] = 'source_event_company_mismatch';
+        if ($accounting && (string) $accounting->company_id !== (string) $payout->company_id) $issues[] = 'accounting_event_company_mismatch';
+
         $payload = $accounting ? json_decode($accounting->payload, true) : null;
         $checksumValid = $accounting && is_array($payload)
             && hash_equals($accounting->payload_checksum, hash('sha256', CanonicalJson::encode($payload)));
@@ -108,9 +115,14 @@ class CommissionAccountingOutboxReconciliationService
 
         $deliveryRecords = DB::table('sales_commission_accounting_deliveries')
             ->where('payout_id', $payout->id)->where('event_type', $deliveryEventType)->where('status', 'accepted')->get();
+        if ($deliveryRecords->contains(static fn (object $delivery): bool => (string) $delivery->company_id !== (string) $payout->company_id)) {
+            $issues[] = 'delivery_company_mismatch';
+        }
         $verified = $deliveryRecords->contains(static fn (object $delivery): bool => $delivery->verification_source === 'quickbooks'
+            && (string) $delivery->company_id === (string) $payout->company_id
             && $delivery->source_outbox_event_id === $accounting?->id
-            && $delivery->provider_transaction_id !== null && $delivery->provider_response_checksum !== null);
+            && trim((string) $delivery->provider_transaction_id) !== ''
+            && preg_match('/^[a-f0-9]{64}$/i', (string) $delivery->provider_response_checksum) === 1);
         $manualAcknowledgement = $deliveryRecords->contains(static fn (object $delivery): bool => $delivery->verification_source !== 'quickbooks');
         if (($payout->accounting_status === 'delivered') !== $verified) $issues[] = 'delivery_status_mismatch';
         if ($manualAcknowledgement) $issues[] = 'manual_reference_unverified';
@@ -128,8 +140,10 @@ class CommissionAccountingOutboxReconciliationService
             'paid_at' => $payout->paid_at,
             'payment_reference' => $payout->payment_reference,
             'accounting_status' => $payout->accounting_status,
-            'integration_status' => $payout->accounting_status === 'delivered' ? 'verified_delivered'
-                : (! $subscriberRegistered ? 'awaiting_subscriber' : ($accounting?->published_at ? 'relayed' : 'pending_relay')),
+            'integration_status' => $verified ? 'verified_delivered'
+                : (($payout->accounting_status === 'delivered' || in_array('delivery_company_mismatch', $issues, true))
+                    ? 'delivery_integrity_issue'
+                    : (! $subscriberRegistered ? 'awaiting_subscriber' : ($accounting?->published_at ? 'relayed' : 'pending_relay'))),
             'delivery_verification' => $verified ? 'quickbooks_verified' : ($manualAcknowledgement ? 'manual_unverified' : 'not_delivered'),
             'source_event_id' => $source?->id,
             'accounting_event_id' => $accounting?->id,

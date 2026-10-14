@@ -8,6 +8,7 @@ use App\Http\Requests\Website\WebsiteSetting\CreateWebsiteSettingRequest;
 use App\Http\Requests\Website\WebsiteSetting\UpdateWebsiteSettingRequest;
 use App\Http\Resources\Website\WebsiteSettingResource;
 use App\Services\WebsiteSettingsService;
+use App\Services\Hr\Attendance\AttendanceIngestionActivationGuard;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
@@ -19,7 +20,10 @@ class WebsiteSettingController extends Controller
 {
     protected WebsiteSettingsService $settingsService;
 
-    public function __construct(WebsiteSettingsService $settingsService)
+    public function __construct(
+        WebsiteSettingsService $settingsService,
+        private readonly AttendanceIngestionActivationGuard $attendanceActivation,
+    )
     {
         $this->settingsService = $settingsService;
         $this->middleware('permission:website-settings.view')->only([
@@ -69,6 +73,7 @@ class WebsiteSettingController extends Controller
     public function store(CreateWebsiteSettingRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
         $data['value'] = WebsiteSetting::normalizeValue($data['value'] ?? null);
         $data['company_id'] = $this->settingsService->resolveCurrentCompanyId();
         $data['created_user_id'] = $request->user()->id;
@@ -93,6 +98,10 @@ class WebsiteSettingController extends Controller
     public function update(UpdateWebsiteSettingRequest $request, WebsiteSetting $websiteSetting): JsonResponse
     {
         $data = $request->validated();
+        $this->attendanceActivation->assertCanEnable(
+            $request->user(), $data['type'] ?? $websiteSetting->type,
+            array_key_exists('value', $data) ? $data['value'] : $websiteSetting->value,
+        );
         if (array_key_exists('value', $data)) {
             $data['value'] = WebsiteSetting::normalizeValue($data['value']);
         }
@@ -136,6 +145,7 @@ class WebsiteSettingController extends Controller
         $type = "{$section}.{$key}";
         $companyId = $this->settingsService->resolveCurrentCompanyId();
         $value = array_key_exists('setting_value', $data) ? $data['setting_value'] : ($data['value'] ?? null);
+        $this->attendanceActivation->assertCanEnable($request->user(), $type, $value);
         $setting = WebsiteSetting::updateOrCreate(
             ['type' => $type, 'company_id' => $companyId],
             [
@@ -191,6 +201,9 @@ class WebsiteSettingController extends Controller
         $companyId = $this->settingsService->resolveCurrentCompanyId();
 
         $settings = $this->normalizeBookingWorkflowSettingList($request->settings);
+        foreach ($settings as $settingData) {
+            $this->attendanceActivation->assertCanEnable($request->user(), $settingData['type'], $settingData['value'] ?? null);
+        }
 
         foreach ($settings as $settingData) {
             $setting = WebsiteSetting::updateOrCreate(
@@ -296,6 +309,12 @@ class WebsiteSettingController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors()
             ], 422);
+        }
+
+        if ($category === 'booking' && array_key_exists('feature_hr_attendance_ingestion_enabled', $request->input('settings', []))) {
+            $this->attendanceActivation->assertCanEnable(
+                $request->user(), 'feature_hr_attendance_ingestion_enabled', $request->input('settings.feature_hr_attendance_ingestion_enabled'),
+            );
         }
 
         if ($category === 'homepage' && array_key_exists('homepage_vehicle_sections', $request->settings)) {

@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use App\Services\Sales\SalesPolicySettingsService;
+use App\Services\Sales\SalesEvidenceIntegrityService;
 use Illuminate\Validation\ValidationException;
 
 class PaymentFinalityController extends Controller
@@ -218,10 +219,9 @@ class PaymentFinalityController extends Controller
             abort_unless(! empty($data['evidence_file_id']), 422, 'This finality policy requires private evidence.');
         }
         if (! empty($data['evidence_file_id'])) {
-            $evidence = DB::table('domain_evidence_files')->where('id', $data['evidence_file_id'])->whereNull('deleted_at')
-                ->where('domain', 'sales')->where('company_id', $receipt->company_id)
-                ->where('subject_type', 'booking_payment_receipt')->where('subject_id', $receipt->id)->first();
-            abort_unless($evidence, 422, 'Finality evidence must be bound to this receipt and legal entity.');
+            $evidence = app(SalesEvidenceIntegrityService::class)->assertAttachedFile(
+                $data['evidence_file_id'], (string) $receipt->company_id, 'booking_payment_receipt', [$receipt->id],
+            );
             abort_unless(! $policy?->required_evidence_type || $evidence->evidence_type === $policy->required_evidence_type,
                 422, 'The uploaded evidence type does not satisfy the approved finality policy.');
         }

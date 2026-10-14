@@ -36,6 +36,7 @@ it('scopes integration deliveries to the selected Staff company and keeps acknow
     $payload = [
         'target_system' => 'accounting', 'delivery_key' => 'selected-context-delivery-1',
         'payload_checksum' => $checksums[1], 'outcome' => 'accepted', 'external_reference' => 'ACCT-1',
+        'response_checksum' => hash('sha256', 'provider accepted response'),
     ];
     actingAs($admin, 'api')->withHeaders($headers)->postJson('/api/hr/integration-deliveries/'.$outboxIds[0].'/acknowledge', $payload)
         ->assertForbidden();

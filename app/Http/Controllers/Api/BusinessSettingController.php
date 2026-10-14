@@ -10,6 +10,7 @@ use App\Http\Requests\BusinessSetting\UpdateBusinessSettingRequest;
 use App\Http\Resources\BusinessSettingResource;
 use App\Models\Website\WebsiteSetting;
 use App\Services\WebsiteSettingsService;
+use App\Services\Hr\Attendance\AttendanceIngestionActivationGuard;
 use App\Services\Driver\NotificationTriggerService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -105,7 +106,10 @@ class BusinessSettingController extends Controller
         ],
     ];
 
-    public function __construct(private WebsiteSettingsService $websiteSettingsService)
+    public function __construct(
+        private WebsiteSettingsService $websiteSettingsService,
+        private AttendanceIngestionActivationGuard $attendanceActivation,
+    )
     {
         $this->middleware('permission:business-settings.view')->only([
             'index',
@@ -185,6 +189,11 @@ class BusinessSettingController extends Controller
         $settings = $category === 'booking'
             ? $this->normalizeBookingWorkflowSettings($request->input('settings', []))
             : $request->input('settings', []);
+        if (array_key_exists('feature_hr_attendance_ingestion_enabled', $settings)) {
+            $this->attendanceActivation->assertCanEnable(
+                $request->user(), 'feature_hr_attendance_ingestion_enabled', $settings['feature_hr_attendance_ingestion_enabled'],
+            );
+        }
 
         if (
             $category === 'pricing'
@@ -260,6 +269,7 @@ class BusinessSettingController extends Controller
     public function store(CreateBusinessSettingRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $this->attendanceActivation->assertCanEnable($request->user(), $data['type'], $data['value'] ?? null);
         $data['created_user_id'] = $request->user()->id;
         $setting = BusinessSetting::create($data);
 
@@ -282,6 +292,11 @@ class BusinessSettingController extends Controller
     {
         $previousValue = (string) $businessSetting->value;
         $data = $request->validated();
+        $this->attendanceActivation->assertTypeCanChange($businessSetting->type, $data['type'] ?? $businessSetting->type);
+        $this->attendanceActivation->assertCanEnable(
+            $request->user(), $data['type'] ?? $businessSetting->type,
+            array_key_exists('value', $data) ? $data['value'] : $businessSetting->value,
+        );
         $data['updated_user_id'] = $request->user()->id;
         $businessSetting->update($data);
         if ($businessSetting->type === 'driver_mobile_latest_version') {
@@ -302,6 +317,7 @@ class BusinessSettingController extends Controller
 
     public function destroy(BusinessSetting $businessSetting): JsonResponse
     {
+        $this->attendanceActivation->assertNotDeletable($businessSetting->type);
         $businessSetting->delete();
         return response()->json([
             'status'=>'success',
