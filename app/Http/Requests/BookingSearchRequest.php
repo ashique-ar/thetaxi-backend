@@ -941,7 +941,11 @@ class BookingSearchRequest extends FormRequest
             ? $resolvedPublicConfig['field_mappings']
             : [];
 
-        return [$fields, $usesDropoffTime, $allowReturnTrip, $serviceType?->id, $fieldMappings];
+        $pricingServiceType = $serviceType
+            ? ServiceType::publicContext()->where('code', $serviceType->code)->first()
+            : null;
+
+        return [$fields, $usesDropoffTime, $allowReturnTrip, $pricingServiceType?->id ?? $serviceType?->id, $fieldMappings];
     }
 
     private function findPublicServiceType(string $code): ?ServiceType

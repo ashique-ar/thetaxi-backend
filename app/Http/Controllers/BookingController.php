@@ -91,8 +91,13 @@ class BookingController extends Controller
                 $searchParams['package_type'] = $selectedPackage?->toArray();
             } else {
                 $packages = $serviceType->packages()->where('is_active', true)->limit(2)->get();
+                if ($packages->isEmpty()) {
+                    $pricingServiceType = ServiceType::publicContext()->where('code', $serviceType->code)->first();
+                    $packages = $pricingServiceType?->packages()->where('is_active', true)->limit(2)->get() ?? collect();
+                }
                 if ($packages->count() === 1) {
                     $searchParams['package_type'] = $packages->first()->toArray();
+                    $searchParams['package_id'] = $packages->first()->id;
                 }
             }
             if ($packageId && empty($searchParams['package_id'])) {

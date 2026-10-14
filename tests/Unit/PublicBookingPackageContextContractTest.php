@@ -6,6 +6,7 @@ it('uses the public service type context consistently for package rendering and 
     $formSource = file_get_contents($basePath . '/resources/views/components/booking-form.blade.php');
     $controllerSource = file_get_contents($basePath . '/app/Http/Controllers/BookingController.php');
     $pricingSource = file_get_contents($basePath . '/app/Services/BookingFlowService.php');
+    $dynamicFormSource = file_get_contents($basePath . '/resources/views/components/dynamic-booking-form.blade.php');
 
     expect($requestSource)
         ->toContain('findPublicServiceType($candidateCode)')
@@ -16,5 +17,8 @@ it('uses the public service type context consistently for package rendering and 
         ->toContain("->whereIn('code', \$serviceTypeCodesForConfig)")
         ->and($controllerSource)->toContain('$this->resolveServiceType((string) $serviceTypeValue)');
     expect($pricingSource)->toContain("forContext('public', 'company'")
-        ->toContain('$this->resolveServiceTypeFromParams([');
+        ->toContain('$this->resolveServiceTypeFromParams([')
+        ->toContain('$pricingServiceTypeModel = $selectedServiceTypeModel')
+        ->toContain('ServiceType::publicContext()')
+        ->and($dynamicFormSource)->toContain('$pricingServiceType?->packages()');
 });

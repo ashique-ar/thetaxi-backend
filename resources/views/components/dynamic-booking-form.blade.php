@@ -132,6 +132,15 @@
                 ->where('is_active', true)
                 ->orderBy('sort_order')
                 ->get();
+            if ($servicePackages->isEmpty()) {
+                $pricingServiceType = \App\Models\Service\ServiceType::publicContext()
+                    ->where('code', $serviceTypeModel->code)
+                    ->first();
+                $servicePackages = $pricingServiceType?->packages()
+                    ->where('is_active', true)
+                    ->orderBy('sort_order')
+                    ->get() ?? collect();
+            }
         } catch (\Exception $e) {
             $servicePackages = collect();
         }

@@ -1027,10 +1027,16 @@ class BookingFlowService
             'service_type' => $serviceType,
             'service_type_context' => ($isPublic || $this->shouldUsePublicServiceContext($params)) ? 'public' : null,
         ]);
+        $pricingServiceTypeModel = $selectedServiceTypeModel;
+        if ($isPublic && $selectedServiceTypeModel?->owner_type === 'company') {
+            $pricingServiceTypeModel = ServiceType::publicContext()
+                ->where('code', $selectedServiceTypeModel->code)
+                ->first() ?? $selectedServiceTypeModel;
+        }
 
-        $servicePricingSettings = $selectedServiceTypeModel
+        $servicePricingSettings = $pricingServiceTypeModel
             ? VehicleGroupServicePricingSetting::query()
-                ->where('service_type_id', $selectedServiceTypeModel->id)
+                ->where('service_type_id', $pricingServiceTypeModel->id)
                 ->whereIn('vehicle_group_id', $vehicleGroups->pluck('id'))
                 ->get()
                 ->keyBy('vehicle_group_id')
@@ -1038,7 +1044,7 @@ class BookingFlowService
 
         $calculationRequirements = $this->getDynamicCalculationRequirements([
             ...$params,
-            'service_type_id' => $selectedServiceTypeModel?->id,
+            'service_type_id' => $pricingServiceTypeModel?->id,
         ]);
         $hasUsablePickup = is_array($pickupLocation) && $this->isLocationPayloadUsable($pickupLocation);
         $hasUsableDropoff = is_array($dropoffLocation) && $this->isLocationPayloadUsable($dropoffLocation);
@@ -1061,7 +1067,7 @@ class BookingFlowService
             : $fromTime;
         $pricingFromDate = $fromDate->format('Y-m-d');
         $pricingToDate = $effectiveToDate->format('Y-m-d');
-        $shouldCalculateGroupPricing = $selectedServiceTypeModel
+        $shouldCalculateGroupPricing = $pricingServiceTypeModel
             && $hasRequiredPricingLocations
             && (!$packageSelectionRequired || $hasSelectedPackage);
         $availabilityHolidayContext = $shouldCalculateGroupPricing
@@ -1107,7 +1113,7 @@ class BookingFlowService
             $pricingInfo = null;
             $isPricingConfigured = false;
             $pricingError = null;
-            $serviceTypeModel = $selectedServiceTypeModel;
+            $serviceTypeModel = $pricingServiceTypeModel;
 
             try {
                 if ($shouldCalculateGroupPricing) {
@@ -4898,8 +4904,10 @@ class BookingFlowService
             $calculationDefinitions = $this->availabilityPricingDefinitionCache[$definitionsCacheKey];
 
             if ($calculationDefinitions->isEmpty()) {
+                $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
                 Log::warning("No active calculation definition found for service type", [
-                    'service_type_id' => $serviceTypeId
+                    'service_type_id' => $serviceTypeId,
+                    'service_type_name' => $serviceType?->name,
                 ]);
                 return $this->calculateFallbackPricing(
                     $params,
