@@ -1290,9 +1290,15 @@ class BookingController extends Controller
         // every vehicle can trigger unnecessary queries and makes later pages
         // fail if the service type is configured outside the public context.
         $serviceType = null;
+        $serviceFeatures = [];
         if (isset($searchParams['service_type'])) {
             $serviceTypeValue = $searchParams['service_type'];
-            $serviceType = $this->resolveServiceType((string) $serviceTypeValue)?->code ?? 'point_to_point';
+            $serviceModel = $this->resolveServiceType((string) $serviceTypeValue);
+            $serviceType = $serviceModel?->code ?? 'point_to_point';
+            $serviceFeatures = $serviceModel?->form_config['service_features'] ?? [];
+            $serviceFeatures = is_array($serviceFeatures)
+                ? array_values(array_filter($serviceFeatures, static fn ($feature) => is_string($feature) && trim($feature) !== ''))
+                : [];
         }
 
 
@@ -1416,7 +1422,7 @@ class BookingController extends Controller
                 'total_count' => $groupData['total_count'] ?? 0,
                 'thumbnail' => $groupData['thumbnail'] ?? null,
                 'recommended' => false,
-                'service_features' => $this->getServiceFeatures($serviceType ?? 'airport_transfers'),
+                'service_features' => $serviceFeatures,
                 'savings_info' => [],
                 'payment_options' => $this->getAvailablePaymentOptions($formattedPricing),
                 // Quotation / booking flags from BookingFlowService
@@ -2037,67 +2043,6 @@ class BookingController extends Controller
     private function isValidUuid(string $uuid): bool
     {
         return preg_match('/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i', $uuid) === 1;
-    }
-
-    /**
-     * Get service features based on service type code
-     */
-    private function getServiceFeatures(string $code): array
-    {
-        $features = [
-            'airport_transfers' => [
-                'Free Cancellations',
-                'Meet & Greet included',
-                'No Hidden Charges',
-            ],
-            'point_to_point' => [
-                'Point-to-Point Transfers',
-                'Reliable Service',
-                'Professional Drivers',
-                'Real-time GPS Tracking',
-                'Competitive Pricing'
-            ],
-            'ride_now' => [
-                'Free Cancellations',
-                'No Hidden Charges',
-            ],
-            'day_rental' => [
-                'No Hidden Charges',
-                'Free Cancellations',
-                'Flexible Drop-off',
-                'Insurance Included'
-            ],
-            'self_drive' => [
-                'No Hidden Charges',
-                'Free Cancellations',
-                'Flexible Drop-off',
-                'Insurance Included',
-                'Self Drive Freedom'
-            ],
-            'with_driver' => [
-                'No Hidden Charges',
-                'Free Cancellations',
-                'Professional Driver',
-                'Flexible Drop-off',
-                'Insurance Included'
-            ],
-            'wedding_hire' => [
-                'Special Occasion Service',
-                'Professional Drivers',
-                'Decorated Vehicles',
-                'Flexible Timing',
-                'Premium Service'
-            ],
-            'corporate' => [
-                'Corporate Accounts',
-                'Contract Pricing',
-                'Reliable Service',
-                'Professional Drivers',
-                'Expense Tracking'
-            ]
-        ];
-
-        return $features[$code] ?? ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
     }
 
     /**

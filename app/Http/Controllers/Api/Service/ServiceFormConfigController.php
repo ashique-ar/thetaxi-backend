@@ -818,7 +818,7 @@ class ServiceFormConfigController extends Controller
             }
 
             $nestedFormConfig = is_array($payload['form_config'] ?? null) ? $payload['form_config'] : [];
-            foreach (['trip_mode', 'booking_mode', 'service_mode', 'disable_route_preview', 'route_preview_disabled', 'disable_distance_estimate', 'distance_estimate_disabled'] as $metaKey) {
+            foreach (['trip_mode', 'booking_mode', 'service_mode', 'disable_route_preview', 'route_preview_disabled', 'disable_distance_estimate', 'distance_estimate_disabled', 'service_features'] as $metaKey) {
                 if (!array_key_exists($metaKey, $payload) && array_key_exists($metaKey, $nestedFormConfig)) {
                     $payload[$metaKey] = $payload['form_config'][$metaKey];
                 }
@@ -846,6 +846,8 @@ class ServiceFormConfigController extends Controller
                 'trip_mode' => 'nullable|string|in:fixed_route,open_package',
                 'disable_route_preview' => 'boolean',
                 'disable_distance_estimate' => 'boolean',
+                'service_features' => 'nullable|array|max:10',
+                'service_features.*' => 'required|string|max:80',
                 'form_config' => 'nullable|array',
                 'form_config.*.type' => 'sometimes|required|string',
                 'form_config.*.label' => 'sometimes|required|string',
@@ -896,6 +898,8 @@ class ServiceFormConfigController extends Controller
             $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
 
             $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
+            $existingServiceFeatures = data_get($serviceType->form_config, 'service_features', []);
+            $existingServiceFeatures = is_array($existingServiceFeatures) ? $existingServiceFeatures : [];
 
             foreach ($formConfig as $fieldName => $fieldConfig) {
                 foreach ($fieldConfig['options'] ?? [] as $optionIndex => $option) {
@@ -952,6 +956,10 @@ class ServiceFormConfigController extends Controller
             if (array_key_exists('disable_distance_estimate', $validated)) {
                 $formConfig['disable_distance_estimate'] = (bool) $validated['disable_distance_estimate'];
             }
+            $formConfig['service_features'] = array_values(array_map(
+                'trim',
+                $validated['service_features'] ?? $existingServiceFeatures
+            ));
              
             $serviceType->update([
                 'uses_dropoff_time' => $validated['uses_dropoff_time'] ?? true,

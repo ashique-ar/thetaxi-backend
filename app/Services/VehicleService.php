@@ -309,36 +309,14 @@ class VehicleService
      */
     protected function getServiceFeatures(string $serviceType): array
     {
-        $features = [
-            'ride_now' => [
-                'With Driver Available',
-                'Flexible Duration',
-                'Insurance Included'
-            ],
-            'day_rental' => [
-                'Professional Driver',
-                'Flexible Itinerary',
-                'Full Day Coverage',
-                'Fuel Included'
-            ],
-            'airport_transfers' => [
-                'Professional Driver',
-                'Flight Tracking',
-                'Meet & Greet'
-            ],
-            'point_to_point' => [
-                'Door to Door Service',
-                'Professional Driver',
-                'Flexible Timing'
-            ],
-            'corporate-transport' => [
-                'Corporate Rates',
-                'Professional Service',
-                'Invoice Facility'
-            ]
-        ];
+        $formConfig = ServiceType::query()
+            ->where(fn ($query) => $query->where('code', $serviceType)->orWhere('id', $serviceType))
+            ->first(['form_config'])?->form_config;
+        $features = data_get($formConfig, 'service_features', []);
 
-        return $features[$serviceType] ?? $features['ride_now'];
+        return is_array($features)
+            ? array_values(array_filter($features, static fn ($feature) => is_string($feature) && trim($feature) !== ''))
+            : [];
     }
 
     /**

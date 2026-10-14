@@ -696,7 +696,10 @@ class DynamicServiceConfigurationService
                 'frontend_category'       => $this->determineServiceCategory($serviceCode),
                 'calculation_formula'     => $this->getServiceCalculationFormula($serviceType->id),
                 'estimated_duration_range' => $this->getServiceDurationRange($slabs),
-                'supported_features'      => $this->getServiceFeatures($serviceCode),
+                'supported_features'      => array_values(array_filter(
+                    data_get($serviceType->form_config, 'service_features', []),
+                    static fn ($feature) => is_string($feature) && trim($feature) !== ''
+                )),
                 'config_source'           => $configSource,
             ];
         });
@@ -889,7 +892,10 @@ class DynamicServiceConfigurationService
             'slab_count' => $slabs->count(),
             'min_duration' => $this->getMinDuration($slabs),
             'max_duration' => $this->getMaxDuration($slabs),
-            'supported_features' => $this->getServiceFeatures($serviceType->code),
+            'supported_features' => array_values(array_filter(
+                data_get($serviceType->form_config, 'service_features', []),
+                static fn ($feature) => is_string($feature) && trim($feature) !== ''
+            )),
             'category' => $this->determineServiceCategory($serviceType->code)
         ];
     }
@@ -1030,26 +1036,6 @@ class DynamicServiceConfigurationService
         }
 
         return 'Variable duration';
-    }
-
-    /**
-     * Get service features based on service code
-     */
-    private function getServiceFeatures(string $serviceCode): array
-    {
-        $featureMapping = [
-            'airport_drop' => ['Professional Driver', 'Flight Tracking', 'Meet & Greet', 'Fixed Pricing'],
-            'airport_pickup' => ['Professional Driver', 'Flight Monitoring', 'Free Waiting', 'Meet & Greet'],
-            'transfers' => ['Flexible Timing', 'Multiple Stops', 'Return Option', 'Real-time Tracking'],
-            'chauffeur_driven' => ['Professional Driver', 'Unlimited KM Options', 'Multi-day Tours', 'Flexible Itinerary'],
-            'self_driven' => ['Self-Drive Freedom', 'Insurance Included', 'Flexible Duration', 'Various Vehicle Types'],
-            'wedding_hire' => ['Luxury Vehicles', 'Decoration Service', 'Professional Driver', 'Special Occasion Rates'],
-            'corporate' => ['Corporate Rates', 'Dedicated Service', 'Monthly Contracts', 'Professional Drivers'],
-            'corporate_self' => ['Corporate Rates', 'Self-Drive Fleet', 'Flexible Contracts', 'Insurance Coverage'],
-            'break_down_service' => ['24/7 Availability', 'Emergency Response', 'Professional Recovery', 'Insurance Support']
-        ];
-
-        return $featureMapping[$serviceCode] ?? ['Professional Service', 'Reliable Transport', 'Competitive Pricing'];
     }
 
     /**
