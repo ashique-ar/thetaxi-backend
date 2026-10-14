@@ -14,7 +14,7 @@ class GoogleMapsService
     public function __construct()
     {
         // Use a dedicated MAPS key, or fall back to the PLACES key you already use
-        $this->apiKey = config('services.google.places_api_key', '');
+        $this->apiKey = config('services.google.maps_api_key') ?: config('services.google.places_api_key', '');
         $this->ttl = config('services.google.cache_ttl', 3600); // 1h default
 
         if (empty($this->apiKey)) {

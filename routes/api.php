@@ -2553,6 +2553,7 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     Route::prefix('places')->group(function () {
+        Route::get('config', [GooglePlacesController::class, 'getConfig']);
         Route::get('search', [GooglePlacesController::class, 'searchPlaces']);
         Route::get('airports', [GooglePlacesController::class, 'searchAirports']);
         Route::get('details', [GooglePlacesController::class, 'getPlaceDetails']);

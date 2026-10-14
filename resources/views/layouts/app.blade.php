@@ -356,6 +356,7 @@
     @if (theme_asset('script'))
         <script src="{{ assetVersion(theme_asset('script')) }}"></script>
     @endif
+    <script>window.GOOGLE_MAPS_API_KEY = @json(config('services.google.maps_api_key') ?: config('services.google.places_api_key') ?: '');</script>
     <script src="{{ assetVersion('assets/js/booking-form.js') }}"></script>
     <script src="{{ assetVersion('assets/js/package-selector.js') }}"></script>
 

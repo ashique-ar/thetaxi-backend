@@ -70,10 +70,8 @@ function getDrivingDistance($lat1, $long1, $lat2, $long2)
     ]);
 
     if (!(isset($gdist->distance) && isset($gdist->duration))) {
-        //AIzaSyDe9IipfEPIfgLHcq_eBsJBxS8ED04i8qs
-        //AIzaSyApAvvt7AD-C8c3ySYvI9QILqR4isREJ3s
-        //AIzaSyBvrkHw4z2baebi1rRP0P7KvLiwERNAyjA
-        $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=" . $lat1 . "," . $long1 . "&destinations=" . $lat2 . "," . $long2 . "&mode=driving&key=AIzaSyCznzr9vdiHj812MY99eDQsHOt8PeKSQCg";
+        $mapsKey = getenv('GOOGLE_MAPS_API_KEY') ?: (getenv('GOOGLE_PLACES_API_KEY') ?: '');
+        $url = "https://maps.googleapis.com/maps/api/distancematrix/json?origins=" . $lat1 . "," . $long1 . "&destinations=" . $lat2 . "," . $long2 . "&mode=driving&key=" . urlencode($mapsKey);
 
         /*
          * curl_setopt($ch, CURLOPT_URL, $url);

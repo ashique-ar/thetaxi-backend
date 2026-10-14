@@ -489,19 +489,40 @@
                 }
             })();
 
-            // Initialize Google Places autocomplete on dropoff input
+            // Initialize Places API (New) autocomplete on dropoff input via backend proxy
             function initDropoffAutocomplete() {
                 if (!dropoffInput || dropoffInput.getAttribute('data-autocomplete-initialized') === 'true') return;
-                if (window.google && google.maps && google.maps.places) {
-                    var autocomplete = new google.maps.places.Autocomplete(dropoffInput, {
-                        componentRestrictions: { country: 'lk' },
-                        fields: ['place_id', 'geometry', 'name', 'formatted_address']
-                    });
-                    autocomplete.addListener('place_changed', function() {
-                        var place = autocomplete.getPlace();
-                        if (place && place.geometry) {
-                            if (dropoffLat) dropoffLat.value = place.geometry.location.lat();
-                            if (dropoffLng) dropoffLng.value = place.geometry.location.lng();
+                if (typeof $ !== 'undefined' && $.fn.autocomplete) {
+                    $(dropoffInput).autocomplete({
+                        source: function(request, response) {
+                            fetch('/api/places/search?query=' + encodeURIComponent(request.term) + '&country_code=LK')
+                                .then(function(res) { return res.json(); })
+                                .then(function(data) {
+                                    if (data.status === 'success' && Array.isArray(data.data)) {
+                                        response(data.data.map(function(item) {
+                                            return { label: item.description, value: item.description, place_id: item.place_id };
+                                        }));
+                                    } else {
+                                        response([]);
+                                    }
+                                })
+                                .catch(function() { response([]); });
+                        },
+                        minLength: 2,
+                        select: function(event, ui) {
+                            if (ui.item.place_id) {
+                                fetch('/api/places/details?place_id=' + encodeURIComponent(ui.item.place_id))
+                                    .then(function(res) { return res.json(); })
+                                    .then(function(resData) {
+                                        if (resData.status === 'success' && resData.data) {
+                                            if (dropoffLat) dropoffLat.value = resData.data.latitude;
+                                            if (dropoffLng) dropoffLng.value = resData.data.longitude;
+                                        }
+                                    })
+                                    .catch(function(err) {
+                                        console.warn('Failed to fetch dropoff details:', err);
+                                    });
+                            }
                         }
                     });
                     dropoffInput.setAttribute('data-autocomplete-initialized', 'true');

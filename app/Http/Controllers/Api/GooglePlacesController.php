@@ -16,7 +16,7 @@ class GooglePlacesController extends Controller
 
     public function __construct()
     {
-        $this->googleApiKey = config('services.google.places_api_key');
+        $this->googleApiKey = config('services.google.maps_api_key');
 
         if (!$this->googleApiKey) {
             Log::warning('Google Places API key not configured');
@@ -47,7 +47,7 @@ class GooglePlacesController extends Controller
         }
 
         // Cache key
-        $cacheKey = "places_autocomplete:v2:" . md5($query . $countryCode . $limit);
+        $cacheKey = "places_autocomplete:v3:" . md5($query . $countryCode . $limit);
         if ($cached = Cache::get($cacheKey)) {
             return response()->json([
                 'status' => 'success',
@@ -64,78 +64,75 @@ class GooglePlacesController extends Controller
         }
 
         try {
-            // Leave `types` unset so Google can return addresses, landmarks,
-            // businesses, and other place predictions instead of geocodes only.
-            $params = [
+            $body = [
                 'input' => $query,
-                'key' => $this->googleApiKey,
-                'components' => 'country:' . $countryCode,
-                'language' => 'en',
+                'languageCode' => 'en',
             ];
 
-
-            $response = Http::timeout(10)->get('https://maps.googleapis.com/maps/api/place/autocomplete/json', $params);
-
-            if (!$response->successful()) {
-                Log::error('Places Autocomplete failed', [
-                    'status' => $response->status(),
-                    'body' => $response->body(),
-                ]);
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Search service unavailable',
-                ], 503);
+            if (!empty($countryCode)) {
+                $body['includedRegionCodes'] = [strtolower($countryCode)];
             }
 
-            $data = $response->json();
+            $response = Http::withHeaders([
+                'Content-Type' => 'application/json',
+                'X-Goog-Api-Key' => $this->googleApiKey,
+                'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
+            ])->timeout(10)->post('https://places.googleapis.com/v1/places:autocomplete', $body);
 
-
-            if (($data['status'] ?? '') !== 'OK') {
-                // Handle specific Google API statuses
-                $message = 'No suggestions found';
-                $statusCode = 404;
-
-                switch ($data['status'] ?? '') {
-                    case 'ZERO_RESULTS':
-                        $message = 'No places found for your search';
-                        $statusCode = 404;
-                        break;
-                    case 'INVALID_REQUEST':
-                        $message = 'Invalid search request';
-                        $statusCode = 400;
-                        Log::warning('Invalid autocomplete request', [
-                            'query' => $query,
-                            'error_message' => $data['error_message'] ?? '',
-                            'params' => $params
-                        ]);
-                        break;
-                    case 'OVER_QUERY_LIMIT':
-                        $message = 'Search service temporarily unavailable';
-                        $statusCode = 429;
-                        break;
-                    case 'REQUEST_DENIED':
-                        $message = 'Search service access denied';
-                        $statusCode = 403;
-                        break;
-                }
-                Log::error($message, [
-                    'status' => $data['status'] ?? 'UNKNOWN',
-                    'body'=> $response->body(),
+            if (!$response->successful()) {
+                Log::error('Places Autocomplete (New) failed', [
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                    'query' => $query,
                 ]);
+
+                $status = $response->status();
+                $message = 'Search service unavailable';
+                if ($status === 400) {
+                    $message = 'Invalid search request';
+                } elseif ($status === 403) {
+                    $message = 'Search service access denied';
+                } elseif ($status === 429) {
+                    $message = 'Search service temporarily unavailable';
+                }
+
                 return response()->json([
                     'status' => 'error',
                     'message' => $message,
-                    'google_status' => $data['status'] ?? 'UNKNOWN'
-                ], $statusCode);
+                    'google_status' => $response->json('error.status') ?? 'ERROR',
+                    'error_message' => $response->json('error.message') ?? $message,
+                ], $status >= 400 && $status < 600 ? $status : 503);
             }
 
-            // Take up to $limit suggestions
-            $places = array_map(function ($pred) {
-                return [
-                    'description' => $pred['description'],
-                    'place_id' => $pred['place_id'],
-                ];
-            }, array_slice($data['predictions'], 0, $limit));
+            $data = $response->json();
+            $suggestions = $data['suggestions'] ?? [];
+            $places = [];
+
+            foreach (array_slice($suggestions, 0, $limit) as $item) {
+                $pred = $item['placePrediction'] ?? null;
+                if (!$pred) {
+                    continue;
+                }
+
+                $placeId = $pred['placeId'] ?? '';
+                if (empty($placeId) && !empty($pred['place'])) {
+                    $placeId = str_replace('places/', '', $pred['place']);
+                }
+
+                $description = $pred['text']['text'] ?? '';
+                if (empty($description) && !empty($pred['structuredFormat']['mainText']['text'])) {
+                    $main = $pred['structuredFormat']['mainText']['text'];
+                    $secondary = $pred['structuredFormat']['secondaryText']['text'] ?? '';
+                    $description = $secondary ? "{$main}, {$secondary}" : $main;
+                }
+
+                if (!empty($placeId)) {
+                    $places[] = [
+                        'description' => $description,
+                        'place_id' => $placeId,
+                    ];
+                }
+            }
 
             Cache::put($cacheKey, $places, $this->cacheTtl);
 
@@ -323,29 +320,36 @@ class GooglePlacesController extends Controller
         }
 
         try {
-            $response = Http::get('https://maps.googleapis.com/maps/api/place/details/json', [
-                'place_id' => $placeId,
-                'key' => $this->googleApiKey,
-                'fields' => 'place_id,formatted_address,geometry,address_components,name'
-            ]);
+            $cleanPlaceId = str_replace('places/', '', $placeId);
+
+            $response = Http::withHeaders([
+                'X-Goog-Api-Key' => $this->googleApiKey,
+                'X-Goog-FieldMask' => 'id,displayName,formattedAddress,location,addressComponents',
+                'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
+            ])->timeout(10)->get("https://places.googleapis.com/v1/places/{$cleanPlaceId}");
 
             if (!$response->successful()) {
+                Log::error('Place details (New) failed', [
+                    'place_id' => $placeId,
+                    'status' => $response->status(),
+                    'body' => $response->body(),
+                ]);
+
+                if ($response->status() === 404) {
+                    return response()->json([
+                        'status' => 'error',
+                        'message' => 'Place not found'
+                    ], 404);
+                }
+
                 return response()->json([
                     'status' => 'error',
                     'message' => 'Place details service unavailable'
-                ], 503);
+                ], $response->status() >= 400 && $response->status() < 600 ? $response->status() : 503);
             }
 
             $data = $response->json();
-
-            if ($data['status'] !== 'OK') {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Place not found'
-                ], 404);
-            }
-
-            $place = $this->formatPlaceData($data['result']);
+            $place = $this->formatPlaceData($data);
 
             // Cache the result
             Cache::put($cacheKey, $place, $this->cacheTtl * 24); // Cache place details longer
@@ -459,42 +463,92 @@ class GooglePlacesController extends Controller
     }
 
     /**
-     * Format place data from Google API response
+     * Format place data from Google API response (supports Places API New and Geocoding API)
      */
     private function formatPlaceData(array $place): array
     {
-        $geometry = $place['geometry']['location'] ?? [];
-        $addressComponents = $place['address_components'] ?? [];
+        $formattedAddress = $place['formattedAddress'] ?? ($place['formatted_address'] ?? '');
 
-        // Extract city and country from address components
+        $lat = 0.0;
+        $lng = 0.0;
+        if (isset($place['location']['latitude']) || isset($place['location']['longitude'])) {
+            $lat = (float) ($place['location']['latitude'] ?? 0);
+            $lng = (float) ($place['location']['longitude'] ?? 0);
+        } elseif (isset($place['geometry']['location'])) {
+            $geom = $place['geometry']['location'];
+            $lat = (float) ($geom['lat'] ?? 0);
+            $lng = (float) ($geom['lng'] ?? 0);
+        }
+
+        $name = '';
+        if (isset($place['displayName']['text'])) {
+            $name = $place['displayName']['text'];
+        } elseif (isset($place['name']) && is_string($place['name'])) {
+            $name = $place['name'];
+        }
+
+        $placeId = $place['id'] ?? ($place['place_id'] ?? '');
+        if (is_string($placeId) && str_starts_with($placeId, 'places/')) {
+            $placeId = substr($placeId, 7);
+        }
+
+        $rawComponents = $place['addressComponents'] ?? ($place['address_components'] ?? []);
         $city = '';
         $country = '';
+        $normalizedComponents = [];
 
-        foreach ($addressComponents as $component) {
+        foreach ($rawComponents as $component) {
             $types = $component['types'] ?? [];
+            $longName = $component['longText'] ?? ($component['long_name'] ?? '');
+            $shortName = $component['shortText'] ?? ($component['short_name'] ?? $longName);
+
+            $normalizedComponents[] = [
+                'long_name' => $longName,
+                'short_name' => $shortName,
+                'longText' => $longName,
+                'shortText' => $shortName,
+                'types' => $types,
+            ];
 
             if (in_array('locality', $types) || in_array('administrative_area_level_2', $types)) {
-                $city = $component['long_name'] ?? '';
+                if (empty($city)) {
+                    $city = $longName;
+                }
             }
 
             if (in_array('country', $types)) {
-                $country = $component['long_name'] ?? '';
+                $country = $longName;
             }
         }
 
         return [
-            'address' => $place['formatted_address'] ?? '',
-            'formatted_address' => $place['formatted_address'] ?? '',
-            'latitude' => $geometry['lat'] ?? 0,
-            'longitude' => $geometry['lng'] ?? 0,
-            'lat' => $geometry['lat'] ?? 0,
-            'lng' => $geometry['lng'] ?? 0,
+            'address' => $formattedAddress,
+            'formatted_address' => $formattedAddress,
+            'latitude' => $lat,
+            'longitude' => $lng,
+            'lat' => $lat,
+            'lng' => $lng,
             'city' => $city,
             'country' => $country ?: 'Sri Lanka',
-            'place_id' => $place['place_id'] ?? '',
-            'name' => $place['name'] ?? '',
-            'address_components' => $addressComponents
+            'place_id' => $placeId,
+            'name' => $name,
+            'address_components' => $normalizedComponents,
         ];
+    }
+
+    /**
+     * Get Google Maps / Places configuration for frontend clients
+     */
+    public function getConfig(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'success',
+            'api_key' => $this->googleApiKey ?: '',
+            'data' => [
+                'api_key' => $this->googleApiKey ?: '',
+                'maps_api_key' => $this->googleApiKey ?: '',
+            ],
+        ]);
     }
 
     /**
@@ -506,8 +560,8 @@ class GooglePlacesController extends Controller
             'api_key_configured' => !empty($this->googleApiKey),
             'api_key_length' => $this->googleApiKey ? strlen($this->googleApiKey) : 0,
             'api_key_prefix' => $this->googleApiKey ? substr($this->googleApiKey, 0, 10) . '...' : null,
-            'config_path' => 'services.google.places_api_key',
-            'env_key' => 'GOOGLE_PLACES_API_KEY'
+            'config_path' => 'services.google.maps_api_key',
+            'env_key' => 'GOOGLE_MAPS_API_KEY'
         ]);
     }
 }

@@ -17,7 +17,7 @@
 
     // Configuration
     const CONFIG = {
-        googleMapsApiKey: "AIzaSyCznzr9vdiHj812MY99eDQsHOt8PeKSQCg",
+        googleMapsApiKey: window.GOOGLE_MAPS_API_KEY || "",
         sriLankaCities: [
             "Colombo BIA Airport",
             "Mattala Rajapaksa Airport",
@@ -620,26 +620,51 @@
      * Load Maps API with fallback
      */
     function loadMapsAPI() {
-        // First try Google Maps
-        const script = document.createElement("script");
-        script.src = `https://maps.googleapis.com/maps/api/js?key=${CONFIG.googleMapsApiKey}&libraries=places&callback=initializeGoogleMaps`;
-        script.async = true;
-        script.defer = true;
-        script.onerror = function () {
-            console.warn("Google Maps failed to load, using fallback");
-            initializeLocationSearch();
+        const injectScript = (apiKey) => {
+            if (!apiKey) {
+                console.warn("Google Maps API key not configured, using fallback location search");
+                initializeLocationSearch();
+                return;
+            }
+
+            CONFIG.googleMapsApiKey = apiKey;
+            const script = document.createElement("script");
+            script.src = `https://maps.googleapis.com/maps/api/js?key=${encodeURIComponent(apiKey)}&libraries=places&callback=initializeGoogleMaps`;
+            script.async = true;
+            script.defer = true;
+            script.onerror = function () {
+                console.warn("Google Maps failed to load, using fallback");
+                initializeLocationSearch();
+            };
+
+            document.head.appendChild(script);
+
+            // Timeout fallback
+            setTimeout(() => {
+                if (!state.mapsLoaded) {
+                    console.warn("Google Maps timeout, using fallback");
+                    state.useLeafletFallback = true;
+                    initializeLocationSearch();
+                }
+            }, 10000);
         };
 
-        document.head.appendChild(script);
-
-        // Timeout fallback
-        setTimeout(() => {
-            if (!state.mapsLoaded) {
-                console.warn("Google Maps timeout, using fallback");
-                state.useLeafletFallback = true;
-                initializeLocationSearch();
-            }
-        }, 10000);
+        const resolvedKey = CONFIG.googleMapsApiKey || window.GOOGLE_MAPS_API_KEY || "";
+        if (resolvedKey) {
+            injectScript(resolvedKey);
+        } else {
+            // Retrieve key dynamically from backend API (/api/places/config)
+            fetch("/api/places/config")
+                .then((res) => res.json())
+                .then((data) => {
+                    const key = data.api_key || data.data?.api_key || data.data?.maps_api_key || "";
+                    injectScript(key);
+                })
+                .catch((err) => {
+                    console.warn("Failed to fetch Google Maps key from backend:", err);
+                    initializeLocationSearch();
+                });
+        }
     }
 
     /**
@@ -669,16 +694,7 @@
             if (input.getAttribute("data-autocomplete-initialized") === "true")
                 return;
 
-            if (
-                state.mapsLoaded &&
-                window.google &&
-                window.google.maps &&
-                window.google.maps.places
-            ) {
-                initializeGooglePlacesAutocomplete(input);
-            } else {
-                initializeBasicAutocomplete(input);
-            }
+            initializeBasicAutocomplete(input);
         });
 
         // Attach focus handlers to reset values and refresh autocomplete instances
@@ -972,29 +988,85 @@
     }
 
     /**
-     * Initialize basic autocomplete for modal inputs
+     * Initialize basic autocomplete for modal inputs using backend Places API (New)
      */
     function initializeBasicAutocompleteForModal(input) {
         if (typeof $ !== "undefined" && $.fn.autocomplete) {
             $(input).autocomplete({
-                source: CONFIG.sriLankaCities,
+                source: function (request, response) {
+                    fetch(
+                        `/api/places/search?query=${encodeURIComponent(
+                            request.term
+                        )}&country_code=LK`
+                    )
+                        .then((res) => res.json())
+                        .then((data) => {
+                            if (data.status === "success" && Array.isArray(data.data) && data.data.length > 0) {
+                                response(
+                                    data.data.map((item) => ({
+                                        label: item.description,
+                                        value: item.description,
+                                        place_id: item.place_id,
+                                    }))
+                                );
+                            } else {
+                                response(
+                                    CONFIG.sriLankaCities
+                                        .filter((city) =>
+                                            city.toLowerCase().includes(request.term.toLowerCase())
+                                        )
+                                        .map((city) => ({ label: city, value: city }))
+                                );
+                            }
+                        })
+                        .catch(() => {
+                            response(
+                                CONFIG.sriLankaCities
+                                    .filter((city) =>
+                                        city.toLowerCase().includes(request.term.toLowerCase())
+                                    )
+                                    .map((city) => ({ label: city, value: city }))
+                            );
+                        });
+                },
                 minLength: 2,
                 select: function (event, ui) {
                     const index = parseInt(input.getAttribute("data-index"));
-                    const coordinates = CONFIG.cityCoordinates[ui.item.value];
+                    if (isNaN(index)) return;
 
-                    if (!isNaN(index) && coordinates) {
-                        // Update state
-                        state.customTourDestinations[index].name =
-                            ui.item.value;
-                        state.customTourDestinations[index].lat =
-                            coordinates.lat;
-                        state.customTourDestinations[index].lng =
-                            coordinates.lng;
+                    if (ui.item.place_id) {
+                        fetch(`/api/places/details?place_id=${encodeURIComponent(ui.item.place_id)}`)
+                            .then((res) => res.json())
+                            .then((resData) => {
+                                if (resData.status === "success" && resData.data) {
+                                    const details = resData.data;
+                                    state.customTourDestinations[index].name =
+                                        details.formatted_address || details.address || ui.item.value;
+                                    state.customTourDestinations[index].lat =
+                                        details.latitude;
+                                    state.customTourDestinations[index].lng =
+                                        details.longitude;
+                                    input.value = details.formatted_address || details.address || ui.item.value;
+                                    updateFormFromState();
+                                    setTimeout(() => initializeRouteMap(), 200);
+                                }
+                            })
+                            .catch((err) => {
+                                console.warn("Failed to get place details for modal:", err);
+                            });
+                    } else {
+                        const coordinates = CONFIG.cityCoordinates[ui.item.value];
+                        if (coordinates) {
+                            state.customTourDestinations[index].name =
+                                ui.item.value;
+                            state.customTourDestinations[index].lat =
+                                coordinates.lat;
+                            state.customTourDestinations[index].lng =
+                                coordinates.lng;
 
-                        // Sync to form and refresh map
-                        updateFormFromState();
-                        setTimeout(() => initializeRouteMap(), 200);
+                            updateFormFromState();
+                            setTimeout(() => initializeRouteMap(), 200);
+                        }
                     }
                 },
             });
@@ -1005,17 +1077,6 @@
      * Initialize basic autocomplete with predefined cities
      */
     function initializeBasicAutocomplete(input) {
-        // Don't use jQuery autocomplete if Google Maps is available
-        // This prevents duplicate dropdowns
-        if (
-            state.mapsLoaded &&
-            window.google &&
-            window.google.maps &&
-            window.google.maps.places
-        ) {
-            return; // Google Places will handle it
-        }
-
         if (typeof $ !== "undefined" && $.fn.autocomplete) {
             // Prevent duplicate initialization
             if ($(input).data("ui-autocomplete")) {
@@ -1130,32 +1191,102 @@
                     },
                 });
             } else {
-                // Use predefined cities for regular location fields
+                // Use backend Places API (New) for regular location fields
                 $(input).autocomplete({
-                    source: sourceList,
+                    source: function (request, response) {
+                        fetch(
+                            `/api/places/search?query=${encodeURIComponent(
+                                request.term
+                            )}&country_code=LK`
+                        )
+                            .then((res) => res.json())
+                            .then((data) => {
+                                if (data.status === "success" && Array.isArray(data.data) && data.data.length > 0) {
+                                    response(
+                                        data.data.map((item) => ({
+                                            label: item.description,
+                                            value: item.description,
+                                            place_id: item.place_id,
+                                        }))
+                                    );
+                                } else {
+                                    // Fallback to static cities if API search returns empty or error
+                                    response(
+                                        sourceList
+                                            .filter((city) =>
+                                                city.toLowerCase().includes(request.term.toLowerCase())
+                                            )
+                                            .map((city) => ({
+                                                label: city,
+                                                value: city,
+                                            }))
+                                    );
+                                }
+                            })
+                            .catch((err) => {
+                                console.warn("Places search API error, falling back to static cities:", err);
+                                response(
+                                    sourceList
+                                        .filter((city) =>
+                                            city.toLowerCase().includes(request.term.toLowerCase())
+                                        )
+                                        .map((city) => ({
+                                            label: city,
+                                            value: city,
+                                        }))
+                                );
+                            });
+                    },
                     minLength: 2,
                     select: function (event, ui) {
-                        const coordinates =
-                            CONFIG.cityCoordinates[ui.item.value];
-                        updateLocationData(input, {
-                            formatted_address: ui.item.value,
-                            geometry: coordinates
-                                ? {
-                                    location: {
-                                        lat: () => coordinates.lat,
-                                        lng: () => coordinates.lng,
-                                    },
-                                }
-                                : null,
-                        });
-                        // Mark that a valid selection HAS been made
-                        input.setAttribute("data-place-selected", "true");
-                        input.setAttribute("data-is-default", "false");
-                        // Remove any error styling and inline error message
-                        input.classList.remove("error");
-                        input.style.borderColor = "";
-                        removeInlineError(input);
-                        checkFormValidity(input.closest("form"));
+                        const form = input.closest("form");
+                        if (ui.item.place_id) {
+                            fetch(`/api/places/details?place_id=${encodeURIComponent(ui.item.place_id)}`)
+                                .then((res) => res.json())
+                                .then((resData) => {
+                                    if (resData.status === "success" && resData.data) {
+                                        const details = resData.data;
+                                        updateLocationData(input, {
+                                            formatted_address: details.formatted_address || details.address || ui.item.value,
+                                            geometry: {
+                                                location: {
+                                                    lat: () => details.latitude,
+                                                    lng: () => details.longitude,
+                                                },
+                                            },
+                                        });
+                                        input.setAttribute("data-place-selected", "true");
+                                        input.setAttribute("data-is-default", "false");
+                                        input.classList.remove("error");
+                                        input.style.borderColor = "";
+                                        removeInlineError(input);
+                                        checkFormValidity(form);
+                                    }
+                                })
+                                .catch((err) => {
+                                    console.error("Failed to fetch place details:", err);
+                                });
+                        } else {
+                            const coordinates =
+                                CONFIG.cityCoordinates[ui.item.value];
+                            updateLocationData(input, {
+                                formatted_address: ui.item.value,
+                                geometry: coordinates
+                                    ? {
+                                        location: {
+                                            lat: () => coordinates.lat,
+                                            lng: () => coordinates.lng,
+                                        },
+                                    }
+                                    : null,
+                            });
+                            input.setAttribute("data-place-selected", "true");
+                            input.setAttribute("data-is-default", "false");
+                            input.classList.remove("error");
+                            input.style.borderColor = "";
+                            removeInlineError(input);
+                            checkFormValidity(form);
+                        }
                     },
                 });
 
@@ -1698,55 +1829,7 @@
             return;
         }
 
-        if (state.mapsLoaded && window.google && window.google.maps && window.google.maps.places) {
-            // Use Google Places Autocomplete
-            const autocomplete = new google.maps.places.Autocomplete(input, {
-                componentRestrictions: { country: "lk" },
-                fields: ["place_id", "geometry", "name", "formatted_address"],
-            });
-
-            autocomplete.addListener("place_changed", function () {
-                const place = autocomplete.getPlace();
-                if (place && place.geometry) {
-                    updateLocationDataForInput(input, place);
-                    input.setAttribute("data-place-selected", "true");
-                    input.setAttribute("data-is-default", "false");
-                    input.classList.remove("error");
-                    input.style.borderColor = "";
-                    removeInlineError(input);
-                    checkFormValidity(input.closest("form"));
-                }
-            });
-
-            input.googleAutocomplete = autocomplete;
-            input.setAttribute("data-autocomplete-initialized", "true");
-        } else {
-            // Fallback to basic autocomplete
-            if (typeof $ !== "undefined" && $.fn.autocomplete && !$(input).data("ui-autocomplete")) {
-                $(input).autocomplete({
-                    source: CONFIG.sriLankaCities,
-                    minLength: 2,
-                    select: function (event, ui) {
-                        const coordinates = CONFIG.cityCoordinates[ui.item.value];
-                        updateLocationDataForInput(input, {
-                            formatted_address: ui.item.value,
-                            geometry: coordinates ? {
-                                location: {
-                                    lat: () => coordinates.lat,
-                                    lng: () => coordinates.lng,
-                                },
-                            } : null,
-                        });
-                        input.setAttribute("data-place-selected", "true");
-                        input.setAttribute("data-is-default", "false");
-                        input.classList.remove("error");
-                        input.style.borderColor = "";
-                        removeInlineError(input);
-                        checkFormValidity(input.closest("form"));
-                    },
-                });
-            }
-        }
+        initializeBasicAutocomplete(input);
     }
 
     /**
@@ -2517,90 +2600,13 @@
             ".location-input-modal"
         );
 
-        modalLocationInputs.forEach((input, idx) => {
-            const dataIndex = input.getAttribute("data-index");
-
-            // Skip if already initialized
+        modalLocationInputs.forEach((input) => {
             if (input.dataset.googleAutocompleteInitialized === "true") {
                 return;
             }
 
-            // Check if Google Maps API is loaded
-            if (
-                window.google &&
-                window.google.maps &&
-                window.google.maps.places
-            ) {
-                const autocomplete = new google.maps.places.Autocomplete(
-                    input,
-                    {
-                        componentRestrictions: { country: "lk" },
-                        fields: [
-                            "place_id",
-                            "geometry",
-                            "name",
-                            "formatted_address",
-                        ],
-                    }
-                );
-
-                autocomplete.addListener("place_changed", function () {
-                    const place = autocomplete.getPlace();
-                    const index = parseInt(input.getAttribute("data-index"));
-
-
-                    if (place.geometry && !isNaN(index)) {
-                        // Update state with new location
-                        state.customTourDestinations[index].name =
-                            place.formatted_address || place.name;
-                        state.customTourDestinations[index].lat =
-                            place.geometry.location.lat();
-                        state.customTourDestinations[index].lng =
-                            place.geometry.location.lng();
-
-                        // Update the input value
-                        input.value = place.formatted_address || place.name;
-
-                        // Sync to form and refresh map
-                        updateFormFromState();
-                        setTimeout(() => initializeRouteMap(), 200);
-                    }
-                });
-
-                // Mark as initialized
-                input.dataset.googleAutocompleteInitialized = "true";
-
-            } else {
-
-                // Fallback to basic autocomplete if available
-                if (typeof $ !== "undefined" && $.fn.autocomplete) {
-                    $(input).autocomplete({
-                        source: CONFIG.sriLankaCities,
-                        minLength: 2,
-                        select: function (event, ui) {
-                            const index = parseInt(
-                                input.getAttribute("data-index")
-                            );
-                            const coordinates =
-                                CONFIG.cityCoordinates[ui.item.value];
-
-                            if (!isNaN(index) && coordinates) {
-                                state.customTourDestinations[index].name =
-                                    ui.item.value;
-                                state.customTourDestinations[index].lat =
-                                    coordinates.lat;
-                                state.customTourDestinations[index].lng =
-                                    coordinates.lng;
-
-                                updateFormFromState();
-                                setTimeout(() => initializeRouteMap(), 200);
-                            }
-                        },
-                    });
-
-                    input.dataset.googleAutocompleteInitialized = "true";
-                }
-            }
+            initializeBasicAutocompleteForModal(input);
+            input.dataset.googleAutocompleteInitialized = "true";
         });
     }
 
