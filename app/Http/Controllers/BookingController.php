@@ -146,9 +146,10 @@ class BookingController extends Controller
     protected function resolveServiceType(string $code): ?ServiceType
     {
         $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
+        $identifierColumn = Str::isUuid($code) ? 'id' : 'code';
         if ($resolvedCompanyId) {
             $companyServiceType = ServiceType::forContext('public', 'company', (string) $resolvedCompanyId)
-                ->where('code', $code)
+                ->where($identifierColumn, $code)
                 ->where('is_active', true)
                 ->first();
             if ($companyServiceType) {
@@ -157,7 +158,7 @@ class BookingController extends Controller
         }
 
         $serviceType = ServiceType::publicContext()
-            ->where('code', $code)
+            ->where($identifierColumn, $code)
             ->where('is_active', true)
             ->first();
 
@@ -220,6 +221,7 @@ class BookingController extends Controller
         $params = [
             'service_type' => $serviceType->id,
             'service_type_id' => $serviceType->id,
+            'service_type_code' => $serviceType->code,
             'service_type_context' => 'public',
             'page' => 1,
             'per_page' => 50,
@@ -1291,10 +1293,13 @@ class BookingController extends Controller
         // fail if the service type is configured outside the public context.
         $serviceType = null;
         $serviceFeatures = [];
-        if (isset($searchParams['service_type'])) {
-            $serviceTypeValue = $searchParams['service_type'];
+        $serviceTypeValue = $searchParams['service_type_id'] ?? ($searchParams['service_type'] ?? null);
+        if ($serviceTypeValue !== null) {
             $serviceModel = $this->resolveServiceType((string) $serviceTypeValue);
-            $serviceType = $serviceModel?->code ?? 'point_to_point';
+            if (!$serviceModel && !empty($searchParams['service_type_code'])) {
+                $serviceModel = $this->resolveServiceType((string) $searchParams['service_type_code']);
+            }
+            $serviceType = $serviceModel?->code ?? ($searchParams['service_type_code'] ?? 'point_to_point');
             $serviceFeatures = $serviceModel?->form_config['service_features'] ?? [];
             $serviceFeatures = is_array($serviceFeatures)
                 ? array_values(array_filter($serviceFeatures, static fn ($feature) => is_string($feature) && trim($feature) !== ''))
