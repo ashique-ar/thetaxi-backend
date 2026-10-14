@@ -117,14 +117,17 @@ body[class] .checkout-page .checkout-item-route-details .checkout-location-icon 
 body[class] .checkout-page .checkout-item-route-details .checkout-location-icon i { display: grid; place-items: center; width: clamp(40px, 5.5cqw, 64px); aspect-ratio: 1; border-radius: 50%; background: #fff0f2; color: #b42336; font-size: clamp(19px, 1.8cqw, 26px); }
 body[class] .checkout-page .checkout-item-route-details .checkout-location-label { color: #111827; }
 body[class] .checkout-page .checkout-item-route-details .checkout-location-address { min-width: 0; }
-body[class] .checkout-page .checkout-cart-item.is-collapsed .item-area { grid-template-columns: minmax(0, 1fr) !important; }
+body[class] .checkout-page .checkout-cart-item.is-collapsed .item-area { grid-template-columns: minmax(0, 1fr) auto !important; gap: 0 12px !important; }
 body[class] .checkout-page .checkout-cart-item.is-collapsed .main-item { grid-column: 1; grid-template-columns: 56px minmax(0, 1fr) !important; gap: 10px !important; }
 body[class] .checkout-page .checkout-cart-item.is-collapsed .item-img { height: 56px !important; }
-body[class] .checkout-page .checkout-cart-item.is-collapsed .content > :not(.vehicle-rate):not(.vehicle-title),
-body[class] .checkout-page .checkout-cart-item.is-collapsed .item-total,
-body[class] .checkout-page .checkout-cart-item.is-collapsed .checkout-item-route-details,
+body[class] .checkout-page .checkout-cart-item.is-collapsed .content > :not(.vehicle-rate):not(.vehicle-title):not(.trip-meta),
 body[class] .checkout-page .checkout-cart-item.is-collapsed .checkout-item-addons,
 body[class] .checkout-page .checkout-cart-item.is-collapsed .checkout-item-extra-km { display: none !important; }
+body[class] .checkout-page .checkout-cart-item.is-collapsed .item-total { grid-column: 2; grid-row: 1; display: block !important; min-width: 130px; padding: 0 !important; }
+body[class] .checkout-page .checkout-cart-item.is-collapsed .checkout-item-route-details { display: block !important; margin-top: 10px; padding-top: 10px; }
+body[class] .checkout-page .checkout-cart-item.is-collapsed .checkout-item-km,
+body[class] .checkout-page .checkout-cart-item.is-collapsed .return-trip-info { display: none !important; }
+body[class] .checkout-page .checkout-cart-item.is-collapsed .trip-location { margin: 8px 0 !important; }
 @media (max-width: 575px) {
     body[class] .checkout-page .checkout-cart-item .item-area { grid-template-columns: minmax(0, 1fr) auto !important; gap: 0 10px !important; }
     body[class] .checkout-page .checkout-cart-item .main-item { gap: 10px !important; }

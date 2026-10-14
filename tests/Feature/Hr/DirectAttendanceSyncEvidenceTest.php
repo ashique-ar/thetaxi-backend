@@ -15,7 +15,7 @@ use Symfony\Component\HttpKernel\Exception\HttpException;
 uses(RefreshDatabase::class);
 
 it('counts matching direct events as duplicates and rejects changed evidence for the same event ID', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Direct attendance company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
         'company_id' => $company->id,
@@ -92,7 +92,7 @@ it('counts matching direct events as duplicates and rejects changed evidence for
 });
 
 it('rejects direct provider events with contradictory timezone offset evidence', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Direct attendance timezone company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
         'company_id' => $company->id,

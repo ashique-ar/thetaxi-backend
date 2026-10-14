@@ -9,7 +9,7 @@ use Illuminate\Support\Str;
 uses(RefreshDatabase::class);
 
 it('rejects signed attendance ingestion when its company is inactive', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Inactive attendance company', 'is_active' => false]);
     $connector = AttendanceConnector::factory()->create(['company_id' => $company->id]);
     $requestId = (string) Str::uuid();
@@ -32,7 +32,7 @@ it('rejects signed attendance ingestion when its company is inactive', function 
 });
 
 it('does not replay another connector’s ingestion request status', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $companyA = Company::create(['name' => 'First attendance company', 'is_active' => true]);
     $companyB = Company::create(['name' => 'Second attendance company', 'is_active' => true]);
     $connectorA = AttendanceConnector::factory()->create(['company_id' => $companyA->id]);
@@ -70,7 +70,7 @@ it('does not replay another connector’s ingestion request status', function ()
 });
 
 it('rejects signed attendance ingestion through a deleted connector', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Deleted connector company', 'is_active' => true]);
     $connector = AttendanceConnector::factory()->create(['company_id' => $company->id]);
     DB::table('hr_attendance_connectors')->where('id', $connector->id)->update(['deleted_at' => now()]);

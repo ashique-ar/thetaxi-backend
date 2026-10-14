@@ -29,7 +29,7 @@ function attendanceIngestionEvent(string $eventId, string $personId, ?string $de
 }
 
 it('accepts signed attendance events, safely replays requests, and deduplicates provider events', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Ingestion lifecycle company', 'is_active' => true]);
     $admin = User::factory()->create();
     $connector = AttendanceConnector::factory()->create([
@@ -97,7 +97,7 @@ it('accepts signed attendance events, safely replays requests, and deduplicates 
 });
 
 it('quarantines signed events whose provider identity has no approved mapping', function () {
-    config(['hr.features.attendance_ingestion' => true]);
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Attendance quarantine company', 'is_active' => true]);
     $admin = User::factory()->create();
     $connector = AttendanceConnector::factory()->create([

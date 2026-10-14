@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\Artisan;
 uses(RefreshDatabase::class);
 
 it('catches up incremental polling from the last successful sync with the configured overlap', function () {
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Hikvision recovery company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
         'company_id' => $company->id,
@@ -32,6 +33,7 @@ it('catches up incremental polling from the last successful sync with the config
 });
 
 it('keeps explicit multi-day reconciliation windows independent of the incremental watermark', function () {
+    \App\Models\Website\WebsiteSetting::setValue('feature_hr_attendance_ingestion_enabled', 'true');
     $company = Company::create(['name' => 'Hikvision reconciliation company', 'is_active' => true]);
     $device = AttendanceDevice::factory()->create([
         'company_id' => $company->id,

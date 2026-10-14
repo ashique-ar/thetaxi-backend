@@ -7,6 +7,7 @@ use App\Models\Hr\Attendance\AttendanceRawEvent;
 use Carbon\CarbonImmutable;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use App\Services\WebsiteSettingsService;
 use Throwable;
 
 /**
@@ -25,13 +26,17 @@ use Throwable;
  */
 class DirectAttendanceSyncService
 {
-    public function __construct(private AttendanceProviderManager $providers)
+    public function __construct(
+        private AttendanceProviderManager $providers,
+        private WebsiteSettingsService $settings,
+    )
     {
     }
 
     public function sync(AttendanceDevice $device, CarbonImmutable $from, CarbonImmutable $to, string $type = 'incremental'): array
     {
-        
+        $enabled = filter_var($this->settings->get('feature_hr_attendance_ingestion_enabled', false), FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? false;
+        abort_unless($enabled, 403, 'Hikvision attendance ingestion is disabled.');
         abort_unless($device->status === 'active' && $device->integration_mode === 'direct_isapi', 409, 'Only active direct-ISAPI devices can be synchronized.');
         abort_unless(DB::table('hr_attendance_devices')->where('id', $device->id)->where('company_id', $device->company_id)->where('status', 'active')->where('integration_mode', 'direct_isapi')->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active undeleted device.');
         abort_unless(DB::table('companies')->where('id', $device->company_id)->where('is_active', true)->whereNull('deleted_at')->exists(), 409, 'Attendance synchronization requires an active legal entity.');
