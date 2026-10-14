@@ -392,13 +392,6 @@ class BookingController extends Controller
                     'dropoff'
                 );
 
-                if (
-                    empty($params['dropoff_location']['address'])
-                    && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
-                ) {
-                    $params['dropoff_location'] = $params['pickup_location'];
-                }
-
                 $params['package_type'] = $requestData['package_type'] ?? 'multi-day';
                 break;
             case 'self_drive':
@@ -616,6 +609,8 @@ class BookingController extends Controller
                 $locationFields[] = ['name' => $fieldName, 'submit_as' => $submitAs, 'is_dropoff' => $isDropoff, 'config' => $config];
             }
         }
+        $hasDropoffLocationField = !empty(data_get($fieldMappings, 'locations.dropoff_location'))
+            || collect($locationFields)->contains(fn ($field) => $field['is_dropoff']);
 
         // --- Resolve dates ---
         $pickupDateRaw = null;
@@ -726,6 +721,8 @@ class BookingController extends Controller
 
         // Fallback: if dropoff is empty, copy from pickup
         if (
+            $hasDropoffLocationField
+            &&
             empty($params['dropoff_location']['address'])
             && (empty($params['dropoff_location']['latitude']) || empty($params['dropoff_location']['longitude']))
         ) {

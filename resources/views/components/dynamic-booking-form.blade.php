@@ -63,7 +63,10 @@
     // Resolve the configured outbound date/time controls. These names are sent to
     // the browser so advance-booking behavior follows each service's dynamic form.
     $formConfig = is_array($serviceTypeModel?->form_config) ? $serviceTypeModel->form_config : [];
+    $locationMappings = data_get($formConfig, 'field_mappings.locations', []);
     $dateMappings = data_get($formConfig, 'field_mappings.dates', []);
+    $matchesConfiguredField = static fn ($mapping, $fieldName, $submitAs) =>
+        is_string($mapping) && $mapping !== '' && in_array($mapping, [$fieldName, $submitAs], true);
     $resolveConfiguredControlName = static function ($mapping, array $configuredFields): string {
         if (!is_string($mapping) || $mapping === '') {
             return '';
@@ -258,8 +261,10 @@
 
             if ($fieldType === 'location') {
                 // Determine which location data to use
-                $isPickupField = str_contains($fieldName, 'pickup') || $submitAs === 'pickup';
-                $isDropoffField = str_contains($fieldName, 'dropoff') || $submitAs === 'dropoff';
+                $isPickupField = str_contains($fieldName, 'pickup') || $submitAs === 'pickup'
+                    || $matchesConfiguredField($locationMappings['pickup_location'] ?? null, $fieldName, $submitAs);
+                $isDropoffField = str_contains($fieldName, 'dropoff') || $submitAs === 'dropoff'
+                    || $matchesConfiguredField($locationMappings['dropoff_location'] ?? null, $fieldName, $submitAs);
 
                 if ($isPickupField) {
                     $locAddr = $pickupLoc['address'] ?? '';
@@ -280,7 +285,8 @@
                     $currentValue = $safeOldOr($submitAs, $hasSearchContext ? $fieldDefault : '');
                 }
             } elseif ($fieldType === 'date') {
-                $isPickupDate = str_contains($fieldName, 'pickup') || $submitAs === 'date';
+                $isPickupDate = str_contains($fieldName, 'pickup') || $submitAs === 'date'
+                    || $matchesConfiguredField($dateMappings['from_date'] ?? null, $fieldName, $submitAs);
                 $rawDate = $isPickupDate ? $pickupDate : $dropoffDate;
                 $formattedDefault = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $fieldDefault)
                     ? date('d/m/Y', strtotime($fieldDefault))
@@ -288,7 +294,8 @@
                 $formatted = $rawDate ? date('d/m/Y', strtotime($rawDate)) : $formattedDefault;
                 $currentValue = old($submitAs, $formatted);
             } elseif ($fieldType === 'time') {
-                $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time';
+                $isPickupTime = str_contains($fieldName, 'pickup') || $submitAs === 'time'
+                    || $matchesConfiguredField($dateMappings['from_time'] ?? null, $fieldName, $submitAs);
                 $rawTime = $isPickupTime ? $pickupTime : $dropoffTime;
                 $currentValue = old($submitAs, $rawTime ?? ($hasSearchContext ? $fieldDefault : ''));
             } elseif ($fieldType === 'package_select') {

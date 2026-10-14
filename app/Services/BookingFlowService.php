@@ -1586,8 +1586,8 @@ class BookingFlowService
             }
         }
 
-        $distanceCalculationFailed = $pickupLocation
-            && $dropoffLocation
+        $distanceCalculationFailed = $hasUsablePickup
+            && $hasUsableDropoff
             && !is_numeric($outboundDistanceKm);
 
         if ($distanceCalculationFailed) {
@@ -5318,7 +5318,10 @@ class BookingFlowService
             $inputs['package_included_km'] = (float) $params['package_included_km'];
         }
 
-        if (isset($params['pickup_location']) && isset($params['dropoff_location'])) {
+        if (is_array($params['pickup_location'] ?? null)
+            && is_array($params['dropoff_location'] ?? null)
+            && $this->isLocationPayloadUsable($params['pickup_location'])
+            && $this->isLocationPayloadUsable($params['dropoff_location'])) {
             $pickupLocation = $this->normalizeLocationInput($params['pickup_location']);
             $dropoffLocation = $this->normalizeLocationInput($params['dropoff_location']);
             $additionalPickupLocations = $this->extractAdditionalLocationsFromParams($params, 'pickup');
@@ -7335,11 +7338,14 @@ class BookingFlowService
             $address = $location;
         }
 
-        if (empty($address) || !is_string($address)) {
+        $hasCoordinates = is_array($location)
+            && is_numeric($location['latitude'] ?? null)
+            && is_numeric($location['longitude'] ?? null);
+        if ((!is_string($address) || trim($address) === '') && !$hasCoordinates) {
             return false;
         }
 
-        $address = strtolower($address);
+        $address = strtolower((string) $address);
 
         // Comprehensive list of Sri Lankan airports and related keywords (case-insensitive matching)
         $airportKeywords = [
@@ -7377,7 +7383,7 @@ class BookingFlowService
         }
 
         // Also check coordinates against known airport locations
-        if (isset($location['latitude']) && isset($location['longitude'])) {
+        if ($hasCoordinates) {
             $knownAirports = [
                 ['lat' => 7.1808, 'lng' => 79.8841, 'name' => 'Bandaranaike International Airport'], // BIA
                 ['lat' => 6.2844, 'lng' => 81.1247, 'name' => 'Mattala Rajapaksa International Airport'], // HRI
@@ -7392,13 +7398,16 @@ class BookingFlowService
             $locationLng = (float) $location['longitude'];
 
             foreach ($knownAirports as $airport) {
-                // Check if coordinates are within 2km radius of known airport
-                $distance = $this->calculateDistance(
-                    ['latitude' => $locationLat, 'longitude' => $locationLng],
-                    ['latitude' => $airport['lat'], 'longitude' => $airport['lng']]
+                // Airport proximity is a straight-line check; road routing here
+                // adds no accuracy and would call Google repeatedly per price.
+                $distance = app(\App\Services\Driver\RouteService::class)->haversineDistance(
+                    $locationLat,
+                    $locationLng,
+                    (float) $airport['lat'],
+                    (float) $airport['lng']
                 );
 
-                if ($distance <= 2.0) { // Within 2km radius
+                if ($distance <= 2.0) {
                     return true;
                 }
             }
