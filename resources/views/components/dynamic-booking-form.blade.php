@@ -106,7 +106,11 @@
     // Backward-compatible return-trip UX for Ride Now.
     // The frontend JS still targets legacy IDs/classes (ride_now-return-*).
     $allowReturnTrip = (bool) ($serviceTypeModel?->allow_return_trip ?? false);
-    $useLegacyRideNowReturnBlock = ($serviceCode === 'ride_now' && $allowReturnTrip);
+    $hasDynamicReturnFields = collect($sortedFields)->contains(static function ($cfg, $key) {
+        $submitAs = $cfg['submit_as'] ?? $key;
+        return in_array($submitAs, ['return_date', 'return_time', 'is_return_trip'], true);
+    });
+    $useLegacyRideNowReturnBlock = ($serviceCode === 'ride_now' && $allowReturnTrip && !$hasDynamicReturnFields);
     $rideNowReturnFieldKeys = [];
     if ($useLegacyRideNowReturnBlock) {
         foreach ($sortedFields as $key => $cfg) {
@@ -332,8 +336,17 @@
             <div class="dynamic-form-row" data-form-row="{{ $configuredRow }}">
             @php $currentLayoutRow = $configuredRow; @endphp
         @endif
+        @php
+            $isReturnConditional = in_array($submitAs, ['return_date', 'return_time'], true)
+                || ($field['conditional'] ?? '') === 'is_return_trip';
+            $showConditional = !$isReturnConditional || (bool) old('is_return_trip', $rideNowIsReturnTrip ?? false);
+        @endphp
         <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }}"
-             data-field-row="{{ $configuredRow }}">
+             data-field-row="{{ $configuredRow }}"
+             @if($isReturnConditional)
+                 data-conditional-parent="is_return_trip"
+                 style="{{ $showConditional ? '' : 'display: none !important;' }}"
+             @endif>
             @include('components.dynamic-form-field', [
                 'fieldName' => $fieldName,
                 'field' => $field,
@@ -474,6 +487,32 @@
                 </div>
             </div>
         </div>
+    @endif
+
+    @if($hasDynamicReturnFields)
+        <script>
+            (function() {
+                var form = document.getElementById('{{ $formId }}');
+                if (!form) return;
+                var toggle = form.querySelector('input[name="is_return_trip"]');
+                if (!toggle) return;
+                var conditionalWrappers = form.querySelectorAll('[data-conditional-parent="is_return_trip"]');
+                function syncReturnFields() {
+                    var isChecked = toggle.checked;
+                    conditionalWrappers.forEach(function(el) {
+                        el.style.setProperty('display', isChecked ? '' : 'none', 'important');
+                    });
+                    if (isChecked) {
+                        var pickupDate = form.querySelector('input[name="pickup_date"], input[name="date"]');
+                        var returnDate = form.querySelector('input[name="return_date"]');
+                        if (pickupDate && returnDate && !returnDate.value) {
+                            returnDate.value = pickupDate.value;
+                        }
+                    }
+                }
+                toggle.addEventListener('change', syncReturnFields);
+            })();
+        </script>
     @endif
 
     @if ($isInquiry)

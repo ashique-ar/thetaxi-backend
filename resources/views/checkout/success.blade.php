@@ -398,6 +398,13 @@
                                 <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our
                                     customer
                                     support team is available 24/7 to assist you.</p>
+                                @if($supportPhone)
+                                    <div style="text-align: center; margin-top: 15px;">
+                                        <a href="tel:{{ $supportPhoneTel }}" class="btn btn-outline-danger" style="border-radius: 20px; font-weight: 600; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
+                                            <i class="bi bi-telephone-fill"></i> Call 24/7 Support: {{ $supportPhone }}
+                                        </a>
+                                    </div>
+                                @endif
                             </div>
 
                             <!-- CTA Button -->

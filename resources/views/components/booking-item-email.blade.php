@@ -52,8 +52,8 @@
     $serviceTypeName = $item->serviceType?->name ?? 'N/A';
     $servicePricingMode = $item->serviceType?->pricing_mode;
     $durationDays = (int) ($item->duration_days ?? 0);
-    $pickupAddress = $pickupLoc['address'] ?? 'N/A';
-    $dropoffAddress = $dropoffLoc['address'] ?? 'N/A';
+    $pickupAddress = formatLocationName($pickupLoc, 'N/A');
+    $dropoffAddress = formatLocationName($dropoffLoc, 'N/A');
 
     $vehicleThumbnail = $item->vehicleGroup?->thumbnail ?? null;
     $thumb = null;
@@ -324,12 +324,8 @@
         $returnDropoff = $pickupLoc;
     }
 
-    $returnPickupAddress = is_array($returnPickup)
-        ? $returnPickup['address'] ?? 'Same as Dropoff'
-        : $returnPickup ?? 'Same as Dropoff';
-    $returnDropoffAddress = is_array($returnDropoff)
-        ? $returnDropoff['address'] ?? 'Same as Pickup'
-        : $returnDropoff ?? 'Same as Pickup';
+    $returnPickupAddress = formatLocationName($returnPickup, 'Same as Dropoff');
+    $returnDropoffAddress = formatLocationName($returnDropoff, 'Same as Pickup');
 
     $packageKmLabel = null;
     if ($isDayPackage) {
@@ -414,19 +410,26 @@
     </div>
 
     <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+        <tr style="background-color: #fff9e6;">
+            <td style="padding: 8px 10px; border-bottom: 1px solid #ffeeba; font-weight: 700; color: #856404; width: 30%;">
+                Start Date & Time
+            </td>
+            <td style="padding: 8px 10px; border-bottom: 1px solid #ffeeba; color: #856404; font-weight: 700; font-size: 14px;">
+                <span style="display: inline-block; background-color: #ffe8a1; color: #664d03; padding: 3px 10px; border-radius: 6px; border: 1px solid #f6d365; font-size: 13px;">
+                    📅 {{ $pickupDateTime }}
+                </span>
+            </td>
+        </tr>
         <tr>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
+            <td style="padding: 6px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
                 Pickup Location
             </td>
-            <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
+            <td style="padding: 6px 0; border-bottom: 1px solid #eef0f2; color: #555;">
                 {!! str_replace(
                     '(Airport)',
                     '<strong style="color: #BF2629;">(Airport)</strong>',
                     htmlspecialchars($pickupAddress),
                 ) !!}
-                <div style="margin-top: 6px; color: #777; font-size: 12px; line-height: 1.5;">
-                    Pickup Date & Time: <strong>{{ $pickupDateTime }}</strong>
-                </div>
             </td>
         </tr>
         @if (!$isReturnTrip && $item->to_date && $item->from_date && $item->to_date->toDateString() !== $item->from_date->toDateString())
@@ -558,33 +561,36 @@
         --}}
 
         @if ($freeKmPerDay)
-            <tr>
-                <td>Free KM per Day</td>
-                <td><strong>{{ number_format($freeKmPerDay, 0) }} km</strong></td>
-            </tr>
-            @if ($effectiveAllowedTotalKm)
+            @if (!$isDayPackage)
                 <tr>
-                    <td>Total Allowed KM</td>
-                    <td><strong>{{ number_format($effectiveAllowedTotalKm, 0) }} km</strong> <small>({{ $kmAllowanceDays }} days)</small></td>
+                    <td>Free KM per Day</td>
+                    <td><strong>{{ number_format($freeKmPerDay, 0) }} km</strong></td>
+                </tr>
+                @if ($effectiveAllowedTotalKm)
+                    <tr>
+                        <td>Total Allowed KM</td>
+                        <td><strong>{{ number_format($effectiveAllowedTotalKm, 0) }} km</strong> <small>({{ $kmAllowanceDays }} days)</small></td>
+                    </tr>
+                @endif
+            @else
+                <tr>
+                    <td>Total Included KM</td>
+                    <td><strong>{{ number_format($effectiveAllowedTotalKm ?: ($freeKmPerDay * $kmAllowanceDays), 0) }} km</strong> <small>({{ $kmAllowanceDays }} {{ Str::plural('day', $kmAllowanceDays) }})</small></td>
                 </tr>
             @endif
         @elseif($freeKmPerPackage)
             <tr>
-                <td>{{ $isDayPackage ? 'Selected Package' : 'Included KM' }}</td>
+                <td>{{ $isDayPackage ? 'Total Included KM' : 'Included KM' }}</td>
                 <td>
                     <strong>{{ number_format($freeKmPerPackage, 0) }} km</strong>
                     <small>{{ $isDayPackage ? '' : '(per package)' }}</small>
-                    {{-- <small>{{ $isDayPackage ? '(return to same pickup location)' : '(per package)' }}</small> --}}
                 </td>
             </tr>
         @elseif($allowedTotalKm)
             <tr>
-                <td>{{ $isDayPackage ? 'Selected Package' : 'Included KM' }}</td>
+                <td>{{ $isDayPackage ? 'Total Included KM' : 'Included KM' }}</td>
                 <td>
                     <strong>{{ number_format($allowedTotalKm, 0) }} km</strong>
-                    {{-- @if ($isDayPackage)
-                        <small>(return to same pickup location)</small>
-                    @endif --}}
                 </td>
             </tr>
         @elseif($packageKmLabel)

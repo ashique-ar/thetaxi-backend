@@ -111,13 +111,13 @@
             @if (!empty($form['pickup_location']))
                 <tr>
                     <td>Pickup Location</td>
-                    <td>{{ $form['pickup_location'] }}</td>
+                    <td>{{ formatLocationName($form['pickup_location']) }}</td>
                 </tr>
             @endif
             @if (!empty($form['dropoff_location']))
                 <tr>
                     <td>Dropoff Location</td>
-                    <td>{{ $form['dropoff_location'] }}</td>
+                    <td>{{ formatLocationName($form['dropoff_location']) }}</td>
                 </tr>
             @endif
             @if (!empty($form['travel_date']))

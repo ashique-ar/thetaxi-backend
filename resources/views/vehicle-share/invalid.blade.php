@@ -7,8 +7,25 @@
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
 @endpush
 
+@push('styles')
+<style>
+    .vehicle-preview-page {
+        --share-primary: var(--t4-accent, var(--t3-accent, var(--primary-color1, #bf2629)));
+    }
+    .vehicle-preview-page .btn-primary {
+        background-color: var(--share-primary) !important;
+        border-color: var(--share-primary) !important;
+        color: #ffffff !important;
+    }
+    .vehicle-preview-page .btn-primary:hover {
+        filter: brightness(0.92);
+        color: #ffffff !important;
+    }
+</style>
+@endpush
+
 @section('content')
-<div class="py-5 bg-light min-vh-50 d-flex align-items-center">
+<div class="vehicle-preview-page py-5 bg-light min-vh-50 d-flex align-items-center">
     <div class="container py-5">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 text-center">

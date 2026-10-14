@@ -62,14 +62,22 @@
             </div>
 
             <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 15px;">
+                @if ($pickupDateTime && $pickupDateTime !== 'To be confirmed')
+                    <tr style="background-color: #fff9e6;">
+                        <td style="padding: 8px 10px; border-bottom: 1px solid #ffeeba; font-weight: 700; color: #856404; width: 30%;">
+                            Start Date & Time
+                        </td>
+                        <td style="padding: 8px 10px; border-bottom: 1px solid #ffeeba; color: #856404; font-weight: 700; font-size: 14px;">
+                            <span style="display: inline-block; background-color: #ffe8a1; color: #664d03; padding: 3px 10px; border-radius: 6px; border: 1px solid #f6d365; font-size: 13px;">
+                                📅 {{ $pickupDateTime }}
+                            </span>
+                        </td>
+                    </tr>
+                @endif
                 @if ($pickupLocation)
                     <tr>
                         <td>Pickup Location</td>
-                        <td>{{ $pickupLocation }}
-                            <div style="margin-top: 6px; color: #777; font-size: 12px; line-height: 1.5;">
-                                Pickup Date & Time: <strong>{{ $pickupDateTime }}</strong>
-                            </div>
-                        </td>
+                        <td>{{ formatLocationName($pickupLocation) }}</td>
                     </tr>
                 @elseif ($travelDate || $travelTime)
                     <tr>
@@ -80,7 +88,7 @@
                 @if ($dropoffLocation)
                     <tr>
                         <td>Dropoff Location</td>
-                        <td>{{ $dropoffLocation }}</td>
+                        <td>{{ formatLocationName($dropoffLocation) }}</td>
                     </tr>
                 @endif
                 @if ($returnDate || $returnTime)
@@ -176,5 +184,16 @@
                         style="color: #BF2629; text-decoration: none;">{{ config('app.url') }}</a></td>
             </tr>
         </table>
+        @php
+            $supportPhoneTel = preg_replace('/[^0-9+]/', '', $supportPhone ?? '');
+        @endphp
+        @if(!empty($supportPhoneTel))
+            <div style="text-align: center; margin: 20px 0 10px 0;">
+                <a href="tel:{{ $supportPhoneTel }}"
+                    style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                    📞 Call 24/7 Support
+                </a>
+            </div>
+        @endif
     </div>
 @endsection

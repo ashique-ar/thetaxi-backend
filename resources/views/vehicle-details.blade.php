@@ -201,14 +201,13 @@
                                 $groupDetails = [
                                     ['label' => 'Make', 'value' => $vehicleGroup->make->name ?? null],
                                     ['label' => 'Model', 'value' => $vehicleGroup->model->name ?? null],
-                                    ['label' => 'Grade', 'value' => $vehicleGroup->grade->name ?? null],
-                                    ['label' => 'Class', 'value' => $vehicleGroup->class->name ?? null],
-                                    ['label' => 'Category', 'value' => $vehicleGroup->category->name ?? null],
+                                    ['label' => 'Vehicle Type', 'value' => $vehicleGroup->category->name ?? null],
+                                    ['label' => 'Vehicle Class', 'value' => $vehicleGroup->class->name ?? null],
                                     [
                                         'label' => 'Air Conditioning',
                                         'value' => is_null($vehicleGroup->air_conditioning)
                                             ? null
-                                            : ($vehicleGroup->air_conditioning ? 'Available' : 'Not Available'),
+                                            : ($vehicleGroup->air_conditioning ? 'Air Conditioned' : 'Standard Ventilation'),
                                     ],
                                 ];
                             @endphp
@@ -225,11 +224,14 @@
                         </div>
 
                         @if (!empty($vehicleGroup->specs) && is_array($vehicleGroup->specs))
+                            @php
+                                $ignoredSpecKeys = ['id', 'grade_id', 'group_id', 'category_id', 'make_id', 'model_id', 'status', 'is_active', 'wialon_unit_id', 'telemetry', 'code'];
+                            @endphp
                             <div class="vehicle-specifications mt-4">
                                 <h2>Additional Specifications</h2>
                                 <div class="details-grid">
                                     @foreach ($vehicleGroup->specs as $key => $value)
-                                        @if (!is_null($value) && $value !== '')
+                                        @if (!is_null($value) && $value !== '' && !in_array(strtolower((string) $key), $ignoredSpecKeys, true) && !str_ends_with(strtolower((string) $key), '_id'))
                                             <div class="detail-row">
                                                 <span
                                                     class="detail-label">{{ ucwords(str_replace('_', ' ', (string) $key)) }}</span>
@@ -461,6 +463,39 @@
             gap: 8px;
             color: var(--vehicle-muted);
             font-size: 14px;
+        }
+
+        .vehicle-deposit-note i {
+            color: var(--vehicle-primary);
+        }
+
+        .vehicle-service-links h3 {
+            font-size: 16px;
+            font-weight: 700;
+            color: #111827;
+            margin-bottom: 12px;
+        }
+
+        .vehicle-service-links a {
+            display: inline-flex;
+            align-items: center;
+            padding: 7px 16px;
+            border-radius: 9999px;
+            background: #f8fafc;
+            color: #334155;
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            border: 1px solid var(--vehicle-border);
+            transition: all 0.2s ease;
+        }
+
+        .vehicle-service-links a:hover {
+            background: var(--vehicle-primary);
+            border-color: var(--vehicle-primary);
+            color: #ffffff;
+            transform: translateY(-1px);
+            box-shadow: var(--vehicle-shadow-sm);
         }
 
         .vehicle-specifications h2 {

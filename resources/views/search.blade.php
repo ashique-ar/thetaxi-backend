@@ -445,29 +445,13 @@
                                 <div class="col-md-6">
                                     <small class="text-muted">Pickup Location:</small>
                                     <p class="mb-1">
-                                        @php
-                                            $pickupDisplay = $search->pickup_location ?? 'Not specified';
-                                            if (is_array($pickupDisplay)) {
-                                                $pickupDisplay = $pickupDisplay['address'] ?? 'Not specified';
-                                            } elseif (is_object($pickupDisplay)) {
-                                                $pickupDisplay = $pickupDisplay->address ?? 'Not specified';
-                                            }
-                                        @endphp
-                                        {{ $pickupDisplay }}
+                                        {{ formatLocationName($search->pickup_location ?? null, 'Not specified') }}
                                     </p>
                                 </div>
                                 <div class="col-md-6">
                                     <small class="text-muted">Drop-off Location:</small>
                                     <p class="mb-1">
-                                        @php
-                                            $dropoffDisplay = $search->dropoff_location ?? ($search->pickup_location ?? 'Not specified');
-                                            if (is_array($dropoffDisplay)) {
-                                                $dropoffDisplay = $dropoffDisplay['address'] ?? 'Not specified';
-                                            } elseif (is_object($dropoffDisplay)) {
-                                                $dropoffDisplay = $dropoffDisplay->address ?? 'Not specified';
-                                            }
-                                        @endphp
-                                        {{ $dropoffDisplay }}
+                                        {{ formatLocationName($search->dropoff_location ?? ($search->pickup_location ?? null), 'Not specified') }}
                                     </p>
                                 </div>
                             </div>

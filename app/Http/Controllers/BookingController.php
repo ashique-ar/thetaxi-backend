@@ -140,6 +140,17 @@ class BookingController extends Controller
      */
     protected function resolveServiceType(string $code): ?ServiceType
     {
+        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
+        if ($resolvedCompanyId) {
+            $companyServiceType = ServiceType::forContext('public', 'company', (string) $resolvedCompanyId)
+                ->where('code', $code)
+                ->where('is_active', true)
+                ->first();
+            if ($companyServiceType) {
+                return $companyServiceType;
+            }
+        }
+
         $serviceType = ServiceType::publicContext()
             ->where('code', $code)
             ->where('is_active', true)

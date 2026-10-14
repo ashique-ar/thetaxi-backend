@@ -208,3 +208,55 @@ if (!function_exists('isServiceFixedRate')) {
         return in_array($serviceType, ['ride_now', 'airport_transfers', 'point_to_point']);
     }
 }
+
+/**
+ * Extract concise location name from address, array, object, or JSON string.
+ *
+ * @param mixed $location Location payload or string
+ * @param string $default Default fallback if empty
+ * @return string Concise location name
+ */
+if (!function_exists('formatLocationName')) {
+    function formatLocationName(mixed $location, string $default = ''): string
+    {
+        if (empty($location)) {
+            return $default;
+        }
+
+        if (is_string($location)) {
+            $trimmed = trim($location);
+            if ($trimmed === '') {
+                return $default;
+            }
+            if (str_starts_with($trimmed, '{') || str_starts_with($trimmed, '[')) {
+                $decoded = json_decode($trimmed, true);
+                if (json_last_error() === JSON_ERROR_NONE && (is_array($decoded) || is_object($decoded))) {
+                    $location = $decoded;
+                }
+            }
+        }
+
+        if (is_array($location)) {
+            if (!empty($location['name'])) {
+                return trim((string) $location['name']);
+            }
+            $location = $location['address'] ?? ($location['display_name'] ?? '');
+        } elseif (is_object($location)) {
+            if (!empty($location->name)) {
+                return trim((string) $location->name);
+            }
+            $location = $location->address ?? ($location->display_name ?? '');
+        }
+
+        $str = trim((string) $location);
+        if ($str === '') {
+            return $default;
+        }
+
+        $parts = explode(',', $str);
+        $name = trim($parts[0]);
+
+        return $name !== '' ? $name : $default;
+    }
+}
+

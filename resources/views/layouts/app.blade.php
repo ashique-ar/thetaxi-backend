@@ -632,6 +632,50 @@
     </style>
     @endif
 
+    @php($floatingPhone = preg_replace('/[^0-9+]/', '', $settings['company_phone'] ?? ''))
+    @if (!empty($floatingPhone))
+    <!-- 24/7 Support Call Floating Button -->
+    <a href="tel:{{ $floatingPhone }}" class="call-float" aria-label="24/7 Support Call" title="24/7 Support: {{ $settings['company_phone'] ?? '' }}">
+        <i class="bi bi-telephone-fill" style="font-size: 24px;"></i>
+    </a>
+    <style>
+        .call-float {
+            position: fixed;
+            bottom: 96px;
+            right: 30px;
+            z-index: 9999;
+            background: #BF2629;
+            color: #fff;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 16px rgba(191,38,41,0.45);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            text-decoration: none;
+        }
+        .call-float:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 20px rgba(191,38,41,0.6);
+            color: #fff;
+        }
+        @media (max-width: 767px) {
+            .call-float {
+                bottom: 78px;
+                right: 20px;
+                width: 48px;
+                height: 48px;
+            }
+            .call-float i {
+                font-size: 20px !important;
+            }
+        }
+    </style>
+    @endif
+    @endif
+
 </body>
 
 </html>

@@ -7,8 +7,20 @@
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
 @endpush
 
+@push('styles')
+<style>
+    .vehicle-preview-page {
+        --share-primary: var(--t4-accent, var(--t3-accent, var(--primary-color1, #bf2629)));
+    }
+    .vehicle-preview-page .btn-theme-link,
+    .vehicle-preview-page .btn-link:hover {
+        color: var(--share-primary) !important;
+    }
+</style>
+@endpush
+
 @section('content')
-<div class="py-5 bg-light min-vh-50 d-flex align-items-center">
+<div class="vehicle-preview-page py-5 bg-light min-vh-50 d-flex align-items-center">
     <div class="container py-5">
         <div class="row justify-content-center">
             <div class="col-md-8 col-lg-6 text-center">
@@ -20,7 +32,7 @@
                     </div>
                     <h2 class="fw-bold text-dark mb-2">Preview Link Expired</h2>
                     <p class="text-muted mb-4">
-                        This vehicle preview link has expired. Temporary share links remain active for 6 months. Please contact our team to receive a freshly generated preview link with updated photos.
+                        This vehicle preview link has expired. Please contact our team to receive an updated preview link with current photos and details.
                     </p>
                     <div class="d-grid gap-2">
                         @if(!empty($whatsappNumber))

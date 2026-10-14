@@ -622,10 +622,21 @@ class DynamicServiceConfigurationService
         // Resolve the authoritative public record before caching. Including its
         // identity and revision prevents the renderer from showing freshly saved
         // defaults while validation/pricing still consumes an older cached form.
-        $serviceType = ServiceType::publicContext()
-            ->where('code', $serviceCode)
-            ->orderByDesc('updated_at')
-            ->first();
+        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
+        $serviceType = null;
+        if ($resolvedCompanyId) {
+            $serviceType = ServiceType::forContext('public', 'company', (string) $resolvedCompanyId)
+                ->where('code', $serviceCode)
+                ->where('is_active', true)
+                ->orderByDesc('updated_at')
+                ->first();
+        }
+        if (!$serviceType) {
+            $serviceType = ServiceType::publicContext()
+                ->where('code', $serviceCode)
+                ->orderByDesc('updated_at')
+                ->first();
+        }
 
         if (!$serviceType) {
             return [
@@ -636,7 +647,8 @@ class DynamicServiceConfigurationService
         }
 
         $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
-        $cacheKey = "service_form_config_public_v6_{$serviceCode}_{$serviceType->id}_{$revision}";
+        $companySuffix = $resolvedCompanyId ? "_{$resolvedCompanyId}" : '';
+        $cacheKey = "service_form_config_public_v6_{$serviceCode}_{$serviceType->id}_{$revision}{$companySuffix}";
 
         return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType) {
             // Public form ownership order: Service Type form, config-service record, defaults.

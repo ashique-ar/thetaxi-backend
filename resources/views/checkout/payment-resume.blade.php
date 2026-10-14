@@ -162,10 +162,10 @@
                                                 <div class="pickup-info">
                                                     <span class="location-label">Pickup:</span>
                                                     <span class="location-details">
-                                                        {{ \Carbon\Carbon::parse($item['from_date'])->format('M d, Y') }}
-                                                        at
-                                                        {{ $item['from_time'] ?? '00:00' }}
-                                                        <br>{{ $item['pickup_location']['address'] ?? 'N/A' }}
+                                                        <strong style="color: #BF2629; background: #fef2f2; padding: 2px 6px; border-radius: 4px; display: inline-block; margin-bottom: 3px;">
+                                                            📅 {{ \Carbon\Carbon::parse($item['from_date'])->format('M d, Y') }} at {{ $item['from_time'] ?? '00:00' }}
+                                                        </strong>
+                                                        <br>{{ formatLocationName($item['pickup_location'] ?? 'N/A') }}
                                                     </span>
                                                 </div>
                                                 <div class="dropoff-info">
@@ -174,7 +174,7 @@
                                                         {{ \Carbon\Carbon::parse($item['to_date'])->format('M d, Y') }}
                                                         at
                                                         {{ $item['to_time'] ?? '00:00' }}
-                                                        <br>{{ $item['dropoff_location']['address'] ?? 'N/A' }}
+                                                        <br>{{ formatLocationName($item['dropoff_location'] ?? 'N/A') }}
                                                     </span>
                                                 </div>
                                             </div>
@@ -515,6 +515,13 @@
                             <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our
                                 customer
                                 support team is available 24/7 to assist you.</p>
+                            @if($supportPhone)
+                                <div style="text-align: center; margin-top: 15px;">
+                                    <a href="tel:{{ $supportPhoneTel }}" class="btn" style="background-color: #BF2629; color: #ffffff; border-radius: 20px; font-weight: 600; padding: 10px 24px; display: inline-flex; align-items: center; gap: 8px; text-decoration: none;">
+                                        <i class="bi bi-telephone-fill"></i> Call 24/7 Support: {{ $supportPhone }}
+                                    </a>
+                                </div>
+                            @endif
                         </div>
 
                         <!-- Alternative Actions -->

@@ -182,5 +182,16 @@
         </table>
         <p style="text-align: center; color: #717171; margin-top: 15px; font-size: 13px;">Our customer support team is
             available 24/7 to assist you.</p>
+        @php
+            $supportPhoneTel = preg_replace('/[^0-9+]/', '', $supportPhone ?? '');
+        @endphp
+        @if(!empty($supportPhoneTel))
+            <div style="text-align: center; margin: 20px 0 10px 0;">
+                <a href="tel:{{ $supportPhoneTel }}"
+                    style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                    📞 Call 24/7 Support
+                </a>
+            </div>
+        @endif
     </div>
 @endsection

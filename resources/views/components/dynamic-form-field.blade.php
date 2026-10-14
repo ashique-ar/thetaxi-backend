@@ -370,21 +370,42 @@
 
     {{-- ===== CHECKBOX FIELD ===== --}}
     @case('checkbox')
-        <div class="booking-field">
-            <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
-            <div class="single-search-box checkbox-field">
-                <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
-                       value="1"
-                       {{ $fieldValue ? 'checked' : '' }}
-                       {{ $required ? 'required' : '' }}>
-                @if($hint)
-                    <small class="text-muted">{{ $hint }}</small>
-                @endif
+        @if($submitAs === 'is_return_trip')
+            <div class="booking-field return-trip-toggle">
+                <label class="return-trip-checkbox-label" for="{{ $elementId }}">
+                    <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
+                           value="1"
+                           {{ $fieldValue ? 'checked' : '' }}
+                           {{ $required ? 'required' : '' }}>
+                    <span class="return-trip-text">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none"
+                             xmlns="http://www.w3.org/2000/svg">
+                            <path
+                                d="M7.5 21L3 16.5M3 16.5L7.5 12M3 16.5H16.5C18.9853 16.5 21 14.4853 21 12C21 9.51472 18.9853 7.5 16.5 7.5H15"
+                                stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round" />
+                        </svg>
+                        {{ $label }}
+                    </span>
+                </label>
             </div>
-            @error($submitAs)
-                <span class="text-danger small">{{ $message }}</span>
-            @enderror
-        </div>
+        @else
+            <div class="booking-field">
+                <label class="input-label" for="{{ $elementId }}">{{ $label }}</label>
+                <div class="single-search-box checkbox-field">
+                    <input type="checkbox" name="{{ $submitAs }}" id="{{ $elementId }}"
+                           value="1"
+                           {{ $fieldValue ? 'checked' : '' }}
+                           {{ $required ? 'required' : '' }}>
+                    @if($hint)
+                        <small class="text-muted">{{ $hint }}</small>
+                    @endif
+                </div>
+                @error($submitAs)
+                    <span class="text-danger small">{{ $message }}</span>
+                @enderror
+            </div>
+        @endif
         @break
 
     {{-- ===== TEXT / TEXTAREA / NUMBER ===== --}}

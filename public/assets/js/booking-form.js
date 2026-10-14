@@ -954,6 +954,10 @@
         autocomplete.addListener("place_changed", function () {
             const place = autocomplete.getPlace();
             if (place && place.geometry) {
+                const conciseName = place.name || (place.formatted_address ? place.formatted_address.split(',')[0].trim() : input.value);
+                if (conciseName) {
+                    input.value = conciseName;
+                }
                 updateLocationData(input, place);
                 // Mark that a valid selection HAS been made
                 input.setAttribute("data-place-selected", "true");
@@ -1058,16 +1062,16 @@
             const index = parseInt(input.getAttribute("data-index"));
 
             if (place.geometry && !isNaN(index)) {
+                const conciseName = place.name || (place.formatted_address ? place.formatted_address.split(',')[0].trim() : input.value);
                 // Update state with new location
-                state.customTourDestinations[index].name =
-                    place.formatted_address || place.name;
+                state.customTourDestinations[index].name = conciseName;
                 state.customTourDestinations[index].lat =
                     place.geometry.location.lat();
                 state.customTourDestinations[index].lng =
                     place.geometry.location.lng();
 
                 // Update the input value
-                input.value = place.formatted_address || place.name;
+                input.value = conciseName;
 
                 // Sync to form and refresh map
                 updateFormFromState();
@@ -1148,13 +1152,13 @@
                             .then((resData) => {
                                 if (resData.status === "success" && resData.data) {
                                     const details = resData.data;
-                                    state.customTourDestinations[index].name =
-                                        details.formatted_address || details.address || ui.item.value;
+                                    const conciseName = details.name || (details.formatted_address ? details.formatted_address.split(',')[0].trim() : ui.item.value);
+                                    state.customTourDestinations[index].name = conciseName;
                                     state.customTourDestinations[index].lat =
                                         details.latitude;
                                     state.customTourDestinations[index].lng =
                                         details.longitude;
-                                    input.value = details.formatted_address || details.address || ui.item.value;
+                                    input.value = conciseName;
                                     updateFormFromState();
                                     setTimeout(() => initializeRouteMap(), 200);
                                 }
@@ -1223,7 +1227,7 @@
                                     response(
                                         data.data.map((airport) => ({
                                             label: airport.description,
-                                            value: airport.description,
+                                            value: airport.main_text || airport.name || airport.description,
                                             main_text: airport.main_text || airport.name || airport.description,
                                             secondary_text: airport.secondary_text || airport.city || "Sri Lanka",
                                             is_airport: true,
@@ -1324,7 +1328,7 @@
                                     response(
                                         data.data.map((item) => ({
                                             label: item.description,
-                                            value: item.description,
+                                            value: item.main_text || (item.description ? item.description.split(',')[0].trim() : item.description),
                                             place_id: item.place_id,
                                             main_text: item.main_text || item.description,
                                             secondary_text: item.secondary_text || "",
@@ -1377,8 +1381,11 @@
                                 .then((resData) => {
                                     if (resData.status === "success" && resData.data) {
                                         const details = resData.data;
+                                        const conciseName = details.name || (details.formatted_address ? details.formatted_address.split(',')[0].trim() : ui.item.value);
+                                        input.value = conciseName;
                                         updateLocationData(input, {
-                                            formatted_address: details.formatted_address || details.address || ui.item.value,
+                                            name: conciseName,
+                                            formatted_address: conciseName,
                                             geometry: {
                                                 location: {
                                                     lat: () => details.latitude,
@@ -1610,8 +1617,10 @@
         const lng = typeof place.geometry.location.lng === 'function'
             ? place.geometry.location.lng()
             : parseFloat(place.geometry.location.lng);
-        if ((!input.value || input.value.trim() === '') && place.formatted_address) {
-            input.value = place.formatted_address;
+
+        const conciseName = place.name || (place.formatted_address ? place.formatted_address.split(',')[0].trim() : (input.value || '').split(',')[0].trim());
+        if (conciseName) {
+            input.value = conciseName;
         }
         latInput.value = lat;
         lngInput.value = lng;

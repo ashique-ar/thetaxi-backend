@@ -250,12 +250,12 @@
                                                                         <div class="trip-location">
                                                                             <span class="checkout-location-icon"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i></span>
                                                                             <strong class="checkout-location-label">Pickup</strong>
-                                                                            <span class="checkout-location-address">{{ $pickupLoc ?: 'N/A' }}</span>
+                                                                            <span class="checkout-location-address">{{ formatLocationName($pickupLoc, 'N/A') }}</span>
                                                                         </div>
                                                                         <div class="trip-location">
                                                                             <span class="checkout-location-icon"><i class="bi bi-flag-fill" aria-hidden="true"></i></span>
                                                                             <strong class="checkout-location-label">Dropoff</strong>
-                                                                            <span class="checkout-location-address">{{ $dropoffLoc ?: 'N/A' }}</span>
+                                                                            <span class="checkout-location-address">{{ formatLocationName($dropoffLoc, 'N/A') }}</span>
                                                                         </div>
 
                                                                         {{-- Return Trip Info --}}
@@ -281,8 +281,8 @@
                                                                                     style="margin: 4px 0 0 0; font-size: 11px;">
                                                                                     <i class="bi bi-geo-alt"
                                                                                         style="color: #28a745;"></i>
-                                                                                    {{ $dropoffLoc ?: 'Drop-off' }} →
-                                                                                    {{ $pickupLoc ?: 'Pickup' }}
+                                                                                    {{ formatLocationName($dropoffLoc, 'Drop-off') }} →
+                                                                                    {{ formatLocationName($pickupLoc, 'Pickup') }}
                                                                                 </p>
                                                                                 @if (!empty($item['return_discount_percentage']) && $item['return_discount_percentage'] > 0)
                                                                                     <span class="badge bg-success mt-1"

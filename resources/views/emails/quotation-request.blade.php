@@ -231,6 +231,19 @@
         </p>
     </div>
 
-    <p style="text-align: center; color: #555; font-size: 15px; margin-top: 30px;">Thank you for choosing
+    @php
+        $supportPhone = $settings['company_phone'] ?? '';
+        $supportPhoneTel = preg_replace('/[^0-9+]/', '', $supportPhone);
+    @endphp
+    @if(!empty($supportPhoneTel))
+        <div style="text-align: center; margin: 25px 0 15px 0;">
+            <a href="tel:{{ $supportPhoneTel }}"
+                style="display: inline-block; background-color: #BF2629; background-image: linear-gradient(135deg, #BF2629 0%, #8f1d1f 100%); color: #ffffff; padding: 12px 28px; text-decoration: none; border-radius: 8px; font-weight: 700; font-size: 15px; box-shadow: 0 4px 12px rgba(191, 38, 41, 0.25);">
+                📞 Call 24/7 Support
+            </a>
+        </div>
+    @endif
+
+    <p style="text-align: center; color: #555; font-size: 15px; margin-top: 20px;">Thank you for choosing
         {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We look forward to serving you!</p>
 @endsection

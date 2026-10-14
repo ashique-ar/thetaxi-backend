@@ -7,6 +7,40 @@
     <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet">
 @endpush
 
+@push('styles')
+<style>
+    .vehicle-preview-page {
+        --share-primary: var(--t4-accent, var(--t3-accent, var(--primary-color1, #bf2629)));
+    }
+    .vehicle-preview-page .text-primary {
+        color: var(--share-primary) !important;
+    }
+    .vehicle-preview-page .bg-primary {
+        background-color: var(--share-primary) !important;
+        color: #ffffff !important;
+    }
+    .vehicle-preview-page .border-primary,
+    .vehicle-preview-page .thumbnail-btn.active-thumbnail {
+        border-color: var(--share-primary) !important;
+    }
+    .vehicle-preview-page .bg-primary-subtle {
+        background-color: color-mix(in srgb, var(--share-primary) 12%, transparent) !important;
+    }
+    .vehicle-preview-page .border-primary-subtle {
+        border-color: color-mix(in srgb, var(--share-primary) 28%, transparent) !important;
+    }
+    .vehicle-preview-page .btn-primary {
+        background-color: var(--share-primary) !important;
+        border-color: var(--share-primary) !important;
+        color: #ffffff !important;
+    }
+    .vehicle-preview-page .btn-primary:hover {
+        filter: brightness(0.92);
+        color: #ffffff !important;
+    }
+</style>
+@endpush
+
 @section('content')
 @php
     $actualImages = [];
@@ -54,7 +88,7 @@
     $fuelTypeName = $vehicle->group?->fuelType?->name ?? 'Petrol';
     $seats = $vehicle->seats ?? ($vehicle->group?->seats ?? 4);
     $bags = $vehicle->bags ?? ($vehicle->group?->bags ?? 2);
-    $doors = $vehicle->no_od_doors ?? 4;
+    $doors = $vehicle->no_od_doors ?? ($vehicle->group?->no_of_doors ?? 4);
     $color = $vehicle->color ?? '';
     $year = $vehicle->year ?? ($vehicle->model_year ?? '');
 
@@ -72,7 +106,7 @@
                     <div class="col-lg-8">
                         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
                             <span class="badge bg-primary-subtle text-primary border border-primary-subtle px-3 py-2 rounded-pill fw-semibold">
-                                <i class="bi bi-patch-check-fill me-1"></i> Verified Fleet Vehicle
+                                <i class="bi bi-patch-check-fill me-1"></i> Verified Vehicle
                             </span>
                             <span class="badge bg-secondary-subtle text-secondary px-3 py-2 rounded-pill">
                                 {{ $categoryName }}
@@ -92,7 +126,7 @@
                     </div>
                     <div class="col-lg-4 text-lg-end">
                         <div class="d-inline-flex flex-column align-items-lg-end">
-                            <span class="text-muted small mb-1"><i class="bi bi-clock-history me-1"></i> Shared Preview Link</span>
+                            <span class="text-muted small mb-1"><i class="bi bi-clock-history me-1"></i> Vehicle Preview</span>
                             <span class="badge bg-success-subtle text-success border border-success-subtle px-3 py-1 rounded-pill">
                                 Valid until {{ $shareLink->expires_at->format('M d, Y') }}
                             </span>
@@ -121,7 +155,7 @@
                         <img id="mainVehicleDisplay" src="{{ $primaryImage }}" alt="{{ $vehicle->title }}" class="img-fluid w-100 object-fit-contain rounded-3" style="max-height: 500px;">
                         <div class="position-absolute bottom-0 start-0 m-3">
                             <span class="badge bg-dark bg-opacity-75 text-white px-3 py-2 rounded-pill shadow-sm">
-                                <i class="bi bi-shield-check text-success me-1"></i> Actual Fleet Unit
+                                <i class="bi bi-shield-check text-success me-1"></i> Verified Vehicle
                             </span>
                         </div>
                     </div>
@@ -132,7 +166,7 @@
                         @foreach($gallery as $index => $item)
                         <button type="button" 
                                 onclick="switchVehicleImage('{{ $item['url'] }}', this)" 
-                                class="btn p-0 rounded-3 border-2 overflow-hidden flex-shrink-0 transition {{ $index === 0 ? 'border-primary shadow-sm' : 'border-transparent opacity-75' }}" 
+                                class="btn p-0 rounded-3 border-2 overflow-hidden flex-shrink-0 thumbnail-btn transition {{ $index === 0 ? 'border-primary shadow-sm active-thumbnail' : 'border-transparent opacity-75' }}" 
                                 style="width: 90px; height: 65px; border-style: solid;">
                             <img src="{{ $item['url'] }}" alt="{{ $item['name'] }}" class="w-100 h-100 object-fit-cover">
                         </button>
@@ -176,8 +210,8 @@
                                     <i class="bi bi-wrench"></i>
                                 </div>
                                 <div>
-                                    <h6 class="fw-bold mb-1">Mechanically Certified</h6>
-                                    <p class="text-muted small mb-0">Regularly serviced and maintained by authorized technicians.</p>
+                                    <h6 class="fw-bold mb-1">Safety Inspected</h6>
+                                    <p class="text-muted small mb-0">Regularly serviced and maintained by professional technicians.</p>
                                 </div>
                             </div>
                         </div>
@@ -187,8 +221,8 @@
                                     <i class="bi bi-snow"></i>
                                 </div>
                                 <div>
-                                    <h6 class="fw-bold mb-1">Air Conditioning Tested</h6>
-                                    <p class="text-muted small mb-0">Dual/high-capacity AC tested for superior passenger comfort.</p>
+                                    <h6 class="fw-bold mb-1">Climate Controlled</h6>
+                                    <p class="text-muted small mb-0">Air conditioning verified for maximum passenger comfort.</p>
                                 </div>
                             </div>
                         </div>
@@ -236,7 +270,7 @@
                         </li>
                         <li class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-bottom">
                             <span class="text-muted"><i class="bi bi-snow me-2 text-primary"></i>Air Conditioning</span>
-                            <span class="fw-semibold text-dark">{{ $vehicle->ac ? 'Available (A/C)' : 'Standard' }}</span>
+                            <span class="fw-semibold text-dark">{{ $vehicle->ac ? 'Air Conditioned' : 'Standard' }}</span>
                         </li>
                         @if($doors)
                         <li class="list-group-item px-0 py-3 d-flex justify-content-between align-items-center border-bottom">
@@ -284,7 +318,7 @@
 
                     <div class="border-top pt-3 mt-4 text-center">
                         <p class="text-muted small mb-0">
-                            <i class="bi bi-shield-lock me-1"></i> Private customer preview link. Not indexed by search engines.
+                            <i class="bi bi-shield-lock me-1"></i> Private and secure customer preview link.
                         </p>
                     </div>
                 </div>
@@ -312,12 +346,12 @@ function switchVehicleImage(url, element) {
     if (container) {
         const buttons = container.querySelectorAll('button');
         buttons.forEach(btn => {
-            btn.classList.remove('border-primary', 'shadow-sm');
+            btn.classList.remove('border-primary', 'shadow-sm', 'active-thumbnail');
             btn.classList.add('border-transparent', 'opacity-75');
         });
         if (element) {
             element.classList.remove('border-transparent', 'opacity-75');
-            element.classList.add('border-primary', 'shadow-sm');
+            element.classList.add('border-primary', 'shadow-sm', 'active-thumbnail');
         }
     }
 }

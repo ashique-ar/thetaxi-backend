@@ -215,13 +215,26 @@
         ->values();
 
     try {
-        $serviceTypeConfigs = \App\Models\Service\ServiceType::query()
+        $resolvedCompanyId = app(\App\Services\WebsiteSettingsService::class)->resolveCompanyId();
+        $companyConfigs = $resolvedCompanyId
+            ? \App\Models\Service\ServiceType::query()
+                ->forContext('public', 'company', (string) $resolvedCompanyId)
+                ->whereIn('code', $serviceTypeCodesForConfig)
+                ->where('is_active', true)
+                ->orderBy('updated_at')
+                ->get()
+                ->keyBy('code')
+            : collect();
+
+        $globalConfigs = \App\Models\Service\ServiceType::query()
             ->publicContext()
             ->whereIn('code', $serviceTypeCodesForConfig)
             ->where('is_active', true)
             ->orderBy('updated_at')
             ->get()
             ->keyBy('code');
+
+        $serviceTypeConfigs = $globalConfigs->merge($companyConfigs);
     } catch (Exception $e) {
         $serviceTypeConfigs = collect();
     }
@@ -500,11 +513,12 @@
                                 .then(function(data) {
                                     if (data.status === 'success' && Array.isArray(data.data)) {
                                         response(data.data.map(function(item) {
+                                            var conciseName = item.main_text || (item.description ? item.description.split(',')[0].trim() : item.description);
                                             return {
                                                 label: item.description,
-                                                value: item.description,
+                                                value: conciseName,
                                                 place_id: item.place_id,
-                                                main_text: item.main_text || item.description,
+                                                main_text: conciseName,
                                                 secondary_text: item.secondary_text || ''
                                             };
                                         }));
@@ -516,6 +530,9 @@
                         },
                         minLength: 2,
                         select: function(event, ui) {
+                            if (ui.item.main_text && dropoffInput) {
+                                dropoffInput.value = ui.item.main_text;
+                            }
                             if (ui.item.place_id) {
                                 fetch('/api/places/details?place_id=' + encodeURIComponent(ui.item.place_id))
                                     .then(function(res) { return res.json(); })
