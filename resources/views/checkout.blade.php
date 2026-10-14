@@ -2493,7 +2493,7 @@
 
             function setCheckoutItemExpanded(item, expanded) {
                 item.toggleClass('is-expanded', expanded).toggleClass('is-collapsed', !expanded);
-                item.find('> .checkout-item-toggle')
+                item.find('> .checkout-item-toolbar > .checkout-item-toggle')
                     .attr('aria-expanded', expanded ? 'true' : 'false')
                     .attr('title', expanded ? 'Hide booking details' : 'Show booking details')
                     .find('.checkout-item-toggle-label')

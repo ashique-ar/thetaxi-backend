@@ -74,7 +74,7 @@
                                                                         <h6 class="vehicle-title">
                                                                             <a
                                                                                 href="#">{{ $item['name'] ?? '' }}</a>
-                                                                            <span class="service-type-badge"><i class="bi bi-steering-wheel" aria-hidden="true"></i> {{ data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
+                                                                            <span class="service-type-badge"><i class="bi bi-car-front-fill" aria-hidden="true"></i> {{ data_get($item, 'service_type_data.name', $item['service_type'] ?? 'Service') }}</span>
                                                                         </h6>
                                                                         <p class="trip-meta"><small>
                                                                                 <i class="bi bi-calendar-event"></i>
@@ -247,12 +247,16 @@
                                                                                             '');
                                                                             }
                                                                         @endphp
-                                                                        <p class="trip-location"><small><i class="bi bi-geo-alt"></i>
-                                                                                <strong>Pickup:</strong>
-                                                                                {{ $pickupLoc ?: 'N/A' }}</small></p>
-                                                                        <p class="trip-location"><small><i class="bi bi-geo-alt-fill"></i>
-                                                                                <strong>Dropoff:</strong>
-                                                                                {{ $dropoffLoc ?: 'N/A' }}</small></p>
+                                                                        <div class="trip-location">
+                                                                            <span class="checkout-location-icon"><i class="bi bi-geo-alt-fill" aria-hidden="true"></i></span>
+                                                                            <strong class="checkout-location-label">Pickup</strong>
+                                                                            <span class="checkout-location-address">{{ $pickupLoc ?: 'N/A' }}</span>
+                                                                        </div>
+                                                                        <div class="trip-location">
+                                                                            <span class="checkout-location-icon"><i class="bi bi-flag-fill" aria-hidden="true"></i></span>
+                                                                            <strong class="checkout-location-label">Dropoff</strong>
+                                                                            <span class="checkout-location-address">{{ $dropoffLoc ?: 'N/A' }}</span>
+                                                                        </div>
 
                                                                         {{-- Return Trip Info --}}
                                                                         @if (!empty($item['is_return_trip']) && !empty($item['return_trip_date']))
@@ -300,6 +304,14 @@
                                                                     $returnDiscountPct =
                                                                         $item['return_discount_percentage'] ?? 0;
                                                                 @endphp
+
+                                                                <div class="checkout-item-price-rate">
+                                                                    @if ($isFixedRate)
+                                                                        {{ $pricingLabel }}: {{ $currencySymbol }} {{ number_format(floor(max(0, $itemTotal)), 0) }}
+                                                                    @else
+                                                                        {{ $currencySymbol }} {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}/day &times; {{ $durationLabel }}
+                                                                    @endif
+                                                                </div>
 
                                                                 {{-- Return Trip Pricing Breakdown --}}
                                                                 @if ($isReturnTrip && $oneWayPrice && $returnPrice)

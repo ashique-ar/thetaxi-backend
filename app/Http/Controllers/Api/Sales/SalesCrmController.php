@@ -503,6 +503,8 @@ class SalesCrmController extends Controller
     {
         $resolved = $companyId ?: app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($resolved, 409, 'No active default legal entity is configured.');
+        abort_unless(DB::table('companies')->where('id', $resolved)->where('is_active', true)
+            ->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
 
         return (string) $resolved;
     }

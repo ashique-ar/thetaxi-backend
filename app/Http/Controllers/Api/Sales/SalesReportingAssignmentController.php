@@ -72,7 +72,9 @@ class SalesReportingAssignmentController extends Controller
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $assignment = DB::transaction(function () use ($data, $request) {
-            DB::table('companies')->where('id', $data['company_id'])->lockForUpdate()->firstOrFail();
+            $company = DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)
+                ->whereNull('deleted_at')->lockForUpdate()->first();
+            abort_unless($company, 422, 'New reporting assignments require an active legal entity.');
             $profiles = SalesProfile::query()
                 ->whereIn('id', [$data['manager_sales_profile_id'], $data['member_sales_profile_id']])
                 ->orderBy('id')

@@ -67,6 +67,7 @@ class BookingDistancePresentationTest extends TestCase
         $this->assertStringContainsString('assets/css/checkout-item-summary.css', $checkout);
         $this->assertStringContainsString('class="checkout-item-route-details"', $itemView);
         $this->assertStringContainsString('class="checkout-item-toolbar"', $itemView);
+        $this->assertStringContainsString("item.find('> .checkout-item-toolbar > .checkout-item-toggle')", $checkout);
         foreach (['cart', 'search'] as $view) {
             $this->assertStringContainsString('@if (!isServiceDurationBased(', file_get_contents(resource_path("views/{$view}.blade.php")));
         }

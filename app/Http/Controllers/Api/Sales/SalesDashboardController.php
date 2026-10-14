@@ -1020,6 +1020,7 @@ class SalesDashboardController extends Controller
     {
         $ids = $this->scope->profileIds($request->user(), 'sales.performance.view-all', 'sales.performance.view-team');
         $query = SalesBookingAttribution::query()->with(['booking.customer.user'])
+            ->whereIn('company_id', DB::table('companies')->select('id')->where('is_active', true)->whereNull('deleted_at'))
             ->where(fn ($q) => $ids === null ? $q : $q->whereIn('acquisition_sales_profile_id', $ids)->orWhereIn('collection_sales_profile_id', $ids));
         $page = $query->latest('secured_at')->paginate($this->paginationSize($request, 25));
         return response()->json(['status' => 'success', 'data' => $page->through(fn (SalesBookingAttribution $row) => [
