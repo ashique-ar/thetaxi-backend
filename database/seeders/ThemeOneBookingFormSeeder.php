@@ -29,20 +29,32 @@ class ThemeOneBookingFormSeeder extends Seeder
         $companyId = (string) $company->id;
 
         // 3. Ensure Theme 1 Booking Form Tabs
+        BookingFormTab::whereNotIn('code', ['ride_now', 'airport_transfers', 'day_rental', 'corporate'])
+            ->update(['enabled' => false]);
+
         $tabConfigs = [
-            ['code' => 'ride_now', 'label' => 'Drop & Pickup', 'service_type_code' => 'ride_now', 'sort_order' => 1, 'enabled' => true],
-            ['code' => 'airport_transfers', 'label' => 'Airport Transfer', 'service_type_code' => 'airport_transfers', 'sort_order' => 2, 'enabled' => true],
-            ['code' => 'day_rental', 'label' => 'Day Package', 'service_type_code' => 'day_rental', 'sort_order' => 3, 'enabled' => true],
-            ['code' => 'corporate', 'label' => 'Corporate', 'service_type_code' => 'corporate', 'sort_order' => 4, 'enabled' => true],
+            ['code' => 'ride_now', 'label' => 'Drop & Pickup', 'service_type_code' => 'ride_now', 'sort_order' => 1, 'enabled' => true, 'is_default' => true],
+            ['code' => 'airport_transfers', 'label' => 'Airport Transfer', 'service_type_code' => 'airport_transfers', 'sort_order' => 2, 'enabled' => true, 'is_default' => false],
+            ['code' => 'day_rental', 'label' => 'Day Package', 'service_type_code' => 'day_rental', 'sort_order' => 3, 'enabled' => true, 'is_default' => false],
+            ['code' => 'corporate', 'label' => 'Corporate', 'service_type_code' => 'corporate', 'sort_order' => 4, 'enabled' => true, 'is_default' => false],
         ];
 
         foreach ($tabConfigs as $tabCfg) {
-            BookingFormTab::where('code', $tabCfg['code'])->update([
-                'enabled' => true,
-                'service_type_code' => $tabCfg['service_type_code'],
-                'sort_order' => $tabCfg['sort_order'],
-            ]);
+            $tab = BookingFormTab::where('code', $tabCfg['code'])->first();
+            if ($tab) {
+                $meta = is_array($tab->metadata) ? $tab->metadata : [];
+                $meta['is_default'] = $tabCfg['is_default'];
+                $tab->update([
+                    'label' => $tabCfg['label'],
+                    'enabled' => true,
+                    'service_type_code' => $tabCfg['service_type_code'],
+                    'sort_order' => $tabCfg['sort_order'],
+                    'metadata' => $meta,
+                ]);
+            }
         }
+
+        \Illuminate\Support\Facades\Cache::forget('booking_form_tabs');
 
         // 4. Seed The Taxi-scoped Service Types with Theme 1 horizontal form configurations
 

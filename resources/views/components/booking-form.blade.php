@@ -223,7 +223,6 @@
                 ->where('is_active', true)
                 ->orderBy('updated_at')
                 ->get()
-                ->keyBy('code')
             : collect();
 
         $globalConfigs = \App\Models\Service\ServiceType::query()
@@ -231,10 +230,9 @@
             ->whereIn('code', $serviceTypeCodesForConfig)
             ->where('is_active', true)
             ->orderBy('updated_at')
-            ->get()
-            ->keyBy('code');
+            ->get();
 
-        $serviceTypeConfigs = $globalConfigs->merge($companyConfigs);
+        $serviceTypeConfigs = $globalConfigs->concat($companyConfigs)->keyBy('code');
     } catch (Exception $e) {
         $serviceTypeConfigs = collect();
     }

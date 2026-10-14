@@ -29,22 +29,34 @@ class ThemeFourBookingFormSeeder extends Seeder
         $companyId = (string) $company->id;
 
         // 3. Ensure Theme 4 Booking Form Tabs are enabled
+        BookingFormTab::whereNotIn('code', ['self_drive', 'with_driver', 'airport_transfers', 'ride_now', 'wedding_hire', 'corporate'])
+            ->update(['enabled' => false]);
+
         $tabConfigs = [
-            ['code' => 'self_drive', 'label' => 'Self Drive', 'service_type_code' => 'self_drive', 'sort_order' => 1, 'enabled' => true],
-            ['code' => 'with_driver', 'label' => 'With Driver', 'service_type_code' => 'with_driver', 'sort_order' => 2, 'enabled' => true],
-            ['code' => 'airport_transfers', 'label' => 'Airport Transfer', 'service_type_code' => 'airport_transfers', 'sort_order' => 3, 'enabled' => true],
-            ['code' => 'ride_now', 'label' => 'Drop & Pickup', 'service_type_code' => 'ride_now', 'sort_order' => 4, 'enabled' => true],
-            ['code' => 'wedding_hire', 'label' => 'Wedding', 'service_type_code' => 'wedding_hire', 'sort_order' => 5, 'enabled' => true],
-            ['code' => 'corporate', 'label' => 'Corporate', 'service_type_code' => 'corporate', 'sort_order' => 6, 'enabled' => true],
+            ['code' => 'self_drive', 'label' => 'Self Drive', 'service_type_code' => 'self_drive', 'sort_order' => 1, 'enabled' => true, 'is_default' => true],
+            ['code' => 'with_driver', 'label' => 'With Driver', 'service_type_code' => 'with_driver', 'sort_order' => 2, 'enabled' => true, 'is_default' => false],
+            ['code' => 'airport_transfers', 'label' => 'Airport Transfer', 'service_type_code' => 'airport_transfers', 'sort_order' => 3, 'enabled' => true, 'is_default' => false],
+            ['code' => 'ride_now', 'label' => 'Drop & Pickup', 'service_type_code' => 'ride_now', 'sort_order' => 4, 'enabled' => true, 'is_default' => false],
+            ['code' => 'wedding_hire', 'label' => 'Wedding', 'service_type_code' => 'wedding_hire', 'sort_order' => 5, 'enabled' => true, 'is_default' => false],
+            ['code' => 'corporate', 'label' => 'Corporate', 'service_type_code' => 'corporate', 'sort_order' => 6, 'enabled' => true, 'is_default' => false],
         ];
 
         foreach ($tabConfigs as $tabCfg) {
-            BookingFormTab::where('code', $tabCfg['code'])->update([
-                'enabled' => true,
-                'service_type_code' => $tabCfg['service_type_code'],
-                'sort_order' => $tabCfg['sort_order'],
-            ]);
+            $tab = BookingFormTab::where('code', $tabCfg['code'])->first();
+            if ($tab) {
+                $meta = is_array($tab->metadata) ? $tab->metadata : [];
+                $meta['is_default'] = $tabCfg['is_default'];
+                $tab->update([
+                    'label' => $tabCfg['label'],
+                    'enabled' => true,
+                    'service_type_code' => $tabCfg['service_type_code'],
+                    'sort_order' => $tabCfg['sort_order'],
+                    'metadata' => $meta,
+                ]);
+            }
         }
+
+        \Illuminate\Support\Facades\Cache::forget('booking_form_tabs');
 
         // 4. Seed Casons-scoped Service Types with Theme 4 vertical/card form configurations
 
