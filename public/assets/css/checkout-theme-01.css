@@ -237,7 +237,7 @@ body.theme-default .terms-conditions-section h6 { margin-bottom: 10px; color: #2
 body.theme-default .terms-content { max-height: 260px; padding-right: 8px; }
 body.theme-default .term-item { margin-bottom: 12px; }
 body.theme-default .term-title { margin-bottom: 5px; font-size: 13px; }
-body.theme-default .term-body { color: #555; font-size: 12px; line-height: 1.5; }
+body.theme-default .term-body { color: #555; font-size: 12px; line-height: 1.5; word-break: normal; overflow-wrap: break-word; }
 body.theme-default .terms-accept-all-container { padding: 12px; border: 1px solid #d9dde2; border-left: 3px solid var(--primary-color1); border-radius: 5px; box-shadow: none; }
 body.theme-default .terms-accept-check { min-height: 32px; gap: 10px; }
 body.theme-default .terms-accept-check .form-check-input { width: 20px; height: 20px; flex-basis: 20px; border-color: var(--primary-color1); }

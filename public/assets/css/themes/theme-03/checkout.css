@@ -16,6 +16,7 @@ body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form-title { padding:
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-form { padding: clamp(22px, 4vw, 38px); }
 body.theme-theme-03 .checkout-workflow--theme-03 .form-section-divider { margin: 28px 0 20px; padding-top: 20px; border-top: 1px solid var(--t3-line); }
 body.theme-theme-03 .checkout-workflow--theme-03 :where(.terms-conditions-section, .payment-type-selection .card, .quotation-notice, .checkout-option-panel) { border: 1px solid var(--t3-line) !important; border-radius: 0 !important; background: #fffaf2 !important; box-shadow: none !important; }
+body.theme-theme-03 .checkout-workflow--theme-03 .term-body :where(p, a, span, li, h1, h2, h3, h4) { word-break: normal; overflow-wrap: break-word; }
 body.theme-theme-03 .checkout-workflow--theme-03 :where(.payment-option, .term-item) { border-bottom: 1px solid var(--t3-line); border-radius: 0 !important; }
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-sidebar-stack { position: sticky; top: 110px; }
 body.theme-theme-03 .checkout-workflow--theme-03 .checkout-sidebar-stack > .checkout-form-wrapper { border-color: var(--t3-ink); box-shadow: 12px 12px 0 rgb(54 45 37 / 20%); }

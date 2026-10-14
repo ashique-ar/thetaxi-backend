@@ -533,7 +533,7 @@ class SalesProfileController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
         $categories = $this->salesStaffCategories($data['company_id']);
         $query = Staff::query()->with('user:id,first_name,last_name')->where('company_id', $data['company_id'])
@@ -568,7 +568,7 @@ class SalesProfileController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
-        abort_unless(DB::table('companies')->where('id', $data['company_id'])->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+        abort_unless(DB::table('companies')->where('id', $data['company_id'])->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
         $this->scope->assertCompany($request->user(), $data['company_id'], 'sales.profiles.manage-all');
 
         $query = SalesProfile::query()->with('staff.user:id,first_name,last_name')

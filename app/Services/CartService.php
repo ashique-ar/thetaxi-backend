@@ -499,7 +499,10 @@ class CartService
                         return $addon;
                     }
 
-                    foreach (['amount', 'calculated_amount', 'total', 'unit_price', 'total_price'] as $field) {
+                    $fields = ($addon['rate_type'] ?? null) === 'percentage'
+                        ? ['calculated_amount', 'total', 'unit_price', 'total_price']
+                        : ['amount', 'calculated_amount', 'total', 'unit_price', 'total_price'];
+                    foreach ($fields as $field) {
                         if (isset($addon[$field]) && is_numeric($addon[$field])) {
                             $addon[$field . '_lkr'] = (float) ($addon[$field . '_lkr'] ?? $addon[$field]);
                             $addon[$field] = $this->currencyService->convertFromLKR(
@@ -700,7 +703,7 @@ class CartService
             }
 
             // Calculate addon amount based on rate type
-            $addonAmount = $this->calculateAddonAmount($addon, $qty);
+            $addonAmount = $this->calculateAddonAmount($addon, $qty, $items[$cartKey]);
 
             // Add or update addon in item
             $items[$cartKey]['addons'][$addonId] = [
@@ -790,7 +793,7 @@ class CartService
             }
 
             // Recalculate addon amount
-            $addonAmount = $this->calculateAddonAmount($addon, $qty);
+            $addonAmount = $this->calculateAddonAmount($addon, $qty, $items[$cartKey]);
 
             $items[$cartKey]['addons'][$addonId]['qty'] = $qty;
             $items[$cartKey]['addons'][$addonId]['calculated_amount'] = $addonAmount;
@@ -847,7 +850,9 @@ class CartService
             ->get()
             ->map(function ($addon) use ($selectedCurrency) {
                 $amountLkr = (float) ($addon->amount ?? 0);
-                $converted = $this->currencyService->convertFromLKR($amountLkr, $selectedCurrency);
+                $converted = $addon->rate_type === 'percentage'
+                    ? $amountLkr
+                    : $this->currencyService->convertFromLKR($amountLkr, $selectedCurrency);
                 return [
                     'id' => $addon->id,
                     'name' => $addon->name,
@@ -898,12 +903,15 @@ class CartService
     /**
      * Calculate addon total amount based on rate type
      */
-    protected function calculateAddonAmount(\App\Models\Vehicle\VehicleAddon $addon, int $qty): float
+    protected function calculateAddonAmount(\App\Models\Vehicle\VehicleAddon $addon, int $qty, array $item): float
     {
         if ($addon->rate_type === 'percentage') {
-            // For percentage-based addons, calculate per day
-            // This will be adjusted during totals calculation based on item days
-            return (float) $addon->amount;
+            $serviceType = $item['service_type'] ?? '';
+            $isPackage = ($item['is_package'] ?? false) || in_array($serviceType, ['wedding_hire', 'airport_transfers']);
+            $price = (float) ($item['price_lkr'] ?? $item['price'] ?? 0);
+            $base = $isPackage ? $price : $price * (int) ($item['days'] ?? 1);
+
+            return $base * ((float) $addon->amount / 100);
         } else {
             // Flat rate per unit
             return (float) $addon->amount * $qty;

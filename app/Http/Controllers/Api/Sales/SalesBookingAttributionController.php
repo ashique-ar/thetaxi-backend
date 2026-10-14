@@ -105,10 +105,11 @@ class SalesBookingAttributionController extends Controller
                         $scope->orWhere(fn ($unassigned) => $unassigned->whereNull('attribution.company_id')
                             ->whereNotNull('attribution.id')->whereNull('attribution.acquisition_sales_profile_id')
                             ->whereNull('attribution.collection_sales_profile_id')->where('attribution.status', 'held')
-                            ->where('exception.exception_type', 'legal_entity_missing')
+                            ->whereIn('exception.exception_type', ['legal_entity_missing', 'historical_company_owner_review_required'])
                             ->whereExists(fn ($review) => $review->selectRaw('1')->from('sales_attribution_exceptions as owner_review')
                                 ->whereColumn('owner_review.booking_id', 'booking.id')
-                                ->where('owner_review.exception_type', 'historical_company_owner_review_required')));
+                                ->where('owner_review.exception_type', 'historical_company_owner_review_required')
+                                ->where('owner_review.status', 'open')));
                     }
                 });
             })
@@ -471,7 +472,7 @@ class SalesBookingAttributionController extends Controller
             $companyId = $this->resolveCompanyId(null);
         }
         if ($companyId) {
-            abort_unless(DB::table('companies')->where('id', $companyId)->whereNull('deleted_at')->exists(), 422, 'Select an available legal entity.');
+            abort_unless(DB::table('companies')->where('id', $companyId)->where('is_active', true)->whereNull('deleted_at')->exists(), 422, 'Select an active legal entity.');
             $this->scope->assertCompany($request->user(), $companyId, 'sales.attributions.view-all');
         }
 
@@ -485,6 +486,7 @@ class SalesBookingAttributionController extends Controller
             ->select('sales_profiles.*', 'companies.name as company_name')
             ->join('companies', 'companies.id', '=', 'sales_profiles.company_id')
             ->with('staff.user:id,first_name,last_name')
+            ->where('companies.is_active', true)
             ->whereNull('companies.deleted_at')
             ->where('sales_profiles.status', 'active')
             ->where("sales_profiles.{$eligibility}", true)

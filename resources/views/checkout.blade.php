@@ -39,6 +39,7 @@
         $cart = $cartData['items'] ?? [];
         $totals = $cartData['totals'] ?? [];
         $currencySymbol = $cartData['currency_symbol'] ?? getCurrencySymbol();
+        $displayCurrency = $cartData['currency'] ?? getSelectedCurrency();
 
         $paymentType = request()->get('type', 'full');
         $subtotal = $totals['subtotal'] ?? 0;
@@ -617,6 +618,20 @@
 
 @push('styles')
     <style>
+        .checkout-addon-modal .modal-dialog {
+            max-height: calc(100vh - 2rem);
+        }
+
+        .checkout-addon-modal .modal-content {
+            max-height: 100%;
+        }
+
+        .checkout-addon-modal .modal-body {
+            min-height: 0;
+            overflow-y: auto !important;
+            overscroll-behavior: contain;
+        }
+
         /* Checkout Item Discount Styles */
         .item-total {
             text-align: right;
@@ -2008,8 +2023,16 @@
             }
 
             function formatCheckoutAmount(value) {
-                const amount = Math.max(0, Math.floor(Number(value) || 0));
-                return '{{ $currencySymbol }} ' + amount.toLocaleString('en-US');
+                const amount = Math.max(0, Number(value) || 0);
+                const currency = '{{ $displayCurrency }}';
+                const fractionDigits = new Intl.NumberFormat('en-US', {
+                    style: 'currency',
+                    currency: currency
+                }).resolvedOptions().maximumFractionDigits;
+                return '{{ $currencySymbol }} ' + amount.toLocaleString('en-US', {
+                    minimumFractionDigits: currency === 'LKR' ? 0 : Math.min(2, fractionDigits),
+                    maximumFractionDigits: fractionDigits
+                });
             }
 
             function updateCheckoutCartTotals(cart) {
@@ -2071,8 +2094,10 @@
             }
 
             function checkoutAddonAmount(addon) {
-                const amount = Math.max(0, Math.floor(Number(addon.amount || addon.calculated_amount || 0)));
-                return formatCheckoutAmount(amount);
+                if (addon.rate_type === 'percentage' && addon.calculated_amount == null) {
+                    return Number(addon.amount || 0).toLocaleString('en-US') + '%';
+                }
+                return formatCheckoutAmount(addon.calculated_amount ?? addon.amount ?? 0);
             }
 
             function selectedAddonMap(selectedAddons) {

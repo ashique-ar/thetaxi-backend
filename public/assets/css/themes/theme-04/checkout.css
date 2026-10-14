@@ -22,6 +22,7 @@ body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form-title { padding:
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-form { padding: clamp(22px, 4vw, 36px); }
 body.theme-theme-04 .checkout-workflow--theme-04 .form-section-divider { margin: 28px 0 20px; padding-top: 20px; border-top: 1px solid var(--t4-line); }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.terms-conditions-section, .payment-type-selection .card, .quotation-notice, .checkout-option-panel) { border: 1px solid var(--t4-line) !important; border-radius: 8px !important; background: #fff !important; box-shadow: none !important; }
+body.theme-theme-04 .checkout-workflow--theme-04 .term-body :where(p, a, span, li, h1, h2, h3, h4) { word-break: normal; overflow-wrap: break-word; }
 body.theme-theme-04 .checkout-workflow--theme-04 :where(.payment-option, .term-item) { border-bottom: 1px solid var(--t4-line); }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack { position: sticky; top: 96px; }
 body.theme-theme-04 .checkout-workflow--theme-04 .checkout-sidebar-stack > .checkout-form-wrapper { border-top: 4px solid var(--t4-accent); box-shadow: var(--t4-shadow); }

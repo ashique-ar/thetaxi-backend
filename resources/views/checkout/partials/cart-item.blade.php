@@ -399,7 +399,7 @@
                                                                             <strong>{{ $selectedAddon['name'] ?? 'Add-on' }}</strong>
                                                                             <small>Qty: {{ $selectedQty }}</small>
                                                                         </div>
-                                                                        <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $selectedAmount)), 0) }}</span>
+                                                                        <span>{{ $currencySymbol }} {{ number_format(max(0, $selectedAmount), $displayCurrency === 'LKR' ? 0 : 2) }}</span>
                                                                     </div>
                                                                 @empty
                                                                     <div class="checkout-no-addons">No add-ons selected</div>
