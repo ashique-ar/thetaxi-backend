@@ -22,6 +22,25 @@ class GoogleMapsService
         }
     }
 
+    private function getHeaders(): array
+    {
+        $headers = [
+            'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
+        ];
+
+        $referer = request()?->header('referer')
+            ?: request()?->header('origin')
+            ?: config('services.google.maps_referer')
+            ?: env('GOOGLE_MAPS_REFERER')
+            ?: config('app.url');
+
+        if ($referer) {
+            $headers['Referer'] = $referer;
+        }
+
+        return $headers;
+    }
+
     /**
      * Get road distance and duration using Distance Matrix.
      * Returns array with 'distance_km' and 'duration_seconds'
@@ -50,7 +69,7 @@ class GoogleMapsService
                 if ($avoidHighways)
                     $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'highways' : '|highways');
 
-                $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
+                $resp = Http::withHeaders($this->getHeaders())->timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
                 if (!$resp->successful()) {
                     Log::error('Distance Matrix HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
                     return $this->cachedDirectionsFallback($o, $d, $mode);
@@ -100,7 +119,7 @@ class GoogleMapsService
                 'units' => 'metric',
             ];
 
-            $resp = Http::connectTimeout(2)->timeout(5)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
+            $resp = Http::withHeaders($this->getHeaders())->connectTimeout(2)->timeout(5)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
             if (!$resp->successful()) {
                 Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
                 return 0.0;
@@ -131,7 +150,7 @@ class GoogleMapsService
                 'units' => 'metric',
             ];
 
-            $resp = Http::timeout(12)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
+            $resp = Http::withHeaders($this->getHeaders())->timeout(12)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
             if (!$resp->successful()) {
                 Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
                 return ['distance_km' => 0.0, 'duration_seconds' => 0];

@@ -27,6 +27,30 @@ class GooglePlacesController extends Controller
     }
 
     /**
+     * Get request headers for Google API calls, forwarding Referer to satisfy GCP HTTP referrer restrictions
+     */
+    private function getGoogleHeaders(Request $request, array $extraHeaders = []): array
+    {
+        $headers = array_merge([
+            'X-Goog-Api-Key' => $this->googleApiKey,
+            'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
+        ], $extraHeaders);
+
+        // Satisfy Google Cloud Console HTTP Referrer (Websites) restriction
+        $referer = $request->header('referer')
+            ?: $request->header('origin')
+            ?: config('services.google.maps_referer')
+            ?: env('GOOGLE_MAPS_REFERER')
+            ?: config('app.url');
+
+        if ($referer) {
+            $headers['Referer'] = $referer;
+        }
+
+        return $headers;
+    }
+
+    /**
      * Search for places using Google Places API Text Search
      */
     public function searchPlaces(Request $request): JsonResponse
@@ -76,11 +100,13 @@ class GooglePlacesController extends Controller
                 $body['includedRegionCodes'] = [strtolower($countryCode)];
             }
 
-            $response = Http::withHeaders([
+            $headers = $this->getGoogleHeaders($request, [
                 'Content-Type' => 'application/json',
-                'X-Goog-Api-Key' => $this->googleApiKey,
-                'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
-            ])->timeout(10)->post('https://places.googleapis.com/v1/places:autocomplete', $body);
+            ]);
+
+            $response = Http::withHeaders($headers)
+                ->timeout(10)
+                ->post('https://places.googleapis.com/v1/places:autocomplete', $body);
 
             if (!$response->successful()) {
                 Log::error('Places Autocomplete (New) failed', [
@@ -325,11 +351,13 @@ class GooglePlacesController extends Controller
         try {
             $cleanPlaceId = str_replace('places/', '', $placeId);
 
-            $response = Http::withHeaders([
-                'X-Goog-Api-Key' => $this->googleApiKey,
+            $headers = $this->getGoogleHeaders($request, [
                 'X-Goog-FieldMask' => 'id,displayName,formattedAddress,location,addressComponents',
-                'X-Goog-Maps-Solution-ID' => 'gmp_git_agentskills_v1',
-            ])->timeout(10)->get("https://places.googleapis.com/v1/places/{$cleanPlaceId}");
+            ]);
+
+            $response = Http::withHeaders($headers)
+                ->timeout(10)
+                ->get("https://places.googleapis.com/v1/places/{$cleanPlaceId}");
 
             if (!$response->successful()) {
                 Log::error('Place details (New) failed', [
@@ -408,8 +436,9 @@ class GooglePlacesController extends Controller
         }
 
         try {
-            // First try without result_type filtering to ensure basic functionality
-            $response = Http::timeout(10)->get('https://maps.googleapis.com/maps/api/geocode/json', [
+            $headers = $this->getGoogleHeaders($request);
+
+            $response = Http::withHeaders($headers)->timeout(10)->get('https://maps.googleapis.com/maps/api/geocode/json', [
                 'latlng' => $latitude . ',' . $longitude,
                 'key' => $this->googleApiKey,
             ]);

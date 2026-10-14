@@ -38,6 +38,7 @@ return [
     'google' => [
         'places_api_key' => env('GOOGLE_PLACES_API_KEY'),
         'maps_api_key' => env('GOOGLE_MAPS_API_KEY'),
+        'maps_referer' => env('GOOGLE_MAPS_REFERER'),
     ],
 
 
