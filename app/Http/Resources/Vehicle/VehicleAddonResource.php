@@ -27,11 +27,12 @@ class VehicleAddonResource extends JsonResource
             'threshold_quantity' => $this->threshold_quantity,
             'threshold_price' => $this->threshold_price,
             'description' => $this->description,
-            // Return converted amount in selected currency for frontend display
-            'amount' => isset($this->amount) ? convertPrice((float) $this->amount) : 0.0,
+            // Return base amount directly so master add-on editing maintains the uncorrupted base price
+            'amount' => isset($this->amount) ? (float) $this->amount : 0.0,
             'amount_lkr' => isset($this->amount) ? (float) $this->amount : 0.0,
+            'converted_amount' => isset($this->amount) ? convertPrice((float) $this->amount) : 0.0,
             'currency' => getSelectedCurrency(),
-            'base_price' => $this->amount, // Alias for frontend compatibility
+            'base_price' => isset($this->amount) ? (float) $this->amount : 0.0, // Alias for frontend compatibility
             'rate_type' => $this->rate_type,
             'billing_type' => $this->billing_type,
             'is_taxable' => $this->is_taxable,

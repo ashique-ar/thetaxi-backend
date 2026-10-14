@@ -23,9 +23,39 @@ it('projects and searches corporate and selected employee identity in the canoni
         ->toContain("'phone' => \$employeeUser?->phone");
 
     expect($source)
-        ->toContain("filled(\$booking->corporate_account_id)");
+        ->toContain("filled(\$booking->corporate_account_id)")
+        ->toContain('$customerName = $employeeName !== \'\' ? "{$employeeName} ({$corporateName})" : $corporateName;');
 
     expect($template)
         ->toContain('placeholder="Booking number, invoice, customer, reference..."')
         ->not->toContain('Booking ID');
+
+    $staffTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/booking-list/booking-list.component.ts'));
+    expect($staffTs)
+        ->toContain('getCustomerDisplayName(booking: BookingListItem): string')
+        ->toContain('return `${employeeName} (${corporateName})`')
+        ->toContain('getCorporateEmployeeLabel(booking: BookingListItem): string | null');
+
+    $corporateService = file_get_contents(app_path('Services/CorporateBookingService.php'));
+    expect($corporateService)
+        ->toContain("'booking.employeeUser'")
+        ->toContain('$employeeUser = $booking?->employee?->user ?: $booking?->employeeUser;')
+        ->toContain('$employeeUser = $booking->employee?->user ?: $booking->employeeUser;');
+
+    $corpListTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/corporate/components/booking-list/corporate-booking-list.component.ts'));
+    $corpListHtml = file_get_contents(base_path('../portal-thetaxi/src/app/modules/corporate/components/booking-list/corporate-booking-list.component.html'));
+    expect($corpListTs)
+        ->toContain('getBookingPartyLabel(booking: CorporateBooking): string')
+        ->toContain('return `${employeeName} (${corporateName})`')
+        ->and($corpListHtml)
+        ->toContain('{{ getBookingPartyLabel(booking) }}');
+
+    $corpDashTs = file_get_contents(base_path('../portal-thetaxi/src/app/modules/corporate/components/corporate-dashboard/corporate-dashboard.component.ts'));
+    $corpDashHtml = file_get_contents(base_path('../portal-thetaxi/src/app/modules/corporate/components/corporate-dashboard/corporate-dashboard.component.html'));
+    expect($corpDashTs)
+        ->toContain('getBookingPartyLabel(booking: CorporateBooking): string')
+        ->toContain('return `${employeeName} (${corporateName})`')
+        ->and($corpDashHtml)
+        ->toContain('getBookingPartyLabel(booking)');
 });
+
