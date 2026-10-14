@@ -65,7 +65,10 @@ class BookingDistancePresentationTest extends TestCase
         $checkout = file_get_contents(resource_path('views/checkout.blade.php'));
         $itemView = file_get_contents(resource_path('views/checkout/partials/cart-item.blade.php'));
         $this->assertStringContainsString('assets/css/checkout-item-summary.css', $checkout);
+        $this->assertStringContainsString("@if (is_theme('theme-04'))", $checkout);
         $summaryStyles = file_get_contents(public_path('assets/css/checkout-item-summary.css'));
+        $this->assertStringContainsString('body.theme-theme-04 .checkout-page', $summaryStyles);
+        $this->assertStringNotContainsString('body[class]', $summaryStyles);
         $this->assertStringContainsString('container-type: inline-size', $summaryStyles);
         $this->assertStringNotContainsString('vw', $summaryStyles);
         $this->assertStringContainsString('class="checkout-item-route-details"', $itemView);

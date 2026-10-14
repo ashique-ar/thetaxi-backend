@@ -162,6 +162,8 @@ class SalesBookingAttributionController extends Controller
             abort_unless($bookings->count()===count($data['booking_ids']),409,'The historical booking set changed; create a new preview.');
             $rows=$bookings->map(fn(Booking $booking)=>$this->attributions->preview($booking))->filter(fn(array$row)=>$row['company_id']===$data['company_id']&&($profileIds===null||in_array($row['acquisition_sales_profile_id'],$profileIds,true)||in_array($row['collection_sales_profile_id'],$profileIds,true)))->values();
             abort_unless($rows->count()===$bookings->count(),404,'A historical booking is outside the authorized legal-entity scope.');
+            abort_unless($rows->every(fn (array $row) => ! in_array('historical_company_owner_review_required', $row['holds'], true)), 409,
+                'Historical bookings without an explicit legal-entity source require reviewed owner disposition before attribution.');
             $checksum=hash('sha256',CanonicalJson::encode(['company_id'=>$data['company_id'],'rows'=>$rows->all()]));abort_unless(hash_equals($checksum,$data['preview_checksum']),409,'Historical attribution facts changed; create a new preview.');
             $created=0;foreach($bookings as$booking){if(!$booking->salesAttribution()->exists()){$this->attributions->captureConfirmation($booking);$created++;}}
             $result=['requested'=>count($data['booking_ids']),'created'=>$created,'preview_checksum'=>$checksum,'reconciliation'=>['remaining_confirmed_without_attribution'=>Booking::query()->where(fn($q)=>$q->where('confirmed',true)->orWhere('status','confirmed')->orWhereNotNull('confirmed_at'))->whereDoesntHave('salesAttribution')->count()]];

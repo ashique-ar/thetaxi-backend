@@ -132,6 +132,7 @@ class BookingAttributionService
         $collectionProfileId = $resolved['collection_profile_id'];
         $companyId = $resolved['company_id'];
         $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
+        $historicalCompanyReviewRequired = $companyId !== null && ! $this->hasHistoricalCompanySource($booking);
 
         return [
             'booking_id' => $booking->id,
@@ -152,9 +153,24 @@ class BookingAttributionService
                 ! $collectionProfileId ? 'collection_handler_missing' : null,
                 $collectionProfileId && ! $collectionProfile ? 'collection_handler_ineligible' : null,
                 $companyId ? null : 'legal_entity_missing',
+                $historicalCompanyReviewRequired ? 'historical_company_owner_review_required' : null,
                 $currency === 'LKR' ? null : 'fx_snapshot_missing',
             ])),
         ];
+    }
+
+    private function hasHistoricalCompanySource(Booking $booking): bool
+    {
+        if ($this->rootAttribution($booking)) {
+            return true;
+        }
+
+        if ($booking->commission_owner_staff_id) {
+            return Staff::withTrashed()->whereKey($booking->commission_owner_staff_id)->whereNotNull('company_id')->exists();
+        }
+
+        return $booking->created_user_id !== null
+            && Staff::withTrashed()->where('user_id', $booking->created_user_id)->whereNotNull('company_id')->limit(2)->pluck('id')->count() === 1;
     }
 
     private function isConfirmed(Booking $booking): bool

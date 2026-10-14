@@ -1736,7 +1736,9 @@
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet"
         href="{{ assetVersion(theme_asset('checkout_stylesheet') ?? 'assets/css/checkout-theme-01.css') }}">
-    <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-item-summary.css') }}">
+    @if (is_theme('theme-04'))
+        <link rel="stylesheet" href="{{ assetVersion('assets/css/checkout-item-summary.css') }}">
+    @endif
 @endpush
 
 @push('scripts')
