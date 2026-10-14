@@ -46,7 +46,7 @@ class GoogleMapsService
     }
 
     /**
-     * Get road distance and duration using Distance Matrix.
+     * Get road distance and duration using the Routes API.
      * Returns array with 'distance_km' and 'duration_seconds'
      */
     public function distanceAndDuration(array|string $origin, array|string $destination, string $mode = 'driving', bool $avoidTolls = false, bool $avoidHighways = false): array
@@ -55,128 +55,76 @@ class GoogleMapsService
         $d = $this->formatLocation($destination);
 
         if (empty($this->apiKey) || !$o || !$d) {
-            return ['distance_km' => 0.0, 'duration_seconds' => 0];
+            throw new \RuntimeException('Google route distance cannot be calculated from the supplied locations.');
         }
 
-        $cacheKey = 'gm:distancematrix:withduration:' . md5(json_encode([$o, $d, $mode, $avoidTolls, $avoidHighways]));
+        $cacheKey = 'gm:routes:v1:' . md5(json_encode([$o, $d, $mode, $avoidTolls, $avoidHighways]));
         return Cache::remember($cacheKey, $this->ttl, function () use ($o, $d, $mode, $avoidTolls, $avoidHighways) {
             try {
-                $params = [
-                    'key' => $this->apiKey,
-                    'origins' => $o,
-                    'destinations' => $d,
-                    'mode' => $mode,
-                    'units' => 'metric',
-                ];
-                if ($avoidTolls)
-                    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'tolls' : '|tolls');
-                if ($avoidHighways)
-                    $params['avoid'] = ($params['avoid'] ?? '') . (empty($params['avoid']) ? 'highways' : '|highways');
+                $travelMode = match (strtolower($mode)) {
+                    'driving' => 'DRIVE',
+                    'walking' => 'WALK',
+                    'bicycling' => 'BICYCLE',
+                    'transit' => 'TRANSIT',
+                    default => strtoupper($mode),
+                };
+                $response = Http::withHeaders($this->getHeaders() + [
+                    'Content-Type' => 'application/json',
+                    'X-Goog-Api-Key' => $this->apiKey,
+                    'X-Goog-FieldMask' => 'routes.distanceMeters,routes.duration',
+                ])->timeout(12)->post('https://routes.googleapis.com/directions/v2:computeRoutes', [
+                    'origin' => $this->routeWaypoint($o),
+                    'destination' => $this->routeWaypoint($d),
+                    'travelMode' => $travelMode,
+                    'routingPreference' => 'TRAFFIC_UNAWARE',
+                    'units' => 'METRIC',
+                    'routeModifiers' => [
+                        'avoidTolls' => $avoidTolls,
+                        'avoidHighways' => $avoidHighways,
+                    ],
+                ]);
 
-                $resp = Http::withHeaders($this->getHeaders())->timeout(12)->get('https://maps.googleapis.com/maps/api/distancematrix/json', $params);
-                if (!$resp->successful()) {
-                    Log::error('Distance Matrix HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
-                    return $this->cachedDirectionsFallback($o, $d, $mode);
+                if (!$response->successful()) {
+                    Log::warning('Google Routes API request failed', [
+                        'status' => $response->status(),
+                        'error_status' => $response->json('error.status'),
+                    ]);
+                    throw new \RuntimeException('Google Routes API request failed.');
                 }
 
-                $data = $resp->json();
-                if (($data['status'] ?? '') !== 'OK') {
-                    Log::warning('Distance Matrix Google status not OK', ['status' => $data['status'] ?? 'UNKNOWN', 'error_message' => $data['error_message'] ?? null]);
-                    return $this->cachedDirectionsFallback($o, $d, $mode);
+                $route = $response->json('routes.0');
+                if (!is_array($route) || !is_numeric($route['distanceMeters'] ?? null)) {
+                    Log::warning('Google Routes API returned no route.');
+                    throw new \RuntimeException('Google Routes API returned no route.');
                 }
-
-                $element = $data['rows'][0]['elements'][0] ?? null;
-                if (!$element || ($element['status'] ?? '') !== 'OK') {
-                    return $this->cachedDirectionsFallback($o, $d, $mode);
-                }
-
-                $meters = $element['distance']['value'] ?? 0;
-                $seconds = $element['duration']['value'] ?? 0;
 
                 return [
-                    'distance_km' => $meters > 0 ? round($meters / 1000, 3) : 0.0,
-                    'duration_seconds' => $seconds
+                    'distance_km' => round((float) $route['distanceMeters'] / 1000, 3),
+                    'duration_seconds' => (int) round((float) rtrim((string) ($route['duration'] ?? '0s'), 's')),
                 ];
             } catch (\Throwable $e) {
-                Log::error('Distance Matrix exception', ['error' => $e->getMessage()]);
-                return $this->cachedDirectionsFallback($o, $d, $mode);
+                if (!$e instanceof \RuntimeException) {
+                    Log::warning('Google Routes API exception', ['error' => $e->getMessage()]);
+                }
+                throw $e;
             }
         });
     }
 
-    private function cachedDirectionsFallback(string $origin, string $destination, string $mode): array
+    private function routeWaypoint(string $location): array
     {
-        $key = 'gm:directions:withduration:' . md5(json_encode([$origin, $destination, $mode]));
-
-        return Cache::remember($key, $this->ttl, fn () => $this->directionsFallbackWithDuration($origin, $destination, $mode));
-    }
-
-    /** Optional fallback using Directions API */
-    private function directionsFallbackKm(string $origin, string $destination, string $mode = 'driving'): float
-    {
-        try {
-            $params = [
-                'key' => $this->apiKey,
-                'origin' => $origin,
-                'destination' => $destination,
-                'mode' => $mode,
-                'units' => 'metric',
-            ];
-
-            $resp = Http::withHeaders($this->getHeaders())->connectTimeout(2)->timeout(5)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
-            if (!$resp->successful()) {
-                Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
-                return 0.0;
-            }
-
-            $data = $resp->json();
-            if (($data['status'] ?? '') !== 'OK' || empty($data['routes'][0]['legs'][0]['distance']['value'])) {
-                return 0.0;
-            }
-
-            $meters = $data['routes'][0]['legs'][0]['distance']['value'];
-            return $meters > 0 ? round($meters / 1000, 3) : 0.0;
-        } catch (\Throwable $e) {
-            Log::error('Directions exception', ['error' => $e->getMessage()]);
-            return 0.0;
+        if (str_starts_with($location, 'place_id:')) {
+            return ['placeId' => substr($location, strlen('place_id:'))];
         }
-    }
 
-    /** Optional fallback using Directions API with duration */
-    private function directionsFallbackWithDuration(string $origin, string $destination, string $mode = 'driving'): array
-    {
-        try {
-            $params = [
-                'key' => $this->apiKey,
-                'origin' => $origin,
-                'destination' => $destination,
-                'mode' => $mode,
-                'units' => 'metric',
-            ];
-
-            $resp = Http::withHeaders($this->getHeaders())->timeout(12)->get('https://maps.googleapis.com/maps/api/directions/json', $params);
-            if (!$resp->successful()) {
-                Log::error('Directions HTTP error', ['status' => $resp->status(), 'body' => $resp->body()]);
-                return ['distance_km' => 0.0, 'duration_seconds' => 0];
-            }
-
-            $data = $resp->json();
-            if (($data['status'] ?? '') !== 'OK' || empty($data['routes'][0]['legs'][0])) {
-                return ['distance_km' => 0.0, 'duration_seconds' => 0];
-            }
-
-            $leg = $data['routes'][0]['legs'][0];
-            $meters = $leg['distance']['value'] ?? 0;
-            $seconds = $leg['duration']['value'] ?? 0;
-
-            return [
-                'distance_km' => $meters > 0 ? round($meters / 1000, 3) : 0.0,
-                'duration_seconds' => $seconds
-            ];
-        } catch (\Throwable $e) {
-            Log::error('Directions exception', ['error' => $e->getMessage()]);
-            return ['distance_km' => 0.0, 'duration_seconds' => 0];
+        if (preg_match('/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/', $location, $matches)) {
+            return ['location' => ['latLng' => [
+                'latitude' => (float) $matches[1],
+                'longitude' => (float) $matches[2],
+            ]]];
         }
+
+        return ['address' => $location];
     }
 
     /** Normalize different location inputs into what Google accepts */

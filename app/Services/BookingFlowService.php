@@ -4968,7 +4968,9 @@ class BookingFlowService
             if (!$calculationDefinition || !$calculationResult) {
                 Log::warning('No calculation definition matched the pricing scenario', [
                     'service_type_id' => $serviceTypeId,
+                    'service_type_name' => $this->resolveCalculationServiceType($serviceTypeId, $params)?->name,
                     'candidate_ids' => $calculationDefinitions->pluck('id')->all(),
+                    'candidate_names' => $calculationDefinitions->pluck('name')->all(),
                     'candidate_failures' => $candidateFailures,
                     'inputs' => $calculationInputs,
                 ]);
@@ -5257,6 +5259,7 @@ class BookingFlowService
 
                 Log::warning('prepareCalculationInputs: Using configured system minimum KM', [
                     'service_type_id' => $serviceType?->id ?? $serviceTypeId,
+                    'service_type_name' => $serviceType?->name,
                     'minimum_km' => $minimumKm,
                 ]);
             }
@@ -5767,12 +5770,16 @@ class BookingFlowService
             if ($commonRateDefinition) {
                 Log::warning('Extra KM Rate not configured for vehicle group, no default available', [
                     'vehicle_group_id' => $vehicleGroupId,
+                    'vehicle_group_name' => $this->getVehicleGroupInfo($vehicleGroupId)['name'],
                     'service_type_id' => $serviceTypeId,
+                    'service_type_name' => $this->resolveCalculationServiceType($serviceTypeId, [])?->name,
                     'common_rate_definition_id' => $commonRateDefinition->id,
+                    'common_rate_definition_name' => $commonRateDefinition->name,
                 ]);
             } else {
                 Log::warning('Extra KM Rate definition not found for service type', [
                     'service_type_id' => $serviceTypeId,
+                    'service_type_name' => $this->resolveCalculationServiceType($serviceTypeId, [])?->name,
                 ]);
             }
 
@@ -5780,7 +5787,9 @@ class BookingFlowService
         } catch (\Exception $e) {
             Log::error('Error fetching extra km rate', [
                 'service_type_id' => $serviceTypeId,
+                'service_type_name' => $this->resolveCalculationServiceType($serviceTypeId, [])?->name,
                 'vehicle_group_id' => $vehicleGroupId,
+                'vehicle_group_name' => $this->getVehicleGroupInfo($vehicleGroupId)['name'],
                 'error' => $e->getMessage(),
             ]);
             return null;
@@ -5837,7 +5846,9 @@ class BookingFlowService
         } catch (\Exception $e) {
             Log::error('Error fetching common rate for vehicle group', [
                 'service_type_id' => $serviceTypeId,
+                'service_type_name' => $this->resolveCalculationServiceType($serviceTypeId, [])?->name,
                 'vehicle_group_id' => $vehicleGroupId,
+                'vehicle_group_name' => $this->getVehicleGroupInfo($vehicleGroupId)['name'],
                 'code' => $code,
                 'error' => $e->getMessage(),
             ]);

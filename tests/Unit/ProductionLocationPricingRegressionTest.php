@@ -4,31 +4,38 @@ use App\Services\GoogleMapsService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 
-it('uses airport coordinates when a local IATA code occupies place_id', function () {
+it('routes airport coordinates through Routes API when a local IATA code occupies place_id', function () {
     config()->set('services.google.places_api_key', 'test-key');
     Cache::flush();
     Http::fake([
-        'maps.googleapis.com/maps/api/distancematrix/*' => Http::response([
-            'status' => 'OK',
-            'rows' => [[
-                'elements' => [[
-                    'status' => 'OK',
-                    'distance' => ['value' => 10_000],
-                    'duration' => ['value' => 900],
-                ]],
-            ]],
+        'routes.googleapis.com/directions/v2:computeRoutes' => Http::response([
+            'routes' => [['distanceMeters' => 10_000, 'duration' => '900s']],
         ]),
     ]);
 
-    app(GoogleMapsService::class)->distanceAndDuration(
+    $result = app(GoogleMapsService::class)->distanceAndDuration(
         ['place_id' => 'CMB', 'latitude' => 7.1808, 'longitude' => 79.8841],
         ['latitude' => 6.9271, 'longitude' => 79.8612],
     );
 
+    expect($result)->toBe(['distance_km' => 10.0, 'duration_seconds' => 900]);
     Http::assertSent(fn ($request) =>
-        $request['origins'] === '7.1808,79.8841'
-        && $request['destinations'] === '6.9271,79.8612'
+        $request->url() === 'https://routes.googleapis.com/directions/v2:computeRoutes'
+        && $request['origin']['location']['latLng'] === ['latitude' => 7.1808, 'longitude' => 79.8841]
+        && $request['destination']['location']['latLng'] === ['latitude' => 6.9271, 'longitude' => 79.8612]
+        && $request->hasHeader('X-Goog-FieldMask', 'routes.distanceMeters,routes.duration')
     );
+});
+
+it('fails route distance instead of returning zero when the routing API is unavailable', function () {
+    config()->set('services.google.places_api_key', 'test-key');
+    Cache::flush();
+    Http::fake(['routes.googleapis.com/*' => Http::response(['error' => ['status' => 'PERMISSION_DENIED']], 403)]);
+
+    expect(fn () => app(GoogleMapsService::class)->distanceAndDuration(
+        ['latitude' => 7.1808, 'longitude' => 79.8841],
+        ['latitude' => 6.9271, 'longitude' => 79.8612],
+    ))->toThrow(RuntimeException::class);
 });
 
 it('keeps place detail database cache keys bounded', function () {

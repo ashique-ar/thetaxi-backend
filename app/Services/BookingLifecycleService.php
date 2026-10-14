@@ -2513,11 +2513,17 @@ class BookingLifecycleService
 
                 Log::error('Final pricing pending manual review: no active calculation definition matched this booking', [
                     'booking_id' => (string) $booking->id,
+                    'booking_number' => $booking->booking_number,
                     'booking_item_id' => (string) $bookingItem->id,
+                    'booking_item_code' => $bookingItem->item_code,
                     'service_type_id' => (string) $bookingItem->service_type_id,
+                    'service_type_name' => $bookingItem->serviceType?->name,
                     'vehicle_group_id' => (string) $bookingItem->vehicle_group_id,
+                    'vehicle_group_name' => $bookingItem->vehicleGroup?->name,
                     'assignment_id' => $assignment?->id,
+                    'assignment_type' => $assignment?->assignment_type,
                     'candidate_ids' => $activeDefinitions->pluck('id')->all(),
+                    'candidate_names' => $activeDefinitions->pluck('name')->all(),
                     'candidate_failures' => $candidateFailures,
                 ]);
 
