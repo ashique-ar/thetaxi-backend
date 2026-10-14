@@ -88,6 +88,7 @@ class GoogleMapsService
                     Log::warning('Google Routes API request failed', [
                         'status' => $response->status(),
                         'error_status' => $response->json('error.status'),
+                        'error_message' => $response->json('error.message'),
                     ]);
                     throw new \RuntimeException('Google Routes API request failed.');
                 }
