@@ -952,6 +952,7 @@ class BookingFlowService
             if (empty($assignedVehicleGroupIds)) {
                 return [
                     'data' => [],
+                    'availability_reason' => 'no_corporate_vehicle_groups_assigned',
                     'pagination' => [
                         'current_page' => $page,
                         'per_page' => $perPage,
@@ -1638,6 +1639,9 @@ class BookingFlowService
         if (isset($params['page']) || isset($params['per_page'])) {
             return [
                 'data' => $availability,
+                'availability_reason' => $availability === [] && !empty($corporateAccountId)
+                    ? 'no_active_corporate_vehicle_groups'
+                    : null,
                 'pagination' => [
                     'current_page' => $page,
                     'per_page' => $perPage,

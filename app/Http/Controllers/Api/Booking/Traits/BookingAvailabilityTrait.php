@@ -88,6 +88,7 @@ trait BookingAvailabilityTrait
                 'status' => 'success',
                 'data' => $availability['data'] ?? $availability,
                 'pagination' => $availability['pagination'] ?? null,
+                'availability_reason' => $availability['availability_reason'] ?? null,
                 'message' => 'Vehicle groups retrieved successfully'
             ]);
         } catch (\Illuminate\Validation\ValidationException $e) {
