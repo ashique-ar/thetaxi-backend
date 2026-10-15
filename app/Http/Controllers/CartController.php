@@ -33,31 +33,11 @@ class CartController extends Controller
     }
 
     /**
-     * Display cart page
+     * Display cart page - redirects to checkout as cart is embedded in checkout
      */
     public function index()
     {
-        $dbCart = $this->cartService->getOrCreateCart();
-
-        // Migrate from session if needed
-        if (empty($dbCart->items) && !empty(session()->get('cart'))) {
-            $this->cartService->migrateFromSession($dbCart);
-        }
-
-        $cartItems = $dbCart->getItems();
-
-        // Enrich cart items with distance_details if missing
-        $cartItems = $this->enrichCartItemsWithDistanceDetails($cartItems);
-
-        $totals = $dbCart->totals ?? [];
-
-        $subtotal = $totals['subtotal'] ?? 0;
-        $serviceFee = $totals['service_fee'] ?? 0;
-        $tax = $totals['tax'] ?? 0;
-        $discount = $totals['coupon_discount'] ?? 0;
-        $total = $totals['total'] ?? 0;
-
-        return view('cart', compact('cartItems', 'subtotal', 'serviceFee', 'tax', 'discount', 'total', 'dbCart'));
+        return redirect()->route('checkout');
     }
 
     /**

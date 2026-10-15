@@ -26,13 +26,13 @@
     </div>
     <!-- End Breadcrumb section -->
 
-    @unless (is_theme('theme-04'))
+    <!-- @unless (is_theme('theme-04'))
         <div class="filter-wrapper text-center hotel mb-5">
             <div class="container">
                 @include('components.booking-form')
             </div>
         </div>
-    @endunless
+    @endunless -->
 
     @php
         // Cart data is passed from controller
@@ -419,11 +419,11 @@
                         </div>
 
                         <div class="col-lg-5">
-                            @if (is_theme('theme-04'))
+                            <!-- @if (is_theme('theme-04'))
                                 <aside class="t4-checkout-booking" aria-label="Update journey search">
                                     @include('partials.themes.theme-04.booking-form', ['embedded' => true])
                                 </aside>
-                            @endif
+                            @endif -->
                             <div class="checkout-sidebar-stack">
                                 @include('checkout.partials.cart-summary')
                                             <!-- Payment Type Selection Section -->
