@@ -365,18 +365,29 @@ class WialonService
     {
         return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($unitId, $from, $to): array {
             $detectors = ['speedings', 'filling', 'theft', 'lls', 'fuel_level', 'trips', 'counters', 'ignition', 'sensors', 'health_check'];
-            try {
-                $result = $this->call($sid, 'events/load', [
+            $loadEvents = function (array $types) use ($sid, $unitId, $from, $to): array {
+                return $this->call($sid, 'events/load', [
                     'itemId' => $unitId,
                     'ivalType' => 1,
                     'timeFrom' => $from,
                     'timeTo' => $to,
-                    'detectors' => array_map(fn (string $type) => ['type' => $type, 'filter1' => 0], $detectors),
+                    'detectors' => array_map(fn (string $type) => ['type' => $type, 'filter1' => 0], $types),
                     'selector' => ['type' => '*', 'timeFrom' => $from, 'timeTo' => $to, 'detalization' => 3],
                     'measure' => 0,
                     'lang' => 'en',
                 ]);
-                return ['unit_id' => $unitId, 'unit_name' => $unit['nm'] ?? null, 'from' => $from, 'to' => $to, 'events' => $result['selector'] ?? [], 'counts' => $result['events'] ?? []];
+            };
+            try {
+                try {
+                    $result = $loadEvents($detectors);
+                } catch (RuntimeException $error) {
+                    if (!str_ends_with($error->getMessage(), '(4).')) throw $error;
+                    try { $this->call($sid, 'events/unload', []); } catch (RuntimeException) { }
+                    $result = $loadEvents(array_diff($detectors, ['health_check']));
+                }
+                $events = collect($result['selector'] ?? [])->flatMap(fn (array $byId, string $type) => collect($byId)
+                    ->flatMap(fn ($items) => collect($items)->map(fn (array $event) => ['type' => $type] + $event)))->values()->all();
+                return ['unit_id' => $unitId, 'unit_name' => $unit['nm'] ?? null, 'from' => $from, 'to' => $to, 'events' => $events, 'counts' => $result['events'] ?? []];
             } finally {
                 try { $this->call($sid, 'events/unload', []); } catch (RuntimeException) { }
             }

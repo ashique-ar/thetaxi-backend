@@ -153,4 +153,27 @@ class WialonServiceTest extends TestCase
                 'param' => 'unlock', 'timeout' => 30, 'flags' => 0,
             ]);
     }
+
+    public function test_alerts_load_supported_detectors_and_return_flat_events(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['id' => 12, 'nm' => 'Taxi 12'])
+            ->push(['error' => 4])
+            ->push(['error' => 0])
+            ->push(['selector' => ['trips' => ['0' => [['from' => ['t' => 100], 'to' => ['t' => 200]]]]], 'events' => ['trips' => ['0' => 1]]])
+            ->push(['error' => 0])
+            ->push(['error' => 0]);
+
+        $result = app(WialonService::class)->alertEvents(self::COMPANY, 12, 100, 200);
+
+        $this->assertSame([['type' => 'trips', 'from' => ['t' => 100], 'to' => ['t' => 200]]], $result['events']);
+        Http::assertSentCount(8);
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'events/load'
+            && collect(json_decode($request['params'], true)['detectors'])->contains(fn (array $detector) => $detector['type'] === 'health_check'));
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'events/load'
+            && !collect(json_decode($request['params'], true)['detectors'])->contains(fn (array $detector) => $detector['type'] === 'health_check'));
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'events/unload');
+    }
 }
