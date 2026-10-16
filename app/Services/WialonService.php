@@ -210,11 +210,11 @@ class WialonService
             ->where('company_id', $companyId)
             ->where('wialon_unit_id', $unitId)
             ->first();
+        $this->assertSelectedUnit($companyId, $unitId);
         $vehicle?->forceFill([
             'wialon_mileage_sync_pending' => true,
             'wialon_mileage_sync_requested_at' => now(),
         ])->save();
-        $this->assertSelectedUnit($companyId, $unitId);
 
         $confirmedMileage = $this->withSession(
             $companyId,
@@ -528,7 +528,8 @@ class WialonService
         if ($sid !== null) $body['sid'] = $sid;
         $context = ['service' => $service, 'request' => $this->safeGpsLogData($params)];
         $startedAt = microtime(true);
-        Log::info('Wialon API request', $context);
+        $logLevel = $service === 'unit/update_mileage_counter' ? 'info' : 'debug';
+        Log::log($logLevel, 'Wialon API request', $context);
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
         } catch (ConnectionException $error) {
@@ -539,10 +540,16 @@ class WialonService
             throw new RuntimeException('The GPS service request failed.', 0, $error);
         }
         $data = $response->json();
+        $safeResponse = $this->safeGpsLogData($data ?? $response->body());
+        if ($service !== 'unit/update_mileage_counter'
+            && is_array($data)
+            && (!isset($data['error']) || (int) $data['error'] === 0)) {
+            $safeResponse = ['keys' => array_keys($data)];
+        }
         $responseContext = $context + [
             'http_status' => $response->status(),
             'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
-            'response' => $this->safeGpsLogData($data ?? $response->body()),
+            'response' => $safeResponse,
         ];
         if (!$response->successful()) {
             Log::warning('Wialon API HTTP error', $responseContext);
@@ -556,7 +563,7 @@ class WialonService
             }
             throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
-        Log::info('Wialon API response', $responseContext);
+        Log::log($logLevel, 'Wialon API response', $responseContext);
         return $data;
     }
 

@@ -22,8 +22,11 @@ class WialonServiceTest extends TestCase
             $table->string('base_url'); $table->json('resource_ids')->nullable(); $table->json('group_ids')->nullable(); $table->json('group_mappings')->nullable(); $table->json('unit_ids')->nullable();
             $table->boolean('enabled')->default(true); $table->timestamps();
         });
+        Schema::create('vehicles', function (Blueprint $table) {
+            $table->uuid('id')->primary(); $table->uuid('company_id')->nullable(); $table->unsignedBigInteger('wialon_unit_id')->nullable(); $table->softDeletes();
+        });
         DB::table('wialon_integrations')->insert(['id' => (string) \Illuminate\Support\Str::uuid(), 'company_id' => self::COMPANY,
-            'token' => encrypt('test-token'), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => '[70]', 'group_ids' => '[]', 'group_mappings' => '[]', 'unit_ids' => '[12]',
+            'token' => encrypt('test-token'), 'base_url' => 'https://hst-api.wialon.com', 'resource_ids' => '[70]', 'group_ids' => '[5]', 'group_mappings' => '[]', 'unit_ids' => '[12]',
             'enabled' => true, 'created_at' => now(), 'updated_at' => now()]);
     }
 
@@ -32,12 +35,13 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 12, 'nm' => 'Taxi 12']]])
-            ->push(['']);
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['error' => 0]);
 
         $units = app(WialonService::class)->units(self::COMPANY);
 
         $this->assertSame('Taxi 12', $units[0]['nm']);
-        Http::assertSentCount(3);
+        Http::assertSentCount(4);
         Http::assertSent(fn (Request $request) => $request['svc'] === 'core/search_items'
             && $request['sid'] === 'session-id'
             && json_decode($request['params'], true)['flags'] === 2106625);
@@ -48,11 +52,14 @@ class WialonServiceTest extends TestCase
         $resources = ['items' => [['id' => 70, 'nm' => 'Reports', 'rep' => ['4' => ['id' => 4, 'n' => 'Trips']]]]];
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['error' => 0])
+            ->push(['eid' => 'session-id'])
             ->push($resources)
             ->push(['reportResult' => ['stats' => [], 'tables' => [['name' => 'unit_trips', 'label' => 'Trips', 'rows' => 1]]]])
             ->push([['n' => 0, 'c' => [['t' => 'Trip 1']]]])
             ->push([])
-            ->push([]);
+            ->push(['error' => 0]);
 
         $result = app(WialonService::class)->runReport(self::COMPANY, 12, 70, 4, 100, 200);
 
@@ -64,10 +71,31 @@ class WialonServiceTest extends TestCase
 
     public function test_portal_can_set_wialon_mileage_counter_in_kilometers(): void
     {
-        Http::fakeSequence()->push(['eid' => 'session-id'])->push(['cnm' => 12000])->push([]);
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['error' => 0])
+            ->push(['eid' => 'session-id'])
+            ->push(['cnm' => 12000])
+            ->push(['error' => 0]);
 
         $this->assertSame(12000, app(WialonService::class)->setMileage(self::COMPANY, 12, 12000));
         Http::assertSent(fn (Request $request) => $request['svc'] === 'unit/update_mileage_counter'
             && json_decode($request['params'], true) === ['itemId' => 12, 'newValue' => 12000]);
+    }
+
+    public function test_mileage_counter_permission_error_is_actionable(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['error' => 0])
+            ->push(['eid' => 'session-id'])
+            ->push(['error' => 7])
+            ->push(['error' => 0]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('The GPS account needs Edit counters access to this unit in Wialon.');
+        app(WialonService::class)->setMileage(self::COMPANY, 12, 12000);
     }
 }
