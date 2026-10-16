@@ -402,6 +402,14 @@ Route::middleware(['auth:api'])->group(function () {
                 ->forContext($fallbackContext, $fallbackOwnerType, $fallbackOwnerId);
         }
 
+        if ($context === 'corporate' && $request->filled('corporate_account_id')) {
+            $request->validate([
+                'corporate_account_id' => ['required', 'uuid', 'exists:corporates,id'],
+            ]);
+            $corporate = Corporate::findOrFail($request->input('corporate_account_id'));
+            $query->whereIn('id', $corporate->serviceTypes()->select('service_types.id'));
+        }
+
         $serviceTypes = $query
             ->orderBy('priority')
             ->orderBy('name')
