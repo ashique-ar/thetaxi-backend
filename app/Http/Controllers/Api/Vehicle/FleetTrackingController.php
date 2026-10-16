@@ -101,6 +101,84 @@ class FleetTrackingController extends Controller
         return response()->json(['status' => 'success', 'message' => $message, 'data' => ['mileage_km' => $vehicle->current_mileage, 'wialon_mileage' => $vehicle->wialon_mileage, 'wialon_synced' => $wialonSynced, 'wialon_mileage_sync_pending' => (bool) $vehicle->wialon_mileage_sync_pending]]);
     }
 
+    public function telemetry(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting telemetry.');
+        try {
+            return response()->json(['status' => 'success', 'data' => $wialon->telemetry((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
+    public function diagnostics(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting diagnostics.');
+        try {
+            return response()->json(['status' => 'success', 'data' => $wialon->diagnostics((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
+    public function engineHours(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before changing engine hours.');
+        $data = $request->validate(['engine_hours' => ['required', 'integer', 'min:0', 'max:4294967295']]);
+        try {
+            $hours = $wialon->setEngineHours((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, (int) $data['engine_hours']);
+            return response()->json(['status' => 'success', 'data' => ['engine_hours' => $hours]]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
+    public function commands(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting commands.');
+        try {
+            return response()->json(['status' => 'success', 'data' => $wialon->commands((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id)]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
+    public function executeCommand(Request $request, Vehicle $vehicle, int $commandId, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before executing commands.');
+        $data = $request->validate(['parameter' => ['nullable', 'string', 'max:2000']]);
+        try {
+            return response()->json(['status' => 'success', 'data' => $wialon->executeCommand((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $commandId, $data['parameter'] ?? null)]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
+    public function alerts(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
+    {
+        abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);
+        abort_unless($vehicle->wialon_unit_id, 422, 'Link a GPS device before requesting alerts.');
+        $defaultFrom = now()->subDays(7)->timestamp;
+        $data = $request->validate([
+            'from' => ['sometimes', 'integer', 'min:1'],
+            'to' => ['sometimes', 'integer', 'gt:' . ($request->input('from', $defaultFrom))],
+        ]);
+        $from = (int) ($data['from'] ?? $defaultFrom);
+        $to = (int) ($data['to'] ?? now()->timestamp);
+        abort_unless($to > $from, 422, 'Alert end must be after start.');
+        abort_if($to - $from > 366 * 86400, 422, 'Alert intervals cannot exceed one year.');
+        try {
+            return response()->json(['status' => 'success', 'data' => $wialon->alertEvents((string) $vehicle->company_id, (int) $vehicle->wialon_unit_id, $from, $to)]);
+        } catch (RuntimeException $error) {
+            return response()->json(['status' => 'error', 'message' => $error->getMessage()], 503);
+        }
+    }
+
     public function position(Request $request, Vehicle $vehicle, WialonService $wialon): JsonResponse
     {
         abort_unless((string) $vehicle->company_id === $this->companyId($request), 403);

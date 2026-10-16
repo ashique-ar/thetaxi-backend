@@ -98,4 +98,59 @@ class WialonServiceTest extends TestCase
         $this->expectExceptionMessage('The GPS account needs Edit counters access to this unit in Wialon.');
         app(WialonService::class)->setMileage(self::COMPANY, 12, 12000);
     }
+
+    public function test_telemetry_returns_latest_sensor_and_counter_readings_for_a_selected_unit(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['id' => 12, 'nm' => 'Taxi 12', 'netconn' => 1, 'mu' => 0,
+                'pos' => ['t' => 100, 'x' => 79.8, 'y' => 6.9, 's' => 32],
+                'cnm' => 1000, 'cneh' => 40, 'lmsg' => ['t' => 101, 'p' => ['fuel' => 25]],
+                'sens' => [['id' => 3, 'n' => 'Fuel', 'p' => 'fuel', 'm' => 'L']],
+            ])
+            ->push(['error' => 0]);
+
+        $data = app(WialonService::class)->telemetry(self::COMPANY, 12);
+
+        $this->assertTrue($data['connected']);
+        $this->assertSame(1000.0, $data['counters']['mileage_km']);
+        $this->assertSame(25.0, $data['sensors'][0]['value']);
+        $this->assertSame(32.0, $data['position']['s']);
+    }
+
+    public function test_engine_hours_counter_is_updated_and_confirmed_by_wialon(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['error' => 0])
+            ->push(['eid' => 'session-id'])
+            ->push(['cneh' => 42])
+            ->push(['error' => 0]);
+
+        $this->assertSame(42, app(WialonService::class)->setEngineHours(self::COMPANY, 12, 42));
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'unit/update_eh_counter'
+            && json_decode($request['params'], true) === ['itemId' => 12, 'newValue' => 42]);
+    }
+
+    public function test_only_a_currently_available_configured_command_can_be_sent(): void
+    {
+        Http::fakeSequence()
+            ->push(['eid' => 'session-id'])
+            ->push(['items' => [['id' => 5, 'u' => [12]]]])
+            ->push(['id' => 12, 'cmds' => [['n' => 'Unlock', 'c' => 'custom_msg', 't' => 'tcp']]])
+            ->push([['id' => 8, 'n' => 'Unlock', 'c' => 'custom_msg', 'l' => 'tcp', 'p' => 'unlock', 'f' => 0]])
+            ->push([])
+            ->push(['error' => 0]);
+
+        $result = app(WialonService::class)->executeCommand(self::COMPANY, 12, 8);
+
+        $this->assertTrue($result['queued']);
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'unit/exec_cmd'
+            && json_decode($request['params'], true) === [
+                'itemId' => 12, 'commandName' => 'Unlock', 'linkType' => 'tcp',
+                'param' => 'unlock', 'timeout' => 30, 'flags' => 0,
+            ]);
+    }
 }

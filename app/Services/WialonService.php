@@ -242,6 +242,166 @@ class WialonService
         return $confirmedMileage;
     }
 
+    public function setEngineHours(string $companyId, int $unitId, int $hours): int
+    {
+        if ($hours < 0 || $hours > 0xFFFFFFFF) {
+            throw new RuntimeException('The GPS service accepts engine hour counters from 0 to 4294967295.');
+        }
+        $this->assertSelectedUnit($companyId, $unitId);
+        $result = $this->withSession($companyId, fn (string $sid) => $this->call($sid, 'unit/update_eh_counter', [
+            'itemId' => $unitId,
+            'newValue' => $hours,
+        ]));
+        $confirmed = filter_var($result['cneh'] ?? null, FILTER_VALIDATE_INT);
+        if ($confirmed === false || $confirmed < 0 || $confirmed > 0xFFFFFFFF) {
+            throw new RuntimeException('The GPS service did not confirm the engine hours update.');
+        }
+        return $confirmed;
+    }
+
+    public function telemetry(string $companyId, int $unitId): array
+    {
+        $unit = $this->selectedUnitDetails($companyId, $unitId, 1 + 512 + 1024 + 4096 + 8192 + 2097152 + 4194304 + 1048576);
+        $latestParams = data_get($unit, 'lmsg.p', []);
+        $sensors = collect($unit['sens'] ?? [])->map(function (array $sensor) use ($latestParams, $unit): array {
+            $parameter = (string) ($sensor['p'] ?? '');
+            $value = $parameter === '' ? null : data_get($unit, 'prms.' . $parameter . '.v', data_get($latestParams, $parameter));
+            return [
+                'id' => (int) ($sensor['id'] ?? 0),
+                'name' => $sensor['n'] ?? null,
+                'type' => $sensor['t'] ?? null,
+                'unit' => $sensor['m'] ?? null,
+                'value' => is_numeric($value) ? (float) $value : $value,
+                'parameter_time' => data_get($unit, 'prms.' . $parameter . '.at'),
+            ];
+        })->values()->all();
+        $position = $unit['pos'] ?? null;
+        if (is_array($position) && is_numeric($position['s'] ?? null)) {
+            $position['s'] = round((float) $position['s'] * ($this->usesMiles($unit) ? 1.609344 : 1), 1);
+        }
+
+        return [
+            'unit_id' => (int) $unit['id'],
+            'name' => $unit['nm'] ?? null,
+            'connected' => filter_var($unit['netconn'] ?? false, FILTER_VALIDATE_BOOLEAN),
+            'position' => $position,
+            'counters' => [
+                'mileage_km' => $this->trackerMileageKm($unit),
+                'engine_hours' => is_numeric($unit['cneh'] ?? null) ? (float) $unit['cneh'] : null,
+            ],
+            'sensors' => $sensors,
+            'last_message' => isset($unit['lmsg']['t']) ? (int) $unit['lmsg']['t'] : null,
+        ];
+    }
+
+    public function diagnostics(string $companyId, int $unitId): array
+    {
+        $unit = $this->selectedUnitDetails($companyId, $unitId, 1 + 8192);
+        $acl = (int) ($unit['uacl'] ?? 0);
+        $vehicle = \App\Models\Vehicle\Vehicle::withInactive()
+            ->where('company_id', $companyId)->where('wialon_unit_id', $unitId)->first();
+        return [
+            'unit_id' => $unitId,
+            'unit_name' => $unit['nm'] ?? null,
+            'edit_counters_allowed' => ($acl & 4194304) === 4194304,
+            'portal_mileage_km' => $vehicle?->current_mileage,
+            'gps_mileage_km' => $this->trackerMileageKm($unit),
+            'mileage_sync_pending' => (bool) $vehicle?->wialon_mileage_sync_pending,
+            'last_gps_sync_at' => $vehicle?->wialon_last_synced_at,
+            'last_gps_message_at' => $vehicle?->wialon_last_message_at,
+        ];
+    }
+
+    public function commands(string $companyId, int $unitId): array
+    {
+        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit): array {
+            $available = $unit['cmds'] ?? [];
+            $definitions = $this->call($sid, 'unit/get_command_definition_data', ['itemId' => (int) $unit['id']]);
+            return collect($definitions)->filter(fn (array $definition) => collect($available)->contains(
+                fn (array $item) => ($item['n'] ?? null) === ($definition['n'] ?? null)
+                    && ($item['c'] ?? null) === ($definition['c'] ?? null)
+            ))->map(fn (array $definition) => [
+                'id' => (int) ($definition['id'] ?? 0),
+                'name' => $definition['n'] ?? '',
+                'type' => $definition['c'] ?? '',
+                'link_type' => $definition['l'] ?? '',
+                'available_links' => collect($available)->first(fn (array $item) => ($item['n'] ?? null) === ($definition['n'] ?? null))['t'] ?? '',
+                'has_configured_parameter' => !empty($definition['p']) || !empty($definition['jp']),
+            ])->values()->all();
+        }, 1 + 512);
+    }
+
+    public function executeCommand(string $companyId, int $unitId, int $commandId, ?string $parameter = null): array
+    {
+        if ($commandId < 1) throw new RuntimeException('Choose a valid GPS command.');
+        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($commandId, $parameter): array {
+            $definitions = $this->call($sid, 'unit/get_command_definition_data', ['itemId' => (int) $unit['id'], 'col' => [$commandId]]);
+            $definition = collect($definitions)->first(fn (array $item) => (int) ($item['id'] ?? 0) === $commandId);
+            if (!$definition || !collect($unit['cmds'] ?? [])->contains(
+                fn (array $item) => ($item['n'] ?? null) === ($definition['n'] ?? null)
+                    && ($item['c'] ?? null) === ($definition['c'] ?? null)
+            )) {
+                throw new RuntimeException('This GPS command is not currently available for the selected device.');
+            }
+            if ($parameter !== null && (!empty($definition['p']) || !empty($definition['jp']))) {
+                throw new RuntimeException('This configured GPS command does not accept a parameter override.');
+            }
+            $links = collect($unit['cmds'])->first(fn (array $item) => ($item['n'] ?? null) === ($definition['n'] ?? null))['t'] ?? '';
+            $linkType = (string) ($definition['l'] ?? '');
+            if ($linkType === '') $linkType = (string) (explode(',', $links)[0] ?? '');
+            $this->call($sid, 'unit/exec_cmd', [
+                'itemId' => (int) $unit['id'],
+                'commandName' => (string) $definition['n'],
+                'linkType' => $linkType,
+                'param' => $parameter ?? (string) ($definition['p'] ?? ''),
+                'timeout' => 30,
+                'flags' => (int) ($definition['f'] ?? 0),
+            ]);
+            return ['command_id' => $commandId, 'command_name' => $definition['n'], 'queued' => true];
+        }, 1 + 512);
+    }
+
+    public function alertEvents(string $companyId, int $unitId, int $from, int $to): array
+    {
+        return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($unitId, $from, $to): array {
+            $detectors = ['speedings', 'filling', 'theft', 'lls', 'fuel_level', 'trips', 'counters', 'ignition', 'sensors', 'health_check'];
+            try {
+                $result = $this->call($sid, 'events/load', [
+                    'itemId' => $unitId,
+                    'ivalType' => 1,
+                    'timeFrom' => $from,
+                    'timeTo' => $to,
+                    'detectors' => array_map(fn (string $type) => ['type' => $type, 'filter1' => 0], $detectors),
+                    'selector' => ['type' => '*', 'timeFrom' => $from, 'timeTo' => $to, 'detalization' => 3],
+                    'measure' => 0,
+                    'lang' => 'en',
+                ]);
+                return ['unit_id' => $unitId, 'unit_name' => $unit['nm'] ?? null, 'from' => $from, 'to' => $to, 'events' => $result['selector'] ?? [], 'counts' => $result['events'] ?? []];
+            } finally {
+                try { $this->call($sid, 'events/unload', []); } catch (RuntimeException) { }
+            }
+        }, 1);
+    }
+
+    private function selectedUnitDetails(string $companyId, int $unitId, int $flags): array
+    {
+        return $this->withSelectedUnitSession($companyId, $unitId, fn (string $sid, array $unit): array => $unit, $flags);
+    }
+
+    private function withSelectedUnitSession(string $companyId, int $unitId, callable $callback, int $flags = 1): mixed
+    {
+        $integration = $this->integration($companyId);
+        return $this->withSession($companyId, function (string $sid) use ($integration, $unitId, $callback, $flags) {
+            $groups = $integration->group_ids ? $this->searchUnitGroups($sid) : [];
+            if (!in_array($unitId, $this->unitIdsFromGroups($groups, $integration->group_ids), true)) {
+                throw new RuntimeException('The GPS device is not enabled for this company.');
+            }
+            $unit = $this->call($sid, 'core/search_item', ['itemId' => $unitId, 'flags' => $flags]);
+            if (empty($unit['id'])) throw new RuntimeException('The GPS device is unavailable to this company service account.');
+            return $callback($sid, $unit);
+        });
+    }
+
     private function writeMileageCounter(string $sid, int $unitId, int $mileageKm): int
     {
         if ($mileageKm < 0 || $mileageKm > self::MAX_COUNTER_KILOMETERS) {
@@ -528,7 +688,8 @@ class WialonService
         if ($sid !== null) $body['sid'] = $sid;
         $context = ['service' => $service, 'request' => $this->safeGpsLogData($params)];
         $startedAt = microtime(true);
-        $logLevel = $service === 'unit/update_mileage_counter' ? 'info' : 'debug';
+        $logPayload = in_array($service, ['unit/update_mileage_counter', 'unit/update_eh_counter', 'unit/exec_cmd', 'unit_group/update_units'], true);
+        $logLevel = $logPayload ? 'info' : 'debug';
         Log::log($logLevel, 'Wialon API request', $context);
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
@@ -541,7 +702,7 @@ class WialonService
         }
         $data = $response->json();
         $safeResponse = $this->safeGpsLogData($data ?? $response->body());
-        if ($service !== 'unit/update_mileage_counter'
+        if (!$logPayload
             && is_array($data)
             && (!isset($data['error']) || (int) $data['error'] === 0)) {
             $safeResponse = ['keys' => array_keys($data)];
@@ -561,6 +722,12 @@ class WialonService
             if ((int) ($data['error'] ?? 0) === 7 && $service === 'unit/update_mileage_counter') {
                 throw new RuntimeException('The GPS account needs Edit counters access to this unit in Wialon.');
             }
+            if ((int) ($data['error'] ?? 0) === 7 && $service === 'unit/update_eh_counter') {
+                throw new RuntimeException('The GPS account needs Edit counters access to this unit in Wialon.');
+            }
+            if ((int) ($data['error'] ?? 0) === 7 && $service === 'unit/exec_cmd') {
+                throw new RuntimeException('The GPS account needs Send commands access to this unit in Wialon.');
+            }
             throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
         Log::log($logLevel, 'Wialon API response', $responseContext);
@@ -569,7 +736,7 @@ class WialonService
 
     private function safeGpsLogData(mixed $value, ?string $key = null): mixed
     {
-        if ($key !== null && preg_match('/token|sid|eid|password|secret|(^|_)x$|(^|_)y$/i', $key)) return '[redacted]';
+        if ($key !== null && preg_match('/token|sid|eid|password|secret|param|(^|_)x$|(^|_)y$/i', $key)) return '[redacted]';
         if (is_array($value)) {
             $safe = [];
             foreach ($value as $itemKey => $item) $safe[$itemKey] = $this->safeGpsLogData($item, (string) $itemKey);

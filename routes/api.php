@@ -1708,8 +1708,16 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:vehicles.edit|vehicles.create');
     Route::put('fleet-tracking/vehicles/{vehicle}/mileage', [FleetTrackingController::class, 'mileage'])
         ->middleware('permission:vehicles.edit');
+    Route::put('fleet-tracking/vehicles/{vehicle}/engine-hours', [FleetTrackingController::class, 'engineHours'])
+        ->middleware('permission:vehicles.edit')->middleware('throttle:10,1');
+    Route::post('fleet-tracking/vehicles/{vehicle}/commands/{commandId}', [FleetTrackingController::class, 'executeCommand'])
+        ->whereNumber('commandId')->middleware('permission:vehicles.edit')->middleware('throttle:6,1');
     Route::middleware(['permission:vehicles.view'])->group(function () {
         Route::get('fleet-tracking', [FleetTrackingController::class, 'index'])->middleware('throttle:60,1');
+        Route::get('fleet-tracking/vehicles/{vehicle}/telemetry', [FleetTrackingController::class, 'telemetry'])->middleware('throttle:60,1');
+        Route::get('fleet-tracking/vehicles/{vehicle}/diagnostics', [FleetTrackingController::class, 'diagnostics'])->middleware('throttle:30,1');
+        Route::get('fleet-tracking/vehicles/{vehicle}/commands', [FleetTrackingController::class, 'commands'])->middleware('throttle:30,1');
+        Route::get('fleet-tracking/vehicles/{vehicle}/alerts', [FleetTrackingController::class, 'alerts'])->middleware('throttle:30,1');
         Route::get('fleet-tracking/report-templates', [FleetTrackingController::class, 'reportTemplates'])->middleware('throttle:30,1');
         Route::post('fleet-tracking/vehicles/{vehicle}/reports', [FleetTrackingController::class, 'runReport'])->middleware('throttle:12,1');
         Route::get('fleet-tracking/vehicles/{vehicle}/position', [FleetTrackingController::class, 'position'])->middleware('throttle:60,1');
