@@ -526,17 +526,46 @@ class WialonService
     {
         $body = ['svc' => $service, 'params' => json_encode($params, JSON_THROW_ON_ERROR)];
         if ($sid !== null) $body['sid'] = $sid;
+        $context = ['service' => $service, 'request' => $this->safeGpsLogData($params)];
+        $startedAt = microtime(true);
+        Log::debug('Wialon API request', $context);
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
         } catch (ConnectionException $error) {
+            Log::warning('Wialon API connection failed', $context + [
+                'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+                'exception' => $error->getMessage(),
+            ]);
             throw new RuntimeException('The GPS service request failed.', 0, $error);
         }
-        if (!$response->successful()) throw new RuntimeException('The GPS service request failed.');
-
         $data = $response->json();
+        $responseContext = $context + [
+            'http_status' => $response->status(),
+            'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
+            'response' => $this->safeGpsLogData($data ?? $response->body()),
+        ];
+        if (!$response->successful()) {
+            Log::warning('Wialon API HTTP error', $responseContext);
+            throw new RuntimeException('The GPS service request failed.');
+        }
+
         if (!is_array($data) || isset($data['error'])) {
+            Log::warning('Wialon API rejected request', $responseContext);
             throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
+        Log::debug('Wialon API response', $responseContext);
         return $data;
+    }
+
+    private function safeGpsLogData(mixed $value, ?string $key = null): mixed
+    {
+        if ($key !== null && preg_match('/token|sid|eid|password|secret|(^|_)x$|(^|_)y$/i', $key)) return '[redacted]';
+        if (is_array($value)) {
+            $safe = [];
+            foreach ($value as $itemKey => $item) $safe[$itemKey] = $this->safeGpsLogData($item, (string) $itemKey);
+            return $safe;
+        }
+        if (is_string($value)) return mb_substr($value, 0, 4000);
+        return $value;
     }
 }

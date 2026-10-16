@@ -144,7 +144,6 @@
         }
     }
 
-    $unitPrice = $item->unit_price ?? ($item->amount ?? 0);
     $totalPrice = $item->total_price ?? ($item->amount ?? 0);
 
     $serviceCode = null;
@@ -357,15 +356,9 @@
         $routeSummaryLines[] = 'Duration: ' . floor($journeyDurationSeconds / 60) . ' Minutes';
     }
 
-    $totalLabel = 'Item Total';
-    if (!$isDayPackage) {
-        $totalLabel = $isReturnTrip ? 'Transfer Total (Drop-off + Return)' : 'Transfer Total (Drop-off)';
-    }
-
     $convertDisplayAmount = fn ($amount) => $sourceCurrencyCode && $sourceCurrencyCode !== $displayCurrencyCode
         ? $currencyService->convert((float) $amount, $sourceCurrencyCode, $displayCurrencyCode)
         : (float) $amount;
-    $displayUnitPrice = $convertDisplayAmount($unitPrice);
     $displayExtraKmPrice = $convertDisplayAmount($extraKmPrice ?? 0);
     $displayExtraKmTotal = $convertDisplayAmount($extraKmTotal);
     $displayBaseItemTotal = $convertDisplayAmount($baseItemTotal);
@@ -378,7 +371,7 @@
 @endphp
 
 <div
-    style="background-color: #f8f9fa; border: 1px solid #e6e9ed; border-left: 4px solid #BF2629; border-radius: 8px; padding: 12px 14px; margin-bottom: 12px;">
+    style="background-color: #fff; border: 1px solid #dfe3e8; border-top: 4px solid #BF2629; border-radius: 10px; padding: 16px; margin-bottom: 18px;">
     <div style="display: flex; align-items: flex-start; gap: 12px;">
         @php
             if ($defaultImage) {
@@ -398,8 +391,8 @@
                     style="width: 108px; height: 72px; object-fit: cover; border-radius: 6px; border: 1px solid #ddd;">
             </div>
         @endif
-        <div style="flex: 1;">
-            <h3 style="margin-top: 0; margin-bottom: 5px; color: #BF2629; font-size: 16px;">
+        <div style="flex: 1; min-width: 0;">
+            <h3 style="margin-top: 0; margin-bottom: 8px; color: #1f2937; font-size: 18px;">
                 Vehicle {{ $index + 1 }}: {{ $vehicleGroupName }}
             </h3>
             <span
@@ -409,7 +402,10 @@
         </div>
     </div>
 
-    <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+    <table class="info-table" style="width: 100%; border-collapse: collapse; margin-top: 12px; border-top: 1px solid #e5e7eb;">
+        <tr>
+            <td colspan="2" style="padding: 9px 10px; background: #f3f4f6; color: #374151; font-weight: 700; border-bottom: 1px solid #e5e7eb;">Journey details</td>
+        </tr>
         <tr style="background-color: #fff9e6;">
             <td style="padding: 8px 10px; border-bottom: 1px solid #ffeeba; font-weight: 700; color: #856404; width: 30%;">
                 Start Date & Time
@@ -485,17 +481,6 @@
                 </td>
             </tr>
         @endif
-        @if ($isDayPackage)
-            <tr>
-                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333; width: 30%;">
-                    Rate per Day
-                </td>
-                <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; color: #555;">
-                    {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayUnitPrice)), 0) }}
-                </td>
-            </tr>
-        @endif
-
         @if ($showReturnLocations)
             <tr>
                 <td
@@ -560,6 +545,11 @@
         @endif
         --}}
 
+        @if ($freeKmPerDay || $freeKmPerPackage || $allowedTotalKm || $packageKmLabel)
+            <tr>
+                <td colspan="2" style="padding: 9px 10px; background: #f3f4f6; color: #374151; font-weight: 700; border-bottom: 1px solid #e5e7eb;">Included distance</td>
+            </tr>
+        @endif
         @if ($freeKmPerDay)
             @if (!$isDayPackage)
                 <tr>
@@ -602,6 +592,11 @@
             </tr>
         @endif
 
+        @if ($extraKilometers > 0 || $extraKmPrice || !empty($addonsList))
+            <tr>
+                <td colspan="2" style="padding: 9px 10px; background: #f3f4f6; color: #374151; font-weight: 700; border-bottom: 1px solid #e5e7eb;">Additional charges</td>
+            </tr>
+        @endif
         @if ($extraKilometers > 0)
             <tr>
                 <td style="padding: 4px 0; border-bottom: 1px solid #eef0f2; font-weight: 600; color: #333;">
@@ -668,8 +663,11 @@
         @endif
 
         <tr>
+            <td colspan="2" style="padding: 9px 10px; background: #f3f4f6; color: #374151; font-weight: 700; border-bottom: 1px solid #e5e7eb;">Price summary</td>
+        </tr>
+        <tr>
             <td style="padding: 4px 0; font-weight: 600; color: #333; width: 30%;">
-                {{ $totalLabel === 'Item Total' ? 'Base Trip Total' : $totalLabel }}
+                Base fare
             </td>
             <td style="padding: 4px 0; color: #555; font-weight: 600;">
                 {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayBaseItemTotal)), 0) }}
@@ -678,19 +676,17 @@
                 @endif
             </td>
         </tr>
-        @if ($addonsTotal > 0 || $extraKmTotal > 0)
-            <tr>
-                <td style="padding: 6px 0; font-weight: 700; color: #111827; width: 30%; border-top: 2px solid #e5e7eb;">
-                    Item Total
-                </td>
-                <td style="padding: 6px 0; color: #111827; font-weight: 700; border-top: 2px solid #e5e7eb;">
-                    {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
-                    <small style="display:block; color:#777; font-weight:400; margin-top:2px;">
-                        Includes add-ons and extra kilometers
-                    </small>
-                </td>
-            </tr>
-        @endif
+        <tr style="background:#fef2f2;">
+            <td style="padding: 10px; font-weight: 700; color: #7f1d1d; width: 30%; border-top: 2px solid #fecaca;">
+                Booking item total
+            </td>
+            <td style="padding: 10px; color: #7f1d1d; font-weight: 800; font-size: 18px; border-top: 2px solid #fecaca;">
+                {{ $displayCurrencyLabel }} {{ number_format(floor(max(0, $displayItemGrandTotal)), 0) }}
+                @if ($addonsTotal > 0 || $extraKmTotal > 0)
+                    <small style="display:block; color:#7f1d1d; font-size:12px; font-weight:400; margin-top:2px;">Includes add-ons and extra kilometers</small>
+                @endif
+            </td>
+        </tr>
     </table>
 
 </div>

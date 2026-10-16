@@ -244,7 +244,7 @@
                 <h3>Your Request is Being Processed</h3>
                 <p><strong>Step 1:</strong> Our team will review your quotation request</p>
                 <p><strong>Step 2:</strong> We'll contact you at
-                    <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong> within 24 hours
+                    <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong>  as soon as possible
                 </p>
                 <p><strong>Step 3:</strong> You'll receive a detailed quote with vehicle options and pricing</p>
                 <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send a secure payment link to

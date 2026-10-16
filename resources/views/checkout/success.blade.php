@@ -60,7 +60,7 @@
                     </div> --}}
                     <h1>Quotation Request Submitted!</h1>
                     <p class="lead">Thank you for your interest. Our team will review your request and send you a detailed
-                        quotation within 24 hours.</p>
+                        quotation  as soon as possible.</p>
                 @elseif($isAdvancePayment)
                     {{-- <div class="success-icon paid">
                         <i class="bi bi-check-circle-fill"></i>
@@ -110,8 +110,7 @@
                         <p class="intro-text">
                             @if ($isQuotation)
                                 Thank you for your quotation request. Our team will review your requirements and get back to
-                                you
-                                within 24 hours.
+                                you as soon as possible.
                             @elseif($isAdvancePayment)
                                 Thank you for your advance payment with {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}!
                                 Your {{ $advancePercentage }}% advance payment has been confirmed. The remaining balance
@@ -240,14 +239,10 @@
                                         <p><strong>Step 1:</strong> Our team will review your quotation request</p>
                                         <p><strong>Step 2:</strong> We'll contact you at
                                             <strong>{{ $booking->customer->phone ?? 'your provided number' }}</strong>
-                                            within
-                                            24 hours
+                                            as soon as possible
                                         </p>
-                                        <p><strong>Step 3:</strong> You'll receive a detailed quote with vehicle options and
-                                            pricing</p>
-                                        <p style="margin-bottom: 0;"><strong>Step 4:</strong> Once approved, we'll send a
-                                            secure
-                                            payment link to confirm your booking</p>
+                                        <p><strong>Step 3:</strong> The prices in your quotation are valid for 7 days.</p>
+                                        <p style="margin-bottom: 0;"><strong>Step 4:</strong> The secure checkout link sent by email expires 7 days after it is issued. Please contact us if the quotation or link has expired.</p>
                                     </div>
                                 @elseif($isAdvancePayment)
                                     <div class="highlight-box success">

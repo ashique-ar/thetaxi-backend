@@ -272,16 +272,17 @@
                                             </div>
                                         @endif
                                         <div class="item-total-section"
-                                            style="margin-top: 12px; padding-top: 12px; border-top: 2px solid #e5e7eb;">
+                                            style="margin-top: 14px; padding: 12px; border: 1px solid #fecaca; border-radius: 8px; background: #fef2f2;">
                                             <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0;">
-                                                <span><strong>Base Trip Total</strong></span>
+                                                <span><strong>Base fare</strong></span>
                                                 <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $baseItemTotal)), 0) }}</span>
                                             </div>
+                                            <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0 2px; margin-top: 6px; border-top: 1px solid #fecaca; color: #7f1d1d; font-size: 18px; font-weight: 800;">
+                                                <span>Booking item total</span>
+                                                <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}</span>
+                                            </div>
                                             @if ($addonsTotal > 0 || $extraKmTotal > 0)
-                                                <div style="display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-weight: 700;">
-                                                    <span>Item Total</span>
-                                                    <span>{{ $currencySymbol }} {{ number_format(floor(max(0, $itemGrandTotal)), 0) }}</span>
-                                                </div>
+                                                <small style="display:block; color:#7f1d1d; margin-top:4px;">Includes add-ons and extra kilometers</small>
                                             @endif
                                         </div>
                                     </div>
@@ -610,11 +611,13 @@
 
         /* Booking Item Email */
         .booking-item-email {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 14px 16px;
-            margin-bottom: 12px;
-            border-left: 4px solid #BF2629;
+            background: #fff;
+            border: 1px solid #dfe3e8;
+            border-top: 4px solid #BF2629;
+            border-radius: 10px;
+            padding: 18px;
+            margin-bottom: 18px;
+            box-shadow: 0 2px 8px rgba(15, 23, 42, .05);
         }
 
         .vehicle-header {

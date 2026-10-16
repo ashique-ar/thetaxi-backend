@@ -203,7 +203,7 @@
         </h2>
         <div class="highlight-box info">
             <h3>What Happens Now?</h3>
-            <p style="margin-bottom: 0;">Our team will review your quotation request and contact you within 24 hours with a
+            <p style="margin-bottom: 0;">Our team will review your quotation request and contact you as soon as possible with a
                 detailed quote and options tailored to your needs.</p>
         </div>
     </div>
@@ -223,6 +223,10 @@
                 ✓ Accept Quotation & Proceed to Payment
             </a>
         </div>
+
+        <p class="highlight-box info" style="margin: 15px 0;">
+            The prices in this quotation are valid for 7 days. This secure checkout link expires 7 days after it is issued.
+        </p>
 
         <p style="text-align: center; color: #717171; font-size: 13px; margin-top: 10px;">
             If the button doesn't work, copy and paste this link:<br>

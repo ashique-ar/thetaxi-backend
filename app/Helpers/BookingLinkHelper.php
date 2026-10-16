@@ -82,7 +82,7 @@ class BookingLinkHelper
             // Create shortened URL for email-friendly links
             $shortenedUrl = UrlShortenerService::shorten(
                 $originalUrl,
-                168, // 7 days expiry
+                240, // 10 days expiry
                 'booking',
                 $booking->id,
                 'email', // source

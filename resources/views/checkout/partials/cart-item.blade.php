@@ -53,24 +53,11 @@
                                                                         @php
                                                                             $serviceType =
                                                                                 $item['service_type'] ?? null;
-                                                                            $isFixedRate = isServiceFixedRate(
-                                                                                $serviceType,
-                                                                            );
-                                                                            $pricingLabel = getServicePricingLabel($serviceType);
                                                                             $durationLabel = getServiceDurationLabel(
                                                                                 $serviceType,
                                                                                 $calculatedDays,
                                                                             );
                                                                         @endphp
-                                                                        @if ($isFixedRate)
-                                                                            <span class="vehicle-rate">{{ $pricingLabel }}:
-                                                                                {{ $currencySymbol }}
-                                                                                {{ number_format(floor(max(0, $itemTotal)), 0) }}</span>
-                                                                        @else
-                                                                            <span class="vehicle-rate">{{ $currencySymbol }}
-                                                                                {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}/day
-                                                                                × {{ $durationLabel }}</span>
-                                                                        @endif
                                                                         <h6 class="vehicle-title">
                                                                             <a
                                                                                 href="#">{{ $item['name'] ?? '' }}</a>
@@ -306,11 +293,9 @@
                                                                 @endphp
 
                                                                 <div class="checkout-item-price-rate">
-                                                                    @if ($isFixedRate)
-                                                                        {{ $pricingLabel }}: {{ $currencySymbol }} {{ number_format(floor(max(0, $itemTotal)), 0) }}
-                                                                    @else
-                                                                        {{ $currencySymbol }} {{ number_format(floor(max(0, $item['price'] ?? 0)), 0) }}/day &times; {{ $durationLabel }}
-                                                                    @endif
+                                                                    <span class="vehicle-rate">Booking total:
+                                                                        {{ $currencySymbol }}
+                                                                        {{ number_format(floor(max(0, $itemTotal)), 0) }}</span>
                                                                 </div>
 
                                                                 {{-- Return Trip Pricing Breakdown --}}

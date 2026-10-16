@@ -451,7 +451,7 @@
                             <div id="collapseOne" class="accordion-collapse collapse show"
                                 data-bs-parent="#corporateFAQ">
                                 <div class="accordion-body">
-                                    {{ $settings['corporate_faq_1_answer'] ?? 'Setting up a corporate account is simple. Submit an enquiry through our form, and our corporate sales team will contact you within 24 hours to discuss your requirements and set up your account with preferred payment terms.' }}
+                                    {{ $settings['corporate_faq_1_answer'] ?? 'Setting up a corporate account is simple. Submit an enquiry through our form, and our corporate sales team will contact you as soon as possible to discuss your requirements and set up your account with preferred payment terms.' }}
                                 </div>
                             </div>
                         </div>
