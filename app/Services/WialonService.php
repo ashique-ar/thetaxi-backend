@@ -407,7 +407,8 @@ class WialonService
             if (!in_array($unitId, $this->unitIdsFromGroups($groups, $integration->group_ids), true)) {
                 throw new RuntimeException('The GPS device is not enabled for this company.');
             }
-            $unit = $this->call($sid, 'core/search_item', ['itemId' => $unitId, 'flags' => $flags]);
+            $result = $this->call($sid, 'core/search_item', ['id' => $unitId, 'flags' => $flags]);
+            $unit = $result['item'] ?? [];
             if (empty($unit['id'])) throw new RuntimeException('The GPS device is unavailable to this company service account.');
             return $callback($sid, $unit);
         });

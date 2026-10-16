@@ -104,11 +104,11 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 5, 'u' => [12]]]])
-            ->push(['id' => 12, 'nm' => 'Taxi 12', 'netconn' => 1, 'mu' => 0,
+            ->push(['item' => ['id' => 12, 'nm' => 'Taxi 12', 'netconn' => 1, 'mu' => 0,
                 'pos' => ['t' => 100, 'x' => 79.8, 'y' => 6.9, 's' => 32],
                 'cnm' => 1000, 'cneh' => 40, 'lmsg' => ['t' => 101, 'p' => ['fuel' => 25]],
                 'sens' => [['id' => 3, 'n' => 'Fuel', 'p' => 'fuel', 'm' => 'L']],
-            ])
+            ]])
             ->push(['error' => 0]);
 
         $data = app(WialonService::class)->telemetry(self::COMPANY, 12);
@@ -117,6 +117,8 @@ class WialonServiceTest extends TestCase
         $this->assertSame(1000.0, $data['counters']['mileage_km']);
         $this->assertSame(25.0, $data['sensors'][0]['value']);
         $this->assertSame(32.0, $data['position']['s']);
+        Http::assertSent(fn (Request $request) => $request['svc'] === 'core/search_item'
+            && json_decode($request['params'], true) === ['id' => 12, 'flags' => 7353857]);
     }
 
     public function test_engine_hours_counter_is_updated_and_confirmed_by_wialon(): void
@@ -139,7 +141,7 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 5, 'u' => [12]]]])
-            ->push(['id' => 12, 'cmds' => [['n' => 'Unlock', 'c' => 'custom_msg', 't' => 'tcp']]])
+            ->push(['item' => ['id' => 12, 'cmds' => [['n' => 'Unlock', 'c' => 'custom_msg', 't' => 'tcp']]]])
             ->push([['id' => 8, 'n' => 'Unlock', 'c' => 'custom_msg', 'l' => 'tcp', 'p' => 'unlock', 'f' => 0]])
             ->push([])
             ->push(['error' => 0]);
@@ -159,7 +161,7 @@ class WialonServiceTest extends TestCase
         Http::fakeSequence()
             ->push(['eid' => 'session-id'])
             ->push(['items' => [['id' => 5, 'u' => [12]]]])
-            ->push(['id' => 12, 'nm' => 'Taxi 12'])
+            ->push(['item' => ['id' => 12, 'nm' => 'Taxi 12']])
             ->push(['error' => 4])
             ->push(['error' => 0])
             ->push(['selector' => ['trips' => ['0' => [['from' => ['t' => 100], 'to' => ['t' => 200]]]]], 'events' => ['trips' => ['0' => 1]]])
