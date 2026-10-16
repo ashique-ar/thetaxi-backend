@@ -709,7 +709,7 @@ class WialonService
                 'duration_ms' => (int) round((microtime(true) - $startedAt) * 1000),
                 'exception' => $error->getMessage(),
             ]);
-            throw new RuntimeException('The GPS service request failed.', 0, $error);
+            throw new RuntimeException('The GPS service connection failed during ' . $service . '.', 0, $error);
         }
         $data = $response->json();
         $safeResponse = $this->safeGpsLogData($data ?? $response->body());
@@ -725,7 +725,7 @@ class WialonService
         ];
         if (!$response->successful()) {
             Log::warning('Wialon API HTTP error', $responseContext);
-            throw new RuntimeException('The GPS service request failed.');
+            throw new RuntimeException('The GPS service returned an HTTP error during ' . $service . '.');
         }
 
         if (!is_array($data) || (isset($data['error']) && (int) $data['error'] !== 0)) {
@@ -739,7 +739,7 @@ class WialonService
             if ((int) ($data['error'] ?? 0) === 7 && $service === 'unit/exec_cmd') {
                 throw new RuntimeException('The GPS account needs Send commands access to this unit in Wialon.');
             }
-            throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
+            throw new RuntimeException('The GPS service rejected ' . $service . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
         Log::log($logLevel, 'Wialon API response', $responseContext);
         return $data;
