@@ -364,7 +364,7 @@ class WialonService
     public function alertEvents(string $companyId, int $unitId, int $from, int $to): array
     {
         return $this->withSelectedUnitSession($companyId, $unitId, function (string $sid, array $unit) use ($unitId, $from, $to): array {
-            $detectors = ['speedings', 'filling', 'theft', 'lls', 'fuel_level', 'trips', 'counters', 'ignition', 'sensors', 'health_check'];
+            $detectors = ['speedings', 'filling', 'theft', 'lls', 'fuel_level', 'trips', 'ignition', 'sensors', 'health_check'];
             $loadEvents = function (array $types) use ($sid, $unitId, $from, $to): array {
                 return $this->call($sid, 'events/load', [
                     'itemId' => $unitId,
