@@ -528,7 +528,7 @@ class WialonService
         if ($sid !== null) $body['sid'] = $sid;
         $context = ['service' => $service, 'request' => $this->safeGpsLogData($params)];
         $startedAt = microtime(true);
-        Log::debug('Wialon API request', $context);
+        Log::info('Wialon API request', $context);
         try {
             $response = Http::asForm()->timeout(20)->post($this->baseUrl . '/wialon/ajax.html', $body);
         } catch (ConnectionException $error) {
@@ -549,11 +549,14 @@ class WialonService
             throw new RuntimeException('The GPS service request failed.');
         }
 
-        if (!is_array($data) || isset($data['error'])) {
+        if (!is_array($data) || (isset($data['error']) && (int) $data['error'] !== 0)) {
             Log::warning('Wialon API rejected request', $responseContext);
+            if ((int) ($data['error'] ?? 0) === 7 && $service === 'unit/update_mileage_counter') {
+                throw new RuntimeException('The GPS account needs Edit counters access to this unit in Wialon.');
+            }
             throw new RuntimeException('The GPS service rejected the request' . (isset($data['error']) ? ' (' . $data['error'] . ')' : '') . '.');
         }
-        Log::debug('Wialon API response', $responseContext);
+        Log::info('Wialon API response', $responseContext);
         return $data;
     }
 
