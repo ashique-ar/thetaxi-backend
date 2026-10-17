@@ -487,6 +487,7 @@ class SettingsViewComposer
                     'booking_advance_hours',
                     'booking_max_days',
                     'guest_booking_enabled',
+                    'enable_whatsapp_quote_requests',
                     'booking_base_currency',
                     'booking_submit_inquiry_label',
                     'booking_search_submit_label',

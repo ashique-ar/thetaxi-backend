@@ -482,6 +482,7 @@
 
         <!-- Action Buttons -->
         <div class="vehicle-actions mt-1">
+            
             @if ($canAddToCart)
                 @if ($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
@@ -549,6 +550,11 @@
                 <button type="button" class="btn btn-secondary w-100" disabled>
                     <i class="bi bi-exclamation-circle"></i> Not Available
                 </button>
+            @endif
+            @if ($searchId && filter_var($settings['enable_whatsapp_quote_requests'] ?? false, FILTER_VALIDATE_BOOLEAN) && preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? '') !== '')
+                <a class="btn btn-success w-100 mb-2 whatsapp-quote-card-btn" href="#" target="_blank" rel="noopener" data-vehicle="{{ $vehicle['name'] ?? 'Vehicle' }}">
+                    <i class="bi bi-whatsapp"></i> Request a Quote on WhatsApp
+                </a>
             @endif
         </div>
     </div>

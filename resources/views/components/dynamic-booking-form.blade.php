@@ -547,4 +547,38 @@
     <button type="submit" class="primary-btn1 booking-search-submit">
         <span>{{ $submitLabel }}</span>
     </button>
+    @if (filter_var($settings['enable_whatsapp_quote_requests'] ?? false, FILTER_VALIDATE_BOOLEAN) && preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? '') !== '')
+        <a class="btn btn-success whatsapp-quote-form-btn mt-2" href="#" target="_blank" rel="noopener">
+            <i class="bi bi-whatsapp"></i> Request a Quote on WhatsApp
+        </a>
+    @endif
 </form>
+
+@once
+    @push('scripts')
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const number = @json(preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? ''));
+                const quoteUrl = (message) => `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
+                const messageFor = (form, vehicle = '') => {
+                    const values = [...form.querySelectorAll('input:not([type=hidden]):not([type=checkbox]), select, textarea')]
+                        .filter(field => field.value.trim())
+                        .map(field => `${field.name.replace(/[_-]/g, ' ')}: ${field.value.trim()}`);
+                    return ['Hello, I would like to request a quotation.', vehicle && `Vehicle: ${vehicle}`, ...values].filter(Boolean).join('\n');
+                };
+                document.querySelectorAll('.whatsapp-quote-form-btn').forEach(button => {
+                    const form = button.closest('form');
+                    const update = () => button.href = quoteUrl(messageFor(form));
+                    form.addEventListener('input', update);
+                    update();
+                });
+                document.addEventListener('click', event => {
+                    const button = event.target.closest('.whatsapp-quote-card-btn');
+                    if (!button || !number) return;
+                    const form = document.querySelector('form.filter-input.show') || document.querySelector('form.filter-input');
+                    button.href = quoteUrl(messageFor(form || document.createElement('form'), button.dataset.vehicle));
+                });
+            });
+        </script>
+    @endpush
+@endonce

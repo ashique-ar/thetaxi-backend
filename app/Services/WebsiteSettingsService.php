@@ -1070,6 +1070,7 @@ class WebsiteSettingsService
             'cancellation_hours',
             'auto_dispatch_enabled',
             'guest_booking_enabled',
+            'enable_whatsapp_quote_requests',
             'booking_base_currency',
             'booking_submit_inquiry_label',
             'booking_search_submit_label',
@@ -1108,6 +1109,7 @@ class WebsiteSettingsService
         ];
 
         $settings = $this->getMultiple($types);
+        $settings['enable_whatsapp_quote_requests'] = filter_var($settings['enable_whatsapp_quote_requests'] ?? false, FILTER_VALIDATE_BOOL);
         $availabilitySetting = $settings['public_booking_enforce_vehicle_availability'] ?? null;
         $settings['public_booking_enforce_vehicle_availability'] = $availabilitySetting === null || $availabilitySetting === ''
             ? true
