@@ -548,7 +548,7 @@
         <span>{{ $submitLabel }}</span>
     </button>
     @if (filter_var($settings['enable_whatsapp_quote_requests'] ?? false, FILTER_VALIDATE_BOOLEAN) && preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? '') !== '')
-        <a class="btn btn-success whatsapp-quote-form-btn mt-2" href="#" target="_blank" rel="noopener">
+        <a class="btn btn-success w-100 whatsapp-quote-form-btn mt-2" href="#" target="_blank" rel="noopener">
             <i class="bi bi-whatsapp"></i> Request a Quote on WhatsApp
         </a>
     @endif
@@ -561,15 +561,26 @@
                 const number = @json(preg_replace('/[^0-9]/', '', $settings['company_whatsapp'] ?? $settings['footer_whatsapp_number'] ?? $settings['company_phone'] ?? ''));
                 const quoteUrl = (message) => `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
                 const messageFor = (form, vehicle = '') => {
-                    const values = [...form.querySelectorAll('input:not([type=hidden]):not([type=checkbox]), select, textarea')]
-                        .filter(field => field.value.trim())
-                        .map(field => `${field.name.replace(/[_-]/g, ' ')}: ${field.value.trim()}`);
-                    return ['Hello, I would like to request a quotation.', vehicle && `Vehicle: ${vehicle}`, ...values].filter(Boolean).join('\n');
+                    const fields = [...form.querySelectorAll('input:not([type=hidden]):not([type=checkbox]), select, textarea')]
+                        .filter(field => field.type !== 'radio' || field.checked)
+                        .map(field => {
+                            const name = field.name.replace(/\[\]$/, '').replace(/[_-]/g, ' ').trim();
+                            const label = form.querySelector(`label[for="${CSS.escape(field.id)}"]`)?.textContent.trim().replace(/\s*\*$/, '') || name;
+                            const value = field.tagName === 'SELECT' ? field.selectedOptions[0]?.textContent.trim() : field.value.trim();
+                            return value ? `${label}: ${value}` : '';
+                        }).filter(Boolean);
+                    return [
+                        'Hello, I would like to request a quotation.',
+                        vehicle && `*Vehicle*\n${vehicle}`,
+                        fields.length && `*Journey details*\n${fields.join('\n')}`,
+                        'Please send me the best available fare. Thank you!'
+                    ].filter(Boolean).join('\n\n');
                 };
                 document.querySelectorAll('.whatsapp-quote-form-btn').forEach(button => {
                     const form = button.closest('form');
                     const update = () => button.href = quoteUrl(messageFor(form));
                     form.addEventListener('input', update);
+                    form.addEventListener('change', update);
                     update();
                 });
                 document.addEventListener('click', event => {
