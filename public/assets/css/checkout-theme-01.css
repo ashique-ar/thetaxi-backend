@@ -83,7 +83,7 @@ body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapp
     min-height: auto;
 }
 body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapper > .checkout-form-title { flex: 0 0 auto; }
-body.theme-default .checkout-page .order-sum-area { position: static !important; padding: 16px 18px 18px !important; background: #f5f6f7 !important; }
+body.theme-default .checkout-page .order-sum-area { position: static !important; padding: 0 !important; background: #fff !important; }
 body.theme-default .checkout-page .checkout-sidebar-stack > .checkout-form-wrapper > .order-sum-area {
     display: block;
     min-height: auto;
@@ -102,14 +102,14 @@ body.theme-default .checkout-page .order-sum-area .cart-body {
 }
 body.theme-default .checkout-page .order-sum-area .cart-footer { display: block; }
 body.theme-default .checkout-page .cart-body > ul { margin: 0; padding: 0; }
-body.theme-default .checkout-page .single-item { display: block !important; width: 100% !important; margin: 0 0 10px !important; padding: 12px !important; border: 1px solid #d9dde2 !important; border-top: 3px solid var(--primary-color1) !important; border-radius: 5px !important; background: #fff !important; box-shadow: 0 2px 6px rgba(0, 0, 0, .035) !important; }
+body.theme-default .checkout-page .checkout-cart-item { padding: 12px 0 !important; border-left: 0 !important; border-radius: 0 !important; background: #fff !important; box-shadow: none !important; }
 body.theme-default .checkout-page .checkout-cart-item { position: relative; transition: border-color .2s ease, background-color .2s ease, box-shadow .2s ease; }
 body.theme-default .checkout-page .checkout-item-toggle { position: absolute; top: 11px; right: 11px; z-index: 2; display: inline-flex; align-items: center; gap: 5px; min-height: 28px; padding: 5px 8px; border: 1px solid #d9dde2; border-radius: 4px; background: #fff; color: #555; font-size: 10px; font-weight: 700; line-height: 1; }
 body.theme-default .checkout-page .checkout-item-toggle:hover { border-color: var(--primary-color1); color: var(--primary-color1); }
 body.theme-default .checkout-page .checkout-item-toggle i { transition: transform .2s ease; }
 body.theme-default .checkout-page .checkout-cart-item.is-expanded .checkout-item-toggle i { transform: rotate(180deg); }
 body.theme-default .checkout-page .checkout-cart-item.is-expanded .item-total { padding-top: 34px; }
-body.theme-default .checkout-page .checkout-cart-item.is-collapsed { padding: 12px 48px 12px 12px !important; border-top-width: 1px !important; border-left: 3px solid var(--primary-color1) !important; box-shadow: none !important; }
+body.theme-default .checkout-page .checkout-cart-item.is-collapsed { padding: 12px 0 !important; border-left: 0 !important; }
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .content > :not(.vehicle-rate):not(.vehicle-title):not(.trip-meta),
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .item-total,
 body.theme-default .checkout-page .checkout-cart-item.is-collapsed .checkout-item-addons,
@@ -292,10 +292,10 @@ body.theme-default .checkout-success .reference-box { border-color: #e5e7eb !imp
     body.theme-default .checkout-summary-heading { gap: 10px; }
     body.theme-default .checkout-heading-total strong { font-size: 14px; }
     body.theme-default .checkout-form { padding: 16px !important; }
-    body.theme-default .checkout-page .order-sum-area { padding: 12px !important; }
-    body.theme-default .checkout-page .single-item { padding: 12px !important; }
-    body.theme-default .checkout-page .single-item + .single-item { padding-top: 13px !important; }
-    body.theme-default .checkout-page .single-item:last-child { padding-bottom: 13px !important; }
+    body.theme-default .checkout-page .order-sum-area { padding: 0 !important; }
+    body.theme-default .checkout-page .checkout-cart-item { padding: 12px 0 !important; }
+    body.theme-default .checkout-page .checkout-cart-item + .checkout-cart-item { padding-top: 13px !important; }
+    body.theme-default .checkout-page .checkout-cart-item:last-child { padding-bottom: 13px !important; }
     body.theme-default .checkout-page .single-item .main-item { align-items: flex-start; }
     body.theme-default .checkout-page .single-item .item-area { align-items: flex-start; }
     body.theme-default .checkout-page .single-item .item-img { width: 66px; min-width: 66px; height: 52px; }
