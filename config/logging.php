@@ -121,6 +121,24 @@ return [
             ],
         ],
 
+        'loki_mobile' => [
+            'driver' => 'custom',
+            'via' => CreateLokiLogger::class,
+            'level' => env('OBSERVABILITY_LOG_LEVEL', 'debug'),
+            'url' => env('LOKI_URL'),
+            'username' => env('LOKI_USERNAME'),
+            'password' => env('LOKI_PASSWORD'),
+            'timeout' => (float) env('LOKI_TIMEOUT_SECONDS', 1),
+            'labels' => [
+                'project' => env('PROJECT_SLUG'),
+                'component' => 'mobile',
+                'environment' => env('APP_ENV', 'production'),
+                'server' => env('SERVER_ID'),
+                'service_name' => env('PROJECT_SLUG').'-driver-mobile',
+                'source' => 'flutter-driver-app',
+            ],
+        ],
+
         'slack' => [
             'driver' => 'slack',
             'url' => env('LOG_SLACK_WEBHOOK_URL'),

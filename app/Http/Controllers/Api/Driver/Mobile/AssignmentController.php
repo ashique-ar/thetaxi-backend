@@ -156,7 +156,11 @@ class AssignmentController extends Controller
             $code = $e->getMessage();
             $httpStatus = in_array(
                 $code,
-                ['ASSIGNMENT_SUPERSEDED', 'ASSIGNMENT_EXPIRED'],
+                [
+                    'ASSIGNMENT_SUPERSEDED',
+                    'ASSIGNMENT_EXPIRED',
+                    'ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT',
+                ],
                 true
             ) ? 409 : 400;
             $message = match ($code) {
@@ -164,6 +168,7 @@ class AssignmentController extends Controller
                 'ASSIGNMENT_INVALID_STATE' => 'Assignment is not in a valid state for acceptance',
                 'ASSIGNMENT_SUPERSEDED' => 'This assignment has been replaced. Refresh assignments.',
                 'ASSIGNMENT_EXPIRED' => 'This assignment has expired.',
+                'ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT' => 'Accept the earlier assignment first.',
                 default => $code,
             };
 

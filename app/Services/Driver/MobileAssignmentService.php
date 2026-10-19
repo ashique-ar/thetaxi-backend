@@ -259,10 +259,11 @@ class MobileAssignmentService
             TripPhase::IN_PROGRESS,
         ];
         $now = Carbon::now();
+        $today = $now->copy()->startOfDay();
 
-        $query->where(function (Builder $query) use ($activeTripPhases, $now) {
+        $query->where(function (Builder $query) use ($activeTripPhases, $now, $today) {
             $query->whereIn('trip_phase', $activeTripPhases)
-                ->orWhere(function (Builder $offerQuery) use ($now) {
+                ->orWhere(function (Builder $offerQuery) use ($now, $today) {
                     $offerQuery->where(function (Builder $itemQuery) {
                         $itemQuery->whereNull('driver_assignments.booking_item_id')
                             ->orWhereHas('bookingItem', function (Builder $relatedItemQuery) {
@@ -276,8 +277,16 @@ class MobileAssignmentService
                                             ->orWhereNotIn('booking_items.status', DriverAssignment::TERMINAL_ITEM_STATUSES);
                                     });
                             });
-                    })->where(function (Builder $dateQuery) use ($now) {
-                        $dateQuery->whereNull('assigned_to')->orWhere('assigned_to', '>=', $now);
+                    })->where(function (Builder $dateQuery) use ($now, $today) {
+                        $dateQuery->where(function (Builder $boundedQuery) use ($now) {
+                            $boundedQuery->whereNotNull('assigned_to')
+                                ->where('assigned_to', '>=', $now);
+                        })->orWhere(function (Builder $unboundedQuery) use ($today) {
+                            // Legacy offers without an end date should not stay
+                            // actionable forever after their scheduled day.
+                            $unboundedQuery->whereNull('assigned_to')
+                                ->where('assigned_from', '>=', $today);
+                        });
                     });
                 });
         });
@@ -324,6 +333,9 @@ class MobileAssignmentService
     public function acceptAssignment(Driver $driver, DriverAssignment $assignment, array $location = []): DriverAssignment
     {
         return DB::transaction(function () use ($driver, $assignment, $location) {
+            // Serialize accept decisions for this driver so two devices cannot
+            // accept different queue positions at the same time.
+            $driver = Driver::query()->lockForUpdate()->findOrFail($driver->id);
             $assignment = DriverAssignment::query()->lockForUpdate()->findOrFail($assignment->id);
             $this->assertAssignmentOwnership($driver, $assignment);
 
@@ -336,6 +348,7 @@ class MobileAssignmentService
             }
 
             $this->assertAssignmentStillCurrent($assignment);
+            $this->assertAssignmentIsNextForDriver($driver, $assignment);
             $now = Carbon::now('UTC');
 
             $assignment->update([
@@ -426,6 +439,41 @@ class MobileAssignmentService
 
         if ($assignment->assigned_to && $assignment->assigned_to->isPast()) {
             throw new \InvalidArgumentException('ASSIGNMENT_EXPIRED');
+        }
+    }
+
+    /** Keep offer ordering authoritative even when a driver's app has stale data. */
+    private function assertAssignmentIsNextForDriver(Driver $driver, DriverAssignment $assignment): void
+    {
+        if ($this->getActiveTripAssignment($driver)) {
+            throw new \InvalidArgumentException('ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT');
+        }
+
+        $earlierOffers = $this->baseAssignmentQuery($driver)
+            ->whereIn('status', ['active', 'pending_approval'])
+            ->where(function (Builder $query) {
+                $query->whereNull('trip_phase')
+                    ->orWhereNotIn('trip_phase', [
+                        TripPhase::COMPLETED,
+                        TripPhase::DECLINED,
+                        TripPhase::ACCEPTED,
+                        TripPhase::PICKUP_ARRIVED,
+                        TripPhase::IN_PROGRESS,
+                    ]);
+            })
+            ->where(function (Builder $query) use ($assignment) {
+                $query->where('created_at', '<', $assignment->created_at)
+                    ->orWhere(function (Builder $tieQuery) use ($assignment) {
+                        $tieQuery->where('created_at', $assignment->created_at)
+                            ->where('id', '<', $assignment->id);
+                    });
+            });
+
+        $this->excludeTerminalBookings($earlierOffers);
+        $this->excludeStaleOffers($earlierOffers);
+
+        if ($earlierOffers->exists()) {
+            throw new \InvalidArgumentException('ASSIGNMENT_WAITING_FOR_EARLIER_ASSIGNMENT');
         }
     }
 

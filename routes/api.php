@@ -329,6 +329,9 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
 
 Route::middleware(['auth:api'])->group(function () {
 
+    Route::post('diagnostic-reports', [ObservabilityController::class, 'mobileDiagnostic'])
+        ->middleware('throttle:30,1');
+
     Route::get('system/client-cache-clears', [SystemController::class, 'pendingClientCacheClears'])
         ->middleware('throttle:30,1');
 

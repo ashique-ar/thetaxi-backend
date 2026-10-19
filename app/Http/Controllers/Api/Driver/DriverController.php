@@ -7,6 +7,7 @@ use App\Models\Driver\Driver;
 use App\Models\Driver\DriverDevice;
 use App\Jobs\SendCustomDriverPushNotificationJob;
 use App\Models\Driver\DriverLog;
+use App\Models\Driver\DriverMobileDiagnosticReport;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Http\Requests\Driver\Driver\CreateDriverRequest;
@@ -681,29 +682,45 @@ class DriverController extends Controller
             ->get();
 
         foreach ($sessions as $session) {
-            $occurredAt = $session->end_time ?? $session->start_time ?? $session->created_at;
-            if (!$occurredAt) {
-                continue;
+            $metadata = [
+                'session_id' => $session->id,
+                'start_time' => $session->start_time?->toIso8601String(),
+                'end_time' => $session->end_time?->toIso8601String(),
+                'total_distance_km' => $session->total_distance_km !== null ? (float) $session->total_distance_km : null,
+            ];
+
+            if ($session->start_time) {
+                $activity->push([
+                    'id' => 'session:' . $session->id . ':online',
+                    'source' => 'session',
+                    'event_type' => 'session_started',
+                    'title' => 'Driver went online',
+                    'message' => 'Online session started',
+                    'status' => $session->status,
+                    'reference' => $session->id,
+                    'booking_id' => null,
+                    'booking_number' => null,
+                    'occurred_at' => $session->start_time->toIso8601String(),
+                    'metadata' => $metadata,
+                ]);
             }
 
-            $activity->push([
-                'id' => 'session:' . $session->id,
-                'source' => 'session',
-                'event_type' => $this->getSessionEventType($session),
-                'title' => $this->getSessionActivityTitle($session),
-                'message' => $this->getSessionActivityMessage($session),
-                'status' => $session->status,
-                'reference' => $session->id,
-                'booking_id' => null,
-                'booking_number' => null,
-                'occurred_at' => $occurredAt->toIso8601String(),
-                'metadata' => [
-                    'session_id' => $session->id,
-                    'start_time' => $session->start_time?->toIso8601String(),
-                    'end_time' => $session->end_time?->toIso8601String(),
-                    'total_distance_km' => $session->total_distance_km !== null ? (float) $session->total_distance_km : null,
-                ],
-            ]);
+            if ($session->end_time) {
+                $autoClosed = $session->status === 'auto_closed';
+                $activity->push([
+                    'id' => 'session:' . $session->id . ':offline',
+                    'source' => 'session',
+                    'event_type' => $autoClosed ? 'session_auto_closed' : 'session_ended',
+                    'title' => $autoClosed ? 'Session auto-closed' : 'Driver went offline',
+                    'message' => $this->getSessionActivityMessage($session),
+                    'status' => $session->status,
+                    'reference' => $session->id,
+                    'booking_id' => null,
+                    'booking_number' => null,
+                    'occurred_at' => $session->end_time->toIso8601String(),
+                    'metadata' => $metadata,
+                ]);
+            }
         }
 
         $assignments = DriverAssignment::where('driver_id', $driver->id)
@@ -746,6 +763,34 @@ class DriverController extends Controller
                     'end_time' => $logEntry->end_time,
                     'start_km' => $logEntry->start_km,
                     'end_km' => $logEntry->end_km,
+                ],
+            ]);
+        }
+
+        $mobileReports = DriverMobileDiagnosticReport::query()
+            ->where('driver_id', $driver->id)
+            ->orderByDesc('occurred_at')
+            ->limit(100)
+            ->get();
+
+        foreach ($mobileReports as $report) {
+            $activity->push([
+                'id' => 'mobile-diagnostic:' . $report->report_id,
+                'source' => 'mobile_diagnostic',
+                'event_type' => 'mobile_diagnostic_report',
+                'title' => 'Driver app diagnostic (' . ucfirst($report->severity) . ')',
+                'message' => trim(($report->error_type ? $report->error_type . ': ' : '') . ($report->error_summary ?? 'Mobile app reported an issue')),
+                'status' => $report->severity,
+                'reference' => $report->report_id,
+                'booking_id' => null,
+                'booking_number' => null,
+                'occurred_at' => $report->occurred_at->toIso8601String(),
+                'metadata' => [
+                    'category' => $report->category,
+                    'source' => $report->source,
+                    'fingerprint' => $report->fingerprint,
+                    'context' => $report->context,
+                    'events' => $report->events,
                 ],
             ]);
         }
@@ -1420,24 +1465,6 @@ class DriverController extends Controller
                 ],
             ]
         ]);
-    }
-
-    private function getSessionEventType(DriverSession $session): string
-    {
-        return match ($session->status) {
-            'active' => 'session_active',
-            'auto_closed' => 'session_auto_closed',
-            default => 'session_completed',
-        };
-    }
-
-    private function getSessionActivityTitle(DriverSession $session): string
-    {
-        return match ($session->status) {
-            'active' => 'Driver went online',
-            'auto_closed' => 'Session auto-closed',
-            default => 'Driver went offline',
-        };
     }
 
     private function getSessionActivityMessage(DriverSession $session): string
