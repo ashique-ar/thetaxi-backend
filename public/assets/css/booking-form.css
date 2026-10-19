@@ -116,6 +116,13 @@
     grid-column: span 4;
 }
 
+.filter-wrapper .filter-input-wrap .filter-input > .whatsapp-quote-form-btn,
+.t2-filter-wrapper .filter-input-wrap .filter-input > .whatsapp-quote-form-btn {
+    grid-column: 1 / -1 !important;
+    width: 100%;
+    box-sizing: border-box;
+}
+
 @media (max-width: 991px) {
     .filter-wrapper .dynamic-field-tablet-full,
     .t2-filter-wrapper .dynamic-field-tablet-full { grid-column: span 12 !important; }
