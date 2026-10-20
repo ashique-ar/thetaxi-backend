@@ -244,8 +244,10 @@ class InquiryController extends Controller
             'cms_content_id', 'cms_form_context', 'service_slug', 'inquiry_service_page_id',
             'referrer', 'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
             'name', 'contact_person', 'full_name', 'email', 'phone',
+            'company_email', 'contact_person_email',
         ]));
         $message = Str::lower(implode(' ', array_filter($content, 'is_scalar')));
+        $message = preg_replace('/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/iu', ' ', $message) ?? $message;
         $identityReason = $this->invalidInquiryIdentityReason((string) ($meta['name'] ?? ''));
 
         if ($identityReason !== null) {
