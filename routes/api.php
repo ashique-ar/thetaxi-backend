@@ -58,6 +58,7 @@ use App\Http\Controllers\Api\Corporate\CorporateStaffTransportController;
 use App\Http\Controllers\Api\Corporate\CorporateWorkspaceController;
 use App\Http\Controllers\Api\CountryController;
 use App\Http\Controllers\Api\CurrencyController;
+use App\Http\Controllers\Api\RolePermissionAssistantController;
 use App\Http\Controllers\Api\Driver\DriverController;
 use App\Http\Controllers\Api\Driver\DriverBattaRuleController;
 use App\Http\Controllers\Api\Driver\DriverHireSettlementController;
@@ -503,6 +504,7 @@ Route::middleware(['auth:api'])->group(function () {
     */
 
     Route::middleware(['permission:roles.view'])->group(function () {
+        Route::post('roles/ai-permission-suggestions', [RolePermissionAssistantController::class, 'suggest'])->middleware('permission:permissions.manage');
         Route::apiResource('roles', RoleController::class);
         Route::get('roles/{role}/permissions', [RoleController::class, 'permissions']);
         Route::put('roles/{role}/permissions/sync', [RoleController::class, 'syncPermissions'])->middleware('permission:permissions.manage');

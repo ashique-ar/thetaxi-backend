@@ -45,7 +45,7 @@ return [
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
         'organization' => env('OPENAI_ORGANIZATION'),
-        'model' => env('OPENAI_MODEL', 'gpt-5-mini'),
+        'model' => env('OPENAI_MODEL', 'gpt-6-luna'),
     ],
 
     'turnstile' => [
