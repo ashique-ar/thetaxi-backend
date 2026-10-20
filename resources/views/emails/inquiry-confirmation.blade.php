@@ -11,7 +11,9 @@
         $payload = $inquiry->payload ?? [];
         $form = is_array($payload['form'] ?? null) ? $payload['form'] : [];
         $detailLabels = [
-            'company_name' => 'Company', 'contact_person' => 'Contact Person', 'name' => 'Name',
+            'company_name' => 'Company', 'company_email' => 'Company E-mail', 'company_mobile' => 'Company Mobile No',
+            'contact_person' => 'Contact Person', 'contact_person_email' => 'Contact Person E-mail',
+            'contact_person_mobile' => 'Contact Person Mobile No', 'name' => 'Name',
             'email' => 'Email', 'phone' => 'Phone', 'service_type_select' => 'Service Type',
             'other_service_type' => 'Other Service Type', 'vehicle_class' => 'Vehicle Class',
             'employee_strength' => 'Employee Strength', 'city_name' => 'City', 'country' => 'Country',
@@ -24,7 +26,8 @@
             'inquiry_type', 'inquiry_service_page_id', 'service_slug', 'service_type',
         ];
         $displayedDetailFields = [
-            'company_name', 'contact_person', 'name', 'email', 'phone', 'country',
+            'company_name', 'company_email', 'company_mobile', 'contact_person',
+            'contact_person_email', 'contact_person_mobile', 'name', 'email', 'phone', 'country',
             'pickup_location', 'dropoff_location', 'travel_date', 'travel_time', 'passengers',
             'requirements', 'service_type_select', 'other_service_type', 'employee_strength',
             'city_name', 'message',
@@ -82,6 +85,18 @@
                     <td>{{ $form['company_name'] }}</td>
                 </tr>
             @endif
+            @if (!empty($form['company_mobile']) || (!empty($form['phone']) && empty($form['company_mobile'])))
+                <tr>
+                    <td>Company Mobile No</td>
+                    <td>{{ $form['company_mobile'] ?? $form['phone'] }}</td>
+                </tr>
+            @endif
+            @if (!empty($form['company_email']))
+                <tr>
+                    <td>Company E-mail</td>
+                    <td>{{ $form['company_email'] }}</td>
+                </tr>
+            @endif
             @if (!empty($form['contact_person']))
                 <tr>
                     <td>Contact Person</td>
@@ -95,11 +110,11 @@
                 </tr>
             @endif
             <tr>
-                <td>Email</td>
+                <td>{{ $inquiry->inquiry_type === 'corporate' ? 'Contact Person E-mail' : 'Email' }}</td>
                 <td>{{ $inquiry->email }}</td>
             </tr>
             <tr>
-                <td>Phone</td>
+                <td>{{ $inquiry->inquiry_type === 'corporate' ? 'Contact Person Mobile No' : 'Phone' }}</td>
                 <td>{{ $inquiry->phone ?? 'N/A' }}</td>
             </tr>
             @if (!empty($form['country']))
@@ -140,8 +155,13 @@
             @endif
             @if (!empty($form['requirements']))
                 <tr>
-                    <td>Requirements</td>
+                    <td>{{ $inquiry->inquiry_type === 'corporate' ? 'Message' : 'Requirements' }}</td>
                     <td>{{ $form['requirements'] }}</td>
+                </tr>
+            @elseif ($inquiry->inquiry_type === 'corporate' && !empty($form['message']))
+                <tr>
+                    <td>Message</td>
+                    <td>{{ $form['message'] }}</td>
                 </tr>
             @endif
             @if ($inquiry->inquiry_type === 'corporate')
