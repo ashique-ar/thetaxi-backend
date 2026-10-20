@@ -388,6 +388,19 @@ class PerformanceOptimizationService
             ]);
         }
 
+        // Add published standalone website pages managed in the Pages area.
+        $websitePages = \App\Models\Page::published()
+            ->where('visibility', 'public')
+            ->get(['slug', 'updated_at', 'created_at']);
+        foreach ($websitePages as $page) {
+            $urls->push([
+                'loc' => url('/' . $page->slug),
+                'lastmod' => optional($page->updated_at)->toISOString() ?? optional($page->created_at)->toISOString(),
+                'changefreq' => 'weekly',
+                'priority' => '0.7',
+            ]);
+        }
+
         // Add CMS content (blog/articles) - include content type for correct URL
         $cmsContents = \App\Models\Website\CmsContent::published()
             ->whereHas('contentType', function ($query) {

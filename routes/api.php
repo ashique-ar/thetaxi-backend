@@ -21,6 +21,7 @@ use App\Http\Controllers\Api\Admin\BookingFormTabController;
 use App\Http\Controllers\Api\Admin\FAQCategoryController;
 use App\Http\Controllers\Api\Admin\FAQController;
 use App\Http\Controllers\Api\Admin\PopupController;
+use App\Http\Controllers\Api\Admin\PageController;
 use App\Http\Controllers\Api\Admin\PromoCodeController;
 use App\Http\Controllers\Api\AirportController;
 use App\Http\Controllers\Api\AnalyticsController;
@@ -1645,6 +1646,14 @@ Route::middleware(['auth:api'])->group(function () {
     });
 
     // CMS content management (protected by controller permissions)
+    Route::get('pages/stats', [PageController::class, 'stats'])->middleware('permission:pages.view');
+    Route::post('pages/bulk-update', [PageController::class, 'bulkUpdate'])->middleware('permission:pages.edit');
+    Route::get('pages', [PageController::class, 'index'])->middleware('permission:pages.view');
+    Route::post('pages', [PageController::class, 'store'])->middleware('permission:pages.create');
+    Route::get('pages/{page}/preview', [PageController::class, 'preview'])->middleware('permission:pages.view');
+    Route::get('pages/{page}', [PageController::class, 'show'])->middleware('permission:pages.view');
+    Route::put('pages/{page}', [PageController::class, 'update'])->middleware('permission:pages.edit');
+    Route::delete('pages/{page}', [PageController::class, 'destroy'])->middleware('permission:pages.delete');
     Route::apiResource('cms-content-types', CmsContentTypeController::class);
     Route::get('cms-contents/filter-users', [CmsContentController::class, 'filterUsers']);
     Route::get('cms-contents/search', [CmsContentController::class, 'search']);

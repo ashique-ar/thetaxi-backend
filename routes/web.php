@@ -13,6 +13,7 @@ use App\Http\Controllers\ShortUrlController;
 use App\Http\Controllers\VehicleController;
 use App\Http\Controllers\Website\CmsController;
 use App\Http\Controllers\Website\HomeController;
+use App\Http\Controllers\Website\PageController;
 use App\Http\Controllers\Website\InquiryServicePageController;
 use App\Http\Controllers\Website\RateChartController;
 use App\Http\Controllers\Website\SitemapController;
@@ -181,6 +182,13 @@ Route::get('/faq/category/{category}', [FAQController::class, 'category'])->name
 // Rate Chart route (must be before dynamic CMS routes)
 Route::get('/rate-chart', [RateChartController::class, 'index'])->name('rate-chart');
 
+// Managed website pages live outside CMS content-type routes.
+Route::get('/page/{slug}', [PageController::class, 'show'])->name('pages.show');
+Route::get('/page-preview/{page}', [PageController::class, 'preview'])
+    ->middleware('signed')->name('pages.preview');
+Route::post('/page/{slug}/access', [PageController::class, 'access'])
+    ->middleware('throttle:10,1')->name('pages.access');
+
 // CMS Services own /services/{slug}; the controller retains legacy inquiry-page
 // fallback so existing deployed service URLs continue to resolve during migration.
 Route::get('/services/{slug}', [InquiryServicePageController::class, 'show'])
@@ -196,7 +204,7 @@ Route::get('/resources/{path}', [FileUploadController::class, 'assets'])
     ->name('resources.assets');
 
 // Dynamic CMS content routes - these handle all content types dynamically
-Route::get('/{contentType}', [CmsController::class, 'index'])
+Route::get('/{contentType}', [PageController::class, 'showOrCmsIndex'])
     ->name('cms.index')
     ->where('contentType', '[a-zA-Z0-9-_]+'); // Simple pattern for content types
 

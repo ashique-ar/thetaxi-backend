@@ -19,12 +19,12 @@
     $knownFormCodes = ['airport_transfers', 'ride_now', 'day_rental', 'corporate', 'wedding_hire', 'self_drive', 'with_driver'];
     $getFormServiceCodeForTab = function ($tab) use ($knownFormCodes) {
         $tabCode = $tab->code;
+        $serviceTypeCode = $tab->service_type_code ?: null;
+        if ($serviceTypeCode) {
+            return $serviceTypeCode;
+        }
         if (in_array($tabCode, $knownFormCodes, true)) {
             return $tabCode;
-        }
-        $serviceTypeCode = $tab->service_type_code ?: null;
-        if ($serviceTypeCode && in_array($serviceTypeCode, $knownFormCodes, true)) {
-            return $serviceTypeCode;
         }
         return $tabCode;
     };

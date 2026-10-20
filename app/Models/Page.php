@@ -21,6 +21,8 @@ class Page extends BaseModel
         'excerpt',
         'featured_image',
         'template',
+        'content_type',
+        'pdf_path',
         'parent_id',
         'status',
         'visibility',
@@ -38,11 +40,14 @@ class Page extends BaseModel
         'updated_user_id'
     ];
 
+    protected $hidden = ['password'];
+
     protected $casts = [
         'custom_fields' => 'array',
         'is_homepage' => 'boolean',
         'is_in_menu' => 'boolean',
         'is_featured' => 'boolean',
+        'content_type' => 'string',
         'published_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',

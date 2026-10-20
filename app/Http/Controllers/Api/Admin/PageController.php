@@ -11,6 +11,7 @@ use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\URL;
 
 class PageController extends Controller
 {
@@ -49,6 +50,10 @@ class PageController extends Controller
 
         if ($request->filled('template')) {
             $query->where('template', $request->template);
+        }
+
+        if ($request->filled('content_type')) {
+            $query->where('content_type', $request->content_type);
         }
 
         if ($request->filled('parent_id')) {
@@ -100,7 +105,9 @@ class PageController extends Controller
         $validator = Validator::make($request->all(), [
             'title' => 'required|string|max:255',
             'slug' => 'required|string|max:255|unique:pages,slug',
-            'content' => 'required|string',
+            'content' => 'nullable|string',
+            'content_type' => 'sometimes|in:standard,pdf-reader,magazine',
+            'pdf_path' => ['nullable', 'string', 'max:2048', 'regex:/^(?!.*\.\.)(https:\/\/[^\s]+|\/resources\/[A-Za-z0-9._\/-]+|[A-Za-z0-9][A-Za-z0-9._\/-]*)$/i'],
             'excerpt' => 'nullable|string|max:500',
             'featured_image' => 'nullable|url',
             'template' => 'nullable|string|in:default,full-width,landing,blog',
@@ -119,6 +126,14 @@ class PageController extends Controller
             'published_at' => 'nullable|date'
         ]);
 
+        $validator->after(function ($validator) use ($request) {
+            if (in_array($request->input('content_type', 'standard'), ['pdf-reader', 'magazine'], true) && !$request->filled('pdf_path')) {
+                $validator->errors()->add('pdf_path', 'Upload a PDF for this page experience.');
+            } elseif ($request->filled('pdf_path') && !preg_match('/\.pdf$/i', (string) parse_url($request->input('pdf_path'), PHP_URL_PATH))) {
+                $validator->errors()->add('pdf_path', 'Choose a PDF file or a link ending in .pdf.');
+            }
+        });
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed',
@@ -129,6 +144,7 @@ class PageController extends Controller
         DB::beginTransaction();
         try {
             $data = $validator->validated();
+            $data['content'] = $data['content'] ?? '';
             $data['created_user_id'] = Auth::id();
             $data['updated_user_id'] = Auth::id();
 
@@ -184,6 +200,15 @@ class PageController extends Controller
         ]);
     }
 
+    public function preview(Page $page): JsonResponse
+    {
+        return response()->json([
+            'data' => [
+                'url' => URL::temporarySignedRoute('pages.preview', now()->addMinutes(15), ['page' => $page->id]),
+            ],
+        ]);
+    }
+
     /**
      * Update the specified page
      */
@@ -192,14 +217,16 @@ class PageController extends Controller
         $validator = Validator::make($request->all(), [
             'title' => 'sometimes|required|string|max:255',
             'slug' => 'sometimes|required|string|max:255|unique:pages,slug,' . $page->id,
-            'content' => 'sometimes|required|string',
+            'content' => 'sometimes|nullable|string',
+            'content_type' => 'sometimes|in:standard,pdf-reader,magazine',
+            'pdf_path' => ['sometimes', 'nullable', 'string', 'max:2048', 'regex:/^(?!.*\.\.)(https:\/\/[^\s]+|\/resources\/[A-Za-z0-9._\/-]+|[A-Za-z0-9][A-Za-z0-9._\/-]*)$/i'],
             'excerpt' => 'nullable|string|max:500',
             'featured_image' => 'nullable|url',
             'template' => 'nullable|string|in:default,full-width,landing,blog',
             'parent_id' => 'nullable|uuid|exists:pages,id',
             'status' => 'sometimes|required|in:draft,published,private,archived',
             'visibility' => 'sometimes|required|in:public,private,password',
-            'password' => 'nullable|string|min:6|required_if:visibility,password',
+            'password' => 'nullable|string|min:6',
             'seo_title' => 'nullable|string|max:255',
             'seo_description' => 'nullable|string|max:500',
             'seo_keywords' => 'nullable|string|max:255',
@@ -211,6 +238,20 @@ class PageController extends Controller
             'published_at' => 'nullable|date'
         ]);
 
+        $validator->after(function ($validator) use ($request, $page) {
+            $type = $request->input('content_type', $page->content_type ?? 'standard');
+            $pdfPath = $request->input('pdf_path', $page->pdf_path);
+            if (in_array($type, ['pdf-reader', 'magazine'], true) && !$pdfPath) {
+                $validator->errors()->add('pdf_path', 'Upload a PDF for this page experience.');
+            } elseif ($pdfPath && !preg_match('/\.pdf$/i', (string) parse_url($pdfPath, PHP_URL_PATH))) {
+                $validator->errors()->add('pdf_path', 'Choose a PDF file or a link ending in .pdf.');
+            }
+            if ($request->input('visibility', $page->visibility) === 'password'
+                && !$request->filled('password') && !$page->password) {
+                $validator->errors()->add('password', 'Set a password to protect this page.');
+            }
+        });
+
         if ($validator->fails()) {
             return response()->json([
                 'message' => 'Validation failed',
@@ -221,6 +262,13 @@ class PageController extends Controller
         DB::beginTransaction();
         try {
             $data = $validator->validated();
+            if (array_key_exists('content', $data) && $data['content'] === null) {
+                $data['content'] = '';
+            }
+            if (($data['visibility'] ?? $page->visibility) !== 'password'
+                && $page->visibility === 'password' && !array_key_exists('password', $data)) {
+                $data['password'] = null;
+            }
             $data['updated_user_id'] = Auth::id();
 
             // Handle homepage setting

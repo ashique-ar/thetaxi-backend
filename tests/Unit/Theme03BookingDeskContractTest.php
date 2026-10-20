@@ -41,6 +41,16 @@ it('preserves every database-owned service tab and the dynamic-form owner', func
         ->toContain("@include('components.dynamic-booking-form'");
 });
 
+it('uses the website tab mapping before any tab-code fallback', function () {
+    $mapping = strpos($this->booking, '$getFormServiceCodeForTab = function');
+    $serviceType = strpos($this->booking, '$serviceTypeCode = $tab->service_type_code ?: null;', $mapping);
+    $fallback = strpos($this->booking, 'if (in_array($tabCode, $knownFormCodes, true))', $mapping);
+
+    expect($mapping)->not->toBeFalse()
+        ->and($serviceType)->toBeLessThan($fallback)
+        ->and($this->booking)->toContain('return $serviceTypeCode;');
+});
+
 it('preserves search and inquiry routes plus submitted service identity', function () {
     expect($this->dynamicForm)
         ->toContain("route('booking.enquiry')")
