@@ -7,14 +7,14 @@ use RuntimeException;
 
 class RolePermissionAssistant
 {
-    public function suggest(string $requirements, array $currentPermissions = []): array
+    public function suggest(string $requirements, array $currentPermissions = [], string $guard = 'api'): array
     {
         $apiKey = config('services.openai.api_key');
         if (! $apiKey) {
             throw new RuntimeException('AI assistance is not configured.');
         }
 
-        $permissions = app(PermissionRegistry::class)->permissions('api')
+        $permissions = app(PermissionRegistry::class)->permissions($guard)
             ->map(fn (array $permission) => [
                 'name' => $permission['name'],
                 'label' => $permission['display_name'],
