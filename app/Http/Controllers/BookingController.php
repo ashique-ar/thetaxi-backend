@@ -521,10 +521,19 @@ class BookingController extends Controller
 
             case 'wedding_hire':
                 $selectedWeddingPackage = $requestData['package_id'] ?? $requestData['service_package_id'] ?? null;
-                $weddingHours = ServicePackage::query()
-                    ->where('service_type_id', $serviceType->id)
+                $weddingPackage = $serviceType->packages()
                     ->where('is_active', true)
-                    ->find($selectedWeddingPackage)?->default_duration_hours;
+                    ->find($selectedWeddingPackage);
+                if (!$weddingPackage) {
+                    $pricingServiceType = ServiceType::publicContext()
+                        ->where('code', $serviceType->code)
+                        ->where('is_active', true)
+                        ->first();
+                    $weddingPackage = $pricingServiceType?->packages()
+                        ->where('is_active', true)
+                        ->find($selectedWeddingPackage);
+                }
+                $weddingHours = $weddingPackage?->default_duration_hours;
                 abort_if(!$weddingHours, 422, 'Select an active Wedding package with a configured duration.');
                 $weddingStart = Carbon::parse($requestData['date'] . ' ' . ($requestData['time'] ?? '09:00'));
                 $weddingEnd = $weddingStart->copy()->addHours((int) $weddingHours);

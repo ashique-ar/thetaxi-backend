@@ -6,6 +6,10 @@ it('seeds the wedding pickup choices and discounted packages through managed con
     $controller = file_get_contents(app_path('Http/Controllers/BookingController.php'));
     $bookingCss = file_get_contents(public_path('assets/css/booking-form.css'));
     $themeCss = file_get_contents(public_path('assets/css/themes/theme-04/theme-04.css'));
+    $themeFourSeeder = file_get_contents(database_path('seeders/ThemeFourBookingFormSeeder.php'));
+    $weddingSectionStart = strpos($themeFourSeeder, '// --- Wedding Hire ---');
+    $weddingSectionEnd = strpos($themeFourSeeder, '// --- Corporate Transport ---', $weddingSectionStart);
+    $themeFourWedding = substr($themeFourSeeder, $weddingSectionStart, $weddingSectionEnd - $weddingSectionStart);
 
     expect($seeder)
         ->toContain("['CASONS_HQ', 'custom']")
@@ -28,4 +32,11 @@ it('seeds the wedding pickup choices and discounted packages through managed con
         ->not->toContain("'formula' => 'slab_rate + decoration_charge + (extra_km * extra_km_rate) + (extra_hours * extra_hour_rate)'")
         ->and($bookingCss)->toContain('.package-selector-field {')
         ->and($themeCss)->toContain('.package-button:has(input:checked) :where(.package-name, .package-detail)');
+
+    expect($themeFourSeeder)
+        ->toContain("\$weddingFormConfig = ServiceType::publicContext()")
+        ->and($themeFourWedding)
+        ->toContain("'form_config' => \$weddingFormConfig ?? [")
+        ->and($themeFourWedding)->toContain("'is_inquiry' => false")
+        ->not->toContain('Colombo, Sri Lanka');
 });

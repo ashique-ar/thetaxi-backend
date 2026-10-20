@@ -60,6 +60,10 @@ class ThemeFourBookingFormSeeder extends Seeder
 
         // 4. Seed Casons-scoped Service Types with Theme 4 vertical/card form configurations
 
+        $weddingFormConfig = ServiceType::publicContext()
+            ->where('code', 'wedding_hire')
+            ->value('form_config');
+
         // --- Self Drive ---
         ServiceType::updateOrCreate(
             [
@@ -529,50 +533,10 @@ class ThemeFourBookingFormSeeder extends Seeder
                 'pricing_mode' => 'trip',
                 'uses_dropoff_time' => false,
                 'allow_return_trip' => false,
-                'is_inquiry' => true,
+                'is_inquiry' => false,
                 'is_active' => true,
                 'frontend_category' => 'special',
-                'form_config' => [
-                    'pickup_location' => [
-                        'type' => 'location',
-                        'label' => 'Pickup Location',
-                        'required' => true,
-                        'order' => 1,
-                        'row' => 1,
-                        'width' => 'full',
-                        'tablet_width' => 'full',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'pickup',
-                        'location_mode' => 'autocomplete',
-                        'placeholder' => 'Enter pickup location',
-                        'default' => 'Colombo, Sri Lanka',
-                        'default_lat' => '6.9271',
-                        'default_lng' => '79.8612',
-                    ],
-                    'pickup_date' => [
-                        'type' => 'date',
-                        'label' => 'Wedding Date',
-                        'required' => true,
-                        'order' => 2,
-                        'row' => 2,
-                        'width' => 'half',
-                        'tablet_width' => 'half',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'date',
-                    ],
-                    'pickup_time' => [
-                        'type' => 'time',
-                        'label' => 'Pickup Time',
-                        'required' => true,
-                        'order' => 3,
-                        'row' => 2,
-                        'width' => 'half',
-                        'tablet_width' => 'half',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'time',
-                        'default' => '09:00',
-                    ],
-                ],
+                'form_config' => $weddingFormConfig ?? [],
             ]
         );
 
