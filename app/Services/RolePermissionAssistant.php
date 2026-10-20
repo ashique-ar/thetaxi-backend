@@ -43,7 +43,7 @@ class RolePermissionAssistant
         return [
             'summary' => mb_substr(is_string($suggestion['summary'] ?? null) ? $suggestion['summary'] : '', 0, 1000),
             'permissions' => collect($suggestion['permissions'])->filter(fn ($name) => is_string($name) && in_array($name, $allowedNames, true))->unique()->values()->all(),
-            'cautions' => collect($suggestion['cautions'] ?? [])->filter('is_string')->map(fn ($item) => mb_substr($item, 0, 300))->take(8)->values()->all(),
+            'cautions' => collect($suggestion['cautions'] ?? [])->filter(fn ($item) => is_string($item))->map(fn ($item) => mb_substr($item, 0, 300))->take(8)->values()->all(),
         ];
     }
 }
