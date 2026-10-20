@@ -331,6 +331,8 @@
 </div>
 
 <script>
+let currentVehicleImageIndex = 0;
+
 function switchVehicleImage(url, element) {
     const mainImg = document.getElementById('mainVehicleDisplay');
     if (mainImg) {
@@ -354,6 +356,24 @@ function switchVehicleImage(url, element) {
             element.classList.add('border-primary', 'shadow-sm', 'active-thumbnail');
         }
     }
+
+    if (element) {
+        const thumbnails = Array.from(document.querySelectorAll('#galleryThumbnails .thumbnail-btn'));
+        const selectedIndex = thumbnails.indexOf(element);
+        if (selectedIndex >= 0) currentVehicleImageIndex = selectedIndex;
+    }
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+    const thumbnails = Array.from(document.querySelectorAll('#galleryThumbnails .thumbnail-btn'));
+    if (thumbnails.length < 2) return;
+
+    window.setInterval(() => {
+        currentVehicleImageIndex = (currentVehicleImageIndex + 1) % thumbnails.length;
+        const nextThumbnail = thumbnails[currentVehicleImageIndex];
+        const image = nextThumbnail.querySelector('img');
+        if (image) switchVehicleImage(image.src, nextThumbnail);
+    }, 5000);
+});
 </script>
 @endsection
