@@ -499,7 +499,7 @@
             <label class="input-label">{{ $label }}</label>
             <div class="single-search-box">
                 <div class="custom-select-dropdown">
-                    <input type="text" name="{{ $submitAs }}" id="{{ $elementId }}"
+                    <input type="{{ in_array($type, ['text', 'email', 'tel'], true) ? $type : 'text' }}" name="{{ $submitAs }}" id="{{ $elementId }}"
                        placeholder="{{ $placeholder }}"
                        value="{{ $fieldValue }}"
                        class="@error($submitAs) is-invalid @enderror"

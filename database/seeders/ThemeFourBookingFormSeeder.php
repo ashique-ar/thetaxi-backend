@@ -63,6 +63,15 @@ class ThemeFourBookingFormSeeder extends Seeder
         $weddingFormConfig = ServiceType::publicContext()
             ->where('code', 'wedding_hire')
             ->value('form_config');
+        $corporateFormConfig = [
+            'company_name' => ['type' => 'text', 'label' => 'Company Name', 'required' => true, 'order' => 1, 'row' => 1, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'company_name', 'placeholder' => 'Company name'],
+            'company_mobile' => ['type' => 'tel', 'label' => 'Company Mobile No', 'required' => true, 'order' => 2, 'row' => 1, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'company_mobile', 'placeholder' => 'Company contact No'],
+            'company_email' => ['type' => 'email', 'label' => 'Company E-mail', 'required' => true, 'order' => 3, 'row' => 2, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'company_email', 'placeholder' => 'Company email'],
+            'contact_person' => ['type' => 'text', 'label' => 'Contact Person Name', 'required' => true, 'order' => 4, 'row' => 2, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'contact_person', 'placeholder' => 'Contact person name'],
+            'contact_person_mobile' => ['type' => 'tel', 'label' => 'Contact Person Mobile No', 'required' => true, 'order' => 5, 'row' => 3, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'contact_person_mobile', 'placeholder' => 'Contact person mobile No'],
+            'contact_person_email' => ['type' => 'email', 'label' => 'Contact Person E-mail', 'required' => true, 'order' => 6, 'row' => 3, 'width' => 'half', 'tablet_width' => 'half', 'mobile_width' => 'full', 'submit_as' => 'contact_person_email', 'placeholder' => 'Contact person email'],
+            'requirements' => ['type' => 'textarea', 'label' => 'Message', 'required' => false, 'order' => 7, 'row' => 4, 'width' => 'full', 'tablet_width' => 'full', 'mobile_width' => 'full', 'submit_as' => 'requirements', 'placeholder' => 'Hire Requirement | Vehicle Type | Period'],
+        ];
 
         // --- Self Drive ---
         ServiceType::updateOrCreate(
@@ -556,63 +565,7 @@ class ThemeFourBookingFormSeeder extends Seeder
                 'is_inquiry' => true,
                 'is_active' => true,
                 'frontend_category' => 'corporate',
-                'form_config' => [
-                    'pickup_location' => [
-                        'type' => 'location',
-                        'label' => 'Pickup Location',
-                        'required' => true,
-                        'order' => 1,
-                        'row' => 1,
-                        'width' => 'full',
-                        'tablet_width' => 'full',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'pickup',
-                        'location_mode' => 'autocomplete',
-                        'placeholder' => 'Enter pickup location',
-                        'default' => 'Colombo, Sri Lanka',
-                        'default_lat' => '6.9271',
-                        'default_lng' => '79.8612',
-                    ],
-                    'dropoff_location' => [
-                        'type' => 'location',
-                        'label' => 'Drop Off Location',
-                        'required' => true,
-                        'order' => 2,
-                        'row' => 2,
-                        'width' => 'full',
-                        'tablet_width' => 'full',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'dropoff',
-                        'location_mode' => 'autocomplete',
-                        'placeholder' => 'Enter drop off location',
-                        'default' => 'Colombo, Sri Lanka',
-                        'default_lat' => '6.9271',
-                        'default_lng' => '79.8612',
-                    ],
-                    'pickup_date' => [
-                        'type' => 'date',
-                        'label' => 'Pickup Date',
-                        'required' => true,
-                        'order' => 3,
-                        'row' => 3,
-                        'width' => 'half',
-                        'tablet_width' => 'half',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'date',
-                    ],
-                    'pickup_time' => [
-                        'type' => 'time',
-                        'label' => 'Pickup Time',
-                        'required' => true,
-                        'order' => 4,
-                        'row' => 3,
-                        'width' => 'half',
-                        'tablet_width' => 'half',
-                        'mobile_width' => 'full',
-                        'submit_as' => 'time',
-                        'default' => '09:00',
-                    ],
-                ],
+                'form_config' => $corporateFormConfig,
             ]
         );
     }

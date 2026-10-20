@@ -539,15 +539,20 @@ class InquiryController extends Controller
         return match ($type) {
             'corporate' => [
                 'company_name' => 'required|string|max:255',
+                'company_mobile' => 'required_without:phone|nullable|string|max:20',
+                'company_email' => 'required_without:email|nullable|email|max:255',
                 'contact_person' => 'required|string|max:255',
-                'email' => 'required|email|max:255',
-                'phone' => 'required|string|max:20',
+                'contact_person_mobile' => 'required_without:phone|nullable|string|max:20',
+                'contact_person_email' => 'required_without:email|nullable|email|max:255',
+                'email' => 'nullable|email|max:255',
+                'phone' => 'nullable|string|max:20',
                 'service_type_select' => 'nullable|string|in:airport_transfer,corporate_event,employee_shuttle,client_meeting,other',
                 'other_service_type' => 'required_if:service_type_select,other|nullable|string|max:255',
                 'vehicle_class' => 'nullable|string|max:255',
-                'employee_strength' => 'required|string|in:1-10,11-50,51-100,101-500,500+',
-                'city_name' => 'required|string|max:255',
-                'requirements' => 'required|string|max:1000',
+                'employee_strength' => 'nullable|string|in:1-10,11-50,51-100,101-500,500+',
+                'city_name' => 'nullable|string|max:255',
+                'requirements' => 'nullable|string|max:2000',
+                'message' => 'nullable|string|max:2000',
             ],
             'point_to_point' => [
                 'name' => 'required|string|max:255',
@@ -584,8 +589,8 @@ class InquiryController extends Controller
             'corporate' => [
                 'label' => 'Corporate Inquiry',
                 'name' => $data['contact_person'],
-                'email' => $data['email'],
-                'phone' => $data['phone'],
+                'email' => $data['contact_person_email'] ?? $data['email'],
+                'phone' => $data['contact_person_mobile'] ?? $data['phone'] ?? $data['company_mobile'],
                 'subject' => 'Corporate Transport Inquiry - ' . ($data['company_name'] ?? 'Company'),
                 'message' => $this->buildMessage($type, $data),
                 'intro' => 'Thank you for contacting us about corporate transport services. Our corporate team will review your requirements and respond shortly.',
@@ -673,13 +678,15 @@ class InquiryController extends Controller
         if ($type === 'corporate') {
             $lines[] = 'Corporate transport inquiry';
             $lines[] = 'Company: ' . ($data['company_name'] ?? 'N/A');
+            $lines[] = 'Company email: ' . ($data['company_email'] ?? $data['email'] ?? 'N/A');
+            $lines[] = 'Company mobile: ' . ($data['company_mobile'] ?? $data['phone'] ?? 'N/A');
             $lines[] = 'Contact: ' . ($data['contact_person'] ?? 'N/A');
-            $lines[] = 'Email: ' . ($data['email'] ?? 'N/A');
-            $lines[] = 'Phone: ' . ($data['phone'] ?? 'N/A');
+            $lines[] = 'Contact email: ' . ($data['contact_person_email'] ?? $data['email'] ?? 'N/A');
+            $lines[] = 'Contact mobile: ' . ($data['contact_person_mobile'] ?? $data['phone'] ?? 'N/A');
             $lines[] = 'Service Type: ' . $this->formatServiceType($data);
             $lines[] = 'Employee Strength: ' . ($data['employee_strength'] ?? 'N/A');
             $lines[] = 'City: ' . ($data['city_name'] ?? 'N/A');
-            $lines[] = 'Requirements: ' . ($data['requirements'] ?? 'N/A');
+            $lines[] = 'Message: ' . ($data['requirements'] ?? $data['message'] ?? '');
             return implode("\n", $lines);
         }
 
