@@ -33,9 +33,10 @@ class CorporateReportFiltersRequest extends FormRequest
     {
         return [function (Validator $validator): void {
             $corporateId = (string) $this->corporate_id;
-            $departmentId = $this->validated('department_id');
-            $divisionId = $this->validated('division_id');
-            $billingPeriodId = $this->validated('billing_period_id');
+            $data = $validator->getData();
+            $departmentId = $data['department_id'] ?? null;
+            $divisionId = $data['division_id'] ?? null;
+            $billingPeriodId = $data['billing_period_id'] ?? null;
 
             if ($departmentId && ! CorporateDepartment::query()
                 ->where('corporate_id', $corporateId)

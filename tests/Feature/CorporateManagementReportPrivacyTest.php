@@ -1,9 +1,12 @@
 <?php
 
 use App\Services\CorporateManagementAnalyticsService;
+use App\Http\Controllers\Api\Corporate\CorporateManagementReportController;
+use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Validator;
 
 it('omits monetary fields from management data without the selected context payment permission', function () {
     Schema::create('bookings', function (Blueprint $table) {
@@ -97,4 +100,43 @@ it('returns billing-period totals in the statement currency instead of travel-pe
         ->and($payload['financial_period']['summary']['charges_total'])->toBe(120.5)
         ->and($payload['financial_period']['summary']['outstanding_total'])->toBe(100.0)
         ->and($payload)->not->toHaveKey('financial');
+});
+
+it('validates report filters without recursively restarting its validator', function () {
+    $request = new App\Http\Requests\Corporate\CorporateReportFiltersRequest;
+    $validator = Validator::make([], $request->rules());
+    $validator->after($request->after());
+    $request->setValidator($validator);
+
+    expect($request->validated())->toBe([]);
+});
+
+it('exports monthly currency trends and selected billing totals in the management CSV', function () {
+    $payload = [
+        'financial_metrics_visible' => true,
+        'financial_period' => ['summary' => [
+            'period_start' => '2026-09-01', 'period_end' => '2026-09-30', 'settlement_number' => 'CB-SEP',
+            'invoice_number' => 'INV-SEP', 'currency' => 'KWD', 'charges_total' => 1.234,
+            'payments_total' => 0, 'refunds_total' => 0, 'adjustments_total' => 0, 'outstanding_total' => 1.234,
+        ]],
+        'monthly_trends' => [[
+            'month' => '2026-09', 'currency' => 'KWD', 'bookings' => 1, 'trips' => 2,
+            'estimated_value' => 1.234, 'finalized_charges' => 1.234,
+        ]],
+        'dimensions' => [],
+    ];
+    $analytics = Mockery::mock(CorporateManagementAnalyticsService::class);
+    $analytics->shouldReceive('report')->once()->with('corp-id', [], false)->andReturn($payload);
+    $request = new CorporateReportFiltersRequest;
+    $request->merge(['corporate_id' => 'corp-id']);
+    $validator = Validator::make([], $request->rules());
+    $validator->after($request->after());
+    $request->setValidator($validator);
+    $response = (new CorporateManagementReportController($analytics))->export($request, 'csv');
+
+    ob_start();
+    $response->getCallback()();
+    $csv = ob_get_clean();
+
+    expect($csv)->toContain('Selected billing period', 'Monthly travel activity', '2026-09,KWD,1,2,1.234,1.234');
 });
