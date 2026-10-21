@@ -13,13 +13,23 @@ class CurrencyService
     private ?string $defaultCurrencyCache = null;
     private ?string $bookingBaseCurrencyCache = null;
     private ?string $selectedCurrencyCache = null;
+    private array $fractionDigitsCache = [];
 
-    private function fractionDigits(string $currencyCode): int
+    public function fractionDigits(string $currencyCode): int
     {
-        // Currency codes and rates come from the system's currencies table.
-        // The current currency model has no precision setting, so use a
-        // consistent generic minor-unit default.
-        return 2;
+        $currencyCode = strtoupper(trim($currencyCode));
+        if (!array_key_exists($currencyCode, $this->fractionDigitsCache)) {
+            if (!class_exists(\NumberFormatter::class)) {
+                return 2;
+            }
+
+            $formatter = new \NumberFormatter('en', \NumberFormatter::CURRENCY);
+            $formatter->setTextAttribute(\NumberFormatter::CURRENCY_CODE, $currencyCode);
+            $digits = $formatter->getAttribute(\NumberFormatter::MAX_FRACTION_DIGITS);
+            $this->fractionDigitsCache[$currencyCode] = is_int($digits) && $digits >= 0 && $digits <= 4 ? $digits : 2;
+        }
+
+        return $this->fractionDigitsCache[$currencyCode];
     }
 
     /**
@@ -29,7 +39,7 @@ class CurrencyService
     {
         $numericAmount = is_numeric($amount) ? (float) $amount : 0.0;
 
-        return (float) ($numericAmount < 0 ? ceil($numericAmount) : floor($numericAmount));
+        return max(0.0, $numericAmount);
     }
 
     /** Round a booked or displayed amount using the currency's minor unit. */

@@ -15,7 +15,7 @@ class CorporateBillingTerm extends BaseModel
 
     protected $casts = [
         'cutoff_day' => 'integer', 'invoice_day' => 'integer', 'due_days' => 'integer',
-        'credit_limit' => 'decimal:2', 'recipients' => 'array', 'delivery_preferences' => 'array',
+        'credit_limit' => 'decimal:4', 'recipients' => 'array', 'delivery_preferences' => 'array',
         'effective_from' => 'date', 'effective_to' => 'date', 'is_active' => 'boolean',
     ];
 

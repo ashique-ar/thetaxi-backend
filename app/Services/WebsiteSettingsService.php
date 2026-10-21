@@ -9,6 +9,8 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Validation\Validator;
+use Carbon\Carbon;
 
 class WebsiteSettingsService
 {
@@ -47,6 +49,8 @@ class WebsiteSettingsService
         'portal_sidebar_style',
         'booking_base_currency',
         'booking_advance_hours',
+        'customer_portal_booking_advance_hours',
+        'corporate_portal_booking_advance_hours',
         'booking_max_days',
         'cancellation_allowed',
         'cancellation_hours',
@@ -1064,6 +1068,8 @@ class WebsiteSettingsService
     {
         $types = [
             'booking_advance_hours',
+            'customer_portal_booking_advance_hours',
+            'corporate_portal_booking_advance_hours',
             'booking_notice_html',
             'booking_max_days',
             'cancellation_allowed',
@@ -1116,6 +1122,35 @@ class WebsiteSettingsService
             : (filter_var($availabilitySetting, FILTER_VALIDATE_BOOL, FILTER_NULL_ON_FAILURE) ?? true);
 
         return $settings;
+    }
+
+    public function validatePortalBookingAdvance(Validator $validator, array $data, string $settingKey): void
+    {
+        $hours = max(0, (int) $this->get($settingKey, $this->get('booking_advance_hours', 0)));
+        if ($hours === 0) {
+            return;
+        }
+
+        $timezone = (string) $this->get('site_timezone', config('app.timezone', 'UTC'));
+        $items = $data['booking_items'] ?? [$data];
+        foreach ($items as $index => $item) {
+            if (!is_array($item) || empty($item['from_date'])) {
+                continue;
+            }
+
+            try {
+                $pickup = Carbon::parse($item['from_date'], $timezone);
+                if (!empty($item['from_time'])) {
+                    $pickup->setTimeFromTimeString(substr((string) $item['from_time'], 0, 8));
+                }
+                if ($pickup->lt(now($timezone)->addHours($hours))) {
+                    $field = array_key_exists('booking_items', $data) ? "booking_items.{$index}.from_date" : 'from_date';
+                    $validator->errors()->add($field, "Bookings must be made at least {$hours} hours in advance.");
+                }
+            } catch (\Throwable) {
+                // The request's date validation reports malformed pickup values.
+            }
+        }
     }
 
     public function getPricingSettings(): array

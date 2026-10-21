@@ -53,7 +53,7 @@ class CorporateReportController extends Controller
         );
 
         if (! $filters['can_view_payments']) {
-            unset($stats['total_cost'], $stats['estimated_value'], $stats['finalized_value']);
+            unset($stats['total_cost'], $stats['estimated_value'], $stats['finalized_value'], $stats['currency_totals']);
         }
 
         return response()->json([

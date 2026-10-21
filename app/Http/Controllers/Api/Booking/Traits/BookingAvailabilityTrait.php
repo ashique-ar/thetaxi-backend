@@ -30,6 +30,12 @@ trait BookingAvailabilityTrait
                     $params['defer_availability'] = $deferAvailability;
                 }
             }
+            if (array_key_exists('defer_pricing', $params)) {
+                $deferPricing = filter_var($params['defer_pricing'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
+                if ($deferPricing !== null) {
+                    $params['defer_pricing'] = $deferPricing;
+                }
+            }
             if (array_key_exists('include_unavailable', $params)) {
                 $params['include_unavailable'] = filter_var($params['include_unavailable'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE);
             }
@@ -47,6 +53,7 @@ trait BookingAvailabilityTrait
                 'from_time' => 'required|string',
                 'resource_lookup' => 'nullable|boolean',
                 'defer_availability' => 'nullable|boolean',
+                'defer_pricing' => 'nullable|boolean',
                 'pickup_location' => (!$resourceLookup && $pickupRequired) ? 'required|array' : 'nullable|array',
                 'pickup_location.latitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),
                 'pickup_location.longitude' => $resourceLookup ? 'nullable|numeric' : ($pickupRequired ? 'required|numeric' : 'required_with:pickup_location|numeric'),

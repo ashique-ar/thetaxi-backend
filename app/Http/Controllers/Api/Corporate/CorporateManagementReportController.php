@@ -47,7 +47,7 @@ class CorporateManagementReportController extends Controller
             $output = fopen('php://output', 'wb');
             fwrite($output, "\xEF\xBB\xBF");
             if (isset($payload['financial_period']['summary'])) {
-                fputcsv($output, ['Financial basis', 'Selected travel period']);
+                fputcsv($output, ['Financial basis', 'Selected billing period']);
                 foreach ($payload['financial_period']['summary'] as $key => $value) {
                     fputcsv($output, [str_replace('_', ' ', $key), $value]);
                 }
@@ -55,7 +55,7 @@ class CorporateManagementReportController extends Controller
             }
             $headers = ['Dimension', 'Label', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
-                array_push($headers, 'Estimated value', 'Finalized charges');
+                array_push($headers, 'Currency', 'Estimated value', 'Finalized charges');
             }
             fputcsv($output, $headers);
             foreach ($rows as $row) {
@@ -75,7 +75,7 @@ class CorporateManagementReportController extends Controller
         return collect($payload['dimensions'])->flatMap(fn (array $values, string $dimension) => collect($values)->map(function (array $row) use ($dimension, $payload) {
             $cells = [$dimension, $row['label'], $row['booking_count'], $row['trip_count']];
             if ($payload['financial_metrics_visible']) {
-                array_push($cells, $row['estimated_value'], $row['finalized_charges']);
+                array_push($cells, $row['currency'], $row['estimated_value'], $row['finalized_charges']);
             }
             return $cells;
         }))->values()->all();

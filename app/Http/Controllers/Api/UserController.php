@@ -18,8 +18,12 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
+use App\Notifications\EmailChangeOtpNotification;
+use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Permission;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\PermissionRegistrar;
@@ -1112,6 +1116,57 @@ class UserController extends Controller
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function requestEmailChange(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        $data = $request->validate([
+            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+        ]);
+        $email = strtolower(trim($data['email']));
+
+        if (strcasecmp($email, $user->email) === 0) {
+            return response()->json(['status' => 'success', 'message' => 'That is already your email address.']);
+        }
+
+        $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+        Cache::put('email_change_otp:'.$user->id, [
+            'email' => $email,
+            'hash' => Hash::make($otp),
+            'current_email_hash' => sha1($user->email),
+        ], now()->addMinutes(10));
+        Cache::forget('email_change_otp_attempts:'.$user->id);
+        Notification::route('mail', $email)->notify(new EmailChangeOtpNotification($otp));
+
+        return response()->json(['status' => 'success', 'message' => "A 6-digit verification code was sent to {$email}. It expires in 10 minutes."]);
+    }
+
+    public function verifyEmailChange(Request $request): JsonResponse
+    {
+        $data = $request->validate(['otp' => ['required', 'digits:6']]);
+        $userId = $request->user()->id;
+        $key = 'email_change_otp:'.$userId;
+        $attemptsKey = 'email_change_otp_attempts:'.$userId;
+        $pending = Cache::get($key);
+
+        Cache::add($attemptsKey, 0, now()->addMinutes(10));
+        if (! $pending || Cache::increment($attemptsKey) > 5 || ! Hash::check($data['otp'], $pending['hash'])) {
+            if (Cache::get($attemptsKey) >= 5) Cache::forget($key);
+            throw ValidationException::withMessages(['otp' => ['The verification code is invalid or expired.']]);
+        }
+
+        DB::transaction(function () use ($userId, $pending): void {
+            $user = User::query()->whereKey($userId)->lockForUpdate()->firstOrFail();
+            abort_unless(hash_equals($pending['current_email_hash'], sha1($user->email)), 409, 'Your email changed after this code was sent. Request a new code.');
+            abort_if(User::withTrashed()->whereRaw('LOWER(email) = ?', [$pending['email']])->where('id', '!=', $user->id)->exists(), 409, 'This email address is already in use.');
+            $user->update(['email' => $pending['email'], 'email_verified_at' => now()]);
+        });
+
+        Cache::forget($key);
+        Cache::forget($attemptsKey);
+
+        return response()->json(['status' => 'success', 'message' => 'Email address verified and updated successfully.', 'data' => ['email' => $pending['email']]]);
     }
 
     /**

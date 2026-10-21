@@ -4,6 +4,7 @@ namespace App\Http\Requests\Corporate;
 
 use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
+use App\Models\Finance\FinancialAccountSettlement;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
@@ -22,6 +23,7 @@ class CorporateReportFiltersRequest extends FormRequest
             'division_id' => ['nullable', 'uuid'],
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'billing_period_id' => ['nullable', 'uuid'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
         ];
@@ -33,6 +35,7 @@ class CorporateReportFiltersRequest extends FormRequest
             $corporateId = (string) $this->corporate_id;
             $departmentId = $this->validated('department_id');
             $divisionId = $this->validated('division_id');
+            $billingPeriodId = $this->validated('billing_period_id');
 
             if ($departmentId && ! CorporateDepartment::query()
                 ->where('corporate_id', $corporateId)
@@ -47,6 +50,15 @@ class CorporateReportFiltersRequest extends FormRequest
                 ->whereKey($divisionId)
                 ->exists()) {
                 $validator->errors()->add('division_id', 'The selected division is not available for this corporate account and department.');
+            }
+
+            if ($billingPeriodId && ! FinancialAccountSettlement::query()
+                ->where('owner_type', 'corporate')
+                ->where('owner_id', $corporateId)
+                ->whereNotIn('status', ['draft', 'void'])
+                ->whereKey($billingPeriodId)
+                ->exists()) {
+                $validator->errors()->add('billing_period_id', 'The selected billing period is not available for this corporate account.');
             }
         }];
     }

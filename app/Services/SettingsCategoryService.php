@@ -747,6 +747,18 @@ class SettingsCategoryService
                     'placeholder' => '2',
                     'description' => 'Minimum hours in advance for booking'
                 ],
+                'customer_portal_booking_advance_hours' => [
+                    'label' => 'Customer Portal Minimum Advance (hours)',
+                    'type' => 'number',
+                    'placeholder' => '6',
+                    'description' => 'Minimum notice required for customer portal booking requests'
+                ],
+                'corporate_portal_booking_advance_hours' => [
+                    'label' => 'Corporate Portal Minimum Advance (hours)',
+                    'type' => 'number',
+                    'placeholder' => '6',
+                    'description' => 'Minimum notice required for corporate portal booking requests'
+                ],
                 'booking_notice_html' => [
                     'label' => 'Public Booking Notice',
                     'type' => 'textarea',

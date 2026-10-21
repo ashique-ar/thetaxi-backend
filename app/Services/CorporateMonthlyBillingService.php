@@ -96,13 +96,15 @@ class CorporateMonthlyBillingService
                         : (!$item->final_priced_at ? 'final_pricing_pending' : 'currency_mismatch'))),
         ])->values();
 
-        $groups = $eligible->groupBy('booking_id')->map(function ($items) {
+        $currency = strtoupper((string) $terms->currency);
+        $groups = $eligible->groupBy('booking_id')->map(function ($items) use ($currency) {
             $booking = $items->first()->booking;
             return [
                 'booking_id' => $booking->id,
                 'booking_number' => $booking->booking_number,
-                'currency' => $booking->currency,
-                'charge_amount' => round((float) $items->sum('total_price'), 2),
+                'currency' => strtoupper((string) ($items->first()->currency ?: $booking->currency)),
+                'booking_currency' => strtoupper((string) $booking->currency),
+                'charge_amount' => app(CurrencyService::class)->roundAmount((float) $items->sum('total_price'), $currency),
                 'items' => $items->map(fn($item) => [
                     'booking_item_id' => $item->id,
                     'service_type' => $item->serviceType?->name,
@@ -118,8 +120,12 @@ class CorporateMonthlyBillingService
         })->values();
 
         $openingBalance = (float) FinancialAccountSettlement::query()
-            ->where('owner_type', 'corporate')->where('owner_id', $corporateId)->where('status', '!=', 'void')
-            ->whereDate('period_end', '<', $start->toDateString())->sum('outstanding_total');
+            ->where('owner_type', 'corporate')->where('owner_id', $corporateId)->whereNotIn('status', ['void', 'draft'])
+            ->whereDate('period_end', '<', $start->toDateString())
+            ->with('items.booking:id,currency')->get()
+            ->filter(fn($settlement) => strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+                ?: $settlement->items->first()?->booking?->currency)) === strtoupper((string) $terms->currency))
+            ->sum('outstanding_total');
 
         return [
             'corporate_id' => $corporateId,
@@ -127,11 +133,11 @@ class CorporateMonthlyBillingService
             'period_end' => $end->toDateString(),
             'generation_key' => $this->generationKey($corporateId, $start, $end, $eligible->pluck('id')->map(fn($id) => (string) $id)->sort()->values()->all()),
             'terms' => $this->termsSnapshot($terms),
-            'opening_balance' => round($openingBalance, 2),
+            'opening_balance' => app(CurrencyService::class)->roundAmount($openingBalance, $currency),
             'booking_count' => $groups->count(),
             'trip_count' => $eligible->count(),
-            'charges_total' => round((float) $groups->sum('charge_amount'), 2),
-            'projected_balance' => round($openingBalance + (float) $groups->sum('charge_amount'), 2),
+            'charges_total' => app(CurrencyService::class)->roundAmount((float) $groups->sum('charge_amount'), $currency),
+            'projected_balance' => app(CurrencyService::class)->roundAmount($openingBalance + (float) $groups->sum('charge_amount'), $currency),
             'credit_limit_exceeded' => $terms->credit_limit !== null && $openingBalance + (float) $groups->sum('charge_amount') > (float) $terms->credit_limit,
             'included' => $groups,
             'excluded' => $excluded,
@@ -179,8 +185,10 @@ class CorporateMonthlyBillingService
             foreach ($preview['included'] as $group) {
                 $receipts = BookingPaymentReceipt::query()->where('booking_id', $group['booking_id'])
                     ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                    ->where(fn($query) => $query->where('source_currency', $group['currency'])
+                        ->when($group['currency'] === $group['booking_currency'], fn($query) => $query->orWhereNull('source_currency')))
                     ->lockForUpdate()->orderBy('received_at')->orderBy('created_at')->get();
-                $available = (float) $receipts->sum(fn($receipt) => max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
+                $available = (float) $receipts->sum(fn($receipt) => max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
                 $paidBefore = min((float) $group['charge_amount'], $available);
                 $item = $settlement->items()->create([
                     'booking_id' => $group['booking_id'],
@@ -193,12 +201,12 @@ class CorporateMonthlyBillingService
                 ]);
                 $remaining = $paidBefore;
                 foreach ($receipts as $receipt) {
-                    $amount = min($remaining, max(0, (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
+                    $amount = min($remaining, max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
                     if ($amount <= 0)
                         continue;
                     $receipt->update([
                         'allocated_amount' => (float) $receipt->allocated_amount + $amount,
-                        'allocation_status' => $amount >= (float) $receipt->amount - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount ? 'allocated' : 'partially_allocated',
+                        'allocation_status' => $amount >= (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount ? 'allocated' : 'partially_allocated',
                     ]);
                     FinancialPaymentAllocation::create([
                         'settlement_id' => $settlement->id,
@@ -209,7 +217,7 @@ class CorporateMonthlyBillingService
                         'allocated_by' => $userId,
                         'allocated_at' => now(),
                     ]);
-                    $remaining = round($remaining - $amount, 2);
+                    $remaining = app(CurrencyService::class)->roundAmount($remaining - $amount, $group['currency']);
                     if ($remaining <= 0)
                         break;
                 }
@@ -286,13 +294,15 @@ class CorporateMonthlyBillingService
         return [
             'period_start' => $settlement->period_start->toDateString(),
             'period_end' => $settlement->period_end->toDateString(),
-            'opening_balance' => round($opening, 2),
+            'currency' => strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+                ?: $settlement->items->first()?->booking?->currency ?: 'LKR')),
+            'opening_balance' => app(CurrencyService::class)->roundAmount($opening, strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency') ?: 'LKR'))),
             'charges' => (float) $settlement->charges_total,
             'payments' => (float) $settlement->payments_total,
             'refunds' => (float) $settlement->refunds_total,
             'adjustments' => (float) $settlement->adjustments_total,
             'period_closing_balance' => (float) $settlement->outstanding_total,
-            'account_closing_balance' => round($opening + (float) $settlement->outstanding_total, 2),
+            'account_closing_balance' => app(CurrencyService::class)->roundAmount($opening + (float) $settlement->outstanding_total, strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency') ?: 'LKR'))),
             'generated_at' => now()->toIso8601String(),
         ];
     }

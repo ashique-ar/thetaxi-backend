@@ -9,8 +9,9 @@ it('keeps management analytics company scoped and separates distance purposes', 
         ->toContain("'contractual_km' => 'pricing_snapshot'")
         ->toContain("'operational_km' => 'driver_telemetry_evidence'")
         ->toContain("'financial_metrics_visible' => \$canViewFinance")
-        ->toContain("'basis' => 'travel_date'")
-        ->toContain('summarizeBookings(');
+        ->toContain("'basis' => 'billing_period'")
+        ->toContain("where('owner_id', \$corporateId)")
+        ->toContain("'currency_totals'");
 });
 
 it('provides server generated management exports and permissioned monthly delivery', function () {
@@ -19,7 +20,7 @@ it('provides server generated management exports and permissioned monthly delive
     $schedule = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateReportScheduleController.php'));
     expect($routes)->toContain("reports/management/export/{format}", "apiResource('report-schedules'")
         ->and($controller)->toContain("['csv', 'xls', 'pdf']", 'CorporateReportFiltersRequest')
-        ->toContain("Selected travel period")
+        ->toContain("Selected billing period")
         ->and($schedule)->toContain("permission:schedule_reports", "where('corporate_id', \$request->corporate_id)");
 });
 

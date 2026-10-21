@@ -3,18 +3,17 @@
 namespace App\Services;
 
 use App\Models\Booking\BookingItem;
-use App\Models\Booking\Booking;
+use App\Models\Finance\FinancialAccountSettlement;
 use Illuminate\Support\Collection;
 
 class CorporateManagementAnalyticsService
 {
-    public function __construct(private readonly CorporateFinancialProjectionService $finance)
-    {
-    }
-
     public function report(string $corporateId, array $filters, bool $canViewFinance): array
     {
         $items = $this->items($corporateId, $filters);
+        if (! $canViewFinance) {
+            $items = $items->map(fn (Collection $row) => $row->put('currency', ''));
+        }
         $dimensions = collect(['department', 'division', 'employee', 'service', 'route', 'vehicle_group', 'booking_status', 'approval_result'])
             ->mapWithKeys(fn (string $dimension) => [$dimension => $this->group($items, $dimension)])
             ->all();
@@ -25,8 +24,11 @@ class CorporateManagementAnalyticsService
                 'booking_count' => $items->pluck('booking_id')->unique()->count(),
                 'trip_count' => $items->count(),
                 'finalized_trip_count' => $items->whereNotNull('final_priced_at')->count(),
-                'estimated_booking_value' => round((float) $items->sum('estimated_amount'), 2),
-                'finalized_charges' => round((float) $items->whereNotNull('final_priced_at')->sum('final_amount'), 2),
+                'currency_totals' => $items->groupBy('currency')->map(fn (Collection $rows, string $currency) => [
+                    'currency' => $currency,
+                    'estimated_value' => app(CurrencyService::class)->roundAmount((float) $rows->sum('estimated_amount'), $currency ?: 'LKR'),
+                    'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+                ])->values()->all(),
             ],
             'monthly_trends' => $this->monthly($items),
             'dimensions' => $dimensions,
@@ -42,16 +44,35 @@ class CorporateManagementAnalyticsService
         ];
 
         if ($canViewFinance) {
-            $payload['financial'] = $this->finance->accountSummary($corporateId);
-            $payload['financial_period'] = [
-                'basis' => 'travel_date',
-                'summary' => $this->finance->summarizeBookings(
-                    Booking::query()->whereIn('id', $items->pluck('booking_id')->unique())->get(),
-                    $items->pluck('booking_item_id')->unique(),
-                ),
-            ];
+            $settlement = ($filters['billing_period_id'] ?? null)
+                ? FinancialAccountSettlement::query()
+                    ->where('owner_type', 'corporate')
+                    ->where('owner_id', $corporateId)
+                    ->whereNotIn('status', ['draft', 'void'])
+                    ->with('items.booking:id,currency')
+                    ->find($filters['billing_period_id'])
+                : null;
+            if ($settlement) {
+                $payload['financial_period'] = [
+                    'basis' => 'billing_period',
+                    'summary' => [
+                        'period_start' => $settlement->period_start?->toDateString(),
+                        'period_end' => $settlement->period_end?->toDateString(),
+                        'settlement_number' => $settlement->settlement_number,
+                        'invoice_number' => $settlement->invoice_number,
+                        'currency' => strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+                            ?? $settlement->items->first()?->booking?->currency
+                            ?? '')),
+                        'charges_total' => (float) $settlement->charges_total,
+                        'payments_total' => (float) $settlement->payments_total,
+                        'refunds_total' => (float) $settlement->refunds_total,
+                        'adjustments_total' => (float) $settlement->adjustments_total,
+                        'outstanding_total' => (float) $settlement->outstanding_total,
+                    ],
+                ];
+            }
         } else {
-            unset($payload['operational']['estimated_booking_value'], $payload['operational']['finalized_charges']);
+            unset($payload['operational']['currency_totals']);
             foreach ($payload['monthly_trends'] as &$month) {
                 unset($month['estimated_value'], $month['finalized_charges']);
             }
@@ -109,6 +130,7 @@ class CorporateManagementAnalyticsService
                     'service' => $item->serviceType?->name ?: 'Unassigned',
                     'route' => $this->location($item->pickup_location).' -> '.$this->location($item->dropoff_location),
                     'vehicle_group' => $item->vehicleGroup?->name ?: 'Unassigned',
+                    'currency' => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')),
                     'booking_status' => $item->booking?->status ?: ($item->status ?: 'unknown'),
                     'approval_result' => $item->booking?->approval_status ?: 'not_required',
                     'final_priced_at' => $item->final_priced_at,
@@ -122,25 +144,34 @@ class CorporateManagementAnalyticsService
 
     private function group(Collection $items, string $dimension): array
     {
-        return $items->groupBy($dimension)->map(fn (Collection $rows, string $label) => [
-            'label' => $label,
-            'booking_count' => $rows->pluck('booking_id')->unique()->count(),
-            'trip_count' => $rows->count(),
-            'estimated_value' => round((float) $rows->sum('estimated_amount'), 2),
-            'finalized_charges' => round((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), 2),
-        ])->sortByDesc('trip_count')->values()->all();
+        $groups = [];
+        foreach ($items->groupBy($dimension) as $label => $rows) {
+            foreach ($rows->groupBy('currency') as $currency => $currencyRows) {
+                $groups[] = [
+                    'label' => $label,
+                    'currency' => $currency,
+                    'booking_count' => $currencyRows->pluck('booking_id')->unique()->count(),
+                    'trip_count' => $currencyRows->count(),
+                    'estimated_value' => app(CurrencyService::class)->roundAmount((float) $currencyRows->sum('estimated_amount'), $currency ?: 'LKR'),
+                    'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+                ];
+            }
+        }
+
+        return collect($groups)->sortByDesc('trip_count')->values()->all();
     }
 
     private function monthly(Collection $items): array
     {
         return $items->groupBy('month')->filter(fn ($rows, $month) => filled($month))
-            ->map(fn (Collection $rows, string $month) => [
+            ->flatMap(fn (Collection $rows, string $month) => $rows->groupBy('currency')->map(fn (Collection $currencyRows, string $currency) => [
                 'month' => $month,
-                'bookings' => $rows->pluck('booking_id')->unique()->count(),
-                'trips' => $rows->count(),
-                'estimated_value' => round((float) $rows->sum('estimated_amount'), 2),
-                'finalized_charges' => round((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), 2),
-            ])->sortKeys()->values()->all();
+                'currency' => $currency,
+                'bookings' => $currencyRows->pluck('booking_id')->unique()->count(),
+                'trips' => $currencyRows->count(),
+                'estimated_value' => app(CurrencyService::class)->roundAmount((float) $currencyRows->sum('estimated_amount'), $currency ?: 'LKR'),
+                'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+            ]))->sortBy(fn (array $row) => $row['month'].'|'.$row['currency'])->values()->all();
     }
 
     private function location(mixed $location): string

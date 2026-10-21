@@ -35,35 +35,45 @@ class FinancialAccountSettlementService
     {
     }
 
+    private function settlementCurrency(FinancialAccountSettlement $settlement): string
+    {
+        return strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+            ?: $settlement->items->first()?->booking?->currency ?: 'LKR'));
+    }
+
+    private function roundSettlementAmount(FinancialAccountSettlement $settlement, float $amount): float
+    {
+        return app(CurrencyService::class)->roundAmount($amount, $this->settlementCurrency($settlement));
+    }
+
     public function monitorReconciliation(FinancialAccountSettlement $settlement): array
     {
         $items = $settlement->items()->get();
         $issues = [];
         $expected = [
-            'charges_total' => round((float) $items->sum('charge_amount'), 2),
-            'payments_total' => round((float) $items->sum(fn($item) => (float) $item->paid_before_amount + (float) $item->allocated_amount), 2),
-            'refunds_total' => round((float) $items->sum('refund_amount'), 2),
-            'adjustments_total' => round((float) $items->sum('adjustment_amount'), 2),
-            'outstanding_total' => round((float) $items->sum('outstanding_amount'), 2),
+            'charges_total' => $this->roundSettlementAmount($settlement, (float) $items->sum('charge_amount')),
+            'payments_total' => $this->roundSettlementAmount($settlement, (float) $items->sum(fn($item) => (float) $item->paid_before_amount + (float) $item->allocated_amount)),
+            'refunds_total' => $this->roundSettlementAmount($settlement, (float) $items->sum('refund_amount')),
+            'adjustments_total' => $this->roundSettlementAmount($settlement, (float) $items->sum('adjustment_amount')),
+            'outstanding_total' => $this->roundSettlementAmount($settlement, (float) $items->sum('outstanding_amount')),
         ];
 
         foreach ($expected as $field => $value) {
-            if (abs((float) $settlement->{$field} - $value) > 0.01) {
+            if (abs((float) $settlement->{$field} - $value) > 0.0001) {
                 $issues[] = 'aggregate_' . $field;
             }
         }
 
         if (
             $items->contains(function ($item): bool {
-                $expectedOutstanding = max(0, round(
+                $expectedOutstanding = max(0, $this->roundSettlementAmount($settlement,
                     (float) $item->charge_amount
                     + (float) $item->adjustment_amount
                     - (float) $item->refund_amount
                     - (float) $item->paid_before_amount
-                    - (float) $item->allocated_amount,
-                    2
+                    - (float) $item->allocated_amount
                 ));
-                return abs((float) $item->outstanding_amount - $expectedOutstanding) > 0.01;
+                return abs((float) $item->outstanding_amount - $expectedOutstanding) > 0.0001;
             })
         ) {
             $issues[] = 'item_outstanding_total';
@@ -173,17 +183,22 @@ class FinancialAccountSettlementService
     {
         return DB::transaction(function () use ($settlement, $data, $userId) {
             $settlement = FinancialAccountSettlement::query()->lockForUpdate()->findOrFail($settlement->id);
-            $sourceAmount = round((float) $data['source_amount'], 4);
             $sourceCurrency = strtoupper((string) $data['source_currency']);
+            $currencyService = app(CurrencyService::class);
+            $rawSourceAmount = (float) $data['source_amount'];
+            $sourceAmount = $currencyService->roundAmount($rawSourceAmount, $sourceCurrency);
+            if (abs($rawSourceAmount - $sourceAmount) > 0.00000001) {
+                throw ValidationException::withMessages(['source_amount' => ["The amount exceeds {$sourceCurrency}'s supported minor-unit precision."]]);
+            }
             if ($sourceCurrency !== 'LKR' && (empty($data['fx_rate_to_lkr']) || empty($data['fx_rate_at']) || empty(trim((string) ($data['fx_source'] ?? ''))))) {
                 throw ValidationException::withMessages([
-                    'fx_rate_to_lkr' => ['A complete approved LKR conversion snapshot is required for a non-LKR settlement payment.'],
+                    'fx_rate_to_lkr' => ['A complete governed LKR conversion snapshot is required for a non-LKR settlement payment.'],
                 ]);
             }
             $fxRate = $sourceCurrency === 'LKR' ? 1.0 : round((float) $data['fx_rate_to_lkr'], 10);
             $fxRateAt = $sourceCurrency === 'LKR' ? $data['received_at'] : $data['fx_rate_at'];
             $fxSource = $sourceCurrency === 'LKR' ? 'identity' : trim((string) $data['fx_source']);
-            $lkrAmount = round($sourceAmount * $fxRate, 2);
+            $lkrAmount = app(CurrencyService::class)->roundAmount($sourceAmount * $fxRate, 'LKR');
             $checksum = hash('sha256', CanonicalJson::encode([
                 'settlement_id' => $settlement->id,
                 'source_amount' => number_format($sourceAmount, 4, '.', ''),
@@ -235,18 +250,27 @@ class FinancialAccountSettlementService
                 'updated_at' => now(),
             ]);
 
-            $remaining = $lkrAmount;
+            $corporateCurrency = $settlement->owner_type === 'corporate';
+            $settlementCurrency = $this->settlementCurrency($settlement);
+            if ($corporateCurrency && $sourceCurrency !== $settlementCurrency) {
+                throw ValidationException::withMessages(['source_currency' => ['Corporate invoice payments must use the invoice currency. Record a separate remittance for each invoice currency.']]);
+            }
+            $allocationFxRate = $corporateCurrency ? 1.0 : $fxRate;
+            $allocationTotal = $corporateCurrency ? $sourceAmount : $lkrAmount;
+            $remaining = $allocationTotal;
             $sourceRemaining = $sourceAmount;
-            if ($remaining > (float) $settlement->outstanding_total) {
-                throw ValidationException::withMessages(['source_amount' => ['The governed LKR payment value exceeds this settlement outstanding total.']]);
+            if ($allocationTotal > (float) $settlement->outstanding_total) {
+                throw ValidationException::withMessages(['source_amount' => ['The payment value in the invoice currency exceeds this settlement outstanding total.']]);
             }
             foreach ($settlement->items()->with('booking')->orderBy('created_at')->get() as $item) {
                 if ($remaining <= 0 || (float) $item->outstanding_amount <= 0)
                     continue;
                 $amount = min($remaining, (float) $item->outstanding_amount);
-                $sourceAllocation = $amount >= $remaining
-                    ? $sourceRemaining
-                    : min($sourceRemaining, round($amount / $fxRate, 4));
+                $sourceAllocation = $corporateCurrency
+                    ? min($sourceRemaining, $amount >= $remaining
+                        ? $sourceRemaining
+                        : app(CurrencyService::class)->roundAmount($amount / $allocationFxRate, $sourceCurrency))
+                    : ($amount >= $remaining ? $sourceRemaining : min($sourceRemaining, round($amount / $fxRate, 4)));
                 $receiptIdempotencyKey = "financial-settlement:{$paymentEventId}:{$item->id}";
                 $this->ledger->receive($item->booking, [
                     'amount' => $amount, 'payment_method' => $data['payment_method'],
@@ -280,7 +304,7 @@ class FinancialAccountSettlementService
                     'outstanding_amount' => (float) $item->outstanding_amount - $amount,
                     'status' => $amount >= (float) $item->outstanding_amount ? 'paid' : 'partial',
                 ]);
-                $remaining = round($remaining - $amount, 2);
+                $remaining = $this->roundSettlementAmount($settlement, $remaining - $amount);
                 $sourceRemaining = round($sourceRemaining - $sourceAllocation, 4);
             }
             $settlement->update(['payment_reference' => $data['reference'] ?? $settlement->payment_reference]);
@@ -313,10 +337,22 @@ class FinancialAccountSettlementService
             $settlements = FinancialAccountSettlement::query()->where('owner_type', 'corporate')->where('owner_id', $corporate->id)
                 ->whereIn('status', ['open', 'partial', 'overdue'])
                 ->when($data['settlement_ids'] ?? null, fn($query, $ids) => $query->whereIn('id', $ids))
-                ->orderByRaw('due_date IS NULL')->orderBy('due_date')->orderBy('issued_at')->lockForUpdate()->get();
-            $currencyMismatch = $settlements->first(fn($settlement) => strtoupper((string) data_get($settlement->billing_terms_snapshot, 'currency', $data['currency'])) !== strtoupper($data['currency']));
+                ->with('items.booking:id,currency')->orderByRaw('due_date IS NULL')->orderBy('due_date')->orderBy('issued_at')->lockForUpdate()->get();
+            $currency = strtoupper((string) $data['currency']);
+            $currencyService = app(CurrencyService::class);
+            $rawAmount = (float) $data['amount'];
+            $data['amount'] = $currencyService->roundAmount($rawAmount, $currency);
+            if (abs($rawAmount - $data['amount']) > 0.00000001) {
+                throw ValidationException::withMessages(['amount' => ["The amount exceeds {$currency}'s supported minor-unit precision."]]);
+            }
+            $fxRateToLkr = $currency === 'LKR' ? 1.0 : $currencyService->getExchangeRate($currency, 'LKR');
+            $fxRateAt = now();
+            $currencyMismatch = ($data['settlement_ids'] ?? null)
+                ? $settlements->first(fn($settlement) => $this->settlementCurrency($settlement) !== $currency)
+                : null;
             if ($currencyMismatch)
                 throw ValidationException::withMessages(['currency' => ['All selected invoices must use the remittance currency.']]);
+            $settlements = $settlements->filter(fn($settlement) => $this->settlementCurrency($settlement) === $currency);
 
             $remittance = CorporateRemittance::create([
                 ...$data,
@@ -324,8 +360,11 @@ class FinancialAccountSettlementService
                 'received_by' => $userId,
                 'allocated_amount' => 0,
                 'unapplied_amount' => $data['amount'],
+                'fx_rate_to_lkr' => $fxRateToLkr,
+                'fx_rate_at' => $fxRateAt,
+                'fx_source' => $currency === 'LKR' ? 'identity' : 'system_currency_table',
             ]);
-            $remaining = round((float) $data['amount'], 2);
+            $remaining = app(CurrencyService::class)->roundAmount((float) $data['amount'], $currency);
             foreach ($settlements as $settlement) {
                 if ($remaining <= 0)
                     break;
@@ -333,7 +372,11 @@ class FinancialAccountSettlementService
                 if ($amount <= 0)
                     continue;
                 $this->receivePayment($settlement, [
-                    'amount' => $amount,
+                    'source_amount' => $amount,
+                    'source_currency' => $currency,
+                    'fx_rate_to_lkr' => $remittance->fx_rate_to_lkr,
+                    'fx_rate_at' => $remittance->fx_rate_at,
+                    'fx_source' => $remittance->fx_source,
                     'payment_method' => $data['payment_method'],
                     'reference' => $data['reference'] ?? null,
                     'received_at' => $data['received_at'],
@@ -342,9 +385,9 @@ class FinancialAccountSettlementService
                     'corporate_remittance_id' => $remittance->id,
                 ], $userId);
                 CorporateRemittanceAllocation::create(['remittance_id' => $remittance->id, 'settlement_id' => $settlement->id, 'amount' => $amount]);
-                $remaining = round($remaining - $amount, 2);
+                $remaining = app(CurrencyService::class)->roundAmount($remaining - $amount, $currency);
             }
-            $remittance->update(['allocated_amount' => round((float) $data['amount'] - $remaining, 2), 'unapplied_amount' => $remaining]);
+            $remittance->update(['allocated_amount' => app(CurrencyService::class)->roundAmount((float) $data['amount'] - $remaining, $currency), 'unapplied_amount' => $remaining]);
             $this->audit('corporate_remittance', $remittance->id, 'corporate_remittance_received', null, $remaining > 0 ? 'partially_allocated' : 'allocated', (float) $data['amount'], ['corporate_id' => $corporate->id, 'reference' => $data['reference'] ?? null, 'unapplied_amount' => $remaining], $userId);
             return $remittance->fresh('allocations.settlement');
         });
@@ -357,21 +400,25 @@ class FinancialAccountSettlementService
             $remittance = CorporateRemittance::query()->lockForUpdate()->findOrFail($remittance->id);
             $settlements = FinancialAccountSettlement::query()->whereIn('id', $settlementIds)
                 ->where('owner_type', 'corporate')->where('owner_id', $remittance->corporate_id)
-                ->whereIn('status', ['open', 'partial', 'overdue'])->orderByRaw('due_date IS NULL')->orderBy('due_date')->lockForUpdate()->get();
+                ->whereIn('status', ['open', 'partial', 'overdue'])->with('items.booking:id,currency')
+                ->orderByRaw('due_date IS NULL')->orderBy('due_date')->lockForUpdate()->get();
             $remaining = (float) $remittance->unapplied_amount;
             foreach ($settlements as $settlement) {
                 if ($remaining <= 0) break;
-                abort_unless(strtoupper((string) data_get($settlement->billing_terms_snapshot, 'currency', $remittance->currency)) === strtoupper($remittance->currency), 422, 'Invoice currency does not match the remittance.');
+                abort_unless($this->settlementCurrency($settlement) === strtoupper($remittance->currency), 422, 'Invoice currency does not match the remittance.');
                 $amount = min($remaining, (float) $settlement->outstanding_total);
                 if ($amount <= 0) continue;
                 $this->receivePayment($settlement, [
-                    'amount' => $amount, 'payment_method' => $remittance->payment_method, 'reference' => $remittance->reference,
+                    'source_amount' => $amount, 'source_currency' => $remittance->currency,
+                    'fx_rate_to_lkr' => $remittance->fx_rate_to_lkr, 'fx_rate_at' => $remittance->fx_rate_at,
+                    'fx_source' => $remittance->fx_source,
+                    'payment_method' => $remittance->payment_method, 'reference' => $remittance->reference,
                     'received_at' => $remittance->received_at, 'notes' => $remittance->notes,
                     'idempotency_key' => $remittance->idempotency_key.':reallocation:'.$settlement->id,
                     'corporate_remittance_id' => $remittance->id,
                 ], $userId);
                 CorporateRemittanceAllocation::create(['remittance_id' => $remittance->id, 'settlement_id' => $settlement->id, 'amount' => $amount]);
-                $remaining = round($remaining - $amount, 2);
+                $remaining = app(CurrencyService::class)->roundAmount($remaining - $amount, strtoupper($remittance->currency));
             }
             $remittance->update(['allocated_amount' => (float) $remittance->amount - $remaining, 'unapplied_amount' => $remaining]);
             return $remittance->fresh('allocations.settlement');
@@ -421,8 +468,8 @@ class FinancialAccountSettlementService
     public function recalculate(FinancialAccountSettlement $settlement): FinancialAccountSettlement
     {
         $items = $settlement->items()->get();
-        $outstanding = round((float) $items->sum('outstanding_amount'), 2);
-        $payments = round((float) $items->sum(fn($item) => (float) $item->paid_before_amount + (float) $item->allocated_amount), 2);
+        $outstanding = $this->roundSettlementAmount($settlement, (float) $items->sum('outstanding_amount'));
+        $payments = $this->roundSettlementAmount($settlement, (float) $items->sum(fn($item) => (float) $item->paid_before_amount + (float) $item->allocated_amount));
         $status = $settlement->status;
         if ($status !== 'draft' && $status !== 'void' && $status !== 'disputed') {
             $status = $outstanding <= 0 ? 'paid' : ($payments > 0 ? 'partial' : 'open');

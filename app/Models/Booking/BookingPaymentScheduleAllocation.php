@@ -11,7 +11,7 @@ class BookingPaymentScheduleAllocation extends BaseModel
         'booking_payment_schedule_id', 'booking_payment_receipt_id',
         'amount', 'allocated_at', 'allocated_by',
     ];
-    protected $casts = ['amount' => 'decimal:2', 'allocated_at' => 'datetime'];
+    protected $casts = ['amount' => 'decimal:4', 'allocated_at' => 'datetime'];
     public function schedule(): BelongsTo { return $this->belongsTo(BookingPaymentSchedule::class, 'booking_payment_schedule_id'); }
     public function receipt(): BelongsTo { return $this->belongsTo(BookingPaymentReceipt::class, 'booking_payment_receipt_id'); }
 }

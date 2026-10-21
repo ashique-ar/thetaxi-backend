@@ -34,6 +34,7 @@ beforeEach(function () {
         $table->string('status')->nullable();
         $table->decimal('total_estimated', 12, 2)->nullable();
         $table->decimal('total_actual', 12, 2)->nullable();
+        $table->string('currency', 3)->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -44,6 +45,9 @@ beforeEach(function () {
         $table->dateTime('to_date')->nullable();
         $table->string('status')->nullable();
         $table->decimal('total_price', 12, 2)->nullable();
+        $table->string('currency', 3)->nullable();
+        $table->timestamp('final_priced_at')->nullable();
+        $table->json('pricing_breakdown')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -257,6 +261,8 @@ it('uses one corporate department status and travel window for multi trip rows a
             'to_date' => '2026-07-10 10:00:00',
             'status' => 'completed',
             'total_price' => 100,
+            'final_priced_at' => '2026-07-10 10:00:00',
+            'pricing_breakdown' => '{"final_total":100}',
         ],
         [
             'id' => '50000000-0000-4000-8000-000000000002',
@@ -265,6 +271,8 @@ it('uses one corporate department status and travel window for multi trip rows a
             'to_date' => '2026-08-10 10:00:00',
             'status' => 'completed',
             'total_price' => 200,
+            'final_priced_at' => '2026-08-10 10:00:00',
+            'pricing_breakdown' => '{"final_total":220}',
         ],
         [
             'id' => '50000000-0000-4000-8000-000000000003',
@@ -273,6 +281,8 @@ it('uses one corporate department status and travel window for multi trip rows a
             'to_date' => '2026-08-11 10:00:00',
             'status' => 'completed',
             'total_price' => 900,
+            'final_priced_at' => null,
+            'pricing_breakdown' => null,
         ],
     ]);
 
@@ -294,9 +304,9 @@ it('uses one corporate department status and travel window for multi trip rows a
         ->toBe(['50000000-0000-4000-8000-000000000002'])
         ->and($stats['total_bookings'])->toBe(1)
         ->and($stats['trip_count'])->toBe(1)
-        ->and($stats['total_cost'])->toBe(300.0)
-        ->and($stats['estimated_value'])->toBe(300.0)
-        ->and($stats['finalized_value'])->toBe(320.0)
+        ->and($stats['total_cost'])->toBe(200.0)
+        ->and($stats['estimated_value'])->toBe(200.0)
+        ->and($stats['finalized_value'])->toBe(220.0)
         ->and($stats['finalized_booking_count'])->toBe(1)
         ->and($stats['unfinalized_booking_count'])->toBe(0)
         ->and($stats['by_status'])->toBe(['completed' => 1]);

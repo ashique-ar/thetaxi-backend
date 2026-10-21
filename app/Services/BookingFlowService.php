@@ -899,6 +899,10 @@ class BookingFlowService
             ? $sortBy
             : 'price_low';
         $deferAvailabilityForCards = filter_var($params['defer_availability'] ?? false, FILTER_VALIDATE_BOOL);
+        $deferPricingForCards = filter_var($params['defer_pricing'] ?? false, FILTER_VALIDATE_BOOL);
+        if ($deferPricingForCards) {
+            $sortBy = 'name_asc';
+        }
         $forceRefresh = filter_var($params['force_refresh'] ?? false, FILTER_VALIDATE_BOOLEAN);
 
 
@@ -1071,7 +1075,8 @@ class BookingFlowService
             : $fromTime;
         $pricingFromDate = $fromDate->format('Y-m-d');
         $pricingToDate = $effectiveToDate->format('Y-m-d');
-        $shouldCalculateGroupPricing = $pricingServiceTypeModel
+        $shouldCalculateGroupPricing = !$deferPricingForCards
+            && $pricingServiceTypeModel
             && $hasRequiredPricingLocations
             && (!$packageSelectionRequired || $hasSelectedPackage);
         $availabilityHolidayContext = $shouldCalculateGroupPricing
@@ -1288,7 +1293,7 @@ class BookingFlowService
             // 7. Force quotation request flag is set
             $quotationOnlyReasons = [];
 
-            if (!$hasPricing) {
+            if (!$hasPricing && !$deferPricingForCards) {
                 $quotationOnlyReasons[] = 'pricing_not_configured';
             }
             if (!$isGroupActive) {
@@ -1317,7 +1322,7 @@ class BookingFlowService
             $allowRequestQuotation = $isQuotationOnly;
 
             // Determine if booking/cart is allowed (opposite of quotation-only)
-            $allowBooking = !$isQuotationOnly && $hasAvailableVehicles && $hasPricing && $isGroupActive;
+            $allowBooking = !$isQuotationOnly && $hasAvailableVehicles && ($hasPricing || $deferPricingForCards) && $isGroupActive;
 
             // Build availability entry (include all groups, even those without pricing)
             $availabilityEntry = [
@@ -1334,6 +1339,7 @@ class BookingFlowService
                 'vehicle_details' => $vehicleAnalysis['vehicle_details'],
                 'has_long_term' => $hasLongTermAssignments,
                 'pricing_configured' => $isPricingConfigured,
+                'pricing_deferred' => $deferPricingForCards,
                 'pricing_info' => $pricingInfo,
                 'pricing_error' => $pricingError,
                 'supports_self_driven' => $group->supports_self_driven ?? false,
@@ -1453,8 +1459,10 @@ class BookingFlowService
                     $entry['allow_booking'] = !$isQuotationOnly
                         && !empty($entry['is_group_active'])
                         && (int) $group->active_vehicles_count > 0
-                        && !empty($entry['pricing_configured'])
-                        && (float) ($entry['pricing_info']['base_amount'] ?? 0) > 0;
+                        && (!empty($entry['pricing_deferred']) || (
+                            !empty($entry['pricing_configured'])
+                            && (float) ($entry['pricing_info']['base_amount'] ?? 0) > 0
+                        ));
                     return $entry;
                 }
 
@@ -9457,7 +9465,8 @@ class BookingFlowService
                 break;
 
             case 'from_date':
-                $query->orderBy('booking_items.from_date', $sortDirection);
+                $query->orderBy('booking_items.from_date', $sortDirection)
+                    ->orderBy('booking_items.from_time', $sortDirection);
                 break;
 
             case 'to_date':

@@ -29,6 +29,14 @@ it('CurrencyService::normalizeAmount clamps negative values to zero', function (
     expect($result)->toBeGreaterThanOrEqual(0.0);
 });
 
+it('rounds amounts using the currency minor unit', function () {
+    $service = app(CurrencyService::class);
+
+    expect($service->roundAmount(12.345, 'USD'))->toBe(12.35)
+        ->and($service->roundAmount(12.6, 'JPY'))->toBe(13.0)
+        ->and($service->roundAmount(12.3456, 'KWD'))->toBe(12.346);
+});
+
 it('base currency config falls back to LKR when unset', function () {
     $currency = config('booking.base_currency', 'LKR');
     expect($currency)->toBeString()->not->toBeEmpty();

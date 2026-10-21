@@ -6,6 +6,7 @@ use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Corporate\CorporateEmployee;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\Schema;
 
@@ -97,6 +98,12 @@ class StoreCorporateBookingRequest extends FormRequest
     public function withValidator($validator): void
     {
         $validator->after(function ($validator) {
+            app(WebsiteSettingsService::class)->validatePortalBookingAdvance(
+                $validator,
+                $this->all(),
+                'corporate_portal_booking_advance_hours'
+            );
+
             $corporateId = $this->attributes->get('corporate_id') ?? $this->input('corporate_id');
             $vehicleGroupId = $this->input('vehicle_group_id');
 

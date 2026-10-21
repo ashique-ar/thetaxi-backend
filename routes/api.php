@@ -470,6 +470,8 @@ Route::middleware(['auth:api'])->group(function () {
     Route::prefix('profile')->group(function () {
         Route::get('', [UserController::class, 'profile']);
         Route::put('', [UserController::class, 'updateProfile']);
+        Route::post('email-change', [UserController::class, 'requestEmailChange'])->middleware('throttle:5,1');
+        Route::post('email-change/verify', [UserController::class, 'verifyEmailChange'])->middleware('throttle:10,1');
         Route::post('/change-password', [UserController::class, 'changePassword']);
         Route::put('/status', [UserController::class, 'updateStatus']);
     });

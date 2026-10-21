@@ -32,12 +32,12 @@ class BookingPaymentReceipt extends BaseModel
     ];
 
     protected $casts = [
-        'amount' => 'decimal:2',
-        'refunded_amount' => 'decimal:2',
+        'amount' => 'decimal:4',
+        'refunded_amount' => 'decimal:4',
         'received_at' => 'datetime',
         'metadata' => 'array',
-        'allocated_amount' => 'decimal:2',
-        'driver_company_settled_amount' => 'decimal:2',
+        'allocated_amount' => 'decimal:4',
+        'driver_company_settled_amount' => 'decimal:4',
         'driver_company_settled_at' => 'datetime',
         'source_amount' => 'decimal:4',
         'lkr_amount' => 'decimal:4',

@@ -54,6 +54,8 @@ class BusinessSettingController extends Controller
         'booking' => [
             'booking_base_currency',
             'booking_advance_hours',
+            'customer_portal_booking_advance_hours',
+            'corporate_portal_booking_advance_hours',
             'booking_max_days',
             'cancellation_allowed',
             'cancellation_hours',
@@ -142,6 +144,8 @@ class BusinessSettingController extends Controller
                     : ($legacyValues[$key] ?? null);
             }
         }
+        $categories['booking']['customer_portal_booking_advance_hours'] ??= $categories['booking']['booking_advance_hours'];
+        $categories['booking']['corporate_portal_booking_advance_hours'] ??= $categories['booking']['booking_advance_hours'];
         $categories['booking']['feature_hr_attendance_ingestion_enabled'] =
             $this->websiteSettingsService->get('feature_hr_attendance_ingestion_enabled', false);
 
@@ -164,6 +168,20 @@ class BusinessSettingController extends Controller
                 'message' => 'Validation failed',
                 'errors' => $validator->errors(),
             ], 422);
+        }
+
+        if ($category === 'booking') {
+            $timingValidator = Validator::make($request->input('settings', []), [
+                'customer_portal_booking_advance_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:8760'],
+                'corporate_portal_booking_advance_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:8760'],
+            ]);
+            if ($timingValidator->fails()) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Portal booking notice must be between 0 and 8760 whole hours.',
+                    'errors' => $timingValidator->errors(),
+                ], 422);
+            }
         }
 
         if ($category === 'numbering') {

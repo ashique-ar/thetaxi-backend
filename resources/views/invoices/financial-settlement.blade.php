@@ -75,6 +75,8 @@
 </head>
 
 <body>
+    @php($currency = strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency') ?: $settlement->items->first()?->booking?->currency ?: 'LKR')))
+    @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($currency))
     <div class="head">
         <div>
             <h1>Account Invoice</h1>
@@ -105,9 +107,9 @@
                     <td>{{ $item->booking->booking_number ?? $item->booking_id }}</td>
                     <td>{{ optional($item->booking->booking_date)->format('d M Y') }}</td>
                     <td>{{ $item->booking->confirmation_number ?? '-' }}</td>
-                    <td class="right">{{ number_format($item->charge_amount, 2) }}</td>
-                    <td class="right">{{ number_format($item->paid_before_amount + $item->allocated_amount, 2) }}</td>
-                    <td class="right">{{ number_format($item->outstanding_amount, 2) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format($item->charge_amount, $digits) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format($item->paid_before_amount + $item->allocated_amount, $digits) }}</td>
+                    <td class="right">{{ $currency }} {{ number_format($item->outstanding_amount, $digits) }}</td>
                 </tr>
             @endforeach
         </tbody>
@@ -115,24 +117,23 @@
     <table class="totals">
         <tr>
             <td>Charges</td>
-            <td class="right">{{ number_format($settlement->charges_total, 2) }}</td>
+            <td class="right">{{ $currency }} {{ number_format($settlement->charges_total, $digits) }}</td>
         </tr>
         <tr>
             <td>Payments</td>
-            <td class="right">({{ number_format($settlement->payments_total, 2) }})</td>
+            <td class="right">({{ $currency }} {{ number_format($settlement->payments_total, $digits) }})</td>
         </tr>
         <tr>
             <td>Refunds / credits</td>
-            <td class="right">({{ number_format($settlement->refunds_total, 2) }})</td>
+            <td class="right">({{ $currency }} {{ number_format($settlement->refunds_total, $digits) }})</td>
         </tr>
         <tr>
             <td>Adjustments</td>
-            <td class="right">{{ number_format($settlement->adjustments_total, 2) }}</td>
+            <td class="right">{{ $currency }} {{ number_format($settlement->adjustments_total, $digits) }}</td>
         </tr>
         <tr class="grand">
             <td>Amount due</td>
-            <td class="right">{{ number_format($settlement->outstanding_total, 2) }}
-                {{ $settlement->items->first()?->booking?->currency ?? 'LKR' }}</td>
+            <td class="right">{{ $currency }} {{ number_format($settlement->outstanding_total, $digits) }}</td>
         </tr>
     </table>
     @if ($settlement->notes)

@@ -20,7 +20,7 @@ class BookingPaymentSchedule extends BaseModel
     ];
     protected $casts = [
         'period_start' => 'date', 'period_end' => 'date', 'due_date' => 'date',
-        'amount' => 'decimal:2',
+        'amount' => 'decimal:4',
         'reminder_sent_at' => 'datetime', 'overdue_notified_at' => 'datetime',
         'source_amount' => 'decimal:4', 'lkr_amount' => 'decimal:4',
         'is_collection_target_eligible' => 'boolean', 'revision_number' => 'integer', 'superseded_at' => 'datetime',

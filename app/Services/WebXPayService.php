@@ -118,7 +118,7 @@ class WebXPayService
             $bookingCurrency = strtoupper(trim((string) $sourceCurrency));
             $bookingAmount = app(CurrencyService::class)->roundAmount($amount, $bookingCurrency);
             $gatewayAmount = $this->convertBookingAmountToGatewayCurrency($amount, $bookingCurrency);
-            $amount = max(0, app(CurrencyService::class)->normalizeAmount($gatewayAmount));
+            $amount = max(0, floor($gatewayAmount));
             if ($bookingAmount <= 0 || $amount <= 0) {
                 throw new \InvalidArgumentException('Payment amount must be positive.');
             }

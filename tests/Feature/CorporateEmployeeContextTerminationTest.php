@@ -2,14 +2,31 @@
 
 use App\Models\Corporate\Corporate;
 use App\Models\Corporate\CorporateEmployee;
+use App\Models\AuditLog;
 use App\Models\User;
 use App\Models\UserContext;
 use App\Services\CorporateService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
+
+it('lets a corporate employee update change account email and set a password without logging its hash', function () {
+    $user = User::factory()->create(['email' => 'before@example.com', 'password' => Hash::make('OldPassword123!')]);
+    $corporate = Corporate::create(['name' => 'Account update company']);
+    $employee = CorporateEmployee::create(['user_id' => $user->id, 'corporate_id' => $corporate->id, 'is_active' => true]);
+
+    app(CorporateService::class)->updateEmployee($employee, [
+        'email' => 'after@example.com',
+        'password' => 'NewPassword123!',
+    ]);
+
+    expect($user->fresh()->email)->toBe('after@example.com')
+        ->and(Hash::check('NewPassword123!', $user->fresh()->password))->toBeTrue()
+        ->and(json_encode(AuditLog::query()->latest('created_at')->value('details')))->not->toContain('NewPassword123!');
+});
 
 it('toggles and deletes only the selected CorporateEmployee context for a shared User', function () {
     $user = User::factory()->create();

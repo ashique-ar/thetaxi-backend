@@ -47,10 +47,10 @@ class Invoice extends BaseModel
 
     protected $casts = [
         'line_items'      => 'array',
-        'subtotal'        => 'decimal:2',
-        'discount_amount' => 'decimal:2',
-        'tax_amount'      => 'decimal:2',
-        'total_amount'    => 'decimal:2',
+        'subtotal'        => 'decimal:4',
+        'discount_amount' => 'decimal:4',
+        'tax_amount'      => 'decimal:4',
+        'total_amount'    => 'decimal:4',
         'issue_date'      => 'date',
         'due_date'        => 'date',
         'paid_at'         => 'datetime',

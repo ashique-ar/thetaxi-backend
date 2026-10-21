@@ -141,6 +141,8 @@ class BookingPaymentLedgerService
 
     public function summary(Booking $booking): array
     {
+        $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
+        $money = fn (float $amount): float => app(CurrencyService::class)->roundAmount($amount, $currency);
         $receipts = BookingPaymentReceipt::query()
             ->where('booking_id', $booking->id)
             ->orderByDesc('received_at')
@@ -152,13 +154,13 @@ class BookingPaymentLedgerService
         $pendingFareReceipts = $fareReceipts->whereIn('finality_status', ['pending_clearance', 'policy_missing']);
         $securityReceipts = $receipts->where('payment_purpose', 'security_deposit');
         $confirmedSecurityReceipts = $securityReceipts->where('finality_status', 'confirmed');
-        $securityReceived = round((float) $confirmedSecurityReceipts->sum('amount'), 2);
-        $securityRefunded = round((float) $confirmedSecurityReceipts->sum('refunded_amount'), 2);
-        $securityHeld = max(0, round($securityReceived - $securityRefunded, 2));
+        $securityReceived = $money((float) $confirmedSecurityReceipts->sum('amount'));
+        $securityRefunded = $money((float) $confirmedSecurityReceipts->sum('refunded_amount'));
+        $securityHeld = max(0, $money($securityReceived - $securityRefunded));
         $requiredSecurity = (float) $booking->bookingItems()->with('vehicleGroup')->get()
             ->sum(fn ($item) => (float) ($item->vehicleGroup?->refundable_deposit ?? 0) * max(1, (int) ($item->quantity ?? 1)));
-        $total = round((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0), 2);
-        $ledgerPaid = round((float) $confirmedFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2);
+        $total = $money((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0));
+        $ledgerPaid = $money((float) $confirmedFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount));
         $legacyPaid = $this->legacyPaidAmount($booking, $total);
         $paid = $receipts->isEmpty() ? $legacyPaid : $ledgerPaid;
         $settlementItem = FinancialSettlementItem::with('settlement')->where('booking_id', $booking->id)->latest('created_at')->first();
@@ -179,33 +181,33 @@ class BookingPaymentLedgerService
         $refunds = (float)($settlementItem?->refund_amount ?? 0);
         $adjustments = (float)($settlementItem?->adjustment_amount ?? 0);
         $arrangement = $booking->payment_arrangement_status ?: $this->resolveArrangementStatus($booking);
-        $due = $arrangement === 'complimentary' ? 0.0 : max(0, round($total + $adjustments - $refunds - $paid, 2));
+        $due = $arrangement === 'complimentary' ? 0.0 : max(0, $money($total + $adjustments - $refunds - $paid));
         $status = $this->resolvePaymentStatus($booking, $paid, $due);
         $payer = $this->resolvePayer($booking);
         $driverReceipts = $receipts->where('received_via', 'driver')->where('finality_status', 'confirmed');
-        $driverCashCollected = round((float) $driverReceipts->sum('amount'), 2);
-        $driverCashHandedOver = round((float) $driverReceipts->sum('driver_company_settled_amount'), 2);
+        $driverCashCollected = $money((float) $driverReceipts->sum('amount'));
+        $driverCashHandedOver = $money((float) $driverReceipts->sum('driver_company_settled_amount'));
         $scheduleRows = BookingPaymentSchedule::query()
             ->where('booking_id', $booking->id)
             ->withSum('allocations', 'amount')
             ->orderBy('due_date')
             ->orderBy('sequence')
             ->get();
-        $scheduledAmount = round((float) $scheduleRows->sum('amount'), 2);
-        $scheduledPaid = round((float) $scheduleRows->sum('allocations_sum_amount'), 2);
+        $scheduledAmount = $money((float) $scheduleRows->sum('amount'));
+        $scheduledPaid = $money((float) $scheduleRows->sum('allocations_sum_amount'));
         $openEndedRule = Schema::hasTable('booking_payment_schedule_rules')
             ? BookingPaymentScheduleRule::query()->where('booking_id', $booking->id)->first()
             : null;
         if ($openEndedRule?->contract_basis === 'open_ended') {
             $due = $arrangement === 'complimentary'
                 ? 0.0
-                : max(0, round($scheduledAmount + $adjustments - $refunds - $paid, 2));
+                : max(0, $money($scheduledAmount + $adjustments - $refunds - $paid));
             $status = $this->resolvePaymentStatus($booking, $paid, $due);
         }
         $today = now()->toDateString();
-        $paymentSchedule = $scheduleRows->map(function (BookingPaymentSchedule $schedule) use ($today) {
-            $allocated = round((float) ($schedule->allocations_sum_amount ?? 0), 2);
-            $balance = max(0, round((float) $schedule->amount - $allocated, 2));
+        $paymentSchedule = $scheduleRows->map(function (BookingPaymentSchedule $schedule) use ($today, $money) {
+            $allocated = $money((float) ($schedule->allocations_sum_amount ?? 0));
+            $balance = max(0, $money((float) $schedule->amount - $allocated));
             $status = $balance <= 0 ? 'paid' : ($allocated > 0 ? 'partially_paid' : ($schedule->due_date->toDateString() < $today ? 'overdue' : 'scheduled'));
             return [
                 'id' => $schedule->id,
@@ -232,16 +234,16 @@ class BookingPaymentLedgerService
             'generated_horizon_start' => $openEndedRule ? $scheduleRows->min(fn ($row) => $row->due_date?->toDateString()) : null,
             'generated_horizon_end' => $openEndedRule ? $scheduleRows->max(fn ($row) => $row->due_date?->toDateString()) : null,
             'paid_amount' => $paid,
-            'service_deposit_received' => round((float) $confirmedFareReceipts->where('payment_purpose', 'service_deposit')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
-            'booking_payments_received' => round((float) $confirmedFareReceipts->where('payment_purpose', 'booking_payment')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
-            'pending_collection_amount' => round((float) $pendingFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount), 2),
+            'service_deposit_received' => $money((float) $confirmedFareReceipts->where('payment_purpose', 'service_deposit')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
+            'booking_payments_received' => $money((float) $confirmedFareReceipts->where('payment_purpose', 'booking_payment')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
+            'pending_collection_amount' => $money((float) $pendingFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
             'due_amount' => $due,
             'security_deposit_received' => $securityReceived,
             'security_deposit_refunded' => $securityRefunded,
             'security_deposit_held' => $securityHeld,
-            'security_deposit_required' => round($requiredSecurity, 2),
-            'security_deposit_due' => max(0, round($requiredSecurity - $securityReceived, 2)),
-            'security_deposit_variance' => round($securityReceived - $requiredSecurity, 2),
+            'security_deposit_required' => $money($requiredSecurity),
+            'security_deposit_due' => max(0, $money($requiredSecurity - $securityReceived)),
+            'security_deposit_variance' => $money($securityReceived - $requiredSecurity),
             'refund_amount' => $refunds,
             'adjustment_amount' => $adjustments,
             'payment_status' => $status,
@@ -481,9 +483,10 @@ class BookingPaymentLedgerService
             }
 
             $current = $this->summary($booking);
-            $amount = round((float) $data['amount'], 2);
+            $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
+            $amount = app(CurrencyService::class)->roundAmount((float) $data['amount'], $currency);
             $purpose = $data['payment_purpose'] ?? 'booking_payment';
-            $availableToSubmit = max(0, round($current['due_amount'] - (float) ($current['pending_collection_amount'] ?? 0), 2));
+            $availableToSubmit = max(0, app(CurrencyService::class)->roundAmount($current['due_amount'] - (float) ($current['pending_collection_amount'] ?? 0), $currency));
             if ($purpose !== 'security_deposit' && $amount > $availableToSubmit) {
                 throw ValidationException::withMessages([
                     'amount' => ['The received amount cannot exceed the outstanding balance after pending-clearance receipts.'],
@@ -1121,7 +1124,7 @@ class BookingPaymentLedgerService
 
     private function total(Booking $booking): float
     {
-        return round((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0), 2);
+        return app(CurrencyService::class)->roundAmount((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0), strtoupper((string) ($booking->currency ?: 'LKR')));
     }
 
     private function canonicalReceiptFields(Booking $booking, array $data): array

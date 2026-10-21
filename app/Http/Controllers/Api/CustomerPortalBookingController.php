@@ -6,8 +6,10 @@ use App\Http\Controllers\Api\Booking\BookingFlowController;
 use App\Models\Customer;
 use App\Models\Booking\Booking;
 use App\Services\UserContextService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Validator;
 
 class CustomerPortalBookingController extends BookingFlowController
 {
@@ -220,6 +222,20 @@ class CustomerPortalBookingController extends BookingFlowController
         $payload['send_confirmation_sms'] = false;
         $payload['send_confirmation_emails'] = false;
         $payload['notify_internal_team'] = false;
+
+        $validator = Validator::make($payload, []);
+        app(WebsiteSettingsService::class)->validatePortalBookingAdvance(
+            $validator,
+            $payload,
+            'customer_portal_booking_advance_hours'
+        );
+        if ($validator->fails()) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The selected pickup time is too soon.',
+                'errors' => $validator->errors(),
+            ], 422);
+        }
 
         if (is_array($payload['booking_items'] ?? null)) {
             foreach ($payload['booking_items'] as &$item) {

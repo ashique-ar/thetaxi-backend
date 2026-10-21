@@ -37,20 +37,20 @@
     <p>Period: {{ $payload['period']['from'] ?: 'All time' }} to {{ $payload['period']['to'] ?: 'Present' }}</p>
     <p>Bookings: {{ $payload['operational']['booking_count'] }} | Trips: {{ $payload['operational']['trip_count'] }}
         @if($payload['financial_metrics_visible'])
-            | Estimated booking value: {{ number_format($payload['operational']['estimated_booking_value'], 2) }}
-            | Finalized charges: {{ number_format($payload['operational']['finalized_charges'], 2) }}
+            @foreach($payload['operational']['currency_totals'] as $total)
+                @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($total['currency'] ?: 'LKR'))
+                <br>{{ $total['currency'] ?: 'Currency unavailable' }} estimated: {{ number_format($total['estimated_value'], $digits) }}
+                | finalized: {{ number_format($total['finalized_charges'], $digits) }}
+            @endforeach
         @endif
     </p>
     <p>Contractual distance: {{ number_format($payload['distance']['contractual_km'], 3) }} km (pricing) | Operational
         distance: {{ number_format($payload['distance']['operational_km'], 3) }} km (telemetry evidence)</p>
     @if(isset($payload['financial_period']['summary']))
         @php($finance = $payload['financial_period']['summary'])
-        <h2>Financial totals — selected travel period</h2>
-        <p>Invoiced: {{ number_format($finance['invoiced_value'], 2) }} |
-            Paid: {{ number_format($finance['paid_value'], 2) }} |
-            Outstanding: {{ number_format($finance['outstanding_value'], 2) }} |
-            Uninvoiced finalized: {{ number_format($finance['uninvoiced_finalized_value'], 2) }} |
-            Disputed: {{ number_format($finance['disputed_value'], 2) }}</p>
+        @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($finance['currency'] ?: 'LKR'))
+        <h2>Billing period totals</h2>
+        <p>{{ $finance['period_start'] }} to {{ $finance['period_end'] }} | {{ $finance['invoice_number'] ?: $finance['settlement_number'] }} | {{ $finance['currency'] }}<br>Charges: {{ number_format($finance['charges_total'], $digits) }} | Payments: {{ number_format($finance['payments_total'], $digits) }} | Refunds: {{ number_format($finance['refunds_total'], $digits) }} | Adjustments: {{ number_format($finance['adjustments_total'], $digits) }} | Outstanding: {{ number_format($finance['outstanding_total'], $digits) }}</p>
     @endif
     <table>
         <thead>
@@ -60,6 +60,7 @@
                 <th>Bookings</th>
                 <th>Trips</th>
                 @if($payload['financial_metrics_visible'])
+                    <th>Currency</th>
                     <th>Estimated</th>
                     <th>Finalized</th>
                 @endif

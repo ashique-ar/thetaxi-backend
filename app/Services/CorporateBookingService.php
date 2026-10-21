@@ -323,7 +323,7 @@ class CorporateBookingService
     private function requiresCreditApproval(Corporate $corporate, array $data): bool
     {
         return ($data['payment_collection_method'] ?? null) === 'monthly_invoice'
-            && ($this->financialProjection->accountSummary($corporate->id)['summary']['credit_limit_exceeded'] ?? false);
+            && $this->financialProjection->isCreditLimitExceeded($corporate->id);
     }
 
     private function validateServicePackage(?string $serviceTypeId, ?string $packageId): void
@@ -805,7 +805,7 @@ class CorporateBookingService
         }
 
         if (!empty($filters['date_to'])) {
-            $query->whereDate('booking_items.to_date', '<=', $filters['date_to']);
+            $query->whereDate('booking_items.from_date', '<=', $filters['date_to']);
         }
     }
 
@@ -1056,14 +1056,27 @@ class CorporateBookingService
         }
 
         $totalCount = (clone $query)->count();
-        $estimatedValue = (float) (clone $query)->sum('total_estimated');
-        $finalizedValue = (float) (clone $query)->whereNotNull('total_actual')->sum('total_actual');
-        $finalizedBookingCount = (clone $query)->whereNotNull('total_actual')->count();
         $tripQuery = $this->corporateBookingItemQuery($corporateId);
         $tripQuery->setEagerLoads([]);
         $this->applyBookingItemFilters($tripQuery, $filters);
         $tripCount = (clone $tripQuery)->count('booking_items.id');
-        $matchingBookingItemIds = (clone $tripQuery)->pluck('booking_items.id');
+        $matchingItems = (clone $tripQuery)
+            ->with('booking:id,currency')
+            ->get(['booking_items.id', 'booking_items.booking_id', 'booking_items.currency', 'booking_items.total_price', 'booking_items.final_priced_at', 'booking_items.pricing_breakdown']);
+        $matchingBookingItemIds = $matchingItems->pluck('id');
+        $finalizedItems = $matchingItems->whereNotNull('final_priced_at');
+        $finalizedBookingCount = $finalizedItems->pluck('booking_id')->unique()->count();
+        $currencyTotals = $matchingItems->groupBy(fn ($item) => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')))
+            ->map(fn ($items, $currency) => [
+                'currency' => $currency,
+                'estimated_value' => app(CurrencyService::class)->roundAmount((float) $items->sum('total_price'), $currency ?: 'LKR'),
+                'finalized_value' => app(CurrencyService::class)->roundAmount((float) $items->whereNotNull('final_priced_at')->sum(fn ($item) =>
+                    data_get($item->pricing_breakdown, 'final_total')
+                        ?? data_get($item->pricing_breakdown, 'total_amount')
+                        ?? $item->total_price
+                ), $currency ?: 'LKR'),
+            ])->sortKeys()->values()->all();
+        $singleCurrencyTotal = count($currencyTotals) === 1 ? $currencyTotals[0] : null;
 
         $byStatus = (clone $query)
             ->select('status')
@@ -1083,7 +1096,7 @@ class CorporateBookingService
         $financial = [];
         if (($filters['can_view_payments'] ?? false) === true) {
             $financial = ['financial_metrics_visible' => true, ...$this->financialProjection->summarizeBookings(
-                (clone $query)->get(['bookings.id', 'bookings.total_actual']),
+                (clone $query)->get(['bookings.id', 'bookings.total_actual', 'bookings.currency']),
                 $matchingBookingItemIds,
             )];
         } else {
@@ -1095,11 +1108,12 @@ class CorporateBookingService
             'booking_count' => $totalCount,
             'trip_count' => $tripCount,
             'total_count' => $totalCount,
-            'total_cost' => $estimatedValue,
-            'estimated_value' => $estimatedValue,
-            'finalized_value' => $finalizedValue,
+            'total_cost' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
+            'estimated_value' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
+            'finalized_value' => $singleCurrencyTotal['finalized_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
             'finalized_booking_count' => $finalizedBookingCount,
             'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
+            'currency_totals' => $currencyTotals,
             'by_status' => $byStatus,
             'by_department' => $byDepartment,
             'bookings_by_status' => $byStatus,

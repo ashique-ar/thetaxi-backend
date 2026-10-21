@@ -11,7 +11,7 @@ class FinancialAuditEvent extends Model
     public $timestamps = true;
 
     protected $fillable = ['subject_type','subject_id','booking_id','event_type','from_status','to_status','amount','metadata','performed_by','occurred_at'];
-    protected $casts = ['amount'=>'decimal:2','metadata'=>'array','occurred_at'=>'datetime'];
+    protected $casts = ['amount'=>'decimal:4','metadata'=>'array','occurred_at'=>'datetime'];
 
     protected static function booted(): void
     {

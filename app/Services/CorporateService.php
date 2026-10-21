@@ -456,12 +456,16 @@ class CorporateService
                 'department_id', 'division_id', 'employee_code',
             ]));
             $userUpdates = array_intersect_key($data, array_flip([
-                'first_name', 'last_name', 'phone',
+                'email', 'first_name', 'last_name', 'phone',
             ]));
+            if (isset($data['password'])) {
+                $userUpdates['password'] = Hash::make($data['password']);
+            }
+            $auditedUserUpdates = array_intersect_key($userUpdates, array_flip(['email', 'first_name', 'last_name', 'phone']));
 
             $before = [
                 'employee' => $employee->only(array_keys($employeeUpdates)),
-                'user' => $employee->user?->only(array_keys($userUpdates)) ?? [],
+                'user' => $employee->user?->only(array_keys($auditedUserUpdates)) ?? [],
             ];
 
             if (!empty($employeeUpdates)) {
@@ -486,7 +490,7 @@ class CorporateService
                 'before' => $before,
                 'after'  => [
                     'employee' => $employee->only(array_keys($employeeUpdates)),
-                    'user' => $employee->user?->only(array_keys($userUpdates)) ?? [],
+                    'user' => $employee->user?->only(array_keys($auditedUserUpdates)) ?? [],
                     'role' => $data['role'] ?? $employee->role,
                 ],
             ]);

@@ -10,6 +10,7 @@ use App\Services\CorporateService;
 use App\Services\CorporateAccessLinkService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class AdminCorporateEmployeeController extends Controller
 {
@@ -97,7 +98,10 @@ class AdminCorporateEmployeeController extends Controller
 
     public function update(Request $request, Corporate $corporate, string $id): JsonResponse
     {
+        $employee = CorporateEmployee::withInactive()->where('corporate_id', $corporate->id)->findOrFail($id);
         $request->validate([
+            'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($employee->user_id)],
+            'password' => ['sometimes', 'required', 'string', 'min:8', 'confirmed'],
             'department_id'  => ['sometimes', 'uuid', 'exists:corporate_departments,id'],
             'division_id'    => ['nullable', 'uuid', 'exists:corporate_divisions,id'],
             'employee_code'  => ['nullable', 'string', 'max:50'],
@@ -120,12 +124,8 @@ class AdminCorporateEmployeeController extends Controller
             'locations.*.is_active' => ['nullable', 'boolean'],
         ]);
 
-        $employee = CorporateEmployee::withInactive()
-            ->where('corporate_id', $corporate->id)
-            ->findOrFail($id);
-
         $employee = $this->corporateService->updateEmployee($employee, $request->only([
-            'department_id', 'division_id', 'employee_code', 'first_name', 'last_name', 'phone', 'role', 'locations',
+            'email', 'password', 'department_id', 'division_id', 'employee_code', 'first_name', 'last_name', 'phone', 'role', 'locations',
         ]));
 
         return response()->json([
