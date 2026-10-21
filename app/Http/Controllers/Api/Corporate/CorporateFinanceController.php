@@ -22,6 +22,11 @@ class CorporateFinanceController extends Controller
         return response()->json(['status' => 'success', 'data' => $this->projection->accountSummary($request->corporate_id)]);
     }
 
+    public function billingPeriods(Request $request): JsonResponse
+    {
+        return response()->json(['status' => 'success', 'data' => $this->projection->billingPeriods($request->corporate_id)]);
+    }
+
     public function show(Request $request, string $settlement): JsonResponse
     {
         return response()->json(['status' => 'success', 'data' => $this->projection->settlementDetail($request->corporate_id, $settlement)]);

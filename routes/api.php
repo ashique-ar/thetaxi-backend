@@ -2948,6 +2948,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         // Corporate finance projection (company-scoped and finance-permission protected)
         Route::get('finance/account', [CorporateFinanceController::class, 'account']);
+        Route::get('finance/billing-periods', [CorporateFinanceController::class, 'billingPeriods']);
         Route::get('finance/settlements/{settlement}', [CorporateFinanceController::class, 'show'])->whereUuid('settlement');
         Route::get('finance/settlements/{settlement}/invoice', [CorporateFinanceController::class, 'invoice'])->whereUuid('settlement');
         Route::get('finance/settlements/{settlement}/statement', [CorporateFinanceController::class, 'statement'])->whereUuid('settlement');

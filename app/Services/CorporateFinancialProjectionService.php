@@ -265,6 +265,37 @@ class CorporateFinancialProjectionService
         ];
     }
 
+    public function billingPeriods(string $corporateId): array
+    {
+        return FinancialAccountSettlement::query()
+            ->where('owner_type', 'corporate')
+            ->where('owner_id', $corporateId)
+            ->whereNotIn('status', ['void', 'draft'])
+            ->with('items.booking:id,currency')
+            ->orderByDesc('period_end')
+            ->orderByDesc('created_at')
+            ->get(['id', 'settlement_number', 'billing_terms_snapshot', 'period_start', 'period_end', 'due_date', 'status', 'invoice_number', 'charges_total', 'payments_total', 'refunds_total', 'adjustments_total', 'outstanding_total'])
+            ->map(fn (FinancialAccountSettlement $settlement) => [
+                'id' => $settlement->id,
+                'settlement_number' => $settlement->settlement_number,
+                'period_start' => $settlement->period_start?->toDateString(),
+                'period_end' => $settlement->period_end?->toDateString(),
+                'due_date' => $settlement->due_date?->toDateString(),
+                'status' => $settlement->status,
+                'invoice_number' => $settlement->invoice_number,
+                'currency' => strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+                    ?: $settlement->items->first()?->booking?->currency
+                    ?: 'UNKNOWN')),
+                'charges_total' => (float) $settlement->charges_total,
+                'payments_total' => (float) $settlement->payments_total,
+                'refunds_total' => (float) $settlement->refunds_total,
+                'adjustments_total' => (float) $settlement->adjustments_total,
+                'outstanding_total' => (float) $settlement->outstanding_total,
+            ])
+            ->values()
+            ->all();
+    }
+
     public function settlementDetail(string $corporateId, string $settlementId): array
     {
         $settlement = FinancialAccountSettlement::query()

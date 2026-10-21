@@ -144,6 +144,31 @@ it('keeps corporate account balances and activity separate by source currency', 
         ->and($activityBalances['USD'])->toBe(200.0);
 });
 
+it('returns only issued billing periods with currency-labelled totals', function () {
+    $corporateId = '10000000-0000-4000-8000-000000000001';
+    foreach ([
+        ['CB-OLD', '2026-06-01', '2026-06-30', 'open', 'EUR', 19.75],
+        ['CB-NEW', '2026-07-01', '2026-07-31', 'paid', 'KWD', 12.345],
+        ['CB-DRAFT', '2026-08-01', '2026-08-31', 'draft', 'LKR', 40],
+        ['CB-VOID', '2026-09-01', '2026-09-30', 'void', 'LKR', 50],
+    ] as [$number, $from, $to, $status, $currency, $amount]) {
+        FinancialAccountSettlement::create([
+            'settlement_number' => $number, 'owner_type' => 'corporate', 'owner_id' => $corporateId,
+            'billing_cycle' => 'monthly', 'period_start' => $from, 'period_end' => $to,
+            'status' => $status, 'charges_total' => $amount, 'outstanding_total' => $amount,
+            'billing_terms_snapshot' => ['currency' => $currency],
+        ]);
+    }
+
+    $periods = (new CorporateFinancialProjectionService())->billingPeriods($corporateId);
+
+    expect($periods)->toHaveCount(2)
+        ->and($periods[0]['settlement_number'])->toBe('CB-NEW')
+        ->and($periods[0]['currency'])->toBe('KWD')
+        ->and($periods[0]['charges_total'])->toBe(12.345)
+        ->and($periods[1]['currency'])->toBe('EUR');
+});
+
 it('preserves three-decimal currency values from billing preview through the generated statement', function () {
     $corporateId = '10000000-0000-4000-8000-000000000001';
     DB::table('corporates')->insert(['id' => $corporateId, 'name' => 'Acme', 'is_active' => true]);
