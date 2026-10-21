@@ -51,8 +51,12 @@ class CorporateMonthlyBillingController extends Controller
 
     public function generate(Request $request, Corporate $corporate): JsonResponse
     {
-        $data = $this->period($request);
-        $settlement = $this->billing->generate($corporate->id, $data['period_start'], $data['period_end'], $request->user()?->id);
+        $data = $request->validate([
+            'period_start' => ['required', 'date_format:Y-m-d'],
+            'period_end' => ['required', 'date_format:Y-m-d', 'after_or_equal:period_start'],
+            'generation_key' => ['required', 'string', 'regex:/^[a-f0-9]{64}$/i'],
+        ]);
+        $settlement = $this->billing->generate($corporate->id, $data['period_start'], $data['period_end'], $request->user()?->id, $data['generation_key']);
         return response()->json(['status' => 'success', 'message' => 'Monthly corporate settlement and statement generated.', 'data' => $settlement], 201);
     }
 

@@ -15,6 +15,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 
 class CorporateMonthlyBillingService
@@ -88,6 +89,7 @@ class CorporateMonthlyBillingService
             'booking_id' => $item->booking_id,
             'booking_item_id' => $item->id,
             'booking_number' => $item->booking?->booking_number,
+            'currency' => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')),
             'reason' => $item->booking?->payment_collection_method !== 'monthly_invoice'
                 ? 'not_monthly_corporate_credit'
                 : ($alreadyBilledIds->contains((string) $item->id)
@@ -97,14 +99,32 @@ class CorporateMonthlyBillingService
         ])->values();
 
         $currency = strtoupper((string) $terms->currency);
-        $groups = $eligible->groupBy('booking_id')->map(function ($items) use ($currency) {
+        $receiptsByBooking = BookingPaymentReceipt::query()
+            ->whereIn('booking_id', $eligible->pluck('booking_id')->unique())
+            ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+            ->get(['id', 'booking_id', 'amount', 'source_amount', 'source_currency', 'refunded_amount', 'allocated_amount'])
+            ->groupBy('booking_id');
+        $groups = $eligible->groupBy('booking_id')->map(function ($items) use ($currency, $receiptsByBooking) {
             $booking = $items->first()->booking;
+            $bookingCurrency = strtoupper((string) $booking->currency);
+            $receipts = $receiptsByBooking->get((string) $booking->id, collect())->filter(fn($receipt) =>
+                strtoupper((string) ($receipt->source_currency ?: $bookingCurrency)) === $currency
+            );
+            $chargeAmount = app(CurrencyService::class)->roundAmount((float) $items->sum('total_price'), $currency);
+            $available = (float) $receipts->sum(fn($receipt) => max(0,
+                (float) ($receipt->source_amount ?? $receipt->amount)
+                    - (float) $receipt->refunded_amount
+                    - (float) $receipt->allocated_amount
+            ));
+
             return [
                 'booking_id' => $booking->id,
                 'booking_number' => $booking->booking_number,
                 'currency' => strtoupper((string) ($items->first()->currency ?: $booking->currency)),
-                'booking_currency' => strtoupper((string) $booking->currency),
-                'charge_amount' => app(CurrencyService::class)->roundAmount((float) $items->sum('total_price'), $currency),
+                'booking_currency' => $bookingCurrency,
+                'charge_amount' => $chargeAmount,
+                'paid_before_amount' => app(CurrencyService::class)->roundAmount(min($chargeAmount, $available), $currency),
+                'payment_snapshot_hash' => $this->paymentSnapshotHash($receipts, $currency),
                 'items' => $items->map(fn($item) => [
                     'booking_item_id' => $item->id,
                     'service_type' => $item->serviceType?->name,
@@ -118,6 +138,7 @@ class CorporateMonthlyBillingService
                 ])->values()->all(),
             ];
         })->values();
+        $paidBeforeTotal = app(CurrencyService::class)->roundAmount((float) $groups->sum('paid_before_amount'), $currency);
 
         $openingBalance = (float) FinancialAccountSettlement::query()
             ->where('owner_type', 'corporate')->where('owner_id', $corporateId)->whereNotIn('status', ['void', 'draft'])
@@ -131,22 +152,59 @@ class CorporateMonthlyBillingService
             'corporate_id' => $corporateId,
             'period_start' => $start->toDateString(),
             'period_end' => $end->toDateString(),
-            'generation_key' => $this->generationKey($corporateId, $start, $end, $eligible->pluck('id')->map(fn($id) => (string) $id)->sort()->values()->all()),
+            'generation_key' => $this->generationKey(
+                $corporateId,
+                $start,
+                $end,
+                $eligible->sortBy(fn($item) => (string) $item->id)->map(fn($item) => [
+                    'id' => (string) $item->id,
+                    'currency' => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')),
+                    'amount' => (string) $item->total_price,
+                    'final_priced_at' => $item->final_priced_at?->toIso8601String(),
+                    'pricing_snapshot_hash' => hash('sha256', json_encode($item->pricing_breakdown, JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR)),
+                ])->values()->all(),
+                $groups->map(fn(array $group) => [
+                    'booking_id' => $group['booking_id'],
+                    'payment_snapshot_hash' => $group['payment_snapshot_hash'],
+                    'paid_before_amount' => $group['paid_before_amount'],
+                ])->all(),
+                $this->termsSnapshot($terms),
+                app(CurrencyService::class)->roundAmount($openingBalance, $currency),
+            ),
             'terms' => $this->termsSnapshot($terms),
             'opening_balance' => app(CurrencyService::class)->roundAmount($openingBalance, $currency),
             'booking_count' => $groups->count(),
             'trip_count' => $eligible->count(),
             'charges_total' => app(CurrencyService::class)->roundAmount((float) $groups->sum('charge_amount'), $currency),
-            'projected_balance' => app(CurrencyService::class)->roundAmount($openingBalance + (float) $groups->sum('charge_amount'), $currency),
-            'credit_limit_exceeded' => $terms->credit_limit !== null && $openingBalance + (float) $groups->sum('charge_amount') > (float) $terms->credit_limit,
+            'paid_before_total' => $paidBeforeTotal,
+            'projected_balance' => app(CurrencyService::class)->roundAmount($openingBalance + (float) $groups->sum('charge_amount') - $paidBeforeTotal, $currency),
+            'credit_limit_exceeded' => $terms->credit_limit !== null && $openingBalance + (float) $groups->sum('charge_amount') - $paidBeforeTotal > (float) $terms->credit_limit,
             'included' => $groups,
             'excluded' => $excluded,
         ];
     }
 
-    public function generate(string $corporateId, string $periodStart, string $periodEnd, ?string $userId): FinancialAccountSettlement
+    public function generate(string $corporateId, string $periodStart, string $periodEnd, ?string $userId, ?string $expectedGenerationKey = null): FinancialAccountSettlement
     {
+        if ($expectedGenerationKey) {
+            $existing = FinancialAccountSettlement::query()
+                ->where('owner_type', 'corporate')
+                ->where('owner_id', $corporateId)
+                ->where('generation_key', $expectedGenerationKey)
+                ->whereDate('period_start', $periodStart)
+                ->whereDate('period_end', $periodEnd)
+                ->first();
+            if ($existing) {
+                return $existing->load(['items.booking', 'document']);
+            }
+        }
+
         $preview = $this->preview($corporateId, $periodStart, $periodEnd);
+        if ($expectedGenerationKey && ! hash_equals($preview['generation_key'], $expectedGenerationKey)) {
+            throw ValidationException::withMessages([
+                'generation_key' => ['Billing data changed after preview. Run the preview again before generating.'],
+            ]);
+        }
         $existing = FinancialAccountSettlement::where('generation_key', $preview['generation_key'])->first();
         if ($existing) {
             return $existing->load(['items.booking', 'document']);
@@ -183,11 +241,12 @@ class CorporateMonthlyBillingService
             ]);
 
             foreach ($preview['included'] as $group) {
-                $receipts = BookingPaymentReceipt::query()->where('booking_id', $group['booking_id'])
-                    ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
-                    ->where(fn($query) => $query->where('source_currency', $group['currency'])
-                        ->when($group['currency'] === $group['booking_currency'], fn($query) => $query->orWhereNull('source_currency')))
-                    ->lockForUpdate()->orderBy('received_at')->orderBy('created_at')->get();
+                $receipts = $this->paymentReceiptsForGroup($group, true);
+                if (! hash_equals($group['payment_snapshot_hash'], $this->paymentSnapshotHash($receipts, $group['currency']))) {
+                    throw ValidationException::withMessages([
+                        'generation_key' => ['Payment records changed after preview. Run the preview again before generating.'],
+                    ]);
+                }
                 $available = (float) $receipts->sum(fn($receipt) => max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount));
                 $paidBefore = min((float) $group['charge_amount'], $available);
                 $item = $settlement->items()->create([
@@ -278,9 +337,45 @@ class CorporateMonthlyBillingService
             ->orderByDesc('effective_from')->firstOrFail();
     }
 
-    private function generationKey(string $corporateId, Carbon $start, Carbon $end, array $bookingItemIds): string
+    private function generationKey(string $corporateId, Carbon $start, Carbon $end, array $itemSnapshots, array $paymentSnapshots, array $termsSnapshot, float $openingBalance): string
     {
-        return hash('sha256', implode('|', [$corporateId, $start->toDateString(), $end->toDateString(), implode(',', $bookingItemIds), 'monthly-v2']));
+        return hash('sha256', json_encode([
+            'corporate_id' => $corporateId,
+            'period_start' => $start->toDateString(),
+            'period_end' => $end->toDateString(),
+            'items' => $itemSnapshots,
+            'payments' => $paymentSnapshots,
+            'terms' => $termsSnapshot,
+            'opening_balance' => $openingBalance,
+            'version' => 'monthly-v3',
+        ], JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR));
+    }
+
+    private function paymentReceiptsForGroup(array $group, bool $lock = false): Collection
+    {
+        $query = BookingPaymentReceipt::query()
+            ->where('booking_id', $group['booking_id'])
+            ->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+            ->where(fn($query) => $query->where('source_currency', $group['currency'])
+                ->when($group['currency'] === $group['booking_currency'], fn($query) => $query->orWhereNull('source_currency')))
+            ->orderBy('received_at')
+            ->orderBy('created_at');
+
+        return ($lock ? $query->lockForUpdate() : $query)->get();
+    }
+
+    private function paymentSnapshotHash(Collection $receipts, string $currency): string
+    {
+        $snapshot = $receipts->map(fn($receipt) => [
+            'id' => (string) $receipt->id,
+            'amount' => (string) $receipt->amount,
+            'source_amount' => $receipt->source_amount === null ? null : (string) $receipt->source_amount,
+            'source_currency' => strtoupper((string) ($receipt->source_currency ?: $currency)),
+            'refunded_amount' => (string) $receipt->refunded_amount,
+            'allocated_amount' => (string) $receipt->allocated_amount,
+        ])->sortBy('id')->values()->all();
+
+        return hash('sha256', json_encode($snapshot, JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR));
     }
 
     private function termsSnapshot(CorporateBillingTerm $terms): array

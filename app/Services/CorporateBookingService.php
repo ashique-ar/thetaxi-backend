@@ -892,9 +892,11 @@ class CorporateBookingService
 
         $canViewBookingPayments = $canViewPayments || $this->isCashBooking($booking);
         if ($canViewBookingPayments) {
+            $amount = $this->bookingItemAmount($item);
             $payload += [
-                'total_cost' => (float) ($item->total_price ?? 0),
-                'currency' => $item->currency ?? $booking?->currency,
+                'total_cost' => $amount['amount'],
+                'currency' => $amount['currency'] === 'UNKNOWN' ? null : $amount['currency'],
+                'amount_basis' => $amount['basis'],
                 'payment_status' => $booking?->payment_status,
                 'payment_method' => $booking?->payment_method,
                 'payment_responsibility' => $booking?->payment_responsibility,
@@ -1161,7 +1163,7 @@ class CorporateBookingService
                 $this->csvEscape($row['status'] ?? ''),
             ];
             if ($canViewPayments) {
-                $amount = $this->exportBookingItemAmount($item);
+                $amount = $this->bookingItemAmount($item);
                 $cells[] = $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
                 $cells[] = $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
                 $cells[] = $this->csvEscape($amount['currency']);
@@ -1176,7 +1178,7 @@ class CorporateBookingService
         return $filename;
     }
 
-    private function exportBookingItemAmount(BookingItem $item): array
+    private function bookingItemAmount(BookingItem $item): array
     {
         $currency = strtoupper(trim((string) ($item->currency ?: $item->booking?->currency ?: '')));
         $finalized = $item->final_priced_at !== null;

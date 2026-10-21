@@ -339,7 +339,7 @@ it('rejects department and division filters owned by another company', function 
 
 it('exports corporate trip amounts with their source currency and pricing basis', function () {
     $service = app(CorporateBookingService::class);
-    $method = new ReflectionMethod($service, 'exportBookingItemAmount');
+    $method = new ReflectionMethod($service, 'bookingItemAmount');
 
     $finalized = new BookingItem([
         'currency' => 'KWD',
@@ -445,7 +445,8 @@ it('omits payment and contractual pricing fields from non-pricing corporate proj
         'status' => 'confirmed',
         'total_price' => 5000,
         'currency' => 'LKR',
-        'pricing_breakdown' => json_encode(['pricing_scope' => 'corporate']),
+        'final_priced_at' => '2026-10-20 12:00:00',
+        'pricing_breakdown' => json_encode(['pricing_scope' => 'corporate', 'final_total' => 5200]),
     ]);
     foreach (['booking', 'serviceType', 'vehicleGroup', 'vehicle', 'driver'] as $relation) {
         $item->setRelation($relation, null);
@@ -464,10 +465,13 @@ it('omits payment and contractual pricing fields from non-pricing corporate proj
         'payment_collection_method',
         'payment_collection_status',
         'pricing_scope',
+        'amount_basis',
     ];
 
     expect($withoutPricing)->not->toHaveKeys($pricingFields)
         ->and($withPricing)->toHaveKeys($pricingFields)
+        ->and($withPricing['total_cost'])->toBe(5200.0)
+        ->and($withPricing['amount_basis'])->toBe('finalized')
         ->and($withoutPricing)->not->toHaveKeys([
             'route_points',
             'tracking_points',

@@ -9465,6 +9465,13 @@ class BookingFlowService
                 break;
 
             case 'from_date':
+                if ($sortDirection === 'asc') {
+                    $now = Carbon::now();
+                    $query->orderByRaw(
+                        'CASE WHEN booking_items.from_date > ? OR (booking_items.from_date = ? AND booking_items.from_time >= ?) THEN 0 ELSE 1 END',
+                        [$now->toDateString(), $now->toDateString(), $now->format('H:i:s')]
+                    );
+                }
                 $query->orderBy('booking_items.from_date', $sortDirection)
                     ->orderBy('booking_items.from_time', $sortDirection);
                 break;
