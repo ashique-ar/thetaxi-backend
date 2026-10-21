@@ -22,7 +22,6 @@ beforeEach(function () {
     Schema::dropIfExists('corporate_employees');
     Schema::dropIfExists('corporate_employee_locations');
     Schema::dropIfExists('service_packages');
-
     Schema::create('bookings', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('corporate_account_id')->nullable();
@@ -336,6 +335,28 @@ it('rejects department and division filters owned by another company', function 
         'department_id' => 'department-a',
         'division_id' => 'division-a',
     ]))->not->toThrow(ModelNotFoundException::class);
+});
+
+it('exports corporate trip amounts with their source currency and pricing basis', function () {
+    $service = app(CorporateBookingService::class);
+    $method = new ReflectionMethod($service, 'exportBookingItemAmount');
+
+    $finalized = new BookingItem([
+        'currency' => 'KWD',
+        'total_price' => 12.345,
+        'final_priced_at' => '2026-10-20 12:00:00',
+        'pricing_breakdown' => ['final_total' => 13.4567],
+    ]);
+    $estimated = new BookingItem(['currency' => 'USD', 'total_price' => 10.129]);
+    $unknown = new BookingItem(['total_price' => 0.98765]);
+
+    expect($method->invoke($service, $finalized))->toBe([
+        'currency' => 'KWD', 'basis' => 'finalized', 'amount' => 13.457,
+    ])->and($method->invoke($service, $estimated))->toBe([
+        'currency' => 'USD', 'basis' => 'estimated', 'amount' => 10.13,
+    ])->and($method->invoke($service, $unknown))->toBe([
+        'currency' => 'UNKNOWN', 'basis' => 'estimated', 'amount' => 0.9877,
+    ]);
 });
 
 it('validates report departments and divisions against the authenticated corporate', function () {

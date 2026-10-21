@@ -90,7 +90,7 @@ class BookingPaymentLedgerService
         $ownerName = $ownerType === 'corporate'
             ? (Corporate::whereKey($ownerId)->value('name') ?: 'Corporate account')
             : (($customer=Customer::with('user')->find($ownerId)) ? (trim(($customer->user?->first_name??'').' '.($customer->user?->last_name??'')) ?: ($customer->code ?: 'Customer account')) : 'Customer account');
-        return ['owner_type'=>$ownerType,'owner_id'=>$ownerId,'owner_name'=>$ownerName,'total_charged'=>0,'total_received'=>0,'total_due'=>0,'overdue_amount'=>0,'bookings_with_due'=>0,'settlements'=>[]];
+        return ['owner_type'=>$ownerType,'owner_id'=>$ownerId,'owner_name'=>$ownerName,'currency'=>null,'total_charged'=>0,'total_received'=>0,'total_due'=>0,'overdue_amount'=>0,'bookings_with_due'=>0,'currency_totals'=>[],'settlements'=>[]];
     }
 
     public function accountSummary(Booking $booking): array
@@ -119,22 +119,42 @@ class BookingPaymentLedgerService
         $bookingSummaries = $query->get()->map(fn (Booking $accountBooking) => [
             'booking_id' => $accountBooking->id,
             'booking_number' => $accountBooking->booking_number,
+            'currency' => strtoupper((string) ($accountBooking->currency ?: 'LKR')),
             ...$this->summary($accountBooking),
         ]);
+
+        $currencyTotals = $bookingSummaries->groupBy('currency')->map(function ($rows, $currency) {
+            $round = fn (float $amount): float => app(CurrencyService::class)->roundAmount($amount, $currency);
+            $charged = $rows->sum(fn (array $summary) => $summary['contract_basis'] === 'open_ended'
+                ? (float) $summary['generated_horizon_value']
+                : (float) $summary['total_amount']);
+
+            return [
+                'currency' => $currency,
+                'total_charged' => $round((float) $charged),
+                'total_received' => $round((float) $rows->sum('paid_amount')),
+                'total_due' => $round((float) $rows->sum('due_amount')),
+                'overdue_amount' => $round((float) $rows->filter(fn (array $summary) =>
+                    $summary['due_amount'] > 0
+                    && ! empty($summary['settlement_due_date'])
+                    && $summary['settlement_due_date'] < now()->toDateString()
+                )->sum('due_amount')),
+                'bookings_with_due' => $rows->where('due_amount', '>', 0)->count(),
+            ];
+        })->values();
+        $singleCurrencyTotals = $currencyTotals->count() === 1 ? $currencyTotals->first() : null;
 
         return [
             'owner_type' => $ownerType,
             'owner_id' => $ownerId,
             'owner_name' => $ownerName,
-            'total_charged' => round((float) $bookingSummaries->sum(fn (array $summary) =>
-                $summary['contract_basis'] === 'open_ended'
-                    ? (float) $summary['generated_horizon_value']
-                    : (float) $summary['total_amount']
-            ), 2),
-            'total_received' => round((float) $bookingSummaries->sum('paid_amount'), 2),
-            'total_due' => round((float) $bookingSummaries->sum('due_amount'), 2),
+            'currency' => $singleCurrencyTotals['currency'] ?? null,
+            'total_charged' => $singleCurrencyTotals['total_charged'] ?? null,
+            'total_received' => $singleCurrencyTotals['total_received'] ?? null,
+            'total_due' => $singleCurrencyTotals['total_due'] ?? null,
             'bookings_with_due' => $bookingSummaries->where('due_amount', '>', 0)->count(),
-            'overdue_amount' => round((float)$bookingSummaries->filter(fn($row)=>$row['due_amount']>0 && !empty($row['settlement_due_date']) && $row['settlement_due_date'] < now()->toDateString())->sum('due_amount'),2),
+            'overdue_amount' => $singleCurrencyTotals['overdue_amount'] ?? null,
+            'currency_totals' => $currencyTotals->all(),
             'settlements' => \App\Models\Finance\FinancialAccountSettlement::where('owner_type',$ownerType)->where('owner_id',$ownerId)->latest('period_end')->limit(10)->get(['id','settlement_number','period_start','period_end','due_date','status','invoice_number','charges_total','payments_total','outstanding_total','settled_at']),
         ];
     }

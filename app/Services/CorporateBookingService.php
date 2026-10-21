@@ -1142,7 +1142,7 @@ class CorporateBookingService
         $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
         $csv = 'booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status';
         if ($canViewPayments) {
-            $csv .= ',payment_method,payment_collection_status,total_cost';
+            $csv .= ',payment_method,payment_collection_status,currency,amount_basis,total_cost';
         }
         $csv .= "\n";
 
@@ -1161,9 +1161,12 @@ class CorporateBookingService
                 $this->csvEscape($row['status'] ?? ''),
             ];
             if ($canViewPayments) {
+                $amount = $this->exportBookingItemAmount($item);
                 $cells[] = $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
                 $cells[] = $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
-                $cells[] = $this->csvEscape($row['total_cost'] ?? '0');
+                $cells[] = $this->csvEscape($amount['currency']);
+                $cells[] = $this->csvEscape($amount['basis']);
+                $cells[] = $this->csvEscape($amount['amount']);
             }
             $csv .= implode(',', $cells) . "\n";
         }
@@ -1171,6 +1174,26 @@ class CorporateBookingService
         Storage::put($filename, $csv);
 
         return $filename;
+    }
+
+    private function exportBookingItemAmount(BookingItem $item): array
+    {
+        $currency = strtoupper(trim((string) ($item->currency ?: $item->booking?->currency ?: '')));
+        $finalized = $item->final_priced_at !== null;
+        $amount = $finalized
+            ? (float) (data_get($item->pricing_breakdown, 'final_total')
+                ?? data_get($item->pricing_breakdown, 'total_amount')
+                ?? $item->total_price
+                ?? 0)
+            : (float) ($item->total_price ?? 0);
+
+        return [
+            'currency' => $currency ?: 'UNKNOWN',
+            'basis' => $finalized ? 'finalized' : 'estimated',
+            'amount' => $currency
+                ? app(CurrencyService::class)->roundAmount($amount, $currency)
+                : round($amount, 4),
+        ];
     }
 
     /**
