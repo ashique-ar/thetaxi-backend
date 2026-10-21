@@ -3,6 +3,7 @@
 use App\Models\Corporate\Corporate;
 use App\Models\Booking\Booking;
 use App\Models\Finance\FinancialAccountSettlement;
+use App\Http\Controllers\Api\Corporate\CorporateMonthlyBillingController;
 use App\Services\CorporateFinancialProjectionService;
 use App\Services\CorporateMonthlyBillingService;
 use App\Services\FinancialAccountSettlementService;
@@ -18,14 +19,16 @@ use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Http\Request;
 use Illuminate\Validation\ValidationException;
 use Barryvdh\DomPDF\Facade\Pdf;
 
 beforeEach(function () {
     activity()->disableLogging();
-    foreach (['notifications','financial_audit_events','financial_allocation_reversals','corporate_remittance_allocations','corporate_remittances','financial_settlement_documents','financial_payment_allocations','financial_settlement_items','financial_account_settlements','invoices','booking_payment_receipts','booking_items','bookings','service_types','corporate_billing_terms','corporates','business_settings','users'] as $table) Schema::dropIfExists($table);
+    foreach (['notifications','financial_audit_events','financial_allocation_reversals','corporate_remittance_allocations','corporate_remittances','financial_settlement_documents','financial_payment_allocations','financial_settlement_items','financial_account_settlements','invoices','booking_payment_receipts','booking_items','bookings','service_types','corporate_billing_terms','corporates','business_settings','users','currencies'] as $table) Schema::dropIfExists($table);
     Schema::create('users', function(Blueprint $t){$t->uuid('id')->primary();$t->string('first_name')->nullable();$t->string('last_name')->nullable();$t->timestamps();$t->softDeletes();});
     Schema::create('business_settings', function(Blueprint $t){$t->uuid('id')->primary();$t->string('type');$t->text('value')->nullable();$t->timestamps();$t->softDeletes();});
+    Schema::create('currencies', function(Blueprint $t){$t->uuid('id')->primary();$t->string('code',3)->unique();$t->string('name');$t->string('symbol')->nullable();$t->string('exrate')->nullable();$t->timestamps();$t->softDeletes();});
     Schema::create('corporates', function(Blueprint $t){$t->uuid('id')->primary();$t->string('name');$t->string('billing_address')->nullable();$t->boolean('is_active')->default(true);$t->timestamps();$t->softDeletes();});
     Schema::create('corporate_billing_terms', function(Blueprint $t){$t->uuid('id')->primary();$t->uuid('corporate_id');$t->string('billing_cycle');$t->unsignedTinyInteger('cutoff_day');$t->unsignedTinyInteger('invoice_day');$t->unsignedSmallInteger('due_days');$t->decimal('credit_limit',20,4)->nullable();$t->string('currency',3);$t->string('billing_name')->nullable();$t->string('tax_identifier')->nullable();$t->text('billing_address')->nullable();$t->json('recipients')->nullable();$t->json('delivery_preferences')->nullable();$t->date('effective_from');$t->date('effective_to')->nullable();$t->boolean('is_active')->default(true);$t->uuid('created_user_id')->nullable();$t->uuid('updated_user_id')->nullable();$t->timestamps();$t->softDeletes();});
     Schema::create('service_types', function(Blueprint $t){$t->uuid('id')->primary();$t->string('name');$t->boolean('is_active')->default(true);$t->timestamps();$t->softDeletes();});
@@ -50,6 +53,24 @@ function monthlyBillingService(): CorporateMonthlyBillingService {
     $settlements->shouldReceive('recalculate')->andReturnUsing(function(FinancialAccountSettlement $settlement){$items=$settlement->items()->get();$out=(float)$items->sum('outstanding_amount');$paid=(float)$items->sum(fn($i)=>(float)$i->paid_before_amount+(float)$i->allocated_amount);$settlement->update(['charges_total'=>$items->sum('charge_amount'),'payments_total'=>$paid,'refunds_total'=>$items->sum('refund_amount'),'adjustments_total'=>$items->sum('adjustment_amount'),'outstanding_total'=>$out]);return $settlement->fresh();});
     return new CorporateMonthlyBillingService($settlements);
 }
+
+it('normalizes and validates billing currencies against configured currencies', function () {
+    $corporateId = '10000000-0000-4000-8000-000000000001';
+    DB::table('corporates')->insert(['id' => $corporateId, 'name' => 'Acme', 'is_active' => true]);
+    DB::table('currencies')->insert(['id' => '60000000-0000-4000-8000-000000000001', 'code' => 'USD', 'name' => 'US Dollar']);
+    $corporate = Corporate::findOrFail($corporateId);
+    $controller = new CorporateMonthlyBillingController(monthlyBillingService());
+    $data = [
+        'billing_cycle' => 'monthly', 'cutoff_day' => 31, 'invoice_day' => 1, 'due_days' => 30,
+        'currency' => ' usd ', 'effective_from' => '2026-08-01',
+    ];
+
+    $response = $controller->storeTerms(Request::create('/', 'POST', $data), $corporate);
+
+    expect($response->getData(true)['data']['currency'])->toBe('USD')
+        ->and(fn() => $controller->storeTerms(Request::create('/', 'POST', [...$data, 'currency' => 'ZZZ']), $corporate))
+        ->toThrow(ValidationException::class);
+});
 
 it('catches up due billing periods and issues generated drafts', function () {
     $corporateId='10000000-0000-4000-8000-000000000001';

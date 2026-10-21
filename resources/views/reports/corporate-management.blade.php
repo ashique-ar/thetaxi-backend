@@ -52,6 +52,15 @@
         <h2>Billing period totals</h2>
         <p>{{ $finance['period_start'] }} to {{ $finance['period_end'] }} | {{ $finance['invoice_number'] ?: $finance['settlement_number'] }} | {{ $finance['currency'] }}<br>Charges: {{ number_format($finance['charges_total'], $digits) }} | Payments: {{ number_format($finance['payments_total'], $digits) }} | Refunds: {{ number_format($finance['refunds_total'], $digits) }} | Adjustments: {{ number_format($finance['adjustments_total'], $digits) }} | Outstanding: {{ number_format($finance['outstanding_total'], $digits) }}</p>
     @endif
+    <h2>Monthly travel activity</h2>
+    <table>
+        <thead><tr><th>Month</th><th>Currency</th><th>Bookings</th><th>Trips</th>@if($payload['financial_metrics_visible'])<th>Estimated value</th><th>Finalized charges</th>@endif</tr></thead>
+        <tbody>
+            @foreach($payload['monthly_trends'] as $month)
+                <tr><td>{{ $month['month'] }}</td><td>{{ $month['currency'] ?: 'Currency unavailable' }}</td><td>{{ $month['bookings'] }}</td><td>{{ $month['trips'] }}</td>@if($payload['financial_metrics_visible'])@php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($month['currency'] ?: 'LKR'))<td>{{ number_format($month['estimated_value'], $digits) }}</td><td>{{ number_format($month['finalized_charges'], $digits) }}</td>@endif</tr>
+            @endforeach
+        </tbody>
+    </table>
     <table>
         <thead>
             <tr>

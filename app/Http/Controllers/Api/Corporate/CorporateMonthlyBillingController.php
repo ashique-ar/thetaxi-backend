@@ -9,6 +9,7 @@ use App\Models\Finance\FinancialAccountSettlement;
 use App\Services\CorporateMonthlyBillingService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 
 class CorporateMonthlyBillingController extends Controller
 {
@@ -23,10 +24,11 @@ class CorporateMonthlyBillingController extends Controller
 
     public function storeTerms(Request $request, Corporate $corporate): JsonResponse
     {
+        $request->merge(['currency' => strtoupper(trim((string) $request->input('currency')))]);
         $data = $request->validate([
             'billing_cycle' => ['required', 'in:monthly'], 'cutoff_day' => ['required', 'integer', 'between:1,31'],
             'invoice_day' => ['required', 'integer', 'between:1,31'], 'due_days' => ['required', 'integer', 'between:0,365'],
-            'credit_limit' => ['nullable', 'numeric', 'gte:0'], 'currency' => ['required', 'string', 'size:3'],
+            'credit_limit' => ['nullable', 'numeric', 'gte:0'], 'currency' => ['required', 'string', 'size:3', Rule::exists('currencies', 'code')->whereNull('deleted_at')],
             'billing_name' => ['nullable', 'string', 'max:255'], 'tax_identifier' => ['nullable', 'string', 'max:100'],
             'billing_address' => ['nullable', 'string', 'max:2000'], 'recipients' => ['nullable', 'array', 'max:20'],
             'recipients.*' => ['email:rfc', 'max:255'], 'delivery_preferences' => ['nullable', 'array'],

@@ -53,6 +53,20 @@ class CorporateManagementReportController extends Controller
                 }
                 fputcsv($output, []);
             }
+            fputcsv($output, ['Monthly travel activity']);
+            $monthlyHeaders = ['Month', 'Currency', 'Bookings', 'Trips'];
+            if ($payload['financial_metrics_visible']) {
+                array_push($monthlyHeaders, 'Estimated value', 'Finalized charges');
+            }
+            fputcsv($output, $monthlyHeaders);
+            foreach ($payload['monthly_trends'] as $month) {
+                $monthlyRow = [$month['month'], $month['currency'], $month['bookings'], $month['trips']];
+                if ($payload['financial_metrics_visible']) {
+                    array_push($monthlyRow, $month['estimated_value'], $month['finalized_charges']);
+                }
+                fputcsv($output, $monthlyRow);
+            }
+            fputcsv($output, []);
             $headers = ['Dimension', 'Label', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
                 array_push($headers, 'Currency', 'Estimated value', 'Finalized charges');

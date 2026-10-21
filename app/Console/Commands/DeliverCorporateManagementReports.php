@@ -41,13 +41,13 @@ class DeliverCorporateManagementReports extends Command
                 $payload = $analytics->report($schedule->corporate_id, $filters, $canViewFinance);
                 if ($schedule->format === 'csv') {
                     $stream = fopen('php://temp', 'w+b');
-                    $headers = ['Month', 'Bookings', 'Trips'];
+                    $headers = ['Month', 'Currency', 'Bookings', 'Trips'];
                     if ($canViewFinance) {
                         array_push($headers, 'Estimated value', 'Finalized charges');
                     }
                     fputcsv($stream, $headers);
                     foreach ($payload['monthly_trends'] as $row) {
-                        $cells = [$row['month'], $row['bookings'], $row['trips']];
+                        $cells = [$row['month'], $row['currency'], $row['bookings'], $row['trips']];
                         if ($canViewFinance) {
                             array_push($cells, $row['estimated_value'], $row['finalized_charges']);
                         }
@@ -55,7 +55,7 @@ class DeliverCorporateManagementReports extends Command
                     }
                     if (isset($payload['financial_period']['summary'])) {
                         fputcsv($stream, []);
-                        fputcsv($stream, ['Financial basis', 'Selected travel period']);
+                        fputcsv($stream, ['Financial basis', 'Selected billing period']);
                         foreach ($payload['financial_period']['summary'] as $key => $value) {
                             fputcsv($stream, [str_replace('_', ' ', $key), $value]);
                         }
