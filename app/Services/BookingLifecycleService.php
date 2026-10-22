@@ -2319,24 +2319,24 @@ class BookingLifecycleService
         // Operational charges must be available to the calculation graph so a
         // definition can explicitly include them. If it does not, they are
         // appended once after the configured formula has been evaluated.
-        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? []);
+        $currencyContext = $this->resolveFinalPricingCurrencyContext($bookingItem, $booking);
+        $manualCharges = $this->sumOperationalCharges($dispatch?->additional_charges ?? [], $currencyContext['booking_currency']);
         if ($trigger === 'booking_completion') {
             // A staff-approved completion adjustment is additional to charges
             // already captured at return. During processReturn both arrays
             // describe the same charges, so only the persisted dispatch copy is
             // counted there.
-            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? [], $currencyContext['booking_currency']);
         } elseif (!$dispatch) {
-            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? []);
+            $manualCharges += $this->sumOperationalCharges($activityData['charges'] ?? [], $currencyContext['booking_currency']);
         }
-        $manualCharges = round($manualCharges, 2);
-        $lateFee = round((float) ($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0), 2);
+        $manualCharges = $this->currencyService->roundAmount($manualCharges, $currencyContext['booking_currency']);
+        $lateFee = $this->currencyService->roundAmount($dispatch?->late_return_fee ?? $activityData['late_fee'] ?? 0, $currencyContext['booking_currency']);
         $recordedManualCharges = $manualCharges;
         $recordedLateFee = $lateFee;
-        $currencyContext = $this->resolveFinalPricingCurrencyContext($bookingItem, $booking);
         if ($currencyContext['exchange_rate'] !== 1.0) {
-            $manualCharges = round($recordedManualCharges / $currencyContext['exchange_rate'], 6);
-            $lateFee = round($recordedLateFee / $currencyContext['exchange_rate'], 6);
+            $manualCharges = $this->currencyService->roundAmount($recordedManualCharges / $currencyContext['exchange_rate'], $currencyContext['calculation_currency']);
+            $lateFee = $this->currencyService->roundAmount($recordedLateFee / $currencyContext['exchange_rate'], $currencyContext['calculation_currency']);
         }
         $approvedCustomizations = is_array($bookingItem->customizations)
             ? $bookingItem->customizations
@@ -2486,7 +2486,7 @@ class BookingLifecycleService
                 $result,
                 0.0,
                 0.0,
-                round($calculatedBase * $currencyContext['exchange_rate'], 2),
+                $this->currencyService->roundAmount($calculatedBase * $currencyContext['exchange_rate'], $currencyContext['booking_currency']),
                 $currencyContext
             ),
         ];
@@ -2607,13 +2607,13 @@ class BookingLifecycleService
         $lateFeeInFormula = $this->formulaReferencesAny($selectedFormula, ['late_return_fee']);
         $appendedManualCharges = $manualChargeInFormula ? 0.0 : $manualCharges;
         $appendedLateFee = $lateFeeInFormula ? 0.0 : $lateFee;
-        $finalCalculationCurrencyAmount = round(
+        $finalCalculationCurrencyAmount = $this->currencyService->roundAmount(
             $calculatedBase + $appendedManualCharges + $appendedLateFee,
-            2
+            $currencyContext['calculation_currency']
         );
-        $finalBase = round(
+        $finalBase = $this->currencyService->roundAmount(
             $finalCalculationCurrencyAmount * $currencyContext['exchange_rate'],
-            2
+            $currencyContext['booking_currency']
         );
         if ($bookingItem->price_override_amount !== null) {
             $audit['calculated_completion_price'] = $finalBase;
@@ -2622,9 +2622,9 @@ class BookingLifecycleService
         }
         $audit += [
             'calculated_base' => $calculatedBase,
-            'calculated_base_converted' => round(
+            'calculated_base_converted' => $this->currencyService->roundAmount(
                 $calculatedBase * $currencyContext['exchange_rate'],
-                2
+                $currencyContext['booking_currency']
             ),
             'manual_charges' => $recordedManualCharges,
             'late_return_fee' => $recordedLateFee,
@@ -2650,7 +2650,8 @@ class BookingLifecycleService
         $this->commitPriceAdjustmentUsage(
             $booking,
             $bookingItem,
-            data_get($result, 'adjustment_details.adjustments', [])
+            data_get($result, 'adjustment_details.adjustments', []),
+            $currencyContext['calculation_currency']
         );
 
         $bookingItem->update([
@@ -2778,7 +2779,8 @@ class BookingLifecycleService
     private function commitPriceAdjustmentUsage(
         Booking $booking,
         BookingItem $bookingItem,
-        array $adjustments
+        array $adjustments,
+        string $currency
     ): void {
         $adjustmentsById = collect($adjustments)
             ->filter(fn ($adjustment) => is_array($adjustment)
@@ -2808,9 +2810,9 @@ class BookingLifecycleService
                 'booking_id' => $booking->id,
                 'booking_item_id' => $bookingItem->id,
                 'price_adjustment_id' => $adjustmentId,
-                'adjustment_amount' => round((float) ($result['amount'] ?? 0), 2),
-                'original_amount' => round((float) ($result['original_amount'] ?? 0), 2),
-                'final_amount' => round((float) ($result['final_amount'] ?? 0), 2),
+                'adjustment_amount' => $this->currencyService->roundAmount($result['amount'] ?? 0, $currency),
+                'original_amount' => $this->currencyService->roundAmount($result['original_amount'] ?? 0, $currency),
+                'final_amount' => $this->currencyService->roundAmount($result['final_amount'] ?? 0, $currency),
                 'adjustment_breakdown' => $result,
                 'adjustment_reason' => $result['description'] ?? $result['name'] ?? 'Final pricing adjustment',
                 'applied_by_user_id' => Auth::id(),
@@ -2837,20 +2839,20 @@ class BookingLifecycleService
         }
     }
 
-    private function sumOperationalCharges(mixed $charges): float
+    private function sumOperationalCharges(mixed $charges, string $currency): float
     {
         if (is_numeric($charges)) {
-            return round((float) $charges, 2);
+            return $this->currencyService->roundAmount($charges, $currency);
         }
         if (!is_array($charges)) {
             return 0.0;
         }
 
-        return round((float) collect($charges)->sum(function ($charge) {
+        return $this->currencyService->roundAmount(collect($charges)->sum(function ($charge) {
             return is_numeric($charge)
                 ? (float) $charge
                 : (float) ($charge['amount'] ?? $charge['total'] ?? $charge['value'] ?? 0);
-        }), 2);
+        }), $currency);
     }
 
     private function measuredMileageDistance(?BookingDispatch $dispatch): ?float
@@ -3253,13 +3255,14 @@ class BookingLifecycleService
         array $currencyContext
     ): array {
         $exchangeRate = (float) ($currencyContext['exchange_rate'] ?? 1);
-        $lines = collect($result['breakdown'] ?? [])->map(function ($line) use ($exchangeRate) {
+        $bookingCurrency = (string) ($currencyContext['booking_currency'] ?? 'LKR');
+        $lines = collect($result['breakdown'] ?? [])->map(function ($line) use ($exchangeRate, $bookingCurrency) {
             $calculationAmount = (float) ($line['amount'] ?? 0);
             return [
                 'label' => $line['name'] ?? $line['description'] ?? $line['component'] ?? 'Charge',
                 'calculation' => $line['calculation'] ?? null,
                 'calculation_currency_amount' => $calculationAmount,
-                'amount' => round($calculationAmount * $exchangeRate, 2),
+                'amount' => $this->currencyService->roundAmount($calculationAmount * $exchangeRate, $bookingCurrency),
             ];
         })->values()->all();
 
@@ -3268,7 +3271,7 @@ class BookingLifecycleService
                 'label' => 'Operational charges',
                 'calculation' => 'Approved return/completion charges',
                 'calculation_currency_amount' => $manualCharges,
-                'amount' => round($manualCharges * $exchangeRate, 2),
+                'amount' => $this->currencyService->roundAmount($manualCharges * $exchangeRate, $bookingCurrency),
             ];
         }
         if ($lateFee > 0) {
@@ -3276,7 +3279,7 @@ class BookingLifecycleService
                 'label' => 'Late return fee',
                 'calculation' => 'Configured late-return rule',
                 'calculation_currency_amount' => $lateFee,
-                'amount' => round($lateFee * $exchangeRate, 2),
+                'amount' => $this->currencyService->roundAmount($lateFee * $exchangeRate, $bookingCurrency),
             ];
         }
 

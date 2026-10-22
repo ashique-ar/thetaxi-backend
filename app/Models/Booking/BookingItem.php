@@ -285,21 +285,67 @@ class BookingItem extends BaseModel
         return !is_null($this->approved_at);
     }
 
-    /**
-     * Calculate total item value including addons and customizations
-     */
+    /** Calculate the finalized item value after saved add-ons and discounts. */
     public function calculateTotalValue(): float
     {
-        $baseTotal = $this->total_price;
-        $addonsTotal = 0;
+        $subtotal = (float) $this->total_price + $this->calculateAddonsTotal();
+        $discount = data_get($this->pricing_breakdown, 'discount_summary.total_discount_amount');
 
-        if ($this->addons) {
-            foreach ($this->addons as $addon) {
-                $addonsTotal += ($addon['total_price'] ?? 0);
-            }
+        if ($discount === null) {
+            $discount = collect($this->discounts ?? [])->sum(function ($row) use ($subtotal) {
+                if (! is_array($row)) return 0;
+                if (isset($row['amount']) || isset($row['discount_amount'])) {
+                    return (float) ($row['amount'] ?? $row['discount_amount']);
+                }
+                $value = (float) ($row['value'] ?? 0);
+                return ($row['method'] ?? null) === 'percentage' ? $subtotal * $value / 100 : $value;
+            });
         }
 
-        return $baseTotal + $addonsTotal;
+        return max(0, $subtotal - (float) $discount);
+    }
+
+    /** Calculate the saved pre-completion estimate, including add-ons and discounts. */
+    public function calculateEstimatedTotalValue(): float
+    {
+        $pricing = is_array($this->pricing_breakdown) ? $this->pricing_breakdown : [];
+        $addonsTotal = $this->calculateAddonsTotal();
+        $baseTotal = (float) (data_get($pricing, 'base_pricing.total_amount') ?? $this->total_price ?? 0);
+        $subtotal = data_get($pricing, 'summary.total');
+
+        if ($subtotal === null) {
+            $subtotal = $baseTotal + (float) (data_get($pricing, 'addons_pricing.addons_total') ?? $addonsTotal);
+        }
+
+        $discount = data_get($pricing, 'discount_summary.total_discount_amount');
+        if ($discount === null) {
+            $discount = collect($this->discounts ?? [])->sum(function ($row) use ($subtotal) {
+                if (! is_array($row)) return 0;
+                if (isset($row['amount']) || isset($row['discount_amount'])) {
+                    return (float) ($row['amount'] ?? $row['discount_amount']);
+                }
+                $value = (float) ($row['value'] ?? 0);
+                return ($row['method'] ?? null) === 'percentage' ? $subtotal * $value / 100 : $value;
+            });
+        }
+
+        return max(0, (float) (data_get($pricing, 'final_breakdown.amount_after_discount')
+            ?? data_get($pricing, 'final_breakdown.final_amount')
+            ?? ($subtotal - (float) $discount)));
+    }
+
+    private function calculateAddonsTotal(): float
+    {
+        $savedTotal = data_get($this->pricing_breakdown, 'addons_pricing.addons_total')
+            ?? data_get($this->pricing_breakdown, 'addon_charges');
+
+        if (is_numeric($savedTotal)) {
+            return (float) $savedTotal;
+        }
+
+        return collect($this->addons ?? [])->sum(fn ($addon) => is_array($addon)
+            ? (float) ($addon['total_price'] ?? $addon['calculated_amount'] ?? 0)
+            : 0);
     }
 
     /**

@@ -71,6 +71,8 @@ return Application::configure(basePath: dirname(__DIR__))
         // Exclude payment callback routes from CSRF verification
         $middleware->preventRequestForgery(except: [
             '/checkout/webxpay/callback',
+            '/checkout/webxpay/corporate/callback',
+            '/checkout/webxpay/corporate/notify',
             '/checkout/*/callback*',
             '/payment/callback',
             '/webhook/*'

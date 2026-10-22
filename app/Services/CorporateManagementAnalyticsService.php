@@ -26,8 +26,8 @@ class CorporateManagementAnalyticsService
                 'finalized_trip_count' => $items->whereNotNull('final_priced_at')->count(),
                 'currency_totals' => $items->groupBy('currency')->map(fn (Collection $rows, string $currency) => [
                     'currency' => $currency,
-                    'estimated_value' => app(CurrencyService::class)->roundAmount((float) $rows->sum('estimated_amount'), $currency ?: 'LKR'),
-                    'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+                    'estimated_value' => $this->roundCurrencyAmount((float) $rows->sum('estimated_amount'), $currency),
+                    'finalized_charges' => $this->roundCurrencyAmount((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), $currency),
                 ])->values()->all(),
             ],
             'monthly_trends' => $this->monthly($items),
@@ -44,22 +44,27 @@ class CorporateManagementAnalyticsService
         ];
 
         if ($canViewFinance) {
-            $settlement = ($filters['billing_period_id'] ?? null)
+            $billingPeriodIds = array_values(array_unique(array_filter(array_map('strval', (array) ($filters['billing_period_ids'] ?? [])))));
+            if (!$billingPeriodIds && !empty($filters['billing_period_id'])) {
+                $billingPeriodIds[] = (string) $filters['billing_period_id'];
+            }
+            $settlements = $billingPeriodIds
                 ? FinancialAccountSettlement::query()
                     ->where('owner_type', 'corporate')
                     ->where('owner_id', $corporateId)
                     ->whereNotIn('status', ['draft', 'void'])
                     ->with('items.booking:id,currency')
-                    ->find($filters['billing_period_id'])
-                : null;
-            if ($settlement) {
-                $payload['financial_period'] = [
-                    'basis' => 'billing_period',
-                    'summary' => [
+                    ->whereIn('id', $billingPeriodIds)
+                    ->orderBy('period_start')
+                    ->get()
+                : collect();
+            $payload['financial_periods'] = $settlements->map(fn (FinancialAccountSettlement $settlement) => [
                         'period_start' => $settlement->period_start?->toDateString(),
                         'period_end' => $settlement->period_end?->toDateString(),
                         'settlement_number' => $settlement->settlement_number,
                         'invoice_number' => $settlement->invoice_number,
+                        'status' => $settlement->status,
+                        'due_date' => $settlement->due_date?->toDateString(),
                         'currency' => strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
                             ?? $settlement->items->first()?->booking?->currency
                             ?? '')),
@@ -68,8 +73,9 @@ class CorporateManagementAnalyticsService
                         'refunds_total' => (float) $settlement->refunds_total,
                         'adjustments_total' => (float) $settlement->adjustments_total,
                         'outstanding_total' => (float) $settlement->outstanding_total,
-                    ],
-                ];
+            ])->values()->all();
+            if (count($payload['financial_periods']) === 1) {
+                $payload['financial_period'] = ['basis' => 'billing_period', 'summary' => $payload['financial_periods'][0]];
             }
         } else {
             unset($payload['operational']['currency_totals']);
@@ -110,8 +116,20 @@ class CorporateManagementAnalyticsService
             })
             ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '>=', $date))
             ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '<=', $date))
-            ->with(['booking.corporateDepartment', 'booking.corporateDivision', 'booking.employee.user', 'serviceType', 'vehicleGroup'])
-            ->get()
+            ->with([
+                'booking:id,corporate_account_id,corporate_department_id,corporate_division_id,employee_id,status,approval_status,currency',
+                'booking.corporateDepartment:id,name',
+                'booking.corporateDivision:id,name',
+                'booking.employee:id,user_id',
+                'booking.employee.user:id,first_name,last_name',
+                'serviceType:id,name',
+                'vehicleGroup:id,name',
+            ])
+            ->get([
+                'id', 'booking_id', 'from_date', 'pickup_location', 'dropoff_location',
+                'service_type_id', 'vehicle_group_id', 'currency', 'total_price', 'addons',
+                'pricing_breakdown', 'discounts', 'final_priced_at', 'lifecycle_data', 'metadata', 'status',
+            ])
             ->map(function (BookingItem $item) {
                 $pricing = is_array($item->pricing_breakdown) ? $item->pricing_breakdown : [];
                 $contractual = data_get($pricing, 'contractual_distance.total_billable_distance')
@@ -134,8 +152,8 @@ class CorporateManagementAnalyticsService
                     'booking_status' => $item->booking?->status ?: ($item->status ?: 'unknown'),
                     'approval_result' => $item->booking?->approval_status ?: 'not_required',
                     'final_priced_at' => $item->final_priced_at,
-                    'estimated_amount' => (float) ($item->total_price ?? 0),
-                    'final_amount' => (float) (data_get($pricing, 'final_total') ?? data_get($pricing, 'total_amount') ?? $item->total_price ?? 0),
+                    'estimated_amount' => $item->calculateEstimatedTotalValue(),
+                    'final_amount' => $item->calculateTotalValue(),
                     'contractual_km' => (float) ($contractual ?? 0),
                     'operational_km' => (float) ($operational ?? 0),
                 ]);
@@ -152,8 +170,8 @@ class CorporateManagementAnalyticsService
                     'currency' => $currency,
                     'booking_count' => $currencyRows->pluck('booking_id')->unique()->count(),
                     'trip_count' => $currencyRows->count(),
-                    'estimated_value' => app(CurrencyService::class)->roundAmount((float) $currencyRows->sum('estimated_amount'), $currency ?: 'LKR'),
-                    'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+                    'estimated_value' => $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), (string) $currency),
+                    'finalized_charges' => $this->roundCurrencyAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), (string) $currency),
                 ];
             }
         }
@@ -169,8 +187,8 @@ class CorporateManagementAnalyticsService
                 'currency' => $currency,
                 'bookings' => $currencyRows->pluck('booking_id')->unique()->count(),
                 'trips' => $currencyRows->count(),
-                'estimated_value' => app(CurrencyService::class)->roundAmount((float) $currencyRows->sum('estimated_amount'), $currency ?: 'LKR'),
-                'finalized_charges' => app(CurrencyService::class)->roundAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency ?: 'LKR'),
+                'estimated_value' => $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), $currency),
+                'finalized_charges' => $this->roundCurrencyAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency),
             ]))->sortBy(fn (array $row) => $row['month'].'|'.$row['currency'])->values()->all();
     }
 
@@ -181,5 +199,12 @@ class CorporateManagementAnalyticsService
         }
 
         return filled($location) ? (string) $location : 'Unknown';
+    }
+
+    private function roundCurrencyAmount(float $amount, string $currency): float
+    {
+        return $currency !== ''
+            ? app(CurrencyService::class)->roundAmount($amount, $currency)
+            : round($amount, 4);
     }
 }

@@ -143,7 +143,7 @@ class PaymentController extends Controller
                 }
 
                 $reservedAmount = (float) $pending->sum('requested_amount');
-                $availableAmount = max(0, round((float) $summary['due_amount'] - $reservedAmount, 2));
+                $availableAmount = max(0, $currencyService->roundAmount((float) $summary['due_amount'] - $reservedAmount, $paymentCurrency));
                 $requestedAmount = $currencyService->roundAmount((float) $request->amount, $paymentCurrency);
                 abort_if($requestedAmount <= 0 || $requestedAmount > $availableAmount, 422,
                     'Payment amount cannot exceed the remaining canonical booking balance.');

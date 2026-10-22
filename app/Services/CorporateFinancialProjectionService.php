@@ -9,6 +9,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Finance\CorporateRemittance;
 use App\Models\Finance\FinancialAuditEvent;
+use App\Models\Finance\FinancialPaymentAllocation;
 use App\Models\Corporate\CorporateBillingTerm;
 use App\Models\Invoice;
 use Illuminate\Support\Collection;
@@ -24,12 +25,22 @@ class CorporateFinancialProjectionService
         if ($terms?->credit_limit === null) {
             return false;
         }
-        $currency = strtoupper((string) $terms->currency);
+        return $this->creditUsedInCurrency($corporateId, strtoupper((string) $terms->currency)) >= (float) $terms->credit_limit;
+    }
+
+    public function creditUsedInCurrency(string $corporateId, string $currency): float
+    {
+        $currency = strtoupper($currency);
+        $currencyService = app(CurrencyService::class);
         $settlements = FinancialAccountSettlement::query()->where('owner_type', 'corporate')
-            ->where('owner_id', $corporateId)->whereNotIn('status', ['void', 'draft'])
+            ->where('owner_id', $corporateId)->where('status', '!=', 'void')
             ->with('items.booking:id,currency')->get(['id', 'outstanding_total', 'billing_terms_snapshot']);
-        $outstanding = (float) $settlements->filter(fn($row) => strtoupper((string) (data_get($row->billing_terms_snapshot, 'currency')
-            ?: $row->items->first()?->booking?->currency)) === $currency)->sum('outstanding_total');
+        $outstanding = $settlements->sum(function ($row) use ($currency, $currencyService) {
+            $amount = (float) $row->outstanding_total;
+            $sourceCurrency = strtoupper((string) (data_get($row->billing_terms_snapshot, 'currency')
+                ?: $row->items->first()?->booking?->currency ?: ''));
+            return $amount > 0 ? $currencyService->convert($amount, $sourceCurrency, $currency) : 0.0;
+        });
 
         $billedItemIds = FinancialSettlementItem::query()
             ->whereHas('settlement', fn($query) => $query->where('owner_type', 'corporate')
@@ -40,22 +51,33 @@ class CorporateFinancialProjectionService
             ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)
                 ->where('corporate_account_id', $corporateId)->where('payment_collection_method', 'monthly_invoice'))
             ->where('status', 'completed')->whereNotNull('final_priced_at')
-            ->with('booking:id,currency')->get(['id', 'booking_id', 'total_price', 'currency'])
+            ->with('booking:id,currency')->get(['id', 'booking_id', 'total_price', 'addons', 'discounts', 'pricing_breakdown', 'currency'])
             ->reject(fn($item) => $billedItemIds->contains((string) $item->id))
-            ->filter(fn($item) => strtoupper((string) ($item->currency ?: $item->booking?->currency)) === $currency);
+            ->sum(function ($item) use ($currencyService, $currency) {
+                $amount = $item->calculateTotalValue();
+                return $amount > 0
+                    ? $currencyService->convert($amount, strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')), $currency)
+                    : 0.0;
+            });
 
         $bookings = Booking::query()->where('is_corporate_booking', true)->where('corporate_account_id', $corporateId)->get(['id', 'currency']);
         $bookingCurrency = $bookings->mapWithKeys(fn($booking) => [(string) $booking->id => strtoupper((string) $booking->currency)]);
         $unappliedReceipts = BookingPaymentReceipt::query()->whereIn('booking_id', $bookings->pluck('id'))
             ->whereNull('corporate_remittance_id')->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
             ->get(['booking_id', 'amount', 'source_amount', 'source_currency', 'refunded_amount', 'allocated_amount'])
-            ->filter(fn($row) => strtoupper((string) ($row->source_currency ?: $bookingCurrency->get((string) $row->booking_id))) === $currency)
-            ->sum(fn($row) => max(0, (float) ($row->source_amount ?? $row->amount) - (float) $row->refunded_amount - (float) $row->allocated_amount));
+            ->sum(function ($row) use ($currencyService, $currency, $bookingCurrency) {
+                $sourceCurrency = strtoupper((string) ($row->source_currency ?: $bookingCurrency->get((string) $row->booking_id, '')));
+                $available = max(0, (float) ($row->source_amount ?? $row->amount) - (float) $row->refunded_amount - (float) $row->allocated_amount);
+                return $available > 0 ? $currencyService->convert($available, $sourceCurrency, $currency) : 0.0;
+            });
         $unappliedRemittances = CorporateRemittance::query()->where('corporate_id', $corporateId)
-            ->where('currency', $currency)->sum('unapplied_amount');
-        $creditUsed = app(CurrencyService::class)->roundAmount(max(0, $outstanding + (float) $unbilled->sum('total_price') - (float) $unappliedReceipts - (float) $unappliedRemittances), $currency);
+            ->get(['currency', 'unapplied_amount'])
+            ->sum(fn($row) => (float) $row->unapplied_amount > 0
+                ? $currencyService->convert((float) $row->unapplied_amount, strtoupper((string) $row->currency), $currency)
+                : 0.0);
+        $creditUsed = $currencyService->roundAmount(max(0, $outstanding + (float) $unbilled - (float) $unappliedReceipts - (float) $unappliedRemittances), $currency);
 
-        return $creditUsed >= (float) $terms->credit_limit;
+        return $creditUsed;
     }
 
     public function accountSummary(string $corporateId): array
@@ -68,6 +90,12 @@ class CorporateFinancialProjectionService
             ->orderByDesc('period_end')
             ->orderByDesc('created_at')
             ->get();
+        $draftSettlements = FinancialAccountSettlement::query()
+            ->where('owner_type', 'corporate')
+            ->where('owner_id', $corporateId)
+            ->where('status', 'draft')
+            ->with('items.booking:id,currency')
+            ->get(['id', 'billing_terms_snapshot', 'outstanding_total']);
 
         $bookings = Booking::query()
             ->where('is_corporate_booking', true)
@@ -88,13 +116,18 @@ class CorporateFinancialProjectionService
         $monthlyItems = BookingItem::query()
             ->whereHas('booking', fn($query) => $query->where('is_corporate_booking', true)
                 ->where('corporate_account_id', $corporateId)->where('payment_collection_method', 'monthly_invoice'))
-            ->where('status', 'completed')->with('booking:id,currency')->get(['id', 'booking_id', 'total_price', 'currency', 'final_priced_at']);
+            ->where('status', 'completed')->with('booking:id,currency')->get(['id', 'booking_id', 'total_price', 'addons', 'discounts', 'pricing_breakdown', 'currency', 'final_priced_at']);
         $unbilledItems = $monthlyItems->whereNotNull('final_priced_at')->reject(fn($item) => $billedItemIds->contains((string) $item->id));
         $pricingPendingItems = $monthlyItems->whereNull('final_priced_at');
         $itemCurrency = fn($item) => strtoupper((string) ($item->currency ?: $item->booking?->currency) ?: 'UNKNOWN');
         $remittances = CorporateRemittance::query()->where('corporate_id', $corporateId)->latest('received_at')->get();
         $legacyReceipts = BookingPaymentReceipt::query()->whereIn('booking_id', $bookingIds)
             ->whereNull('corporate_remittance_id')->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])->get();
+        $advanceAllocations = FinancialPaymentAllocation::query()
+            ->whereIn('payment_receipt_id', $legacyReceipts->pluck('id'))
+            ->whereIn('settlement_id', $settlements->pluck('id'))
+            ->get(['settlement_id', 'payment_receipt_id', 'amount', 'allocated_at', 'created_at']);
+        $advanceAllocatedReceiptIds = $advanceAllocations->pluck('payment_receipt_id')->map(fn($id) => (string) $id)->flip();
         $terms = CorporateBillingTerm::withInactive()->where('corporate_id', $corporateId)
             ->whereDate('effective_from', '<=', today())
             ->where(fn($query) => $query->whereNull('effective_to')->orWhereDate('effective_to', '>=', today()))
@@ -121,7 +154,7 @@ class CorporateFinancialProjectionService
             $remittances = $remittancesByCurrency->get($currency, collect());
             $security = $securityByCurrency->get($currency, collect());
             $outstanding = (float) $rows->sum('outstanding_total');
-            $unbilledTotal = (float) $unbilled->sum('total_price');
+            $unbilledTotal = (float) $unbilled->sum(fn($item) => $item->calculateTotalValue());
             $unapplied = (float) $receipts->sum(fn($receipt) => max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount))
                 + (float) $remittances->sum('unapplied_amount');
             $values = array_fill_keys($moneyKeys, 0.0);
@@ -148,6 +181,43 @@ class CorporateFinancialProjectionService
         $currentCurrency = strtoupper((string) ($terms?->currency ?: 'UNKNOWN'));
         $activeCurrencySummary = $summaryByCurrency->get($currentCurrency, [...array_fill_keys($moneyKeys, 0.0), 'unbilled_monthly_trip_count' => 0, 'final_pricing_pending_trip_count' => 0, 'currency' => $currentCurrency]);
         $creditUsed = $activeCurrencySummary['credit_used'];
+        if ($terms && $currentCurrency !== 'UNKNOWN') {
+            $currencyService = app(CurrencyService::class);
+            $unbilledInBillingCurrency = $unbilledItems->sum(function ($item) use ($currencyService, $currentCurrency, $itemCurrency) {
+                $amount = $item->calculateTotalValue();
+                return $amount > 0 ? $currencyService->convert($amount, $itemCurrency($item), $currentCurrency) : 0.0;
+            });
+            $unappliedReceiptsInBillingCurrency = $fareReceipts->sum(function ($receipt) use ($currencyService, $currentCurrency, $receiptCurrency) {
+                $available = max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount - (float) $receipt->allocated_amount);
+                return $available > 0 ? $currencyService->convert($available, $receiptCurrency($receipt), $currentCurrency) : 0.0;
+            });
+            $unappliedRemittancesInBillingCurrency = $remittances->sum(fn($row) => (float) $row->unapplied_amount > 0
+                ? $currencyService->convert((float) $row->unapplied_amount, strtoupper((string) $row->currency), $currentCurrency)
+                : 0.0);
+            $outstandingInBillingCurrency = $settlements->sum(function ($settlement) use ($currencyService, $currentCurrency, $settlementCurrency) {
+                $amount = (float) $settlement->outstanding_total;
+                return $amount > 0 ? $currencyService->convert($amount, $settlementCurrency($settlement), $currentCurrency) : 0.0;
+            });
+            $draftExposureInBillingCurrency = $draftSettlements->sum(function ($settlement) use ($currencyService, $currentCurrency, $settlementCurrency) {
+                $amount = (float) $settlement->outstanding_total;
+                return $amount > 0 ? $currencyService->convert($amount, $settlementCurrency($settlement), $currentCurrency) : 0.0;
+            });
+            $roundBilling = fn(float $amount) => $currencyService->roundAmount($amount, $currentCurrency);
+            $activeCurrencySummary = [
+                ...$activeCurrencySummary,
+                'unbilled_monthly_total' => $roundBilling((float) $unbilledInBillingCurrency),
+                'unbilled_monthly_trip_count' => $unbilledItems->count(),
+                'final_pricing_pending_trip_count' => $pricingPendingItems->count(),
+                'unapplied_receipts' => $roundBilling((float) $unappliedReceiptsInBillingCurrency + (float) $unappliedRemittancesInBillingCurrency),
+                'credit_used' => $creditUsed = $roundBilling(max(0,
+                    (float) $outstandingInBillingCurrency
+                    + (float) $unbilledInBillingCurrency
+                    + (float) $draftExposureInBillingCurrency
+                    - (float) $unappliedReceiptsInBillingCurrency
+                    - (float) $unappliedRemittancesInBillingCurrency,
+                )),
+            ];
+        }
 
         $agingByCurrency = $settlements->groupBy($settlementCurrency)->map(function ($rows, $currency) {
             $aging = ['current' => 0.0, 'days_1_30' => 0.0, 'days_31_60' => 0.0, 'days_61_90' => 0.0, 'days_91_plus' => 0.0];
@@ -224,10 +294,19 @@ class CorporateFinancialProjectionService
             'date' => $remittance->received_at?->toIso8601String(), 'type' => 'remittance',
             'reference' => $remittance->reference, 'currency' => strtoupper((string) $remittance->currency ?: 'UNKNOWN'),
             'amount' => -(float) $remittance->amount,
+        ]))->concat($advanceAllocations->map(fn($allocation) => [
+            'date' => ($allocation->allocated_at ?: $allocation->created_at)?->toIso8601String(),
+            'type' => 'payment',
+            'reference' => $settlements->firstWhere('id', $allocation->settlement_id)?->invoice_number
+                ?: $settlements->firstWhere('id', $allocation->settlement_id)?->settlement_number,
+            'currency' => $settlementCurrencies->get((string) $allocation->settlement_id, 'UNKNOWN'),
+            'amount' => -(float) $allocation->amount,
         ]))->concat($legacyReceipts->map(fn($receipt) => [
             'date' => ($receipt->received_at ?: $receipt->created_at ?: $settlements->min('issued_at'))?->toIso8601String(), 'type' => 'payment',
             'reference' => $receipt->reference, 'currency' => $receiptCurrency($receipt),
-            'amount' => -max(0, (float) ($receipt->source_amount ?? $receipt->amount) - (float) $receipt->refunded_amount),
+            'amount' => -max(0, (float) ($receipt->source_amount ?? $receipt->amount)
+                - (float) $receipt->refunded_amount
+                - ($advanceAllocatedReceiptIds->has((string) $receipt->id) ? (float) $receipt->allocated_amount : 0)),
         ]))->filter(fn($row) => $row['date'])->sortBy('date')->values()->map(function ($row) use (&$runningBalances) {
             $currency = $row['currency'] ?: 'UNKNOWN';
             $runningBalances[$currency] = app(CurrencyService::class)->roundAmount(($runningBalances[$currency] ?? 0) + (float) $row['amount'], $currency);
@@ -328,11 +407,51 @@ class CorporateFinancialProjectionService
 
     public function summarizeBookings(Collection $bookings, ?Collection $bookingItemIds = null): array
     {
-        $currencyGroups = $bookings->groupBy(fn($booking) => strtoupper(trim((string) ($booking->currency ?: 'UNKNOWN'))));
+        if ($bookings->isEmpty()) {
+            return $this->emptySummary();
+        }
+
+        $bookingIds = $bookings->pluck('id');
+        $settlementItems = FinancialSettlementItem::query()
+            ->whereIn('booking_id', $bookingIds)
+            ->whereHas('settlement', fn($query) => $query->whereNotIn('status', ['void', 'draft']))
+            ->with('settlement:id,billing_terms_snapshot')
+            ->get(['booking_id', 'booking_item_ids', 'settlement_id'])
+            ->when($bookingItemIds !== null, fn(Collection $items) => $items->filter(function ($item) use ($bookingItemIds) {
+                $itemIds = collect($item->booking_item_ids ?? []);
+                return $itemIds->isEmpty() || $itemIds->intersect($bookingItemIds)->isNotEmpty();
+            }));
+        $settlementCurrencies = $settlementItems->groupBy(fn($item) => (string) $item->booking_id)
+            ->map(fn(Collection $items) => $items->map(fn($item) => strtoupper((string) (
+                data_get($item->settlement?->billing_terms_snapshot, 'currency')
+                ?: $bookings->firstWhere('id', $item->booking_id)?->currency
+                ?: 'UNKNOWN'
+            )))->unique()->values());
+        $invoicedBookingIds = $settlementCurrencies->keys();
+        $directInvoiceCurrencies = Invoice::query()
+            ->whereIn('booking_id', $bookingIds->diff($invoicedBookingIds))
+            ->where('status', '!=', 'void')
+            ->orderByDesc('created_at')
+            ->get(['booking_id', 'currency'])
+            ->unique(fn($invoice) => (string) $invoice->booking_id)
+            ->keyBy(fn($invoice) => (string) $invoice->booking_id);
+        $currencyGroups = $bookings->groupBy(function ($booking) use ($settlementCurrencies, $directInvoiceCurrencies) {
+            $currencies = $settlementCurrencies->get((string) $booking->id);
+            if ($currencies?->isNotEmpty()) {
+                return $currencies->count() === 1 ? $currencies->first() : 'MULTI_CURRENCY';
+            }
+            return strtoupper(trim((string) ($directInvoiceCurrencies->get((string) $booking->id)?->currency ?: $booking->currency ?: 'UNKNOWN')));
+        });
         if ($currencyGroups->count() > 1) {
-            $byCurrency = $currencyGroups->mapWithKeys(fn(Collection $rows, string $currency) => [
-                $currency => $this->summarizeBookingSet($rows, $bookingItemIds),
-            ]);
+            $byCurrency = $currencyGroups->mapWithKeys(function (Collection $rows, string $currency) use ($bookingItemIds) {
+                $summary = $this->summarizeBookingSet($rows, $bookingItemIds, $currency);
+                if ($currency === 'MULTI_CURRENCY') {
+                    foreach ($summary as $key => $value) {
+                        if (str_ends_with($key, '_value')) $summary[$key] = null;
+                    }
+                }
+                return [$currency => $summary];
+            });
             $summary = $this->emptySummary();
             foreach ($summary as $key => $value) {
                 if (str_ends_with($key, '_value')) {
@@ -345,10 +464,18 @@ class CorporateFinancialProjectionService
             return [...$summary, 'financial_by_currency' => $byCurrency];
         }
 
-        return $this->summarizeBookingSet($bookings, $bookingItemIds);
+        $currency = (string) $currencyGroups->keys()->first();
+        $summary = $this->summarizeBookingSet($bookings, $bookingItemIds, $currency);
+        if ($currency === 'MULTI_CURRENCY') {
+            foreach ($summary as $key => $value) {
+                if (str_ends_with($key, '_value')) $summary[$key] = null;
+            }
+            $summary['financial_by_currency'] = ['MULTI_CURRENCY' => $summary];
+        }
+        return $summary;
     }
 
-    private function summarizeBookingSet(Collection $bookings, ?Collection $bookingItemIds): array
+    private function summarizeBookingSet(Collection $bookings, ?Collection $bookingItemIds, ?string $currency = null): array
     {
         $bookingIds = $bookings->pluck('id')->map(fn($id) => (string) $id)->values();
         if ($bookingIds->isEmpty()) {
@@ -423,7 +550,7 @@ class CorporateFinancialProjectionService
 
         foreach ($summary as $key => $value) {
             if (str_ends_with($key, '_value')) {
-                $summary[$key] = app(CurrencyService::class)->roundAmount((float) $value, strtoupper((string) ($bookings->first()?->currency ?: 'LKR')));
+                $summary[$key] = app(CurrencyService::class)->roundAmount((float) $value, strtoupper((string) ($currency ?: $bookings->first()?->currency ?: 'LKR')));
             }
         }
 

@@ -19,7 +19,7 @@ class CorporateReportScheduleController extends Controller
     {
         return response()->json([
             'status' => 'success',
-            'data' => CorporateReportSchedule::where('corporate_id', $request->corporate_id)->orderBy('name')->get(),
+            'data' => CorporateReportSchedule::where('corporate_id', $request->corporate_id)->orderBy('name')->get()->map(fn (CorporateReportSchedule $schedule) => $this->present($schedule)),
             'delivery_enabled' => config('corporate_portal.scheduled_reports_enabled'),
         ]);
     }
@@ -29,14 +29,14 @@ class CorporateReportScheduleController extends Controller
         abort_unless(config('corporate_portal.scheduled_reports_enabled'), 503, 'Scheduled report delivery is not enabled.');
         $data = $this->validated($request);
         $schedule = CorporateReportSchedule::create($data + ['corporate_id' => $request->corporate_id, 'created_by' => $request->user()->id]);
-        return response()->json(['status' => 'success', 'data' => $schedule], 201);
+        return response()->json(['status' => 'success', 'data' => $this->present($schedule)], 201);
     }
 
     public function update(Request $request, string $schedule): JsonResponse
     {
         $record = CorporateReportSchedule::where('corporate_id', $request->corporate_id)->findOrFail($schedule);
         $record->update($this->validated($request, $record->id));
-        return response()->json(['status' => 'success', 'data' => $record->fresh()]);
+        return response()->json(['status' => 'success', 'data' => $this->present($record->fresh())]);
     }
 
     public function destroy(Request $request, string $schedule): JsonResponse
@@ -56,5 +56,23 @@ class CorporateReportScheduleController extends Controller
             'filters' => ['nullable', 'array'],
             'is_active' => ['required', 'boolean'],
         ]);
+    }
+
+    private function present(CorporateReportSchedule $schedule): array
+    {
+        $failed = $schedule->last_failed_at
+            && (!$schedule->last_delivered_at || $schedule->last_failed_at->gt($schedule->last_delivered_at));
+
+        return [
+            'id' => $schedule->id,
+            'name' => $schedule->name,
+            'format' => $schedule->format,
+            'delivery_day' => $schedule->delivery_day,
+            'recipients' => $schedule->recipients,
+            'is_active' => $schedule->is_active,
+            'last_delivered_at' => $schedule->last_delivered_at?->toIso8601String(),
+            'last_failed_at' => $schedule->last_failed_at?->toIso8601String(),
+            'delivery_status' => !$schedule->is_active ? 'paused' : ($failed ? 'failed' : ($schedule->last_delivered_at ? 'delivered' : 'pending')),
+        ];
     }
 }

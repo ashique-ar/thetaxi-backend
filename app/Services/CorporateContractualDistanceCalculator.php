@@ -13,7 +13,7 @@ class CorporateContractualDistanceCalculator
         $this->sequences = $sequences ?? new ContractualAnchorSequenceService;
     }
 
-    public function calculate(string $corporateId, string $serviceTypeId, array $journeyPoints): ?array
+    public function calculate(string $corporateId, string $serviceTypeId, array $journeyPoints, ?string $currency = null): ?array
     {
         $resolved = $this->resolver->resolve($corporateId, $serviceTypeId);
         if (!$resolved['enabled'])
@@ -51,7 +51,10 @@ class CorporateContractualDistanceCalculator
             if ($outboundRate === null || $returnRate === null)
                 throw new DomainException('Separate-rate policies require outbound and return movement rates.');
             $values = $movementLegs->values();
-            $movementCharge = round($values->sum(fn($leg, $index) => $leg['billable_distance_km'] * (float) ($index === $values->count() - 1 && $values->count() > 1 ? $returnRate : $outboundRate)), 2);
+            $movementCharge = app(CurrencyService::class)->roundAmount(
+                $values->sum(fn($leg, $index) => $leg['billable_distance_km'] * (float) ($index === $values->count() - 1 && $values->count() > 1 ? $returnRate : $outboundRate)),
+                strtoupper($currency ?: app(CurrencyService::class)->getSelectedCurrency()),
+            );
         } elseif ($rateMethod !== 'included')
             throw new DomainException('Unsupported contractual movement rate method.');
 

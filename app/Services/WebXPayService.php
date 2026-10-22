@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\URL;
 use App\Models\Booking\Booking;
 use App\Models\Website\WebsiteSetting;
 use App\Services\CurrencyService;
@@ -52,6 +53,84 @@ class WebXPayService
     public function isEnabled(): bool
     {
         return $this->enabled && !empty($this->secretKey) && !empty($this->publicKey);
+    }
+
+    public function currency(): string
+    {
+        return $this->currency;
+    }
+
+    public function createCorporateInvoicePayment(
+        string $orderId,
+        string $attemptId,
+        string $settlementNumber,
+        string $corporateId,
+        float $amount,
+        string $amountCurrency,
+        array $customer
+    ): array {
+        if (!$this->isEnabled()) {
+            throw new \RuntimeException('WebXPay is not enabled or configured properly.');
+        }
+
+        $currencyService = app(CurrencyService::class);
+        $amountCurrency = strtoupper(trim($amountCurrency));
+        $invoiceAmount = $currencyService->roundAmount($amount, $amountCurrency);
+        if (!is_finite($invoiceAmount) || $invoiceAmount <= 0) {
+            throw new \InvalidArgumentException('Payment amount must be positive.');
+        }
+        // WebXPay takes whole-unit amounts; round up so a paid callback never settles an undercharged invoice.
+        $gatewayAmount = ceil($this->convertBookingAmountToGatewayCurrency($invoiceAmount, $amountCurrency));
+        if ($gatewayAmount <= 0) {
+            throw new \InvalidArgumentException('The converted payment amount is below WebXPay minimum.');
+        }
+        $gatewayFxRateToLkr = $this->currency === 'LKR' ? 1.0 : $currencyService->getExchangeRate($this->currency, 'LKR');
+        $fxRateToLkr = ($gatewayAmount * $gatewayFxRateToLkr) / $invoiceAmount;
+        $customerData = [
+            'first_name' => $customer['first_name'] ?? 'Corporate',
+            'last_name' => $customer['last_name'] ?? 'Account',
+            'email' => $customer['email'] ?? 'customer@example.com',
+            'contact_number' => $this->formatPhoneNumber($customer['contact_number'] ?? '0000000000'),
+            'address_line_one' => $customer['address_line_one'] ?? '',
+            'address_line_two' => '',
+            'city' => $customer['city'] ?? '',
+            'state' => $this->getSettingValue('webxpay_customer_state', config('booking.webxpay.customer_state', '')),
+            'postal_code' => $this->getSettingValue('webxpay_customer_postal_code', config('booking.webxpay.customer_postal_code', '')),
+            'country' => $this->getSettingValue('webxpay_customer_country', config('booking.webxpay.customer_country', '')),
+            'process_currency' => $this->currency,
+            'cms' => $this->getSettingValue('webxpay_cms_identifier', config('booking.webxpay.cms_identifier', 'Laravel')),
+        ];
+        $amountFormatted = number_format($gatewayAmount, 0, '.', '');
+        $encryptedPayment = $this->encryptWithPublicKey($orderId . '|' . $amountFormatted);
+        if (!$encryptedPayment) {
+            throw new \RuntimeException('Failed to encrypt WebXPay payment data.');
+        }
+
+        return [
+            'success' => true,
+            'payment_url' => $this->checkoutUrl,
+            'order_id' => $orderId,
+            'amount' => (float) $amountFormatted,
+            'currency' => $this->currency,
+            'invoice_amount' => $invoiceAmount,
+            'invoice_currency' => $amountCurrency,
+            'fx_rate_to_lkr' => $fxRateToLkr,
+            'gateway_fx_rate_to_lkr' => $gatewayFxRateToLkr,
+            'fx_rate_at' => now()->toIso8601String(),
+            'encrypted_payment' => $encryptedPayment,
+            'secret_key' => $this->secretKey,
+            'custom_fields' => base64_encode(implode('|', [$attemptId, 'corporate_invoice', $settlementNumber, $corporateId])),
+            'enc_method' => 'JCs3J+6oSz4V0LgE0zi/Bg==',
+            'customer_data' => $customerData,
+            'return_url' => route('checkout.webxpay.corporate.callback'),
+            'cancel_url' => URL::temporarySignedRoute(
+                'checkout.webxpay.corporate.cancel',
+                now()->addDay(),
+                ['attempt' => $attemptId],
+            ),
+            'notify_url' => route('checkout.webxpay.corporate.notify'),
+            'method' => 'rsa_redirect',
+        ];
     }
 
     /**

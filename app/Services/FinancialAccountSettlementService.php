@@ -23,6 +23,7 @@ use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
 use App\Support\Foundation\CanonicalJson;
+use Carbon\Carbon;
 use Illuminate\Support\Str;
 
 class FinancialAccountSettlementService
@@ -324,9 +325,9 @@ class FinancialAccountSettlementService
         });
     }
 
-    public function receiveCorporateRemittance(Corporate $corporate, array $data, ?string $userId): CorporateRemittance
+    public function receiveCorporateRemittance(Corporate $corporate, array $data, ?string $userId, ?array $fxFacts = null): CorporateRemittance
     {
-        return DB::transaction(function () use ($corporate, $data, $userId) {
+        return DB::transaction(function () use ($corporate, $data, $userId, $fxFacts) {
             Corporate::query()->whereKey($corporate->id)->lockForUpdate()->firstOrFail();
             $duplicate = CorporateRemittance::where('idempotency_key', $data['idempotency_key'])->first();
             if ($duplicate) {
@@ -345,8 +346,12 @@ class FinancialAccountSettlementService
             if (abs($rawAmount - $data['amount']) > 0.00000001) {
                 throw ValidationException::withMessages(['amount' => ["The amount exceeds {$currency}'s supported minor-unit precision."]]);
             }
-            $fxRateToLkr = $currency === 'LKR' ? 1.0 : $currencyService->getExchangeRate($currency, 'LKR');
-            $fxRateAt = now();
+            $fxRateToLkr = $fxFacts['fx_rate_to_lkr'] ?? ($currency === 'LKR' ? 1.0 : $currencyService->getExchangeRate($currency, 'LKR'));
+            if (!is_numeric($fxRateToLkr) || !is_finite((float) $fxRateToLkr) || (float) $fxRateToLkr <= 0) {
+                throw ValidationException::withMessages(['currency' => ['A valid LKR conversion rate is required to record this remittance.']]);
+            }
+            $fxRateAt = isset($fxFacts['fx_rate_at']) ? Carbon::parse($fxFacts['fx_rate_at']) : now();
+            $fxSource = $fxFacts['fx_source'] ?? ($currency === 'LKR' ? 'identity' : 'system_currency_table');
             $currencyMismatch = ($data['settlement_ids'] ?? null)
                 ? $settlements->first(fn($settlement) => $this->settlementCurrency($settlement) !== $currency)
                 : null;
@@ -362,7 +367,7 @@ class FinancialAccountSettlementService
                 'unapplied_amount' => $data['amount'],
                 'fx_rate_to_lkr' => $fxRateToLkr,
                 'fx_rate_at' => $fxRateAt,
-                'fx_source' => $currency === 'LKR' ? 'identity' : 'system_currency_table',
+                'fx_source' => $fxSource,
             ]);
             $remaining = app(CurrencyService::class)->roundAmount((float) $data['amount'], $currency);
             foreach ($settlements as $settlement) {
@@ -547,16 +552,23 @@ class FinancialAccountSettlementService
 
     public function adjust(FinancialAccountSettlement $settlement, array $data, ?string $userId): FinancialAccountSettlement
     {
-        abort_if(in_array($settlement->status, ['paid', 'void', 'disputed'], true), 422, 'Paid, void, or disputed settlements cannot be adjusted.');
         return DB::transaction(function () use ($settlement, $data, $userId) {
-            $item = $settlement->items()->where('booking_id', $data['booking_id'])->firstOrFail();
-            $amount = round((float) $data['amount'], 2);
+            $settlement = FinancialAccountSettlement::query()->lockForUpdate()->findOrFail($settlement->id);
+            abort_if(in_array($settlement->status, ['paid', 'void', 'disputed'], true), 422, 'Paid, void, or disputed settlements cannot be adjusted.');
+            $item = $settlement->items()->where('booking_id', $data['booking_id'])->lockForUpdate()->firstOrFail();
+            $currencyService = app(CurrencyService::class);
+            $currency = $this->settlementCurrency($settlement);
+            $rawAmount = (float) $data['amount'];
+            $amount = $currencyService->roundAmount($rawAmount, $currency);
+            if (abs($rawAmount - $amount) > 0.00000001) {
+                throw ValidationException::withMessages(['amount' => ["The adjustment exceeds {$currency}'s supported minor-unit precision."]]);
+            }
             $adjustment = FinancialAdjustment::create(['settlement_id' => $settlement->id, 'settlement_item_id' => $item->id, 'booking_id' => $item->booking_id, 'type' => $data['type'], 'amount' => $amount, 'reason' => $data['reason'], 'reference' => $data['reference'] ?? null, 'metadata' => $data['metadata'] ?? null, 'created_user_id' => $userId]);
             if (in_array($data['type'], ['refund', 'credit_note'], true))
                 $item->refund_amount = (float) $item->refund_amount + $amount;
             else
                 $item->adjustment_amount = (float) $item->adjustment_amount + ($data['type'] === 'additional_charge' ? $amount : -$amount);
-            $item->outstanding_amount = max(0, round((float) $item->charge_amount + (float) $item->adjustment_amount - (float) $item->refund_amount - (float) $item->paid_before_amount - (float) $item->allocated_amount, 2));
+            $item->outstanding_amount = max(0, $currencyService->roundAmount((float) $item->charge_amount + (float) $item->adjustment_amount - (float) $item->refund_amount - (float) $item->paid_before_amount - (float) $item->allocated_amount, $currency));
             $item->status = (float) $item->outstanding_amount <= 0 ? 'paid' : 'open';
             $item->save();
             if ($data['type'] === 'waiver')

@@ -111,6 +111,24 @@
                     <td class="right">{{ $currency }} {{ number_format($item->paid_before_amount + $item->allocated_amount, $digits) }}</td>
                     <td class="right">{{ $currency }} {{ number_format($item->outstanding_amount, $digits) }}</td>
                 </tr>
+                @foreach (data_get($item->source_snapshot, 'items', []) as $sourceItem)
+                    @if (strtoupper((string) ($sourceItem['currency'] ?? $currency)) !== $currency)
+                        @php($sourceCurrency = strtoupper((string) $sourceItem['currency']))
+                        @php($sourceDigits = app(\App\Services\CurrencyService::class)->fractionDigits($sourceCurrency))
+                        <tr class="muted">
+                            <td colspan="6">{{ $sourceItem['service_type'] ?: 'Trip' }}: {{ $sourceCurrency }} {{ number_format((float) $sourceItem['total_price'], $sourceDigits) }} converted to {{ $currency }} {{ number_format((float) $sourceItem['invoice_amount'], $digits) }} at {{ number_format((float) $sourceItem['fx_rate_to_invoice'], 8) }} ({{ $sourceItem['fx_source'] }})</td>
+                        </tr>
+                    @endif
+                @endforeach
+                @foreach (data_get($item->source_snapshot, 'payment_conversions', []) as $paymentConversion)
+                    @if (strtoupper((string) ($paymentConversion['source_currency'] ?? $currency)) !== $currency && (float) ($paymentConversion['allocated_invoice_amount'] ?? 0) > 0)
+                        @php($paymentCurrency = strtoupper((string) $paymentConversion['source_currency']))
+                        @php($paymentDigits = app(\App\Services\CurrencyService::class)->fractionDigits($paymentCurrency))
+                        <tr class="muted">
+                            <td colspan="6">Advance payment: {{ $paymentCurrency }} {{ number_format((float) $paymentConversion['allocated_source_amount'], $paymentDigits) }} converted to {{ $currency }} {{ number_format((float) $paymentConversion['allocated_invoice_amount'], $digits) }} at {{ number_format((float) $paymentConversion['fx_rate_to_invoice'], 8) }} ({{ $paymentConversion['fx_source'] ?? 'portal_currency_table' }})</td>
+                        </tr>
+                    @endif
+                @endforeach
             @endforeach
         </tbody>
     </table>

@@ -21,7 +21,7 @@ class CorporateServiceDistancePolicy extends BaseModel
     protected $casts = [
         'origin_location_override' => 'array', 'return_location_override' => 'array',
         'include_origin_to_pickup' => 'boolean', 'include_dropoff_to_return' => 'boolean',
-        'outbound_rate' => 'decimal:2', 'return_rate' => 'decimal:2',
+        'outbound_rate' => 'decimal:4', 'return_rate' => 'decimal:4',
         'maximum_outbound_km' => 'decimal:2', 'maximum_return_km' => 'decimal:2',
         'effective_from' => 'datetime', 'effective_until' => 'datetime', 'is_active' => 'boolean',
         'route_anchor_sequence_override' => 'array',

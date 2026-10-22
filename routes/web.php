@@ -137,6 +137,14 @@ Route::get('/checkout/webxpay/callback', [CheckoutController::class, 'webxpayCal
 Route::post('/checkout/webxpay/callback', [CheckoutController::class, 'webxpayCallback'])->name('checkout.webxpay.callback.post');
 Route::post('/checkout/webxpay/notify', [CheckoutController::class, 'webxpayNotify'])->name('checkout.webxpay.notify');
 Route::get('/checkout/webxpay/cancel', [CheckoutController::class, 'webxpayCancel'])->name('checkout.webxpay.cancel');
+Route::get('/checkout/corporate-webxpay/{attempt}/redirect', [\App\Http\Controllers\CorporateWebXPayController::class, 'redirect'])
+    ->middleware('signed')->whereUuid('attempt')->name('checkout.corporate-webxpay.redirect');
+Route::get('/checkout/webxpay/corporate/cancel/{attempt}', [\App\Http\Controllers\CorporateWebXPayController::class, 'cancel'])
+    ->middleware('signed')->whereUuid('attempt')->name('checkout.webxpay.corporate.cancel');
+Route::match(['get', 'post'], '/checkout/webxpay/corporate/callback', [\App\Http\Controllers\CorporateWebXPayController::class, 'callback'])
+    ->name('checkout.webxpay.corporate.callback');
+Route::post('/checkout/webxpay/corporate/notify', [\App\Http\Controllers\CorporateWebXPayController::class, 'notify'])
+    ->name('checkout.webxpay.corporate.notify');
 
 // Service-specific pages
 Route::get('/point-to-point', [BookingController::class, 'pointToPoint'])->name('point-to-point');

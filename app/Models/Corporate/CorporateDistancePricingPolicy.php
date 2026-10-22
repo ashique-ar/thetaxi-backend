@@ -23,7 +23,7 @@ class CorporateDistancePricingPolicy extends BaseModel
         'include_dropoff_to_return' => 'boolean', 'is_active' => 'boolean',
         'origin_latitude' => 'decimal:7', 'origin_longitude' => 'decimal:7',
         'return_latitude' => 'decimal:7', 'return_longitude' => 'decimal:7',
-        'outbound_rate' => 'decimal:2', 'return_rate' => 'decimal:2',
+        'outbound_rate' => 'decimal:4', 'return_rate' => 'decimal:4',
         'maximum_outbound_km' => 'decimal:2', 'maximum_return_km' => 'decimal:2',
         'effective_from' => 'datetime', 'effective_until' => 'datetime',
         'route_contract_version' => 'integer', 'route_anchor_sequence' => 'array',

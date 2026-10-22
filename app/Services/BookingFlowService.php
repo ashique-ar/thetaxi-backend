@@ -3355,7 +3355,7 @@ class BookingFlowService
         }
 
         $calculatedTotal = (float) ($pricing['total_amount'] ?? $booking->total_estimated ?? 0);
-        $overrideAttributes = $this->resolveItemPriceOverride($params, $calculatedTotal, $bookingItem);
+        $overrideAttributes = $this->resolveItemPriceOverride($params, $calculatedTotal, $bookingItem, $pricing['currency'] ?? $params['currency'] ?? $booking->currency ?? $this->currencyService->getBookingBaseCurrency());
         $itemAttributes = [
             'booking_id' => $booking->id,
             'vehicle_group_id' => $params['vehicle_group_id'] ?? null,
@@ -3401,6 +3401,7 @@ class BookingFlowService
         ];
 
         $previousPrice = $bookingItem ? (float) $bookingItem->total_price : $calculatedTotal;
+        $previousCurrency = $bookingItem?->currency ?: $itemAttributes['currency'];
         $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
         if ($bookingItem) {
             if ($bookingItem->trashed()) {
@@ -3411,7 +3412,7 @@ class BookingFlowService
             $bookingItem = BookingItem::create($itemAttributes);
         }
 
-        $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+        $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes, $previousCurrency);
 
         return $bookingItem;
     }
@@ -3455,21 +3456,23 @@ class BookingFlowService
         return $values;
     }
 
-    private function resolveItemPriceOverride(array $itemData, float $calculatedPrice, ?BookingItem $existing = null): array
+    private function resolveItemPriceOverride(array $itemData, float $calculatedPrice, ?BookingItem $existing = null, ?string $currency = null): array
     {
         $hasSubmittedPrice = array_key_exists('final_price', $itemData) && $itemData['final_price'] !== null && $itemData['final_price'] !== '';
         if ($hasSubmittedPrice && (!is_scalar($itemData['final_price']) || !is_numeric($itemData['final_price']))) {
             throw ValidationException::withMessages(['booking_items' => 'Every trip final price must be a valid number.']);
         }
+        $currency = strtoupper(trim((string) ($currency ?: $existing?->currency ?: $this->currencyService->getBookingBaseCurrency())));
+        $calculatedPrice = $this->currencyService->roundAmount($calculatedPrice, $currency);
         $effectivePrice = $hasSubmittedPrice
-            ? round((float) $itemData['final_price'], 2)
-            : ($existing?->price_override_amount !== null ? (float) $existing->price_override_amount : round($calculatedPrice, 2));
+            ? $this->currencyService->roundAmount((float) $itemData['final_price'], $currency)
+            : ($existing?->price_override_amount !== null ? $this->currencyService->roundAmount((float) $existing->price_override_amount, $currency) : $calculatedPrice);
 
         if ($effectivePrice < 0) {
             throw ValidationException::withMessages(['booking_items' => 'Trip final prices cannot be negative.']);
         }
 
-        $isOverride = abs($effectivePrice - round($calculatedPrice, 2)) >= 0.01;
+        $isOverride = abs($effectivePrice - $calculatedPrice) > 0.00000001;
         $reason = trim((string) ($itemData['price_adjustment_reason'] ?? ($existing?->price_override_reason ?? '')));
         if (mb_strlen($reason) > 500) {
             throw ValidationException::withMessages(['booking_items' => 'Trip price change reasons cannot exceed 500 characters.']);
@@ -3480,9 +3483,9 @@ class BookingFlowService
 
         return [
             'effective_price' => $effectivePrice,
-            'calculated_price' => round($calculatedPrice, 2),
+            'calculated_price' => $calculatedPrice,
             'reason' => $isOverride ? $reason : null,
-            'changed' => $isOverride && $hasSubmittedPrice && (!$existing || abs((float) $existing->total_price - $effectivePrice) >= 0.01),
+            'changed' => $isOverride && $hasSubmittedPrice && (!$existing || abs($this->currencyService->roundAmount((float) $existing->total_price, $currency) - $effectivePrice) > 0.00000001),
             'columns' => [
                 'price_override_amount' => $isOverride ? $effectivePrice : null,
                 'price_override_reason' => $isOverride ? $reason : null,
@@ -3492,7 +3495,7 @@ class BookingFlowService
         ];
     }
 
-    private function recordItemPriceOverride(BookingItem $item, float $previousPrice, array $override): void
+    private function recordItemPriceOverride(BookingItem $item, float $previousPrice, array $override, ?string $previousCurrency = null): void
     {
         if (!$override['changed']) {
             return;
@@ -3509,12 +3512,13 @@ class BookingFlowService
             'detail' => $override['reason'],
             'idempotency_key' => 'trip-price-'.Str::uuid(),
             'meta' => [
-                'previous_price' => round($previousPrice, 2),
+                'previous_price' => $this->currencyService->roundAmount($previousPrice, $previousCurrency ?: $item->currency ?: $this->currencyService->getBookingBaseCurrency()),
                 'calculated_price' => $override['calculated_price'],
                 'final_price' => $override['effective_price'],
                 'changed_by' => Auth::id(),
                 'changed_by_name' => trim((string) (Auth::user()?->full_name ?: Auth::user()?->email)),
                 'currency' => $item->currency ?: $this->currencyService->getBookingBaseCurrency(),
+                'previous_currency' => $previousCurrency ?: $item->currency ?: $this->currencyService->getBookingBaseCurrency(),
             ],
             'event_at' => now(),
         ]);
@@ -3729,11 +3733,13 @@ class BookingFlowService
                     $overrideAttributes = $this->resolveItemPriceOverride(
                         $itemData,
                         (float) $itemTotals['total_estimated'],
-                        $bookingItem
+                        $bookingItem,
+                        $itemTotals['currency'] ?? $itemData['currency'] ?? $params['currency'] ?? $booking->currency ?? $this->currencyService->getBookingBaseCurrency()
                     );
                     $previousPrice = $bookingItem
                         ? (float) $bookingItem->total_price
                         : (float) $itemTotals['total_estimated'];
+                    $previousCurrency = $bookingItem?->currency ?: $itemAttributes['currency'];
                     $itemAttributes['unit_price'] = $overrideAttributes['effective_price'];
                     $itemAttributes['total_price'] = $overrideAttributes['effective_price'];
                     $itemAttributes = array_merge($itemAttributes, $overrideAttributes['columns']);
@@ -3756,7 +3762,7 @@ class BookingFlowService
                         $bookingItem = BookingItem::create($itemAttributes);
                     }
 
-                    $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes);
+                    $this->recordItemPriceOverride($bookingItem, $previousPrice, $overrideAttributes, $previousCurrency);
 
                     $retainedBookingItemIds[] = (string) $bookingItem->id;
 
@@ -5372,6 +5378,7 @@ class BookingFlowService
                 $orderedAdditionalStops,
                 $params['corporate_account_id'] ?? null,
                 $corporatePolicyServiceTypeId,
+                $params['currency'] ?? null,
             );
 
             if (!is_numeric($distanceCalculations['journey_distance'] ?? null)) {
@@ -6868,6 +6875,7 @@ class BookingFlowService
         array $orderedAdditionalStops = [],
         ?string $corporateId = null,
         ?string $corporateServiceTypeId = null,
+        ?string $currency = null,
     ): array
     {
         $pickupLocation = $this->normalizeLocationInput($pickupLocation);
@@ -6889,6 +6897,7 @@ class BookingFlowService
                 $corporateId,
                 $corporateServiceTypeId,
                 $routePoints,
+                $currency,
             );
             if ($contractualDistances !== null) {
                 return $contractualDistances + [

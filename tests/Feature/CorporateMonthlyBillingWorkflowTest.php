@@ -15,6 +15,7 @@ use App\Models\Finance\CorporateRemittanceAllocation;
 use App\Models\Finance\FinancialPaymentAllocation;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Mail;
@@ -100,6 +101,10 @@ it('notifies an assigned collector once for a due follow-up', function () {
 it('versions terms previews finalized trips and generates one immutable monthly statement', function () {
     $corporateId='10000000-0000-4000-8000-000000000001';$otherId='10000000-0000-4000-8000-000000000002';
     DB::table('corporates')->insert([['id'=>$corporateId,'name'=>'Acme','is_active'=>true],['id'=>$otherId,'name'=>'Other','is_active'=>true]]);
+    DB::table('currencies')->insert([
+        ['id'=>'60000000-0000-4000-8000-000000000001','code'=>'USD','name'=>'US Dollar','exrate'=>'1'],
+        ['id'=>'60000000-0000-4000-8000-000000000002','code'=>'LKR','name'=>'Sri Lankan Rupee','exrate'=>'300'],
+    ]);
     DB::table('service_types')->insert(['id'=>'20000000-0000-4000-8000-000000000001','name'=>'Transfer','is_active'=>true]);
     $service=monthlyBillingService();$corporate=Corporate::findOrFail($corporateId);
     $service->storeTerms($corporate,['billing_cycle'=>'monthly','cutoff_day'=>31,'invoice_day'=>1,'due_days'=>30,'credit_limit'=>100,'currency'=>'LKR','effective_from'=>'2026-08-01','recipients'=>['finance@acme.test'],'delivery_preferences'=>['email_invoice'=>true,'email_statement'=>true]],null);
@@ -110,7 +115,21 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     DB::table('booking_payment_receipts')->insert(['id'=>'50000000-0000-4000-8000-000000000002','booking_id'=>'30000000-0000-4000-8000-000000000001','amount'=>25,'source_amount'=>25,'source_currency'=>'USD','refunded_amount'=>0,'allocated_amount'=>0,'payment_purpose'=>'booking_payment']);
     FinancialAccountSettlement::create(['settlement_number'=>'CB-USD-OLD','owner_type'=>'corporate','owner_id'=>$corporateId,'billing_cycle'=>'monthly','period_start'=>'2026-07-01','period_end'=>'2026-07-31','status'=>'open','outstanding_total'=>500,'billing_terms_snapshot'=>['currency'=>'USD']]);
     $preview=$service->preview($corporateId,'2026-08-01','2026-08-31');
-    expect($preview['booking_count'])->toBe(1)->and($preview['trip_count'])->toBe(1)->and($preview['charges_total'])->toBe(150.0)->and($preview['paid_before_total'])->toBe(50.0)->and($preview['opening_balance'])->toBe(0.0)->and($preview['projected_balance'])->toBe(100.0)->and($preview['credit_limit_exceeded'])->toBeFalse()->and($preview['excluded'])->toHaveCount(3)->and($preview['excluded']->pluck('reason')->all())->toContain('not_completed', 'not_monthly_corporate_credit', 'currency_mismatch')->and($preview['excluded']->firstWhere('reason', 'currency_mismatch')['currency'])->toBe('USD');
+    $previewKey = $preview['generation_key'];
+    Cache::put('currency.exchange_rates.v', 1, now()->addHour());
+    DB::table('currencies')->where('code', 'USD')->update(['exrate' => '2']);
+    expect($service->preview($corporateId,'2026-08-01','2026-08-31')['generation_key'])->not->toBe($previewKey);
+    DB::table('currencies')->where('code', 'USD')->update(['exrate' => '1']);
+    Cache::put('currency.exchange_rates.v', 2, now()->addHour());
+    $preview = $service->preview($corporateId,'2026-08-01','2026-08-31');
+    expect($preview['generation_key'])->toBe($previewKey);
+    expect($preview['booking_count'])->toBe(1)->and($preview['trip_count'])->toBe(2)
+        ->and($preview['charges_total'])->toBe(7650.0)->and($preview['paid_before_total'])->toBe(7550.0)
+        ->and($preview['opening_balance'])->toBe(0.0)->and($preview['projected_balance'])->toBe(100.0)
+        ->and($preview['credit_limit_exceeded'])->toBeFalse()->and($preview['excluded'])->toHaveCount(2)
+        ->and($preview['excluded']->pluck('reason')->all())->toContain('not_completed', 'not_monthly_corporate_credit')
+        ->and($preview['included']->first()['items'][1]['invoice_amount'])->toBe(7500.0)
+        ->and($preview['included']->first()['items'][1]['fx_rate_to_invoice'])->toBe(300.0);
     expect(fn() => $service->generate($corporateId, '2026-08-01', '2026-08-31', null, str_repeat('0', 64)))->toThrow(ValidationException::class);
     DB::table('booking_items')->where('id', '40000000-0000-4000-8000-000000000001')->update(['total_price' => 151]);
     expect(fn() => $service->generate($corporateId, '2026-08-01', '2026-08-31', null, $preview['generation_key']))->toThrow(ValidationException::class);
@@ -123,7 +142,19 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     $pdf->shouldReceive('output')->once()->andReturn('statement-pdf');
     Pdf::shouldReceive('loadView')->once()->andReturn($pdf);
     $first=$service->generate($corporateId,'2026-08-01','2026-08-31',null,$preview['generation_key']);$second=$service->generate($corporateId,'2026-08-01','2026-08-31',null,$preview['generation_key']);
-    expect($second->id)->toBe($first->id)->and(FinancialAccountSettlement::count())->toBe(1)->and($first->status)->toBe('draft')->and((float)$first->charges_total)->toBe(150.0)->and((float)$first->payments_total)->toBe(50.0)->and((float)$first->outstanding_total)->toBe(100.0)->and($first->items()->first()->booking_item_ids)->toBe(['40000000-0000-4000-8000-000000000001'])->and((float)$first->statement_snapshot['account_closing_balance'])->toBe(100.0)->and((float) DB::table('booking_payment_receipts')->value('allocated_amount'))->toBe(50.0)->and(DB::table('financial_payment_allocations')->count())->toBe(1);
+    expect($second->id)->toBe($first->id)->and(FinancialAccountSettlement::count())->toBe(1)->and($first->status)->toBe('draft')
+        ->and((float)$first->charges_total)->toBe(7650.0)->and((float)$first->payments_total)->toBe(7550.0)
+        ->and((float)$first->outstanding_total)->toBe(100.0)
+        ->and($first->items()->first()->booking_item_ids)->toBe(['40000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000005'])
+        ->and((float)$first->items()->first()->source_snapshot['items'][1]['invoice_amount'])->toBe(7500.0)
+        ->and($first->billing_terms_snapshot['fx_policy'])->toBe('portal_currency_table_at_generation')
+        ->and((float)$first->statement_snapshot['account_closing_balance'])->toBe(100.0)
+        ->and((float) DB::table('booking_payment_receipts')->where('id','50000000-0000-4000-8000-000000000001')->value('allocated_amount'))->toBe(50.0)
+        ->and((float) DB::table('booking_payment_receipts')->where('id','50000000-0000-4000-8000-000000000002')->value('allocated_amount'))->toBe(25.0)
+        ->and(DB::table('financial_payment_allocations')->count())->toBe(2);
+    $invoiceTemplate = file_get_contents(resource_path('views/invoices/financial-settlement.blade.php'));
+    expect($invoiceTemplate)->toContain("data_get(\$item->source_snapshot, 'items', [])")
+        ->toContain('converted to {{ $currency }}');
     expect(fn() => $service->generate($corporateId, '2026-09-01', '2026-09-30', null, $preview['generation_key']))->toThrow(ValidationException::class);
     $draftAccount=(new CorporateFinancialProjectionService())->accountSummary($corporateId);
     expect($draftAccount['summary']['unbilled_monthly_trip_count'])->toBe(0)
@@ -136,14 +167,14 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     expect($issued->status)->toBe('open')->and($issued->statement_sent_at)->not->toBeNull()->and($issued->statement_sent_to)->toBe(['finance@acme.test']);
     $first=$issued;
     $account=(new CorporateFinancialProjectionService())->accountSummary($corporateId);
-    expect($account['summary']['charges_total'])->toBe(150.0)->and($account['summary']['payments_total'])->toBe(50.0)->and($account['summary']['outstanding_total'])->toBe(100.0)->and($account['aging']['days_1_30'])->toBe(100.0)->and($account['settlements'])->toHaveCount(1)
-        ->and($account['summary_by_currency']['USD']['unapplied_receipts'])->toBe(25.0)
+    expect($account['summary']['charges_total'])->toBe(7650.0)->and($account['summary']['payments_total'])->toBe(7550.0)->and($account['summary']['outstanding_total'])->toBe(100.0)->and($account['aging']['days_1_30'])->toBe(100.0)->and($account['settlements'])->toHaveCount(1)
+        ->and($account['summary_by_currency']['USD']['unapplied_receipts'])->toBe(0.0)
         ->and($account['account_activity']->where('currency', 'LKR')->last()['running_balance'])->toBe(100.0);
     expect($account['summary']['credit_used'])->toBe(100.0)->and($account['summary']['credit_available'])->toBe(0.0)->and($account['summary']['credit_limit_exceeded'])->toBeTrue()
         ->and((new CorporateFinancialProjectionService())->isCreditLimitExceeded($corporateId))->toBeTrue();
     DB::table('invoices')->insert(['id'=>'70000000-0000-4000-8000-000000000001','booking_id'=>'30000000-0000-4000-8000-000000000001','invoice_number'=>'DIRECT-DUPLICATE','status'=>'issued','total_amount'=>999]);
     $metrics=(new CorporateFinancialProjectionService())->summarizeBookings(Booking::whereKey('30000000-0000-4000-8000-000000000001')->get());
-    expect($metrics['invoiced_value'])->toBe(150.0)->and($metrics['paid_value'])->toBe(50.0)->and($metrics['outstanding_value'])->toBe(100.0)->and($metrics['invoiced_booking_count'])->toBe(1);
+    expect($metrics['invoiced_value'])->toBe(7650.0)->and($metrics['paid_value'])->toBe(7550.0)->and($metrics['outstanding_value'])->toBe(100.0)->and($metrics['invoiced_booking_count'])->toBe(1);
 });
 
 it('keeps corporate account balances and activity separate by source currency', function () {

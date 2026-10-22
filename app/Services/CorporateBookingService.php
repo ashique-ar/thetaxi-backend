@@ -694,11 +694,11 @@ class CorporateBookingService
     {
         if (!empty($filters['status'])) {
             $status = $filters['status'];
-            if ($status === 'pending') {
+            if (in_array($status, ['pending', 'pending_approval'], true)) {
                 $query->whereIn('status', ['pending', 'pending_approval']);
             } elseif ($status === 'approved') {
                 $query->whereIn('status', ['approved', 'confirmed']);
-            } elseif ($status === 'assigned') {
+            } elseif (in_array($status, ['assigned', 'in_progress'], true)) {
                 $query->whereIn('status', ['assigned', 'allocated', 'in_progress']);
             } else {
                 $query->where('status', $status);
@@ -980,8 +980,13 @@ class CorporateBookingService
         ];
 
         if ($canViewPayments || $this->isCashBooking($booking)) {
+            $totalCost = $booking->total_estimated ?? $booking->total_actual;
+            if ($totalCost === null || (float) $totalCost <= 0) {
+                $totalCost = $booking->calculateTotal();
+            }
+
             $payload += [
-                'total_cost' => (float) ($booking->total_estimated ?? $booking->total_actual ?? 0),
+                'total_cost' => (float) $totalCost,
                 'currency' => $booking->currency,
                 'payment_status' => $booking->payment_status,
                 'payment_method' => $booking->payment_method,
@@ -1064,20 +1069,21 @@ class CorporateBookingService
         $tripCount = (clone $tripQuery)->count('booking_items.id');
         $matchingItems = (clone $tripQuery)
             ->with('booking:id,currency')
-            ->get(['booking_items.id', 'booking_items.booking_id', 'booking_items.currency', 'booking_items.total_price', 'booking_items.final_priced_at', 'booking_items.pricing_breakdown']);
+            ->get(['booking_items.id', 'booking_items.booking_id', 'booking_items.currency', 'booking_items.total_price', 'booking_items.addons', 'booking_items.discounts', 'booking_items.final_priced_at', 'booking_items.pricing_breakdown']);
         $matchingBookingItemIds = $matchingItems->pluck('id');
         $finalizedItems = $matchingItems->whereNotNull('final_priced_at');
         $finalizedBookingCount = $finalizedItems->pluck('booking_id')->unique()->count();
         $currencyTotals = $matchingItems->groupBy(fn ($item) => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')))
-            ->map(fn ($items, $currency) => [
-                'currency' => $currency,
-                'estimated_value' => app(CurrencyService::class)->roundAmount((float) $items->sum('total_price'), $currency ?: 'LKR'),
-                'finalized_value' => app(CurrencyService::class)->roundAmount((float) $items->whereNotNull('final_priced_at')->sum(fn ($item) =>
-                    data_get($item->pricing_breakdown, 'final_total')
-                        ?? data_get($item->pricing_breakdown, 'total_amount')
-                        ?? $item->total_price
-                ), $currency ?: 'LKR'),
-            ])->sortKeys()->values()->all();
+            ->map(function ($items, $currency) {
+                $estimated = (float) $items->sum(fn ($item) => $item->calculateEstimatedTotalValue());
+                $finalized = (float) $items->whereNotNull('final_priced_at')->sum(fn ($item) => $item->calculateTotalValue());
+
+                return [
+                    'currency' => $currency,
+                    'estimated_value' => $currency ? app(CurrencyService::class)->roundAmount($estimated, $currency) : round($estimated, 4),
+                    'finalized_value' => $currency ? app(CurrencyService::class)->roundAmount($finalized, $currency) : round($finalized, 4),
+                ];
+            })->sortKeys()->values()->all();
         $singleCurrencyTotal = count($currencyTotals) === 1 ? $currencyTotals[0] : null;
 
         $byStatus = (clone $query)
@@ -1142,37 +1148,42 @@ class CorporateBookingService
         $filename = 'exports/corporate_bookings_' . $corporateId . '_' . now()->format('Ymd_His') . '.csv';
 
         $canViewPayments = ($filters['can_view_payments'] ?? false) === true;
-        $csv = 'booking_number,item_code,employee_name,department,division,service_type,vehicle_category,from_date,to_date,status';
+        $headers = ['booking_number', 'item_code', 'employee_name', 'department', 'division', 'service_type', 'vehicle_category', 'from_date', 'to_date', 'status'];
         if ($canViewPayments) {
-            $csv .= ',payment_method,payment_collection_status,currency,amount_basis,total_cost';
+            array_push($headers, 'payment_method', 'payment_collection_status', 'currency', 'amount_basis', 'total_cost');
         }
-        $csv .= "\n";
+        $stream = fopen('php://temp', 'w+b');
+        fwrite($stream, "\xEF\xBB\xBF");
+        fputcsv($stream, $headers, ',', '"', '');
 
         foreach ($items as $item) {
             $row = $this->mapBookingItem($item, $canViewPayments);
             $cells = [
-                $this->csvEscape($row['booking_number'] ?? ''),
-                $this->csvEscape($row['item_code'] ?? ''),
-                $this->csvEscape($row['employee_name'] ?? ''),
-                $this->csvEscape($row['department'] ?? ''),
-                $this->csvEscape($row['division'] ?? ''),
-                $this->csvEscape($row['service_type_name'] ?? ''),
-                $this->csvEscape($row['vehicle_group_name'] ?? ''),
-                $this->csvEscape($row['pickup_date'] ?? ''),
-                $this->csvEscape($row['dropoff_date'] ?? ''),
-                $this->csvEscape($row['status'] ?? ''),
+                $this->csvSafeValue($row['booking_number'] ?? ''),
+                $this->csvSafeValue($row['item_code'] ?? ''),
+                $this->csvSafeValue($row['employee_name'] ?? ''),
+                $this->csvSafeValue($row['department'] ?? ''),
+                $this->csvSafeValue($row['division'] ?? ''),
+                $this->csvSafeValue($row['service_type_name'] ?? ''),
+                $this->csvSafeValue($row['vehicle_group_name'] ?? ''),
+                $this->csvSafeValue($row['pickup_date'] ?? ''),
+                $this->csvSafeValue($row['dropoff_date'] ?? ''),
+                $this->csvSafeValue($row['status'] ?? ''),
             ];
             if ($canViewPayments) {
                 $amount = $this->bookingItemAmount($item);
-                $cells[] = $this->csvEscape($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
-                $cells[] = $this->csvEscape($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
-                $cells[] = $this->csvEscape($amount['currency']);
-                $cells[] = $this->csvEscape($amount['basis']);
-                $cells[] = $this->csvEscape($amount['amount']);
+                $cells[] = $this->csvSafeValue($row['payment_collection_method'] ?? $row['payment_method'] ?? '');
+                $cells[] = $this->csvSafeValue($row['payment_collection_status'] ?? $row['payment_status'] ?? '');
+                $cells[] = $this->csvSafeValue($amount['currency']);
+                $cells[] = $this->csvSafeValue($amount['basis']);
+                $cells[] = $this->csvSafeValue($amount['amount']);
             }
-            $csv .= implode(',', $cells) . "\n";
+            fputcsv($stream, $cells, ',', '"', '');
         }
 
+        rewind($stream);
+        $csv = stream_get_contents($stream);
+        fclose($stream);
         Storage::put($filename, $csv);
 
         return $filename;
@@ -1183,11 +1194,8 @@ class CorporateBookingService
         $currency = strtoupper(trim((string) ($item->currency ?: $item->booking?->currency ?: '')));
         $finalized = $item->final_priced_at !== null;
         $amount = $finalized
-            ? (float) (data_get($item->pricing_breakdown, 'final_total')
-                ?? data_get($item->pricing_breakdown, 'total_amount')
-                ?? $item->total_price
-                ?? 0)
-            : (float) ($item->total_price ?? 0);
+            ? $item->calculateTotalValue()
+            : $item->calculateEstimatedTotalValue();
 
         return [
             'currency' => $currency ?: 'UNKNOWN',
@@ -1201,12 +1209,11 @@ class CorporateBookingService
     /**
      * Escape a value for CSV output.
      */
-    private function csvEscape(mixed $value): string
+    private function csvSafeValue(mixed $value): string
     {
         $value = (string) $value;
-
-        if (str_contains($value, ',') || str_contains($value, '"') || str_contains($value, "\n")) {
-            return '"' . str_replace('"', '""', $value) . '"';
+        if (preg_match('/^[\s\x{FEFF}]*[=+\-@]/u', $value) === 1) {
+            $value = "'".$value;
         }
 
         return $value;

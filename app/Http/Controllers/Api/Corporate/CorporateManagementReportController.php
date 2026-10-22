@@ -46,34 +46,41 @@ class CorporateManagementReportController extends Controller
         return response()->streamDownload(function () use ($rows, $payload) {
             $output = fopen('php://output', 'wb');
             fwrite($output, "\xEF\xBB\xBF");
-            if (isset($payload['financial_period']['summary'])) {
-                fputcsv($output, ['Financial basis', 'Selected billing period']);
-                foreach ($payload['financial_period']['summary'] as $key => $value) {
-                    fputcsv($output, [str_replace('_', ' ', $key), $value]);
+            fputcsv($output, $this->safeCsvRow([
+                'Travel date range',
+                $payload['period']['from'] ?: 'All travel dates',
+                $payload['period']['to'] ?: 'Present',
+            ]));
+            if (!empty($payload['financial_periods'])) {
+                fputcsv($output, $this->safeCsvRow(['Billing period totals']));
+                foreach ($payload['financial_periods'] as $summary) {
+                    foreach ($summary as $key => $value) {
+                        fputcsv($output, $this->safeCsvRow([str_replace('_', ' ', $key), $value]));
+                    }
+                    fputcsv($output, []);
                 }
-                fputcsv($output, []);
             }
-            fputcsv($output, ['Monthly travel activity']);
+            fputcsv($output, $this->safeCsvRow(['Monthly travel activity']));
             $monthlyHeaders = ['Month', 'Currency', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
-                array_push($monthlyHeaders, 'Estimated value', 'Finalized charges');
+                array_push($monthlyHeaders, 'Estimated value', 'Finalized trip value');
             }
-            fputcsv($output, $monthlyHeaders);
+            fputcsv($output, $this->safeCsvRow($monthlyHeaders));
             foreach ($payload['monthly_trends'] as $month) {
                 $monthlyRow = [$month['month'], $month['currency'], $month['bookings'], $month['trips']];
                 if ($payload['financial_metrics_visible']) {
                     array_push($monthlyRow, $month['estimated_value'], $month['finalized_charges']);
                 }
-                fputcsv($output, $monthlyRow);
+                fputcsv($output, $this->safeCsvRow($monthlyRow));
             }
             fputcsv($output, []);
             $headers = ['Dimension', 'Label', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
-                array_push($headers, 'Currency', 'Estimated value', 'Finalized charges');
+                array_push($headers, 'Currency', 'Estimated value', 'Finalized trip value');
             }
-            fputcsv($output, $headers);
+            fputcsv($output, $this->safeCsvRow($headers));
             foreach ($rows as $row) {
-                fputcsv($output, $row);
+                fputcsv($output, $this->safeCsvRow($row));
             }
             fclose($output);
         }, $filename.'.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -82,6 +89,14 @@ class CorporateManagementReportController extends Controller
     private function payload(CorporateReportFiltersRequest $request): array
     {
         return $this->analytics->report($request->corporate_id, $request->validated(), CorporatePortalPermission::allows($request, 'view_payments'));
+    }
+
+    private function safeCsvRow(array $row): array
+    {
+        return array_map(fn ($value) => is_string($value)
+            && preg_match('/^[\s\x{FEFF}]*[=+\-@]/u', $value) === 1
+                ? "'".$value
+                : $value, $row);
     }
 
     private function rows(array $payload): array

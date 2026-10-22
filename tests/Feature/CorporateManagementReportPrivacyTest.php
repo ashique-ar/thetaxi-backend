@@ -111,6 +111,14 @@ it('validates report filters without recursively restarting its validator', func
     expect($request->validated())->toBe([]);
 });
 
+it('preserves available precision when a report amount has no currency code', function () {
+    $service = new CorporateManagementAnalyticsService;
+    $round = new ReflectionMethod($service, 'roundCurrencyAmount');
+
+    expect($round->invoke($service, 1.2345, ''))->toBe(1.2345)
+        ->and($round->invoke($service, 1.2345, 'KWD'))->toBe(1.235);
+});
+
 it('exports monthly currency trends and selected billing totals in the management CSV', function () {
     $payload = [
         'financial_metrics_visible' => true,

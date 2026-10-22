@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -35,11 +36,13 @@ return new class extends Migration {
 
     public function down(): void
     {
-        foreach ($this->amountColumns as $table => $columns) {
-            foreach ($columns as $column) {
-                if (Schema::hasTable($table) && Schema::hasColumn($table, $column)
-                    && DB::table($table)->whereRaw("{$column} <> ROUND({$column}, 2)")->exists()) {
-                    throw new RuntimeException("Cannot reduce {$table}.{$column} precision while sub-cent amounts exist.");
+        if (DB::getDriverName() !== 'sqlite') {
+            foreach ($this->amountColumns as $table => $columns) {
+                foreach ($columns as $column) {
+                    if (Schema::hasTable($table) && Schema::hasColumn($table, $column)
+                        && DB::table($table)->whereRaw("{$column} <> ROUND({$column}, 2)")->exists()) {
+                        throw new RuntimeException("Cannot reduce {$table}.{$column} precision while sub-cent amounts exist.");
+                    }
                 }
             }
         }
@@ -52,13 +55,46 @@ return new class extends Migration {
 
     private function resize(int $precision, int $scale): void
     {
+        $driver = DB::getDriverName();
+        if ($driver === 'sqlite') {
+            return;
+        }
+
         foreach ($this->amountColumns as $table => $columns) {
-            foreach ($columns as $column) {
-                if (Schema::hasTable($table) && Schema::hasColumn($table, $column)) {
-                    $columnPrecision = $table === 'corporate_billing_terms' && $precision === 12 ? 14 : $precision;
+            if (!Schema::hasTable($table)) {
+                continue;
+            }
+
+            $columns = array_values(array_filter($columns, fn (string $column): bool => Schema::hasColumn($table, $column)));
+            if (!$columns) {
+                continue;
+            }
+
+            $columnPrecision = $table === 'corporate_billing_terms' && $precision === 12 ? 14 : $precision;
+            if ($driver === 'pgsql') {
+                foreach ($columns as $column) {
                     DB::statement("ALTER TABLE {$table} ALTER COLUMN {$column} TYPE NUMERIC({$columnPrecision}, {$scale})");
                 }
+                continue;
             }
+
+            if ($driver === 'mysql') {
+                $metadata = collect(Schema::getColumns($table))->keyBy('name');
+                Schema::table($table, function (Blueprint $blueprint) use ($columns, $columnPrecision, $scale, $metadata): void {
+                    foreach ($columns as $column) {
+                        $details = $metadata->get($column);
+                        $definition = $blueprint->decimal($column, $columnPrecision, $scale)
+                            ->nullable((bool) ($details['nullable'] ?? false));
+                        if (($details['default'] ?? null) !== null) {
+                            $definition->default($details['default']);
+                        }
+                        $definition->change();
+                    }
+                });
+                continue;
+            }
+
+            throw new RuntimeException("Unsupported database driver for corporate amount precision: {$driver}");
         }
     }
 };
