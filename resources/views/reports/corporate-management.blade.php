@@ -51,6 +51,13 @@
         @foreach($payload['financial_periods'] as $finance)
             @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($finance['currency'] ?: 'LKR'))
             <p>{{ $finance['period_start'] }} to {{ $finance['period_end'] }} | {{ $finance['invoice_number'] ?: $finance['settlement_number'] }} | {{ $finance['currency'] }} | {{ $finance['status'] }} | Due {{ $finance['due_date'] ?: 'On receipt' }}<br>Charges: {{ number_format($finance['charges_total'], $digits) }} | Payments: {{ number_format($finance['payments_total'], $digits) }} | Refunds: {{ number_format($finance['refunds_total'], $digits) }} | Adjustments: {{ number_format($finance['adjustments_total'], $digits) }} | Outstanding: {{ number_format($finance['outstanding_total'], $digits) }}</p>
+            @if(!empty($finance['conversion_rates']))
+                <table><thead><tr><th>Source currency</th><th>Invoice currency</th><th>Invoice units per source unit</th><th>Rate captured from</th><th>Rate captured through</th><th>Rate source</th></tr></thead><tbody>
+                    @foreach($finance['conversion_rates'] as $rate)
+                        <tr><td>{{ $rate['source_currency'] }}</td><td>{{ $rate['invoice_currency'] }}</td><td>{{ number_format($rate['rate'], 10) }}</td><td>{{ $rate['rate_at'] ?: 'Not recorded' }}</td><td>{{ $rate['rate_until'] ?: 'Not recorded' }}</td><td>{{ $rate['fx_source'] ?: 'Not recorded' }}</td></tr>
+                    @endforeach
+                </tbody></table>
+            @endif
         @endforeach
     @endif
     <h2>Monthly travel activity</h2>

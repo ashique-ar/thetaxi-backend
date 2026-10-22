@@ -15,6 +15,7 @@ class VehicleMaintenanceRecordResource extends JsonResource
             'schedule_id'    => $this->schedule_id,
             'performed_date' => $this->performed_date,
             'cost'           => $this->cost,
+            'currency'       => strtoupper((string) ($this->currency ?: config('booking.base_currency', 'LKR'))),
             'notes'          => $this->notes,
             'created_at'     => $this->created_at,
             'updated_at'     => $this->updated_at,

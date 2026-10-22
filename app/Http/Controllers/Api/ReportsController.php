@@ -11,6 +11,7 @@ use App\Models\Country;
 use App\Models\Driver\Driver;
 use App\Models\Vehicle\Vehicle;
 use App\Models\Agent\Agent;
+use App\Services\TimezoneService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
@@ -38,22 +39,22 @@ class ReportsController extends Controller
 
     public function getDashboardStats(Request $request): JsonResponse
     {
-        $period    = $request->get('period', 'month');
-        $startDate = $this->getStartDate($period);
+        $filters = $this->parseFilters($request);
+        $cacheKey = 'reports.dashboard.' . md5(json_encode($filters));
 
-        $cacheKey = "reports.dashboard.{$period}";
-
-        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($startDate) {
+        $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($filters) {
+            $bookings = Booking::query();
+            $this->applyFilters($bookings, $filters);
             return [
-                'total_bookings'   => Booking::where('created_at', '>=', $startDate)->count(),
-                'revenue_by_currency' => Booking::where('created_at', '>=', $startDate)
-                    ->where('status', 'completed')
+                'total_bookings'   => (clone $bookings)->count(),
+                'revenue_by_currency' => (clone $bookings)->where('status', 'completed')
                     ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
                     ->groupBy('currency')->orderBy('currency')->get(),
-                'total_customers'  => Customer::where('created_at', '>=', $startDate)->count(),
+                'total_customers'  => Customer::where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']))
+                    ->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']))->count(),
                 'total_vehicles'   => Vehicle::where('is_active', true)->count(),
-                'booking_trends'   => $this->getBookingTrends($startDate),
-                'revenue_trends'   => $this->getRevenueTrends($startDate),
+                'booking_trends'   => $this->getBookingTrends($filters),
+                'revenue_trends'   => $this->getRevenueTrends($filters),
             ];
         });
 
@@ -86,16 +87,17 @@ class ReportsController extends Controller
     public function getBookingTrendsEndpoint(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
-        $groupBy = $request->get('group_by', 'day');
+        $groupBy = $request->validate(['group_by' => ['sometimes', 'in:hour,day,week,month,year']])['group_by'] ?? 'day';
+        $dateFormat = $this->getDateFormat($groupBy);
 
         $query = Booking::query();
         $this->applyFilters($query, $filters);
 
         $trends = $query
-            ->selectRaw("DATE(created_at) as date, COUNT(*) as bookings,
+            ->selectRaw("{$dateFormat} as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings,
                 SUM(CASE WHEN status = 'completed' THEN COALESCE(total_actual, 0) ELSE 0 END) as revenue")
-            ->groupBy('date')
-            ->orderBy('date')
+            ->groupBy('date', 'currency')
+            ->orderBy('date')->orderBy('currency')
             ->get();
 
         return response()->json(['status' => 'success', 'data' => $trends]);
@@ -108,12 +110,13 @@ class ReportsController extends Controller
     public function getServiceTypePerformance(Request $request): JsonResponse
     {
         $filters = $this->parseFilters($request);
+        $serviceCurrency = "COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR')";
 
         $query = Booking::query()
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select('service_types.name as service_type')
-            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw("{$serviceCurrency} as currency")
             ->selectRaw("COUNT(DISTINCT bookings.id) as total_bookings")
             ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings")
             ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status IN ('cancelled','inquiry_cancelled') THEN bookings.id END) as cancelled_bookings")
@@ -121,7 +124,10 @@ class ReportsController extends Controller
             ->selectRaw("AVG(CASE WHEN bookings.status = 'completed' THEN booking_items.total_price END) as average_item_value")
             ->groupBy('service_types.id', 'service_types.name', 'currency');
 
-        $this->applyFilters($query, $filters);
+        $serviceFilters = $filters;
+        unset($serviceFilters['currency']);
+        $this->applyFilters($query, $serviceFilters);
+        if (!empty($filters['currency'])) $query->whereRaw("{$serviceCurrency} = ?", [$filters['currency']]);
 
         return response()->json(['status' => 'success', 'data' => $query->get()]);
     }
@@ -150,21 +156,12 @@ class ReportsController extends Controller
             ->orderBy('period')->orderBy('currency')
             ->get();
 
-        $bookingDateFormat = str_replace('created_at', 'bookings.created_at', $fmt);
-        $serviceRevenue = DB::table('booking_items')
-            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
-            ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
-            ->where('bookings.status', 'completed')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
-            ->selectRaw("{$bookingDateFormat} as period, COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, service_types.name as service_type, SUM(COALESCE(booking_items.total_price, 0)) as revenue")
-            ->groupBy('period', 'currency', 'service_types.name')
-            ->get()
-            ->groupBy(fn ($row) => $row->period . '|' . $row->currency);
+        $serviceRevenue = $this->getAllocatedServiceRevenue($filters, $period);
 
         foreach ($reports as $report) {
-            $report->revenue_by_service_type = ($serviceRevenue->get($report->period . '|' . $report->currency) ?? collect())
-                ->map(fn ($row) => ['service_type' => $row->service_type, 'revenue' => (float) $row->revenue])
+            $services = $serviceRevenue[$report->period . '|' . $report->currency]['services'] ?? [];
+            $report->revenue_by_service_type = collect($services)
+                ->map(fn ($values, $serviceType) => ['service_type' => $serviceType, 'revenue' => $values['revenue']])
                 ->values();
         }
 
@@ -174,7 +171,7 @@ class ReportsController extends Controller
             $prev = $previousRevenue[$currency] ?? 0;
             $report->growth_rate = $prev > 0
                 ? round((($report->total_revenue - $prev) / $prev) * 100, 2)
-                : 0;
+                : null;
             $previousRevenue[$currency] = (float) $report->total_revenue;
         }
 
@@ -194,7 +191,7 @@ class ReportsController extends Controller
 
         $analytics = [
             'revenue_by_currency'     => $revenueByCurrency,
-            'revenue_by_service_type' => $this->getRevenueByServiceType(clone $query),
+            'revenue_by_service_type' => $this->getRevenueByServiceType($filters),
             'revenue_by_agent'        => $this->getRevenueByAgent(clone $query),
             'monthly_growth'          => $this->getMonthlyGrowth(clone $query),
         ];
@@ -214,10 +211,10 @@ class ReportsController extends Controller
             'total_customers'     => Customer::count(),
             'active_customers'    => Customer::whereHas('bookings', function ($q) use ($filters) {
                 if (isset($filters['date_from'])) {
-                    $q->where('created_at', '>=', $filters['date_from']);
+                    $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
                 }
                 if (isset($filters['date_to'])) {
-                    $q->whereDate('created_at', '<=', $filters['date_to']);
+                    $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']));
                 }
             })->count(),
             'new_customers'       => $this->getNewCustomers($filters),
@@ -300,13 +297,40 @@ class ReportsController extends Controller
 
     public function getBookingReports(Request $request): JsonResponse
     {
+        $page = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'sort_by' => ['nullable', 'in:booking_number,total_amount,status,created_at'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+        ]);
         $filters = $this->parseFilters($request);
-        $query = Booking::with(['customer.user', 'bookingItems.vehicle'])
-            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'total_actual', 'currency', 'status', 'created_at');
+        $summaryFilters = $filters;
+        unset($summaryFilters['search']);
+        $summaryQuery = Booking::query();
+        $this->applyFilters($summaryQuery, $summaryFilters);
+        $query = clone $summaryQuery;
+        if (!empty($filters['search'])) $this->applyBookingSearch($query, $filters['search']);
 
-        $this->applyFilters($query, $filters);
+        $byCurrency = (clone $summaryQuery)
+            ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, COUNT(*) as bookings, SUM(COALESCE(total_actual, 0)) as amount")
+            ->groupBy('currency')->orderBy('currency')->get();
+        $byStatus = (clone $summaryQuery)
+            ->selectRaw('status, COUNT(*) as bookings')->groupBy('status')->orderBy('status')->get()
+            ->map(fn ($row) => ['status' => $row->status, 'bookings' => (int) $row->bookings])->values();
 
-        $rows = $query->orderByDesc('created_at')->limit(500)->get()->map(fn ($booking) => [
+        $sortColumn = match ($page['sort_by'] ?? null) {
+            'booking_number' => 'bookings.booking_number',
+            'total_amount' => 'bookings.total_actual',
+            'status' => 'bookings.status',
+            default => 'bookings.created_at',
+        };
+        $direction = $page['sort_direction'] ?? 'desc';
+        $bookings = $query->with(['customer.user', 'bookingItems.vehicle'])
+            ->select('bookings.id', 'booking_number', 'customer_id', 'agent_id', 'total_actual', 'currency', 'status', 'created_at')
+            ->orderBy($sortColumn, $direction)->orderBy('bookings.id')
+            ->paginate($page['per_page'] ?? 25, ['*'], 'page', $page['page'] ?? 1);
+
+        $rows = collect($bookings->items())->map(fn ($booking) => [
             'id' => (string) $booking->id,
             'booking_number' => $booking->booking_number,
             'customer_name' => trim(($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? '')),
@@ -320,24 +344,114 @@ class ReportsController extends Controller
             'status' => $booking->status,
         ]);
 
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        return response()->json([
+            'status' => 'success',
+            'data' => $rows,
+            'meta' => [
+                'current_page' => $bookings->currentPage(),
+                'from' => $bookings->firstItem(),
+                'last_page' => $bookings->lastPage(),
+                'per_page' => $bookings->perPage(),
+                'to' => $bookings->lastItem(),
+                'total' => $bookings->total(),
+                'summary' => [
+                    'total_bookings' => (clone $summaryQuery)->count(),
+                    'by_currency' => $byCurrency->map(fn ($row) => [
+                        'currency' => (string) $row->currency,
+                        'bookings' => (int) $row->bookings,
+                        'amount' => (float) $row->amount,
+                    ])->values(),
+                    'by_status' => $byStatus,
+                ],
+            ],
+        ]);
     }
 
     public function getCustomerReports(Request $request): JsonResponse
     {
-        return response()->json(['status' => 'success', 'data' => $this->customerReportRows($this->parseFilters($request))]);
+        $pagination = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'customer_sort_by' => ['nullable', 'in:name,email,total_bookings,last_booking_date,status,created_at'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+        ]);
+        $filters = $this->parseFilters($request);
+        $query = $this->customerReportQuery($filters);
+        $direction = $pagination['sort_direction'] ?? 'desc';
+        match ($pagination['customer_sort_by'] ?? null) {
+            'name' => $query->orderByRaw("LOWER(CONCAT_WS(' ', report_customer_users.first_name, report_customer_users.last_name)) {$direction}"),
+            'email' => $query->orderByRaw("LOWER(COALESCE(report_customer_users.email, '')) {$direction}"),
+            'total_bookings' => $query->orderBy('bookings_count', $direction),
+            'last_booking_date' => $query->orderBy('bookings_max_created_at', $direction),
+            'status' => $query->orderBy('customers.status', $direction),
+            'created_at' => $query->orderBy('customers.created_at', $direction),
+            default => $query->orderBy('customers.created_at', $direction),
+        };
+        $query->orderBy('customers.id');
+        $customers = $query->paginate($pagination['per_page'] ?? 25, ['*'], 'page', $pagination['page'] ?? 1);
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->formatCustomerReportRows(collect($customers->items())),
+            'meta' => [
+                'current_page' => $customers->currentPage(),
+                'from' => $customers->firstItem(),
+                'last_page' => $customers->lastPage(),
+                'per_page' => $customers->perPage(),
+                'to' => $customers->lastItem(),
+                'total' => $customers->total(),
+                'summary' => $this->customerReportSummary($filters),
+            ],
+        ]);
     }
 
     private function customerReportRows(array $filters): array
     {
-        $customers = Customer::with('user')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+        return $this->formatCustomerReportRows($this->customerReportQuery($filters)->orderByDesc('customers.created_at')->get());
+    }
+
+    private function customerReportQuery(array $filters)
+    {
+        return Customer::query()
+            ->leftJoin('users as report_customer_users', 'customers.user_id', '=', 'report_customer_users.id')
+            ->select('customers.*')
+            ->with('user')
             ->withCount('bookings')
             ->withMax('bookings', 'created_at')
-            ->orderByDesc('created_at')
-            ->limit(500)
-            ->get();
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('customers.created_at', '<', $this->exclusiveDateEnd($filters['date_to'])))
+            ->when(!empty($filters['search']), function ($q) use ($filters) {
+                $search = '%' . mb_strtolower($filters['search']) . '%';
+                $q->where(function ($where) use ($search) {
+                    $where->whereRaw("LOWER(CONCAT_WS(' ', report_customer_users.first_name, report_customer_users.last_name)) LIKE ?", [$search])
+                        ->orWhereRaw('LOWER(COALESCE(report_customer_users.email, \'\')) LIKE ?', [$search])
+                        ->orWhereRaw('LOWER(COALESCE(report_customer_users.phone, \'\')) LIKE ?', [$search]);
+                });
+            });
+    }
+
+    private function customerReportSummary(array $filters): array
+    {
+        $cohort = Customer::query()->select('id')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
+        $customers = Customer::query()
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to'])));
+        $spend = DB::table('bookings')->joinSub($cohort, 'report_customers', 'report_customers.id', '=', 'bookings.customer_id')
+            ->where('bookings.status', 'completed')
+            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(DISTINCT bookings.customer_id) as customers, SUM(COALESCE(bookings.total_actual, 0)) as spent")
+            ->groupBy('currency')->orderBy('currency')->get()
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'customers' => (int) $row->customers, 'spent' => (float) $row->spent])->values();
+        $active = (clone $customers)->where(fn ($q) => $q->where('status', 'active')->orWhereNull('status'))->count();
+
+        return ['total_customers' => (clone $customers)->count(), 'active_customers' => $active, 'spend_by_currency' => $spend];
+    }
+
+    private function formatCustomerReportRows($customers): array
+    {
+        $loyaltyTiers = CustomerLoyaltyPoint::whereIn('customer_id', $customers->pluck('id'))
+            ->pluck('current_tier', 'customer_id');
         $spend = DB::table('bookings')
             ->whereIn('customer_id', $customers->pluck('id'))
             ->where('status', 'completed')
@@ -347,7 +461,7 @@ class ReportsController extends Controller
             ->get()
             ->groupBy(fn ($row) => (string) $row->customer_id);
 
-        return $customers->map(function ($customer) use ($spend) {
+        return $customers->map(function ($customer) use ($spend, $loyaltyTiers) {
             $spentByCurrency = $spend->get((string) $customer->id, collect())->map(fn ($row) => [
                 'currency' => (string) $row->currency,
                 'total_spent' => (float) $row->total_spent,
@@ -365,39 +479,47 @@ class ReportsController extends Controller
                     'last_booking_date' => $customer->bookings_max_created_at,
                     'registration_date' => $customer->created_at,
                     'status' => $customer->status ?? 'active',
-                    'loyalty_tier' => CustomerLoyaltyPoint::where('customer_id', $customer->id)->value('current_tier') ?? '',
+                    'loyalty_tier' => $loyaltyTiers->get((string) $customer->id) ?? '',
                 ];
         })->all();
     }
 
     public function getVehicleReports(Request $request): JsonResponse
     {
-        return response()->json(['status' => 'success', 'data' => $this->vehicleReportRows($this->parseFilters($request))]);
-    }
-
-    private function vehicleReportRows(array $filters): array
-    {
-        $metrics = DB::table('booking_items')
-            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
-            ->whereNotNull('booking_items.vehicle_id')
-            ->whereNotNull('booking_items.from_date')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('booking_items.from_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('booking_items.from_date', '<=', $filters['date_to']))
-            ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
-            ->groupBy('booking_items.vehicle_id', 'currency')
-            ->orderBy('booking_items.vehicle_id')->orderBy('currency')
-            ->get()
-            ->groupBy(fn ($row) => (string) $row->vehicle_id);
-
-        return Vehicle::with('group')
+        $pagination = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'vehicle_sort_by' => ['nullable', 'in:registration_number,category,status'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+        ]);
+        $filters = $this->parseFilters($request);
+        $direction = $pagination['sort_direction'] ?? 'asc';
+        $sortBy = $pagination['vehicle_sort_by'] ?? 'registration_number';
+        $vehicles = Vehicle::query()->with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
-            ->orderBy('title')
-            ->limit(500)
-            ->get()
-            ->flatMap(function ($vehicle) use ($metrics) {
-                $rows = $metrics->get((string) $vehicle->id, collect());
-                if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
-                return $rows->map(fn ($metric) => [
+            ->when(!empty($filters['search']), function ($query) use ($filters) {
+                $search = '%' . mb_strtolower($filters['search']) . '%';
+                $query->where(function ($where) use ($search) {
+                    $where->whereRaw('LOWER(COALESCE(license_plate, \'\')) LIKE ?', [$search])
+                        ->orWhereRaw('LOWER(COALESCE(title, \'\')) LIKE ?', [$search])
+                        ->orWhereHas('group', fn ($group) => $group->whereRaw('LOWER(name) LIKE ?', [$search]));
+                });
+            });
+        match ($sortBy) {
+            'category' => $vehicles->leftJoin('vehicle_groups as report_vehicle_groups', 'vehicles.vehicle_group_id', '=', 'report_vehicle_groups.id')->orderBy('report_vehicle_groups.name', $direction)->select('vehicles.*'),
+            'status' => $vehicles->orderBy('vehicles.status', $direction),
+            default => $vehicles->orderBy('vehicles.license_plate', $direction),
+        };
+        $vehicles->orderBy('vehicles.id');
+        $perPage = $pagination['per_page'] ?? 25;
+        $page = $pagination['page'] ?? 1;
+        $vehicles = $vehicles->paginate($perPage, ['*'], 'page', $page);
+        $vehicleIds = collect($vehicles->items())->pluck('id');
+        $pageRows = $this->vehicleReportMetrics($filters, $vehicleIds)->groupBy(fn ($metric) => (string) $metric->vehicle_id);
+        $data = collect($vehicles->items())->flatMap(function ($vehicle) use ($pageRows) {
+            $metrics = $pageRows->get((string) $vehicle->id, collect());
+            if ($metrics->isEmpty()) $metrics = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
+            return $metrics->map(fn ($metric) => [
                 'id' => (string) $vehicle->id,
                 'registration_number' => $vehicle->license_plate,
                 'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
@@ -406,8 +528,183 @@ class ReportsController extends Controller
                 'total_revenue' => (float) $metric->completed_revenue,
                 'currency' => (string) $metric->currency,
                 'status' => $vehicle->status ?? $vehicle->availability_status,
+            ]);
+        })->values();
+        $allMetricCurrencies = $this->vehicleReportMetrics($filters)->groupBy('currency');
+        $summaryByCurrency = $allMetricCurrencies->map(fn ($metrics, $currency) => [
+            'currency' => (string) $currency,
+            'revenue' => (float) $metrics->sum('completed_revenue'),
+        ])->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $data,
+            'meta' => [
+                'current_page' => $vehicles->currentPage(),
+                'from' => $vehicles->firstItem(),
+                'per_page' => $vehicles->perPage(),
+                'last_page' => $vehicles->lastPage(),
+                'to' => $vehicles->lastItem(),
+                'total' => $vehicles->total(),
+                'summary' => ['total_vehicles' => Vehicle::query()->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))->count(), 'revenue_by_currency' => $summaryByCurrency],
+            ],
+        ]);
+    }
+
+    public function getDriverReports(Request $request): JsonResponse
+    {
+        $pagination = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'driver_sort_by' => ['nullable', 'in:driver,currency,bookings,completed_bookings,completed_revenue'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+        ]);
+        $filters = $this->parseFilters($request);
+        $query = $this->driverReportQuery($filters);
+        $sortColumn = match ($pagination['driver_sort_by'] ?? null) {
+            'currency' => 'currency',
+            'bookings' => 'bookings',
+            'completed_bookings' => 'completed_bookings',
+            'completed_revenue' => 'completed_revenue',
+            default => 'driver_name',
+        };
+        $rows = $query->orderBy($sortColumn, $pagination['sort_direction'] ?? 'asc')
+            ->orderBy('drivers.id')->orderBy('currency')
+            ->paginate($pagination['per_page'] ?? 25, ['*'], 'page', $pagination['page'] ?? 1);
+        $summary = DB::query()->fromSub($this->driverReportQuery($filters), 'report_driver_metrics')
+            ->selectRaw('currency, COUNT(DISTINCT driver_id) as drivers, SUM(bookings) as assignments, SUM(completed_bookings) as completed_assignments, SUM(completed_revenue) as completed_revenue')
+            ->groupBy('currency')->orderBy('currency')->get()
+            ->map(fn ($row) => [
+                'currency' => (string) $row->currency,
+                'drivers' => (int) $row->drivers,
+                'assignments' => (int) $row->assignments,
+                'completed_assignments' => (int) $row->completed_assignments,
+                'completed_revenue' => (float) $row->completed_revenue,
+            ])->values();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => collect($rows->items())->map(fn ($row) => [
+                'id' => (string) $row->driver_id,
+                'driver_name' => trim((string) $row->driver_name),
+                'currency' => (string) $row->currency,
+                'bookings' => (int) $row->bookings,
+                'completed_bookings' => (int) $row->completed_bookings,
+                'completed_revenue' => (float) $row->completed_revenue,
+            ])->values(),
+            'meta' => [
+                'current_page' => $rows->currentPage(),
+                'from' => $rows->firstItem(),
+                'per_page' => $rows->perPage(),
+                'last_page' => $rows->lastPage(),
+                'to' => $rows->lastItem(),
+                'total' => $rows->total(),
+                'summary' => ['by_currency' => $summary],
+            ],
+        ]);
+    }
+
+    public function getMaintenanceReports(Request $request): JsonResponse
+    {
+        $options = $request->validate([
+            'page' => ['sometimes', 'integer', 'min:1'],
+            'per_page' => ['sometimes', 'integer', 'min:1', 'max:100'],
+            'maintenance_sort_by' => ['nullable', 'in:vehicle,type,performed_date,status,cost'],
+            'sort_direction' => ['nullable', 'in:asc,desc'],
+            'maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
+        ]);
+        $filters = $this->parseFilters($request);
+        $query = $this->maintenanceReportQuery($filters);
+        $sort = match ($options['maintenance_sort_by'] ?? null) {
+            'type' => 'maintenance_type',
+            'performed_date' => 'performed_date',
+            'status' => 'status',
+            'cost' => 'cost',
+            default => 'vehicle_title',
+        };
+        $rows = $query->orderBy($sort, $options['sort_direction'] ?? 'desc')
+            ->orderBy('vmr.id')->paginate($options['per_page'] ?? 25, ['*'], 'page', $options['page'] ?? 1);
+        $summaryRows = $this->maintenanceReportQuery($filters);
+        $totals = DB::query()->fromSub(clone $summaryRows, 'maintenance_rows')
+            ->selectRaw('COUNT(*) as records')->first();
+        $costByCurrency = DB::query()->fromSub(clone $summaryRows, 'maintenance_rows')
+            ->selectRaw("currency, SUM(CASE WHEN status = 'completed' THEN COALESCE(cost, 0) ELSE 0 END) as completed_cost")
+            ->groupBy('currency')->orderBy('currency')->get()
+            ->map(fn ($row) => ['currency' => (string) $row->currency, 'completed_cost' => (float) $row->completed_cost])->values();
+        $byStatus = DB::query()->fromSub($summaryRows, 'maintenance_rows')
+            ->selectRaw('status, currency, COUNT(*) as records, SUM(COALESCE(cost, 0)) as total_cost')->groupBy('status', 'currency')->orderBy('status')->orderBy('currency')->get();
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $rows->items(),
+            'meta' => [
+                'current_page' => $rows->currentPage(), 'per_page' => $rows->perPage(),
+                'last_page' => $rows->lastPage(), 'total' => $rows->total(),
+                'summary' => [
+                    'records' => (int) ($totals->records ?? 0),
+                    'completed_cost_by_currency' => $costByCurrency,
+                    'by_status' => $byStatus->map(fn ($row) => ['status' => $row->status, 'currency' => (string) $row->currency, 'records' => (int) $row->records, 'total_cost' => (float) $row->total_cost])->values(),
+                ],
+            ],
+        ]);
+    }
+
+    private function driverReportQuery(array $filters)
+    {
+        return DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->join('drivers', 'booking_items.driver_id', '=', 'drivers.id')
+            ->join('users', 'drivers.user_id', '=', 'users.id')
+            ->whereNotNull('booking_items.driver_id')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereNotNull('booking_items.from_date')->whereRaw('COALESCE(booking_items.to_date, booking_items.from_date) >= ?', [TimezoneService::userDateStartUtc($filters['date_from'])]))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->whereNotNull('booking_items.from_date')->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
+            ->when(!empty($filters['currency']), fn ($q) => $q->whereRaw("COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') = ?", [$filters['currency']]))
+            ->when(!empty($filters['search']), function ($q) use ($filters) {
+                $search = '%' . mb_strtolower($filters['search']) . '%';
+                $q->whereRaw("LOWER(CONCAT_WS(' ', users.first_name, users.last_name)) LIKE ?", [$search]);
+            })
+            ->selectRaw("drivers.id as driver_id, CONCAT(users.first_name, ' ', users.last_name) as driver_name, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings, COUNT(DISTINCT CASE WHEN bookings.status = \'completed\' THEN bookings.id END) as completed_bookings, SUM(CASE WHEN bookings.status = \'completed\' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue')
+            ->groupBy('drivers.id', 'users.first_name', 'users.last_name', 'currency');
+    }
+
+    private function vehicleReportRows(array $filters): array
+    {
+        $metrics = $this->vehicleReportMetrics($filters)->groupBy(fn ($row) => (string) $row->vehicle_id);
+
+        return Vehicle::with('group')
+            ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
+            ->orderBy('title')
+            ->get()
+            ->flatMap(function ($vehicle) use ($metrics) {
+                $rows = $metrics->get((string) $vehicle->id, collect());
+                if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
+                return $rows->map(fn ($metric) => [
+                    'id' => (string) $vehicle->id,
+                    'registration_number' => $vehicle->license_plate,
+                    'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
+                    'category' => $vehicle->group?->name ?? '',
+                    'total_bookings' => (int) $metric->trip_count,
+                    'total_revenue' => (float) $metric->completed_revenue,
+                    'currency' => (string) $metric->currency,
+                    'status' => $vehicle->status ?? $vehicle->availability_status,
                 ]);
             })->values()->all();
+    }
+
+    private function vehicleReportMetrics(array $filters, $vehicleIds = null)
+    {
+        return DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.vehicle_id')
+            ->whereNotNull('booking_items.from_date')
+            ->when($vehicleIds !== null, fn ($q) => $q->whereIn('booking_items.vehicle_id', $vehicleIds))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('booking_items.from_date', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
+            ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
+            ->groupBy('booking_items.vehicle_id', 'currency')
+            ->orderBy('booking_items.vehicle_id')->orderBy('currency')
+            ->get();
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -418,7 +715,7 @@ class ReportsController extends Controller
     {
         $request->validate([
             'format' => 'sometimes|in:csv,pdf',
-            'type' => 'sometimes|string|in:bookings,customers,vehicles,financial',
+            'type' => 'sometimes|string|in:bookings,customers,vehicles,drivers,financial,maintenance',
         ]);
 
         $type = $type ?? $request->get('type', 'bookings');
@@ -430,7 +727,9 @@ class ReportsController extends Controller
             'bookings'  => $this->exportBookingReport($filters, $format),
             'customers' => $this->exportCustomerReport($filters, $format),
             'vehicles'  => $this->exportVehicleReport($filters, $format),
+            'drivers' => $this->exportDriverReport($filters, $format),
             'financial' => $this->exportFinancialReport($filters, $format, $request->get('period', 'monthly')),
+            'maintenance' => $this->exportMaintenanceReport($filters, $format),
             default     => response()->json(['error' => 'Invalid report type'], 400),
         };
     }
@@ -460,16 +759,18 @@ class ReportsController extends Controller
     {
         $request->validate([
             'template_id' => ['nullable', 'required_without:report_type', 'in:operational_summary,financial_report,customer_analysis,vehicle_utilization,driver_performance,custom_report'],
-            'report_type' => ['nullable', 'required_without:template_id', 'in:financial,operational,customer,vehicle_performance,driver_performance'],
+            'report_type' => ['nullable', 'required_without:template_id', 'in:financial,operational,customer,vehicle_performance,driver_performance,maintenance'],
             'report_name' => ['nullable', 'string', 'max:255'],
             'format' => ['required', 'in:csv,pdf,excel'],
             'date_from' => ['required', 'date_format:Y-m-d'],
             'date_to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'period' => ['nullable', 'in:daily,weekly,monthly,yearly'],
             'filters' => ['nullable', 'array'],
             'filters.status' => ['nullable', 'array'],
             'filters.status.*' => ['string', 'in:pending,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled,inquiry_cancelled'],
             'filters.payment_status' => ['nullable', 'string', 'in:pending,paid,failed,refunded'],
             'filters.vehicle_group' => ['nullable', 'string', 'in:economy,standard,premium,luxury'],
+            'filters.maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
             'custom_fields' => ['nullable', 'array'],
             'custom_fields.*' => ['string', 'max:64'],
         ]);
@@ -494,7 +795,8 @@ class ReportsController extends Controller
             'created_user_id' => $request->user()?->getAuthIdentifier(),
         ]);
 
-        $content = $this->generatedReportResponse($report)->getContent();
+        $generatedResponse = $this->generatedReportResponse($report);
+        $content = $generatedResponse->getContent();
         if (!is_string($content)) {
             return response()->json(['status' => 'error', 'message' => 'Report output could not be created'], 500);
         }
@@ -507,7 +809,7 @@ class ReportsController extends Controller
         }
         $report->file_path = $path;
         $report->size = $this->formatFileSize(strlen($content));
-        $report->row_count = 0;
+        $report->row_count = (int) $generatedResponse->headers->get('X-Report-Row-Count', 0);
         $report->status = 'ready';
         $report->metadata = array_merge($report->metadata ?? [], ['sha256' => hash('sha256', $content)]);
         try {
@@ -549,6 +851,7 @@ class ReportsController extends Controller
             'customer' => $this->exportCustomerReport($filters, $report->format),
             'vehicle_performance' => $this->exportVehicleReport($filters, $report->format),
             'driver_performance' => $this->exportDriverReport($filters, $report->format),
+            'maintenance' => $this->exportMaintenanceReport($filters, $report->format),
             default => $this->exportBookingReport($filters, $report->format),
         };
     }
@@ -579,18 +882,33 @@ class ReportsController extends Controller
         $request->validate([
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'search' => ['nullable', 'string', 'max:100'],
+            'maintenance_status' => ['nullable', 'in:completed,pending,cancelled'],
+            'currency' => ['nullable', 'required_with:min_amount,max_amount', 'regex:/^[A-Za-z]{3}$/'],
+            'min_amount' => ['nullable', 'numeric', 'min:0'],
+            'max_amount' => ['nullable', 'numeric', 'min:0', 'gte:min_amount'],
         ]);
-        $today = Carbon::today()->toDateString();
+        $today = Carbon::today(TimezoneService::getUserTimezone())->toDateString();
 
         return array_filter([
-            'date_from'      => $request->get('date_from') ?: Carbon::today()->startOfMonth()->toDateString(),
+            'date_from'      => $request->get('date_from') ?: Carbon::today(TimezoneService::getUserTimezone())->startOfMonth()->toDateString(),
             'date_to'        => $request->get('date_to') ?: $today,
             'vehicle_id'     => $request->get('vehicle_id'),
             'customer_id'    => $request->get('customer_id'),
             'booking_status' => $request->get('booking_status'),
             'agent_id'       => $request->get('agent_id'),
             'service_type_id' => $request->get('service_type_id'),
-        ]);
+            'currency'       => $request->get('currency') ? strtoupper($request->get('currency')) : null,
+            'min_amount'     => $request->get('min_amount'),
+            'max_amount'     => $request->get('max_amount'),
+            'search'         => $request->get('search'),
+            'maintenance_status' => $request->get('maintenance_status'),
+        ], fn ($value) => $value !== null && $value !== '');
+    }
+
+    private function exclusiveDateEnd(string $date): Carbon
+    {
+        return TimezoneService::userDateEndExclusiveUtc($date);
     }
 
     private function applyFilters($query, array $filters): void
@@ -598,28 +916,54 @@ class ReportsController extends Controller
         foreach ($filters as $key => $value) {
             switch ($key) {
                 case 'date_from':
-                    $query->where('created_at', '>=', $value);
+                    $query->where('bookings.created_at', '>=', TimezoneService::userDateStartUtc($value));
                     break;
                 case 'date_to':
-                    $query->where('created_at', '<=', $value . ' 23:59:59');
+                    $query->where('bookings.created_at', '<', $this->exclusiveDateEnd($value));
                     break;
                 case 'vehicle_id':
                 case 'customer_id':
                 case 'agent_id':
                 case 'service_type_id':
-                    $query->where($key, $value);
+                    $query->where('bookings.' . $key, $value);
+                    break;
+                case 'currency':
+                    $query->whereRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') = ?", [$value]);
+                    break;
+                case 'min_amount':
+                    $query->where('bookings.total_actual', '>=', $value);
+                    break;
+                case 'max_amount':
+                    $query->where('bookings.total_actual', '<=', $value);
+                    break;
+                case 'search':
+                    $this->applyBookingSearch($query, $value);
                     break;
                 case 'booking_status':
-                    is_array($value) ? $query->whereIn('status', $value) : $query->where('status', $value);
+                    is_array($value) ? $query->whereIn('bookings.status', $value) : $query->where('bookings.status', $value);
                     break;
                 case 'payment_status':
-                    $query->where('payment_status', $value);
+                    $query->where('bookings.payment_status', $value);
                     break;
                 case 'vehicle_group':
                     $query->whereHas('bookingItems.vehicle.group', fn ($q) => $q->whereRaw('LOWER(vehicle_groups.name) = ?', [strtolower($value)]));
                     break;
             }
         }
+    }
+
+    private function applyBookingSearch($query, string $term): void
+    {
+        $search = '%' . mb_strtolower($term) . '%';
+        $query->where(function ($q) use ($search) {
+            $q->whereRaw('LOWER(bookings.booking_number) LIKE ?', [$search])
+                ->orWhereHas('customer.user', fn ($user) => $user
+                    ->whereRaw("LOWER(CONCAT_WS(' ', first_name, last_name)) LIKE ?", [$search])
+                    ->orWhereRaw('LOWER(email) LIKE ?', [$search]))
+                ->orWhereHas('bookingItems.vehicle', fn ($vehicle) => $vehicle
+                    ->whereRaw('LOWER(title) LIKE ?', [$search])
+                    ->orWhereRaw('LOWER(license_plate) LIKE ?', [$search]));
+        });
     }
 
     private function generatedReportPayload(BookingGeneratedReport $report): array
@@ -632,7 +976,7 @@ class ReportsController extends Controller
             'status' => $report->status,
             'download_url' => url("/api/reports/download/{$report->id}"),
             'size' => $report->size,
-            'row_count' => $report->row_count ?: null,
+            'row_count' => $report->row_count,
             'format' => $report->format,
             'date_from' => $report->filters['date_from'] ?? null,
             'date_to' => $report->filters['date_to'] ?? null,
@@ -657,29 +1001,24 @@ class ReportsController extends Controller
             'service_type_id' => $nestedFilters['service_type_id'] ?? null,
             'payment_status' => $nestedFilters['payment_status'] ?? null,
             'vehicle_group' => $nestedFilters['vehicle_group'] ?? null,
+            'maintenance_status' => $nestedFilters['maintenance_status'] ?? null,
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
-    }
-
-    private function getStartDate(string $period): Carbon
-    {
-        return match ($period) {
-            'week'  => Carbon::now()->startOfWeek(),
-            'month' => Carbon::now()->startOfMonth(),
-            'year'  => Carbon::now()->startOfYear(),
-            default => Carbon::now()->startOfMonth(),
-        };
     }
 
     private function getDateFormat(string $groupBy): string
     {
+        // Datetime columns are stored as UTC without a timezone type; bucket them in the user's zone.
+        $timezone = DB::connection()->getPdo()->quote(TimezoneService::getUserTimezone());
+        $localCreatedAt = "(created_at AT TIME ZONE 'UTC' AT TIME ZONE {$timezone})";
+
         return match ($groupBy) {
-            'hour'    => "TO_CHAR(created_at, 'YYYY-MM-DD HH24:00')",
-            'week'    => "TO_CHAR(created_at, 'IYYY-\"W\"IW')",
+            'hour'    => "TO_CHAR({$localCreatedAt}, 'YYYY-MM-DD HH24:00')",
+            'week'    => "TO_CHAR({$localCreatedAt}, 'IYYY-\"W\"IW')",
             'month',
-            'monthly' => "TO_CHAR(created_at, 'YYYY-MM')",
+            'monthly' => "TO_CHAR({$localCreatedAt}, 'YYYY-MM')",
             'year',
-            'yearly'  => "TO_CHAR(created_at, 'YYYY')",
-            default   => "DATE(created_at)",
+            'yearly'  => "TO_CHAR({$localCreatedAt}, 'YYYY')",
+            default   => "DATE({$localCreatedAt})",
         };
     }
 
@@ -687,21 +1026,25 @@ class ReportsController extends Controller
     // Dashboard private helpers
     // ─────────────────────────────────────────────────────────────────
 
-    private function getBookingTrends(Carbon $startDate): array
+    private function getBookingTrends(array $filters): array
     {
-        return Booking::where('created_at', '>=', $startDate)
-            ->selectRaw('DATE(created_at) as date, COUNT(*) as bookings')
+        $query = Booking::query();
+        $this->applyFilters($query, $filters);
+        return $query
+            ->selectRaw($this->getDateFormat('day') . ' as date, COUNT(*) as bookings')
             ->groupBy('date')
             ->orderBy('date')
             ->get()
             ->toArray();
     }
 
-    private function getRevenueTrends(Carbon $startDate): array
+    private function getRevenueTrends(array $filters): array
     {
-        return Booking::where('created_at', '>=', $startDate)
+        $query = Booking::query();
+        $this->applyFilters($query, $filters);
+        return $query
             ->where('status', 'completed')
-            ->selectRaw("DATE(created_at) as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
+            ->selectRaw($this->getDateFormat('day') . " as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
             ->groupBy('date', 'currency')
             ->orderBy('date')->orderBy('currency')
             ->get()
@@ -763,18 +1106,70 @@ class ReportsController extends Controller
     // Revenue helpers
     // ─────────────────────────────────────────────────────────────────
 
-    private function getRevenueByServiceType($query): array
+    private function getRevenueByServiceType(array $filters): array
     {
-        return (clone $query)
-            ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
-            ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
-            ->select('service_types.name as service_type')
-            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
-            ->selectRaw('SUM(COALESCE(booking_items.total_price,0)) as revenue, COUNT(DISTINCT bookings.id) as bookings')
-            ->groupBy('service_types.id', 'service_types.name', 'currency')
-            ->orderByDesc('revenue')
-            ->get()
-            ->toArray();
+        $totals = [];
+        foreach ($this->getAllocatedServiceRevenue($filters, 'monthly') as $period) {
+            foreach ($period['services'] as $serviceType => $values) {
+                $key = $period['currency'] . '|' . $serviceType;
+                $totals[$key] ??= [
+                    'service_type' => $serviceType,
+                    'currency' => $period['currency'],
+                    'revenue' => 0,
+                    'bookings' => 0,
+                ];
+                $totals[$key]['revenue'] += $values['revenue'];
+                $totals[$key]['bookings'] += $values['bookings'];
+            }
+        }
+        return array_values($totals);
+    }
+
+    /** Allocate each completed booking's final total to service types by final item value. */
+    private function getAllocatedServiceRevenue(array $filters, string $period): array
+    {
+        $query = Booking::query()->where('status', 'completed');
+        $this->applyFilters($query, $filters);
+        $query->select(['id', 'total_actual'])
+            ->selectRaw($this->getDateFormat($period) . ' as period, COALESCE(NULLIF(UPPER(currency), \'\'), \'LKR\') as currency')
+            ->with('bookingItems.serviceType');
+
+        $totals = [];
+        $query->chunkById(250, function ($bookings) use (&$totals) {
+            foreach ($bookings as $booking) {
+                $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
+                $key = $booking->period . '|' . $currency;
+                $bucket = $totals[$key] ?? ['period' => $booking->period, 'currency' => $currency, 'services' => []];
+                $itemValues = [];
+                foreach ($booking->bookingItems->reject(fn ($item) => in_array((string) $item->status, ['cancelled', 'rejected'], true)) as $item) {
+                    $serviceType = $item->serviceType?->name ?: 'Unassigned';
+                    $itemValues[$serviceType] = ($itemValues[$serviceType] ?? 0) + $item->calculateTotalValue();
+                }
+
+                $itemTotal = array_sum($itemValues);
+                $bookingTotal = (float) ($booking->total_actual ?? 0);
+                if ($itemTotal <= 0) {
+                    if ($bookingTotal > 0) $itemValues = ['Unallocated' => $bookingTotal];
+                    else continue;
+                }
+
+                $allocatedSoFar = 0;
+                $lastServiceType = array_key_last($itemValues);
+                foreach ($itemValues as $serviceType => $itemValue) {
+                    $service = $bucket['services'][$serviceType] ?? ['revenue' => 0, 'bookings' => 0];
+                    $allocated = $serviceType === $lastServiceType
+                        ? $bookingTotal - $allocatedSoFar
+                        : ($itemTotal > 0 ? $bookingTotal * $itemValue / $itemTotal : $itemValue);
+                    $allocatedSoFar += $allocated;
+                    $service['revenue'] += $allocated;
+                    $service['bookings']++;
+                    $bucket['services'][$serviceType] = $service;
+                }
+                $totals[$key] = $bucket;
+            }
+        });
+
+        return $totals;
     }
 
     private function getRevenueByAgent($query): array
@@ -794,7 +1189,7 @@ class ReportsController extends Controller
     private function getMonthlyGrowth($query): array
     {
         $rows = (clone $query)
-            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
+            ->selectRaw($this->getDateFormat('month') . " as month, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
             ->groupBy('month', 'currency')
             ->orderBy('month')->orderBy('currency')
             ->get();
@@ -807,7 +1202,7 @@ class ReportsController extends Controller
                 'month'       => $row->month,
                 'currency'    => $row->currency,
                 'revenue'     => (float) $row->revenue,
-                'growth_rate' => $prev > 0 ? round((($row->revenue - $prev) / $prev) * 100, 2) : 0,
+                'growth_rate' => $prev > 0 ? round((($row->revenue - $prev) / $prev) * 100, 2) : null,
             ];
             $previousRevenue[$row->currency] = (float) $row->revenue;
         }
@@ -823,14 +1218,14 @@ class ReportsController extends Controller
     {
         $query = Customer::query();
         if (!empty($filters['date_from'])) {
-            $query->where('created_at', '>=', $filters['date_from']);
+            $query->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
         }
         if (!empty($filters['date_to'])) {
-            $query->where('created_at', '<=', $filters['date_to'] . ' 23:59:59');
+            $query->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']));
         }
 
         $byMonth = (clone $query)
-            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, COUNT(*) as new_customers")
+            ->selectRaw($this->getDateFormat('month') . " as month, COUNT(*) as new_customers")
             ->groupBy('month')
             ->orderBy('month')
             ->get()
@@ -889,14 +1284,14 @@ class ReportsController extends Controller
     private function getCustomerSegments(array $filters): array
     {
         $completedBookings = Booking::where('status', 'completed')
-            ->selectRaw('customer_id, COUNT(*) as booking_count, SUM(COALESCE(total_actual,0)) as lifetime_value')
+            ->selectRaw('customer_id, COUNT(*) as booking_count')
             ->groupBy('customer_id');
 
         if (!empty($filters['date_from'])) {
-            $completedBookings->where('created_at', '>=', $filters['date_from']);
+            $completedBookings->where('created_at', '>=', TimezoneService::userDateStartUtc($filters['date_from']));
         }
         if (!empty($filters['date_to'])) {
-            $completedBookings->where('created_at', '<=', $filters['date_to'] . ' 23:59:59');
+            $completedBookings->where('created_at', '<', $this->exclusiveDateEnd($filters['date_to']));
         }
 
         $data = $completedBookings->get();
@@ -906,9 +1301,9 @@ class ReportsController extends Controller
         $new      = $data->where('booking_count', '<', 3)->count();
 
         return [
-            ['segment' => 'VIP (10+ bookings)', 'count' => $vip],
-            ['segment' => 'Regular (3-9 bookings)', 'count' => $regular],
-            ['segment' => 'New (< 3 bookings)', 'count' => $new],
+            ['segment' => 'High frequency (10+ completed bookings in period)', 'count' => $vip],
+            ['segment' => 'Repeat (3-9 completed bookings in period)', 'count' => $regular],
+            ['segment' => 'Low frequency (< 3 completed bookings in period)', 'count' => $new],
         ];
     }
 
@@ -924,9 +1319,12 @@ class ReportsController extends Controller
         // Utilisation: vehicles with at least 1 completed booking in the period
         $usedVehicleIds = DB::table('booking_items')
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
+            ->join('vehicles', 'booking_items.vehicle_id', '=', 'vehicles.id')
             ->where('bookings.status', 'completed')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+            ->where('vehicles.is_active', true)
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('booking_items.from_date', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
+            ->whereNotNull('booking_items.from_date')
             ->whereNotNull('booking_items.vehicle_id')
             ->distinct()
             ->pluck('booking_items.vehicle_id');
@@ -951,8 +1349,9 @@ class ReportsController extends Controller
             ->join('vehicle_groups', 'vehicles.vehicle_group_id', '=', 'vehicle_groups.id')
             ->select('vehicle_groups.name as category')
             ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as bookings")
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('booking_items.from_date', '>=', TimezoneService::userDateStartUtc($filters['date_from'])))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('booking_items.from_date', '<', TimezoneService::userDateEndExclusiveUtc($filters['date_to'])))
+            ->whereNotNull('booking_items.from_date')
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
             ->orderByDesc('bookings')
             ->get()
@@ -966,12 +1365,35 @@ class ReportsController extends Controller
         }
 
         return DB::table('vehicle_maintenance_records')
-            ->selectRaw('status, COUNT(*) as count, SUM(COALESCE(cost, 0)) as total_cost')
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('created_at', '<=', $filters['date_to'] . ' 23:59:59'))
-            ->groupBy('status')
+            ->selectRaw("status, COALESCE(NULLIF(UPPER(currency), ''), '" . strtoupper((string) config('booking.base_currency', 'LKR')) . "') as currency, COUNT(*) as count, SUM(COALESCE(cost, 0)) as total_cost")
+            ->whereNull('deleted_at')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('performed_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->whereDate('performed_date', '<=', $filters['date_to']))
+            ->groupBy('status', 'currency')
             ->get()
             ->toArray();
+    }
+
+    private function maintenanceReportQuery(array $filters)
+    {
+        return DB::table('vehicle_maintenance_records as vmr')
+            ->join('vehicles as v', 'v.id', '=', 'vmr.vehicle_id')
+            ->leftJoin('vehicle_groups as vg', 'vg.id', '=', 'v.vehicle_group_id')
+            ->leftJoin('vehicle_maintenance_schedules as vms', 'vms.id', '=', 'vmr.schedule_id')
+            ->whereNull('vmr.deleted_at')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('vmr.performed_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('vmr.performed_date', '<=', $filters['date_to']))
+            ->when(!empty($filters['vehicle_id']), fn ($q) => $q->where('vmr.vehicle_id', $filters['vehicle_id']))
+            ->when(!empty($filters['maintenance_status']), fn ($q) => $q->where('vmr.status', $filters['maintenance_status']))
+            ->when(!empty($filters['search']), function ($q) use ($filters) {
+                $term = '%' . mb_strtolower($filters['search']) . '%';
+                $q->where(fn ($search) => $search->whereRaw('LOWER(v.title) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(v.license_plate) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(COALESCE(vms.type, \'\')) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(COALESCE(vg.name, \'\')) LIKE ?', [$term])
+                    ->orWhereRaw('LOWER(COALESCE(vmr.notes, \'\')) LIKE ?', [$term]));
+            })
+            ->selectRaw("vmr.id, vmr.vehicle_id, v.title as vehicle_title, v.license_plate, vg.name as vehicle_group, vms.type as maintenance_type, vmr.performed_date, vmr.status, vmr.cost, COALESCE(NULLIF(UPPER(vmr.currency), ''), '" . strtoupper((string) config('booking.base_currency', 'LKR')) . "') as currency, vmr.notes");
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -1030,20 +1452,18 @@ class ReportsController extends Controller
 
     private function exportDriverReport(array $filters, string $format): Response
     {
-        $rows = DB::table('booking_items')
-            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
-            ->join('drivers', 'booking_items.driver_id', '=', 'drivers.id')
-            ->join('users', 'drivers.user_id', '=', 'users.id')
-            ->whereNotNull('booking_items.driver_id')
-            ->selectRaw("drivers.id, CONCAT(users.first_name, ' ', users.last_name) as driver, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
-            ->selectRaw("COUNT(DISTINCT bookings.id) as total_bookings, COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings, SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
-            ->groupBy('drivers.id', 'users.first_name', 'users.last_name', 'currency')
-            ->orderBy('driver')->orderBy('currency')->get();
+        $rows = $this->driverReportQuery($filters)->orderBy('driver_name')->orderBy('currency')->get();
         $headers = ['Driver', 'Currency', 'Bookings', 'Completed bookings', 'Completed revenue'];
-        $data = $rows->map(fn ($row) => [$row->driver, $row->currency, $row->total_bookings, $row->completed_bookings, $row->completed_revenue])->all();
+        $data = $rows->map(fn ($row) => [$row->driver_name, $row->currency, $row->bookings, $row->completed_bookings, $row->completed_revenue])->all();
         return $this->reportResponse('drivers_report', $format, $headers, $data);
+    }
+
+    private function exportMaintenanceReport(array $filters, string $format): Response
+    {
+        $rows = $this->maintenanceReportQuery($filters)->orderByDesc('vmr.performed_date')->orderBy('v.title')->get();
+        $headers = ['Performed date', 'Vehicle', 'Registration', 'Group', 'Maintenance type', 'Status', 'Cost', 'Currency', 'Notes'];
+        $data = $rows->map(fn ($row) => [$row->performed_date, $row->vehicle_title, $row->license_plate, $row->vehicle_group, $row->maintenance_type, $row->status, $row->cost, $row->currency, $row->notes])->all();
+        return $this->reportResponse('maintenance_report', $format, $headers, $data);
     }
 
     private function exportCustomBookingReport(BookingGeneratedReport $report, array $filters): Response
@@ -1105,7 +1525,9 @@ class ReportsController extends Controller
     private function reportResponse(string $filename, string $format, array $headers, array $rows): Response
     {
         if (strtolower($format) !== 'pdf') {
-            return $this->csvResponse($filename . '.csv', $headers, $rows);
+            $response = $this->csvResponse($filename . '.csv', $headers, $rows);
+            $response->headers->set('X-Report-Row-Count', (string) count($rows));
+            return $response;
         }
 
         $head = implode('', array_map(fn ($value) => '<th>' . e($value) . '</th>', $headers));
@@ -1114,6 +1536,7 @@ class ReportsController extends Controller
         return response(Pdf::loadHTML($html)->setPaper('a4', 'landscape')->output(), 200, [
             'Content-Type' => 'application/pdf',
             'Content-Disposition' => 'attachment; filename="' . $filename . '.pdf"',
+            'X-Report-Row-Count' => (string) count($rows),
         ]);
     }
 
@@ -1127,7 +1550,7 @@ class ReportsController extends Controller
         $handle = fopen('php://temp', 'r+');
         fputcsv($handle, $headers);
         foreach ($rows as $row) {
-            fputcsv($handle, $row);
+            fputcsv($handle, array_map(fn ($value) => $this->safeCsvValue($value), $row));
         }
         rewind($handle);
         $csv = stream_get_contents($handle);
@@ -1137,6 +1560,15 @@ class ReportsController extends Controller
             'Content-Type'        => 'text/csv',
             'Content-Disposition' => "attachment; filename=\"$filename\"",
         ]);
+    }
+
+    private function safeCsvValue(mixed $value): mixed
+    {
+        if (!is_string($value) || is_numeric($value)) {
+            return $value;
+        }
+
+        return preg_match('/^[\x00-\x20]*[=+\-@]/', $value) ? "'" . $value : $value;
     }
 
     public function getPerformanceMetrics(Request $request): JsonResponse

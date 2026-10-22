@@ -13,8 +13,9 @@ it('keeps corporate report rows pagination and statistics on one canonical respo
         ->and($service)
         ->toContain("'total_bookings' => \$totalCount")
         ->toContain("'trip_count' => \$tripCount")
-        ->toContain("'estimated_value' => \$estimatedValue")
-        ->toContain("'finalized_value' => \$finalizedValue")
+        ->toContain("'estimated_value' => \$singleCurrencyTotal['estimated_value']")
+        ->toContain("'finalized_value' => \$singleCurrencyTotal['finalized_value']")
+        ->toContain("'currency_totals' => \$currencyTotals")
         ->toContain("'by_status' => \$byStatus")
         ->toContain("'by_department' => \$byDepartment");
 });
@@ -48,7 +49,7 @@ it('keeps report filters aligned across rows summaries and exports', function ()
         ->toContain("->where('corporate_id', \$corporateId)")
         ->toContain("->whereHas('department'")
         ->and($frontend)
-        ->toContain('private buildSummaryParams(): CorporateBookingFilters')
+        ->toContain('private buildSummaryParams(includeBillingPeriod = false): CorporateBookingFilters')
         ->toContain('params.department_id = this.departmentControl.value')
         ->toContain('params.division_id = this.divisionControl.value')
         ->toContain('params.status = this.statusControl.value');

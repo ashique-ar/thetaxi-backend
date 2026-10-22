@@ -2005,6 +2005,10 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
         Route::get('/vehicles', [ReportsController::class, 'getVehicleReports'])
             ->middleware('permission:reports.view');
+        Route::get('/drivers', [ReportsController::class, 'getDriverReports'])
+            ->middleware('permission:reports.view');
+        Route::get('/maintenance', [ReportsController::class, 'getMaintenanceReports'])
+            ->middleware('permission:reports.view');
         Route::get('/export/{type}', [ReportsController::class, 'exportReport'])
             ->middleware('permission:reports.generate');
         Route::post('/export', [ReportsController::class, 'exportReport'])
@@ -2509,6 +2513,7 @@ Route::middleware(['auth:api'])->group(function () {
 
         Route::prefix('financial-settlements')->middleware('booking.operations.telemetry')->group(function () {
             Route::get('dashboard', [FinancialSettlementController::class, 'dashboard'])->middleware('permission:bookings.view');
+            Route::get('report/export', [FinancialSettlementController::class, 'exportBillingPeriods'])->middleware(['permission:bookings.view', 'permission:reports.generate']);
             Route::get('driver-cash/open', [FinancialSettlementController::class, 'driverCash'])->middleware('permission:bookings.view');
             Route::get('accounts/{ownerType}/{ownerId}', [FinancialSettlementController::class, 'account'])->whereIn('ownerType', ['customer', 'corporate'])->whereUuid('ownerId')->middleware('permission:bookings.view');
             Route::post('driver-cash/settle', [FinancialSettlementController::class, 'settleDriverCash'])->middleware('permission:bookings.update');

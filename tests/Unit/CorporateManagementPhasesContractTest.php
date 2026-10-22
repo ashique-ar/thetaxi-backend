@@ -20,7 +20,7 @@ it('provides server generated management exports and permissioned monthly delive
     $schedule = file_get_contents(app_path('Http/Controllers/Api/Corporate/CorporateReportScheduleController.php'));
     expect($routes)->toContain("reports/management/export/{format}", "apiResource('report-schedules'")
         ->and($controller)->toContain("['csv', 'xls', 'pdf']", 'CorporateReportFiltersRequest')
-        ->toContain("Selected billing period")
+        ->toContain("Billing period totals")
         ->and($schedule)->toContain("permission:schedule_reports", "where('corporate_id', \$request->corporate_id)");
 });
 

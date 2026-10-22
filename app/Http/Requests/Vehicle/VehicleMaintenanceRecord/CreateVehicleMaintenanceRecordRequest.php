@@ -16,6 +16,7 @@ class CreateVehicleMaintenanceRecordRequest extends FormRequest
             'schedule_id' => ['required', Rule::exists('vehicle_maintenance_schedules', 'id')->where('vehicle_id', $this->input('vehicle_id'))],
             'performed_date' => ['required', 'date'],
             'cost' => ['required', 'numeric'],
+            'currency' => ['required', 'string', 'regex:/^[A-Za-z]{3}$/', 'exists:currencies,code'],
             'notes' => ['nullable', 'string'],
         ];
     }

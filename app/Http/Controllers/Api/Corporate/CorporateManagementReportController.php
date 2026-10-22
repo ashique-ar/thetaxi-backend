@@ -48,13 +48,23 @@ class CorporateManagementReportController extends Controller
             fwrite($output, "\xEF\xBB\xBF");
             fputcsv($output, $this->safeCsvRow([
                 'Travel date range',
-                $payload['period']['from'] ?: 'All travel dates',
-                $payload['period']['to'] ?: 'Present',
+                data_get($payload, 'period.from') ?: 'All travel dates',
+                data_get($payload, 'period.to') ?: 'Present',
             ]));
             if (!empty($payload['financial_periods'])) {
                 fputcsv($output, $this->safeCsvRow(['Billing period totals']));
                 foreach ($payload['financial_periods'] as $summary) {
                     foreach ($summary as $key => $value) {
+                        if ($key === 'conversion_rates') {
+                            if ($value) {
+                                fputcsv($output, $this->safeCsvRow(['Frozen invoice FX rates']));
+                                fputcsv($output, $this->safeCsvRow(['Source currency', 'Invoice currency', 'Invoice units per source unit', 'Rate captured from', 'Rate captured through', 'Rate source']));
+                                foreach ($value as $rate) {
+                                    fputcsv($output, $this->safeCsvRow([$rate['source_currency'], $rate['invoice_currency'], $rate['rate'], $rate['rate_at'], $rate['rate_until'], $rate['fx_source']]));
+                                }
+                            }
+                            continue;
+                        }
                         fputcsv($output, $this->safeCsvRow([str_replace('_', ' ', $key), $value]));
                     }
                     fputcsv($output, []);

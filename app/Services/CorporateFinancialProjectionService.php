@@ -319,7 +319,7 @@ class CorporateFinancialProjectionService
                 'draft_invoice_count' => FinancialAccountSettlement::query()->where('owner_type', 'corporate')
                     ->where('owner_id', $corporateId)->where('status', 'draft')->count(),
                 'credit_limit' => $terms?->credit_limit !== null ? (float) $terms->credit_limit : null,
-                'credit_available' => $terms?->credit_limit !== null ? app(CurrencyService::class)->roundAmount((float) $terms->credit_limit - $creditUsed, $currentCurrency) : null,
+                'credit_available' => $terms?->credit_limit !== null ? app(CurrencyService::class)->roundAmount(max(0, (float) $terms->credit_limit - $creditUsed), $currentCurrency) : null,
                 'credit_limit_exceeded' => $terms?->credit_limit !== null && $creditUsed >= (float) $terms->credit_limit,
             ],
             'summary_by_currency' => $summaryByCurrency,

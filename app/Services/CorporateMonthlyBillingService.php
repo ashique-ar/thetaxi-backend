@@ -322,6 +322,12 @@ class CorporateMonthlyBillingService
                 return $concurrent->load(['items.booking', 'document']);
             }
             $terms = $preview['terms'];
+            $invoiceCurrency = strtoupper((string) $terms['currency']);
+            try {
+                $invoiceFxRateToLkr = $invoiceCurrency === 'LKR' ? 1.0 : app(CurrencyService::class)->getExchangeRate($invoiceCurrency, 'LKR');
+            } catch (\Throwable) {
+                throw ValidationException::withMessages(['currency' => ['The invoice currency has no configured portal exchange rate to LKR.']]);
+            }
             $dueDate = Carbon::parse($preview['period_end'])->addDays((int) $terms['due_days']);
             $settlement = FinancialAccountSettlement::create([
                 'settlement_number' => 'CB-' . Carbon::parse($preview['period_end'])->format('Ym') . '-' . strtoupper(substr(hash('sha256', $preview['generation_key']), 0, 8)),
@@ -333,7 +339,9 @@ class CorporateMonthlyBillingService
                 'billing_terms_snapshot' => [
                     ...$terms,
                     'fx_policy' => 'portal_currency_table_at_generation',
+                    'fx_rate_to_lkr' => $invoiceFxRateToLkr,
                     'fx_rate_at' => now()->toIso8601String(),
+                    'fx_source' => $invoiceCurrency === 'LKR' ? 'identity' : 'portal_currency_table_at_invoice_generation',
                 ],
                 'period_start' => $preview['period_start'],
                 'period_end' => $preview['period_end'],

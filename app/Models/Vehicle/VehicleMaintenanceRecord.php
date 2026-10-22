@@ -47,6 +47,7 @@ class VehicleMaintenanceRecord extends BaseModel
         'schedule_id',
         'performed_date',
         'cost',
+        'currency',
         'status',
         'notes',
         'created_user_id',

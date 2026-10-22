@@ -108,6 +108,16 @@ class FinancialAccountSettlementService
         }
 
         return DB::transaction(function () use ($data, $userId) {
+            $currency = strtoupper((string) ($data['currency'] ?? ''));
+            if ($currency === '') {
+                throw ValidationException::withMessages(['currency' => ['Select the invoice currency before generating the settlement.']]);
+            }
+            try {
+                $invoiceFxRate = $currency === 'LKR' ? 1.0 : app(CurrencyService::class)->getExchangeRate($currency, 'LKR');
+            } catch (\Throwable) {
+                throw ValidationException::withMessages(['currency' => ['The selected currency has no configured portal exchange rate to LKR.']]);
+            }
+            unset($data['currency']);
             $query = Booking::query()
                 ->whereBetween('booking_date', [$data['period_start'], $data['period_end']])
                 ->whereNotIn('status', ['cancelled', 'canceled', 'rejected', 'expired']);
@@ -129,6 +139,12 @@ class FinancialAccountSettlementService
             $data['due_date'] = $data['due_date'] ?? \Illuminate\Support\Carbon::parse($data['period_end'])->addDays($configuredDueDays)->toDateString();
             $settlement = FinancialAccountSettlement::create([
                 ...$data,
+                'billing_terms_snapshot' => [
+                    'currency' => $currency,
+                    'fx_rate_to_lkr' => $invoiceFxRate,
+                    'fx_rate_at' => now()->toIso8601String(),
+                    'fx_source' => $currency === 'LKR' ? 'identity' : 'portal_currency_table_at_invoice_generation',
+                ],
                 'settlement_number' => $this->nextNumber($data['owner_type']),
                 'status' => 'draft',
                 'created_user_id' => $userId,
@@ -136,11 +152,35 @@ class FinancialAccountSettlementService
             ]);
             foreach ($bookings as $booking) {
                 $summary = $this->ledger->summary($booking);
+                $sourceCurrency = strtoupper((string) ($booking->currency ?: 'LKR'));
+                try {
+                    $rate = $sourceCurrency === $currency ? 1.0 : app(CurrencyService::class)->getExchangeRate($sourceCurrency, $currency);
+                } catch (\Throwable) {
+                    throw ValidationException::withMessages(['currency' => ["The portal has no configured {$sourceCurrency} to {$currency} exchange rate for this booking."]]);
+                }
+                $chargeAmount = app(CurrencyService::class)->roundAmount($summary['total_amount'] * $rate, $currency);
+                $paidBeforeAmount = app(CurrencyService::class)->roundAmount($summary['paid_amount'] * $rate, $currency);
                 $settlement->items()->create([
                     'booking_id' => $booking->id,
-                    'charge_amount' => $summary['total_amount'],
-                    'paid_before_amount' => $summary['paid_amount'],
-                    'outstanding_amount' => $summary['due_amount'],
+                    'source_snapshot' => [
+                        'booking_currency' => $sourceCurrency,
+                        'source_amount' => (float) $summary['total_amount'],
+                        'invoice_amount' => $chargeAmount,
+                        'fx_rate_to_invoice' => $rate,
+                        'fx_rate_at' => now()->toIso8601String(),
+                        'fx_source' => $sourceCurrency === $currency ? 'identity' : 'portal_currency_table_at_invoice_generation',
+                        'items' => [[
+                            'service_type' => 'Booking total',
+                            'currency' => $sourceCurrency,
+                            'total_price' => (float) $summary['total_amount'],
+                            'invoice_amount' => $chargeAmount,
+                            'fx_rate_to_invoice' => $rate,
+                            'fx_source' => $sourceCurrency === $currency ? 'identity' : 'portal_currency_table_at_invoice_generation',
+                        ]],
+                    ],
+                    'charge_amount' => $chargeAmount,
+                    'paid_before_amount' => min($chargeAmount, $paidBeforeAmount),
+                    'outstanding_amount' => max(0, $chargeAmount - min($chargeAmount, $paidBeforeAmount)),
                 ]);
                 $booking->update([
                     $data['owner_type'] === 'corporate' ? 'corporate_settlement_status' : 'customer_settlement_status' => 'draft',
@@ -256,8 +296,13 @@ class FinancialAccountSettlementService
             if ($corporateCurrency && $sourceCurrency !== $settlementCurrency) {
                 throw ValidationException::withMessages(['source_currency' => ['Corporate invoice payments must use the invoice currency. Record a separate remittance for each invoice currency.']]);
             }
-            $allocationFxRate = $corporateCurrency ? 1.0 : $fxRate;
-            $allocationTotal = $corporateCurrency ? $sourceAmount : $lkrAmount;
+            $invoiceFxRate = $settlementCurrency === 'LKR' ? 1.0 : (float) data_get($settlement->billing_terms_snapshot, 'fx_rate_to_lkr', 0);
+            if (!$corporateCurrency && $sourceCurrency !== $settlementCurrency && $invoiceFxRate <= 0) {
+                throw ValidationException::withMessages(['source_currency' => ['This legacy invoice has no frozen conversion rate. Pay in the invoice currency.']]);
+            }
+            $allocationTotal = $sourceCurrency === $settlementCurrency
+                ? $sourceAmount
+                : app(CurrencyService::class)->roundAmount($lkrAmount / $invoiceFxRate, $settlementCurrency);
             $remaining = $allocationTotal;
             $sourceRemaining = $sourceAmount;
             if ($allocationTotal > (float) $settlement->outstanding_total) {
@@ -267,14 +312,22 @@ class FinancialAccountSettlementService
                 if ($remaining <= 0 || (float) $item->outstanding_amount <= 0)
                     continue;
                 $amount = min($remaining, (float) $item->outstanding_amount);
-                $sourceAllocation = $corporateCurrency
-                    ? min($sourceRemaining, $amount >= $remaining
-                        ? $sourceRemaining
-                        : app(CurrencyService::class)->roundAmount($amount / $allocationFxRate, $sourceCurrency))
-                    : ($amount >= $remaining ? $sourceRemaining : min($sourceRemaining, round($amount / $fxRate, 4)));
+                $bookingCurrency = strtoupper((string) ($item->booking?->currency ?: 'LKR'));
+                $bookingToInvoiceRate = $bookingCurrency === $settlementCurrency
+                    ? 1.0
+                    : (float) data_get($item->source_snapshot, 'fx_rate_to_invoice', 0);
+                abort_if($bookingToInvoiceRate <= 0, 422, 'This settlement item has no frozen booking-to-invoice conversion rate.');
+                $bookingDue = (float) $this->ledger->summary($item->booking)['due_amount'];
+                $bookingAmount = min($bookingDue, app(CurrencyService::class)->roundAmount($amount / $bookingToInvoiceRate, $bookingCurrency));
+                abort_if($bookingAmount <= 0, 422, 'The payment is below the booking currency precision and cannot be allocated safely.');
+                $sourceAllocation = $amount >= $remaining
+                    ? $sourceRemaining
+                    : min($sourceRemaining, $sourceCurrency === $settlementCurrency
+                        ? app(CurrencyService::class)->roundAmount($amount, $sourceCurrency)
+                        : app(CurrencyService::class)->roundAmount($amount * $invoiceFxRate / $fxRate, $sourceCurrency));
                 $receiptIdempotencyKey = "financial-settlement:{$paymentEventId}:{$item->id}";
                 $this->ledger->receive($item->booking, [
-                    'amount' => $amount, 'payment_method' => $data['payment_method'],
+                    'amount' => $bookingAmount, 'payment_method' => $data['payment_method'],
                     'source_amount' => $sourceAllocation, 'source_currency' => $sourceCurrency,
                     'fx_rate_to_lkr' => $fxRate, 'fx_rate_at' => $fxRateAt, 'fx_source' => $fxSource,
                     'payment_stage' => 'account_payment', 'reference' => $data['reference'] ?? null,
@@ -285,7 +338,7 @@ class FinancialAccountSettlementService
                     'corporate_remittance_id' => $data['corporate_remittance_id'] ?? null,
                 ], $userId);
                 $receipt = BookingPaymentReceipt::query()->where('idempotency_key', $receiptIdempotencyKey)->firstOrFail();
-                $receipt->update(['allocated_amount' => $amount, 'allocation_status' => 'allocated']);
+                $receipt->update(['allocated_amount' => $bookingAmount, 'allocation_status' => 'allocated']);
                 $allocation = FinancialPaymentAllocation::create([
                     'settlement_id' => $settlement->id,
                     'settlement_item_id' => $item->id,

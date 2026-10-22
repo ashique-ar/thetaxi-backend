@@ -18,8 +18,9 @@ class TimezoneService
      */
     public static function getUserTimezone(): string
     {
-        if (Auth::check() && Auth::user()->timezone) {
-            return Auth::user()->timezone;
+        $timezone = Auth::user()?->timezone;
+        if ($timezone && static::isValidTimezone($timezone)) {
+            return $timezone;
         }
 
         return config('app.timezone', 'UTC');
@@ -47,6 +48,16 @@ class TimezoneService
 
         // Convert to UTC
         return $carbon->setTimezone('UTC');
+    }
+
+    public static function userDateStartUtc(string $date): Carbon
+    {
+        return Carbon::parse($date, static::getUserTimezone())->startOfDay()->setTimezone('UTC');
+    }
+
+    public static function userDateEndExclusiveUtc(string $date): Carbon
+    {
+        return Carbon::parse($date, static::getUserTimezone())->startOfDay()->addDay()->setTimezone('UTC');
     }
 
     /**

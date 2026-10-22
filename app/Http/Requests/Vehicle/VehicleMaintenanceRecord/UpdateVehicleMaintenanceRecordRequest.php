@@ -15,6 +15,7 @@ class UpdateVehicleMaintenanceRecordRequest extends FormRequest
             'schedule_id' => ['sometimes', 'required', 'exists:vehicle_maintenance_schedules,id'],
             'performed_date' => ['sometimes', 'required', 'date'],
             'cost' => ['sometimes', 'required', 'numeric'],
+            'currency' => ['sometimes', 'required', 'string', 'regex:/^[A-Za-z]{3}$/', 'exists:currencies,code'],
             'notes' => ['sometimes', 'nullable', 'string'],
         ];
     }

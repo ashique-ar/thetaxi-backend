@@ -3,6 +3,7 @@
 use App\Services\CorporateManagementAnalyticsService;
 use App\Http\Controllers\Api\Corporate\CorporateManagementReportController;
 use App\Http\Requests\Corporate\CorporateReportFiltersRequest;
+use App\Models\Finance\FinancialAccountSettlement;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -119,10 +120,28 @@ it('preserves available precision when a report amount has no currency code', fu
         ->and($round->invoke($service, 1.2345, 'KWD'))->toBe(1.235);
 });
 
+it('includes frozen carry-forward FX rates in billing-period report audit details', function () {
+    $settlement = new FinancialAccountSettlement([
+        'billing_terms_snapshot' => ['currency' => 'LKR'],
+        'statement_snapshot' => ['opening_balance_breakdown' => [[
+            'source_currency' => 'USD', 'invoice_currency' => 'LKR', 'fx_rate_to_invoice' => 300,
+            'fx_rate_at' => '2026-10-01T10:00:00Z', 'fx_source' => 'portal_currency_table',
+        ]]],
+    ]);
+    $settlement->setRelation('items', collect());
+    $method = new ReflectionMethod(CorporateManagementAnalyticsService::class, 'settlementConversionRates');
+
+    expect($method->invoke(new CorporateManagementAnalyticsService, $settlement))->toContain([
+        'source_currency' => 'USD', 'invoice_currency' => 'LKR', 'rate' => 300.0,
+        'rate_at' => '2026-10-01T10:00:00Z', 'fx_source' => 'portal_currency_table',
+        'rate_until' => '2026-10-01T10:00:00Z',
+    ]);
+});
+
 it('exports monthly currency trends and selected billing totals in the management CSV', function () {
     $payload = [
         'financial_metrics_visible' => true,
-        'financial_period' => ['summary' => [
+        'financial_periods' => [[
             'period_start' => '2026-09-01', 'period_end' => '2026-09-30', 'settlement_number' => 'CB-SEP',
             'invoice_number' => 'INV-SEP', 'currency' => 'KWD', 'charges_total' => 1.234,
             'payments_total' => 0, 'refunds_total' => 0, 'adjustments_total' => 0, 'outstanding_total' => 1.234,
@@ -146,5 +165,5 @@ it('exports monthly currency trends and selected billing totals in the managemen
     $response->getCallback()();
     $csv = ob_get_clean();
 
-    expect($csv)->toContain('Selected billing period', 'Monthly travel activity', '2026-09,KWD,1,2,1.234,1.234');
+    expect($csv)->toContain('All travel dates', 'Billing period totals', 'Monthly travel activity', '2026-09,KWD,1,2,1.234,1.234');
 });

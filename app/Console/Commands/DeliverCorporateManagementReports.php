@@ -98,6 +98,16 @@ class DeliverCorporateManagementReports extends Command
                         fputcsv($stream, $this->safeCsvRow(['Billing period totals']));
                         foreach ($payload['financial_periods'] as $summary) {
                             foreach ($summary as $key => $value) {
+                                if ($key === 'conversion_rates') {
+                                    if ($value) {
+                                        fputcsv($stream, $this->safeCsvRow(['Frozen invoice FX rates']));
+                                        fputcsv($stream, $this->safeCsvRow(['Source currency', 'Invoice currency', 'Invoice units per source unit', 'Rate captured from', 'Rate captured through', 'Rate source']));
+                                        foreach ($value as $rate) {
+                                            fputcsv($stream, $this->safeCsvRow([$rate['source_currency'], $rate['invoice_currency'], $rate['rate'], $rate['rate_at'], $rate['rate_until'], $rate['fx_source']]));
+                                        }
+                                    }
+                                    continue;
+                                }
                                 fputcsv($stream, $this->safeCsvRow([str_replace('_', ' ', $key), $value]));
                             }
                             fputcsv($stream, []);

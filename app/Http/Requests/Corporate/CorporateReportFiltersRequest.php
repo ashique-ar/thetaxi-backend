@@ -5,11 +5,23 @@ namespace App\Http\Requests\Corporate;
 use App\Models\Corporate\CorporateDepartment;
 use App\Models\Corporate\CorporateDivision;
 use App\Models\Finance\FinancialAccountSettlement;
+use App\Services\TimezoneService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Validator;
 
 class CorporateReportFiltersRequest extends FormRequest
 {
+    protected function prepareForValidation(): void
+    {
+        if (! $this->filled('date_from') && ! $this->filled('date_to')) {
+            $today = today(TimezoneService::getUserTimezone());
+            $this->merge([
+                'date_from' => $today->copy()->startOfMonth()->toDateString(),
+                'date_to' => $today->toDateString(),
+            ]);
+        }
+    }
+
     public function authorize(): bool
     {
         return true;

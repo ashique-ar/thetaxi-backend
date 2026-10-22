@@ -59,6 +59,7 @@ class CorporateManagementAnalyticsService
                     ->get()
                 : collect();
             $payload['financial_periods'] = $settlements->map(fn (FinancialAccountSettlement $settlement) => [
+                        'id' => (string) $settlement->id,
                         'period_start' => $settlement->period_start?->toDateString(),
                         'period_end' => $settlement->period_end?->toDateString(),
                         'settlement_number' => $settlement->settlement_number,
@@ -73,6 +74,7 @@ class CorporateManagementAnalyticsService
                         'refunds_total' => (float) $settlement->refunds_total,
                         'adjustments_total' => (float) $settlement->adjustments_total,
                         'outstanding_total' => (float) $settlement->outstanding_total,
+                        'conversion_rates' => $this->settlementConversionRates($settlement),
             ])->values()->all();
             if (count($payload['financial_periods']) === 1) {
                 $payload['financial_period'] = ['basis' => 'billing_period', 'summary' => $payload['financial_periods'][0]];
@@ -114,8 +116,8 @@ class CorporateManagementAnalyticsService
                         }
                     });
             })
-            ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '>=', $date))
-            ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->whereDate('from_date', '<=', $date))
+            ->when($filters['date_from'] ?? null, fn ($q, $date) => $q->where('from_date', '>=', TimezoneService::userDateStartUtc($date)))
+            ->when($filters['date_to'] ?? null, fn ($q, $date) => $q->where('from_date', '<', TimezoneService::userDateEndExclusiveUtc($date)))
             ->with([
                 'booking:id,corporate_account_id,corporate_department_id,corporate_division_id,employee_id,status,approval_status,currency',
                 'booking.corporateDepartment:id,name',
@@ -206,5 +208,54 @@ class CorporateManagementAnalyticsService
         return $currency !== ''
             ? app(CurrencyService::class)->roundAmount($amount, $currency)
             : round($amount, 4);
+    }
+
+    private function settlementConversionRates(FinancialAccountSettlement $settlement): array
+    {
+        $invoiceCurrency = strtoupper((string) (data_get($settlement->billing_terms_snapshot, 'currency')
+            ?: $settlement->items->first()?->booking?->currency ?: 'LKR'));
+
+        $itemRates = $settlement->items->flatMap(function ($item) use ($invoiceCurrency) {
+            $snapshot = $item->source_snapshot ?? [];
+            // shortcut: omit legacy conversions without a captured rate, when historical rate evidence is migrated expose those records too.
+            return collect($snapshot['items'] ?? [])->merge($snapshot['payment_conversions'] ?? [])
+                ->filter(fn (array $conversion) => isset($conversion['fx_rate_to_invoice'])
+                    && is_numeric($conversion['fx_rate_to_invoice'])
+                    && (float) $conversion['fx_rate_to_invoice'] > 0)
+                ->map(function (array $conversion) use ($invoiceCurrency) {
+                    return [
+                        'source_currency' => strtoupper((string) ($conversion['source_currency'] ?? $conversion['currency'] ?? $invoiceCurrency)),
+                        'invoice_currency' => $invoiceCurrency,
+                        'rate' => (float) $conversion['fx_rate_to_invoice'],
+                        'rate_at' => $conversion['fx_rate_at'] ?? null,
+                        'fx_source' => $conversion['fx_source'] ?? null,
+                    ];
+                })
+                ->filter(fn (array $rate) => $rate['source_currency'] !== $invoiceCurrency && $rate['rate'] > 0);
+        });
+        $openingRates = collect(data_get($settlement->statement_snapshot, 'opening_balance_breakdown', []))
+            ->map(fn (array $conversion) => [
+                'source_currency' => strtoupper((string) ($conversion['source_currency'] ?? '')),
+                'invoice_currency' => strtoupper((string) ($conversion['invoice_currency'] ?? $invoiceCurrency)),
+                'rate' => is_numeric($conversion['fx_rate_to_invoice'] ?? null) ? (float) $conversion['fx_rate_to_invoice'] : null,
+                'rate_at' => $conversion['fx_rate_at'] ?? null,
+                'fx_source' => $conversion['fx_source'] ?? null,
+            ])
+            ->filter(fn (array $rate) => $rate['source_currency'] !== $invoiceCurrency
+                && is_numeric($rate['rate']) && (float) $rate['rate'] > 0);
+
+        return $itemRates->merge($openingRates)
+            ->groupBy(fn (array $rate) => implode('|', [$rate['source_currency'], $rate['invoice_currency'], $rate['rate'], $rate['fx_source']]))
+            ->map(function ($rates) {
+                $capturedAt = $rates->pluck('rate_at')->filter()->sort()->values();
+                return [
+                    ...$rates->first(),
+                    'rate_at' => $capturedAt->first(),
+                    'rate_until' => $capturedAt->last(),
+                ];
+            })
+            ->sortBy(fn (array $rate) => $rate['source_currency'].'|'.$rate['rate'])
+            ->values()
+            ->all();
     }
 }

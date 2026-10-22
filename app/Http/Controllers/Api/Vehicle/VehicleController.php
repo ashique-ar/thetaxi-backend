@@ -1025,6 +1025,7 @@ class VehicleController extends Controller
         $request->validate([
             'completion_date' => 'required|date',
             'cost' => 'required|numeric',
+            'currency' => ['required', 'string', 'regex:/^[A-Za-z]{3}$/', 'exists:currencies,code'],
             'notes' => 'nullable|string'
         ]);
 
@@ -1035,6 +1036,7 @@ class VehicleController extends Controller
             'schedule_id' => $schedule->id,
             'performed_date' => $request->completion_date,
             'cost' => $request->cost,
+            'currency' => strtoupper((string) $request->currency),
             'status' => 'completed',
             'notes' => $request->notes,
         ];

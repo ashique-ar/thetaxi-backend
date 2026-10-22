@@ -125,8 +125,8 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     expect($preview['generation_key'])->toBe($previewKey);
     expect($preview['booking_count'])->toBe(1)->and($preview['trip_count'])->toBe(2)
         ->and($preview['charges_total'])->toBe(7650.0)->and($preview['paid_before_total'])->toBe(7550.0)
-        ->and($preview['opening_balance'])->toBe(0.0)->and($preview['projected_balance'])->toBe(100.0)
-        ->and($preview['credit_limit_exceeded'])->toBeFalse()->and($preview['excluded'])->toHaveCount(2)
+        ->and($preview['opening_balance'])->toBe(150000.0)->and($preview['projected_balance'])->toBe(150100.0)
+        ->and($preview['credit_limit_exceeded'])->toBeTrue()->and($preview['excluded'])->toHaveCount(2)
         ->and($preview['excluded']->pluck('reason')->all())->toContain('not_completed', 'not_monthly_corporate_credit')
         ->and($preview['included']->first()['items'][1]['invoice_amount'])->toBe(7500.0)
         ->and($preview['included']->first()['items'][1]['fx_rate_to_invoice'])->toBe(300.0);
@@ -137,18 +137,17 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     DB::table('booking_payment_receipts')->where('id', '50000000-0000-4000-8000-000000000001')->update(['allocated_amount' => 1]);
     expect(fn() => $service->generate($corporateId, '2026-08-01', '2026-08-31', null, $preview['generation_key']))->toThrow(ValidationException::class);
     DB::table('booking_payment_receipts')->where('id', '50000000-0000-4000-8000-000000000001')->update(['allocated_amount' => 0]);
-    FinancialAccountSettlement::where('settlement_number','CB-USD-OLD')->delete();
     $pdf = Mockery::mock(\Barryvdh\DomPDF\PDF::class);
     $pdf->shouldReceive('output')->once()->andReturn('statement-pdf');
     Pdf::shouldReceive('loadView')->once()->andReturn($pdf);
     $first=$service->generate($corporateId,'2026-08-01','2026-08-31',null,$preview['generation_key']);$second=$service->generate($corporateId,'2026-08-01','2026-08-31',null,$preview['generation_key']);
-    expect($second->id)->toBe($first->id)->and(FinancialAccountSettlement::count())->toBe(1)->and($first->status)->toBe('draft')
+    expect($second->id)->toBe($first->id)->and(FinancialAccountSettlement::count())->toBe(2)->and($first->status)->toBe('draft')
         ->and((float)$first->charges_total)->toBe(7650.0)->and((float)$first->payments_total)->toBe(7550.0)
         ->and((float)$first->outstanding_total)->toBe(100.0)
         ->and($first->items()->first()->booking_item_ids)->toBe(['40000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000005'])
         ->and((float)$first->items()->first()->source_snapshot['items'][1]['invoice_amount'])->toBe(7500.0)
         ->and($first->billing_terms_snapshot['fx_policy'])->toBe('portal_currency_table_at_generation')
-        ->and((float)$first->statement_snapshot['account_closing_balance'])->toBe(100.0)
+        ->and((float)$first->statement_snapshot['account_closing_balance'])->toBe(150100.0)
         ->and((float) DB::table('booking_payment_receipts')->where('id','50000000-0000-4000-8000-000000000001')->value('allocated_amount'))->toBe(50.0)
         ->and((float) DB::table('booking_payment_receipts')->where('id','50000000-0000-4000-8000-000000000002')->value('allocated_amount'))->toBe(25.0)
         ->and(DB::table('financial_payment_allocations')->count())->toBe(2);
@@ -167,10 +166,10 @@ it('versions terms previews finalized trips and generates one immutable monthly 
     expect($issued->status)->toBe('open')->and($issued->statement_sent_at)->not->toBeNull()->and($issued->statement_sent_to)->toBe(['finance@acme.test']);
     $first=$issued;
     $account=(new CorporateFinancialProjectionService())->accountSummary($corporateId);
-    expect($account['summary']['charges_total'])->toBe(7650.0)->and($account['summary']['payments_total'])->toBe(7550.0)->and($account['summary']['outstanding_total'])->toBe(100.0)->and($account['aging']['days_1_30'])->toBe(100.0)->and($account['settlements'])->toHaveCount(1)
+    expect($account['summary']['charges_total'])->toBe(7650.0)->and($account['summary']['payments_total'])->toBe(7550.0)->and($account['summary']['outstanding_total'])->toBe(100.0)->and($account['aging']['days_1_30'])->toBe(100.0)->and($account['settlements'])->toHaveCount(2)
         ->and($account['summary_by_currency']['USD']['unapplied_receipts'])->toBe(0.0)
         ->and($account['account_activity']->where('currency', 'LKR')->last()['running_balance'])->toBe(100.0);
-    expect($account['summary']['credit_used'])->toBe(100.0)->and($account['summary']['credit_available'])->toBe(0.0)->and($account['summary']['credit_limit_exceeded'])->toBeTrue()
+    expect($account['summary']['credit_used'])->toBe(150100.0)->and($account['summary']['credit_available'])->toBe(0.0)->and($account['summary']['credit_limit_exceeded'])->toBeTrue()
         ->and((new CorporateFinancialProjectionService())->isCreditLimitExceeded($corporateId))->toBeTrue();
     DB::table('invoices')->insert(['id'=>'70000000-0000-4000-8000-000000000001','booking_id'=>'30000000-0000-4000-8000-000000000001','invoice_number'=>'DIRECT-DUPLICATE','status'=>'issued','total_amount'=>999]);
     $metrics=(new CorporateFinancialProjectionService())->summarizeBookings(Booking::whereKey('30000000-0000-4000-8000-000000000001')->get());
@@ -180,6 +179,10 @@ it('versions terms previews finalized trips and generates one immutable monthly 
 it('keeps corporate account balances and activity separate by source currency', function () {
     $corporateId = '10000000-0000-4000-8000-000000000001';
     DB::table('corporates')->insert(['id' => $corporateId, 'name' => 'Acme', 'is_active' => true]);
+    DB::table('currencies')->insert([
+        ['id' => '60000000-0000-4000-8000-000000000001', 'code' => 'LKR', 'name' => 'Sri Lankan Rupee', 'exrate' => '1'],
+        ['id' => '60000000-0000-4000-8000-000000000002', 'code' => 'USD', 'name' => 'US Dollar', 'exrate' => '0.0033333333'],
+    ]);
     monthlyBillingService()->storeTerms(Corporate::findOrFail($corporateId), [
         'billing_cycle' => 'monthly', 'cutoff_day' => 31, 'invoice_day' => 1, 'due_days' => 30,
         'currency' => 'LKR', 'effective_from' => '2026-01-01',
@@ -232,6 +235,10 @@ it('returns only issued billing periods with currency-labelled totals', function
 it('preserves three-decimal currency values from billing preview through the generated statement', function () {
     $corporateId = '10000000-0000-4000-8000-000000000001';
     DB::table('corporates')->insert(['id' => $corporateId, 'name' => 'Acme', 'is_active' => true]);
+    DB::table('currencies')->insert([
+        ['id' => '60000000-0000-4000-8000-000000000001', 'code' => 'LKR', 'name' => 'Sri Lankan Rupee', 'exrate' => '1'],
+        ['id' => '60000000-0000-4000-8000-000000000002', 'code' => 'KWD', 'name' => 'Kuwaiti Dinar', 'exrate' => '0.001'],
+    ]);
     DB::table('service_types')->insert(['id' => '20000000-0000-4000-8000-000000000001', 'name' => 'Transfer', 'is_active' => true]);
     DB::table('corporate_billing_terms')->insert([
         'id' => '90000000-0000-4000-8000-000000000001', 'corporate_id' => $corporateId,
