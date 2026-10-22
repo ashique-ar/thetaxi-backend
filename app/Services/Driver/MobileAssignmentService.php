@@ -146,6 +146,22 @@ class MobileAssignmentService
             ->first();
     }
 
+    /** Resolve a notification's assignment by ID without relying on the inbox query. */
+    public function getNotifiedAssignment(Driver $driver, string $assignmentId): ?DriverAssignment
+    {
+        $this->reconcileCompletedBookingAssignments($driver);
+
+        $query = $this->baseAssignmentQuery($driver)
+            ->useWritePdo()
+            ->whereKey($assignmentId)
+            ->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])
+            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED])
+            ->nonTerminalBooking();
+        $this->excludeStaleOffers($query);
+
+        return $query->first();
+    }
+
     /**
      * Return the driver's operational trip without allowing a completed parent
      * booking to leak back through heartbeat or status responses.
@@ -586,8 +602,9 @@ class MobileAssignmentService
                 'status' => $data['status'] ?? 'active',
             ]));
 
-            // Trigger notification to driver
-            $this->notificationService->sendAssignmentNotification($assignment);
+            DB::afterCommit(
+                fn () => $this->notificationService->sendAssignmentNotification($assignment),
+            );
 
             return $assignment;
         });

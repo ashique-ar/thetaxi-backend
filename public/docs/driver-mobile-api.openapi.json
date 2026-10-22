@@ -4206,6 +4206,62 @@
                 }
             }
         },
+        "/api/driver/assignments/{id}/notification": {
+            "get": {
+                "tags": [
+                    "Booking Assignments"
+                ],
+                "summary": "Resolve assignment from a notification",
+                "description": "Loads the active, non-terminal assignment referenced by a driver notification, scoped to the authenticated driver. Use this when current-assignment or inbox lookups do not yet include the notified assignment.",
+                "operationId": "get_api_driver_assignments_id_notification",
+                "security": [
+                    {
+                        "bearerAuth": []
+                    }
+                ],
+                "parameters": [
+                    {
+                        "name": "id",
+                        "in": "path",
+                        "required": true,
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Assignment for this driver",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "object",
+                                    "required": ["status", "data"],
+                                    "properties": {
+                                        "status": {"type": "string", "example": "success"},
+                                        "data": {
+                                            "type": "object",
+                                            "required": ["id", "driver_id", "booking_id", "status", "trip_phase"],
+                                            "properties": {
+                                                "id": {"type": "string", "format": "uuid"},
+                                                "driver_id": {"type": "string", "format": "uuid"},
+                                                "booking_id": {"type": "string", "format": "uuid"},
+                                                "status": {"type": "string"},
+                                                "trip_phase": {"type": "string"}
+                                            },
+                                            "description": "The same allowlisted assignment projection returned by the assignments list."
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    "403": {"description": "Authenticated user is not a driver"},
+                    "404": {"description": "Assignment not available to this driver"}
+                }
+            }
+        },
         "/api/driver/assignments/current": {
             "get": {
                 "tags": [

@@ -113,6 +113,7 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
     Route::prefix('assignments')->group(function () {
         Route::get('', [AssignmentController::class, 'index']);
         Route::get('current', [AssignmentController::class, 'current']);
+        Route::get('{id}/notification', [AssignmentController::class, 'notified']);
         Route::post('{id}/accept', [AssignmentController::class, 'accept']);
         Route::post('{id}/acknowledge', [AssignmentController::class, 'acknowledge']);
         Route::post('{id}/decline', [AssignmentController::class, 'decline']);

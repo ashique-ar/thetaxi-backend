@@ -115,6 +115,42 @@ class AssignmentController extends Controller
         }
     }
 
+    /** Resolve one active assignment referenced by a driver notification. */
+    public function notified(Request $request, string $id): JsonResponse
+    {
+        try {
+            $driver = $this->authService->getDriver($request->user());
+
+            if (!$driver) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'User is not registered as a driver',
+                    'error_code' => 'ASSIGNMENT_NOT_DRIVER'
+                ], 403);
+            }
+
+            $assignment = $this->assignmentService->getNotifiedAssignment($driver, $id);
+            if (!$assignment) {
+                return response()->json([
+                    'status' => 'error',
+                    'message' => 'Assignment not found',
+                    'error_code' => 'ASSIGNMENT_NOT_FOUND'
+                ], 404);
+            }
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $this->assignmentService->buildAssignmentPayload($assignment),
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'Failed to retrieve notified assignment',
+                'error_code' => 'ASSIGNMENT_LOOKUP_FAILED',
+            ], 500);
+        }
+    }
+
     /**
      * Accept a driver assignment.
      *

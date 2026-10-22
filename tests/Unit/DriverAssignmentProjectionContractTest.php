@@ -1,5 +1,24 @@
 <?php
 
+it('defers mobile assignment notifications until their transaction commits', function () {
+    $source = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+
+    expect($source)->toMatch(
+        '/DB::afterCommit\(\s*fn \(\) => \$this->notificationService->sendAssignmentNotification\(\$assignment\),?\s*\);/'
+    );
+});
+
+it('resolves notified assignments by ID while keeping them scoped to the driver', function () {
+    $service = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/AssignmentController.php'));
+
+    expect($service)
+        ->toContain('->useWritePdo()')
+        ->toContain("->whereKey(\$assignmentId)")
+        ->toContain("->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])")
+        ->and($controller)->toContain('$this->assignmentService->getNotifiedAssignment($driver, $id)');
+});
+
 
 it('uses an allowlisted driver assignment projection without raw model serialization', function () {
     $source = file_get_contents(app_path('Services/Driver/MobileAssignmentService.php'));
@@ -283,7 +302,7 @@ it('builds driver navigation stops only from booked passenger route fields', fun
         ->not->toContain('pricing_only');
 });
 
-it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.7', function () {
+it('keeps supported driver app version and lifecycle endpoints compatible with OpenAPI v2.8', function () {
     $documentation = json_decode(
         file_get_contents(public_path('docs/driver-mobile-api.openapi.json')),
         true,
@@ -293,7 +312,7 @@ it('keeps supported driver app version and lifecycle endpoints compatible with O
     $driverRoutes = file_get_contents(base_path('routes/api_driver.php'));
     $publicRoutes = file_get_contents(base_path('routes/api_public.php'));
 
-    expect(data_get($documentation, 'info.version'))->toBe('2.7.0')
+    expect(data_get($documentation, 'info.version'))->toBe('2.8.0')
         ->and(data_get($documentation, 'paths./api/driver/version-check.post'))->toBeArray()
         ->and(data_get($documentation, 'paths./api/public/driver-mobile/version-check.post'))->toBeArray()
         ->and($driverRoutes)->toContain("Route::get('version-check', [AppSettingsController::class, 'versionCheck'])")
@@ -301,6 +320,8 @@ it('keeps supported driver app version and lifecycle endpoints compatible with O
         ->and($publicRoutes)->toContain("Route::post('driver-mobile/version-check', [AppSettingsController::class, 'versionCheck'])")
         ->and($driverRoutes)->toContain("Route::get('', [AssignmentController::class, 'index'])")
         ->and($driverRoutes)->toContain("Route::get('current', [AssignmentController::class, 'current'])")
+        ->and($driverRoutes)->toContain("Route::get('{id}/notification', [AssignmentController::class, 'notified'])")
+        ->and(data_get($documentation, 'paths./api/driver/assignments/{id}/notification.get'))->toBeArray()
         ->and($driverRoutes)->toContain("Route::post('{id}/accept', [AssignmentController::class, 'accept'])")
         ->and($driverRoutes)->toContain("Route::post('{id}/decline', [AssignmentController::class, 'decline'])")
         ->and($driverRoutes)->toContain("Route::post('{id}/complete', [TripController::class, 'endTripForAssignment'])")
