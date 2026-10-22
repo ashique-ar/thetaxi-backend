@@ -110,12 +110,13 @@ class ReportsController extends Controller
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select('service_types.name as service_type')
-            ->selectRaw('COUNT(DISTINCT bookings.id) as total_bookings')
-            ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(bookings.total_actual, 0) ELSE 0 END) as revenue")
-            ->selectRaw("AVG(CASE WHEN bookings.status = 'completed' THEN COALESCE(bookings.total_actual, NULL) END) as avg_booking_value")
-            ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN 1 ELSE 0 END) as completed_bookings")
-            ->selectRaw("SUM(CASE WHEN bookings.status IN ('cancelled','inquiry_cancelled') THEN 1 ELSE 0 END) as cancelled_bookings")
-            ->groupBy('service_types.id', 'service_types.name');
+            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw("COUNT(DISTINCT bookings.id) as total_bookings")
+            ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings")
+            ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status IN ('cancelled','inquiry_cancelled') THEN bookings.id END) as cancelled_bookings")
+            ->selectRaw("SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as revenue")
+            ->selectRaw("AVG(CASE WHEN bookings.status = 'completed' THEN booking_items.total_price END) as average_item_value")
+            ->groupBy('service_types.id', 'service_types.name', 'currency');
 
         $this->applyFilters($query, $filters);
 
@@ -184,13 +185,12 @@ class ReportsController extends Controller
         $query         = Booking::where('status', 'completed');
         $this->applyFilters($query, $filters);
 
-        $totalRevenue    = (clone $query)->sum('total_actual');
-        $totalCommission = 0.0;
+        $revenueByCurrency = (clone $query)
+            ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+            ->groupBy('currency')->orderBy('currency')->get();
 
         $analytics = [
-            'total_revenue'           => (float) $totalRevenue,
-            'total_commission'        => (float) $totalCommission,
-            'net_revenue'             => (float) ($totalRevenue - $totalCommission),
+            'revenue_by_currency'     => $revenueByCurrency,
             'revenue_by_service_type' => $this->getRevenueByServiceType(clone $query),
             'revenue_by_agent'        => $this->getRevenueByAgent(clone $query),
             'monthly_growth'          => $this->getMonthlyGrowth(clone $query),
@@ -284,17 +284,14 @@ class ReportsController extends Controller
         $query = Booking::where('status', 'completed');
         $this->applyFilters($query, $filters);
 
-        $revenue = (float) (clone $query)->sum('total_actual');
-        $commission = 0.0;
+        $byCurrency = (clone $query)
+            ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+            ->groupBy('currency')->orderBy('currency')->get()
+            ->map(fn ($row) => ['currency' => $row->currency, 'revenue' => (float) $row->revenue]);
 
         return response()->json([
             'status' => 'success',
-            'data' => [
-                'total_revenue' => $revenue,
-                'total_commission' => $commission,
-                'estimated_profit' => $revenue - $commission,
-                'profit_margin' => $revenue > 0 ? round((($revenue - $commission) / $revenue) * 100, 2) : 0,
-            ],
+            'data' => ['revenue_by_currency' => $byCurrency],
         ]);
     }
 
@@ -487,10 +484,11 @@ class ReportsController extends Controller
             'date_from' => ['nullable', 'date_format:Y-m-d'],
             'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
         ]);
+        $today = Carbon::today()->toDateString();
 
         return array_filter([
-            'date_from'      => $request->get('date_from'),
-            'date_to'        => $request->get('date_to'),
+            'date_from'      => $request->get('date_from') ?: Carbon::today()->startOfMonth()->toDateString(),
+            'date_to'        => $request->get('date_to') ?: $today,
             'vehicle_id'     => $request->get('vehicle_id'),
             'customer_id'    => $request->get('customer_id'),
             'booking_status' => $request->get('booking_status'),
@@ -663,8 +661,9 @@ class ReportsController extends Controller
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select('service_types.name as service_type')
-            ->selectRaw('SUM(COALESCE(bookings.total_actual,0)) as revenue, COUNT(DISTINCT bookings.id) as bookings')
-            ->groupBy('service_types.id', 'service_types.name')
+            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw('SUM(COALESCE(booking_items.total_price,0)) as revenue, COUNT(DISTINCT bookings.id) as bookings')
+            ->groupBy('service_types.id', 'service_types.name', 'currency')
             ->orderByDesc('revenue')
             ->get()
             ->toArray();
@@ -676,9 +675,9 @@ class ReportsController extends Controller
             ->join('agents', 'bookings.agent_id', '=', 'agents.id')
             ->join('users', 'agents.user_id', '=', 'users.id')
             ->selectRaw("CONCAT(users.first_name, ' ', users.last_name) as agent_name, agents.id as agent_id")
-            ->selectRaw('SUM(COALESCE(bookings.total_actual,0)) as revenue, COUNT(*) as bookings,
-                0::numeric as commission')
-            ->groupBy('agents.id', 'users.first_name', 'users.last_name')
+            ->selectRaw("COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw('SUM(COALESCE(bookings.total_actual,0)) as revenue, COUNT(*) as bookings')
+            ->groupBy('agents.id', 'users.first_name', 'users.last_name', 'currency')
             ->orderByDesc('revenue')
             ->get()
             ->toArray();
@@ -687,19 +686,22 @@ class ReportsController extends Controller
     private function getMonthlyGrowth($query): array
     {
         $rows = (clone $query)
-            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, SUM(COALESCE(total_actual,0)) as revenue")
-            ->groupBy('month')
-            ->orderBy('month')
+            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as month, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
+            ->groupBy('month', 'currency')
+            ->orderBy('month')->orderBy('currency')
             ->get();
 
         $result = [];
-        foreach ($rows as $i => $row) {
-            $prev = $i > 0 ? $rows[$i - 1]->revenue : 0;
+        $previousRevenue = [];
+        foreach ($rows as $row) {
+            $prev = $previousRevenue[$row->currency] ?? 0;
             $result[] = [
                 'month'       => $row->month,
+                'currency'    => $row->currency,
                 'revenue'     => (float) $row->revenue,
                 'growth_rate' => $prev > 0 ? round((($row->revenue - $prev) / $prev) * 100, 2) : 0,
             ];
+            $previousRevenue[$row->currency] = (float) $row->revenue;
         }
 
         return $result;
@@ -785,6 +787,9 @@ class ReportsController extends Controller
         if (!empty($filters['date_from'])) {
             $completedBookings->where('created_at', '>=', $filters['date_from']);
         }
+        if (!empty($filters['date_to'])) {
+            $completedBookings->where('created_at', '<=', $filters['date_to'] . ' 23:59:59');
+        }
 
         $data = $completedBookings->get();
 
@@ -837,8 +842,7 @@ class ReportsController extends Controller
             ->join('vehicles', 'booking_items.vehicle_id', '=', 'vehicles.id')
             ->join('vehicle_groups', 'vehicles.vehicle_group_id', '=', 'vehicle_groups.id')
             ->select('vehicle_groups.name as category')
-            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings,
-                SUM(CASE WHEN bookings.status = \'completed\' THEN COALESCE(bookings.total_actual,0) ELSE 0 END) as revenue')
+            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
@@ -923,16 +927,14 @@ class ReportsController extends Controller
             ->selectRaw("$fmt as period,
                 COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
                 COUNT(*) as bookings,
-                SUM(COALESCE(total_actual,0)) as revenue,
-                0::numeric as commission,
-                SUM(COALESCE(total_actual,0)) as net_revenue");
+                SUM(COALESCE(total_actual,0)) as revenue");
 
         $this->applyFilters($query, $filters);
         $rows = $query->groupBy('period', 'currency')->orderBy('period')->orderBy('currency')->get();
 
-        $headers = ['Period', 'Currency', 'Bookings', 'Revenue', 'Commission', 'Net Revenue'];
+        $headers = ['Period', 'Currency', 'Completed bookings', 'Completed revenue'];
         $data    = $rows->map(fn ($r) => [
-            $r->period, $r->currency, $r->bookings, $r->revenue, $r->commission, $r->net_revenue,
+            $r->period, $r->currency, $r->bookings, $r->revenue,
         ])->toArray();
 
         return $this->csvResponse('financial_report.csv', $headers, $data);
