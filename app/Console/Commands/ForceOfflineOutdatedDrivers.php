@@ -51,7 +51,11 @@ class ForceOfflineOutdatedDrivers extends Command
                         'total_distance_km' => $routes->calculateDistance($session),
                     ]);
                 }
-                $driver->update(['is_online' => false, 'current_device_uuid' => null]);
+                $driver->update([
+                    'is_online' => false,
+                    'availability_status' => 'offline',
+                    'current_device_uuid' => null,
+                ]);
                 if ($driver->user) {
                     $auth->revokeAllTokens($driver->user);
                 }

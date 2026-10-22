@@ -141,12 +141,28 @@ class ReportsController extends Controller
                 COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
                 SUM(COALESCE(total_actual, 0)) as total_revenue,
                 COUNT(*) as total_bookings,
-                AVG(COALESCE(total_actual, 0)) as average_booking_value,
-                0::numeric as commissions_paid,
-                SUM(COALESCE(total_actual, 0)) as net_revenue")
+                AVG(COALESCE(total_actual, 0)) as average_booking_value")
             ->groupBy('period', 'currency')
             ->orderBy('period')->orderBy('currency')
             ->get();
+
+        $bookingDateFormat = str_replace('created_at', 'bookings.created_at', $fmt);
+        $serviceRevenue = DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
+            ->where('bookings.status', 'completed')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+            ->selectRaw("{$bookingDateFormat} as period, COALESCE(NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, service_types.name as service_type, SUM(COALESCE(booking_items.total_price, 0)) as revenue")
+            ->groupBy('period', 'currency', 'service_types.name')
+            ->get()
+            ->groupBy(fn ($row) => $row->period . '|' . $row->currency);
+
+        foreach ($reports as $report) {
+            $report->revenue_by_service_type = ($serviceRevenue->get($report->period . '|' . $report->currency) ?? collect())
+                ->map(fn ($row) => ['service_type' => $row->service_type, 'revenue' => (float) $row->revenue])
+                ->values();
+        }
 
         $previousRevenue = [];
         foreach ($reports as $report) {
@@ -198,7 +214,7 @@ class ReportsController extends Controller
                     $q->where('created_at', '>=', $filters['date_from']);
                 }
                 if (isset($filters['date_to'])) {
-                    $q->where('created_at', '<=', $filters['date_to']);
+                    $q->whereDate('created_at', '<=', $filters['date_to']);
                 }
             })->count(),
             'new_customers'       => $this->getNewCustomers($filters),
@@ -797,7 +813,7 @@ class ReportsController extends Controller
             ->join('bookings', 'booking_items.booking_id', '=', 'bookings.id')
             ->where('bookings.status', 'completed')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->whereNotNull('booking_items.vehicle_id')
             ->distinct()
             ->pluck('booking_items.vehicle_id');
@@ -824,7 +840,7 @@ class ReportsController extends Controller
             ->selectRaw('COUNT(DISTINCT bookings.id) as bookings,
                 SUM(CASE WHEN bookings.status = \'completed\' THEN COALESCE(bookings.total_actual,0) ELSE 0 END) as revenue')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
             ->orderByDesc('revenue')
             ->get()
@@ -840,7 +856,7 @@ class ReportsController extends Controller
         return DB::table('vehicle_maintenance_records')
             ->selectRaw('status, COUNT(*) as count, SUM(COALESCE(cost, 0)) as total_cost')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('created_at', '<=', $filters['date_to']))
+            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->groupBy('status')
             ->get()
             ->toArray();

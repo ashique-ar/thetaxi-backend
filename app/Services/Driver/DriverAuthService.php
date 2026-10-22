@@ -6,8 +6,8 @@ use App\Notifications\DriverPasswordResetNotification;
 use App\Models\User;
 use App\Models\Driver\Driver;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Password;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Laravel\Passport\Passport;
@@ -365,6 +365,9 @@ class DriverAuthService
      */
     public function revokeAllTokens(User $user): void
     {
+        DB::table('oauth_refresh_tokens')
+            ->whereIn('access_token_id', $user->tokens()->select('id'))
+            ->update(['revoked' => true]);
         $user->tokens()->update(['revoked' => true]);
     }
 
