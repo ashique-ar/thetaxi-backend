@@ -136,20 +136,24 @@ class ReportsController extends Controller
 
         $reports = $query
             ->selectRaw("$fmt as period,
+                COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
                 SUM(COALESCE(total_actual, 0)) as total_revenue,
                 COUNT(*) as total_bookings,
                 AVG(COALESCE(total_actual, 0)) as average_booking_value,
                 0::numeric as commissions_paid,
                 SUM(COALESCE(total_actual, 0)) as net_revenue")
-            ->groupBy('period')
-            ->orderBy('period')
+            ->groupBy('period', 'currency')
+            ->orderBy('period')->orderBy('currency')
             ->get();
 
-        foreach ($reports as $i => $report) {
-            $prev                = $i > 0 ? $reports[$i - 1]->total_revenue : 0;
+        $previousRevenue = [];
+        foreach ($reports as $report) {
+            $currency = (string) $report->currency;
+            $prev = $previousRevenue[$currency] ?? 0;
             $report->growth_rate = $prev > 0
                 ? round((($report->total_revenue - $prev) / $prev) * 100, 2)
                 : 0;
+            $previousRevenue[$currency] = (float) $report->total_revenue;
         }
 
         return response()->json(['status' => 'success', 'data' => $reports]);
@@ -280,7 +284,7 @@ class ReportsController extends Controller
     {
         $filters = $this->parseFilters($request);
         $query = Booking::with(['customer.user', 'bookingItems.vehicle'])
-            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'total_actual', 'status', 'created_at');
+            ->select('id', 'booking_number', 'customer_id', 'agent_id', 'total_actual', 'currency', 'status', 'created_at');
 
         $this->applyFilters($query, $filters);
 
@@ -294,6 +298,7 @@ class ReportsController extends Controller
             'start_date' => $booking->bookingItems->min('from_date'),
             'end_date' => $booking->bookingItems->max('to_date'),
             'total_amount' => (float) $booking->total_actual,
+            'currency' => strtoupper((string) ($booking->currency ?: 'LKR')),
             'status' => $booking->status,
             'commission' => 0.0,
             'agent_name' => '',
@@ -340,10 +345,19 @@ class ReportsController extends Controller
 
     public function getVehicleReports(Request $request): JsonResponse
     {
-        $rows = Vehicle::with('group')
-            ->when($request->filled('vehicle_id'), fn ($query) => $query->whereKey($request->get('vehicle_id')))
-            ->withCount('bookingItems')
-            ->withSum(['bookingItems as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_price')
+        return response()->json(['status' => 'success', 'data' => $this->vehicleReportRows($this->parseFilters($request))]);
+    }
+
+    private function vehicleReportRows(array $filters): array
+    {
+        $periodItems = fn ($query) => $query
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('from_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('from_date', '<=', $filters['date_to']));
+
+        return Vehicle::with('group')
+            ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
+            ->withCount(['bookingItems' => $periodItems])
+            ->withSum(['bookingItems as completed_revenue' => fn ($q) => $periodItems($q)->where('booking_items.status', 'completed')], 'total_price')
             ->orderBy('title')
             ->limit(500)
             ->get()
@@ -363,9 +377,7 @@ class ReportsController extends Controller
                 'status' => $vehicle->status ?? $vehicle->availability_status,
                 'last_service_date' => null,
                 'next_service_date' => null,
-            ]);
-
-        return response()->json(['status' => 'success', 'data' => $rows]);
+            ])->all();
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -387,7 +399,7 @@ class ReportsController extends Controller
             'bookings'  => $this->exportBookingReport($filters, $format),
             'customers' => $this->exportCustomerReport($filters, $format),
             'vehicles'  => $this->exportVehicleReport($filters, $format),
-            'financial' => $this->exportFinancialReport($filters, $format),
+            'financial' => $this->exportFinancialReport($filters, $format, $request->get('period', 'monthly')),
             default     => response()->json(['error' => 'Invalid report type'], 400),
         };
     }
@@ -441,6 +453,11 @@ class ReportsController extends Controller
 
     private function parseFilters(Request $request): array
     {
+        $request->validate([
+            'date_from' => ['nullable', 'date_format:Y-m-d'],
+            'date_to' => ['nullable', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+        ]);
+
         return array_filter([
             'date_from'      => $request->get('date_from'),
             'date_to'        => $request->get('date_to'),
@@ -858,39 +875,33 @@ class ReportsController extends Controller
 
     private function exportVehicleReport(array $filters, string $format): Response
     {
-        $rows = Vehicle::with('group')
-            ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
-            ->select('title', 'license_plate', 'status', 'availability_status', 'created_at')
-            ->orderBy('title')
-            ->get();
-
-        $headers = ['Name', 'License Plate', 'Status', 'Availability', 'Created'];
-        $data    = $rows->map(fn ($v) => [
-            $v->title,
-            $v->license_plate,
-            $v->status,
-            $v->availability_status,
-            $v->created_at,
-        ])->toArray();
+        $rows = collect($this->vehicleReportRows($filters));
+        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Completed revenue', 'Status'];
+        $data = $rows->map(fn ($vehicle) => [
+            $vehicle['vehicle_info'], $vehicle['registration_number'], $vehicle['category'],
+            $vehicle['total_bookings'], $vehicle['total_revenue'], $vehicle['status'],
+        ])->all();
 
         return $this->csvResponse('vehicles_report.csv', $headers, $data);
     }
 
-    private function exportFinancialReport(array $filters, string $format): Response
+    private function exportFinancialReport(array $filters, string $format, string $period): Response
     {
+        $fmt = $this->getDateFormat($period);
         $query = Booking::where('status', 'completed')
-            ->selectRaw("TO_CHAR(created_at, 'YYYY-MM') as period,
+            ->selectRaw("$fmt as period,
+                COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency,
                 COUNT(*) as bookings,
                 SUM(COALESCE(total_actual,0)) as revenue,
                 0::numeric as commission,
                 SUM(COALESCE(total_actual,0)) as net_revenue");
 
         $this->applyFilters($query, $filters);
-        $rows = $query->groupBy('period')->orderBy('period')->get();
+        $rows = $query->groupBy('period', 'currency')->orderBy('period')->orderBy('currency')->get();
 
-        $headers = ['Period', 'Bookings', 'Revenue', 'Commission', 'Net Revenue'];
+        $headers = ['Period', 'Currency', 'Bookings', 'Revenue', 'Commission', 'Net Revenue'];
         $data    = $rows->map(fn ($r) => [
-            $r->period, $r->bookings, $r->revenue, $r->commission, $r->net_revenue,
+            $r->period, $r->currency, $r->bookings, $r->revenue, $r->commission, $r->net_revenue,
         ])->toArray();
 
         return $this->csvResponse('financial_report.csv', $headers, $data);
