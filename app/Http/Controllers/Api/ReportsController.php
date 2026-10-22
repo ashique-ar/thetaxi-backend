@@ -43,8 +43,10 @@ class ReportsController extends Controller
         $stats = Cache::remember($cacheKey, self::CACHE_TTL, function () use ($startDate) {
             return [
                 'total_bookings'   => Booking::where('created_at', '>=', $startDate)->count(),
-                'total_revenue'    => Booking::where('created_at', '>=', $startDate)
-                    ->where('status', 'completed')->sum('total_actual'),
+                'revenue_by_currency' => Booking::where('created_at', '>=', $startDate)
+                    ->where('status', 'completed')
+                    ->selectRaw("COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as revenue")
+                    ->groupBy('currency')->orderBy('currency')->get(),
                 'total_customers'  => Customer::where('created_at', '>=', $startDate)->count(),
                 'total_vehicles'   => Vehicle::where('is_active', true)->count(),
                 'booking_trends'   => $this->getBookingTrends($startDate),
@@ -300,8 +302,6 @@ class ReportsController extends Controller
             'total_amount' => (float) $booking->total_actual,
             'currency' => strtoupper((string) ($booking->currency ?: 'LKR')),
             'status' => $booking->status,
-            'commission' => 0.0,
-            'agent_name' => '',
         ]);
 
         return response()->json(['status' => 'success', 'data' => $rows]);
@@ -309,38 +309,49 @@ class ReportsController extends Controller
 
     public function getCustomerReports(Request $request): JsonResponse
     {
-        $filters = $this->parseFilters($request);
+        return response()->json(['status' => 'success', 'data' => $this->customerReportRows($this->parseFilters($request))]);
+    }
 
-        $rows = Customer::with('user')
+    private function customerReportRows(array $filters): array
+    {
+        $customers = Customer::with('user')
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('created_at', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']), fn ($q) => $q->where('created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->withCount('bookings')
-            ->withSum(['bookings as completed_revenue' => fn ($q) => $q->where('status', 'completed')], 'total_actual')
+            ->withMax('bookings', 'created_at')
             ->orderByDesc('created_at')
             ->limit(500)
+            ->get();
+        $spend = DB::table('bookings')
+            ->whereIn('customer_id', $customers->pluck('id'))
+            ->where('status', 'completed')
+            ->selectRaw("customer_id, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual, 0)) as total_spent")
+            ->groupBy('customer_id', 'currency')
+            ->orderBy('currency')
             ->get()
-            ->map(function ($customer) {
-                $totalBookings = (int) $customer->bookings_count;
-                $totalSpent = (float) $customer->completed_revenue;
+            ->groupBy(fn ($row) => (string) $row->customer_id);
 
-                return [
+        return $customers->map(function ($customer) use ($spend) {
+            $spentByCurrency = $spend->get((string) $customer->id, collect())->map(fn ($row) => [
+                'currency' => (string) $row->currency,
+                'total_spent' => (float) $row->total_spent,
+            ])->values()->all();
+            $totalBookings = (int) $customer->bookings_count;
+
+            return [
                     'id' => (string) $customer->id,
                     'name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
                     'customer_name' => trim(($customer->user?->first_name ?? '') . ' ' . ($customer->user?->last_name ?? '')),
                     'email' => $customer->user?->email,
                     'phone' => $customer->user?->phone,
                     'total_bookings' => $totalBookings,
-                    'total_spent' => $totalSpent,
-                    'average_booking_value' => $totalBookings > 0 ? round($totalSpent / $totalBookings, 2) : 0,
-                    'customer_lifetime_value' => $totalSpent,
-                    'last_booking_date' => optional($customer->bookings()->latest('created_at')->first())->created_at,
+                    'spend_by_currency' => $spentByCurrency,
+                    'last_booking_date' => $customer->bookings_max_created_at,
                     'registration_date' => $customer->created_at,
                     'status' => $customer->status ?? 'active',
                     'loyalty_tier' => CustomerLoyaltyPoint::where('customer_id', $customer->id)->value('current_tier') ?? '',
                 ];
-            });
-
-        return response()->json(['status' => 'success', 'data' => $rows]);
+        })->all();
     }
 
     public function getVehicleReports(Request $request): JsonResponse
@@ -350,34 +361,37 @@ class ReportsController extends Controller
 
     private function vehicleReportRows(array $filters): array
     {
-        $periodItems = fn ($query) => $query
-            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('from_date', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('from_date', '<=', $filters['date_to']));
+        $metrics = DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->whereNotNull('booking_items.vehicle_id')
+            ->whereNotNull('booking_items.from_date')
+            ->when(!empty($filters['date_from']), fn ($q) => $q->whereDate('booking_items.from_date', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->whereDate('booking_items.from_date', '<=', $filters['date_to']))
+            ->selectRaw("booking_items.vehicle_id, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency, COUNT(*) as trip_count, SUM(CASE WHEN booking_items.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
+            ->groupBy('booking_items.vehicle_id', 'currency')
+            ->orderBy('booking_items.vehicle_id')->orderBy('currency')
+            ->get()
+            ->groupBy(fn ($row) => (string) $row->vehicle_id);
 
         return Vehicle::with('group')
             ->when(!empty($filters['vehicle_id']), fn ($query) => $query->whereKey($filters['vehicle_id']))
-            ->withCount(['bookingItems' => $periodItems])
-            ->withSum(['bookingItems as completed_revenue' => fn ($q) => $periodItems($q)->where('booking_items.status', 'completed')], 'total_price')
             ->orderBy('title')
             ->limit(500)
             ->get()
-            ->map(fn ($vehicle) => [
+            ->flatMap(function ($vehicle) use ($metrics) {
+                $rows = $metrics->get((string) $vehicle->id, collect());
+                if ($rows->isEmpty()) $rows = collect([(object) ['currency' => '', 'trip_count' => 0, 'completed_revenue' => 0]]);
+                return $rows->map(fn ($metric) => [
                 'id' => (string) $vehicle->id,
                 'registration_number' => $vehicle->license_plate,
                 'vehicle_info' => $vehicle->title ?? $vehicle->license_plate,
-                'make' => '',
-                'model' => '',
                 'category' => $vehicle->group?->name ?? '',
-                'total_bookings' => (int) $vehicle->booking_items_count,
-                'total_revenue' => (float) $vehicle->completed_revenue,
-                'revenue' => (float) $vehicle->completed_revenue,
-                'utilization_rate' => (int) $vehicle->booking_items_count > 0 ? 100 : 0,
-                'maintenance_cost' => 0,
-                'profit' => (float) $vehicle->completed_revenue,
+                'total_bookings' => (int) $metric->trip_count,
+                'total_revenue' => (float) $metric->completed_revenue,
+                'currency' => (string) $metric->currency,
                 'status' => $vehicle->status ?? $vehicle->availability_status,
-                'last_service_date' => null,
-                'next_service_date' => null,
-            ])->all();
+                ]);
+            })->values()->all();
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -429,7 +443,7 @@ class ReportsController extends Controller
         $filters = $this->filtersFromGeneratedReport($report);
 
         return match ($report->report_type) {
-            'financial' => $this->exportFinancialReport($filters, $report->format),
+            'financial' => $this->exportFinancialReport($filters, $report->format, $filters['period'] ?? 'monthly'),
             'customer' => $this->exportCustomerReport($filters, $report->format),
             'vehicle_performance' => $this->exportVehicleReport($filters, $report->format),
             default => $this->exportBookingReport($filters, $report->format),
@@ -515,6 +529,7 @@ class ReportsController extends Controller
         return array_filter([
             'date_from' => $saved['date_from'] ?? null,
             'date_to' => $saved['date_to'] ?? null,
+            'period' => $saved['period'] ?? 'monthly',
             'booking_status' => $nestedFilters['status'][0] ?? $nestedFilters['status'] ?? null,
             'customer_id' => $nestedFilters['customer_id'] ?? null,
             'vehicle_id' => $nestedFilters['vehicle_id'] ?? null,
@@ -564,9 +579,9 @@ class ReportsController extends Controller
     {
         return Booking::where('created_at', '>=', $startDate)
             ->where('status', 'completed')
-            ->selectRaw('DATE(created_at) as date, SUM(COALESCE(total_actual,0)) as revenue')
-            ->groupBy('date')
-            ->orderBy('date')
+            ->selectRaw("DATE(created_at) as date, COALESCE(NULLIF(UPPER(currency), ''), 'LKR') as currency, SUM(COALESCE(total_actual,0)) as revenue")
+            ->groupBy('date', 'currency')
+            ->orderBy('date')->orderBy('currency')
             ->get()
             ->toArray();
     }
@@ -838,18 +853,19 @@ class ReportsController extends Controller
     private function exportBookingReport(array $filters, string $format): Response
     {
         $query = Booking::with(['customer.user', 'serviceType'])
-            ->select('booking_number', 'status', 'from_date', 'to_date', 'total_actual', 'created_at');
+            ->select('booking_number', 'status', 'from_date', 'to_date', 'total_actual', 'currency', 'created_at');
 
         $this->applyFilters($query, $filters);
         $rows = $query->orderByDesc('created_at')->get();
 
-        $headers = ['Booking #', 'Status', 'From', 'To', 'Total', 'Created'];
+        $headers = ['Booking #', 'Status', 'From', 'To', 'Total', 'Currency', 'Created'];
         $data    = $rows->map(fn ($b) => [
             $b->booking_number,
             $b->status,
             $b->from_date,
             $b->to_date,
             $b->total_actual,
+            strtoupper((string) ($b->currency ?: 'LKR')),
             $b->created_at,
         ])->toArray();
 
@@ -858,17 +874,16 @@ class ReportsController extends Controller
 
     private function exportCustomerReport(array $filters, string $format): Response
     {
-        $rows = Customer::with('user')
-            ->selectRaw('customers.id, customers.created_at')
-            ->join('users', 'customers.user_id', '=', 'users.id')
-            ->selectRaw("CONCAT(users.first_name, ' ', users.last_name) as name, users.email, users.phone")
-            ->when(!empty($filters['date_from']), fn ($q) => $q->where('customers.created_at', '>=', $filters['date_from']))
-            ->when(!empty($filters['date_to']),   fn ($q) => $q->where('customers.created_at', '<=', $filters['date_to']))
-            ->orderByDesc('customers.created_at')
-            ->get();
-
-        $headers = ['Name', 'Email', 'Phone', 'Created'];
-        $data    = $rows->map(fn ($r) => [$r->name, $r->email, $r->phone, $r->created_at])->toArray();
+        $rows = collect($this->customerReportRows($filters));
+        $headers = ['Customer', 'Email', 'Phone', 'Lifetime bookings', 'Lifetime completed spend', 'Currency', 'Last booking', 'Registered'];
+        $data = $rows->flatMap(function ($row) {
+            $spend = collect($row['spend_by_currency']);
+            if ($spend->isEmpty()) $spend = collect([['currency' => '', 'total_spent' => 0]]);
+            return $spend->map(fn ($total) => [
+                $row['name'], $row['email'], $row['phone'], $row['total_bookings'],
+                $total['total_spent'], $total['currency'], $row['last_booking_date'], $row['registration_date'],
+            ]);
+        })->all();
 
         return $this->csvResponse('customers_report.csv', $headers, $data);
     }
@@ -876,10 +891,10 @@ class ReportsController extends Controller
     private function exportVehicleReport(array $filters, string $format): Response
     {
         $rows = collect($this->vehicleReportRows($filters));
-        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Completed revenue', 'Status'];
+        $headers = ['Vehicle', 'Registration', 'Category', 'Trips in range', 'Completed revenue', 'Currency', 'Status'];
         $data = $rows->map(fn ($vehicle) => [
             $vehicle['vehicle_info'], $vehicle['registration_number'], $vehicle['category'],
-            $vehicle['total_bookings'], $vehicle['total_revenue'], $vehicle['status'],
+            $vehicle['total_bookings'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'],
         ])->all();
 
         return $this->csvResponse('vehicles_report.csv', $headers, $data);

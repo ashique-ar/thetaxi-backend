@@ -10,6 +10,7 @@ use Illuminate\Support\Facades\DB;
 
 class ForceOfflineOutdatedDrivers extends Command
 {
+    //php artisan drivers:force-offline-outdated --minimum-version=1.0.6
     protected $signature = 'drivers:force-offline-outdated {--minimum-version= : Minimum supported app version; older active devices are logged out} {--dry-run : Show the affected driver count without changing anything}';
 
     protected $description = 'Force drivers using an app version below the minimum to go offline and log in again';

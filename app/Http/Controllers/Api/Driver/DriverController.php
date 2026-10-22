@@ -1251,7 +1251,11 @@ class DriverController extends Controller
             $query->whereIn('id', $driverIds);
         }
         
-        $drivers = $query->with('user:id,first_name,last_name')->get();
+        $drivers = $query->with([
+            'user:id,first_name,last_name',
+            'devices' => fn ($deviceQuery) => $deviceQuery->where('is_active', true),
+            'activeSession',
+        ])->get();
         $activeAssignments = DriverAssignment::query()
             ->with('booking:id,booking_number')
             ->whereIn('driver_id', $drivers->pluck('id'))
@@ -1267,6 +1271,8 @@ class DriverController extends Controller
         
         $locations = $drivers->map(function ($driver) use ($activeAssignments) {
             $assignment = $activeAssignments->get($driver->id);
+            $currentDevice = $driver->devices->firstWhere('device_uuid', $driver->current_device_uuid);
+            $activeSession = $driver->activeSession;
             return [
                 'driver_id' => $driver->id,
                 'driver_name' => $driver->user ? 
@@ -1277,6 +1283,13 @@ class DriverController extends Controller
                 'longitude' => (float) $driver->current_longitude,
                 'is_online' => $driver->is_online,
                 'last_active_at' => $driver->last_active_at?->toIso8601String(),
+                'mobile_app' => [
+                    'session_active' => (bool) $activeSession,
+                    'device_active' => (bool) $currentDevice,
+                    'platform' => $currentDevice?->platform_display ?? $currentDevice?->platform,
+                    'app_version' => $currentDevice?->app_version,
+                    'last_active_at' => $currentDevice?->last_active_at?->toIso8601String(),
+                ],
                 'active_assignment' => $assignment ? [
                     'assignment_id' => (string) $assignment->id,
                     'booking_id' => (string) $assignment->booking_id,
