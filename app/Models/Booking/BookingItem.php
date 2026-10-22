@@ -329,9 +329,16 @@ class BookingItem extends BaseModel
             });
         }
 
-        return max(0, (float) (data_get($pricing, 'final_breakdown.amount_after_discount')
-            ?? data_get($pricing, 'final_breakdown.final_amount')
-            ?? ($subtotal - (float) $discount)));
+        return max(0, (float) $subtotal - (float) $discount);
+    }
+
+    public function hasEstimatedAmount(): bool
+    {
+        $pricing = is_array($this->pricing_breakdown) ? $this->pricing_breakdown : [];
+
+        return is_numeric(data_get($pricing, 'summary.total'))
+            || is_numeric(data_get($pricing, 'base_pricing.total_amount'))
+            || $this->calculateEstimatedTotalValue() > 0;
     }
 
     private function calculateAddonsTotal(): float

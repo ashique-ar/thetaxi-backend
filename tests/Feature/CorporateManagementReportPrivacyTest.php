@@ -33,6 +33,25 @@ it('omits monetary fields from management data without the selected context paym
 
 });
 
+it('marks estimated aggregates incomplete when a trip has no saved amount', function () {
+    $service = new CorporateManagementAnalyticsService;
+    $method = new ReflectionMethod($service, 'group');
+    $rows = collect([[
+        'department' => 'Operations',
+        'currency' => 'LKR',
+        'booking_id' => 'booking-a',
+        'estimate_available' => false,
+        'estimated_amount' => null,
+        'final_priced_at' => null,
+        'final_amount' => 0,
+    ]]);
+
+    $result = $method->invoke($service, $rows, 'department');
+
+    expect($result[0]['unpriced_trip_count'])->toBe(1)
+        ->and($result[0]['estimated_value'])->toBeNull();
+});
+
 it('returns billing-period totals in the statement currency instead of travel-period balances', function () {
     Schema::create('bookings', function (Blueprint $table) {
         $table->uuid('id')->primary();
@@ -141,6 +160,7 @@ it('includes frozen carry-forward FX rates in billing-period report audit detail
 it('exports monthly currency trends and selected billing totals in the management CSV', function () {
     $payload = [
         'financial_metrics_visible' => true,
+        'operational' => ['booking_count' => 1, 'trip_count' => 2, 'unpriced_trip_count' => 0, 'currency_totals' => []],
         'financial_periods' => [[
             'period_start' => '2026-09-01', 'period_end' => '2026-09-30', 'settlement_number' => 'CB-SEP',
             'invoice_number' => 'INV-SEP', 'currency' => 'KWD', 'charges_total' => 1.234,
@@ -148,7 +168,7 @@ it('exports monthly currency trends and selected billing totals in the managemen
         ]],
         'monthly_trends' => [[
             'month' => '2026-09', 'currency' => 'KWD', 'bookings' => 1, 'trips' => 2,
-            'estimated_value' => 1.234, 'finalized_charges' => 1.234,
+            'unpriced_trip_count' => 0, 'estimated_value' => 1.234, 'finalized_charges' => 1.234,
         ]],
         'dimensions' => [],
     ];
@@ -165,5 +185,5 @@ it('exports monthly currency trends and selected billing totals in the managemen
     $response->getCallback()();
     $csv = ob_get_clean();
 
-    expect($csv)->toContain('All travel dates', 'Billing period totals', 'Monthly travel activity', '2026-09,KWD,1,2,1.234,1.234');
+    expect($csv)->toContain('All travel dates', 'Billing period totals', 'Monthly travel activity', '2026-09,KWD,1,2,0,1.234,1.234');
 });

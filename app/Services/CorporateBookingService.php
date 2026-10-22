@@ -1071,17 +1071,20 @@ class CorporateBookingService
             ->with('booking:id,currency')
             ->get(['booking_items.id', 'booking_items.booking_id', 'booking_items.currency', 'booking_items.total_price', 'booking_items.addons', 'booking_items.discounts', 'booking_items.final_priced_at', 'booking_items.pricing_breakdown']);
         $matchingBookingItemIds = $matchingItems->pluck('id');
+        $unpricedTripCount = $matchingItems->filter(fn ($item) => $item->final_priced_at === null && ! $item->hasEstimatedAmount())->count();
         $finalizedItems = $matchingItems->whereNotNull('final_priced_at');
         $finalizedBookingCount = $finalizedItems->pluck('booking_id')->unique()->count();
         $currencyTotals = $matchingItems->groupBy(fn ($item) => strtoupper((string) ($item->currency ?: $item->booking?->currency ?: '')))
             ->map(function ($items, $currency) {
                 $estimated = (float) $items->sum(fn ($item) => $item->calculateEstimatedTotalValue());
                 $finalized = (float) $items->whereNotNull('final_priced_at')->sum(fn ($item) => $item->calculateTotalValue());
+                $unpriced = $items->filter(fn ($item) => $item->final_priced_at === null && ! $item->hasEstimatedAmount())->count();
 
                 return [
                     'currency' => $currency,
-                    'estimated_value' => $currency ? app(CurrencyService::class)->roundAmount($estimated, $currency) : round($estimated, 4),
+                    'estimated_value' => $unpriced ? null : ($currency ? app(CurrencyService::class)->roundAmount($estimated, $currency) : round($estimated, 4)),
                     'finalized_value' => $currency ? app(CurrencyService::class)->roundAmount($finalized, $currency) : round($finalized, 4),
+                    'unpriced_trip_count' => $unpriced,
                 ];
             })->sortKeys()->values()->all();
         $singleCurrencyTotal = count($currencyTotals) === 1 ? $currencyTotals[0] : null;
@@ -1119,6 +1122,7 @@ class CorporateBookingService
             'total_cost' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
             'estimated_value' => $singleCurrencyTotal['estimated_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
             'finalized_value' => $singleCurrencyTotal['finalized_value'] ?? (count($currencyTotals) === 0 ? 0.0 : null),
+            'unpriced_trip_count' => ($filters['can_view_payments'] ?? false) ? $unpricedTripCount : null,
             'finalized_booking_count' => $finalizedBookingCount,
             'unfinalized_booking_count' => max(0, $totalCount - $finalizedBookingCount),
             'currency_totals' => $currencyTotals,
@@ -1196,13 +1200,14 @@ class CorporateBookingService
         $amount = $finalized
             ? $item->calculateTotalValue()
             : $item->calculateEstimatedTotalValue();
+        $available = $finalized || $item->hasEstimatedAmount();
 
         return [
             'currency' => $currency ?: 'UNKNOWN',
-            'basis' => $finalized ? 'finalized' : 'estimated',
-            'amount' => $currency
+            'basis' => $finalized ? 'finalized' : ($available ? 'estimated' : 'unavailable'),
+            'amount' => $available ? ($currency
                 ? app(CurrencyService::class)->roundAmount($amount, $currency)
-                : round($amount, 4),
+                : round($amount, 4)) : null,
         ];
     }
 

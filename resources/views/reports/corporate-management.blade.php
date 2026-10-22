@@ -37,9 +37,12 @@
     <p>Travel activity dates: {{ $payload['period']['from'] ?: 'All dates' }} to {{ $payload['period']['to'] ?: 'Present' }}</p>
     <p>Bookings: {{ $payload['operational']['booking_count'] }} | Trips: {{ $payload['operational']['trip_count'] }}
         @if($payload['financial_metrics_visible'])
+            @if(($payload['operational']['unpriced_trip_count'] ?? 0) > 0)
+                | Trips without a saved estimate: {{ $payload['operational']['unpriced_trip_count'] }}
+            @endif
             @foreach($payload['operational']['currency_totals'] as $total)
                 @php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($total['currency'] ?: 'LKR'))
-                <br>{{ $total['currency'] ?: 'Currency unavailable' }} estimated: {{ number_format($total['estimated_value'], $digits) }}
+                <br>{{ $total['currency'] ?: 'Currency unavailable' }} estimated: {{ $total['estimated_value'] === null ? 'Incomplete' : number_format($total['estimated_value'], $digits) }}
                 | finalized trip value: {{ number_format($total['finalized_charges'], $digits) }}
             @endforeach
         @endif
@@ -58,14 +61,24 @@
                     @endforeach
                 </tbody></table>
             @endif
+            @if(!empty($finance['webxpay_payments']))
+                <h3>WebXPay invoice payments and LKR conversions</h3>
+                <table><thead><tr><th>Invoice amount</th><th>Invoice currency</th><th>Gateway amount</th><th>Gateway currency</th><th>Invoice-to-LKR rate</th><th>Gateway-to-LKR rate</th><th>Rate captured</th><th>Attempt status</th><th>Gateway reference</th><th>Paid at</th></tr></thead><tbody>
+                    @foreach($finance['webxpay_payments'] as $attempt)
+                        @php($invoiceDigits = app(\App\Services\CurrencyService::class)->fractionDigits($attempt['invoice_currency'] ?: 'LKR'))
+                        @php($gatewayDigits = app(\App\Services\CurrencyService::class)->fractionDigits($attempt['gateway_currency'] ?: 'LKR'))
+                        <tr><td>{{ number_format($attempt['invoice_amount'], $invoiceDigits) }}</td><td>{{ $attempt['invoice_currency'] }}</td><td>{{ number_format($attempt['gateway_amount'], $gatewayDigits) }}</td><td>{{ $attempt['gateway_currency'] }}</td><td>{{ number_format($attempt['fx_rate_to_lkr'], 10) }}</td><td>{{ number_format($attempt['gateway_fx_rate_to_lkr'], 10) }}</td><td>{{ $attempt['fx_rate_at'] ?: 'Not recorded' }}</td><td>{{ $attempt['status'] }}</td><td>{{ $attempt['transaction_reference'] ?: 'Not recorded' }}</td><td>{{ $attempt['paid_at'] ?: 'Not paid' }}</td></tr>
+                    @endforeach
+                </tbody></table>
+            @endif
         @endforeach
     @endif
     <h2>Monthly travel activity</h2>
     <table>
-        <thead><tr><th>Month</th><th>Currency</th><th>Bookings</th><th>Trips</th>@if($payload['financial_metrics_visible'])<th>Estimated value</th><th>Finalized trip value</th>@endif</tr></thead>
+        <thead><tr><th>Month</th><th>Currency</th><th>Bookings</th><th>Trips</th>@if($payload['financial_metrics_visible'])<th>Unpriced trips</th><th>Estimated value</th><th>Finalized trip value</th>@endif</tr></thead>
         <tbody>
             @foreach($payload['monthly_trends'] as $month)
-                <tr><td>{{ $month['month'] }}</td><td>{{ $month['currency'] ?: 'Currency unavailable' }}</td><td>{{ $month['bookings'] }}</td><td>{{ $month['trips'] }}</td>@if($payload['financial_metrics_visible'])@php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($month['currency'] ?: 'LKR'))<td>{{ number_format($month['estimated_value'], $digits) }}</td><td>{{ number_format($month['finalized_charges'], $digits) }}</td>@endif</tr>
+                <tr><td>{{ $month['month'] }}</td><td>{{ $month['currency'] ?: 'Currency unavailable' }}</td><td>{{ $month['bookings'] }}</td><td>{{ $month['trips'] }}</td>@if($payload['financial_metrics_visible'])@php($digits = app(\App\Services\CurrencyService::class)->fractionDigits($month['currency'] ?: 'LKR'))<td>{{ $month['unpriced_trip_count'] }}</td><td>{{ $month['estimated_value'] === null ? 'Incomplete' : number_format($month['estimated_value'], $digits) }}</td><td>{{ number_format($month['finalized_charges'], $digits) }}</td>@endif</tr>
             @endforeach
         </tbody>
     </table>
@@ -77,6 +90,7 @@
                 <th>Bookings</th>
                 <th>Trips</th>
                 @if($payload['financial_metrics_visible'])
+                    <th>Unpriced trips</th>
                     <th>Currency</th>
                     <th>Estimated</th>
                     <th>Finalized trip value</th>
@@ -87,9 +101,9 @@
             @foreach ($rows as $row)
                 <tr>
                     @foreach ($row as $index => $cell)
-                        @if($payload['financial_metrics_visible'] && in_array($index, [5, 6], true))
-                            @php($rowDigits = app(\App\Services\CurrencyService::class)->fractionDigits($row[4] ?: 'LKR'))
-                            <td>{{ number_format((float) $cell, $rowDigits) }}</td>
+                        @if($payload['financial_metrics_visible'] && in_array($index, [6, 7], true))
+                            @php($rowDigits = app(\App\Services\CurrencyService::class)->fractionDigits($row[5] ?: 'LKR'))
+                            <td>{{ $cell === null && $index === 6 ? 'Incomplete' : number_format((float) $cell, $rowDigits) }}</td>
                         @else
                             <td>{{ $cell }}</td>
                         @endif

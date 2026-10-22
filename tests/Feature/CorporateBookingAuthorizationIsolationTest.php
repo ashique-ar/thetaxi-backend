@@ -22,6 +22,32 @@ beforeEach(function () {
     Schema::dropIfExists('corporate_employees');
     Schema::dropIfExists('corporate_employee_locations');
     Schema::dropIfExists('service_packages');
+    Schema::dropIfExists('business_settings');
+    Schema::dropIfExists('companies');
+    Schema::create('companies', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->boolean('is_active')->default(true);
+        $table->string('domain')->nullable();
+        $table->string('website')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::create('business_settings', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->string('type');
+        $table->text('value')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
+    Schema::dropIfExists('website_settings');
+    Schema::create('website_settings', function (Blueprint $table) {
+        $table->uuid('id')->primary();
+        $table->uuid('company_id')->nullable();
+        $table->string('type');
+        $table->text('value')->nullable();
+        $table->timestamps();
+        $table->softDeletes();
+    });
     Schema::create('bookings', function (Blueprint $table) {
         $table->uuid('id')->primary();
         $table->uuid('corporate_account_id')->nullable();
@@ -47,6 +73,8 @@ beforeEach(function () {
         $table->string('currency', 3)->nullable();
         $table->timestamp('final_priced_at')->nullable();
         $table->json('pricing_breakdown')->nullable();
+        $table->json('addons')->nullable();
+        $table->json('discounts')->nullable();
         $table->timestamps();
         $table->softDeletes();
     });
@@ -269,9 +297,9 @@ it('uses one corporate department status and travel window for multi trip rows a
             'from_date' => '2026-08-10 09:00:00',
             'to_date' => '2026-08-10 10:00:00',
             'status' => 'completed',
-            'total_price' => 200,
+            'total_price' => 220,
             'final_priced_at' => '2026-08-10 10:00:00',
-            'pricing_breakdown' => '{"final_total":220}',
+            'pricing_breakdown' => '{"summary":{"total":200},"final_breakdown":{"final_amount":220}}',
         ],
         [
             'id' => '50000000-0000-4000-8000-000000000003',
@@ -344,11 +372,13 @@ it('exports corporate trip amounts with their source currency and pricing basis'
     $finalized = new BookingItem([
         'currency' => 'KWD',
         'total_price' => 12.345,
+        'addons' => [['total_price' => 1.112]],
         'final_priced_at' => '2026-10-20 12:00:00',
-        'pricing_breakdown' => ['final_total' => 13.4567],
     ]);
     $estimated = new BookingItem(['currency' => 'USD', 'total_price' => 10.129]);
     $unknown = new BookingItem(['total_price' => 0.98765]);
+    $missingEstimate = new BookingItem(['currency' => 'USD', 'total_price' => 0]);
+    $explicitZero = new BookingItem(['currency' => 'USD', 'total_price' => 0, 'pricing_breakdown' => ['summary' => ['total' => 0]]]);
 
     expect($method->invoke($service, $finalized))->toBe([
         'currency' => 'KWD', 'basis' => 'finalized', 'amount' => 13.457,
@@ -356,6 +386,10 @@ it('exports corporate trip amounts with their source currency and pricing basis'
         'currency' => 'USD', 'basis' => 'estimated', 'amount' => 10.13,
     ])->and($method->invoke($service, $unknown))->toBe([
         'currency' => 'UNKNOWN', 'basis' => 'estimated', 'amount' => 0.9877,
+    ])->and($method->invoke($service, $missingEstimate))->toBe([
+        'currency' => 'USD', 'basis' => 'unavailable', 'amount' => null,
+    ])->and($method->invoke($service, $explicitZero))->toBe([
+        'currency' => 'USD', 'basis' => 'estimated', 'amount' => 0.0,
     ]);
 });
 
@@ -444,9 +478,10 @@ it('omits payment and contractual pricing fields from non-pricing corporate proj
         'id' => 'item-a',
         'status' => 'confirmed',
         'total_price' => 5000,
+        'addons' => json_encode([['total_price' => 200]]),
         'currency' => 'LKR',
         'final_priced_at' => '2026-10-20 12:00:00',
-        'pricing_breakdown' => json_encode(['pricing_scope' => 'corporate', 'final_total' => 5200]),
+        'pricing_breakdown' => json_encode(['pricing_scope' => 'corporate', 'summary' => ['total' => 5000]]),
     ]);
     foreach (['booking', 'serviceType', 'vehicleGroup', 'vehicle', 'driver'] as $relation) {
         $item->setRelation($relation, null);

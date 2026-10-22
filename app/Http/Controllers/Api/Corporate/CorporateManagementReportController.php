@@ -51,6 +51,9 @@ class CorporateManagementReportController extends Controller
                 data_get($payload, 'period.from') ?: 'All travel dates',
                 data_get($payload, 'period.to') ?: 'Present',
             ]));
+            if ($payload['financial_metrics_visible'] && ($payload['operational']['unpriced_trip_count'] ?? 0) > 0) {
+                fputcsv($output, $this->safeCsvRow(['Trips without a saved estimate', $payload['operational']['unpriced_trip_count']]));
+            }
             if (!empty($payload['financial_periods'])) {
                 fputcsv($output, $this->safeCsvRow(['Billing period totals']));
                 foreach ($payload['financial_periods'] as $summary) {
@@ -65,6 +68,20 @@ class CorporateManagementReportController extends Controller
                             }
                             continue;
                         }
+                        if ($key === 'webxpay_payments') {
+                            if ($value) {
+                                fputcsv($output, $this->safeCsvRow(['WebXPay invoice payments and LKR conversions']));
+                                fputcsv($output, $this->safeCsvRow(['Invoice amount', 'Invoice currency', 'Gateway amount', 'Gateway currency', 'Invoice-to-LKR rate', 'Gateway-to-LKR rate', 'Rate captured at', 'Attempt status', 'Gateway reference', 'Paid at', 'Attempt created at']));
+                                foreach ($value as $attempt) {
+                                    fputcsv($output, $this->safeCsvRow([
+                                        $attempt['invoice_amount'], $attempt['invoice_currency'], $attempt['gateway_amount'], $attempt['gateway_currency'],
+                                        $attempt['fx_rate_to_lkr'], $attempt['gateway_fx_rate_to_lkr'], $attempt['fx_rate_at'], $attempt['status'],
+                                        $attempt['transaction_reference'], $attempt['paid_at'], $attempt['created_at'],
+                                    ]));
+                                }
+                            }
+                            continue;
+                        }
                         fputcsv($output, $this->safeCsvRow([str_replace('_', ' ', $key), $value]));
                     }
                     fputcsv($output, []);
@@ -73,20 +90,20 @@ class CorporateManagementReportController extends Controller
             fputcsv($output, $this->safeCsvRow(['Monthly travel activity']));
             $monthlyHeaders = ['Month', 'Currency', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
-                array_push($monthlyHeaders, 'Estimated value', 'Finalized trip value');
+                array_push($monthlyHeaders, 'Unpriced trips', 'Estimated value', 'Finalized trip value');
             }
             fputcsv($output, $this->safeCsvRow($monthlyHeaders));
             foreach ($payload['monthly_trends'] as $month) {
                 $monthlyRow = [$month['month'], $month['currency'], $month['bookings'], $month['trips']];
                 if ($payload['financial_metrics_visible']) {
-                    array_push($monthlyRow, $month['estimated_value'], $month['finalized_charges']);
+                    array_push($monthlyRow, $month['unpriced_trip_count'], $month['estimated_value'] ?? 'Incomplete', $month['finalized_charges']);
                 }
                 fputcsv($output, $this->safeCsvRow($monthlyRow));
             }
             fputcsv($output, []);
             $headers = ['Dimension', 'Label', 'Bookings', 'Trips'];
             if ($payload['financial_metrics_visible']) {
-                array_push($headers, 'Currency', 'Estimated value', 'Finalized trip value');
+                array_push($headers, 'Unpriced trips', 'Currency', 'Estimated value', 'Finalized trip value');
             }
             fputcsv($output, $this->safeCsvRow($headers));
             foreach ($rows as $row) {
@@ -114,7 +131,7 @@ class CorporateManagementReportController extends Controller
         return collect($payload['dimensions'])->flatMap(fn (array $values, string $dimension) => collect($values)->map(function (array $row) use ($dimension, $payload) {
             $cells = [$dimension, $row['label'], $row['booking_count'], $row['trip_count']];
             if ($payload['financial_metrics_visible']) {
-                array_push($cells, $row['currency'], $row['estimated_value'], $row['finalized_charges']);
+                array_push($cells, $row['unpriced_trip_count'], $row['currency'], $row['estimated_value'] ?? 'Incomplete', $row['finalized_charges']);
             }
             return $cells;
         }))->values()->all();

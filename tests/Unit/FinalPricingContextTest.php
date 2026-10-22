@@ -151,6 +151,25 @@ it('reuses the booking snapshot exchange rate for final pricing instead of a liv
     ]);
 });
 
+it('stops final pricing when a persisted booking snapshot exchange rate is invalid', function () {
+    $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
+    $booking = new Booking();
+    $booking->setRawAttributes(['currency' => 'USD']);
+    $item = new BookingItem();
+    $item->setRawAttributes([
+        'currency' => 'USD',
+        'pricing_breakdown' => json_encode([
+            'base_pricing' => [
+                'original_currency' => 'LKR',
+                'exchange_rate' => 0,
+            ],
+        ]),
+    ]);
+
+    expect(fn () => invokePrivateMethod($service, 'resolveFinalPricingCurrencyContext', [$item, $booking]))
+        ->toThrow(DomainException::class, 'snapshot exchange rate is invalid');
+});
+
 it('preserves the original booking channel throughout final pricing', function () {
     $service = (new ReflectionClass(BookingLifecycleService::class))->newInstanceWithoutConstructor();
 

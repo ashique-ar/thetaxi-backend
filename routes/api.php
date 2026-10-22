@@ -1989,6 +1989,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.view');
         Route::get('/financial/profitability', [ReportsController::class, 'getProfitabilityAnalysis'])
             ->middleware('permission:reports.view');
+        Route::get('/financial/collections', [ReportsController::class, 'getCashCollectionReport'])
+            ->middleware('permission:reports.view');
         Route::get('/customers/analytics', [ReportsController::class, 'getCustomerAnalytics'])
             ->middleware('permission:reports.view');
         Route::get('/customers/segmentation', [ReportsController::class, 'getCustomerSegmentation'])

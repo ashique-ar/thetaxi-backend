@@ -2993,9 +2993,8 @@ class BookingLifecycleService
     }
 
     /**
-     * Final pricing runs in the configured calculation currency and converts
-     * using the active global currency settings. The booking's currency code
-     * determines the output currency; its original amount is not rewritten.
+     * Final pricing reuses the booking snapshot rate when available and only
+     * falls back to current settings for legacy bookings without that evidence.
      *
      * @return array{calculation_currency:string,booking_currency:string,exchange_rate:float,rate_source:string}
      */
@@ -3026,6 +3025,21 @@ class BookingLifecycleService
                 'booking_currency' => $bookingCurrency,
                 'exchange_rate' => 1.0,
                 'rate_source' => 'same_currency',
+            ];
+        }
+
+        $snapshotRate = data_get($pricingBreakdown, 'base_pricing.exchange_rate');
+        if ($snapshotRate !== null) {
+            $exchangeRate = is_numeric($snapshotRate) ? (float) $snapshotRate : 0.0;
+            if (!is_finite($exchangeRate) || $exchangeRate <= 0) {
+                throw new \DomainException('The booking snapshot exchange rate is invalid. Final pricing was stopped.');
+            }
+
+            return [
+                'calculation_currency' => $calculationCurrency,
+                'booking_currency' => $bookingCurrency,
+                'exchange_rate' => $exchangeRate,
+                'rate_source' => 'base_pricing_snapshot',
             ];
         }
 

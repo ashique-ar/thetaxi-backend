@@ -7,6 +7,7 @@ use App\Models\Agreement;
 use App\Models\AgreementActivity;
 use App\Models\AgreementTemplate;
 use App\Models\Document;
+use App\Services\TimezoneService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -205,10 +206,17 @@ class AgreementController extends Controller
     private function statsData(): array { $total=Agreement::count(); $count=fn($s)=>Agreement::where('status',$s)->count(); $near=Agreement::whereBetween('end_date',[now(),now()->addDays(30)])->count(); return ['total'=>$total,'active'=>$count('active'),'expired'=>$count('expired'),'pending'=>$count('pending_signature'),'draft'=>$count('draft'),'cancelled'=>$count('cancelled'),'nearExpiry'=>$near,'total_agreements'=>$total,'active_agreements'=>$count('active'),'pending_signature'=>$count('pending_signature'),'expiring_soon'=>$near,'expired_agreements'=>$count('expired'),'draft_agreements'=>$count('draft')]; }
     private function reportQuery(Request $request)
     {
+        $expiry = $request->input('reportType') === 'expiry';
+
         return Agreement::query()
-            ->when($request->input('reportType') === 'expiry', fn ($q) => $q->whereNotNull('end_date')->whereBetween('end_date', [now(), now()->addDays(90)]))
-            ->when($request->filled('dateFrom'), fn ($q) => $q->whereDate('created_at', '>=', $request->date('dateFrom')))
-            ->when($request->filled('dateTo'), fn ($q) => $q->whereDate('created_at', '<=', $request->date('dateTo')));
+            ->when($expiry, fn ($q) => $q->whereNotNull('end_date'))
+            ->when($expiry && !$request->filled('dateFrom') && !$request->filled('dateTo'), fn ($q) => $q->whereBetween('end_date', [now(), now()->addDays(90)]))
+            ->when($request->filled('dateFrom'), fn ($q) => $expiry
+                ? $q->whereDate('end_date', '>=', $request->date('dateFrom'))
+                : $q->where('created_at', '>=', TimezoneService::userDateStartUtc($request->input('dateFrom'))))
+            ->when($request->filled('dateTo'), fn ($q) => $expiry
+                ? $q->whereDate('end_date', '<=', $request->date('dateTo'))
+                : $q->where('created_at', '<', TimezoneService::userDateEndExclusiveUtc($request->input('dateTo'))));
     }
     private function agreementCsv(iterable $agreements): string
     {

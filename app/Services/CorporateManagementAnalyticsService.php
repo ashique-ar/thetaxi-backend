@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Booking\BookingItem;
+use App\Models\Finance\CorporateOnlinePaymentAttempt;
 use App\Models\Finance\FinancialAccountSettlement;
 use Illuminate\Support\Collection;
 
@@ -24,9 +25,10 @@ class CorporateManagementAnalyticsService
                 'booking_count' => $items->pluck('booking_id')->unique()->count(),
                 'trip_count' => $items->count(),
                 'finalized_trip_count' => $items->whereNotNull('final_priced_at')->count(),
+                'unpriced_trip_count' => $canViewFinance ? $items->where('estimate_available', false)->count() : null,
                 'currency_totals' => $items->groupBy('currency')->map(fn (Collection $rows, string $currency) => [
                     'currency' => $currency,
-                    'estimated_value' => $this->roundCurrencyAmount((float) $rows->sum('estimated_amount'), $currency),
+                    'estimated_value' => $rows->contains('estimate_available', false) ? null : $this->roundCurrencyAmount((float) $rows->sum('estimated_amount'), $currency),
                     'finalized_charges' => $this->roundCurrencyAmount((float) $rows->whereNotNull('final_priced_at')->sum('final_amount'), $currency),
                 ])->values()->all(),
             ],
@@ -58,6 +60,11 @@ class CorporateManagementAnalyticsService
                     ->orderBy('period_start')
                     ->get()
                 : collect();
+            $onlinePayments = CorporateOnlinePaymentAttempt::query()
+                ->whereIn('settlement_id', $settlements->modelKeys())
+                ->orderByDesc('created_at')
+                ->get(['settlement_id', 'invoice_amount', 'invoice_currency', 'gateway_amount', 'gateway_currency', 'fx_rate_to_lkr', 'gateway_fx_rate_to_lkr', 'fx_rate_at', 'status', 'gateway_transaction_id', 'paid_at', 'created_at'])
+                ->groupBy('settlement_id');
             $payload['financial_periods'] = $settlements->map(fn (FinancialAccountSettlement $settlement) => [
                         'id' => (string) $settlement->id,
                         'period_start' => $settlement->period_start?->toDateString(),
@@ -75,6 +82,19 @@ class CorporateManagementAnalyticsService
                         'adjustments_total' => (float) $settlement->adjustments_total,
                         'outstanding_total' => (float) $settlement->outstanding_total,
                         'conversion_rates' => $this->settlementConversionRates($settlement),
+                        'webxpay_payments' => ($onlinePayments->get($settlement->id) ?? collect())->map(fn (CorporateOnlinePaymentAttempt $attempt) => [
+                            'invoice_amount' => (float) $attempt->invoice_amount,
+                            'invoice_currency' => $attempt->invoice_currency,
+                            'gateway_amount' => (float) $attempt->gateway_amount,
+                            'gateway_currency' => $attempt->gateway_currency,
+                            'fx_rate_to_lkr' => (float) $attempt->fx_rate_to_lkr,
+                            'gateway_fx_rate_to_lkr' => (float) $attempt->gateway_fx_rate_to_lkr,
+                            'fx_rate_at' => $attempt->fx_rate_at?->toIso8601String(),
+                            'status' => $attempt->status,
+                            'transaction_reference' => $attempt->gateway_transaction_id,
+                            'paid_at' => $attempt->paid_at?->toIso8601String(),
+                            'created_at' => $attempt->created_at?->toIso8601String(),
+                        ])->values()->all(),
             ])->values()->all();
             if (count($payload['financial_periods']) === 1) {
                 $payload['financial_period'] = ['basis' => 'billing_period', 'summary' => $payload['financial_periods'][0]];
@@ -82,12 +102,12 @@ class CorporateManagementAnalyticsService
         } else {
             unset($payload['operational']['currency_totals']);
             foreach ($payload['monthly_trends'] as &$month) {
-                unset($month['estimated_value'], $month['finalized_charges']);
+                unset($month['estimated_value'], $month['finalized_charges'], $month['unpriced_trip_count']);
             }
             unset($month);
             foreach ($payload['dimensions'] as &$rows) {
                 foreach ($rows as &$row) {
-                    unset($row['estimated_value'], $row['finalized_charges']);
+                    unset($row['estimated_value'], $row['finalized_charges'], $row['unpriced_trip_count']);
                 }
                 unset($row);
             }
@@ -154,7 +174,8 @@ class CorporateManagementAnalyticsService
                     'booking_status' => $item->booking?->status ?: ($item->status ?: 'unknown'),
                     'approval_result' => $item->booking?->approval_status ?: 'not_required',
                     'final_priced_at' => $item->final_priced_at,
-                    'estimated_amount' => $item->calculateEstimatedTotalValue(),
+                    'estimate_available' => $item->final_priced_at !== null || $item->hasEstimatedAmount(),
+                    'estimated_amount' => $item->final_priced_at !== null || $item->hasEstimatedAmount() ? $item->calculateEstimatedTotalValue() : null,
                     'final_amount' => $item->calculateTotalValue(),
                     'contractual_km' => (float) ($contractual ?? 0),
                     'operational_km' => (float) ($operational ?? 0),
@@ -167,12 +188,14 @@ class CorporateManagementAnalyticsService
         $groups = [];
         foreach ($items->groupBy($dimension) as $label => $rows) {
             foreach ($rows->groupBy('currency') as $currency => $currencyRows) {
+                $unpricedTripCount = $currencyRows->where('estimate_available', false)->count();
                 $groups[] = [
                     'label' => $label,
                     'currency' => $currency,
                     'booking_count' => $currencyRows->pluck('booking_id')->unique()->count(),
                     'trip_count' => $currencyRows->count(),
-                    'estimated_value' => $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), (string) $currency),
+                    'unpriced_trip_count' => $unpricedTripCount,
+                    'estimated_value' => $unpricedTripCount ? null : $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), (string) $currency),
                     'finalized_charges' => $this->roundCurrencyAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), (string) $currency),
                 ];
             }
@@ -189,7 +212,8 @@ class CorporateManagementAnalyticsService
                 'currency' => $currency,
                 'bookings' => $currencyRows->pluck('booking_id')->unique()->count(),
                 'trips' => $currencyRows->count(),
-                'estimated_value' => $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), $currency),
+                'unpriced_trip_count' => $currencyRows->where('estimate_available', false)->count(),
+                'estimated_value' => $currencyRows->contains('estimate_available', false) ? null : $this->roundCurrencyAmount((float) $currencyRows->sum('estimated_amount'), $currency),
                 'finalized_charges' => $this->roundCurrencyAmount((float) $currencyRows->whereNotNull('final_priced_at')->sum('final_amount'), $currency),
             ]))->sortBy(fn (array $row) => $row['month'].'|'.$row['currency'])->values()->all();
     }
