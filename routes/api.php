@@ -2011,6 +2011,8 @@ Route::middleware(['auth:api'])->group(function () {
             ->middleware('permission:reports.generate');
         Route::get('/generated', [ReportsController::class, 'generatedReports'])
             ->middleware('permission:reports.view');
+        Route::post('/generated', [ReportsController::class, 'storeGeneratedReport'])
+            ->middleware('permission:reports.generate');
         Route::get('/download/{report}', [ReportsController::class, 'downloadGeneratedReport'])
             ->middleware('permission:reports.view');
         Route::delete('/{report}', [ReportsController::class, 'deleteGeneratedReport'])
@@ -2445,7 +2447,7 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:analytics.view');
 
             // Reports and exports
-            Route::post('reports/generate', [BookingFlowController::class, 'generateReport'])
+            Route::post('reports/generate', [ReportsController::class, 'storeGeneratedReport'])
                 ->middleware('permission:reports.generate');
             Route::post('exports/bookings', [BookingFlowController::class, 'exportBookings'])
                 ->middleware('permission:exports.create');

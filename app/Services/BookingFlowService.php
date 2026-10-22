@@ -11393,58 +11393,6 @@ class BookingFlowService
     }
 
     /**
-     * Generate comprehensive reports
-     */
-    public function generateReport(array $params): array
-    {
-        $reportType = $params['report_type'];
-        $format = $params['format'] ?? 'pdf';
-        $dateFrom = Carbon::parse($params['date_from']);
-        $dateTo = Carbon::parse($params['date_to']);
-        $filters = $params['filters'] ?? [];
-
-        $reportData = [];
-
-        switch ($reportType) {
-            case 'financial':
-                $reportData = $this->generateFinancialReport($dateFrom, $dateTo, $filters);
-                break;
-            case 'operational':
-                $reportData = $this->generateOperationalReport($dateFrom, $dateTo, $filters);
-                break;
-            case 'customer':
-                $reportData = $this->generateCustomerReport($dateFrom, $dateTo, $filters);
-                break;
-            case 'vehicle_performance':
-                $reportData = $this->generateVehiclePerformanceReport($dateFrom, $dateTo, $filters);
-                break;
-            case 'driver_performance':
-                $reportData = $this->generateDriverPerformanceReport($dateFrom, $dateTo, $filters);
-                break;
-            default:
-                throw new \Exception("Unsupported report type: {$reportType}");
-        }
-
-        // Generate file based on format
-        $fileName = $this->generateReportFile($reportData, $format, $reportType, $dateFrom, $dateTo);
-
-        return [
-            'report_data' => $reportData,
-            'file_path' => $fileName,
-            'format' => $format,
-            'generated_at' => now(),
-            'metadata' => [
-                'report_type' => $reportType,
-                'date_range' => [
-                    'from' => $dateFrom->toDateString(),
-                    'to' => $dateTo->toDateString()
-                ],
-                'filters' => $filters
-            ]
-        ];
-    }
-
-    /**
      * Export bookings data
      */
     public function exportBookings(array $params): array
@@ -11695,36 +11643,6 @@ class BookingFlowService
     private function getCustomerBookingFrequencyAnalytics($query, $period, $dateFrom, $dateTo): array
     {
         return [];
-    }
-
-    private function generateFinancialReport($dateFrom, $dateTo, $filters): array
-    {
-        return [];
-    }
-
-    private function generateOperationalReport($dateFrom, $dateTo, $filters): array
-    {
-        return [];
-    }
-
-    private function generateCustomerReport($dateFrom, $dateTo, $filters): array
-    {
-        return [];
-    }
-
-    private function generateVehiclePerformanceReport($dateFrom, $dateTo, $filters): array
-    {
-        return [];
-    }
-
-    private function generateDriverPerformanceReport($dateFrom, $dateTo, $filters): array
-    {
-        return [];
-    }
-
-    private function generateReportFile($data, $format, $type, $dateFrom, $dateTo): string
-    {
-        return 'report.pdf';
     }
 
     private function generateExportFile($data, $format): string

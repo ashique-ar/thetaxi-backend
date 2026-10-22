@@ -20,6 +20,7 @@ class BookingGeneratedReport extends BaseModel
         'metadata',
         'row_count',
         'size',
+        'file_path',
         'created_user_id',
         'updated_user_id',
     ];

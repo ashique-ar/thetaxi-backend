@@ -16,6 +16,9 @@ use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Barryvdh\DomPDF\Facade\Pdf;
 use Carbon\Carbon;
 
 class ReportsController extends Controller
@@ -26,7 +29,7 @@ class ReportsController extends Controller
     {
         $this->middleware('auth:api');
         $this->middleware('permission:reports.view');
-        $this->middleware('permission:reports.generate')->only(['exportReport', 'deleteGeneratedReport']);
+        $this->middleware('permission:reports.generate')->only(['exportReport', 'storeGeneratedReport', 'deleteGeneratedReport']);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -218,8 +221,8 @@ class ReportsController extends Controller
                 }
             })->count(),
             'new_customers'       => $this->getNewCustomers($filters),
-            'customer_demographics' => $this->getCustomerDemographics(),
-            'loyalty_metrics'     => $this->getLoyaltyMetrics($filters),
+            'customer_demographics' => array_merge(['scope' => 'all_time'], $this->getCustomerDemographics()),
+            'loyalty_metrics'     => array_merge(['scope' => 'all_time'], $this->getLoyaltyMetrics($filters)),
             'customer_segments'   => $this->getCustomerSegments($filters),
         ];
 
@@ -419,6 +422,7 @@ class ReportsController extends Controller
         ]);
 
         $type = $type ?? $request->get('type', 'bookings');
+        $request->validate(['format' => ['nullable', 'in:csv,pdf']]);
         $format  = $request->get('format', 'csv');
         $filters = $this->parseFilters($request);
 
@@ -434,6 +438,7 @@ class ReportsController extends Controller
     public function generatedReports(Request $request): JsonResponse
     {
         $reports = BookingGeneratedReport::query()
+            ->with('createdBy')
             ->latest()
             ->paginate($request->integer('per_page', 25));
 
@@ -451,21 +456,112 @@ class ReportsController extends Controller
         ]);
     }
 
+    public function storeGeneratedReport(Request $request): JsonResponse
+    {
+        $request->validate([
+            'template_id' => ['nullable', 'required_without:report_type', 'in:operational_summary,financial_report,customer_analysis,vehicle_utilization,driver_performance,custom_report'],
+            'report_type' => ['nullable', 'required_without:template_id', 'in:financial,operational,customer,vehicle_performance,driver_performance'],
+            'report_name' => ['nullable', 'string', 'max:255'],
+            'format' => ['required', 'in:csv,pdf,excel'],
+            'date_from' => ['required', 'date_format:Y-m-d'],
+            'date_to' => ['required', 'date_format:Y-m-d', 'after_or_equal:date_from'],
+            'filters' => ['nullable', 'array'],
+            'filters.status' => ['nullable', 'array'],
+            'filters.status.*' => ['string', 'in:pending,pending_approval,approved,confirmed,allocated,in_progress,completed,cancelled,inquiry_cancelled'],
+            'filters.payment_status' => ['nullable', 'string', 'in:pending,paid,failed,refunded'],
+            'filters.vehicle_group' => ['nullable', 'string', 'in:economy,standard,premium,luxury'],
+            'custom_fields' => ['nullable', 'array'],
+            'custom_fields.*' => ['string', 'max:64'],
+        ]);
+
+        $templateId = $request->input('template_id');
+        $reportType = $request->input('report_type') ?: match ($templateId) {
+            'financial_report' => 'financial',
+            'customer_analysis' => 'customer',
+            'vehicle_utilization' => 'vehicle_performance',
+            'driver_performance' => 'driver_performance',
+            default => 'operational',
+        };
+        $format = $request->input('format') === 'excel' ? 'csv' : $request->input('format');
+        $report = new BookingGeneratedReport([
+            'name' => $request->input('report_name') ?: ucfirst(str_replace('_', ' ', $reportType)) . ' Report',
+            'report_type' => $reportType,
+            'template_id' => $templateId,
+            'format' => $format,
+            'status' => 'generating',
+            'filters' => $request->only(['date_from', 'date_to', 'filters', 'custom_fields', 'period']),
+            'metadata' => ['generated_at' => now()->toIso8601String()],
+            'created_user_id' => $request->user()?->getAuthIdentifier(),
+        ]);
+
+        $content = $this->generatedReportResponse($report)->getContent();
+        if (!is_string($content)) {
+            return response()->json(['status' => 'error', 'message' => 'Report output could not be created'], 500);
+        }
+
+        $extension = $report->format === 'pdf' ? 'pdf' : 'csv';
+        $path = 'generated-reports/' . Str::uuid() . '.' . $extension;
+        if (!Storage::disk('local')->put($path, $content)) {
+            Storage::disk('local')->delete($path);
+            return response()->json(['status' => 'error', 'message' => 'Report could not be saved'], 500);
+        }
+        $report->file_path = $path;
+        $report->size = $this->formatFileSize(strlen($content));
+        $report->row_count = 0;
+        $report->status = 'ready';
+        $report->metadata = array_merge($report->metadata ?? [], ['sha256' => hash('sha256', $content)]);
+        try {
+            $report->save();
+        } catch (\Throwable $error) {
+            Storage::disk('local')->delete($path);
+            throw $error;
+        }
+
+        return response()->json(['status' => 'success', 'data' => $this->generatedReportPayload($report), 'message' => 'Report generated and saved']);
+    }
+
     public function downloadGeneratedReport(BookingGeneratedReport $report): Response
     {
+        if ($report->file_path) {
+            if (!Storage::disk('local')->exists($report->file_path)) {
+                abort(404, 'Generated report file is missing');
+            }
+            $extension = $report->format === 'pdf' ? 'pdf' : 'csv';
+            return response(Storage::disk('local')->get($report->file_path), 200, [
+                'Content-Type' => $extension === 'pdf' ? 'application/pdf' : 'text/csv; charset=UTF-8',
+                'Content-Disposition' => 'attachment; filename="' . Str::slug($report->name) . '.' . $extension . '"',
+            ]);
+        }
+
+        return $this->generatedReportResponse($report);
+    }
+
+    private function generatedReportResponse(BookingGeneratedReport $report): Response
+    {
         $filters = $this->filtersFromGeneratedReport($report);
+
+        if ($report->template_id === 'custom_report') {
+            return $this->exportCustomBookingReport($report, $filters);
+        }
 
         return match ($report->report_type) {
             'financial' => $this->exportFinancialReport($filters, $report->format, $filters['period'] ?? 'monthly'),
             'customer' => $this->exportCustomerReport($filters, $report->format),
             'vehicle_performance' => $this->exportVehicleReport($filters, $report->format),
+            'driver_performance' => $this->exportDriverReport($filters, $report->format),
             default => $this->exportBookingReport($filters, $report->format),
         };
     }
 
     public function deleteGeneratedReport(BookingGeneratedReport $report): JsonResponse
     {
-        $report->delete();
+        if (!$report->delete()) {
+            return response()->json(['status' => 'error', 'message' => 'Report could not be removed'], 500);
+        }
+        if ($report->file_path && Storage::disk('local')->exists($report->file_path) && !Storage::disk('local')->delete($report->file_path)) {
+            $report->restore();
+            return response()->json(['status' => 'error', 'message' => 'Report file could not be deleted'], 500);
+        }
 
         return response()->json([
             'status' => 'success',
@@ -514,7 +610,13 @@ class ReportsController extends Controller
                     $query->where($key, $value);
                     break;
                 case 'booking_status':
-                    $query->where('status', $value);
+                    is_array($value) ? $query->whereIn('status', $value) : $query->where('status', $value);
+                    break;
+                case 'payment_status':
+                    $query->where('payment_status', $value);
+                    break;
+                case 'vehicle_group':
+                    $query->whereHas('bookingItems.vehicle.group', fn ($q) => $q->whereRaw('LOWER(vehicle_groups.name) = ?', [strtolower($value)]));
                     break;
             }
         }
@@ -530,8 +632,12 @@ class ReportsController extends Controller
             'status' => $report->status,
             'download_url' => url("/api/reports/download/{$report->id}"),
             'size' => $report->size,
-            'row_count' => $report->row_count,
+            'row_count' => $report->row_count ?: null,
             'format' => $report->format,
+            'date_from' => $report->filters['date_from'] ?? null,
+            'date_to' => $report->filters['date_to'] ?? null,
+            'created_by' => trim(($report->createdBy?->first_name ?? '') . ' ' . ($report->createdBy?->last_name ?? '')) ?: $report->createdBy?->email,
+            'checksum' => $report->metadata['sha256'] ?? null,
         ];
     }
 
@@ -544,11 +650,13 @@ class ReportsController extends Controller
             'date_from' => $saved['date_from'] ?? null,
             'date_to' => $saved['date_to'] ?? null,
             'period' => $saved['period'] ?? 'monthly',
-            'booking_status' => $nestedFilters['status'][0] ?? $nestedFilters['status'] ?? null,
+            'booking_status' => $nestedFilters['status'] ?? null,
             'customer_id' => $nestedFilters['customer_id'] ?? null,
             'vehicle_id' => $nestedFilters['vehicle_id'] ?? null,
             'agent_id' => $nestedFilters['agent_id'] ?? null,
-            'service_type_id' => $nestedFilters['service_type_id'] ?? $nestedFilters['service_type'] ?? null,
+            'service_type_id' => $nestedFilters['service_type_id'] ?? null,
+            'payment_status' => $nestedFilters['payment_status'] ?? null,
+            'vehicle_group' => $nestedFilters['vehicle_group'] ?? null,
         ], fn ($value) => $value !== null && $value !== '' && $value !== []);
     }
 
@@ -633,7 +741,7 @@ class ReportsController extends Controller
             ->join('booking_items', 'bookings.id', '=', 'booking_items.booking_id')
             ->join('service_types', 'booking_items.service_type_id', '=', 'service_types.id')
             ->select('service_types.name as service_type')
-            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings')
+            ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as bookings")
             ->groupBy('service_types.id', 'service_types.name')
             ->orderByDesc('bookings')
             ->get();
@@ -842,11 +950,11 @@ class ReportsController extends Controller
             ->join('vehicles', 'booking_items.vehicle_id', '=', 'vehicles.id')
             ->join('vehicle_groups', 'vehicles.vehicle_group_id', '=', 'vehicle_groups.id')
             ->select('vehicle_groups.name as category')
-            ->selectRaw('COUNT(DISTINCT bookings.id) as bookings')
+            ->selectRaw("COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as bookings")
             ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
             ->when(!empty($filters['date_to']),   fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
             ->groupBy('vehicle_groups.id', 'vehicle_groups.name')
-            ->orderByDesc('revenue')
+            ->orderByDesc('bookings')
             ->get()
             ->toArray();
     }
@@ -889,7 +997,7 @@ class ReportsController extends Controller
             $b->created_at,
         ])->toArray();
 
-        return $this->csvResponse('bookings_report.csv', $headers, $data);
+        return $this->reportResponse('bookings_report', $format, $headers, $data);
     }
 
     private function exportCustomerReport(array $filters, string $format): Response
@@ -905,7 +1013,7 @@ class ReportsController extends Controller
             ]);
         })->all();
 
-        return $this->csvResponse('customers_report.csv', $headers, $data);
+        return $this->reportResponse('customers_report', $format, $headers, $data);
     }
 
     private function exportVehicleReport(array $filters, string $format): Response
@@ -917,7 +1025,61 @@ class ReportsController extends Controller
             $vehicle['total_bookings'], $vehicle['total_revenue'], $vehicle['currency'], $vehicle['status'],
         ])->all();
 
-        return $this->csvResponse('vehicles_report.csv', $headers, $data);
+        return $this->reportResponse('vehicles_report', $format, $headers, $data);
+    }
+
+    private function exportDriverReport(array $filters, string $format): Response
+    {
+        $rows = DB::table('booking_items')
+            ->join('bookings', 'bookings.id', '=', 'booking_items.booking_id')
+            ->join('drivers', 'booking_items.driver_id', '=', 'drivers.id')
+            ->join('users', 'drivers.user_id', '=', 'users.id')
+            ->whereNotNull('booking_items.driver_id')
+            ->selectRaw("drivers.id, CONCAT(users.first_name, ' ', users.last_name) as driver, COALESCE(NULLIF(UPPER(booking_items.currency), ''), NULLIF(UPPER(bookings.currency), ''), 'LKR') as currency")
+            ->selectRaw("COUNT(DISTINCT bookings.id) as total_bookings, COUNT(DISTINCT CASE WHEN bookings.status = 'completed' THEN bookings.id END) as completed_bookings, SUM(CASE WHEN bookings.status = 'completed' THEN COALESCE(booking_items.total_price, 0) ELSE 0 END) as completed_revenue")
+            ->when(!empty($filters['date_from']), fn ($q) => $q->where('bookings.created_at', '>=', $filters['date_from']))
+            ->when(!empty($filters['date_to']), fn ($q) => $q->where('bookings.created_at', '<=', $filters['date_to'] . ' 23:59:59'))
+            ->groupBy('drivers.id', 'users.first_name', 'users.last_name', 'currency')
+            ->orderBy('driver')->orderBy('currency')->get();
+        $headers = ['Driver', 'Currency', 'Bookings', 'Completed bookings', 'Completed revenue'];
+        $data = $rows->map(fn ($row) => [$row->driver, $row->currency, $row->total_bookings, $row->completed_bookings, $row->completed_revenue])->all();
+        return $this->reportResponse('drivers_report', $format, $headers, $data);
+    }
+
+    private function exportCustomBookingReport(BookingGeneratedReport $report, array $filters): Response
+    {
+        $fieldLabels = [
+            'booking_id' => ['Booking ID', fn ($booking) => $booking->booking_number],
+            'reference_number' => ['Reference Number', fn ($booking) => $booking->booking_number],
+            'status' => ['Status', fn ($booking) => $booking->status],
+            'service_type' => ['Service Type', fn ($booking) => $booking->bookingItems->pluck('serviceType.name')->filter()->unique()->implode(', ')],
+            'customer_name' => ['Customer Name', fn ($booking) => trim(($booking->customer?->user?->first_name ?? '') . ' ' . ($booking->customer?->user?->last_name ?? ''))],
+            'customer_email' => ['Customer Email', fn ($booking) => $booking->customer?->user?->email],
+            'customer_phone' => ['Customer Phone', fn ($booking) => $booking->customer?->user?->phone],
+            'from_date' => ['From Date', fn ($booking) => $booking->from_date],
+            'to_date' => ['To Date', fn ($booking) => $booking->to_date],
+            'pickup_location' => ['Pickup Location', fn ($booking) => json_encode($booking->bookingItems->first()?->pickup_location)],
+            'dropoff_location' => ['Dropoff Location', fn ($booking) => json_encode($booking->bookingItems->first()?->dropoff_location)],
+            'vehicle_registration' => ['Vehicle Registration', fn ($booking) => $booking->bookingItems->pluck('vehicle.license_plate')->filter()->unique()->implode(', ')],
+            'vehicle_group' => ['Vehicle Group', fn ($booking) => $booking->bookingItems->pluck('vehicle.group.name')->filter()->unique()->implode(', ')],
+            'driver_name' => ['Driver Name', fn ($booking) => $booking->bookingItems->map(fn ($item) => trim(($item->driver?->user?->first_name ?? '') . ' ' . ($item->driver?->user?->last_name ?? '')))->filter()->unique()->implode(', ')],
+            'total_amount' => ['Total Amount', fn ($booking) => $booking->total_actual],
+            'currency' => ['Currency', fn ($booking) => strtoupper((string) ($booking->currency ?: 'LKR'))],
+            'payment_status' => ['Payment Status', fn ($booking) => $booking->payment_status],
+            'payment_method' => ['Payment Method', fn ($booking) => $booking->payment_method],
+            'created_at' => ['Created Date', fn ($booking) => $booking->created_at],
+            'updated_at' => ['Updated Date', fn ($booking) => $booking->updated_at],
+        ];
+        $fields = collect($report->filters['custom_fields'] ?? [])->filter(fn ($field) => is_string($field) && isset($fieldLabels[$field]))->values();
+        if ($fields->isEmpty()) $fields = collect(['booking_id', 'status', 'created_at']);
+        if ($fields->contains('total_amount')) $fields->push('currency');
+
+        $query = Booking::with(['customer.user', 'bookingItems.serviceType', 'bookingItems.vehicle.group', 'bookingItems.driver.user'])
+            ->orderByDesc('created_at');
+        $this->applyFilters($query, $filters);
+        $rows = $query->get()->map(fn ($booking) => $fields->map(fn ($field) => $fieldLabels[$field][1]($booking))->all())->all();
+
+        return $this->reportResponse('custom_report', $report->format, $fields->map(fn ($field) => $fieldLabels[$field][0])->all(), $rows);
     }
 
     private function exportFinancialReport(array $filters, string $format, string $period): Response
@@ -937,7 +1099,27 @@ class ReportsController extends Controller
             $r->period, $r->currency, $r->bookings, $r->revenue,
         ])->toArray();
 
-        return $this->csvResponse('financial_report.csv', $headers, $data);
+        return $this->reportResponse('financial_report', $format, $headers, $data);
+    }
+
+    private function reportResponse(string $filename, string $format, array $headers, array $rows): Response
+    {
+        if (strtolower($format) !== 'pdf') {
+            return $this->csvResponse($filename . '.csv', $headers, $rows);
+        }
+
+        $head = implode('', array_map(fn ($value) => '<th>' . e($value) . '</th>', $headers));
+        $body = collect($rows)->map(fn ($row) => '<tr>' . implode('', array_map(fn ($value) => '<td>' . e((string) $value) . '</td>', $row)) . '</tr>')->implode('');
+        $html = '<html><head><meta charset="utf-8"><style>body{font:10px sans-serif}table{width:100%;border-collapse:collapse}th,td{border:1px solid #ccc;padding:4px;text-align:left}th{background:#eee}</style></head><body><table><thead><tr>' . $head . '</tr></thead><tbody>' . $body . '</tbody></table></body></html>';
+        return response(Pdf::loadHTML($html)->setPaper('a4', 'landscape')->output(), 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filename . '.pdf"',
+        ]);
+    }
+
+    private function formatFileSize(int $bytes): string
+    {
+        return $bytes < 1024 ? $bytes . ' B' : ($bytes < 1048576 ? round($bytes / 1024, 1) . ' KB' : round($bytes / 1048576, 1) . ' MB');
     }
 
     private function csvResponse(string $filename, array $headers, array $rows): Response
