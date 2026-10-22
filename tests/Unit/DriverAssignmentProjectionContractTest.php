@@ -16,6 +16,7 @@ it('resolves notified assignments by ID while keeping them scoped to the driver'
         ->toContain('->useWritePdo()')
         ->toContain("->whereKey(\$assignmentId)")
         ->toContain("->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])")
+        ->toContain("whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED])")
         ->and($controller)->toContain('$this->assignmentService->getNotifiedAssignment($driver, $id)');
 });
 

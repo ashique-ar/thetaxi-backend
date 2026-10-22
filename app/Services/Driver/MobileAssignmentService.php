@@ -66,7 +66,7 @@ class MobileAssignmentService
                 case 'pending':
                 case 'upcoming':
                     $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
-                        ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+                        ->where(fn (Builder $phase) => $phase->whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]));
                     $this->excludeTerminalBookings($query);
                     $this->excludeStaleOffers($query);
                     break;
@@ -88,7 +88,7 @@ class MobileAssignmentService
             // hires belong to the dedicated /hires history endpoint; returning
             // them here makes older mobile clients reopen the end-hire screen.
             $query->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
-                ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+                ->where(fn (Builder $phase) => $phase->whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]));
             $this->excludeTerminalBookings($query);
             $this->excludeStaleOffers($query);
         }
@@ -132,7 +132,7 @@ class MobileAssignmentService
 
         $query = $this->baseAssignmentQuery($driver)
             ->whereIn('status', ['active', 'confirmed', 'approved'])
-            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+            ->where(fn (Builder $phase) => $phase->whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]));
         $this->excludeTerminalBookings($query);
         $this->excludeStaleOffers($query);
 
@@ -155,7 +155,7 @@ class MobileAssignmentService
             ->useWritePdo()
             ->whereKey($assignmentId)
             ->whereIn('status', ['active', 'pending_approval', 'approved', 'confirmed'])
-            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED])
+            ->where(fn (Builder $phase) => $phase->whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]))
             ->nonTerminalBooking();
         $this->excludeStaleOffers($query);
 
@@ -182,7 +182,7 @@ class MobileAssignmentService
 
         $query = $this->baseAssignmentQuery($driver)
             ->whereIn('status', ['active', 'pending_approval', 'confirmed', 'approved'])
-            ->whereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]);
+            ->where(fn (Builder $phase) => $phase->whereNull('trip_phase')->orWhereNotIn('trip_phase', [TripPhase::COMPLETED, TripPhase::DECLINED]));
         $this->excludeTerminalBookings($query);
         $this->excludeStaleOffers($query);
 
