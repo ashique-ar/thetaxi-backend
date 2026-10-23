@@ -1085,10 +1085,15 @@ class UserController extends Controller
             'phone' => ['nullable', 'string', 'max:20'],
             'timezone' => ['nullable', 'string'],
             'language' => ['nullable', 'string', 'max:5'],
+            'current_password' => ['nullable', 'string'],
         ]);
 
+        $user = $request->user();
+        if ($request->has('phone') && $request->phone !== $user->phone && !Hash::check((string) $request->current_password, $user->password)) {
+            throw ValidationException::withMessages(['current_password' => ['Current password is incorrect.']]);
+        }
+
         try {
-            $user = $request->user();
             $user->update($request->only(['first_name', 'last_name', 'phone', 'timezone', 'language']));
             $user->load([
                 'role',
@@ -1123,7 +1128,11 @@ class UserController extends Controller
         $user = $request->user();
         $data = $request->validate([
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
+            'current_password' => ['required', 'string'],
         ]);
+        if (!Hash::check($data['current_password'], $user->password)) {
+            throw ValidationException::withMessages(['current_password' => ['Current password is incorrect.']]);
+        }
         $email = strtolower(trim($data['email']));
 
         if (strcasecmp($email, $user->email) === 0) {

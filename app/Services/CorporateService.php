@@ -460,6 +460,7 @@ class CorporateService
             ]));
             if (isset($data['password'])) {
                 $userUpdates['password'] = Hash::make($data['password']);
+                $userUpdates['password_changed_at'] = now();
             }
             $auditedUserUpdates = array_intersect_key($userUpdates, array_flip(['email', 'first_name', 'last_name', 'phone']));
 
@@ -474,6 +475,9 @@ class CorporateService
 
             if (!empty($userUpdates) && $user) {
                 $user->update($userUpdates);
+                if (isset($data['password'])) {
+                    $user->revokeAllTokens();
+                }
             }
 
             if (!empty($data['role'])) {
