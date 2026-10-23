@@ -28,7 +28,7 @@ class VehicleGroupController extends Controller
 
     public function index(Request $request)
     {
-        $q = VehicleGroup::withInactive()->withCount('vehicles')->with(
+        $q = VehicleGroup::withInactive()->with(
             'grade',
             'make',
             'model',
@@ -49,6 +49,8 @@ class VehicleGroupController extends Controller
                 'created_at', 'updated_at',
             ]);
         }
+
+        $q->withCount('vehicles');
 
         if ($request->filled('search')) {
             $search = trim((string) $request->search);
