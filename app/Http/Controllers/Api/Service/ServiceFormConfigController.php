@@ -818,7 +818,7 @@ class ServiceFormConfigController extends Controller
             }
 
             $nestedFormConfig = is_array($payload['form_config'] ?? null) ? $payload['form_config'] : [];
-            foreach (['trip_mode', 'booking_mode', 'service_mode', 'disable_route_preview', 'route_preview_disabled', 'disable_distance_estimate', 'distance_estimate_disabled', 'service_features'] as $metaKey) {
+            foreach (['trip_mode', 'booking_mode', 'service_mode', 'default_end_date_days', 'disable_route_preview', 'route_preview_disabled', 'disable_distance_estimate', 'distance_estimate_disabled', 'service_features'] as $metaKey) {
                 if (!array_key_exists($metaKey, $payload) && array_key_exists($metaKey, $nestedFormConfig)) {
                     $payload[$metaKey] = $payload['form_config'][$metaKey];
                 }
@@ -868,6 +868,8 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.sync_from' => 'nullable|string|max:50',
                 'form_config.*.visible_when' => 'nullable|array',
                 'form_config.*.default' => 'nullable|string',
+                'form_config.*.default_date_offset_days' => 'nullable|integer|min:0|max:365',
+                'form_config.*.default_date_from' => 'nullable|string|max:100',
                 'form_config.*.default_lat' => 'nullable|string',
                 'form_config.*.default_lng' => 'nullable|string',
                 'form_config.*.location_type' => 'nullable|string|in:default,airport,conditional',
@@ -900,6 +902,27 @@ class ServiceFormConfigController extends Controller
             $formConfig = is_array($validated['form_config'] ?? null) ? $validated['form_config'] : [];
             $existingServiceFeatures = data_get($serviceType->form_config, 'service_features', []);
             $existingServiceFeatures = is_array($existingServiceFeatures) ? $existingServiceFeatures : [];
+
+            foreach ($formConfig as $fieldName => $fieldConfig) {
+                if (!is_array($fieldConfig)) {
+                    continue;
+                }
+                $offset = $fieldConfig['default_date_offset_days'] ?? null;
+                $sourceName = trim((string) ($fieldConfig['default_date_from'] ?? ''));
+                if (($offset !== null) !== ($sourceName !== '')) {
+                    throw ValidationException::withMessages([
+                        "form_config.{$fieldName}.default_date_from" => 'Choose both a source date field and an offset in calendar days.',
+                    ]);
+                }
+                if ($offset !== null) {
+                    $sourceField = $formConfig[$sourceName] ?? null;
+                    if (($fieldConfig['type'] ?? null) !== 'date' || !is_array($sourceField) || ($sourceField['type'] ?? null) !== 'date' || $sourceName === $fieldName) {
+                        throw ValidationException::withMessages([
+                            "form_config.{$fieldName}.default_date_from" => 'Choose another configured date field as the source.',
+                        ]);
+                    }
+                }
+            }
 
             foreach ($formConfig as $fieldName => $fieldConfig) {
                 foreach ($fieldConfig['options'] ?? [] as $optionIndex => $option) {
@@ -977,6 +1000,12 @@ class ServiceFormConfigController extends Controller
                     'service_type' => $serviceType,
                 ],
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'status' => 'error',
+                'message' => 'The form configuration is invalid.',
+                'errors' => $e->errors(),
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'status' => 'error',

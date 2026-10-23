@@ -7,6 +7,7 @@ use App\Http\Requests\Driver\Mobile\BulkLocationUpdateRequest;
 use App\Http\Requests\Driver\Mobile\LocationUpdateRequest;
 use App\Http\Resources\Driver\RoutePointResource;
 use App\Models\Driver\DriverSession;
+use App\Models\Driver\DriverTrackingIncident;
 use App\Models\DriverAssignment;
 use App\Services\Driver\DriverAuthService;
 use App\Services\Driver\LocationService;
@@ -333,6 +334,83 @@ class LocationController extends Controller
         ]);
         $this->healthMonitor->recordDriverTrackingHealth($this->locationHealthContext($driver), $validated);
         return response()->json(['status' => 'success', 'data' => ['acknowledged' => true]]);
+    }
+
+    /** Persist an offline tracking-gap report once the driver's device reconnects. */
+    public function trackingIncident(Request $request): JsonResponse
+    {
+        $driver = $this->authService->getDriver($request->user());
+        abort_unless($driver, 403, 'User is not registered as a driver');
+
+        $data = $request->validate([
+            'incident_id' => ['required', 'uuid'],
+            'assignment_id' => ['nullable', 'uuid'],
+            'state' => ['required', 'in:open,recovered'],
+            'cause' => ['required', 'in:network_unavailable,upload_queue_stalled,location_source_stalled,tracking_blocked,unknown_after_restart'],
+            'started_at' => ['required', 'date'],
+            'reported_at' => ['required', 'date'],
+            'recovered_at' => ['nullable', 'date'],
+            'first_evidence' => ['required', 'array:observed_at,last_fix_at,last_fix_age_seconds,last_upload_at,network_state,queue_count,quarantined_count,trip_queue_count,queue_age_seconds,blocked_reason,location_enabled,location_permission,foreground_service_running,sample_unavailable_count,persistence_failure_count,live_upload_attempt_count,live_upload_success_count,live_upload_failure_count,recovery_upload_attempt_count,recovery_upload_success_count,recovery_upload_failure_count,buffer_eviction_count,rejected_point_count'],
+            'last_evidence' => ['required', 'array:observed_at,last_fix_at,last_fix_age_seconds,last_upload_at,network_state,queue_count,quarantined_count,trip_queue_count,queue_age_seconds,blocked_reason,location_enabled,location_permission,foreground_service_running,sample_unavailable_count,persistence_failure_count,live_upload_attempt_count,live_upload_success_count,live_upload_failure_count,recovery_upload_attempt_count,recovery_upload_success_count,recovery_upload_failure_count,buffer_eviction_count,rejected_point_count'],
+        ]);
+
+        foreach (['first_evidence', 'last_evidence'] as $key) {
+            validator($data[$key], [
+                'observed_at' => ['required', 'date'],
+                'last_fix_at' => ['nullable', 'date'],
+                'last_fix_age_seconds' => ['nullable', 'integer', 'min:0'],
+                'last_upload_at' => ['nullable', 'date'],
+                'network_state' => ['required', 'string', 'max:40'],
+                'queue_count' => ['required', 'integer', 'min:0'],
+                'quarantined_count' => ['required', 'integer', 'min:0'],
+                'trip_queue_count' => ['required', 'integer', 'min:0'],
+                'queue_age_seconds' => ['nullable', 'integer', 'min:0'],
+                'blocked_reason' => ['nullable', 'string', 'max:80'],
+                'location_enabled' => ['nullable', 'boolean'],
+                'location_permission' => ['nullable', 'string', 'max:30'],
+                'foreground_service_running' => ['nullable', 'boolean'],
+                'sample_unavailable_count' => ['required', 'integer', 'min:0'],
+                'persistence_failure_count' => ['required', 'integer', 'min:0'],
+                'live_upload_attempt_count' => ['required', 'integer', 'min:0'],
+                'live_upload_success_count' => ['required', 'integer', 'min:0'],
+                'live_upload_failure_count' => ['required', 'integer', 'min:0'],
+                'recovery_upload_attempt_count' => ['required', 'integer', 'min:0'],
+                'recovery_upload_success_count' => ['required', 'integer', 'min:0'],
+                'recovery_upload_failure_count' => ['required', 'integer', 'min:0'],
+                'buffer_eviction_count' => ['required', 'integer', 'min:0'],
+                'rejected_point_count' => ['required', 'integer', 'min:0'],
+            ])->validate();
+        }
+
+        $assignment = null;
+        if (!empty($data['assignment_id'])) {
+            $assignment = DriverAssignment::query()
+                ->whereKey($data['assignment_id'])
+                ->where('driver_id', $driver->id)
+                ->firstOrFail();
+        }
+
+        $incident = DriverTrackingIncident::query()->firstOrNew([
+            'incident_id' => $data['incident_id'],
+        ]);
+        abort_if($incident->exists && (string) $incident->driver_id !== (string) $driver->id, 403);
+        $incident->fill([
+            'driver_id' => $driver->id,
+            'assignment_id' => $assignment?->id,
+            'booking_id' => $assignment?->booking_id,
+            'booking_item_id' => $assignment?->booking_item_id,
+            'state' => $data['state'],
+            'cause' => $data['cause'],
+            'started_at' => $data['started_at'],
+            'reported_at' => now(),
+            'recovered_at' => $data['state'] === 'recovered'
+                ? ($data['recovered_at'] ?? now())
+                : null,
+            'first_evidence' => $data['first_evidence'],
+            'last_evidence' => $data['last_evidence'],
+        ])->save();
+
+        return response()->json(['status' => 'success', 'data' => ['acknowledged' => true]], 202);
     }
 
     private function applyRecordedAtFilters($query, ?string $from, ?string $to): void

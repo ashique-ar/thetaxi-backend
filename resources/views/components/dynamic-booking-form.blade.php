@@ -90,6 +90,7 @@
         $candidateType = (string) ($fieldConfig['type'] ?? '');
         $isReturnControl = str_contains(strtolower($candidateName), 'return')
             || str_contains(strtolower($candidateName), 'dropoff')
+            || str_contains(strtolower($candidateName), 'end_date')
             || $candidateName === 'to_date'
             || $candidateName === 'to_time';
         if (!$isReturnControl && $startDateField === '' && in_array($candidateType, ['date', 'datetime'], true)) {
@@ -185,10 +186,6 @@
     if ($rideNowReturnDate && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) $rideNowReturnDate)) {
         $rideNowReturnDate = date('d/m/Y', strtotime($rideNowReturnDate));
     }
-    if (!$rideNowReturnDate) {
-        $rideNowReturnDate = date('d/m/Y');
-    }
-
     $rideNowReturnTime = old('return_time');
     if ($rideNowReturnTime === null) {
         if (isset($search) && is_object($search) && property_exists($search, 'return_time')) {
@@ -228,6 +225,7 @@
         @php
             $submitAs = $field['submit_as'] ?? $fieldName;
             $fieldType = $field['type'] ?? 'text';
+            $defaultDateFromControl = $resolveConfiguredControlName($field['default_date_from'] ?? '', $sortedFields);
             $locationMode = $field['location_mode'] ?? ($field['location_type'] ?? 'autocomplete');
             $syncFrom = $field['sync_from'] ?? '';
 
@@ -366,6 +364,8 @@
             @include('components.dynamic-form-field', [
                 'fieldName' => $fieldName,
                 'field' => $field,
+                'defaultDateOffsetDays' => $field['default_date_offset_days'] ?? null,
+                'defaultDateFromControl' => $defaultDateFromControl,
                 'prefix' => $prefix,
                 'formId' => $formId,
                 'currentValue' => $currentValue,
@@ -522,11 +522,14 @@
                         var pickupDate = form.querySelector('input[name="pickup_date"], input[name="date"]');
                         var returnDate = form.querySelector('input[name="return_date"]');
                         if (pickupDate && returnDate && !returnDate.value) {
-                            var pickupParts = pickupDate.value.split('/');
+                            var sourceName = returnDate.dataset.defaultDateFrom || pickupDate.name;
+                            var sourceDate = Array.from(form.querySelectorAll('[name]')).find(function(input) { return input.name === sourceName; });
+                            var sourceValue = sourceDate ? sourceDate.value : pickupDate.value;
+                            var pickupParts = sourceValue.split('/');
                             var returnDateValue = pickupParts.length === 3
                                 ? new Date(Number(pickupParts[2]), Number(pickupParts[1]) - 1, Number(pickupParts[0]))
                                 : new Date();
-                            returnDateValue.setDate(returnDateValue.getDate() + 3);
+                            returnDateValue.setDate(returnDateValue.getDate() + Number(returnDate.dataset.defaultDateOffsetDays ?? 3));
                             returnDate.value = [
                                 String(returnDateValue.getDate()).padStart(2, '0'),
                                 String(returnDateValue.getMonth() + 1).padStart(2, '0'),

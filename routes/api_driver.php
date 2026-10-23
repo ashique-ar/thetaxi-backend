@@ -80,6 +80,8 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
         Route::post('', [LocationController::class, 'update']);
         Route::post('bulk', [LocationController::class, 'bulkUpdate']);
         Route::post('health', [LocationController::class, 'health']);
+        Route::post('tracking-incidents', [LocationController::class, 'trackingIncident'])
+            ->middleware('throttle:30,1');
         Route::get('history', [LocationController::class, 'history']);
     });
     

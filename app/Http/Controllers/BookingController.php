@@ -1309,6 +1309,8 @@ class BookingController extends Controller
                 $serviceModel = $this->resolveServiceType((string) $searchParams['service_type_code']);
             }
             $serviceType = $serviceModel?->code ?? ($searchParams['service_type_code'] ?? 'point_to_point');
+            $showVehicleRefundableDeposit = !$serviceModel
+                || ($serviceModel->deposit_mode !== 'none' && (float) $serviceModel->deposit_value > 0);
             $serviceFeatures = $serviceModel?->form_config['service_features'] ?? [];
             $serviceFeatures = is_array($serviceFeatures)
                 ? array_values(array_filter($serviceFeatures, static fn ($feature) => is_string($feature) && trim($feature) !== ''))
@@ -1419,6 +1421,7 @@ class BookingController extends Controller
                 'no_of_doors' => $groupData['no_of_doors'] ?? null,
                 'air_conditioning' => $groupData['air_conditioning'] ?? null,
                 'refundable_deposit' => $groupData['refundable_deposit'] ?? null,
+                'show_vehicle_refundable_deposit' => $showVehicleRefundableDeposit,
                 'hand_luggages' => $groupData['hand_luggages'] ?? null,
                 'category' => [
                     'name' => $groupData['category'] ?? null,

@@ -243,6 +243,10 @@
                    {{ $required ? 'required' : '' }}
                    data-enable-time="false"
                    data-date-format="d/m/Y"
+                   @if(isset($defaultDateOffsetDays, $defaultDateFromControl) && $defaultDateOffsetDays !== null && $defaultDateFromControl !== '')
+                       data-default-date-offset-days="{{ $defaultDateOffsetDays }}"
+                       data-default-date-from="{{ $defaultDateFromControl }}"
+                   @endif
                    data-min-date="today"
                    autocomplete="off"
                        readonly>

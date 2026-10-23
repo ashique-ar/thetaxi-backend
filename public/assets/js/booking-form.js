@@ -75,6 +75,7 @@
         setDefaultDatesAndLocations();
         hideFreshDynamicFormDefaults();
         setupAdvanceBookingConstraints();
+        setupDefaultEndDates();
         setupEndTimeConstraints();
     }
 
@@ -483,11 +484,6 @@
         const today = new Date();
         const todayFormatted = formatDate(today);
 
-        // Get date 3 days from now
-        const threeDaysLater = new Date();
-        threeDaysLater.setDate(today.getDate() + 3);
-        const threeDaysFormatted = formatDate(threeDaysLater);
-
         // Airport Transfer - set today's date and initialize airport logic
         const airportForm = document.getElementById("airport_transfers-form");
         if (airportForm) {
@@ -527,7 +523,7 @@
 
         }
 
-        // Rental Packages - set today and 3 days later
+        // Rental Packages - set today
         const rideNowForm = document.getElementById("ride_now-form");
         if (rideNowForm) {
             const pickupDateInput = rideNowForm.querySelector(
@@ -544,32 +540,19 @@
             const pickupDateInput = dayRentalForm.querySelector(
                 'input[name="pickup_date"]'
             );
-            const dropoffDateInput = dayRentalForm.querySelector(
-                'input[name="dropoff_date"]'
-            );
             if (pickupDateInput && !pickupDateInput.value) {
                 pickupDateInput.value = todayFormatted;
             }
-            if (dropoffDateInput && !dropoffDateInput.value) {
-                dropoffDateInput.value = threeDaysFormatted;
-            }
         }
 
-        // Custom Tour - set today and 3 days later
+        // Custom Tour - set today
         const customTourForm = document.getElementById("custom-tour-form");
         if (customTourForm) {
             const startDateInput = customTourForm.querySelector(
                 'input[name="start_date"]'
             );
-            const endDateInput = customTourForm.querySelector(
-                'input[name="end_date"]'
-            );
-
             if (startDateInput && !startDateInput.value) {
                 startDateInput.value = todayFormatted;
-            }
-            if (endDateInput && !endDateInput.value) {
-                endDateInput.value = threeDaysFormatted;
             }
         }
 
@@ -614,6 +597,50 @@
                 }
             });
         }
+    }
+
+    function setupDefaultEndDates() {
+        const parse = (value) => {
+            const match = String(value || '').match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+            if (match) return new Date(+match[3], +match[2] - 1, +match[1]);
+            const iso = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+            return iso ? new Date(+iso[1], +iso[2] - 1, +iso[3]) : null;
+        };
+        const applyRelativeDefault = (form, endInput, sourceName, offset, overrideInitial) => {
+            const sourceInput = sourceName ? form.querySelector(`[name="${CSS.escape(sourceName)}"]`) : null;
+            if (!sourceInput) return;
+            const apply = () => {
+                const date = parse(sourceInput.value);
+                if (!date || (endInput.value && endInput.value !== endInput.dataset.generatedDefaultDate && !overrideInitial)) return;
+                date.setDate(date.getDate() + Math.max(0, Number(offset)));
+                const value = formatDate(date);
+                endInput.value = value;
+                endInput.dataset.generatedDefaultDate = value;
+                overrideInitial = false;
+                if (endInput._flatpickr) endInput._flatpickr.setDate(value, false, 'd/m/Y');
+                if (endInput._litepicker?.setDate) endInput._litepicker.setDate(value);
+            };
+            const markManualEndDate = () => {
+                if (endInput.value !== endInput.dataset.generatedDefaultDate) overrideInitial = false;
+            };
+            endInput.addEventListener('input', markManualEndDate);
+            endInput.addEventListener('change', markManualEndDate);
+            apply();
+            sourceInput.addEventListener('change', apply);
+        };
+
+        document.querySelectorAll('.filter-input input[data-default-date-offset-days][data-default-date-from]').forEach((endInput) => {
+            const form = endInput.closest('.filter-input');
+            if (!form || form.dataset.hasSearchContext !== 'false') return;
+            applyRelativeDefault(form, endInput, endInput.dataset.defaultDateFrom, endInput.dataset.defaultDateOffsetDays, true);
+        });
+
+        document.querySelectorAll('.filter-input[data-end-date-field][data-start-date-field]').forEach((form) => {
+            const endName = form.dataset.endDateField || '';
+            const endInput = endName ? form.querySelector(`[name="${CSS.escape(endName)}"]`) : null;
+            if (!endInput || endInput.hasAttribute('data-default-date-offset-days') || endInput.value || form.dataset.hasSearchContext !== 'false') return;
+            applyRelativeDefault(form, endInput, form.dataset.startDateField, 3, false);
+        });
     }
 
     /**
@@ -2009,15 +2036,12 @@
                     input.setAttribute("required", "required");
                 });
 
-            // Set return date to +3 days from today
+            // Set the configured return date from the pickup date.
             const returnDateInput = container.querySelector(
                 'input[name="return_date"]'
             );
             if (returnDateInput && !returnDateInput.value) {
-                const today = new Date();
-                const threeDaysLater = new Date();
-                threeDaysLater.setDate(today.getDate() + 3);
-                returnDateInput.value = formatDate(threeDaysLater);
+                syncReturnDateWithPickup();
             }
         } else {
             container.style.display = "none";
@@ -4254,6 +4278,7 @@
         // If return toggle is already checked (from search params), initialize everything
         if (returnToggle.checked) {
             initReturnDatePicker();
+            syncReturnDateWithPickup();
             updateReturnRouteLocations();
             calculateReturnPricing();
         }
@@ -4413,7 +4438,7 @@
     }
 
     /**
-     * Default return date to three days after the selected pickup date.
+     * Default the legacy return field to three calendar days after pickup.
      */
     function syncReturnDateWithPickup() {
         const pickupDateInput = document.querySelector('#ride_now-form input[name="pickup_date"]');

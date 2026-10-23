@@ -10,6 +10,7 @@ use App\Models\Sms\SmsMessage;
 use App\Models\AuditLog;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
+use App\Models\Driver\DriverTrackingIncident;
 use App\Models\DriverAssignment;
 use App\Models\Finance\FinancialAuditEvent;
 use App\Models\Invoice;
@@ -140,6 +141,26 @@ class BookingObservabilityService
         $totalPoints = $assignment ? $this->routeQuery($assignment)->count() : 0;
         $lastReportedAt = $latest?->recorded_at?->utc();
         $driver = $assignment?->driver;
+        $trackingIncidents = $assignment
+            ? DriverTrackingIncident::query()
+                ->where('assignment_id', $assignment->id)
+                ->orderByDesc('started_at')
+                ->limit(20)
+                ->get([
+                    'incident_id', 'state', 'cause', 'started_at', 'reported_at',
+                    'recovered_at', 'first_evidence', 'last_evidence',
+                ])
+                ->map(fn (DriverTrackingIncident $incident): array => [
+                    'id' => (string) $incident->incident_id,
+                    'state' => $incident->state,
+                    'cause' => $incident->cause,
+                    'started_at' => $incident->started_at?->utc()->toIso8601String(),
+                    'reported_at' => $incident->reported_at?->utc()->toIso8601String(),
+                    'recovered_at' => $incident->recovered_at?->utc()->toIso8601String(),
+                    'first_evidence' => $incident->first_evidence,
+                    'last_evidence' => $incident->last_evidence,
+                ])->all()
+            : [];
         $distanceEvidence = $assignment
             ? $this->routeEvidence->calculate(
                 $assignment->routePoints()->orderBy('recorded_at')->orderBy('id')->get(),
@@ -164,6 +185,7 @@ class BookingObservabilityService
             'has_replay' => $totalPoints > 0,
             'distance_evidence' => $distanceEvidence,
             'completion_evidence' => data_get($bookingItem?->metadata, 'driver_route_evidence.completion'),
+            'tracking_incidents' => $trackingIncidents,
             'pricing_effect' => 'none',
             'generated_at' => now()->utc()->toIso8601String(),
         ];

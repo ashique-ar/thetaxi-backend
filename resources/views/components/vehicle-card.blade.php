@@ -368,11 +368,11 @@
 
         <!-- Vehicle Amenities & Additional Info -->
         <div class="vehicle-card-amenities-slot">
-            @if ($showPublicPrice && isset($vehicle['refundable_deposit']))
+            @if ($showPublicPrice && ($vehicle['show_vehicle_refundable_deposit'] ?? true) && isset($vehicle['refundable_deposit']))
                 <div class="vehicle-amenities">
                     @if (isset($vehicle['refundable_deposit']) && $vehicle['refundable_deposit'] > 0)
                         <span class="amenity-badge">
-                            <i class="bi bi-shield-check"></i> Deposit:
+                            <i class="bi bi-shield-check"></i> Refundable security deposit:
                             {{ formatPrice((float) $vehicle['refundable_deposit']) }}
                         </span>
                     @endif
