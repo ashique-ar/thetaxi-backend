@@ -9,6 +9,7 @@ use App\Models\Service\ServiceType;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Validation\Rule;
 use App\Services\DynamicServiceConfigurationService;
 use App\Services\Pricing\PricingContextPolicyService;
 
@@ -147,6 +148,7 @@ class ServicePackageController extends Controller
             'max_km_per_day' => 'nullable|numeric|min:0',
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
+            'base_rate_package_id' => ['nullable', Rule::exists('service_packages', 'id')->where('service_type_id', $request->input('service_type_id'))->where('is_active', true)->whereNull('deleted_at')],
             'rate_type' => 'required|string|in:flat,hourly,daily',
             'default_duration_hours' => 'required|integer|min:0',
             'default_duration_minutes' => 'required|integer|min:0|max:59',
@@ -199,6 +201,7 @@ class ServicePackageController extends Controller
             'max_km_per_day' => 'nullable|numeric|min:0',
             'max_km_per_package' => 'nullable|numeric|min:0',
             'price_multiplier' => 'required|numeric|min:0',
+            'base_rate_package_id' => ['nullable', Rule::exists('service_packages', 'id')->where('service_type_id', $request->input('service_type_id'))->where('is_active', true)->whereNull('deleted_at'), Rule::notIn([$servicePackage->id])],
             'rate_type' => 'required|string|in:flat,hourly,daily',
             'default_duration_hours' => 'required|integer|min:0',
             'default_duration_minutes' => 'required|integer|min:0|max:59',

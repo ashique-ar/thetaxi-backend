@@ -55,9 +55,6 @@ class VehiclePricingSlabConfigurationService
                 ->whereNotNull('service_package_id')
                 ->where('is_active', true), $durationMinutes, $durationDays);
         }
-        if ($slab && $packageId && (string) $slab->service_package_id !== $packageId) {
-            throw new \InvalidArgumentException('The selected slab and service package do not match.');
-        }
         $packageId ??= $slab?->service_package_id;
         $package = $packageId ? ServicePackage::query()
             ->whereKey($packageId)->where('service_type_id', $serviceTypeId)
@@ -65,20 +62,34 @@ class VehiclePricingSlabConfigurationService
         if ($packageId && !$package) {
             throw new \InvalidArgumentException('The selected service package is unavailable for this service.');
         }
+        if ($slab && $packageId && (string) $slab->service_package_id !== $packageId
+            && (!$package?->base_rate_package_id
+                || (string) $package->base_rate_package_id !== (string) $slab->service_package_id)) {
+            throw new \InvalidArgumentException('The selected slab and service package do not match.');
+        }
         if ($package && !$slab) {
-            $slab = $this->resolve(VehiclePricingSlabDefinition::query()
+            $ratePackageId = $package->base_rate_package_id ?: $package->id;
+            $basePackageSlabs = VehiclePricingSlabDefinition::query()
                 ->where('service_type_id', $serviceTypeId)
-                ->where('service_package_id', $package->id)
-                ->where('is_active', true), $durationMinutes, $durationDays);
+                ->where('service_package_id', $ratePackageId)
+                ->where('is_active', true);
+            $slab = $this->resolve(clone $basePackageSlabs, $durationMinutes, $durationDays);
             if (!$slab) {
+                if ($basePackageSlabs->count() === 1) {
+                    $slab = $basePackageSlabs->first();
+                }
+            }
+            if (!$slab) {
+                if ($package->base_rate_package_id) {
+                    throw new \InvalidArgumentException('No active pricing slab is configured for the selected base rate package.');
+                }
                 $activeSlabs = VehiclePricingSlabDefinition::query()
                     ->where('service_type_id', $serviceTypeId)
                     ->where('is_active', true);
                 $hasPackageSlabs = (clone $activeSlabs)->whereNotNull('service_package_id')->exists();
-                $slab = !$hasPackageSlabs ? $this->resolve(VehiclePricingSlabDefinition::query()
-                    ->where('service_type_id', $serviceTypeId)
-                    ->whereNull('service_package_id')
-                    ->where('is_active', true), $durationMinutes, $durationDays) : null;
+                if (!$hasPackageSlabs) {
+                    $slab = $this->resolve((clone $activeSlabs)->whereNull('service_package_id'), $durationMinutes, $durationDays);
+                }
                 if (!$slab && (clone $activeSlabs)->exists()) {
                     throw new \InvalidArgumentException('No active pricing slab is linked to this service package.');
                 }

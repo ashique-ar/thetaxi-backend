@@ -20,6 +20,7 @@ class HourlyPackageCalculationTesterTest extends TestCase
             $table->string('service_type_id');
             $table->boolean('is_active');
             $table->decimal('max_km_per_package');
+            $table->string('base_rate_package_id')->nullable();
             $table->integer('default_duration_hours');
             $table->integer('default_duration_minutes');
             $table->softDeletes();
@@ -57,8 +58,22 @@ class HourlyPackageCalculationTesterTest extends TestCase
             'max_km_per_package' => 80, 'default_duration_hours' => 8,
             'default_duration_minutes' => 0,
         ]);
+        DB::table('service_packages')->insert([
+            'id' => 'short-package', 'service_type_id' => 'service', 'is_active' => true,
+            'max_km_per_package' => 40, 'default_duration_hours' => 4,
+            'default_duration_minutes' => 0, 'base_rate_package_id' => 'package',
+        ]);
+        DB::table('service_packages')->insert([
+            'id' => 'other-package', 'service_type_id' => 'service', 'is_active' => true,
+            'max_km_per_package' => 60, 'default_duration_hours' => 6,
+            'default_duration_minutes' => 0,
+        ]);
         DB::table('vehicle_pricing_slab_definitions')->insert([
             'id' => 'slab', 'service_type_id' => 'service', 'service_package_id' => 'package',
+            'is_active' => true, 'type' => 'flat_rate',
+        ]);
+        DB::table('vehicle_pricing_slab_definitions')->insert([
+            'id' => 'other-slab', 'service_type_id' => 'service', 'service_package_id' => 'other-package',
             'is_active' => true, 'type' => 'flat_rate',
         ]);
         DB::table('service_packages')->insert([
@@ -99,6 +114,13 @@ class HourlyPackageCalculationTesterTest extends TestCase
         $daySelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
             ->resolvePackageSlab('day-service', 'day-package', null, 3 * 1440, 3);
         self::assertSame('day-slab', $daySelection['slab']->id);
+        $shortPackageSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
+            ->resolvePackageSlab('service', 'short-package', null, 4 * 60);
+        self::assertSame('short-package', $shortPackageSelection['package']->id);
+        self::assertSame('slab', $shortPackageSelection['slab']->id);
+        $explicitBaseSlabSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
+            ->resolvePackageSlab('service', 'short-package', 'slab', 4 * 60);
+        self::assertSame('slab', $explicitBaseSlabSelection['slab']->id);
         $rateSelection = app(\App\Services\VehiclePricingSlabConfigurationService::class)
             ->resolvePackageSlab('rate-service', 'rate-package', null, 0);
         self::assertSame('rate-package', $rateSelection['package']->id);

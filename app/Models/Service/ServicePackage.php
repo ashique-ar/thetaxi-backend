@@ -20,6 +20,7 @@ class ServicePackage extends BaseModel
         'max_km_per_day',
         'max_km_per_package',
         'price_multiplier',
+        'base_rate_package_id',
         'rate_type',
         'default_duration_hours',
         'default_duration_minutes',

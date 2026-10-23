@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Vehicle\VehiclePricing;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServicePackage;
 use App\Models\Corporate\Corporate;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingSlabDefinition;
@@ -531,7 +532,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
     
             $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                 [$tempDefinition],
-                $testInputs
+                $testInputs,
+                servicePackageInfo: $this->servicePackagePricingInfo($testInputs, (string) $tempDefinition->service_type_id)
             );
             $result = $orchestration['result'];
             if (!$orchestration['matched'] || !$result) {
@@ -790,6 +792,34 @@ class VehiclePricingCalculationDefinitionController extends Controller
         return $inputs;
     }
 
+    private function servicePackagePricingInfo(array $inputs, string $serviceTypeId): ?array
+    {
+        $packageId = $inputs['package_id'] ?? $inputs['service_package_id'] ?? null;
+        if (!$packageId) {
+            return null;
+        }
+
+        $package = ServicePackage::query()
+            ->whereKey($packageId)
+            ->where('service_type_id', $serviceTypeId)
+            ->where('is_active', true)
+            ->first();
+
+        return $package ? [
+            'id' => $package->id,
+            'name' => $package->name,
+            'service_package' => $package,
+            'max_km_per_day' => $package->max_km_per_day,
+            'max_km_per_package' => $package->max_km_per_package,
+            'price_multiplier' => $package->price_multiplier,
+            'rate_type' => $package->rate_type,
+            'default_duration_hours' => $package->default_duration_hours,
+            'default_duration_minutes' => $package->default_duration_minutes,
+            'charges_extra_hours' => (bool) $package->charges_extra_hours,
+            'charges_extra_km' => (bool) $package->charges_extra_km,
+        ] : null;
+    }
+
     private function applyOwnerScope($query, ?string $ownerType, ?string $ownerId): void
     {
         if ($ownerType && $ownerId) {
@@ -1002,7 +1032,10 @@ class VehiclePricingCalculationDefinitionController extends Controller
                 $request->filled('owner_type') ? $request->input('owner_id') : null
             );
 
-            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve([$definition], $inputs);
+            $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
+                [$definition], $inputs,
+                servicePackageInfo: $this->servicePackagePricingInfo($inputs, (string) $definition->service_type_id)
+            );
             $calculationResult = $orchestration['result'];
             if (!$orchestration['matched'] || !$calculationResult) {
                 $failure = $orchestration['candidate_failures'][0] ?? [];
@@ -1198,7 +1231,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
 
             $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                 $calculationDefinitions,
-                $calculationInputs
+                $calculationInputs,
+                servicePackageInfo: $this->servicePackagePricingInfo($calculationInputs, (string) $request->service_type_id)
             );
             $calculationDefinition = $orchestration['definition'];
             $calculationResult = $orchestration['result'];
@@ -1362,7 +1396,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
                     $response['data']['test_inputs'] = $testInputs;
                     $orchestration = app(PricingDefinitionOrchestrator::class)->resolve(
                         [$definition],
-                        $testInputs
+                        $testInputs,
+                        servicePackageInfo: $this->servicePackagePricingInfo($testInputs, (string) $definition->service_type_id)
                     );
                     $calculationResult = $orchestration['result'];
                     if (!$orchestration['matched'] || !$calculationResult) {
