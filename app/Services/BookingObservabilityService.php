@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Activity as ActivityLog;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingPaymentReceipt;
@@ -55,6 +56,21 @@ class BookingObservabilityService
         $logs = $query->orderByDesc('timestamp')->orderByDesc('id')->limit($limit + 1)->get();
         $events = $logs->map(fn(AuditLog $log): array => $this->mapAuditEvent($booking, $log));
 
+        $deletedActivities = ActivityLog::query()
+            ->with('causer')
+            ->where('subject_type', Booking::class)
+            ->where('subject_id', $booking->id)
+            ->where(function ($query) {
+                $query->where('event', 'deleted')
+                    ->orWhere(fn ($query) => $query->whereNull('event')->where('description', 'deleted'));
+            })
+            ->when($decodedCursor, fn ($query) => $query->where('created_at', '<=', $decodedCursor[0]))
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->limit($limit + 1)
+            ->get()
+            ->map(fn (ActivityLog $activity): array => $this->mapDeletedActivity($booking, $activity));
+
         $financialQuery = FinancialAuditEvent::query()
             ->with('performedBy:id,first_name,last_name')
             ->where('booking_id', $booking->id);
@@ -75,7 +91,7 @@ class BookingObservabilityService
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
-        $events = $events->concat($financialEvents)->concat($tripEvents)
+        $events = $events->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
             ->concat($communicationEvents)->concat($documentEvents)
             ->map(fn (array $event): array => $this->withTraceIntegrity($event))
             ->unique('deduplication_key')
@@ -628,6 +644,35 @@ class BookingObservabilityService
             'metadata' => $metadata,
             'evidence' => null,
             'actor_display_snapshot' => $actorSnapshot,
+        ];
+    }
+
+    private function mapDeletedActivity(Booking $booking, ActivityLog $activity): array
+    {
+        $actor = $activity->causer;
+        $actorName = trim((string) ($actor?->first_name ?? '') . ' ' . (string) ($actor?->last_name ?? ''));
+
+        return [
+            'id' => 'activity:' . $activity->id,
+            'booking_id' => (string) $booking->id,
+            'booking_item_id' => null,
+            'occurred_at' => $activity->created_at->utc()->toIso8601String(),
+            'source' => 'audit',
+            'event_type' => 'booking_deleted',
+            'title' => 'Booking deleted',
+            'description' => null,
+            'actor' => [
+                'id' => $activity->causer_id ? (string) $activity->causer_id : null,
+                'name' => $actorName !== '' ? $actorName : 'System',
+                'type' => $activity->causer_id ? 'user' : 'system',
+            ],
+            'from_status' => null,
+            'to_status' => null,
+            'severity' => 'warning',
+            'correlation_id' => null,
+            'metadata' => [],
+            'evidence' => null,
+            'actor_display_snapshot' => null,
         ];
     }
 

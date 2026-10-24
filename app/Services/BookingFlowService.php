@@ -9158,8 +9158,11 @@ class BookingFlowService
 
         $query = BookingItem::query()
             ->with([
-                'booking.customer.user:id,first_name,last_name,email,phone',
-                'booking.employeeUser:id,first_name,last_name,email,phone',
+                'booking.customer' => fn ($q) => $q->withTrashed(),
+                'booking.customer.user' => fn ($q) => $q->withTrashed()
+                    ->select(['id', 'first_name', 'last_name', 'email', 'phone']),
+                'booking.employeeUser' => fn ($q) => $q->withTrashed()
+                    ->select(['id', 'first_name', 'last_name', 'email', 'phone']),
                 'booking.createdBy:id,first_name,last_name',
                 'booking.vehicleAssignments' => function ($q) {
                     $q->where('status', '!=', 'cancelled')
