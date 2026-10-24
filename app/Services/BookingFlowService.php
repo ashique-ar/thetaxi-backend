@@ -9518,7 +9518,12 @@ class BookingFlowService
 
             case 'created_at':
             default:
-                $query->orderBy('booking_items.created_at', $sortDirection);
+                $query->orderBy(
+                    Booking::select('created_at')
+                        ->whereColumn('bookings.id', 'booking_items.booking_id')
+                        ->limit(1),
+                    $sortDirection
+                );
                 break;
         }
 
