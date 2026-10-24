@@ -1126,8 +1126,8 @@ class WebsiteSettingsService
 
     public function validatePortalBookingAdvance(Validator $validator, array $data, string $settingKey): void
     {
-        $hours = max(0, (int) $this->get($settingKey, $this->get('booking_advance_hours', 0)));
-        if ($hours === 0) {
+        $minutes = (int) round(max(0, (float) $this->get($settingKey, $this->get('booking_advance_hours', 0))) * 60);
+        if ($minutes === 0) {
             return;
         }
 
@@ -1143,9 +1143,12 @@ class WebsiteSettingsService
                 if (!empty($item['from_time'])) {
                     $pickup->setTimeFromTimeString(substr((string) $item['from_time'], 0, 8));
                 }
-                if ($pickup->lt(now($timezone)->addHours($hours))) {
+                if ($pickup->lt(now($timezone)->addMinutes($minutes))) {
                     $field = array_key_exists('booking_items', $data) ? "booking_items.{$index}.from_date" : 'from_date';
-                    $validator->errors()->add($field, "Bookings must be made at least {$hours} hours in advance.");
+                    $notice = $minutes % 60 === 0
+                        ? intdiv($minutes, 60).' hours'
+                        : ($minutes < 60 ? "{$minutes} minutes" : intdiv($minutes, 60).' hours '.($minutes % 60).' minutes');
+                    $validator->errors()->add($field, "Bookings must be made at least {$notice} in advance.");
                 }
             } catch (\Throwable) {
                 // The request's date validation reports malformed pickup values.

@@ -173,12 +173,12 @@ class BusinessSettingController extends Controller
         if ($category === 'booking') {
             $timingValidator = Validator::make($request->input('settings', []), [
                 'customer_portal_booking_advance_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:8760'],
-                'corporate_portal_booking_advance_hours' => ['sometimes', 'required', 'integer', 'min:0', 'max:8760'],
+                'corporate_portal_booking_advance_hours' => ['sometimes', 'required', 'numeric', 'min:0', 'max:8760'],
             ]);
             if ($timingValidator->fails()) {
                 return response()->json([
                     'status' => 'error',
-                    'message' => 'Portal booking notice must be between 0 and 8760 whole hours.',
+                    'message' => 'Portal booking notice must be between 0 and 8760 hours; corporate settings may use decimals.',
                     'errors' => $timingValidator->errors(),
                 ], 422);
             }
