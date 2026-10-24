@@ -9157,6 +9157,7 @@ class BookingFlowService
         );
 
         $query = BookingItem::query()
+            ->whereHas('booking')
             ->with([
                 'booking.customer' => fn ($q) => $q->withTrashed(),
                 'booking.customer.user' => fn ($q) => $q->withTrashed()
