@@ -9843,6 +9843,9 @@ class BookingFlowService
         $customerUser = $customer?->user;
         $employeeUser = $booking?->employeeUser ?: $booking?->employee?->user;
         $bookingSource = $this->resolveBookingListSource($booking);
+        if ($bookingSource === 'corporate' && !$employeeUser) {
+            $employeeUser = $customerUser;
+        }
 
         $itemVehicle = $item->vehicle;
         $itemDriver = $item->driver;
