@@ -883,6 +883,21 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
+            if (
+                ($inputs['delivery_location_is_default_company'] ?? false)
+                && $varType === 'common_rate'
+                && preg_match('/deliver(?:y)?_rate/i', $varName)
+            ) {
+                $value = 0;
+                $rateKey = str_starts_with($varName, 'common_rate_')
+                    ? substr($varName, 12)
+                    : $varName;
+                if (isset($this->resolvedRateSources[$rateKey])) {
+                    $this->resolvedRateSources[$rateKey]['resolved_value'] = 0;
+                    $this->resolvedRateSources[$rateKey]['waived_reason'] = 'Delivery location is the default company location.';
+                }
+            }
+
             $resolvedVariables[$varName] = $value ?? 0;
         }
         return $resolvedVariables;

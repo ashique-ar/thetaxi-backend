@@ -4253,6 +4253,22 @@ class BookingFlowService
             $lng >= -180 && $lng <= 180;
     }
 
+    private function matchesCompanyLocation(array $location, \App\Models\Company $company): bool
+    {
+        $latitude = $this->extractLatitude($location);
+        $longitude = $this->extractLongitude($location);
+        if ($latitude !== null && $longitude !== null && $company->latitude !== null && $company->longitude !== null) {
+            return round($latitude, 5) === round((float) $company->latitude, 5)
+                && round($longitude, 5) === round((float) $company->longitude, 5);
+        }
+
+        $address = mb_strtolower(trim((string) ($location['address'] ?? $location['name'] ?? '')));
+        return $address !== '' && in_array($address, array_filter([
+            mb_strtolower(trim((string) $company->address)),
+            mb_strtolower(trim((string) $company->name)),
+        ]), true);
+    }
+
     /**
      * Extract latitude from location array with multiple key formats
      */
@@ -5297,6 +5313,17 @@ class BookingFlowService
         $minimumKm = null;
 
         $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
+        $defaultCompany = \App\Models\Company::getDefaultCompany();
+        $deliveryLocation = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId)
+            ? ($params['dropoff_location'] ?? [])
+            : ($params['pickup_location'] ?? []);
+        $inputs['delivery_location_is_default_company'] = $defaultCompany
+            ? $this->matchesCompanyLocation(
+                $this->normalizeLocationInput($deliveryLocation),
+                $defaultCompany
+            )
+            : false;
+
         if ($serviceType && $serviceType->minimum_km > 0) {
             $minimumKm = (float) $serviceType->minimum_km;
             $inputs['minimum_km'] = $minimumKm;
