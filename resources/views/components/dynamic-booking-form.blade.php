@@ -210,7 +210,7 @@
       data-start-time-field="{{ $startTimeField }}"
       data-end-date-field="{{ $endDateField }}"
       data-end-time-field="{{ $endTimeField }}"
-      data-minimum-duration-minutes="{{ ($serviceTypeModel?->uses_dropoff_time ?? true) ? \App\Http\Requests\BookingSearchRequest::MINIMUM_DURATION_MINUTES : 0 }}"
+      data-minimum-duration-minutes="{{ ($serviceTypeModel?->uses_dropoff_time ?? true) && $serviceTypeModel?->pricing_mode !== 'day' ? \App\Http\Requests\BookingSearchRequest::MINIMUM_DURATION_MINUTES : 0 }}"
       action="{{ $actionRoute }}"
       method="{{ $isInquiry ? 'POST' : 'GET' }}"
       novalidate>

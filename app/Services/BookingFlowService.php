@@ -1067,7 +1067,7 @@ class BookingFlowService
 
         // These values are identical for every group in this request. Compute
         // them once instead of repeating Carbon/date work for every candidate.
-        $durationInfo = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
+        $durationInfo = $this->calculatePricingDuration($fromDate, $toDate, $pricingServiceTypeModel);
         $usesDropoffTime = $selectedServiceTypeModel?->uses_dropoff_time ?? true;
         $effectiveToDate = $usesDropoffTime ? $toDate : $fromDate;
         $effectiveToTime = $usesDropoffTime
@@ -1825,7 +1825,7 @@ class BookingFlowService
 
         if ($days > 0) {
             $note .= " for {$days} day(s)";
-            if ($hours > 0) {
+            if (empty($durationInfo['calendar_date_pricing']) && $hours > 0) {
                 $note .= " and {$hours} hour(s)";
             }
         } else {
@@ -4342,6 +4342,29 @@ class BookingFlowService
         ];
     }
 
+    private function calculatePricingDuration(Carbon $fromDate, Carbon $toDate, ?ServiceType $serviceType): array
+    {
+        if ($serviceType?->pricing_mode !== 'day') {
+            return $this->calculateDurationInDaysAndHours($fromDate, $toDate);
+        }
+
+        $duration = $this->calculateDurationInDaysAndHours(
+            $fromDate->copy()->startOfDay(),
+            $toDate->copy()->startOfDay()
+        );
+        $days = $duration['calendar_days'];
+        $duration['hours'] = $duration['total_hours'] = $days * 24;
+        $duration['minutes'] = $duration['total_minutes'] = $days * 1440;
+        $duration['elapsed_days'] = $days;
+        $duration['remaining_hours'] = $duration['remaining_minutes'] = 0;
+        $duration['formatted'] = $days . ' ' . ($days === 1 ? 'day' : 'days');
+        $duration['calendar_date_pricing'] = true;
+        $duration['breakdown']['hours_text'] = '';
+        $duration['breakdown']['minutes_text'] = '';
+
+        return $duration;
+    }
+
     private function bookingDateTime(mixed $date, mixed $time = null): Carbon
     {
         $dateTime = $date instanceof Carbon ? $date->copy() : Carbon::parse($date);
@@ -6019,9 +6042,14 @@ class BookingFlowService
             $isPreviewCalculation = $params['is_preview_calculation'] ?? true;
 
             // Calculate rental duration (days and hours)
-            $duration = $this->calculateDurationInDaysAndHours(
+            $durationServiceType = $this->resolveCalculationServiceType(
+                $params['service_type_id'] ?? $params['service_type'] ?? null,
+                $params
+            );
+            $duration = $this->calculatePricingDuration(
                 $this->bookingDateTime($params['from_date'], $params['from_time'] ?? null),
-                $this->bookingDateTime($params['to_date'], $params['to_time'] ?? null)
+                $this->bookingDateTime($params['to_date'], $params['to_time'] ?? null),
+                $durationServiceType
             );
 
             // Check if this is multi-group selection or single group
@@ -6213,7 +6241,11 @@ class BookingFlowService
             // Calculate duration for this item
             $fromDate = $this->bookingDateTime($item['from_date'], $item['from_time'] ?? null);
             $toDate = $this->bookingDateTime($item['to_date'], $item['to_time'] ?? null);
-            $duration = $this->calculateDurationInDaysAndHours($fromDate, $toDate);
+            $itemDurationServiceType = $this->resolveCalculationServiceType(
+                $item['service_type_id'] ?? $params['service_type_id'] ?? $params['service_type'] ?? null,
+                array_merge($params, $item)
+            );
+            $duration = $this->calculatePricingDuration($fromDate, $toDate, $itemDurationServiceType);
 
             // Get item-specific addons and customizations
             // Addons can be in item['addons'] or item['selected_addons']

@@ -654,12 +654,23 @@ class BookingSearchRequest extends FormRequest
             }
 
             try {
-                $usesDropoffTime = (bool) ($this->resolveServiceFormConfig((string) $this->input('service_type'))[1] ?? false);
-                [$endField, $endDateTime] = $usesDropoffTime ? $this->resolveEndDateTime($siteTimezone) : [null, null];
-                if ($endDateTime && $endDateTime->lt($startDateTime->copy()->addMinutes(self::MINIMUM_DURATION_MINUTES))) {
+                $serviceConfig = $this->resolveServiceFormConfig((string) $this->input('service_type'));
+                $usesDropoffTime = (bool) ($serviceConfig[1] ?? false);
+                $usesDurationTime = ($serviceConfig[5] ?? null) !== 'day';
+                [$endField, $endDateTime] = $usesDropoffTime
+                    ? $this->resolveEndDateTime($siteTimezone)
+                    : [null, null];
+                $minimumEndDateTime = $usesDurationTime
+                    ? $startDateTime->copy()->addMinutes(self::MINIMUM_DURATION_MINUTES)
+                    : $startDateTime;
+                if ($endDateTime && ($usesDurationTime
+                    ? $endDateTime->lt($minimumEndDateTime)
+                    : $endDateTime->lte($minimumEndDateTime))) {
                     $validator->errors()->add(
                         $endField,
-                        'Return must be at least ' . (self::MINIMUM_DURATION_MINUTES / 60) . ' hours after pickup.'
+                        $usesDurationTime
+                            ? 'Return must be at least ' . (self::MINIMUM_DURATION_MINUTES / 60) . ' hours after pickup.'
+                            : 'Return must be after pickup.'
                     );
                 }
             } catch (\Throwable $exception) {
@@ -945,7 +956,14 @@ class BookingSearchRequest extends FormRequest
             ? ServiceType::publicContext()->where('code', $serviceType->code)->first()
             : null;
 
-        return [$fields, $usesDropoffTime, $allowReturnTrip, $pricingServiceType?->id ?? $serviceType?->id, $fieldMappings];
+        return [
+            $fields,
+            $usesDropoffTime,
+            $allowReturnTrip,
+            $pricingServiceType?->id ?? $serviceType?->id,
+            $fieldMappings,
+            $pricingServiceType?->pricing_mode ?? $serviceType?->pricing_mode,
+        ];
     }
 
     private function findPublicServiceType(string $code): ?ServiceType
