@@ -79,6 +79,14 @@
         closeButton.addEventListener('click', function () { closeMenu(true); });
         backdrop.addEventListener('click', function () { closeMenu(true); });
         document.addEventListener('keydown', handleKeydown);
+        document.addEventListener('click', function (event) {
+            const clickedDropdown = event.target instanceof Element
+                ? event.target.closest('.t4-navigation__links details')
+                : null;
+            navigation.querySelectorAll('.t4-navigation__links details[open]').forEach(function (dropdown) {
+                if (dropdown !== clickedDropdown) dropdown.open = false;
+            });
+        });
         navigation.addEventListener('click', function (event) {
             if (!desktopQuery.matches && event.target.closest('a')) closeMenu(false);
         });
