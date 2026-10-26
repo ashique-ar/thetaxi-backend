@@ -882,6 +882,7 @@ class ServiceFormConfigController extends Controller
                 'form_config.*.options.*.value' => 'required|string',
                 'form_config.*.options.*.label' => 'required|string',
                 'form_config.*.options.*.action' => 'nullable|in:fixed_location,google_search',
+                'form_config.*.options.*.location_source' => 'nullable|in:configured,default_company',
                 'form_config.*.options.*.address' => 'nullable|string|max:500',
                 'form_config.*.options.*.latitude' => 'nullable|numeric|between:-90,90',
                 'form_config.*.options.*.longitude' => 'nullable|numeric|between:-180,180',

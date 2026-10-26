@@ -18,14 +18,16 @@ $prefix = isset($prefix) ? $prefix . '_' : '';
 $selectId = $prefix . $name . '_location_select';
 $customInputId = $prefix . $name . '_custom_input';
 $predefinedCodeId = $prefix . $name . '_predefined_code';
-$configuredOptions = collect($configuredOptions ?? [])->map(static function ($option) {
+$defaultCompany = \App\Models\Company::getDefaultCompany();
+$configuredOptions = collect($configuredOptions ?? [])->map(static function ($option) use ($defaultCompany) {
     $isCustom = ($option['action'] ?? 'fixed_location') === 'google_search';
+    $usesCompanyLocation = ($option['location_source'] ?? null) === 'default_company';
     return [
         'code' => $option['value'] ?? '',
         'name' => $option['label'] ?? '',
         'address' => $option['address'] ?? ($option['label'] ?? ''),
-        'latitude' => $option['latitude'] ?? '',
-        'longitude' => $option['longitude'] ?? '',
+        'latitude' => $usesCompanyLocation ? ($defaultCompany?->latitude ?? '') : ($option['latitude'] ?? ''),
+        'longitude' => $usesCompanyLocation ? ($defaultCompany?->longitude ?? '') : ($option['longitude'] ?? ''),
         'action' => $isCustom ? 'custom' : 'configured',
     ];
 })->filter(static fn ($option) => $option['code'] !== '' && $option['name'] !== '')->values();

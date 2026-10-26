@@ -4258,16 +4258,10 @@ class BookingFlowService
     {
         $latitude = $this->extractLatitude($location);
         $longitude = $this->extractLongitude($location);
-        if ($latitude !== null && $longitude !== null && $company->latitude !== null && $company->longitude !== null) {
-            return round($latitude, 5) === round((float) $company->latitude, 5)
-                && round($longitude, 5) === round((float) $company->longitude, 5);
-        }
-
-        $address = mb_strtolower(trim((string) ($location['address'] ?? $location['name'] ?? '')));
-        return $address !== '' && in_array($address, array_filter([
-            mb_strtolower(trim((string) $company->address)),
-            mb_strtolower(trim((string) $company->name)),
-        ]), true);
+        return $latitude !== null && $longitude !== null
+            && $company->latitude !== null && $company->longitude !== null
+            && round($latitude, 5) === round((float) $company->latitude, 5)
+            && round($longitude, 5) === round((float) $company->longitude, 5);
     }
 
     /**
@@ -7012,6 +7006,25 @@ class BookingFlowService
             // This ensures consistent garage distance calculations for pricing
             $company = $vehicleCompany ?? \App\Models\Company::getDefaultCompany();
 
+        }
+
+        if ($company && $company->latitude !== null && $company->longitude !== null) {
+            if ($this->matchesCompanyLocation($pickupLocation, $company)) {
+                $pickupLocation['latitude'] = (float) $company->latitude;
+                $pickupLocation['longitude'] = (float) $company->longitude;
+            }
+            if ($this->matchesCompanyLocation($dropoffLocation, $company)) {
+                $dropoffLocation['latitude'] = (float) $company->latitude;
+                $dropoffLocation['longitude'] = (float) $company->longitude;
+            }
+
+            $routePoints = $this->buildJourneyRoutePoints(
+                $pickupLocation,
+                $dropoffLocation,
+                $additionalPickupLocations,
+                $additionalDropoffLocations,
+                $orderedAdditionalStops
+            );
         }
 
         $includeGarageDistance = $this->includeGarageDistanceForPricing();
