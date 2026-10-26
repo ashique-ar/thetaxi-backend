@@ -146,16 +146,7 @@ class MobileAssignmentService
             ->first();
         if ($activeAssignment) return $activeAssignment;
 
-        return $this->baseAssignmentQuery($driver)
-            ->where('trip_phase', TripPhase::COMPLETED)
-            ->whereNotNull('trip_completed_at')
-            ->with('booking')
-            ->orderByDesc('trip_completed_at')
-            ->limit(50)
-            ->get()
-            ->first(fn (DriverAssignment $assignment) =>
-                app(BookingPaymentPolicy::class)->requiresDriverCollection($assignment->booking)
-            );
+        return null;
     }
 
     /** Resolve a notification's assignment by ID without relying on the inbox query. */

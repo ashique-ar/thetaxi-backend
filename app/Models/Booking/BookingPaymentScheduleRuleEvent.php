@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPaymentScheduleRuleEvent extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'booking_payment_schedule_rule_id', 'version', 'event_type', 'from_status', 'to_status',

@@ -9,7 +9,6 @@ class HrGratuityPolicy extends BaseModel
 {
     protected $table = 'hr_gratuity_policies';
 
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'version', 'status',

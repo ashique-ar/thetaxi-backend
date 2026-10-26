@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ShortUrlClick extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'shortened_url_id',

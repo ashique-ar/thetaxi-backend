@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 
 class BookingPaymentScheduleRevision extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'booking_id', 'revision_number', 'effective_at', 'contract_basis',

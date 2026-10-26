@@ -9,7 +9,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingCustomerMobileActivity extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'booking_id',

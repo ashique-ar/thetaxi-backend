@@ -10,7 +10,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPriceAdjustmentHistory extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $table = 'booking_price_adjustment_history';
     

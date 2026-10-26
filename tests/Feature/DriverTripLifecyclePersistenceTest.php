@@ -715,7 +715,7 @@ it('keeps the supported assignment payload unchanged for a non-policy booking', 
         ]);
 });
 
-it('restores a completed hire only while authoritative driver payment remains due', function () {
+it('does not return a completed hire as the current assignment when payment remains due', function () {
     $driver = Driver::create(['code' => 'PAYMENT-RECOVERY']);
     $booking = Booking::create([
         'status' => 'completed',
@@ -735,7 +735,7 @@ it('restores a completed hire only while authoritative driver payment remains du
         'trip_completed_at' => now()->subMinute(),
     ]);
 
-    expect($this->assignmentService->getCurrentAssignment($driver)?->id)->toBe($assignment->id);
+    expect($this->assignmentService->getCurrentAssignment($driver))->toBeNull();
 
     $booking->update(['payment_collection_status' => 'driver_collected', 'payment_status' => 'paid']);
     expect($this->assignmentService->getCurrentAssignment($driver))->toBeNull();

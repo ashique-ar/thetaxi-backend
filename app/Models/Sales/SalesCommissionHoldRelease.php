@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 
 class SalesCommissionHoldRelease extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'commission_decision_id', 'release_kind', 'receipt_finality_event_id',

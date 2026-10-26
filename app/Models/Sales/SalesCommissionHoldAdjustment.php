@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 
 class SalesCommissionHoldAdjustment extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'commission_decision_id', 'source_attribution_id', 'source_attribution_event_id',

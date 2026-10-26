@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 
 class CorporateOnlinePaymentAttempt extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'corporate_id', 'settlement_id', 'order_id', 'invoice_currency', 'invoice_amount',

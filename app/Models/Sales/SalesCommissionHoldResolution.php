@@ -6,7 +6,6 @@ use App\Models\BaseModel;
 
 class SalesCommissionHoldResolution extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'commission_decision_id', 'receipt_finality_event_id',

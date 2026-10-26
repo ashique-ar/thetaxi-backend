@@ -17,7 +17,6 @@ use Carbon\Carbon;
 
 class BookingItem extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'booking_id',

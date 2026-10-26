@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BookingPaymentScheduleRule extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'booking_id', 'contract_basis', 'frequency', 'frequency_months',

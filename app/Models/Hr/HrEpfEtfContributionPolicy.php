@@ -9,7 +9,6 @@ class HrEpfEtfContributionPolicy extends BaseModel
 {
     protected $table = 'hr_epf_etf_contribution_policies';
 
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'company_id', 'version', 'status',

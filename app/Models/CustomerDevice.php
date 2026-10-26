@@ -40,7 +40,6 @@ class CustomerDevice extends BaseModel
 
     protected $table = 'customer_devices';
 
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'customer_id',

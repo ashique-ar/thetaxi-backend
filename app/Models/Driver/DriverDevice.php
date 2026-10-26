@@ -45,7 +45,6 @@ class DriverDevice extends BaseModel
 
     protected $table = 'driver_devices';
 
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'driver_id',

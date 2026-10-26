@@ -7,7 +7,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class BookingPaymentReceiptComponent extends BaseModel
 {
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'receipt_id', 'component_type', 'source_amount', 'lkr_amount', 'is_allocatable',

@@ -8,7 +8,6 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 class DriverMobileDiagnosticReport extends BaseModel
 {
     protected $table = 'driver_mobile_diagnostic_reports';
-    protected $useUserTracking = false;
 
     protected $fillable = [
         'report_id',
