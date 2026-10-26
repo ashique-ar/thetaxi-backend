@@ -106,10 +106,15 @@ class ServiceFormConfigController extends Controller
     {
         $storedConfig = $this->extractStoredFormConfig($serviceType->form_config);
         $fields = $storedConfig['fields'];
+        $isDynamicConfiguration = !empty($fields);
         if (empty($fields)) {
             $resolved = app(\App\Services\DynamicServiceConfigurationService::class)
                 ->getServiceFormConfiguration($serviceType->code);
             $fields = is_array($resolved['fields'] ?? null) ? $resolved['fields'] : [];
+            $isDynamicConfiguration = ($resolved['config_source'] ?? null) !== 'default_form_config_service';
+        }
+        if ($isDynamicConfiguration) {
+            $fields = \App\Services\DynamicServiceConfigurationService::hydrateDefaultCompanyLocation($fields);
         }
 
         // Inject airport options into conditional location fields

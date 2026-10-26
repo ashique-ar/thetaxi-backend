@@ -657,7 +657,7 @@ class DynamicServiceConfigurationService
         $companySuffix = $resolvedCompanyId ? "_{$resolvedCompanyId}" : '';
         $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}{$companySuffix}";
 
-        return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
+        $config = Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
             // Public form ownership order: Service Type form, config-service record, defaults.
             $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
             $parentFields = $this->extractRenderableFields($parentServiceType?->form_config);
@@ -717,6 +717,47 @@ class DynamicServiceConfigurationService
                 'config_source'           => $configSource,
             ];
         });
+
+        if (($config['config_source'] ?? null) !== 'default_form_config_service') {
+            $config['fields'] = self::hydrateDefaultCompanyLocation($config['fields'] ?? []);
+        }
+        return $config;
+    }
+
+    public static function hydrateDefaultCompanyLocation(array $fields): array
+    {
+        $company = \App\Models\Company::getDefaultCompany();
+        if (!$company || $company->latitude === null || $company->longitude === null) {
+            return $fields;
+        }
+
+        foreach ($fields as &$field) {
+            if (($field['type'] ?? null) !== 'location') {
+                continue;
+            }
+
+            $usesDefaultCompany = false;
+            $options = $field['options'] ?? [];
+            foreach ($options as &$option) {
+                if (($option['location_source'] ?? null) !== 'default_company') {
+                    continue;
+                }
+
+                $option['latitude'] = (float) $company->latitude;
+                $option['longitude'] = (float) $company->longitude;
+                $usesDefaultCompany = true;
+            }
+            unset($option);
+            $field['options'] = $options;
+
+            if ($usesDefaultCompany) {
+                $field['default_lat'] = (string) $company->latitude;
+                $field['default_lng'] = (string) $company->longitude;
+            }
+        }
+        unset($field);
+
+        return $fields;
     }
 
     private function extractRenderableFields(?array $config): array
