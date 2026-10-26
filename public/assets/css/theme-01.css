@@ -3,6 +3,15 @@
     border-radius: 16px !important;
 }
 
+/* Dynamic rows own their field grid; keep the outer form from narrowing them. */
+.theme-default .filter-wrapper .filter-input:has(.dynamic-form-row) {
+    grid-template-columns: minmax(0, 1fr) !important;
+}
+
+.theme-default .filter-wrapper .filter-input:has(.dynamic-form-row) > .primary-btn1 {
+    grid-column: 1 / -1 !important;
+}
+
 .theme-default .home4-banner-section .banner-content h1 {
     max-width: 760px;
     line-height: 1.05;
