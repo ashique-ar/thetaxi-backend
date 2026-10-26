@@ -27,13 +27,10 @@ class AssignmentService
     /**
      * Get enhanced vehicle availability with assignment information
      */
-    public function getEnhancedVehicleAvailability(string $vehicleId, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null): array
+    public function getEnhancedVehicleAvailability(string $vehicleId, Carbon $fromDate, Carbon $toDate, ?string $excludeBookingId = null, ?Vehicle $vehicleModel = null): array
     {
-        $vehicle = Vehicle::with([
-            'defaultDriver.user', 
-            'assignments.booking.customer',
-            'assignments.booking.driver.user'
-        ])->findOrFail($vehicleId);
+        $vehicle = $vehicleModel?->loadMissing('defaultDriver.user')
+            ?? Vehicle::with('defaultDriver.user')->findOrFail($vehicleId);
 
         $conflicts = $vehicle->getAssignmentConflicts($fromDate, $toDate, $excludeBookingId);
         $currentDriver = $vehicle->getCurrentDriver();

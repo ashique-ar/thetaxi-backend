@@ -595,8 +595,13 @@ class BookingFlowService
 
         $query = ServiceType::query();
         $find = fn ($query) => $query->where(function ($query) use ($candidate) {
-            $query->where('id', $candidate)
-                ->orWhere('code', $candidate)
+            if (is_string($candidate) && Str::isUuid($candidate)) {
+                $query->where('id', $candidate)->orWhere('code', $candidate);
+            } else {
+                $query->where('code', $candidate);
+            }
+
+            $query
                 ->orWhere('name', $candidate)
                 ->orWhere('slug', $candidate);
         });
@@ -1878,7 +1883,8 @@ class BookingFlowService
                 $vehicle->id,
                 $fromDate,
                 $toDate,
-                $excludeBookingId
+                $excludeBookingId,
+                $vehicle
             );
 
             $conflicts = $enhancedAvailability['conflicts'];
@@ -4547,7 +4553,8 @@ class BookingFlowService
                 $vehicle->id,
                 $fromDate,
                 $toDate,
-                $excludeBookingId
+                $excludeBookingId,
+                $vehicle
             );
 
             return [
