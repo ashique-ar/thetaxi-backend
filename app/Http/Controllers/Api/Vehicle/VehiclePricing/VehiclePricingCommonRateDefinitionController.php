@@ -217,26 +217,48 @@ class VehiclePricingCommonRateDefinitionController extends Controller
     /**
      * Remove the specified common rate definition
      */
-    public function destroy(string $id): JsonResponse
+    public function destroy(Request $request, string $id): JsonResponse
     {
         try {
-            $commonRate = VehiclePricingCommonRateDefinition::withInactive()->findOrFail($id);
-
-            // Check if the rate is being used in vehicle group pricing
-            if ($commonRate->vehicleGroupAddonPricing()->exists()) {
-                return response()->json([
-                    'status' => 'error',
-                    'message' => 'Cannot delete common rate definition as it is being used in vehicle group pricing'
-                ], 422);
-            }
-
-            $commonRate->delete();
-
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Common rate definition deleted successfully'
+            $confirmation = $request->validate([
+                'confirm_associations' => 'sometimes|boolean',
+                'confirmed_pricing_count' => 'sometimes|integer|min:0',
             ]);
 
+            return DB::transaction(function () use ($id, $confirmation): JsonResponse {
+                $commonRate = VehiclePricingCommonRateDefinition::withInactive()
+                    ->whereKey($id)
+                    ->lockForUpdate()
+                    ->firstOrFail();
+                $pricing = $commonRate->vehicleGroupPricing()->lockForUpdate();
+                $pricingCount = $pricing->count();
+                $confirmedCount = (int) ($confirmation['confirmed_pricing_count'] ?? -1);
+                $confirmed = (bool) ($confirmation['confirm_associations'] ?? false);
+
+                if ($pricingCount > 0 && (!$confirmed || $confirmedCount !== $pricingCount)) {
+                    return response()->json([
+                        'status' => 'error',
+                        'code' => 'COMMON_RATE_IN_USE',
+                        'message' => 'This rate is assigned to vehicle groups. Confirm removal of the linked pricing records to continue.',
+                        'data' => ['vehicle_group_pricing_count' => $pricingCount],
+                    ], 409);
+                }
+
+                if ($pricingCount > 0) {
+                    $pricing->delete();
+                }
+
+                $commonRate->delete();
+
+                return response()->json([
+                    'status' => 'success',
+                    'message' => 'Common rate definition deleted successfully',
+                    'data' => ['vehicle_group_pricing_deleted' => $pricingCount],
+                ]);
+            });
+
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Failed to delete pricing common rate definition', [
                 'id' => $id,
