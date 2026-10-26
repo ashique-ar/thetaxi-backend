@@ -529,7 +529,9 @@
                             var returnDateValue = pickupParts.length === 3
                                 ? new Date(Number(pickupParts[2]), Number(pickupParts[1]) - 1, Number(pickupParts[0]))
                                 : new Date();
-                            returnDateValue.setDate(returnDateValue.getDate() + Number(returnDate.dataset.defaultDateOffsetDays ?? 3));
+                            var returnDays = Number(returnDate.dataset.defaultDateOffsetDays ?? 3);
+                            // Rental duration counts pickup and return dates, so the offset includes pickup day.
+                            returnDateValue.setDate(returnDateValue.getDate() + Math.max(0, returnDays - 1));
                             returnDate.value = [
                                 String(returnDateValue.getDate()).padStart(2, '0'),
                                 String(returnDateValue.getMonth() + 1).padStart(2, '0'),
