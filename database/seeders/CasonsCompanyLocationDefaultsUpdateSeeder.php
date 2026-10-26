@@ -16,9 +16,14 @@ class CasonsCompanyLocationDefaultsUpdateSeeder extends Seeder
         $casons = Company::query()->where('domain', 'casons.lk')->first();
         $company = Company::getDefaultCompany();
 
-        if (!$casons || !$company || $company->latitude === null || $company->longitude === null) {
+        if (!$casons || !$company || $casons->id !== $company->id || $company->latitude === null || $company->longitude === null) {
             $this->command?->warn('Casons location update skipped: Casons and its default company map location must exist.');
             return;
+        }
+
+        if (str_starts_with(mb_strtolower(trim((string) $company->address)), 'pinned location')) {
+            $company->address = $company->name;
+            $company->saveQuietly();
         }
 
         $updated = 0;
