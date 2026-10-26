@@ -883,6 +883,18 @@ class VehiclePricingCalculationDefinition extends Model
                 $value = $this->resolveVariable($varName, $varType, $inputs, $defaultValue, $slabInfo, $appliedCustomizations, $servicePackageInfo, $districtInfo);
             }
 
+            if (
+                $varName === 'extra_km_rate'
+                && ($inputs['include_garage_distance'] ?? false)
+                && ($inputs['pickup_and_dropoff_at_default_company'] ?? false)
+            ) {
+                $value = 0;
+                if (isset($this->resolvedRateSources[$varName])) {
+                    $this->resolvedRateSources[$varName]['resolved_value'] = 0;
+                    $this->resolvedRateSources[$varName]['waived_reason'] = 'Pickup and drop-off are at the default company location.';
+                }
+            }
+
             $isDeliveryRate = $varType === 'common_rate'
                 && preg_match('/deliver(?:y)?_rate/i', $varName);
             $deliveryRateWaivedForGarageSetting = !($inputs['include_garage_distance'] ?? false);

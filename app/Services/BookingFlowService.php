@@ -5332,6 +5332,15 @@ class BookingFlowService
                 $defaultCompany
             )
             : false;
+        $inputs['pickup_and_dropoff_at_default_company'] = $defaultCompany
+            && $this->matchesCompanyLocation(
+                $this->normalizeLocationInput($params['pickup_location'] ?? []),
+                $defaultCompany
+            )
+            && $this->matchesCompanyLocation(
+                $this->normalizeLocationInput($params['dropoff_location'] ?? []),
+                $defaultCompany
+            );
 
         if ($serviceType && $serviceType->minimum_km > 0) {
             $minimumKm = (float) $serviceType->minimum_km;
