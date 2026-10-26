@@ -934,6 +934,21 @@ class BookingController extends Controller
      */
     protected function formatLocation(array $data, string $prefix): array
     {
+        $companyId = $data["{$prefix}_company_id"] ?? null;
+        if ($companyId) {
+            $company = \App\Models\Company::query()
+                ->where('is_active', true)
+                ->find($companyId);
+            if ($company && $company->latitude !== null && $company->longitude !== null) {
+                return [
+                    'address' => $company->address ?? $company->name,
+                    'latitude' => (float) $company->latitude,
+                    'longitude' => (float) $company->longitude,
+                    'company_id' => $company->id,
+                ];
+            }
+        }
+
         // Check if this is a predefined location code
         $predefinedCode = $data["{$prefix}_predefined"] ?? null;
         if ($predefinedCode) {

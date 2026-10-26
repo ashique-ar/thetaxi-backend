@@ -718,19 +718,18 @@ class DynamicServiceConfigurationService
             ];
         });
 
-        if (($config['config_source'] ?? null) !== 'default_form_config_service') {
-            $config['fields'] = self::hydrateDefaultCompanyLocation($config['fields'] ?? []);
-        }
+        $config['fields'] = self::hydrateDefaultCompanyLocation($config['fields'] ?? []);
         return $config;
     }
 
     public static function hydrateDefaultCompanyLocation(array $fields): array
     {
         $company = \App\Models\Company::getDefaultCompany();
-        if (!$company || $company->latitude === null || $company->longitude === null) {
-            return $fields;
+        if ($company && ($company->latitude === null || $company->longitude === null)) {
+            $company = null;
         }
 
+        $companies = [];
         foreach ($fields as &$field) {
             if (($field['type'] ?? null) !== 'location') {
                 continue;
@@ -739,18 +738,36 @@ class DynamicServiceConfigurationService
             $usesDefaultCompany = false;
             $options = $field['options'] ?? [];
             foreach ($options as &$option) {
-                if (($option['location_source'] ?? null) !== 'default_company') {
+                $source = $option['location_source'] ?? null;
+                $locationCompany = null;
+                if ($source === 'company' && !empty($option['company_id'])) {
+                    $companyId = (string) $option['company_id'];
+                    $locationCompany = $companies[$companyId] ??= \App\Models\Company::query()
+                        ->where('is_active', true)
+                        ->find($companyId);
+                } elseif ($source === 'default_company') {
+                    $locationCompany = $company;
+                }
+
+                if (!$locationCompany || $locationCompany->latitude === null || $locationCompany->longitude === null) {
                     continue;
                 }
 
-                $option['latitude'] = (float) $company->latitude;
-                $option['longitude'] = (float) $company->longitude;
-                $usesDefaultCompany = true;
+                $option['latitude'] = (float) $locationCompany->latitude;
+                $option['longitude'] = (float) $locationCompany->longitude;
+                $option['address'] = $locationCompany->address ?? $option['address'] ?? $option['label'] ?? '';
+                $usesDefaultCompany = $usesDefaultCompany || $source === 'default_company';
             }
             unset($option);
             $field['options'] = $options;
 
-            if ($usesDefaultCompany) {
+            $defaultOption = collect($options)->firstWhere('value', $field['default_option_value'] ?? null);
+            if ($defaultOption && ($defaultOption['action'] ?? 'fixed_location') === 'fixed_location') {
+                $field['default'] = $defaultOption['address'] ?? $field['default'] ?? '';
+                $field['default_lat'] = (string) ($defaultOption['latitude'] ?? '');
+                $field['default_lng'] = (string) ($defaultOption['longitude'] ?? '');
+            } elseif ($usesDefaultCompany) {
+                $field['default'] = $company->address ?? $field['default'] ?? '';
                 $field['default_lat'] = (string) $company->latitude;
                 $field['default_lng'] = (string) $company->longitude;
             }

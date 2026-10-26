@@ -4264,6 +4264,18 @@ class BookingFlowService
             && round($longitude, 5) === round((float) $company->longitude, 5);
     }
 
+    private function isConfiguredCompanyLocation(array $location, ?\App\Models\Company $defaultCompany): bool
+    {
+        $companyId = $location['company_id'] ?? null;
+        $company = $companyId
+            ? \App\Models\Company::query()->where('is_active', true)->find($companyId)
+            : null;
+
+        return $company
+            ? $this->matchesCompanyLocation($location, $company)
+            : ($defaultCompany ? $this->matchesCompanyLocation($location, $defaultCompany) : false);
+    }
+
     /**
      * Extract latitude from location array with multiple key formats
      */
@@ -5324,24 +5336,23 @@ class BookingFlowService
         $inputs['include_garage_distance'] = $this->includeGarageDistanceForPricing();
         $defaultCompany = \App\Models\Company::getDefaultCompany();
         $isWithDriver = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId);
-        $deliveryLocation = $isWithDriver
-            ? ($params['dropoff_location'] ?? $params['pickup_location'] ?? [])
+        $dropoffLocation = $this->normalizeLocationInput($params['dropoff_location'] ?? []);
+        $deliveryLocation = $isWithDriver && $this->isValidLocationArray($dropoffLocation)
+            ? $dropoffLocation
             : ($params['pickup_location'] ?? []);
-        $inputs['delivery_location_is_default_company'] = $defaultCompany
-            ? $this->matchesCompanyLocation(
-                $this->normalizeLocationInput($deliveryLocation),
-                $defaultCompany
-            )
-            : false;
-        $inputs['pickup_and_dropoff_at_default_company'] = $defaultCompany
-            && $this->matchesCompanyLocation(
-                $this->normalizeLocationInput($params['pickup_location'] ?? []),
-                $defaultCompany
-            )
-            && $this->matchesCompanyLocation(
-                $this->normalizeLocationInput($params['dropoff_location'] ?? []),
-                $defaultCompany
-            );
+        $inputs['delivery_location_is_default_company'] = $this->isConfiguredCompanyLocation(
+            $this->normalizeLocationInput($deliveryLocation),
+            $defaultCompany
+        );
+        $pickupLocationForWaiver = $this->normalizeLocationInput($params['pickup_location'] ?? []);
+        $dropoffLocationForWaiver = $this->normalizeLocationInput($params['dropoff_location'] ?? []);
+        if (!$this->isValidLocationArray($dropoffLocationForWaiver)) {
+            $dropoffLocationForWaiver = $pickupLocationForWaiver;
+        }
+        $inputs['pickup_and_dropoff_at_default_company'] = $this->isConfiguredCompanyLocation(
+            $pickupLocationForWaiver,
+            $defaultCompany
+        ) && $this->isConfiguredCompanyLocation($dropoffLocationForWaiver, $defaultCompany);
 
         if ($serviceType && $serviceType->minimum_km > 0) {
             $minimumKm = (float) $serviceType->minimum_km;

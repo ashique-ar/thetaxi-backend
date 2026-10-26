@@ -28,6 +28,7 @@ $configuredOptions = collect($configuredOptions ?? [])->map(static function ($op
         'address' => $option['address'] ?? ($option['label'] ?? ''),
         'latitude' => $usesCompanyLocation ? ($defaultCompany?->latitude ?? '') : ($option['latitude'] ?? ''),
         'longitude' => $usesCompanyLocation ? ($defaultCompany?->longitude ?? '') : ($option['longitude'] ?? ''),
+        'company_id' => $usesCompanyLocation ? ($defaultCompany?->id ?? '') : ($option['company_id'] ?? ''),
         'action' => $isCustom ? 'custom' : 'configured',
     ];
 })->filter(static fn ($option) => $option['code'] !== '' && $option['name'] !== '')->values();
@@ -71,6 +72,8 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
     $selectedLocationName = $customOption['name'] ?? 'My Doorstep (Enter Custom Location)';
     $selectedLocationAction = 'custom';
 }
+
+$selectedCompanyId = $locationOptions->firstWhere('code', $selectedLocationCode)['company_id'] ?? '';
 @endphp
 
 <!-- Location Selector (styled like airport select) -->
@@ -101,6 +104,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
                         <li class="pls-dropdown-option {{ $selectedLocationCode === $locCode ? 'pls-selected' : '' }}"
                             data-value="{{ $locCode }}" data-type="{{ $locType }}"
                             data-lat="{{ $locLat }}" data-lng="{{ $locLng }}" data-address="{{ $locAddr }}"
+                            data-company-id="{{ $location['company_id'] ?? '' }}"
                             role="option">{{ $locName }}</li>
                 @endforeach
             </ul>
@@ -159,6 +163,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
 
 <!-- Hidden fields for predefined location data -->
 <input type="hidden" name="{{ $name }}_predefined" id="{{ $predefinedCodeId }}" value="{{ $selectedLocationAction === 'predefined' ? $selectedLocationCode : '' }}">
+<input type="hidden" name="{{ $name }}_company_id" value="{{ $selectedCompanyId }}">
 
 <script>
 (function() {
@@ -176,6 +181,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
         var customInput = document.getElementById('{{ $customInputId }}');
         var predefinedCodeInput = document.getElementById('{{ $predefinedCodeId }}');
         var parentForm = dropdown.closest('form');
+        var companyIdInput = parentForm?.querySelector('input[name="' + fieldName + '_company_id"]');
 
         // INITIALIZATION: If a predefined location is already selected (e.g. redirect back),
         // create the hidden input[name="fieldName"] with address so the form submits correctly
@@ -273,6 +279,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
                 var address = option.dataset.address;
                 var lat = option.dataset.lat;
                 var lng = option.dataset.lng;
+                var companyId = option.dataset.companyId || '';
 
                 if (customInput) {
                     var latInput = customInput.parentElement.querySelector('.location-lat');
@@ -282,6 +289,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
                 }
 
                 if (predefinedCodeInput) predefinedCodeInput.value = type === 'predefined' ? value : '';
+                if (companyIdInput) companyIdInput.value = companyId;
 
                 var searchScope = parentForm || document;
                 var hiddenField = searchScope.querySelector('input[name="' + fieldName + '"][type="hidden"]:not([id$="_hidden"])');
@@ -309,6 +317,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
                     setTimeout(function() { customInput.focus(); }, 100);
                 }
                 if (predefinedCodeInput) predefinedCodeInput.value = '';
+                if (companyIdInput) companyIdInput.value = '';
                 var hf = (parentForm || document).querySelector('input[name="' + fieldName + '"][type="hidden"]');
                 if (hf) hf.remove();
 
@@ -322,6 +331,7 @@ if ($isCustom && $currentValue && !$selectedLocationCode) {
                 if (customWrapper) customWrapper.style.display = 'none';
                 if (customInput) { customInput.disabled = true; customInput.required = false; }
                 if (predefinedCodeInput) predefinedCodeInput.value = '';
+                if (companyIdInput) companyIdInput.value = '';
                 var hf2 = (parentForm || document).querySelector('input[name="' + fieldName + '"][type="hidden"]');
                 if (hf2) hf2.remove();
 

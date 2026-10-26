@@ -93,10 +93,6 @@
             @case('conditional')
                 @php
                     $condField = $conditionField ?: 'transfer_type';
-                    $fieldDefaultLat = $field['default_lat'] ?? '';
-                    $fieldDefaultLng = $field['default_lng'] ?? '';
-                    $effectiveLat = ($currentLat !== null && $currentLat !== '') ? $currentLat : $fieldDefaultLat;
-                    $effectiveLng = ($currentLng !== null && $currentLng !== '') ? $currentLng : $fieldDefaultLng;
 
                     // Determine the active condition value for server-side rendering
                     $condKeys = array_keys($conditions);
@@ -125,6 +121,11 @@
                     if (empty($activeCondValue) || !in_array($activeCondValue, $condKeys, true)) {
                         $activeCondValue = $condKeys[0] ?? '';
                     }
+                    $activeCondition = $conditions[$activeCondValue] ?? [];
+                    $fieldDefaultLat = $activeCondition['default_lat'] ?? ($field['default_lat'] ?? '');
+                    $fieldDefaultLng = $activeCondition['default_lng'] ?? ($field['default_lng'] ?? '');
+                    $effectiveLat = ($currentLat !== null && $currentLat !== '') ? $currentLat : $fieldDefaultLat;
+                    $effectiveLng = ($currentLng !== null && $currentLng !== '') ? $currentLng : $fieldDefaultLng;
                 @endphp
                 {{-- This renders both variants; JS toggles visibility based on condition --}}
                 <div class="dynamic-conditional-location"
@@ -139,6 +140,9 @@
                         @php
                             $condType = $condConfig['type'] ?? 'any';
                             $isActiveVariant = ($condValue === $activeCondValue);
+                            $variantDefault = $condConfig['default'] ?? $defaultValue;
+                            $variantDefaultLat = $condConfig['default_lat'] ?? ($field['default_lat'] ?? '');
+                            $variantDefaultLng = $condConfig['default_lng'] ?? ($field['default_lng'] ?? '');
                             $conditionalAirportOptions = !empty($condConfig['options'])
                                 ? collect($condConfig['options'])
                                 : ($airportOptions ?? collect());
@@ -176,10 +180,10 @@
                                                class="location-search @error($submitAs) is-invalid @enderror"
                                                @if($encodedPlaceholderExamples) data-placeholder-examples="{{ $encodedPlaceholderExamples }}" @endif
                                                data-placeholder-fallback="{{ $placeholder ?: 'Enter ' . strtolower($label) }}"
-                                               value="{{ $isActiveVariant ? $fieldValue : '' }}"
-                                               data-default-value="{{ $defaultValue }}"
-                                               data-default-lat="{{ $fieldDefaultLat }}"
-                                               data-default-lng="{{ $fieldDefaultLng }}"
+                                               value="{{ $isActiveVariant ? (($currentValue !== null && $currentValue !== '') ? $currentValue : $variantDefault) : '' }}"
+                                               data-default-value="{{ $variantDefault }}"
+                                               data-default-lat="{{ $variantDefaultLat }}"
+                                               data-default-lng="{{ $variantDefaultLng }}"
                                                data-current-value="{{ $isActiveVariant ? $fieldValue : '' }}"
                                                data-current-lat="{{ $isActiveVariant ? ($currentLat ?? '') : '' }}"
                                                data-current-lng="{{ $isActiveVariant ? ($currentLng ?? '') : '' }}"
