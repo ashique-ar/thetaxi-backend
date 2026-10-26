@@ -199,6 +199,26 @@
             $rideNowReturnTime = '12:00';
         }
     }
+
+    $autoDesktopSpans = collect($sortedFields)->groupBy(static fn ($field) => max(1, (int) ($field['row'] ?? 1)))
+        ->map(static function ($rowFields) {
+            $fixedColumns = 0;
+            $autoCount = 0;
+            foreach ($rowFields as $field) {
+                $width = $field['width'] ?? 'auto';
+                if (!in_array($width, ['full', 'half', 'third'], true)) {
+                    $autoCount++;
+                    continue;
+                }
+                $fixedColumns += match ($width) {
+                    'full' => 12,
+                    'half' => 6,
+                    'third' => 4,
+                    default => 0,
+                };
+            }
+            return $autoCount ? max(1, intdiv(max(0, 12 - $fixedColumns), $autoCount)) : 0;
+        });
 @endphp
 
 <form id="{{ $formId }}"
@@ -332,12 +352,12 @@
         @endphp
 
         @php
-            $desktopWidth = $field['width'] ?? 'half';
+            $desktopWidth = $field['width'] ?? 'auto';
             $tabletWidth = $field['tablet_width'] ?? 'full';
             $mobileWidth = $field['mobile_width'] ?? 'full';
             $configuredWidth = in_array($desktopWidth, ['full', 'half', 'third', 'auto'], true)
                 ? $desktopWidth
-                : 'half';
+                : 'auto';
             $configuredTabletWidth = in_array($tabletWidth, ['full', 'half', 'third', 'auto'], true)
                 ? $tabletWidth
                 : 'full';
@@ -345,6 +365,7 @@
                 ? $mobileWidth
                 : 'full';
             $configuredRow = max(1, (int) ($field['row'] ?? 1));
+            $autoDesktopSpan = $autoDesktopSpans->get($configuredRow, 12);
         @endphp
         @if($currentLayoutRow !== $configuredRow)
             @if($currentLayoutRow !== null)
@@ -367,9 +388,9 @@
         @endphp
         <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }}"
              data-field-row="{{ $configuredRow }}"
+             style="{{ $isReturnConditional && !$showConditional ? 'display: none !important;' : '' }}{{ $configuredWidth === 'auto' ? 'grid-column: span ' . $autoDesktopSpan . ';' : '' }}"
              @if($isReturnConditional)
                  data-conditional-parent="is_return_trip"
-                 style="{{ $showConditional ? '' : 'display: none !important;' }}"
              @endif>
             @include('components.dynamic-form-field', [
                 'fieldName' => $fieldName,
