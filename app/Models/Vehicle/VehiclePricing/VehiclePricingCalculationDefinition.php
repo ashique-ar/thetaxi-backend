@@ -809,6 +809,19 @@ class VehiclePricingCalculationDefinition extends Model
             return;
         }
 
+        $startDate = Carbon::parse($fromDate)->startOfDay();
+        $endDate = Carbon::parse($toDate)->startOfDay();
+        if ($endDate->lessThan($startDate)) {
+            throw new \InvalidArgumentException(
+                'Pricing end date and time must be on or after the start date and time.'
+            );
+        }
+
+        // Daily rentals are priced by calendar date; pickup/return times are dispatch details.
+        if (($inputs['pricing_mode'] ?? null) === 'day') {
+            return;
+        }
+
         $fromTime = $inputs['from_time'] ?? '00:00';
         $toTime = $inputs['to_time'] ?? '23:59';
         $start = $this->combinePricingDateAndTime($fromDate, $fromTime, '00:00');

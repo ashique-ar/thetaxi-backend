@@ -147,7 +147,7 @@ class PricingRequiredTelemetryTest extends TestCase
         self::assertIsInt($holiday['is_holiday']);
     }
 
-    public function test_daily_allowance_rejects_a_reversed_date_time_range(): void
+    public function test_daily_allowance_rejects_a_reversed_calendar_date_range(): void
     {
         $definition = (new ReflectionClass(VehiclePricingCalculationDefinition::class))
             ->newInstanceWithoutConstructor();
@@ -161,6 +161,21 @@ class PricingRequiredTelemetryTest extends TestCase
             'to_date' => '2026-07-17',
             'to_time' => '09:00',
         ]);
+    }
+
+    public function test_daily_pricing_ignores_dispatch_times_when_dates_match(): void
+    {
+        $definition = (new ReflectionClass(VehiclePricingCalculationDefinition::class))
+            ->newInstanceWithoutConstructor();
+        $method = new ReflectionMethod($definition, 'calculateCalendarDays');
+
+        self::assertSame(1, $method->invoke($definition, [
+            'pricing_mode' => 'day',
+            'from_date' => '2026-10-26',
+            'from_time' => '18:00',
+            'to_date' => '2026-10-26',
+            'to_time' => '09:00',
+        ]));
     }
 
     public function test_booking_mode_is_derived_for_self_drive_and_chauffeur_conditions(): void
