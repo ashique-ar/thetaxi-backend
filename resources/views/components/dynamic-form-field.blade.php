@@ -243,10 +243,12 @@
                    {{ $required ? 'required' : '' }}
                    data-enable-time="false"
                    data-date-format="d/m/Y"
+                   @if($submitAs === 'return_date')
+                       data-inclusive-duration="true"
+                   @endif
                    @if(isset($defaultDateOffsetDays, $defaultDateFromControl) && $defaultDateOffsetDays !== null && $defaultDateFromControl !== '')
                        data-default-date-offset-days="{{ $defaultDateOffsetDays }}"
                        data-default-date-from="{{ $defaultDateFromControl }}"
-                       data-inclusive-duration="{{ $submitAs === 'return_date' ? 'true' : 'false' }}"
                    @endif
                    data-min-date="today"
                    autocomplete="off"

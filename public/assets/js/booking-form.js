@@ -3746,11 +3746,14 @@
                 if (input.tagName === 'SELECT') return;
 
                 const placeSelected = input.getAttribute("data-place-selected") === "true";
+                const { latInput, lngInput } = getCoordInputs(input);
+                const hasCoordinates = !!latInput?.value && !!lngInput?.value &&
+                    latInput.value !== '0' && lngInput.value !== '0';
                 const isDefault = input.getAttribute("data-is-default") === "true";
                 const hasValue = input.value.trim() !== "";
 
                 // If field has value but wasn't selected and isn't default, it's invalid
-                if (hasValue && !placeSelected && !isDefault) {
+                if (hasValue && !placeSelected && !isDefault && !hasCoordinates) {
                     isValid = false;
                     input.classList.add("error");
                     input.style.borderColor = "#dc3545";
