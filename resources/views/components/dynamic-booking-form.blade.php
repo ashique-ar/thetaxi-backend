@@ -114,6 +114,9 @@
         $submitAs = $cfg['submit_as'] ?? $key;
         return in_array($submitAs, ['return_date', 'return_time', 'is_return_trip'], true);
     });
+    $hasReturnTripToggle = collect($sortedFields)->contains(static function ($cfg, $key) {
+        return ($cfg['submit_as'] ?? $key) === 'is_return_trip';
+    });
     $useLegacyRideNowReturnBlock = ($serviceCode === 'ride_now' && $allowReturnTrip && !$hasDynamicReturnFields);
     $rideNowReturnFieldKeys = [];
     if ($useLegacyRideNowReturnBlock) {
@@ -351,8 +354,12 @@
             @php $currentLayoutRow = $configuredRow; @endphp
         @endif
         @php
-            $isReturnConditional = in_array($submitAs, ['return_date', 'return_time'], true)
-                || ($field['conditional'] ?? '') === 'is_return_trip';
+            $isRentalService = in_array($serviceTypeModel?->code ?? $serviceCode, ['self_drive', 'with_driver'], true);
+            $isReturnConditional = !$isRentalService
+                && $hasReturnTripToggle && (
+                in_array($submitAs, ['return_date', 'return_time'], true)
+                || ($field['conditional'] ?? '') === 'is_return_trip'
+            );
             $isConfiguredEndDate = $fieldType === 'date'
                 && $submitAs !== ''
                 && $submitAs === $endDateField;
