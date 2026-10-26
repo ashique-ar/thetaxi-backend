@@ -5,6 +5,7 @@
     'serviceFeatures' => [],
     'availability' => ['available' => 0, 'total' => 0],
     'searchId' => null,
+    'searchContextId' => null,
     'isRecommended' => false,
     'showBookNow' => false,
     'showViewDetails' => true,
@@ -487,7 +488,7 @@
                 @if ($showBookNow && $searchId)
                     <!-- Book Now Button (Primary in Search Results) -->
                     <button type="button" class="btn btn-primary w-100 mb-2 book-now-btn" data-group-id="{{ $vehicle['id'] }}"
-                        data-search-id="{{ $searchId }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
+                        data-search-id="{{ $searchId }}" data-search-context-id="{{ $searchContextId }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
                         data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
                         <i class="bi bi-calendar-check"></i> Book Now
@@ -495,7 +496,7 @@
 
                     <!-- Add to Cart as Secondary Option -->
                     <button type="button" class="btn btn-outline-primary w-100 add-to-cart-btn"
-                        data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}"
+                        data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}" data-search-context-id="{{ $searchContextId }}"
                         data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
                         data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
@@ -504,7 +505,7 @@
                 @else
                     <!-- Add to Cart Primary (for landing/featured pages) -->
                     <button type="button" class="btn btn-primary w-100 mb-2 add-to-cart-btn"
-                        data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}"
+                        data-group-id="{{ $vehicle['id'] }}" data-search-id="{{ $searchId }}" data-search-context-id="{{ $searchContextId }}"
                         data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
                         data-base-price="{{ $pricing['base_amount'] ?? 0 }}" data-currency="{{ $pricing['currency'] ?? 'LKR' }}"
                         data-service-type="{{ $pricing['service_type'] ?? 'point_to_point' }}">
@@ -522,7 +523,7 @@
                 <!-- Request Quotation Button - when booking is not allowed -->
                 <button type="button" class="btn btn-warning w-100 mb-2 request-quotation-btn"
                     data-group-id="{{ $vehicle['id'] }}" data-group-name="{{ $vehicle['name'] ?? 'Vehicle' }}"
-                    data-search-id="{{ $searchId }}" data-bs-toggle="modal" data-bs-target="#requestQuotationModal">
+                    data-search-id="{{ $searchId }}" data-search-context-id="{{ $searchContextId }}" data-bs-toggle="modal" data-bs-target="#requestQuotationModal">
                     <i class="bi bi-calculator"></i> Request Quotation
                 </button>
                 <p class="text-muted small mb-0 text-center">

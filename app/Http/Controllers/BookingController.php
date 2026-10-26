@@ -105,6 +105,16 @@ class BookingController extends Controller
             }
             $searchParams['service_package_id'] = data_get($searchParams, 'package_type.id');
 
+            $searchContextId = Str::uuid()->toString();
+            $searchContexts = session('public_search_contexts', []);
+            $searchContexts[$searchContextId] = [
+                'search_params' => $searchParams,
+                'search_timestamp' => now(),
+                'pricing_context' => session('pricing_context'),
+                'frontend_service' => $frontendService,
+                'backend_service_type_id' => $serviceType->id,
+            ];
+            session()->put('public_search_contexts', $searchContexts);
 
             // Store search params and context in session for results page
             session()->put('current_search_params', $searchParams);
@@ -117,13 +127,13 @@ class BookingController extends Controller
             if ($request->expectsJson()) {
                 return response()->json([
                     'success' => true,
-                    'results_url' => route('search'),
+                    'results_url' => route('search', ['id' => $searchContextId]),
                     'message' => 'Search details validated successfully.',
                 ]);
             }
 
             // Redirect to search results page
-            return redirect()->route('search')
+            return redirect()->route('search', ['id' => $searchContextId])
                 ->with('success', 'Search completed! Here are the available vehicles for your journey.');
 
         } catch (\Exception $e) {
@@ -1070,11 +1080,19 @@ class BookingController extends Controller
     public function showResults(Request $request, ?string $id = null)
     {
         try {
-            // Get search parameters from session
-            $searchParams = session()->get('current_search_params');
-            $searchTimestamp = session()->get('search_timestamp');
-            $pricingContext = session()->get('pricing_context');
-            $frontendService = session()->get('frontend_service');
+            // Keep each results tab bound to its own search instead of the last session-wide search.
+            $searchContext = $id !== null
+                ? session('public_search_contexts.' . $id)
+                : null;
+            if ($id !== null && !is_array($searchContext)) {
+                return redirect()->route('home')
+                    ->with('warning', 'Your search has expired. Please start a new search.');
+            }
+
+            $searchParams = $searchContext['search_params'] ?? session()->get('current_search_params');
+            $searchTimestamp = $searchContext['search_timestamp'] ?? session()->get('search_timestamp');
+            $pricingContext = $searchContext['pricing_context'] ?? session()->get('pricing_context');
+            $frontendService = $searchContext['frontend_service'] ?? session()->get('frontend_service');
             $serviceType = $frontendService ? $this->resolveServiceType($frontendService) : null;
 
             if (!$searchParams) {
@@ -1125,6 +1143,7 @@ class BookingController extends Controller
             $search = (object) array_merge(
                 [
                     'id' => session('session_id'), // Add ID for blade compatibility
+                    'result_search_context_id' => $id,
                     'search_params' => $searchParams,
                     'pricing_context' => $pricingContext,
                     'frontend_service' => $frontendService,
@@ -1235,11 +1254,19 @@ class BookingController extends Controller
         $validated = $request->validate([
             'page' => 'required|integer|min:2|max:1000',
             'sort_by' => 'sometimes|in:price_low,price_high,name_asc,name_desc',
+            'search_context_id' => 'sometimes|required|uuid',
         ]);
 
-        $searchParams = session()->get('current_search_params');
-        $searchTimestamp = session()->get('search_timestamp');
-        $pricingContext = session()->get('pricing_context');
+        $searchContext = isset($validated['search_context_id'])
+            ? session('public_search_contexts.' . $validated['search_context_id'])
+            : null;
+        if (isset($validated['search_context_id']) && !is_array($searchContext)) {
+            return response()->json(['message' => 'Search expired. Please search again.'], 410);
+        }
+
+        $searchParams = $searchContext['search_params'] ?? session()->get('current_search_params');
+        $searchTimestamp = $searchContext['search_timestamp'] ?? session()->get('search_timestamp');
+        $pricingContext = $searchContext['pricing_context'] ?? session()->get('pricing_context');
         $expiryHours = config('booking.search_expiry_hours', 0);
 
         if (!$searchParams || ($expiryHours > 0 && $searchTimestamp
@@ -1270,6 +1297,7 @@ class BookingController extends Controller
                     'pricing' => $pricing,
                     'availability' => $availability,
                     'searchId' => session('session_id'),
+                    'searchContextId' => $validated['search_context_id'] ?? null,
                 ])->render(),
             ];
         });
@@ -1569,6 +1597,7 @@ class BookingController extends Controller
         try {
             $validator = Validator::make($request->all(), [
                 'search_id' => 'required|string|exists:booking_searches,id',
+                'search_context_id' => 'nullable|uuid',
                 'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
                 'quantity' => 'nullable|integer|min:1|max:10',
                 'selected_addons' => 'nullable|array',
@@ -1583,8 +1612,19 @@ class BookingController extends Controller
                 ], 422);
             }
 
-            // Get search params from session
-            $searchParams = session()->get('current_search_params');
+            $searchContextId = $request->input('search_context_id');
+            $searchContext = $searchContextId
+                ? session('public_search_contexts.' . $searchContextId)
+                : null;
+            if ($searchContextId && !is_array($searchContext)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Search session expired. Please search again.',
+                ], 410);
+            }
+
+            // A results tab must continue using the search that produced its cards.
+            $searchParams = $searchContext['search_params'] ?? session()->get('current_search_params');
             if (!$searchParams) {
                 return response()->json([
                     'success' => false,
@@ -2315,7 +2355,22 @@ class BookingController extends Controller
                 $request->merge(['service_type' => 'day_rental']);
             }
 
-            $searchContext = session()->get('current_search_params', []);
+            $searchContextId = $request->input('search_context_id');
+            $searchState = $searchContextId
+                ? session('public_search_contexts.' . $searchContextId)
+                : null;
+            if ($searchContextId && !is_array($searchState)) {
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Search session expired. Please search again.',
+                    ], 410);
+                }
+
+                return redirect()->route('home')->with('warning', 'Your search has expired. Please start a new search.');
+            }
+
+            $searchContext = $searchState['search_params'] ?? session()->get('current_search_params', []);
             if (empty($searchContext) && $request->filled('search_id')) {
                 $bookingSearch = BookingSearch::find($request->input('search_id'));
                 if ($bookingSearch) {
@@ -2343,6 +2398,7 @@ class BookingController extends Controller
             ]);
 
             $validator = Validator::make($request->all(), [
+                'search_context_id' => 'nullable|uuid',
                 'vehicle_group_id' => 'required|string|exists:vehicle_groups,id',
                 'customer_name' => 'required|string|max:255',
                 'customer_email' => 'required|email|max:255',

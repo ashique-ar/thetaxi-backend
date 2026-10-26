@@ -9,6 +9,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class BookingPaymentReceipt extends BaseModel
 {
+    protected $useUserTracking = false;
+
     private const IMMUTABLE_EVIDENCE_FIELDS = [
         'booking_id', 'amount', 'payment_method', 'payment_stage', 'payment_purpose',
         'reference', 'received_at', 'received_by', 'received_via', 'payer_type',

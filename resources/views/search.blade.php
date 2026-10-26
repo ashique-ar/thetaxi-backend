@@ -306,12 +306,14 @@
                                 'total' => $result['total_count'] ?? 0,
                             ],
                             'searchId' => $search->id,
+                            'searchContextId' => $search->result_search_context_id ?? null,
                         ])
                     @endforeach
                 </div>
                 @if (($pagination['last_page'] ?? 1) > 1)
                     <div id="vehicleLoadMoreStatus" class="py-4 text-center text-muted" role="status"
                         data-next-page="2" data-last-page="{{ $pagination['last_page'] }}"
+                        data-search-context-id="{{ $search->result_search_context_id ?? '' }}"
                         data-url="{{ route('search.vehicles.page') }}">
                         <span class="vehicle-load-more-spinner spinner-border spinner-border-sm d-none" aria-hidden="true"></span>
                         <span class="vehicle-load-more-message">Scroll to load more vehicles</span>
@@ -361,6 +363,8 @@
                         <input type="hidden" name="vehicle_group_id" id="quotation_vehicle_group_id">
                         <input type="hidden" name="search_id" id="quotation_search_id"
                             value="{{ $search->id ?? '' }}">
+                        <input type="hidden" name="search_context_id" id="quotation_search_context_id"
+                            value="{{ $search->result_search_context_id ?? '' }}">
                         <input type="hidden" name="service_type" id="quotation_service_type"
                             value="{{ $search->service_type ?? 'day_rental' }}">
                         <input type="hidden" name="pickup_location" id="quotation_pickup_location"
@@ -1133,6 +1137,7 @@
 
         // Expose search data globally for vehicle-card-scripts component to use
         window.bookingSearchData = {
+            search_context_id: '{{ $search->result_search_context_id ?? '' }}',
             from_date: '{{ $search->from_date ?? '' }}',
             to_date: '{{ $search->to_date ?? '' }}',
             from_time: '{{ $search->from_time ?? '' }}',
@@ -1290,7 +1295,13 @@
                     let shouldPrefetchNextPage = false;
                     try {
                         const sortBy = document.getElementById('sortResults')?.value || 'price_low';
-                        const response = await fetch(`${loadMoreStatus.dataset.url}?page=${nextPage}&sort_by=${encodeURIComponent(sortBy)}`, {
+                        const pageUrl = new URL(loadMoreStatus.dataset.url, window.location.origin);
+                        pageUrl.searchParams.set('page', String(nextPage));
+                        pageUrl.searchParams.set('sort_by', sortBy);
+                        if (loadMoreStatus.dataset.searchContextId) {
+                            pageUrl.searchParams.set('search_context_id', loadMoreStatus.dataset.searchContextId);
+                        }
+                        const response = await fetch(pageUrl.toString(), {
                             credentials: 'same-origin',
                             headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
                             signal: requestController.signal
@@ -1542,6 +1553,7 @@
             // Populate modal fields
             $('#quotation_vehicle_group_id').val(groupId);
             $('#quotation_search_id').val(searchId || '{{ $search->id ?? '' }}');
+            $('#quotation_search_context_id').val(window.bookingSearchData.search_context_id || '');
             $('#quotation_vehicle_name').text(groupName);
             $('#quotation_service_type').val(window.bookingSearchData.service_type || 'day_rental');
             $('#quotation_pickup_location').val(window.bookingSearchData.pickup_location || '');

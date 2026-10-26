@@ -3,5 +3,6 @@
     data-name="{{ $result['name'] ?? 'Unknown Vehicle' }}">
     <x-vehicle-card :vehicle="$result" :pricing="$pricing" :enhancedPricing="$result['enhanced_pricing'] ?? []"
         :serviceFeatures="$result['service_features'] ?? []" :availability="$availability" :searchId="$searchId"
+        :searchContextId="$searchContextId ?? null"
         :isRecommended="$result['recommended'] ?? false" :showBookNow="true" :showViewDetails="false" />
 </div>
