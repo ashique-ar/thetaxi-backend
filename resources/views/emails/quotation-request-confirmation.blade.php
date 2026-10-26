@@ -18,7 +18,7 @@
         $passengers = $requestData['passengers'] ?? null;
         $vehicleThumbnail = $vehicleGroup->thumbnail ?? null;
         $thumb = is_array($vehicleThumbnail) ? ($vehicleThumbnail['path'] ?? ($vehicleThumbnail[0] ?? null)) : $vehicleThumbnail;
-        $imageUrl = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
+        $imageUrl = $thumb ? app(\App\Services\EmailImageVariantService::class)->url($thumb, 'vehicle') : asset('assets/img/default-vehicle.jpg');
         $pickupDateTime = trim(($travelDate ?: 'To be confirmed') . ($travelTime ? ' ' . $travelTime : ''));
     @endphp
 

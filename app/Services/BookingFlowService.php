@@ -1131,6 +1131,9 @@ class BookingFlowService
                     $pricingParams = [
                         'service_type_id' => $serviceTypeModel->id,
                         'service_type' => $serviceType,
+                        'is_self_driven' => array_key_exists('is_self_driven', $params)
+                            ? (bool) $params['is_self_driven']
+                            : in_array(strtolower((string) $serviceTypeModel->code), ['self_drive', 'self_driven'], true),
                         'vehicle_group_id' => $group->id,
                         'from_date' => $pricingFromDate,
                         'to_date' => $pricingToDate,

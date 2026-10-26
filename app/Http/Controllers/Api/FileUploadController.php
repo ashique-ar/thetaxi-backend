@@ -126,6 +126,10 @@ class FileUploadController extends Controller
 
             $userMedia = UserMedia::create($mediaData);
 
+            if ($isImage && $shouldProcessImage && in_array($category, ['branding', 'logos', 'vehicles'], true)) {
+                app(\App\Services\EmailImageVariantService::class)->createForUpload($uploadResult['image_bytes'], $userMedia);
+            }
+
             // Create thumbnail if requested and file is an image
             $thumbnailData = null;
             if ($createThumbnail && $isImage) {
@@ -550,6 +554,7 @@ class FileUploadController extends Controller
     private function processAndStoreFile($file, string $path, bool $isImage, Request $request): array
     {
         $dimensions = null;
+        $imageData = null;
         $convertedPath = $path; // Track if path changes due to conversion
 
         if ($isImage) {
@@ -582,6 +587,7 @@ class FileUploadController extends Controller
             'dimensions' => $dimensions,
             'converted_path' => $convertedPath,
             'size' => $isImage ? strlen($imageData) : $file->getSize(),
+            'image_bytes' => $imageData,
         ];
     }
 

@@ -19,6 +19,16 @@ it('forwards corporate ownership into each vehicle group card pricing calculatio
         ->toContain('$this->calculatePricing($pricingParams)');
 });
 
+it('passes the selected drive mode into vehicle card pricing', function () {
+    $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
+    $availabilityMethod = Str::between($source, 'public function getAvailableVehicleGroups(', 'public function getAvailableVehiclesInGroup(');
+
+    expect($availabilityMethod)
+        ->toContain("'is_self_driven' => array_key_exists('is_self_driven', \$params)")
+        ->toContain("['self_drive', 'self_driven']")
+        ->toContain("'booking_type' => \$inputs['is_self_driven'] ? 'self_drive' : 'with_driver'");
+});
+
 it('applies website visibility and inquiry restrictions only to public availability', function () {
     $source = file_get_contents(dirname(__DIR__, 2) . '/app/Services/BookingFlowService.php');
     $availabilityMethod = Str::between($source, 'public function getAvailableVehicleGroups(', 'public function getAvailableVehiclesInGroup(');

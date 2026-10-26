@@ -483,7 +483,7 @@
     @php
         $brandName = \App\Models\BusinessSetting::getSetting('company_name') ?: ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company');
         $brandLogo = \App\Models\BusinessSetting::getSetting('company_logo_path') ?: ($settings['company_logo_path'] ?? $settings['brand_logo_primary'] ?? $settings['logo_header'] ?? null);
-        $brandLogoUrl = $brandLogo ? (str_starts_with($brandLogo, 'media/') ? route('resources.assets', ['path' => $brandLogo]) : s3_asset($brandLogo)) : null;
+        $brandLogoUrl = $brandLogo ? app(\App\Services\EmailImageVariantService::class)->url($brandLogo, 'logo') : null;
         $brandEmail = $settings['company_email'] ?? config('mail.from.address');
         $brandPhone = $settings['company_phone'] ?? null;
         $brandWebsite = $settings['company_website'] ?? config('app.url');

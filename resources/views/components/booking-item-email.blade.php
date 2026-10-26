@@ -65,7 +65,7 @@
             $thumb = $thumbRaw;
         }
     }
-    $defaultImage = $thumb ? s3_asset($thumb) : asset('assets/img/default-vehicle.jpg');
+    $defaultImage = $thumb ? app(\App\Services\EmailImageVariantService::class)->url($thumb, 'vehicle') : asset('assets/img/default-vehicle.jpg');
 
     $itemAddons = $item->addons ?? [];
     $addonsList = [];
