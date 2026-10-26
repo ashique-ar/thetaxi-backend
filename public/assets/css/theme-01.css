@@ -4,11 +4,11 @@
 }
 
 /* Dynamic rows own their field grid; keep the outer form from narrowing them. */
-.theme-default .filter-wrapper .filter-input:has(.dynamic-form-row) {
+body.theme-theme-01 .filter-wrapper .filter-input:has(.dynamic-form-row) {
     grid-template-columns: minmax(0, 1fr) !important;
 }
 
-.theme-default .filter-wrapper .filter-input:has(.dynamic-form-row) > .primary-btn1 {
+body.theme-theme-01 .filter-wrapper .filter-input:has(.dynamic-form-row) > .primary-btn1 {
     grid-column: 1 / -1 !important;
 }
 
