@@ -612,7 +612,8 @@
             const apply = () => {
                 const date = parse(sourceInput.value);
                 if (!date || (endInput.value && endInput.value !== endInput.dataset.generatedDefaultDate && !overrideInitial)) return;
-                date.setDate(date.getDate() + Math.max(0, Number(offset)));
+                const days = Number(offset) - (endInput.dataset.inclusiveDuration === 'true' ? 1 : 0);
+                date.setDate(date.getDate() + Math.max(0, days));
                 const value = formatDate(date);
                 endInput.value = value;
                 endInput.dataset.generatedDefaultDate = value;
