@@ -38,6 +38,19 @@ it('fails route distance instead of returning zero when the routing API is unava
     ))->toThrow(RuntimeException::class);
 });
 
+it('allows identical route endpoints with zero distance', function () {
+    config()->set('services.google.places_api_key', '');
+    Http::fake();
+
+    $result = app(GoogleMapsService::class)->distanceAndDuration(
+        ['latitude' => 6.9182, 'longitude' => 79.8478],
+        ['latitude' => 6.9182000, 'longitude' => 79.847800],
+    );
+
+    expect($result)->toBe(['distance_km' => 0.0, 'duration_seconds' => 0]);
+    Http::assertNothingSent();
+});
+
 it('backs off after Google denies Routes API access', function () {
     config()->set('services.google.places_api_key', 'test-key');
     Cache::flush();

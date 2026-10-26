@@ -54,7 +54,15 @@ class GoogleMapsService
         $o = $this->formatLocation($origin);
         $d = $this->formatLocation($destination);
 
-        if (empty($this->apiKey) || !$o || !$d) {
+        if (!$o || !$d) {
+            throw new \RuntimeException('Google route distance cannot be calculated from the supplied locations.');
+        }
+
+        if ($o === $d || $this->sameCoordinates($o, $d)) {
+            return ['distance_km' => 0.0, 'duration_seconds' => 0];
+        }
+
+        if (empty($this->apiKey)) {
             throw new \RuntimeException('Google route distance cannot be calculated from the supplied locations.');
         }
 
@@ -134,6 +142,16 @@ class GoogleMapsService
         }
 
         return ['address' => $location];
+    }
+
+    private function sameCoordinates(string $origin, string $destination): bool
+    {
+        if (!preg_match('/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/', $origin, $a)
+            || !preg_match('/^(-?\d+(?:\.\d+)?),\s*(-?\d+(?:\.\d+)?)$/', $destination, $b)) {
+            return false;
+        }
+
+        return (float) $a[1] === (float) $b[1] && (float) $a[2] === (float) $b[2];
     }
 
     /** Normalize different location inputs into what Google accepts */

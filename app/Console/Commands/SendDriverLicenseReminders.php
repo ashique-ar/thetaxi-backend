@@ -16,7 +16,7 @@ class SendDriverLicenseReminders extends Command
     {
         $count = 0;
         Driver::with('user')->whereNotNull('license_expiry')->whereNull('license_last_reminded_on')
-            ->where('is_active', true)->chunkById(100, function ($drivers) use (&$count) {
+            ->where('is_active', true)->chunkById(100, function ($drivers) use (&$count, $notifications) {
                 foreach ($drivers as $driver) {
                     if (!$driver->user || now()->startOfDay()->diffInDays($driver->license_expiry, false) > ($driver->license_reminder_days ?? 30)) continue;
                     $driver->user->notify(new DriverLicenseExpiryNotification($driver));
