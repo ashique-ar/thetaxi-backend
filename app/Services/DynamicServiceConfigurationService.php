@@ -646,13 +646,21 @@ class DynamicServiceConfigurationService
             ];
         }
 
+        $parentServiceType = $serviceType->parentServiceType;
+        if (!$parentServiceType && $serviceType->owner_type) {
+            $parentServiceType = ServiceType::publicContext()
+                ->where('code', $serviceType->code)
+                ->first();
+        }
         $revision = $serviceType->updated_at?->format('YmdHisv') ?? 'unversioned';
+        $parentRevision = $parentServiceType?->updated_at?->format('YmdHisv') ?? 'none';
         $companySuffix = $resolvedCompanyId ? "_{$resolvedCompanyId}" : '';
-        $cacheKey = "service_form_config_public_v6_{$serviceCode}_{$serviceType->id}_{$revision}{$companySuffix}";
+        $cacheKey = "service_form_config_public_v7_{$serviceCode}_{$serviceType->id}_{$revision}_{$parentRevision}{$companySuffix}";
 
-        return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType) {
+        return Cache::remember($cacheKey, self::CACHE_TIMEOUT, function () use ($serviceCode, $serviceType, $parentServiceType) {
             // Public form ownership order: Service Type form, config-service record, defaults.
             $serviceTypeFields = $this->extractRenderableFields($serviceType->form_config);
+            $parentFields = $this->extractRenderableFields($parentServiceType?->form_config);
             $dbConfig = ServiceFormConfig::forCode($serviceCode);
             $configServiceFields = $this->extractRenderableFields($dbConfig?->config);
             $defaultFields = DefaultFormConfigService::getDefaults($serviceCode);
@@ -672,6 +680,12 @@ class DynamicServiceConfigurationService
                 $configSource = 'default_form_config_service';
             }
 
+            $fields = $this->inheritMappedEndDateDefaults(
+                $fields,
+                $serviceType->form_config ?? [],
+                $parentFields,
+                $parentServiceType?->form_config ?? []
+            );
             $fields = $this->hydrateConditionalAirportFields($fields);
 
             $baseConfig = $dbConfig?->config
@@ -762,6 +776,82 @@ class DynamicServiceConfigurationService
         unset($field);
 
         return $fields;
+    }
+
+    private function inheritMappedEndDateDefaults(array $fields, array $config, array $parentFields, array $parentConfig): array
+    {
+        $parentMappings = $parentConfig['field_mappings']['dates'] ?? [];
+        $fieldMappings = $config['field_mappings']['dates'] ?? [];
+        $parentEndName = $this->resolveConfiguredDateField($parentFields, $parentMappings['to_date'] ?? null);
+        $endName = $this->resolveConfiguredDateField($fields, $fieldMappings['to_date'] ?? null);
+        $endName ??= $this->matchRelatedDateField($parentFields, $parentEndName, $fields);
+        if (!$parentEndName || !$endName || !isset($parentFields[$parentEndName]['default_date_offset_days'])) {
+            return $fields;
+        }
+
+        if (!isset($fields[$endName]['default_date_offset_days'])) {
+            $fields[$endName]['default_date_offset_days'] = $parentFields[$parentEndName]['default_date_offset_days'];
+        }
+
+        $sourceName = $this->resolveConfiguredDateField($fields, $fields[$endName]['default_date_from'] ?? null);
+        if (!$sourceName) {
+            $sourceName = $this->resolveConfiguredDateField($fields, $fieldMappings['from_date'] ?? null);
+            $parentSourceName = $this->resolveConfiguredDateField(
+                $parentFields,
+                $parentFields[$parentEndName]['default_date_from'] ?? ($parentMappings['from_date'] ?? null)
+            );
+            $sourceName ??= $this->matchRelatedDateField($parentFields, $parentSourceName, $fields);
+            if ($sourceName) {
+                $fields[$endName]['default_date_from'] = $sourceName;
+            }
+        }
+
+        return $fields;
+    }
+
+    private function resolveConfiguredDateField(array $fields, mixed $mapping): ?string
+    {
+        if (!is_string($mapping) || $mapping === '') {
+            return null;
+        }
+        if (isset($fields[$mapping]) && ($fields[$mapping]['type'] ?? null) === 'date') {
+            return $mapping;
+        }
+        foreach ($fields as $name => $field) {
+            if (($field['type'] ?? null) === 'date' && ($field['submit_as'] ?? null) === $mapping) {
+                return (string) $name;
+            }
+        }
+
+        return null;
+    }
+
+    private function matchRelatedDateField(array $referenceFields, ?string $referenceName, array $targetFields): ?string
+    {
+        if (!$referenceName || !isset($referenceFields[$referenceName])) {
+            return null;
+        }
+        $reference = $referenceFields[$referenceName];
+        if (($targetFields[$referenceName]['type'] ?? null) === 'date') {
+            return $referenceName;
+        }
+        $referenceSubmitAs = $reference['submit_as'] ?? null;
+        foreach ($targetFields as $name => $field) {
+            if (is_string($referenceSubmitAs) && $referenceSubmitAs !== ''
+                && ($field['type'] ?? null) === 'date'
+                && ($field['submit_as'] ?? null) === $referenceSubmitAs) {
+                return (string) $name;
+            }
+        }
+        foreach ($targetFields as $name => $field) {
+            if (($field['type'] ?? null) === 'date'
+                && isset($reference['order'], $field['order'])
+                && (int) $field['order'] === (int) $reference['order']) {
+                return (string) $name;
+            }
+        }
+
+        return null;
     }
 
     /**

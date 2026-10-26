@@ -2101,9 +2101,7 @@ class BookingController extends Controller
     public function getServiceFormConfig(Request $request, string $serviceCode)
     {
         try {
-            $serviceType = ServiceType::publicContext()
-                ->where('code', $serviceCode)
-                ->first();
+            $serviceType = $this->resolveServiceType($serviceCode);
 
             if (!$serviceType) {
                 return response()->json([
@@ -2112,8 +2110,9 @@ class BookingController extends Controller
                 ], 404);
             }
 
-            // Extract stored form config or use defaults
-            $formConfig = $this->resolveServiceFormConfiguration($serviceType);
+            // Keep this endpoint on the same company-aware configuration path as the public form.
+            $formConfig = app(\App\Services\DynamicServiceConfigurationService::class)
+                ->getServiceFormConfiguration($serviceType->code);
             $fields = $formConfig['fields'] ?? [];
 
             if (empty($fields)) {
