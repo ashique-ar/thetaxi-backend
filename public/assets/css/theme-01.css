@@ -3,11 +3,6 @@
     border-radius: 16px !important;
 }
 
-/* Auto-width fields share each configured row evenly; current rows contain two fields. */
-body.theme-default .filter-wrapper .dynamic-field-width-auto {
-    grid-column: span 6 !important;
-}
-
 .theme-default .home4-banner-section .banner-content h1 {
     max-width: 760px;
     line-height: 1.05;

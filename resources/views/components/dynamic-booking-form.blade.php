@@ -332,12 +332,12 @@
         @endphp
 
         @php
-            $desktopWidth = $field['width'] ?? 'auto';
+            $desktopWidth = $field['width'] ?? 'half';
             $tabletWidth = $field['tablet_width'] ?? 'full';
             $mobileWidth = $field['mobile_width'] ?? 'full';
             $configuredWidth = in_array($desktopWidth, ['full', 'half', 'third', 'auto'], true)
                 ? $desktopWidth
-                : 'auto';
+                : 'half';
             $configuredTabletWidth = in_array($tabletWidth, ['full', 'half', 'third', 'auto'], true)
                 ? $tabletWidth
                 : 'full';
