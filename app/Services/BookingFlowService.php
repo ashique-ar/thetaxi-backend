@@ -4987,7 +4987,8 @@ class BookingFlowService
                     $calculationInputs['package_id'] ?? $calculationInputs['service_package_id'] ?? null,
                     $calculationInputs['slab_definition_id'] ?? null,
                     (float) ($calculationInputs['duration_minutes'] ?? 0),
-                    isset($calculationInputs['duration_days']) ? (float) $calculationInputs['duration_days'] : null
+                    isset($calculationInputs['duration_days']) ? (float) $calculationInputs['duration_days'] : null,
+                    $calculationInputs['pricing_mode'] ?? null
                 );
                 $calculationInputs['slab_definition_id'] = $selection['slab']?->id;
                 if ($selection['package']) {
@@ -5206,6 +5207,10 @@ class BookingFlowService
                     ? max(1, (int) $params['number_of_days'])
                     : max(1, (int) ceil($durationMinutes / 1440)),
             ];
+        }
+
+        if (isset($params['pricing_mode'])) {
+            $inputs['pricing_mode'] = $params['pricing_mode'];
         }
 
         // Runtime/final-pricing flows provide measured values directly instead
@@ -6051,6 +6056,7 @@ class BookingFlowService
                 $this->bookingDateTime($params['to_date'], $params['to_time'] ?? null),
                 $durationServiceType
             );
+            $params['pricing_mode'] ??= $durationServiceType?->pricing_mode;
 
             // Check if this is multi-group selection or single group
             $isMultiGroup = !empty($params['vehicle_groups']) && count($params['vehicle_groups']) > 1;
@@ -6259,6 +6265,7 @@ class BookingFlowService
                 'to_date' => $item['to_date'],
                 'from_time' => $item['from_time'] ?? '00:00',
                 'to_time' => $item['to_time'] ?? '00:00',
+                'pricing_mode' => $itemDurationServiceType?->pricing_mode ?? $params['pricing_mode'] ?? null,
                 // Overwrite top-level locations with item-specific locations
                 'pickup_location' => $item['pickup_location'] ?? $params['pickup_location'] ?? null,
                 'dropoff_location' => $item['dropoff_location'] ?? $params['dropoff_location'] ?? null,

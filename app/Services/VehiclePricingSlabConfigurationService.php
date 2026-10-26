@@ -28,7 +28,8 @@ class VehiclePricingSlabConfigurationService
         ?string $packageId,
         ?string $slabId,
         float $durationMinutes = 0,
-        ?float $durationDays = null
+        ?float $durationDays = null,
+        ?string $pricingMode = null
     ): array {
         $cacheKey = hash('sha256', serialize([
             $serviceTypeId,
@@ -36,6 +37,7 @@ class VehiclePricingSlabConfigurationService
             $slabId,
             $durationMinutes,
             $durationDays,
+            $pricingMode,
         ]));
         $request = request();
         $requestCache = $request->attributes->get('vehicle_pricing.package_slab_resolutions', []);
@@ -53,7 +55,7 @@ class VehiclePricingSlabConfigurationService
             $slab = $this->resolve(VehiclePricingSlabDefinition::query()
                 ->where('service_type_id', $serviceTypeId)
                 ->whereNotNull('service_package_id')
-                ->where('is_active', true), $durationMinutes, $durationDays);
+                ->where('is_active', true), $durationMinutes, $durationDays, $pricingMode);
         }
         $packageId ??= $slab?->service_package_id;
         $package = $packageId ? ServicePackage::query()
@@ -73,7 +75,7 @@ class VehiclePricingSlabConfigurationService
                 ->where('service_type_id', $serviceTypeId)
                 ->where('service_package_id', $ratePackageId)
                 ->where('is_active', true);
-            $slab = $this->resolve(clone $basePackageSlabs, $durationMinutes, $durationDays);
+            $slab = $this->resolve(clone $basePackageSlabs, $durationMinutes, $durationDays, $pricingMode);
             if (!$slab) {
                 if ($basePackageSlabs->count() === 1) {
                     $slab = $basePackageSlabs->first();
@@ -88,7 +90,7 @@ class VehiclePricingSlabConfigurationService
                     ->where('is_active', true);
                 $hasPackageSlabs = (clone $activeSlabs)->whereNotNull('service_package_id')->exists();
                 if (!$hasPackageSlabs) {
-                    $slab = $this->resolve((clone $activeSlabs)->whereNull('service_package_id'), $durationMinutes, $durationDays);
+                    $slab = $this->resolve((clone $activeSlabs)->whereNull('service_package_id'), $durationMinutes, $durationDays, $pricingMode);
                 }
                 if (!$slab && (clone $activeSlabs)->exists()) {
                     throw new \InvalidArgumentException('No active pricing slab is linked to this service package.');
@@ -111,11 +113,15 @@ class VehiclePricingSlabConfigurationService
     public function resolve(
         Builder $baseQuery,
         float $durationMinutes,
-        ?float $durationDays = null
+        ?float $durationDays = null,
+        ?string $pricingMode = null
     ): ?VehiclePricingSlabDefinition {
         $durationMinutes = max(0, $durationMinutes);
+        $durationPrecedence = $pricingMode === 'day'
+            ? ['days', 'per_day', 'minutes', 'hours']
+            : self::DURATION_PRECEDENCE;
 
-        foreach (self::DURATION_PRECEDENCE as $type) {
+        foreach ($durationPrecedence as $type) {
             $value = $this->durationValue($type, $durationMinutes, $durationDays);
             [$minimumKey, $maximumKey] = $this->rangeKeys($type);
             $query = clone $baseQuery;

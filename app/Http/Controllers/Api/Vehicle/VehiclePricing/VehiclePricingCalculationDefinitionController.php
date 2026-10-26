@@ -712,6 +712,7 @@ class VehiclePricingCalculationDefinitionController extends Controller
         ?string $ownerId
     ): array {
         $inputs = $this->normalizeDurationInputs($inputs);
+        $inputs['pricing_mode'] ??= ServiceType::query()->whereKey($serviceTypeId)->value('pricing_mode');
         $usesPackage = collect($definitions)->contains(fn ($definition) => collect($definition->variables ?? [])
             ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
                 'package_included_km', 'package_included_hours', 'package_has_hour_limit',
@@ -725,7 +726,8 @@ class VehiclePricingCalculationDefinitionController extends Controller
             $selection = app(VehiclePricingSlabConfigurationService::class)->resolvePackageSlab(
                 $serviceTypeId, $packageId, $slabId,
                 (float) ($inputs['duration_minutes'] ?? 0),
-                isset($inputs['duration_days']) ? (float) $inputs['duration_days'] : null);
+                isset($inputs['duration_days']) ? (float) $inputs['duration_days'] : null,
+                $inputs['pricing_mode'] ?? null);
             $package = $selection['package'];
             $slab = $selection['slab'];
             if ($usesPackage && !$package) {

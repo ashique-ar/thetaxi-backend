@@ -662,15 +662,15 @@ class BookingSearchRequest extends FormRequest
                     : [null, null];
                 $minimumEndDateTime = $usesDurationTime
                     ? $startDateTime->copy()->addMinutes(self::MINIMUM_DURATION_MINUTES)
-                    : $startDateTime;
+                    : $startDateTime->copy()->startOfDay();
                 if ($endDateTime && ($usesDurationTime
                     ? $endDateTime->lt($minimumEndDateTime)
-                    : $endDateTime->lte($minimumEndDateTime))) {
+                    : $endDateTime->copy()->startOfDay()->lt($minimumEndDateTime))) {
                     $validator->errors()->add(
                         $endField,
                         $usesDurationTime
                             ? 'Return must be at least ' . (self::MINIMUM_DURATION_MINUTES / 60) . ' hours after pickup.'
-                            : 'Return must be after pickup.'
+                            : 'Return date cannot be before pickup date.'
                     );
                 }
             } catch (\Throwable $exception) {

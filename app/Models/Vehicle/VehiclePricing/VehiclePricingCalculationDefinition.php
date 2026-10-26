@@ -568,7 +568,8 @@ class VehiclePricingCalculationDefinition extends Model
             $this->resolvedSlabInformationCache[$slabCacheKey] = app(VehiclePricingSlabConfigurationService::class)->resolve(
                 $slabQuery,
                 (float) $durationMinutes,
-                $durationDays > 0 ? (float) $durationDays : null
+                $durationDays > 0 ? (float) $durationDays : null,
+                $inputs['pricing_mode'] ?? null
             );
         }
 
