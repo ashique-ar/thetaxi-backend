@@ -649,17 +649,10 @@ class TripTrackingService
 
     private function isNextActionableStop(DriverAssignment $assignment, DriverAssignmentStop $stop): bool
     {
-        $stops = $assignment->stops()->get();
-        foreach ($stops as $candidate) {
-            if ((string) $candidate->id === (string) $stop->id) {
-                return true;
-            }
-            if (!$candidate->isTerminal()) {
-                return false;
-            }
-        }
-
-        return false;
+        return !$assignment->stops()
+            ->where('route_order', '<', $stop->route_order)
+            ->get()
+            ->contains(fn (DriverAssignmentStop $candidate) => !$candidate->isTerminal());
     }
 
     private function resolveCurrentStop(Collection $stops): ?DriverAssignmentStop

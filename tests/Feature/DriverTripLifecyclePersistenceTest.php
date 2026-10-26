@@ -959,6 +959,23 @@ it('enforces stop order and preserves submitted arrival coordinates', function (
         ->and($status['allowed_actions'])->toBe(['stop_action']);
 });
 
+it('allows stops with the same route order to be completed independently', function () {
+    $assignment = DriverAssignment::create(['trip_phase' => TripPhase::IN_PROGRESS, 'status' => 'active']);
+    $first = DriverAssignmentStop::create([
+        'assignment_id' => $assignment->id, 'stop_type' => 'pickup', 'route_order' => 1, 'status' => 'pending',
+    ]);
+    $second = DriverAssignmentStop::create([
+        'assignment_id' => $assignment->id, 'stop_type' => 'pickup', 'route_order' => 1, 'status' => 'pending',
+    ]);
+
+    $this->tripService->markStopArrived($assignment, $second, ['latitude' => 6.92, 'longitude' => 79.82]);
+    $this->tripService->completePickupStop($assignment, $second, []);
+    $this->tripService->skipStop($assignment, $first, ['reason' => 'Passenger unavailable']);
+
+    expect($second->fresh()->status)->toBe('picked_up')
+        ->and($first->fresh()->status)->toBe('skipped');
+});
+
 it('persists actual completion and route distance once without a pricing owner', function () {
     $assignment = DriverAssignment::create([
         'trip_phase' => TripPhase::IN_PROGRESS,
