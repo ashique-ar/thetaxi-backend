@@ -44,7 +44,8 @@ class EmailImageVariantService
         }
 
         $path = $this->variantPath($source->full_path, $variant);
-        if (Storage::disk($source->storage_type)->exists($path)) {
+        if (Storage::disk($source->storage_type)->exists($path)
+            && UserMedia::query()->where('full_path', $path)->where('storage_type', $source->storage_type)->exists()) {
             return false;
         }
 
@@ -78,7 +79,7 @@ class EmailImageVariantService
 
     private function create(string $bytes, UserMedia $source, string $variant): void
     {
-        $image = Image::read($bytes);
+        $image = Image::decode($bytes);
         if ($variant === 'logo') {
             $image->scaleDown(width: 600, height: 240);
             $extension = 'png';
