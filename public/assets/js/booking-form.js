@@ -636,12 +636,6 @@
             applyRelativeDefault(form, endInput, endInput.dataset.defaultDateFrom, endInput.dataset.defaultDateOffsetDays, true);
         });
 
-        document.querySelectorAll('.filter-input[data-end-date-field][data-start-date-field]').forEach((form) => {
-            const endName = form.dataset.endDateField || '';
-            const endInput = endName ? form.querySelector(`[name="${CSS.escape(endName)}"]`) : null;
-            if (!endInput || endInput.hasAttribute('data-default-date-offset-days') || endInput.value || form.dataset.hasSearchContext !== 'false') return;
-            applyRelativeDefault(form, endInput, form.dataset.startDateField, 3, false);
-        });
     }
 
     /**
@@ -4142,7 +4136,7 @@
             if (predefinedInput && predefinedInput.value) return;
 
             // Invalid if: has value but not selected AND missing valid coordinates
-            if (hasValue && !placeSelected) {
+            if (hasValue && !placeSelected && !hasValidCoords) {
                 isValid = false;
             }
         });

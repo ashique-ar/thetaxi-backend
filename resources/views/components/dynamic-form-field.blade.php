@@ -243,7 +243,7 @@
                    {{ $required ? 'required' : '' }}
                    data-enable-time="false"
                    data-date-format="d/m/Y"
-                   @if($submitAs === 'return_date')
+                   @if($isConfiguredEndDate ?? false)
                        data-inclusive-duration="true"
                    @endif
                    @if(isset($defaultDateOffsetDays, $defaultDateFromControl) && $defaultDateOffsetDays !== null && $defaultDateFromControl !== '')

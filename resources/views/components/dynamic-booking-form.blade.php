@@ -353,6 +353,9 @@
         @php
             $isReturnConditional = in_array($submitAs, ['return_date', 'return_time'], true)
                 || ($field['conditional'] ?? '') === 'is_return_trip';
+            $isConfiguredEndDate = $fieldType === 'date'
+                && $submitAs !== ''
+                && $submitAs === $endDateField;
             $showConditional = !$isReturnConditional || (bool) old('is_return_trip', $rideNowIsReturnTrip ?? false);
         @endphp
         <div class="dynamic-field-layout dynamic-field-width-{{ $configuredWidth }} dynamic-field-tablet-{{ $configuredTabletWidth }} dynamic-field-mobile-{{ $configuredMobileWidth }}"
@@ -364,6 +367,7 @@
             @include('components.dynamic-form-field', [
                 'fieldName' => $fieldName,
                 'field' => $field,
+                'isConfiguredEndDate' => $isConfiguredEndDate,
                 'defaultDateOffsetDays' => $field['default_date_offset_days'] ?? null,
                 'defaultDateFromControl' => $defaultDateFromControl,
                 'prefix' => $prefix,
