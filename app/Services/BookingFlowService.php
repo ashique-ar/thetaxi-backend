@@ -72,6 +72,7 @@ class BookingFlowService
      * when the same route is priced across multiple vehicle groups.
      */
     private array $companyDistanceCache = [];
+    private ?bool $includeGarageDistanceForPricing = null;
 
     /** Reuse pricing metadata while ranking groups in one availability request. */
     private array $availabilityPricingDefinitionCache = [];
@@ -5191,6 +5192,19 @@ class BookingFlowService
         return $serviceType;
     }
 
+    private function includeGarageDistanceForPricing(): bool
+    {
+        if ($this->includeGarageDistanceForPricing === null) {
+            $settings = app(WebsiteSettingsService::class)->getBookingSettings();
+            $this->includeGarageDistanceForPricing = filter_var(
+                $settings['include_garage_distance_in_pricing'] ?? true,
+                FILTER_VALIDATE_BOOLEAN
+            );
+        }
+
+        return $this->includeGarageDistanceForPricing;
+    }
+
     private function prepareCalculationInputs(array $params): array
     {
         $hasDurationMinutes = array_key_exists('duration_minutes', $params) && is_numeric($params['duration_minutes']);
@@ -5313,6 +5327,7 @@ class BookingFlowService
         $minimumKm = null;
 
         $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
+        $inputs['include_garage_distance'] = $this->includeGarageDistanceForPricing();
         $defaultCompany = \App\Models\Company::getDefaultCompany();
         $deliveryLocation = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId)
             ? ($params['dropoff_location'] ?? [])
@@ -6999,12 +7014,7 @@ class BookingFlowService
 
         }
 
-        // Get booking settings to check if garage distance should be included
-        $bookingSettings = app(\App\Services\WebsiteSettingsService::class)->getBookingSettings();
-        $includeGarageDistance = filter_var(
-            $bookingSettings['include_garage_distance_in_pricing'] ?? true,
-            FILTER_VALIDATE_BOOLEAN
-        );
+        $includeGarageDistance = $this->includeGarageDistanceForPricing();
 
         $cacheKey = md5(json_encode([
             'service_type' => $serviceType,

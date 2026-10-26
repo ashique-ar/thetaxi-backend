@@ -13,6 +13,8 @@ class CreateCompanyRequest extends FormRequest
         return [
             'name' => ['required', 'string', 'max:255'],
             'address' => ['nullable', 'string'],
+            'latitude' => ['nullable', 'numeric', 'between:-90,90', 'required_with:longitude'],
+            'longitude' => ['nullable', 'numeric', 'between:-180,180', 'required_with:latitude'],
             'email' => ['nullable', 'email', 'max:255'],
             'phone' => ['nullable', 'string', 'max:50'],
             'website' => ['nullable', 'url', 'max:255'],

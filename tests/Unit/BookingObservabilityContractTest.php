@@ -164,7 +164,7 @@ it('applies allowlisted trace filters before cursor pagination and exposes only 
     $service = file_get_contents(app_path('Services/BookingObservabilityService.php'));
 
     expect($controller)
-        ->toContain('in:all,operations,journey,finance,communications,documents,administration,exceptions')
+        ->toContain('in:all,operations,journey,recovery,finance,communications,documents,administration,exceptions')
         ->toContain("\$validated['filter'] ?? 'all'");
     expect($service)
         ->toContain('->filter(fn (array $event): bool => $this->matchesTraceFilter($event, $filter))')
@@ -174,6 +174,27 @@ it('applies allowlisted trace filters before cursor pagination and exposes only 
         ->toContain("['section' => 'communication', 'label' => 'View communication']")
         ->toContain("['section' => 'documents', 'label' => 'View documents']")
         ->not->toContain("'download_url' => '/");
+});
+
+it('connects authenticated per-hire mobile recovery events to the filtered booking trace', function () {
+    $controller = file_get_contents(app_path('Http/Controllers/Api/Driver/Mobile/HireRecoveryController.php'));
+    $service = file_get_contents(app_path('Services/BookingObservabilityService.php'));
+    $migration = file_get_contents(database_path('migrations/2026_10_26_000001_create_driver_hire_recovery_events_table.php'));
+    $portal = file_get_contents(base_path('../portal-thetaxi/src/app/modules/booking/components/booking-management/booking-management.component.ts'));
+
+    expect($controller)
+        ->toContain("where('driver_id', \$driver->id)")
+        ->toContain('insertOrIgnore')
+        ->toContain("'assignment_id' => \$assignment->id");
+    expect($migration)
+        ->toContain("'event_id'")
+        ->toContain("'trip_mode'")
+        ->toContain("'correlation_id'");
+    expect($service)
+        ->toContain('private function hireRecoveryEvents(')
+        ->toContain("'trip_mode' => \$event->trip_mode")
+        ->toContain("'recovery' => \$event['source'] === 'tracking'");
+    expect($portal)->toContain("{ id: 'recovery', label: 'App recovery' }");
 });
 
 it('segments replay chronologically at lifecycle and telemetry gaps with page-scoped quality evidence', function () {

@@ -14,6 +14,7 @@ use App\Http\Controllers\Api\Driver\Mobile\NotificationController;
 use App\Http\Controllers\Api\Driver\Mobile\AppSettingsController;
 use App\Http\Controllers\Api\Driver\Mobile\OnboardingController;
 use App\Http\Controllers\Api\Driver\Mobile\DiagnosticReportController;
+use App\Http\Controllers\Api\Driver\Mobile\HireRecoveryController;
 use App\Http\Controllers\Api\UtilityController;
 
 /*
@@ -55,6 +56,8 @@ Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
 
     Route::post('diagnostic-reports', [DiagnosticReportController::class, 'store'])
         ->middleware('throttle:30,1');
+    Route::post('hire-recovery-events', [HireRecoveryController::class, 'store'])
+        ->middleware('throttle:60,1');
     
     // Authentication routes
     Route::prefix('auth')->group(function () {

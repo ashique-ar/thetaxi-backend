@@ -84,6 +84,12 @@ class BookingObservabilityService
         $tripEvents = $bookingItemId
             ? $this->tripMilestoneEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
             : collect();
+        $tripStopEvents = $bookingItemId
+            ? $this->tripStopEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
+            : collect();
+        $recoveryEvents = $bookingItemId
+            ? $this->hireRecoveryEvents($booking, $bookingItemId, $decodedCursor, $limit + 1)
+            : collect();
         $communicationEvents = $this->communicationItems($booking, $bookingItemId)
             ->when(!$bookingItemId, fn(Collection $items) => $items->whereNull('booking_item_id'))
             ->map(fn (array $event): array => $this->mapCommunicationTraceEvent($booking, $event));
@@ -92,6 +98,8 @@ class BookingObservabilityService
             ->map(fn (array $event): array => $this->mapDocumentTraceEvent($booking, $event));
 
         $events = $events->concat($deletedActivities)->concat($financialEvents)->concat($tripEvents)
+            ->concat($tripStopEvents)
+            ->concat($recoveryEvents)
             ->concat($communicationEvents)->concat($documentEvents)
             ->map(fn (array $event): array => $this->withTraceIntegrity($event))
             ->unique('deduplication_key')
@@ -792,6 +800,128 @@ class BookingObservabilityService
         })->values();
     }
 
+    private function hireRecoveryEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
+    {
+        $assignments = DriverAssignment::query()
+            ->with('driver.user:id,first_name,last_name')
+            ->where('booking_id', $booking->id)
+            ->where('booking_item_id', $bookingItemId)
+            ->get(['id', 'driver_id']);
+        if ($assignments->isEmpty()) return collect();
+
+        return DB::table('driver_hire_recovery_events')
+            ->whereIn('assignment_id', $assignments->pluck('id'))
+            ->when($cursor, fn ($query) => $query->where('occurred_at', '<=', $cursor[0]))
+            ->orderByDesc('occurred_at')->orderByDesc('event_id')->limit($limit)->get()
+            ->map(function ($event) use ($booking, $bookingItemId, $assignments): array {
+                $assignment = $assignments->firstWhere('id', $event->assignment_id);
+                $driver = $assignment?->driver;
+                $driverName = trim((string) (($driver?->user?->first_name ?? '') . ' ' . ($driver?->user?->last_name ?? '')));
+                $failed = in_array($event->outcome, ['failed', 'uncertain', 'error'], true);
+                return [
+                    'id' => 'hire-recovery:' . $event->event_id,
+                    'booking_id' => (string) $booking->id,
+                    'booking_item_id' => $bookingItemId,
+                    'occurred_at' => Carbon::parse($event->occurred_at)->utc()->toIso8601String(),
+                    'source' => 'tracking',
+                    'event_type' => $event->event_type,
+                    'title' => $event->event_type === 'recovery_attempt' ? 'Mobile hire recovery attempted' : 'Mobile hire recovery ' . str_replace('_', ' ', $event->outcome),
+                    'description' => $event->error_code ? 'Error: ' . $event->error_code : null,
+                    'actor' => ['id' => (string) $event->driver_id, 'name' => $driverName !== '' ? $driverName : 'Driver', 'type' => 'driver'],
+                    'from_status' => $event->prior_state,
+                    'to_status' => $event->new_state,
+                    'severity' => $failed ? 'warning' : 'info',
+                    'correlation_id' => (string) $event->correlation_id,
+                    'metadata' => array_filter([
+                        'reason' => $event->reason,
+                        'trip_mode' => $event->trip_mode,
+                        'outcome' => $event->outcome,
+                        'cause' => $event->cause,
+                        'error_code' => $event->error_code,
+                        'connection_state' => $event->connection_state,
+                        'device_uuid' => $event->device_uuid,
+                        'app_version' => $event->app_version,
+                        'app_build' => $event->app_build,
+                    ], fn ($value) => $value !== null),
+                    'evidence' => ['section' => 'tracking', 'label' => 'View trip tracking'],
+                ];
+            });
+    }
+
+    private function tripStopEvents(Booking $booking, string $bookingItemId, ?array $cursor, int $limit): Collection
+    {
+        return DriverAssignment::query()
+            ->with(['driver.user:id,first_name,last_name', 'stops'])
+            ->where('booking_id', $booking->id)
+            ->where('booking_item_id', $bookingItemId)
+            ->when($cursor, fn ($query) => $query->where('created_at', '<=', $cursor[0]))
+            ->orderByDesc('created_at')->orderByDesc('id')->limit($limit)->get()
+            ->flatMap(function (DriverAssignment $assignment) use ($booking, $bookingItemId): array {
+                $driverName = trim((string) (($assignment->driver?->user?->first_name ?? '') . ' ' . ($assignment->driver?->user?->last_name ?? '')));
+                return $assignment->stops->flatMap(function ($stop) use ($assignment, $booking, $bookingItemId, $driverName): array {
+                    $stopLabel = ucfirst((string) $stop->stop_type) . ' stop ' . $stop->route_order;
+                    $events = [];
+                    if ($stop->arrived_at) {
+                        $events[] = $this->mapTripStopEvent(
+                            $assignment, $stop, $booking, $bookingItemId, $driverName,
+                            'arrived', 'Stop arrived', $stop->arrived_at, 'pending', 'arrived',
+                        );
+                    }
+                    if ($stop->completed_at) {
+                        $status = (string) $stop->status;
+                        $label = $status === 'skipped' ? 'Stop skipped' : ($status === 'picked_up' ? 'Passenger picked up' : ($status === 'dropped_off' ? 'Passenger dropped off' : 'Stop completed'));
+                        $events[] = $this->mapTripStopEvent(
+                            $assignment, $stop, $booking, $bookingItemId, $driverName,
+                            'completed', $label, $stop->completed_at, $stop->arrived_at ? 'arrived' : 'pending', $status,
+                        );
+                    }
+                    return array_map(fn (array $event) => [...$event, 'description' => $stopLabel], $events);
+                })->all();
+            })->values();
+    }
+
+    private function mapTripStopEvent(
+        DriverAssignment $assignment,
+        $stop,
+        Booking $booking,
+        string $bookingItemId,
+        string $driverName,
+        string $milestone,
+        string $title,
+        $occurredAt,
+        string $fromStatus,
+        string $toStatus,
+    ): array {
+        $eventType = 'stop_' . $milestone;
+        return [
+            'id' => 'assignment:' . $assignment->id . ':stop:' . $stop->id . ':' . $milestone,
+            'booking_id' => (string) $booking->id,
+            'booking_item_id' => $bookingItemId,
+            'occurred_at' => Carbon::parse($occurredAt)->utc()->toIso8601String(),
+            'source' => 'trip',
+            'event_type' => $eventType,
+            'title' => $title,
+            'description' => null,
+            'actor' => [
+                'id' => $assignment->driver_id ? (string) $assignment->driver_id : null,
+                'name' => $driverName !== '' ? $driverName : 'Driver',
+                'type' => $assignment->driver_id ? 'driver' : 'system',
+            ],
+            'from_status' => $fromStatus,
+            'to_status' => $toStatus,
+            'severity' => $toStatus === 'skipped' ? 'warning' : ($milestone === 'completed' ? 'success' : 'info'),
+            'correlation_id' => implode(':', ['assignment', $assignment->id, 'stop', $stop->id, $milestone]),
+            'metadata' => [
+                'assignment_status' => (string) $assignment->status,
+                'stop_type' => (string) $stop->stop_type,
+                'route_order' => (int) $stop->route_order,
+                'completed_action' => $stop->completed_action,
+            ],
+            'evidence' => ['section' => 'tracking', 'label' => 'View trip tracking'],
+            'actor_display_snapshot' => $driverName !== '' ? $driverName : null,
+        ];
+    }
+
     private function communicationItems(Booking $booking, ?string $bookingItemId): Collection
     {
         $events = Invoice::query()->where('booking_id', $booking->id)
@@ -991,6 +1121,7 @@ class BookingObservabilityService
         return match ($filter) {
             'operations' => in_array($event['source'], ['lifecycle', 'trip'], true),
             'journey' => in_array($event['source'], ['trip', 'tracking'], true),
+            'recovery' => $event['source'] === 'tracking' && str_starts_with($event['event_type'], 'recovery_'),
             'finance' => $event['source'] === 'finance',
             'communications' => $event['source'] === 'communication',
             'documents' => $event['source'] === 'document',

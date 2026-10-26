@@ -11,7 +11,7 @@ final class SingleCompanyScope
     {
         $query = Company::query()->where('is_active', true)->where('is_default', true);
         if ($forUpdate) $query->lockForUpdate();
-        $defaults = $query->limit(2)->get(['id', 'name', 'is_default']);
+        $defaults = $query->limit(2)->get(['id', 'name', 'address', 'latitude', 'longitude', 'is_default']);
 
         if ($defaults->count() === 1) return $defaults->first();
         if ($defaults->count() > 1) return null;
@@ -19,7 +19,7 @@ final class SingleCompanyScope
         return DB::transaction(function (): ?Company {
             DB::table('companies')->whereNull('deleted_at')->orderBy('id')->lockForUpdate()->get(['id']);
             $defaults = Company::query()->where('is_active', true)->where('is_default', true)
-                ->lockForUpdate()->limit(2)->get(['id', 'name', 'is_default']);
+                ->lockForUpdate()->limit(2)->get(['id', 'name', 'address', 'latitude', 'longitude', 'is_default']);
             if ($defaults->count() === 1) return $defaults->first();
             if ($defaults->count() > 1) return null;
 

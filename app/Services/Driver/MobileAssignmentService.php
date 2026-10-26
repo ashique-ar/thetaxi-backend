@@ -136,7 +136,7 @@ class MobileAssignmentService
         $this->excludeTerminalBookings($query);
         $this->excludeStaleOffers($query);
 
-        return $query
+        $activeAssignment = $query
             ->where('assigned_from', '<=', $now)
             ->where(function (Builder $query) use ($now) {
                 $query->whereNull('assigned_to')
@@ -144,6 +144,18 @@ class MobileAssignmentService
             })
             ->orderByDesc('assigned_from')
             ->first();
+        if ($activeAssignment) return $activeAssignment;
+
+        return $this->baseAssignmentQuery($driver)
+            ->where('trip_phase', TripPhase::COMPLETED)
+            ->whereNotNull('trip_completed_at')
+            ->with('booking')
+            ->orderByDesc('trip_completed_at')
+            ->limit(50)
+            ->get()
+            ->first(fn (DriverAssignment $assignment) =>
+                app(BookingPaymentPolicy::class)->requiresDriverCollection($assignment->booking)
+            );
     }
 
     /** Resolve a notification's assignment by ID without relying on the inbox query. */
@@ -712,6 +724,15 @@ class MobileAssignmentService
         $payload['amount_to_collect'] = $paymentDetails['payment_collection_required']
             ? max(0, round($fareAmount - (float) ($booking?->payment_collected_amount ?? 0), 2))
             : null;
+        $payload['payment'] = [
+            'collection_required' => (bool) $paymentDetails['payment_collection_required'],
+            'amount_to_collect' => $paymentDetails['payment_collection_required']
+                ? max(0, round($fareAmount - (float) ($booking?->payment_collected_amount ?? 0), 2))
+                : 0,
+            'currency' => $bookingItem?->currency ?? $booking?->currency,
+            'collection_message' => $paymentDetails['payment_instruction'],
+            'collection_status' => $paymentDetails['payment_collection_status'],
+        ];
         $payload['duration_days'] = $pricingMetrics['duration_days'];
         $payload['duration_hours'] = $pricingMetrics['duration_hours'];
         $payload['duration_minutes'] = $pricingMetrics['duration_minutes'];
@@ -755,6 +776,12 @@ class MobileAssignmentService
         $payload['customer_email'] = $bookingParty['traveler_email'] ?? $customerUser?->email;
         $payload['pickup_location_label'] = $this->extractLocationLabel($bookingItem?->pickup_location);
         $payload['dropoff_location_label'] = $this->extractLocationLabel($bookingItem?->dropoff_location);
+        $payload['pickup_location'] = $bookingItem?->pickup_location;
+        $payload['dropoff_location'] = $bookingItem?->dropoff_location;
+        $payload['pickup_latitude'] = $bookingItem?->pickup_latitude;
+        $payload['pickup_longitude'] = $bookingItem?->pickup_longitude;
+        $payload['dropoff_latitude'] = $bookingItem?->dropoff_latitude;
+        $payload['dropoff_longitude'] = $bookingItem?->dropoff_longitude;
         $itemMetadata = is_array($bookingItem?->metadata) ? $bookingItem->metadata : [];
         $isOpenPackage = ($itemMetadata['trip_mode'] ?? null) === 'open_package';
         $payload['trip_mode'] = $isOpenPackage ? 'open_package' : 'fixed_route';

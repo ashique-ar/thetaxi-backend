@@ -660,6 +660,9 @@ it('keeps the supported assignment payload unchanged for a non-policy booking', 
     $item = BookingItem::create([
         'booking_id' => $booking->id,
         'metadata' => ['trip_mode' => 'open_package'],
+        'pickup_location' => ['address' => 'Pickup Point', 'latitude' => 6.9, 'longitude' => 79.8],
+        'pickup_latitude' => 6.9,
+        'pickup_longitude' => 79.8,
         'unit_price' => 3200,
         'total_price' => 3200,
     ]);
@@ -699,6 +702,9 @@ it('keeps the supported assignment payload unchanged for a non-policy booking', 
     ])->and($payload['booking_number'])->toBe('NORMAL-1001')
         ->and($payload['total_amount'])->toBe(3200.0)
         ->and($payload['trip_mode'])->toBe('open_package')
+        ->and($payload['payment']['collection_required'])->toBeTrue()
+        ->and($payload['pickup_location']['address'])->toBe('Pickup Point')
+        ->and($payload['pickup_latitude'])->toBe(6.9)
         ->and($payload['route_stops'])->toBe([])
         ->and($payload['allowed_actions'])->toBe(['accept', 'decline'])
         ->and($payload)->not->toHaveKeys([
@@ -707,6 +713,32 @@ it('keeps the supported assignment payload unchanged for a non-policy booking', 
             'defined_return',
             'distance_policy',
         ]);
+});
+
+it('restores a completed hire only while authoritative driver payment remains due', function () {
+    $driver = Driver::create(['code' => 'PAYMENT-RECOVERY']);
+    $booking = Booking::create([
+        'status' => 'completed',
+        'payment_collection_method' => 'driver_cash',
+        'payment_collection_status' => 'pending',
+        'payment_status' => 'pending',
+        'total_actual' => 5000,
+        'currency' => 'LKR',
+    ]);
+    $item = BookingItem::create(['booking_id' => $booking->id, 'total_price' => 5000]);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id,
+        'booking_id' => $booking->id,
+        'booking_item_id' => $item->id,
+        'status' => 'completed',
+        'trip_phase' => TripPhase::COMPLETED,
+        'trip_completed_at' => now()->subMinute(),
+    ]);
+
+    expect($this->assignmentService->getCurrentAssignment($driver)?->id)->toBe($assignment->id);
+
+    $booking->update(['payment_collection_status' => 'driver_collected', 'payment_status' => 'paid']);
+    expect($this->assignmentService->getCurrentAssignment($driver))->toBeNull();
 });
 
 it('reconciles a stale booking item pointer for a single-item driver assignment', function () {

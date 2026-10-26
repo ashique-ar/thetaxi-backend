@@ -15,6 +15,7 @@ use App\Models\Vehicle\VehicleGroup;
 use App\Services\Pricing\PricingCalculationDefinitionHealthService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
 use App\Services\VehiclePricingSlabConfigurationService;
+use App\Services\WebsiteSettingsService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
@@ -712,6 +713,11 @@ class VehiclePricingCalculationDefinitionController extends Controller
         ?string $ownerId
     ): array {
         $inputs = $this->normalizeDurationInputs($inputs);
+        $bookingSettings = app(WebsiteSettingsService::class)->getBookingSettings();
+        $inputs['include_garage_distance'] = filter_var(
+            $bookingSettings['include_garage_distance_in_pricing'] ?? true,
+            FILTER_VALIDATE_BOOL
+        );
         $inputs['pricing_mode'] ??= ServiceType::query()->whereKey($serviceTypeId)->value('pricing_mode');
         $usesPackage = collect($definitions)->contains(fn ($definition) => collect($definition->variables ?? [])
             ->contains(fn ($variable) => in_array($variable['name'] ?? null, [
