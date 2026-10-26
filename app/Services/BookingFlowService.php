@@ -5323,8 +5323,9 @@ class BookingFlowService
         $serviceType = $this->resolveCalculationServiceType($serviceTypeId, $params);
         $inputs['include_garage_distance'] = $this->includeGarageDistanceForPricing();
         $defaultCompany = \App\Models\Company::getDefaultCompany();
-        $deliveryLocation = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId)
-            ? ($params['dropoff_location'] ?? [])
+        $isWithDriver = $this->isWithDriverService($serviceType?->code ?? (string) $serviceTypeId);
+        $deliveryLocation = $isWithDriver
+            ? ($params['dropoff_location'] ?? $params['pickup_location'] ?? [])
             : ($params['pickup_location'] ?? []);
         $inputs['delivery_location_is_default_company'] = $defaultCompany
             ? $this->matchesCompanyLocation(
