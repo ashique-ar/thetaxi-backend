@@ -3,13 +3,9 @@
     border-radius: 16px !important;
 }
 
-/* Dynamic rows own their field grid; keep the outer form from narrowing them. */
-body.theme-theme-01 .filter-wrapper .filter-input:has(.dynamic-form-row) {
-    grid-template-columns: minmax(0, 1fr) !important;
-}
-
-body.theme-theme-01 .filter-wrapper .filter-input:has(.dynamic-form-row) > .primary-btn1 {
-    grid-column: 1 / -1 !important;
+/* Auto-width fields share each configured row evenly; current rows contain two fields. */
+body.theme-default .filter-wrapper .dynamic-field-width-auto {
+    grid-column: span 6 !important;
 }
 
 .theme-default .home4-banner-section .banner-content h1 {
