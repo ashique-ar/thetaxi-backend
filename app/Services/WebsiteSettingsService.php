@@ -163,9 +163,11 @@ class WebsiteSettingsService
     /**
      * Get multiple settings with caching
      */
-    public function getMultiple(array $types): array
+    public function getMultiple(array $types, ?string $companyId = null): array
     {
-        $companyId = $this->resolveCurrentCompanyId();
+        if (func_num_args() === 1) {
+            $companyId = $this->resolveCurrentCompanyId();
+        }
         $result = [];
         $uncachedTypes = [];
         $cacheKeysByType = [];
@@ -975,7 +977,10 @@ class WebsiteSettingsService
             'vat_applies_to_service_fee'
         ];
 
-        return $this->getMultiple($types);
+        $settings = $this->getMultiple($types);
+        $webxpayTypes = array_values(array_filter($types, static fn (string $type): bool => str_starts_with($type, 'webxpay_')));
+
+        return array_replace($settings, $this->getMultiple($webxpayTypes, Company::getDefaultCompany()?->id));
     }
 
     /**

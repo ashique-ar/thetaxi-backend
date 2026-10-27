@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api\Website;
 
 use App\Http\Controllers\Controller;
 use App\Models\Website\WebsiteSetting;
+use App\Models\Company;
 use App\Http\Requests\Website\WebsiteSetting\CreateWebsiteSettingRequest;
 use App\Http\Requests\Website\WebsiteSetting\UpdateWebsiteSettingRequest;
 use App\Http\Resources\Website\WebsiteSettingResource;
@@ -451,7 +452,9 @@ class WebsiteSettingController extends Controller
             $companyId = $this->settingsService->resolveCurrentCompanyId();
 
             foreach ($settings as $type => $value) {
-                $settingCompanyId = $type === 'feature_hr_attendance_ingestion_enabled' ? null : $companyId;
+                $settingCompanyId = $type === 'feature_hr_attendance_ingestion_enabled'
+                    ? null
+                    : (str_starts_with($type, 'webxpay_') ? Company::getDefaultCompany()?->id : $companyId);
                 $setting = WebsiteSetting::updateOrCreate(
                     ['type' => $type, 'company_id' => $settingCompanyId],
                     [
