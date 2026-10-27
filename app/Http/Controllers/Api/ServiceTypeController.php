@@ -55,6 +55,9 @@ class ServiceTypeController extends Controller
     public function store(CreateServiceTypeRequest $request): JsonResponse
     {
         $data = $request->validated();
+        $tripMode = $data['trip_mode'] ?? 'fixed_route';
+        unset($data['trip_mode']);
+        $data['form_config'] = array_merge($data['form_config'] ?? [], ['trip_mode' => $tripMode]);
         [$context, $ownerType, $ownerId] = $this->resolveScope($request);
         $data['context'] = $data['context'] ?? $context;
         $data['owner_type'] = $data['owner_type'] ?? $ownerType;
@@ -62,6 +65,7 @@ class ServiceTypeController extends Controller
         $data['slug'] = $data['slug'] ?? Str::slug($data['code']);
         $data['created_user_id'] = $request->user()->id;
         $svc = ServiceType::create($data);
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         Cache::forget('sitemap');
 
@@ -86,6 +90,12 @@ class ServiceTypeController extends Controller
     {
         $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $data = $request->validated();
+        if (array_key_exists('trip_mode', $data)) {
+            $formConfig = $serviceType->form_config ?? [];
+            $formConfig['trip_mode'] = $data['trip_mode'];
+            $data['form_config'] = $formConfig;
+            unset($data['trip_mode']);
+        }
         [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
         $data['context'] = $data['context'] ?? $context;
         $data['owner_type'] = $data['owner_type'] ?? $ownerType;
@@ -111,6 +121,7 @@ class ServiceTypeController extends Controller
             $serviceType->slug = Str::slug($serviceType->code);
         }
         $serviceType->save();
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         Cache::forget('sitemap');
         return response()->json([

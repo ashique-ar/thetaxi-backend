@@ -47,6 +47,7 @@ class UpdateServiceTypeRequest extends FormRequest
             'owner_id' => ['sometimes', 'nullable', 'string', 'max:100'],
             'description' => ['sometimes', 'nullable', 'string'],
             'type' => ['sometimes', 'nullable', 'string'],
+            'trip_mode' => ['sometimes', 'required', 'string', 'in:fixed_route,open_package'],
             'slug' => [
                 'sometimes',
                 'nullable',

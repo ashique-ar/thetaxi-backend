@@ -39,6 +39,7 @@ class CreateServiceTypeRequest extends FormRequest
             'owner_id' => ['sometimes', 'nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
             'type' => ['nullable', 'string'],
+            'trip_mode' => ['sometimes', 'required', 'string', 'in:fixed_route,open_package'],
             'slug' => [
                 'nullable',
                 'string',
