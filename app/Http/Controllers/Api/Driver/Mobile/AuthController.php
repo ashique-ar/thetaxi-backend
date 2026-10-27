@@ -49,22 +49,41 @@ class AuthController extends Controller
     public function requestOtp(Request $request, SmsService $sms): JsonResponse
     {
         $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        $cooldownKey = 'driver_auth_otp_cooldown:'.sha1($mobile);
+        $cooldownUntil = now()->addSeconds(60);
+        if (! Cache::add($cooldownKey, $cooldownUntil->timestamp, $cooldownUntil)) {
+            $retryAfter = max(1, (int) Cache::get($cooldownKey, now()->timestamp) - now()->timestamp);
+
+            return response()->json([
+                'status' => 'error', 'code' => 'OTP_RESEND_COOLDOWN', 'retry_after' => $retryAfter,
+                'message' => "Please wait {$retryAfter} seconds before requesting another code.",
+            ], 429);
+        }
+
         $appHash = trim((string) config('sms.driver_app_hash'));
         if ($appHash !== '' && ! preg_match('/^[A-Za-z0-9+\/]{11}$/', $appHash)) {
+            Cache::forget($cooldownKey);
             throw new \RuntimeException('Invalid driver Android SMS app hash configuration.');
         }
         $otp = (string) random_int(100000, 999999);
-        Cache::put($this->otpKey($mobile), Hash::make($otp), now()->addMinutes(10));
+        $otpKey = $this->otpKey($mobile);
+        Cache::put($otpKey, Hash::make($otp), now()->addMinutes(10));
         $message = "Your driver app OTP is {$otp}. It expires in 10 minutes.";
         if ($appHash !== '') {
             $message .= "\n{$appHash}";
         }
-        $sms->queueSingleMessage([
-            'recipient' => $mobile, 'message' => $message,
-            'source' => 'manual', 'context_type' => 'driver_authentication', 'event_key' => 'driver_authentication_otp',
-        ]);
+        try {
+            $sms->queueSingleMessage([
+                'recipient' => $mobile, 'message' => $message,
+                'source' => 'manual', 'context_type' => 'driver_authentication', 'event_key' => 'driver_authentication_otp',
+            ]);
+        } catch (\Throwable $exception) {
+            Cache::forget($otpKey);
+            Cache::forget($cooldownKey);
+            throw $exception;
+        }
 
-        return response()->json(['status' => 'success', 'message' => 'OTP sent.', 'data' => ['expires_in' => 600]]);
+        return response()->json(['status' => 'success', 'message' => 'OTP sent.', 'data' => ['expires_in' => 600, 'resend_after' => 60]]);
     }
 
     /** Verify an OTP and either log in an approved driver or resume onboarding. */

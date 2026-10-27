@@ -282,6 +282,8 @@
     ];
     let token = '';
     let otpSentTo = '';
+    let resendTimer = null;
+    let resendAvailableAt = 0;
     let activeStep = 0;
     let uploadedDocuments = new Set();
     let savedDocuments = new Map();
@@ -293,11 +295,32 @@
         message.setAttribute('role', type === 'error' ? 'alert' : 'status');
     };
     const clearMessage = () => { message.hidden = true; message.textContent = ''; message.className = 'driver-onboarding__message'; };
+    const resendButton = document.querySelector('#send-otp');
+    const resetResendCountdown = () => {
+        clearInterval(resendTimer);
+        resendTimer = null;
+        resendAvailableAt = 0;
+        resendButton.disabled = false;
+        resendButton.textContent = 'Resend code';
+    };
+    const startResendCountdown = seconds => {
+        clearInterval(resendTimer);
+        resendAvailableAt = Date.now() + Math.max(0, seconds) * 1000;
+        const update = () => {
+            const remaining = Math.max(0, Math.ceil((resendAvailableAt - Date.now()) / 1000));
+            resendButton.disabled = remaining > 0;
+            resendButton.textContent = remaining ? `Resend in ${remaining}s` : 'Resend code';
+            if (!remaining) { clearInterval(resendTimer); resendTimer = null; }
+        };
+        update();
+        if (resendAvailableAt > Date.now()) resendTimer = setInterval(update, 1000);
+    };
     const resetOtpForChangedNumber = () => {
         if (!otpSentTo || mobileIti.getNumber() === otpSentTo) return;
         document.querySelector('#otp-field').hidden = true;
         document.querySelector('#otp').value = '';
         document.querySelector('#verify-mobile').textContent = 'Send verification code';
+        resetResendCountdown();
         otpSentTo = '';
         clearMessage();
     };
@@ -308,7 +331,12 @@
             headers: { Accept: 'application/json', ...(isFormData ? {} : { 'Content-Type': 'application/json' }), ...(token ? { Authorization: `Bearer ${token}` } : {}), ...options.headers },
         });
         const data = await response.json();
-        if (!response.ok) throw new Error(Object.values(data.errors || {}).flat().join(' ') || data.message || 'We could not save that step. Check your details and try again.');
+        if (!response.ok) {
+            const error = new Error(Object.values(data.errors || {}).flat().join(' ') || data.message || 'We could not save that step. Check your details and try again.');
+            error.code = data.code;
+            error.retryAfter = Number(data.retry_after || response.headers.get('Retry-After') || 0);
+            throw error;
+        }
         return data.data;
     };
     const setBusy = (button, busy, busyText, idleText) => {
@@ -563,6 +591,7 @@
     const sendCode = async button => {
         const mobile = document.querySelector('#mobile');
         if (!mobile.reportValidity()) return;
+        let mobileNumber = '';
         clearMessage();
         const oldText = button.textContent;
         setBusy(button, true, 'Sending code…', oldText);
@@ -570,8 +599,8 @@
             try { await mobileIti.promise; }
             catch { throw new Error('Phone number validation could not load. Please refresh and try again.'); }
             if (!mobileIti.isValidNumber()) throw new Error('Enter a valid international mobile number.');
-            const mobileNumber = mobileIti.getNumber();
-            await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
+            mobileNumber = mobileIti.getNumber();
+            const result = await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
             if (mobileIti.getNumber() !== mobileNumber) {
                 showMessage('Your number changed while the code was being sent. Send a new code to the updated number.');
                 return;
@@ -579,15 +608,24 @@
             otpSentTo = mobileNumber;
             document.querySelector('#otp-field').hidden = false;
             document.querySelector('#verify-mobile').textContent = 'Verify number';
+            startResendCountdown(result.resend_after);
             document.querySelector('#otp').focus();
             showMessage('Code sent. Check your messages and enter it above.');
-        } catch (error) { showMessage(error.message, 'error'); }
+        } catch (error) {
+            if (error.code === 'OTP_RESEND_COOLDOWN') {
+                otpSentTo = mobileNumber;
+                document.querySelector('#otp-field').hidden = false;
+                document.querySelector('#verify-mobile').textContent = 'Verify number';
+                startResendCountdown(error.retryAfter);
+            }
+            showMessage(error.message, 'error');
+        }
         finally { setBusy(button, false, '', button.id === 'verify-mobile' ? (document.querySelector('#otp-field').hidden ? 'Send verification code' : 'Verify number') : 'Resend code'); }
     };
 
     mobileInput.addEventListener('input', resetOtpForChangedNumber);
     mobileInput.addEventListener('countrychange', resetOtpForChangedNumber);
-    document.querySelector('#send-otp').addEventListener('click', event => sendCode(event.currentTarget));
+    resendButton.addEventListener('click', event => sendCode(event.currentTarget));
     otpForm.addEventListener('submit', async event => {
         event.preventDefault();
         const mobile = document.querySelector('#mobile');
