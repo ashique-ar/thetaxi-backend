@@ -9,6 +9,7 @@ use App\Http\Resources\Driver\DriverResource;
 use App\Http\Resources\Driver\DriverDeviceResource;
 use App\Http\Resources\UserResource;
 use App\Models\DriverAssignment;
+use App\Models\Driver\Driver;
 use App\Models\Driver\DriverOnboardingApplication;
 use App\Models\User;
 use App\Services\Driver\DriverAuthService;
@@ -49,6 +50,28 @@ class AuthController extends Controller
     public function requestOtp(Request $request, SmsService $sms): JsonResponse
     {
         $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        return $this->sendOtp($mobile, $sms);
+    }
+
+    /** Send an onboarding OTP only to numbers not already linked to a driver. */
+    public function requestOnboardingOtp(Request $request, SmsService $sms): JsonResponse
+    {
+        $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        if ($this->hasDriverAccount($mobile)) return $this->existingDriverResponse();
+
+        return $this->sendOtp($mobile, $sms);
+    }
+
+    public function verifyOnboardingOtp(Request $request): JsonResponse
+    {
+        $mobile = $this->mobile($request->validate(['mobile' => ['required', 'string', 'max:30']])['mobile']);
+        if ($this->hasDriverAccount($mobile)) return $this->existingDriverResponse();
+
+        return $this->verifyOtp($request);
+    }
+
+    private function sendOtp(string $mobile, SmsService $sms): JsonResponse
+    {
         $cooldownKey = 'driver_auth_otp_cooldown:'.sha1($mobile);
         $cooldownUntil = now()->addSeconds(60);
         if (! Cache::add($cooldownKey, $cooldownUntil->timestamp, $cooldownUntil)) {
@@ -490,6 +513,21 @@ class AuthController extends Controller
     {
         $digits = ltrim($mobile, '+');
         return User::whereRaw("REPLACE(REPLACE(REPLACE(REPLACE(REPLACE(phone, '+', ''), ' ', ''), '-', ''), '(', ''), ')', '') = ?", [$digits])->first();
+    }
+
+    private function hasDriverAccount(string $mobile): bool
+    {
+        $user = $this->findUser($mobile);
+
+        return $user && ($user->driverContext() || Driver::query()->where('user_id', $user->id)->exists());
+    }
+
+    private function existingDriverResponse(): JsonResponse
+    {
+        return response()->json([
+            'status' => 'error', 'code' => 'EXISTING_DRIVER',
+            'message' => 'This number is already linked to a driver. Please sign in through the driver app.',
+        ], 409);
     }
 
     private function otpKey(string $mobile): string { return 'driver_auth_otp:'.sha1($mobile); }

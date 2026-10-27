@@ -600,7 +600,7 @@
             catch { throw new Error('Phone number validation could not load. Please refresh and try again.'); }
             if (!mobileIti.isValidNumber()) throw new Error('Enter a valid international mobile number.');
             mobileNumber = mobileIti.getNumber();
-            const result = await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
+            const result = await request('auth/request-onboarding-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
             if (mobileIti.getNumber() !== mobileNumber) {
                 showMessage('Your number changed while the code was being sent. Send a new code to the updated number.');
                 return;
@@ -612,7 +612,13 @@
             document.querySelector('#otp').focus();
             showMessage('Code sent. Check your messages and enter it above.');
         } catch (error) {
-            if (error.code === 'OTP_RESEND_COOLDOWN') {
+            if (error.code === 'EXISTING_DRIVER') {
+                otpSentTo = '';
+                document.querySelector('#otp-field').hidden = true;
+                document.querySelector('#otp').value = '';
+                document.querySelector('#verify-mobile').textContent = 'Send verification code';
+                resetResendCountdown();
+            } else if (error.code === 'OTP_RESEND_COOLDOWN') {
                 otpSentTo = mobileNumber;
                 document.querySelector('#otp-field').hidden = false;
                 document.querySelector('#verify-mobile').textContent = 'Verify number';
@@ -637,7 +643,7 @@
         setBusy(verifyButton, true, 'Verifying…', 'Verify number');
         clearMessage();
         try {
-            const result = await request('auth/verify-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileIti.getNumber(), otp: otp.value.trim() }) });
+            const result = await request('auth/verify-onboarding-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileIti.getNumber(), otp: otp.value.trim() }) });
             if (result.flow !== 'registration') throw new Error('This number already has a driver account. Sign in through the driver app.');
             token = result.onboarding_token;
             if (result.application?.status && !['draft', 'changes_requested'].includes(result.application.status)) {
