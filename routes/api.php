@@ -2093,6 +2093,8 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('drivers/{driver}/test-notification', [DriverController::class, 'testNotification']);
         Route::post('drivers/{driver}/notifications/custom', [DriverController::class, 'sendCustomNotification'])
             ->middleware('permission:drivers.edit');
+        Route::post('drivers/notifications/custom', [DriverController::class, 'sendBulkCustomNotifications'])
+            ->middleware('permission:drivers.edit');
         Route::get('drivers/{driver}/activity', [DriverController::class, 'activity']);
         Route::apiResource('drivers', DriverController::class);
         Route::get('logsheets/stats', [DriverLogController::class, 'stats']);
