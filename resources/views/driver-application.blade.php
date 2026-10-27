@@ -563,11 +563,14 @@
     const sendCode = async button => {
         const mobile = document.querySelector('#mobile');
         if (!mobile.reportValidity()) return;
-        const mobileNumber = mobileIti.getNumber();
         clearMessage();
         const oldText = button.textContent;
         setBusy(button, true, 'Sending code…', oldText);
         try {
+            try { await mobileIti.promise; }
+            catch { throw new Error('Phone number validation could not load. Please refresh and try again.'); }
+            if (!mobileIti.isValidNumber()) throw new Error('Enter a valid international mobile number.');
+            const mobileNumber = mobileIti.getNumber();
             await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
             if (mobileIti.getNumber() !== mobileNumber) {
                 showMessage('Your number changed while the code was being sent. Send a new code to the updated number.');
