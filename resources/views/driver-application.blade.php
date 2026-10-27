@@ -3,6 +3,7 @@
 @section('title', 'Driver application')
 
 @push('styles')
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/css/intlTelInput.css">
 <style>
 .driver-onboarding {
     --do-accent: var(--primary-color1, #e31b23);
@@ -51,6 +52,7 @@
 .driver-onboarding__field label, .driver-onboarding__field legend { display: block; margin: 0 0 7px; color: var(--do-ink); font-size: 14px; font-weight: 650; line-height: 1.4; }
 .driver-onboarding__field input:not([type="checkbox"]):not([type="file"]), .driver-onboarding__field select { display: block; width: 100%; min-width: 0; max-width: 100%; min-height: 48px; padding: 10px 12px; border: 1px solid var(--do-line); border-radius: 8px; background-color: #fff; color: var(--do-ink); font: inherit; font-size: 16px; }
 .driver-onboarding__field input[type="file"] { display: block; width: 100%; min-width: 0; max-width: 100%; padding: 10px; border: 1px dashed var(--do-line); border-radius: 8px; background: var(--do-soft); color: var(--do-ink); font: inherit; font-size: 14px; }
+.driver-onboarding .iti { width: 100%; }
 .driver-onboarding__field input:focus-visible, .driver-onboarding__field select:focus-visible, .driver-onboarding__button:focus-visible, .driver-onboarding__review button:focus-visible { outline: 3px solid var(--do-accent-strong); outline-offset: 3px; }
 .driver-onboarding__help { display: block; margin-top: 6px; color: var(--do-muted); font-size: 13px; line-height: 1.45; }
 .driver-onboarding__check { display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--do-line); border-radius: 8px; color: var(--do-ink); font-size: 14px; font-weight: 600; line-height: 1.4; }
@@ -244,6 +246,7 @@
     </div>
 </section>
 
+<script src="https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/intlTelInput.js"></script>
 <script>
 (() => {
     const api = @json(url('/api/driver'));
@@ -252,6 +255,14 @@
     const applicationForm = document.querySelector('#driver-application-form');
     const progress = document.querySelector('#driver-progress');
     const message = document.querySelector('#driver-application-message');
+    const mobileInput = document.querySelector('#mobile');
+    const mobileIti = window.intlTelInput(mobileInput, {
+        initialCountry: 'lk',
+        preferredCountries: ['lk', 'in', 'us', 'gb', 'ca', 'au'],
+        separateDialCode: true,
+        formatAsYouType: true,
+        utilsScript: 'https://cdn.jsdelivr.net/npm/intl-tel-input@17/build/js/utils.js'
+    });
     const steps = [
         { title: 'Personal details', description: 'Enter your name and identity details as they appear on your documents.' },
         { title: 'Address', description: 'Tell us where you live so we can complete your application.' },
@@ -270,6 +281,7 @@
         { type: 'vehicle_registration', label: 'Vehicle registration' },
     ];
     let token = '';
+    let otpSentTo = '';
     let activeStep = 0;
     let uploadedDocuments = new Set();
     let savedDocuments = new Map();
@@ -281,6 +293,14 @@
         message.setAttribute('role', type === 'error' ? 'alert' : 'status');
     };
     const clearMessage = () => { message.hidden = true; message.textContent = ''; message.className = 'driver-onboarding__message'; };
+    const resetOtpForChangedNumber = () => {
+        if (!otpSentTo || mobileIti.getNumber() === otpSentTo) return;
+        document.querySelector('#otp-field').hidden = true;
+        document.querySelector('#otp').value = '';
+        document.querySelector('#verify-mobile').textContent = 'Send verification code';
+        otpSentTo = '';
+        clearMessage();
+    };
     const request = async (path, options = {}) => {
         const isFormData = options.body instanceof FormData;
         const response = await fetch(`${api}/${path}`, {
@@ -454,7 +474,7 @@
         const make = get('make_id') === 'other' ? get('other_make') : document.querySelector('#make').selectedOptions[0]?.textContent || '—';
         const model = get('make_id') === 'other' ? get('other_model') : document.querySelector('#model').selectedOptions[0]?.textContent || '—';
         const groups = [
-            { title: 'Personal details', step: 0, items: [['Name', `${get('first_name')} ${get('last_name')}`], ['Email', get('email')], ['NIC', get('nic')], ['Mobile', document.querySelector('#mobile').value.trim()]] },
+            { title: 'Personal details', step: 0, items: [['Name', `${get('first_name')} ${get('last_name')}`], ['Email', get('email')], ['NIC', get('nic')], ['Mobile', mobileIti.getNumber()]] },
             { title: 'Address', step: 1, items: [['Address', get('address')], ['Country', document.querySelector('#country').selectedOptions[0]?.textContent || '—'], ['State or province', document.querySelector('#state').selectedOptions[0]?.textContent || '—'], ['City', get('city')], ['Postal code', get('postal_code')]] },
             { title: 'Vehicle', step: 2, items: [['Make and model', `${make} ${model}`], ['Model year', get('model_year')], ['Color', get('color')], ['Registration year', get('registration_year')], ['License plate', get('license_plate')], ['Owner', document.querySelector('#is-owner').checked ? 'Yes' : 'No']] },
             { title: 'Documents', step: 3, items: documents.map(doc => [doc.label, uploadedDocuments.has(doc.type) ? 'On file' : document.querySelector(`[data-document="${doc.type}"]`)?.files?.[0]?.name || '—']) },
@@ -543,11 +563,17 @@
     const sendCode = async button => {
         const mobile = document.querySelector('#mobile');
         if (!mobile.reportValidity()) return;
+        const mobileNumber = mobileIti.getNumber();
         clearMessage();
         const oldText = button.textContent;
         setBusy(button, true, 'Sending code…', oldText);
         try {
-            await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobile.value.trim() }) });
+            await request('auth/request-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileNumber }) });
+            if (mobileIti.getNumber() !== mobileNumber) {
+                showMessage('Your number changed while the code was being sent. Send a new code to the updated number.');
+                return;
+            }
+            otpSentTo = mobileNumber;
             document.querySelector('#otp-field').hidden = false;
             document.querySelector('#verify-mobile').textContent = 'Verify number';
             document.querySelector('#otp').focus();
@@ -556,6 +582,8 @@
         finally { setBusy(button, false, '', button.id === 'verify-mobile' ? (document.querySelector('#otp-field').hidden ? 'Send verification code' : 'Verify number') : 'Resend code'); }
     };
 
+    mobileInput.addEventListener('input', resetOtpForChangedNumber);
+    mobileInput.addEventListener('countrychange', resetOtpForChangedNumber);
     document.querySelector('#send-otp').addEventListener('click', event => sendCode(event.currentTarget));
     otpForm.addEventListener('submit', async event => {
         event.preventDefault();
@@ -568,7 +596,7 @@
         setBusy(verifyButton, true, 'Verifying…', 'Verify number');
         clearMessage();
         try {
-            const result = await request('auth/verify-otp', { method: 'POST', body: JSON.stringify({ mobile: mobile.value.trim(), otp: otp.value.trim() }) });
+            const result = await request('auth/verify-otp', { method: 'POST', body: JSON.stringify({ mobile: mobileIti.getNumber(), otp: otp.value.trim() }) });
             if (result.flow !== 'registration') throw new Error('This number already has a driver account. Sign in through the driver app.');
             token = result.onboarding_token;
             if (result.application?.status && !['draft', 'changes_requested'].includes(result.application.status)) {
