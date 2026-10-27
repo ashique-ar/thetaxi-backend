@@ -88,6 +88,12 @@ Route::redirect('/about-us', '/about', 301);
 
 Route::get('/contact', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('contact');
 Route::get('/inquiry', [\App\Http\Controllers\Website\ContactController::class, 'index'])->name('inquiry');
+Route::get('/driver-application', function (WebsiteSettingsService $settings) {
+    abort_unless(filter_var($settings->get('feature_driver_management_enabled', true), FILTER_VALIDATE_BOOL)
+        && filter_var($settings->get('driver_form_public_enabled', false), FILTER_VALIDATE_BOOL), 404);
+
+    return view('driver-application');
+})->middleware('throttle:30,1')->name('driver.application');
 
 // Cart routes
 Route::get('/cart', fn () => redirect()->route('checkout'))->name('cart');

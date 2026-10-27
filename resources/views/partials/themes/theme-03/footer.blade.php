@@ -8,6 +8,8 @@
         'routes' => 'theme03RoutesLinks',
         'support' => 'theme03SupportLinks',
     ];
+    $driverFormEnabled = filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_driver_management_enabled', true), FILTER_VALIDATE_BOOL)
+        && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('driver_form_public_enabled', false), FILTER_VALIDATE_BOOL);
 
     foreach ($theme03FooterGroups as $group => $target) {
         $index = 1;
@@ -19,6 +21,7 @@
             $index++;
         }
     }
+    if ($driverFormEnabled) $theme03SupportLinks[] = ['text' => 'Become a Driver', 'url' => route('driver.application')];
 
     $theme03Phone = $settings['company_phone'] ?? '';
     $theme03PhoneHref = preg_replace('/[^0-9+]/', '', $theme03Phone);

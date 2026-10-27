@@ -19,6 +19,7 @@ class EnsureBusinessModuleEnabled
             'hr' => 'feature_hr_management_enabled',
             'hr-attendance-ingestion' => 'feature_hr_attendance_ingestion_enabled',
             'sales' => 'feature_sales_management_enabled',
+            'driver' => 'feature_driver_management_enabled',
             default => null,
         };
 

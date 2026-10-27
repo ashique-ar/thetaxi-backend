@@ -391,7 +391,7 @@
             $hasFreeKmPerPackage =
                 isset($distanceDetails['free_km_per_package']) && $distanceDetails['free_km_per_package'] > 0;
             $hasAllowedKm = isset($distanceDetails['allowed_total_km']) && $distanceDetails['allowed_total_km'] > 0;
-            $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && $distanceDetails['extra_km_price'] > 0;
+            $hasExtraKmPrice = isset($distanceDetails['extra_km_price']) && floor(max(0, (float) $distanceDetails['extra_km_price'])) > 0;
             $hasExtraHourPrice =
                 $serviceType === 'day_rental' &&
                 isset($distanceDetails['extra_hour_price']) &&

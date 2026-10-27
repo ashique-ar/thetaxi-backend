@@ -872,6 +872,16 @@ class SettingsCategoryService
                     'label' => 'Sales Management',
                     'type' => 'toggle',
                     'description' => 'Enable or disable the complete Sales module.'
+                ],
+                'feature_driver_management_enabled' => [
+                    'label' => 'Driver Management',
+                    'type' => 'toggle',
+                    'description' => 'Enable driver operations, APIs, and tracking.'
+                ],
+                'driver_form_public_enabled' => [
+                    'label' => 'Driver Form available for public website',
+                    'type' => 'toggle',
+                    'description' => 'Show a driver application form on the public website.'
                 ]
             ]
         ];

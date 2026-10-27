@@ -72,6 +72,8 @@ class BusinessSettingController extends Controller
             'feature_hr_management_enabled',
             'feature_hr_attendance_ingestion_enabled',
             'feature_sales_management_enabled',
+            'feature_driver_management_enabled',
+            'driver_form_public_enabled',
             'assignment_enable_qc_stage',
             'assignment_enable_maintenance_stage',
         ],
@@ -148,6 +150,8 @@ class BusinessSettingController extends Controller
         $categories['booking']['corporate_portal_booking_advance_hours'] ??= $categories['booking']['booking_advance_hours'];
         $categories['booking']['feature_hr_attendance_ingestion_enabled'] =
             $this->websiteSettingsService->get('feature_hr_attendance_ingestion_enabled', false);
+        $categories['booking']['feature_driver_management_enabled'] ??= true;
+        $categories['booking']['driver_form_public_enabled'] ??= false;
 
         return response()->json([
             'status' => 'success',

@@ -94,11 +94,14 @@
                                 $i++;
                             }
                         @endphp
-                        @if(!empty($routesLinks))
+                        @if(!empty($routesLinks) || (filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_driver_management_enabled', true), FILTER_VALIDATE_BOOL) && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('driver_form_public_enabled', false), FILTER_VALIDATE_BOOL)))
                             <ul class="widget-list">
                                 @foreach($routesLinks as $link)
                                     <li><a href="{{ $link['url'] }}">{{ $link['text'] }}</a></li>
                                 @endforeach
+                                @if(filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_driver_management_enabled', true), FILTER_VALIDATE_BOOL) && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('driver_form_public_enabled', false), FILTER_VALIDATE_BOOL))
+                                    <li><a href="{{ route('driver.application') }}">Become a Driver</a></li>
+                                @endif
                             </ul>
                         @endif
                     </div>

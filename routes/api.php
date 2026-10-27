@@ -2077,7 +2077,7 @@ Route::middleware(['auth:api'])->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::middleware(['permission:drivers.view'])->group(function () {
+    Route::middleware(['business.module:driver', 'permission:drivers.view'])->group(function () {
         Route::get('driver-onboarding-applications', [OnboardingController::class, 'index']);
         Route::post('driver-onboarding-applications/{application}/review', [OnboardingController::class, 'review'])
             ->middleware('permission:drivers.edit');

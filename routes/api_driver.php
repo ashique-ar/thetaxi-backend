@@ -29,118 +29,120 @@ use App\Http\Controllers\Api\UtilityController;
 */
 
 // Public authentication routes (no auth required)
-Route::get('version-check', [AppSettingsController::class, 'versionCheck']);
-Route::post('version-check', [AppSettingsController::class, 'versionCheck']);
+Route::middleware('business.module:driver')->group(function () {
+    Route::get('version-check', [AppSettingsController::class, 'versionCheck']);
+    Route::post('version-check', [AppSettingsController::class, 'versionCheck']);
 
-Route::prefix('auth')->group(function () {
-    Route::post('login', [AuthController::class, 'login']);
-    Route::post('request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:5,1');
-    Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
-    Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
-    Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
-});
-
-Route::prefix('onboarding')->middleware('throttle:20,1')->group(function () {
-    Route::get('countries', [UtilityController::class, 'countries']);
-    Route::get('countries/{country}/states', [UtilityController::class, 'states'])->whereUuid('country');
-    Route::get('makes', [OnboardingController::class, 'makes']);
-    Route::get('makes/{make}/models', [OnboardingController::class, 'models'])->whereUuid('make');
-    Route::get('', [OnboardingController::class, 'show']);
-    Route::patch('steps/{step}', [OnboardingController::class, 'updateStep']);
-    Route::post('documents', [OnboardingController::class, 'uploadDocument']);
-    Route::post('submit', [OnboardingController::class, 'submit']);
-});
-
-// Protected routes (Passport authentication required)
-Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
-
-    Route::post('diagnostic-reports', [DiagnosticReportController::class, 'store'])
-        ->middleware('throttle:30,1');
-    Route::post('hire-recovery-events', [HireRecoveryController::class, 'store'])
-        ->middleware('throttle:60,1');
-    
-    // Authentication routes
     Route::prefix('auth')->group(function () {
-        Route::post('logout', [AuthController::class, 'logout']);
-        Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
-        Route::get('profile', [AuthController::class, 'profile']);
-        Route::post('profile/photo', [AuthController::class, 'updateProfilePhoto']);
-        Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
+        Route::post('login', [AuthController::class, 'login']);
+        Route::post('request-otp', [AuthController::class, 'requestOtp'])->middleware('throttle:5,1');
+        Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
+        Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
+        Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
     });
-    
-    // Status management routes
-    Route::prefix('status')->group(function () {
-        Route::post('online', [StatusController::class, 'goOnline']);
-        Route::post('offline', [StatusController::class, 'goOffline']);
-        Route::get('', [StatusController::class, 'getStatus']);
+
+    Route::prefix('onboarding')->middleware('throttle:20,1')->group(function () {
+        Route::get('countries', [UtilityController::class, 'countries']);
+        Route::get('countries/{country}/states', [UtilityController::class, 'states'])->whereUuid('country');
+        Route::get('makes', [OnboardingController::class, 'makes']);
+        Route::get('makes/{make}/models', [OnboardingController::class, 'models'])->whereUuid('make');
+        Route::get('', [OnboardingController::class, 'show']);
+        Route::patch('steps/{step}', [OnboardingController::class, 'updateStep']);
+        Route::post('documents', [OnboardingController::class, 'uploadDocument']);
+        Route::post('submit', [OnboardingController::class, 'submit']);
     });
-    
-    // Heartbeat route
-    Route::post('heartbeat', [HeartbeatController::class, 'ping']);
-    
-    // Location routes
-    Route::prefix('location')->group(function () {
-        Route::post('', [LocationController::class, 'update']);
-        Route::post('bulk', [LocationController::class, 'bulkUpdate']);
-        Route::post('health', [LocationController::class, 'health']);
-        Route::post('tracking-incidents', [LocationController::class, 'trackingIncident'])
+
+    // Protected routes (Passport authentication required)
+    Route::middleware(['auth:api', 'ensure.driver'])->group(function () {
+
+        Route::post('diagnostic-reports', [DiagnosticReportController::class, 'store'])
             ->middleware('throttle:30,1');
-        Route::get('history', [LocationController::class, 'history']);
-    });
-    
-    // Session routes
-    Route::prefix('sessions')->group(function () {
-        Route::get('', [SessionController::class, 'index']);
-        Route::get('{session}', [SessionController::class, 'show']);
-    });
-    
-    // Device management routes
-    Route::prefix('devices')->group(function () {
-        Route::get('', [DeviceController::class, 'index']);
-        Route::get('current', [DeviceController::class, 'current']);
-        Route::put('', [DeviceController::class, 'update']);
-        Route::post('push-token', [DeviceController::class, 'updatePushToken']);
-        Route::post('{deviceUuid}/deactivate', [DeviceController::class, 'deactivate']);
-        Route::delete('{deviceUuid}', [DeviceController::class, 'destroy']);
-    });
+        Route::post('hire-recovery-events', [HireRecoveryController::class, 'store'])
+            ->middleware('throttle:60,1');
 
-    // Notification inbox routes
-    Route::prefix('notifications')->group(function () {
-        Route::get('', [NotificationController::class, 'index']);
-        Route::get('unread-count', [NotificationController::class, 'unreadCount']);
-        Route::get('{id}', [NotificationController::class, 'show']);
-        Route::post('{id}/mark-read', [NotificationController::class, 'markAsRead']);
-        Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead']);
-        Route::delete('{id}', [NotificationController::class, 'destroy']);
-    });
-    
-    // Assignment routes
-    Route::prefix('assignments')->group(function () {
-        Route::get('', [AssignmentController::class, 'index']);
-        Route::get('current', [AssignmentController::class, 'current']);
-        Route::get('{id}/notification', [AssignmentController::class, 'notified']);
-        Route::post('{id}/accept', [AssignmentController::class, 'accept']);
-        Route::post('{id}/acknowledge', [AssignmentController::class, 'acknowledge']);
-        Route::post('{id}/decline', [AssignmentController::class, 'decline']);
-        // Canonical assignment lifecycle (single-track)
-        Route::get('{id}/status', [TripController::class, 'statusForAssignment']);
-        Route::post('{id}/arrived', [TripController::class, 'pickupArrivedForAssignment']);
-        Route::post('{id}/start', [TripController::class, 'startTripForAssignment']);
-        Route::post('{id}/complete', [TripController::class, 'endTripForAssignment']);
-        Route::post('{id}/collect-payment', [TripController::class, 'collectPaymentForAssignment']);
-        Route::post('{id}/stops/{stopId}/arrived', [TripController::class, 'stopArrivedForAssignment']);
-        Route::post('{id}/stops/{stopId}/picked-up', [TripController::class, 'pickupStopCompletedForAssignment']);
-        Route::post('{id}/stops/{stopId}/dropped-off', [TripController::class, 'dropoffStopCompletedForAssignment']);
-        Route::post('{id}/stops/{stopId}/skip', [TripController::class, 'stopSkippedForAssignment']);
-    });
+        // Authentication routes
+        Route::prefix('auth')->group(function () {
+            Route::post('logout', [AuthController::class, 'logout']);
+            Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
+            Route::get('profile', [AuthController::class, 'profile']);
+            Route::post('profile/photo', [AuthController::class, 'updateProfilePhoto']);
+            Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
+        });
 
-    // Hire history route
-    Route::get('hires', [AssignmentController::class, 'hires']);
+        // Status management routes
+        Route::prefix('status')->group(function () {
+            Route::post('online', [StatusController::class, 'goOnline']);
+            Route::post('offline', [StatusController::class, 'goOffline']);
+            Route::get('', [StatusController::class, 'getStatus']);
+        });
 
-    // Earnings routes
-    Route::prefix('earnings')->group(function () {
-        Route::get('summary', [EarningsController::class, 'summary']);
-        Route::get('daily', [EarningsController::class, 'daily']);
-        Route::get('range', [EarningsController::class, 'range']);
+        // Heartbeat route
+        Route::post('heartbeat', [HeartbeatController::class, 'ping']);
+
+        // Location routes
+        Route::prefix('location')->group(function () {
+            Route::post('', [LocationController::class, 'update']);
+            Route::post('bulk', [LocationController::class, 'bulkUpdate']);
+            Route::post('health', [LocationController::class, 'health']);
+            Route::post('tracking-incidents', [LocationController::class, 'trackingIncident'])
+                ->middleware('throttle:30,1');
+            Route::get('history', [LocationController::class, 'history']);
+        });
+
+        // Session routes
+        Route::prefix('sessions')->group(function () {
+            Route::get('', [SessionController::class, 'index']);
+            Route::get('{session}', [SessionController::class, 'show']);
+        });
+
+        // Device management routes
+        Route::prefix('devices')->group(function () {
+            Route::get('', [DeviceController::class, 'index']);
+            Route::get('current', [DeviceController::class, 'current']);
+            Route::put('', [DeviceController::class, 'update']);
+            Route::post('push-token', [DeviceController::class, 'updatePushToken']);
+            Route::post('{deviceUuid}/deactivate', [DeviceController::class, 'deactivate']);
+            Route::delete('{deviceUuid}', [DeviceController::class, 'destroy']);
+        });
+
+        // Notification inbox routes
+        Route::prefix('notifications')->group(function () {
+            Route::get('', [NotificationController::class, 'index']);
+            Route::get('unread-count', [NotificationController::class, 'unreadCount']);
+            Route::get('{id}', [NotificationController::class, 'show']);
+            Route::post('{id}/mark-read', [NotificationController::class, 'markAsRead']);
+            Route::post('mark-all-read', [NotificationController::class, 'markAllAsRead']);
+            Route::delete('{id}', [NotificationController::class, 'destroy']);
+        });
+
+        // Assignment routes
+        Route::prefix('assignments')->group(function () {
+            Route::get('', [AssignmentController::class, 'index']);
+            Route::get('current', [AssignmentController::class, 'current']);
+            Route::get('{id}/notification', [AssignmentController::class, 'notified']);
+            Route::post('{id}/accept', [AssignmentController::class, 'accept']);
+            Route::post('{id}/acknowledge', [AssignmentController::class, 'acknowledge']);
+            Route::post('{id}/decline', [AssignmentController::class, 'decline']);
+            // Canonical assignment lifecycle (single-track)
+            Route::get('{id}/status', [TripController::class, 'statusForAssignment']);
+            Route::post('{id}/arrived', [TripController::class, 'pickupArrivedForAssignment']);
+            Route::post('{id}/start', [TripController::class, 'startTripForAssignment']);
+            Route::post('{id}/complete', [TripController::class, 'endTripForAssignment']);
+            Route::post('{id}/collect-payment', [TripController::class, 'collectPaymentForAssignment']);
+            Route::post('{id}/stops/{stopId}/arrived', [TripController::class, 'stopArrivedForAssignment']);
+            Route::post('{id}/stops/{stopId}/picked-up', [TripController::class, 'pickupStopCompletedForAssignment']);
+            Route::post('{id}/stops/{stopId}/dropped-off', [TripController::class, 'dropoffStopCompletedForAssignment']);
+            Route::post('{id}/stops/{stopId}/skip', [TripController::class, 'stopSkippedForAssignment']);
+        });
+
+        // Hire history route
+        Route::get('hires', [AssignmentController::class, 'hires']);
+
+        // Earnings routes
+        Route::prefix('earnings')->group(function () {
+            Route::get('summary', [EarningsController::class, 'summary']);
+            Route::get('daily', [EarningsController::class, 'daily']);
+            Route::get('range', [EarningsController::class, 'range']);
+        });
     });
 });

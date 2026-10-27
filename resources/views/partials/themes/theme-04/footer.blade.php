@@ -33,6 +33,10 @@
         ['text' => 'Contact', 'url' => route('contact')],
     ]);
     $theme04ServicesLinks = $theme04ServicesLinks ?: [['text' => 'Airport Transfers', 'url' => route('point-to-point')]];
+    if (filter_var(app(\App\Services\WebsiteSettingsService::class)->get('feature_driver_management_enabled', true), FILTER_VALIDATE_BOOL)
+        && filter_var(app(\App\Services\WebsiteSettingsService::class)->get('driver_form_public_enabled', false), FILTER_VALIDATE_BOOL)) {
+        $theme04QuickLinks[] = ['text' => 'Become a Driver', 'url' => route('driver.application')];
+    }
 @endphp
 
 <footer class="t4-footer">
