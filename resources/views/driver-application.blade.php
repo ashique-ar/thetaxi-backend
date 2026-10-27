@@ -22,7 +22,8 @@
 .driver-onboarding__eyebrow { margin: 0 0 10px; color: var(--do-accent-strong); font-size: 12px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
 .driver-onboarding__intro h1 { margin: 0; font-size: clamp(30px, 4vw, 42px); font-weight: 750; letter-spacing: -.035em; line-height: 1.12; }
 .driver-onboarding__intro p { margin: 14px 0 0; color: var(--do-muted); font-size: 16px; line-height: 1.6; }
-.driver-onboarding__layout { display: grid; grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); align-items: start; gap: 32px; }
+.driver-onboarding__layout { display: grid; grid-template-columns: minmax(0, 1fr); align-items: start; gap: 32px; }
+.driver-onboarding__layout--application { grid-template-columns: minmax(220px, 260px) minmax(0, 1fr); }
 .driver-onboarding__rail { padding: 24px 20px; border: 1px solid var(--do-line); border-radius: var(--do-radius); background: var(--do-soft); }
 .driver-onboarding__rail h2 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.35; }
 .driver-onboarding__rail > p { margin: 6px 0 20px; color: var(--do-muted); font-size: 14px; line-height: 1.5; }
@@ -586,6 +587,7 @@
             await populateApplication(result.application);
             otpPanel.hidden = true;
             progress.hidden = false;
+            progress.parentElement.classList.add('driver-onboarding__layout--application');
             applicationForm.hidden = false;
             setStep(0);
             showMessage('Your number is verified. Your progress is saved as you continue.');
