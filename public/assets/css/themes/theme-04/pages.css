@@ -423,7 +423,10 @@ body.theme-theme-04.theme-page-search .search-booking-section { padding-block: 1
     body.theme-theme-04.theme-page-search .breadcrumb-section h1 { font-size: clamp(2rem, 8vw, 3rem); }
     body.theme-theme-04.theme-page-search .discovery-results--theme-04 { padding-block: 16px; }
     body.theme-theme-04.theme-page-search .search-page-layout--sidebar { gap: 8px; }
-    body.theme-theme-04.theme-page-search .search-summary-card { padding: 16px; }
+    body.theme-theme-04.theme-page-search .search-summary-card { margin-inline: 8px; padding: 12px; }
+    body.theme-theme-04.theme-page-search .duration-display { gap: 8px; font-size: 1.125rem; }
+    body.theme-theme-04.theme-page-search .duration-display i { font-size: 1.25rem; }
+    body.theme-theme-04.theme-page-search .search-summary-card .date-range { margin-top: 2px !important; font-size: 13px !important; }
     body.theme-theme-04.theme-page-search .search-summary-card .row.mb-4 { margin-bottom: 12px !important; }
 }
 
@@ -432,6 +435,11 @@ body.theme-theme-04.theme-page-search .search-booking-section { padding-block: 1
 }
 
 @media (max-width: 575px) {
+    body.theme-theme-04.theme-page-search .vehicle-search-box { display: grid !important; grid-template-columns: minmax(0, 1fr) auto; justify-content: initial; gap: 8px; width: 100%; }
+    body.theme-theme-04.theme-page-search .mobile-summary-modify-btn { grid-column: 1 / -1; justify-self: center; }
+    body.theme-theme-04.theme-page-search .sort-dropdown { min-width: 0; width: 100%; }
+    body.theme-theme-04.theme-page-search .sort-dropdown .form-select { width: 100%; min-width: 0 !important; }
+    body.theme-theme-04.theme-page-search .vehicle-search-box > a.btn { justify-self: end; }
     body.theme-theme-04.theme-page-search .vehicle-results-grid { margin-inline: 0; }
     body.theme-theme-04.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { flex: 0 0 100%; width: 100%; padding-inline: 8px; }
     body.theme-theme-04.theme-page-search .vehicle-results-grid .vehicle-card--theme-04 .vehicle-image-container { min-height: 0; }
