@@ -1202,9 +1202,8 @@
                 $toggleSearchFormBtn.find('span').text(isOpen ? 'Hide Search' : 'Modify Search');
             }
 
-            // On narrow screens, top-search and sidebar themes both stack
-            // the search controls above results. Keep the controls visible.
-            syncMobileSearchFormState(true);
+            // Keep results in view on first load; the summary button opens the form when needed.
+            syncMobileSearchFormState(false);
 
             $toggleSearchFormBtn.on('click', function() {
                 const willOpen = !$searchBookingSection.hasClass('is-open');

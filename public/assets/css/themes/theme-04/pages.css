@@ -392,6 +392,11 @@ body.theme-theme-04.theme-page-search .search-summary-card :where(.duration-text
 body.theme-theme-04.theme-page-search .search-summary-footer { border-top-color: rgb(255 255 255 / 22%) !important; }
 body.theme-theme-04.theme-page-search .vehicle-card-wrapper { min-width: 0; }
 
+/* Keep fleet discovery compact so the search controls and vehicles stay in view. */
+body.theme-theme-04.theme-page-search .breadcrumb-section { min-height: 190px; padding-block: 34px; }
+body.theme-theme-04.theme-page-search .discovery-results--theme-04 { padding-block: 28px; }
+body.theme-theme-04.theme-page-search .search-booking-section { padding-block: 12px; }
+
 @media (min-width: 992px) {
     body.theme-theme-04.theme-page-search .search-page-layout--sidebar { display: grid; grid-template-columns: minmax(360px, 420px) minmax(0, 1fr); gap: 32px; width: min(calc(100% - 48px), 1600px); margin-inline: auto; padding-block: var(--t4-section); align-items: start; }
     body.theme-theme-04.theme-page-search .search-booking-section { grid-column: 1; grid-row: 1 / span 2; padding: 0; border: 0; }
@@ -405,6 +410,22 @@ body.theme-theme-04.theme-page-search .vehicle-card-wrapper { min-width: 0; }
     body.theme-theme-04.theme-page-search .search-page-layout--sidebar > :where(.search-booking-section, #distanceCalculationAlert, #vehicleResultsSection) { width: 100%; order: 0; }
     body.theme-theme-04.theme-page-search .search-page-layout--sidebar > #vehicleResultsSection { order: 2; }
     body.theme-theme-04.theme-page-search .search-page-layout--sidebar > #distanceCalculationAlert { order: 1; }
+}
+
+@media (max-width: 767px) {
+    body.theme-theme-04.theme-page-search .breadcrumb-section { min-height: 136px; padding-block: 24px; }
+    body.theme-theme-04.theme-page-search .breadcrumb-section .banner-content { gap: 8px; }
+    body.theme-theme-04.theme-page-search .breadcrumb-section h1 { font-size: clamp(2rem, 8vw, 3rem); }
+    body.theme-theme-04.theme-page-search .discovery-results--theme-04 { padding-block: 16px; }
+    body.theme-theme-04.theme-page-search .search-page-layout--sidebar { gap: 8px; }
+    body.theme-theme-04.theme-page-search .search-summary-card { padding: 16px; }
+    body.theme-theme-04.theme-page-search .search-summary-card .row.mb-4 { margin-bottom: 12px !important; }
+}
+
+@media (max-width: 575px) {
+    body.theme-theme-04.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { flex: 0 0 100%; width: 100%; }
+    body.theme-theme-04.theme-page-search .vehicle-results-grid .vehicle-card--theme-04 .vehicle-image-container { min-height: 0; }
+    body.theme-theme-04.theme-page-search .vehicle-results-grid .vehicle-card--theme-04 .vehicle-img { height: 160px; }
 }
 
 body.theme-theme-04.theme-page-search .vehicle-card--theme-04 {

@@ -39,6 +39,7 @@ Route::middleware('business.module:driver')->group(function () {
         Route::post('request-onboarding-otp', [AuthController::class, 'requestOnboardingOtp'])->middleware('throttle:5,1');
         Route::post('verify-otp', [AuthController::class, 'verifyOtp'])->middleware('throttle:10,1');
         Route::post('verify-onboarding-otp', [AuthController::class, 'verifyOnboardingOtp'])->middleware('throttle:10,1');
+        Route::post('refresh', [AuthController::class, 'refresh'])->middleware('throttle:30,1');
         Route::post('forgot-password', [AuthController::class, 'forgotPassword'])->middleware('throttle:5,1');
         Route::post('reset-password', [AuthController::class, 'resetPassword'])->middleware('throttle:10,1');
     });
@@ -68,7 +69,6 @@ Route::middleware('business.module:driver')->group(function () {
             Route::post('change-password', [AuthController::class, 'changePassword'])->middleware('throttle:5,1');
             Route::get('profile', [AuthController::class, 'profile']);
             Route::post('profile/photo', [AuthController::class, 'updateProfilePhoto']);
-            Route::post('refresh', [AuthController::class, 'refresh']); // Token refresh endpoint
         });
 
         // Status management routes
