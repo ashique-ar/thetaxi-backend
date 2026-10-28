@@ -397,16 +397,17 @@ body.theme-theme-04.theme-page-search .breadcrumb-section { min-height: 190px; p
 body.theme-theme-04.theme-page-search .breadcrumb-section h1 { font-size: clamp(2rem, 4vw, 3.5rem); }
 body.theme-theme-04.theme-page-search .discovery-results--theme-04 { padding-block: 28px; }
 body.theme-theme-04.theme-page-search .search-booking-section { padding-block: 12px; }
-body.theme-theme-04.theme-page-search .search-booking-section:not(.is-open) .search-booking-panel { max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; pointer-events: none; }
-body.theme-theme-04.theme-page-search .search-booking-section.is-open .search-booking-panel { max-height: 5000px; overflow: visible; opacity: 1; pointer-events: auto; }
+@media (max-width: 991px) {
+    body.theme-theme-04.theme-page-search .search-booking-section:not(.is-open) .search-booking-panel { max-height: 0; margin-top: 0; overflow: hidden; opacity: 0; pointer-events: none; }
+    body.theme-theme-04.theme-page-search .search-booking-section.is-open .search-booking-panel { max-height: 5000px; overflow: visible; opacity: 1; pointer-events: auto; }
+}
 
 @media (min-width: 992px) {
-    body.theme-theme-04.theme-page-search .search-page-layout--sidebar { display: block; width: min(calc(100% - 48px), 1600px); margin-inline: auto; padding-block: 20px; }
-    body.theme-theme-04.theme-page-search .search-booking-section { padding: 0; border: 0; }
+    body.theme-theme-04.theme-page-search .search-page-layout--sidebar { display: grid; grid-template-columns: minmax(360px, 420px) minmax(0, 1fr); gap: 32px; width: min(calc(100% - 48px), 1600px); margin-inline: auto; padding-block: var(--t4-section); align-items: start; }
+    body.theme-theme-04.theme-page-search .search-booking-section { grid-column: 1; grid-row: 1 / span 2; padding: 0; border: 0; }
     body.theme-theme-04.theme-page-search #distanceCalculationAlert,
-    body.theme-theme-04.theme-page-search #vehicleResultsSection { width: 100%; margin: 0 !important; padding: 0; }
+    body.theme-theme-04.theme-page-search #vehicleResultsSection { grid-column: 2; width: 100%; margin: 0 !important; padding: 0; }
     body.theme-theme-04.theme-page-search .search-page-layout > :where(.search-booking-section, #distanceCalculationAlert, #vehicleResultsSection) .container { width: 100%; max-width: none; padding: 0; }
-    body.theme-theme-04.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { flex: 0 0 25%; max-width: 25%; }
 }
 
 @media (max-width: 991px) {
@@ -431,7 +432,8 @@ body.theme-theme-04.theme-page-search .search-booking-section.is-open .search-bo
 }
 
 @media (max-width: 575px) {
-    body.theme-theme-04.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { flex: 0 0 100%; width: 100%; }
+    body.theme-theme-04.theme-page-search .vehicle-results-grid { margin-inline: 0; }
+    body.theme-theme-04.theme-page-search .vehicle-results-grid > .vehicle-card-wrapper { flex: 0 0 100%; width: 100%; padding-inline: 8px; }
     body.theme-theme-04.theme-page-search .vehicle-results-grid .vehicle-card--theme-04 .vehicle-image-container { min-height: 0; }
     body.theme-theme-04.theme-page-search .vehicle-results-grid .vehicle-card--theme-04 .vehicle-img { height: 160px; }
 }

@@ -266,7 +266,7 @@
 
                             <div class="vehicle-search-box d-flex align-items-center gap-2 flex-wrap">
                                 <button type="button"
-                                    class="btn btn-light btn-sm text-nowrap mobile-summary-modify-btn"
+                                    class="btn btn-light btn-sm text-nowrap mobile-summary-modify-btn d-lg-none"
                                     id="toggleSearchFormBtn" aria-expanded="false"
                                     aria-controls="searchBookingFormPanel">
                                     <i class="bi bi-pencil-square"></i>
@@ -1183,6 +1183,12 @@
             const $toggleSearchFormBtn = $('#toggleSearchFormBtn');
             function syncMobileSearchFormState(forceOpen) {
                 if (!$searchBookingSection.length || !$toggleSearchFormBtn.length) {
+                    return;
+                }
+
+                if (window.innerWidth >= 992) {
+                    $searchBookingSection.addClass('is-open');
+                    $toggleSearchFormBtn.attr('aria-expanded', 'true');
                     return;
                 }
 
