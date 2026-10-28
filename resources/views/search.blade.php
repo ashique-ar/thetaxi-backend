@@ -266,7 +266,7 @@
 
                             <div class="vehicle-search-box d-flex align-items-center gap-2 flex-wrap">
                                 <button type="button"
-                                    class="btn btn-light btn-sm text-nowrap mobile-summary-modify-btn d-lg-none"
+                                    class="btn btn-light btn-sm text-nowrap mobile-summary-modify-btn"
                                     id="toggleSearchFormBtn" aria-expanded="false"
                                     aria-controls="searchBookingFormPanel">
                                     <i class="bi bi-pencil-square"></i>
@@ -1186,13 +1186,6 @@
                     return;
                 }
 
-                if (window.innerWidth >= 992) {
-                    $searchBookingSection.addClass('is-open');
-                    $toggleSearchFormBtn.attr('aria-expanded', 'true');
-                    $toggleSearchFormBtn.find('span').text('Modify Search');
-                    return;
-                }
-
                 if (typeof forceOpen === 'boolean') {
                     $searchBookingSection.toggleClass('is-open', forceOpen);
                 }
@@ -1224,9 +1217,7 @@
                 }
             });
 
-            $(window).on('resize', function() {
-                syncMobileSearchFormState(true);
-            });
+            $(window).on('resize', function() { syncMobileSearchFormState(); });
 
             // Sort functionality
             // Sorting changes the server query and restarts pagination at page 1.
