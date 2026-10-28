@@ -380,16 +380,20 @@ body.theme-theme-04.theme-page-search .discovery-results--theme-04 {
     background: var(--t4-surface-soft);
 }
 body.theme-theme-04.theme-page-search .search-summary-card {
-    padding: clamp(20px, 3vw, 32px);
+    padding: 18px 20px;
     border: 1px solid var(--t4-line);
-    border-top: 4px solid var(--t4-accent);
-    border-radius: 10px;
-    background: var(--t4-text) !important;
-    color: #fff;
-    box-shadow: var(--t4-shadow);
+    border-left: 3px solid var(--t4-accent);
+    border-radius: 8px;
+    background: #fff !important;
+    color: var(--t4-text);
+    box-shadow: none;
 }
 body.theme-theme-04.theme-page-search .search-summary-card :where(.duration-text, .date-range, .distance-info, .duration-info, .package-info, .vehicle-groups-label, .vehicle-groups-count) { color: inherit !important; }
-body.theme-theme-04.theme-page-search .search-summary-footer { border-top-color: rgb(255 255 255 / 22%) !important; }
+body.theme-theme-04.theme-page-search .duration-display { gap: 10px; font-size: 20px; line-height: 1.25; }
+body.theme-theme-04.theme-page-search .duration-display i { font-size: 22px; color: var(--t4-accent); }
+body.theme-theme-04.theme-page-search .search-summary-footer { margin-top: 10px !important; padding-top: 0 !important; border-top: 0 !important; }
+body.theme-theme-04.theme-page-search #vehicleResultsSection > div > .row.mb-4 { margin-bottom: 12px !important; }
+body.theme-theme-04.theme-page-search .vehicle-results-grid { --bs-gutter-x: 16px; --bs-gutter-y: 16px; }
 body.theme-theme-04.theme-page-search .vehicle-card-wrapper { min-width: 0; }
 
 /* Keep fleet discovery compact so the search controls and vehicles stay in view. */
@@ -403,7 +407,7 @@ body.theme-theme-04.theme-page-search .search-booking-section { padding-block: 1
 }
 
 @media (min-width: 992px) {
-    body.theme-theme-04.theme-page-search .search-page-layout--sidebar { display: grid; grid-template-columns: minmax(360px, 420px) minmax(0, 1fr); gap: 32px; width: min(calc(100% - 48px), 1600px); margin-inline: auto; padding-block: var(--t4-section); align-items: start; }
+    body.theme-theme-04.theme-page-search .search-page-layout--sidebar { display: grid; grid-template-columns: minmax(360px, 420px) minmax(0, 1fr); gap: 24px; width: min(calc(100% - 48px), 1600px); margin-inline: auto; padding-block: 24px; align-items: start; }
     body.theme-theme-04.theme-page-search .search-booking-section { grid-column: 1; grid-row: 1 / span 2; padding: 0; border: 0; }
     body.theme-theme-04.theme-page-search #distanceCalculationAlert,
     body.theme-theme-04.theme-page-search #vehicleResultsSection { grid-column: 2; width: 100%; margin: 0 !important; padding: 0; }
