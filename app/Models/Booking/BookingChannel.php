@@ -42,6 +42,8 @@ class BookingChannel extends BaseModel
     protected $fillable = [
         'name',
         'description',
+        'is_active',
+        'is_default',
         'created_user_id',
         'updated_user_id',
     ];
@@ -50,6 +52,8 @@ class BookingChannel extends BaseModel
      * The attributes that should be cast.
      */
     protected $casts = [
+        'is_active' => 'boolean',
+        'is_default' => 'boolean',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',

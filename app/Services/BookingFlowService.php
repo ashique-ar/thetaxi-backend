@@ -2336,7 +2336,7 @@ class BookingFlowService
             // (No normalization: we use $params directly)
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $this->applyCorporateBookingFields($booking, $params);
-            $this->applyPortalBookingSource($booking);
+            $this->applyPortalBookingSource($booking, $params);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -3035,7 +3035,7 @@ class BookingFlowService
             $booking->customer_id = $this->resolveBookingCustomerId($params);
             $booking->booking_date = now();
             $this->applyCorporateBookingFields($booking, $params);
-            $this->applyPortalBookingSource($booking);
+            $this->applyPortalBookingSource($booking, $params);
             $this->applyBookingPaymentFields($booking, $params);
             $this->applyRecurringBookingFields($booking, $params);
 
@@ -9285,6 +9285,7 @@ class BookingFlowService
                 'booking.employeeUser' => fn ($q) => $q->withTrashed()
                     ->select(['id', 'first_name', 'last_name', 'email', 'phone']),
                 'booking.createdBy:id,first_name,last_name',
+                'booking.bookingChannel:id,name',
                 'booking.vehicleAssignments' => function ($q) {
                     $q->where('status', '!=', 'cancelled')
                         ->orderBy('created_at', 'desc');
@@ -10142,6 +10143,18 @@ class BookingFlowService
             'blocking_reasons' => $lifecycleContract['blocking_reasons'] ?? [],
             'dispatch_status' => $dispatchStatus,
             'booking_source' => $bookingSource,
+            'booking_origin' => $booking?->booking_origin,
+            'booking_origin_label' => match ($booking?->booking_origin) {
+                'corporate_portal' => 'Corporate portal',
+                'customer_portal' => 'Customer portal',
+                'website' => 'Website',
+                'staff' => 'Staff',
+                default => null,
+            },
+            'booking_channel' => $booking?->bookingChannel ? [
+                'id' => (string) $booking->bookingChannel->id,
+                'name' => $booking->bookingChannel->name,
+            ] : null,
             'service_type' => $itemServiceType ? [
                 'id' => (string) $itemServiceType->id,
                 'name' => $itemServiceType->name,
@@ -13203,20 +13216,45 @@ class BookingFlowService
      * Source fields describe where a booking was created, independently of the
      * pricing context used by its service type.
      */
-    private function applyPortalBookingSource(Booking $booking): void
+    private function applyPortalBookingSource(Booking $booking, array $params): void
     {
         $existingSource = strtolower(trim((string) $booking->booking_source));
         $publicSources = ['public', 'website', 'web', 'online', 'customer', 'customer_portal', 'guest'];
+        $route = (string) (request()->route()?->uri() ?? '');
+        if (!$booking->booking_origin) {
+            $booking->booking_origin = str_contains($route, 'customer-portal/bookings')
+                ? 'customer_portal'
+                : (str_contains($route, 'corporate/bookings') && !str_contains($route, 'admin/corporates')
+                    ? 'corporate_portal'
+                    : (str_contains($route, 'public/booking-flow') ? 'website' : 'staff'));
+        }
 
         // Editing a booking that originated on the website must retain its channel.
         if (!$booking->is_corporate_booking && in_array($existingSource, $publicSources, true)) {
             return;
         }
 
-        $booking->booking_source = $booking->is_corporate_booking ? 'corporate' : 'internal';
-        $booking->created_from = 'internal';
+        $booking->booking_source = $booking->is_corporate_booking ? 'corporate' : (in_array($booking->booking_origin, ['website', 'customer_portal'], true) ? 'public' : 'internal');
+        $booking->created_from = match ($booking->booking_origin) {
+            'website' => 'web',
+            'customer_portal' => 'customer_portal',
+            'corporate_portal' => 'corporate_portal',
+            default => 'internal',
+        };
         $booking->created_by_user_id ??= Auth::id();
         $booking->created_user_id ??= Auth::id();
+
+        if (array_key_exists('booking_channel_id', $params)) {
+            $channel = \App\Models\Booking\BookingChannel::query()
+                ->whereKey($params['booking_channel_id'])
+                ->where('is_active', true)
+                ->first();
+            abort_unless($channel, 422, 'Select an active booking channel.');
+            $booking->booking_channel_id = $channel->id;
+        } elseif (!$booking->booking_channel_id) {
+            $booking->booking_channel_id = \App\Models\Booking\BookingChannel::query()
+                ->where('is_active', true)->where('is_default', true)->value('id');
+        }
     }
 
     private function applyBookingPaymentFields(Booking $booking, array $params): void

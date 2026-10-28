@@ -14,6 +14,8 @@ class CreateBookingChannelRequest extends FormRequest
         return [
             'name' => ['nullable', 'string', 'max:100'],
             'description' => ['nullable', 'string'],
+            'is_active' => ['sometimes', 'boolean'],
+            'is_default' => ['sometimes', 'boolean'],
         ];
     }
 }

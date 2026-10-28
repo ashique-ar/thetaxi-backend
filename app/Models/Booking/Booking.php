@@ -137,6 +137,11 @@ class Booking extends BaseModel
         return $this->hasMany(BookingPaymentReceipt::class, 'booking_id');
     }
 
+    public function bookingChannel()
+    {
+        return $this->belongsTo(BookingChannel::class, 'booking_channel_id');
+    }
+
     public function salesAttribution()
     {
         return $this->hasOne(\App\Models\Sales\SalesBookingAttribution::class, 'booking_id');
@@ -158,6 +163,8 @@ class Booking extends BaseModel
         'total_actual',
         'status',
         'created_from',
+        'booking_channel_id',
+        'booking_origin',
         'confirmed',
         'third_party_ref',
         'payment_status',

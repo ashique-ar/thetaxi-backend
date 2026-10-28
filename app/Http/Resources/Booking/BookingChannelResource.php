@@ -13,6 +13,8 @@ class BookingChannelResource extends JsonResource
             'id' => $this->id,
             'name' => $this->name,
             'description' => $this->description,
+            'is_active' => (bool) $this->is_active,
+            'is_default' => (bool) $this->is_default,
             'created_at' => $this->created_at,
             'updated_at' => $this->updated_at,
         ];
