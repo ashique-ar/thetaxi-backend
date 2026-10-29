@@ -35,6 +35,10 @@ class ServiceTypeResource extends JsonResource
             'frontend_category' => $this->frontend_category,
             'is_internal' => $this->is_internal,
             'is_active' => $this->is_active,
+            'workflow_config' => $this->when(
+                $request->user()?->can('service-types.edit'),
+                $this->workflow_config
+            ),
             'is_public' => $this->context === 'public',
             'is_portal' => $this->context === 'portal',
             'is_corporate' => $this->context === 'corporate',

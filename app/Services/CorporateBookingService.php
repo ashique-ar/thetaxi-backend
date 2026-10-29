@@ -63,6 +63,8 @@ class CorporateBookingService
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
 
+            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
+
             $this->applyCorporateRequestStatus($booking, $needsApproval, Auth::id());
 
             // Ensure corporate fields are set on the booking
@@ -119,6 +121,8 @@ class CorporateBookingService
             $booking = $needsApproval
                 ? $this->bookingFlowService->submitBookingForApproval($params)
                 : $this->bookingFlowService->confirmBooking($params);
+
+            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
 
             $this->applyCorporateRequestStatus($booking, $needsApproval, $requester->user_id);
             $booking->update([
@@ -188,6 +192,8 @@ class CorporateBookingService
             } else {
                 $booking = $this->bookingFlowService->confirmBooking($params);
             }
+
+            $needsApproval = $needsApproval || (bool) $booking->requires_approval;
 
             $this->applyCorporateRequestStatus($booking, $needsApproval, $coordinator->user_id);
 

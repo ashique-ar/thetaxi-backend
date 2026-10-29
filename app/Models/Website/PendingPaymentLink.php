@@ -23,12 +23,18 @@ class PendingPaymentLink extends BaseModel
         'accessed_at',
         'access_count',
         'invalidated_at',
+        'accepted_at',
+        'revision_number',
+        'acceptance_evidence',
     ];
 
     protected $casts = [
         'expires_at' => 'datetime',
         'accessed_at' => 'datetime',
         'invalidated_at' => 'datetime',
+        'accepted_at' => 'datetime',
+        'revision_number' => 'integer',
+        'acceptance_evidence' => 'array',
         'booking_context' => 'array',
         'revision_item_ids' => 'array',
         'revision_amount_due' => 'decimal:2',

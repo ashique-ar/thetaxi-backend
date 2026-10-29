@@ -127,6 +127,10 @@ Route::post('/cart/extra-km/remove', [CartController::class, 'removeExtraKm'])->
 
 // Checkout routes
 Route::get('/checkout', [CheckoutController::class, 'index'])->name('checkout');
+Route::post('/checkout/customer-email/send-code', [CheckoutController::class, 'sendCustomerEmailVerificationCode'])
+    ->middleware('throttle:10,1')->name('checkout.customer-email.send-code');
+Route::post('/checkout/customer-email/verify-code', [CheckoutController::class, 'verifyCustomerEmailCode'])
+    ->middleware('throttle:10,1')->name('checkout.customer-email.verify-code');
 Route::post('/checkout/process', [CheckoutController::class, 'process'])->name('checkout.process');
 Route::get('/checkout/success', [CheckoutController::class, 'success'])->name('checkout.success');
 
@@ -135,6 +139,7 @@ Route::get('/checkout/payment-resume/{token}', [CheckoutController::class, 'resu
 Route::post('/checkout/payment-resume', [CheckoutController::class, 'processPaymentResume'])->name('checkout.process-payment-resume');
 Route::post('/checkout/payment-resume/{token}/vehicles', [CheckoutController::class, 'updatePaymentResumeVehicles'])->name('checkout.payment-resume.vehicles');
 Route::get('/checkout/quotation-convert/{token}', [CheckoutController::class, 'convertQuotationToBooking'])->name('checkout.quotation-convert');
+Route::post('/checkout/quotation-convert/{token}/accept', [CheckoutController::class, 'acceptQuotation'])->name('checkout.quotation-accept');
 Route::get('/checkout/quotation-payment/{token}', [CheckoutController::class, 'quotationToPayment'])->name('checkout.quotation-payment');
 
 // WebXPay payment gateway routes

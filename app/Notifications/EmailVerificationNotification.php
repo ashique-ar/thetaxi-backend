@@ -6,6 +6,7 @@ use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Messages\MailMessage;
 use Illuminate\Notifications\Notification;
+use Illuminate\Support\Facades\URL;
 
 class EmailVerificationNotification extends Notification implements ShouldQueue
 {
@@ -53,7 +54,10 @@ class EmailVerificationNotification extends Notification implements ShouldQueue
      */
     protected function verificationUrl($notifiable): string
     {
-        return url('/api/auth/verify-email/' . $notifiable->id . '/' . sha1($notifiable->email));
+        return URL::temporarySignedRoute('verification.verify', now()->addHour(), [
+            'id' => $notifiable->id,
+            'hash' => sha1($notifiable->email),
+        ]);
     }
 
     /**

@@ -2,6 +2,42 @@
 
 require_once dirname(__DIR__, 2) . '/app/Helpers/theme_helpers.php';
 
+it('exposes existing public hero uploads in homepage settings', function (array $stored, array $expected) {
+    $service = Mockery::mock(App\Services\WebsiteSettingsService::class)->makePartial();
+    $service->shouldReceive('getMultiple')->once()->andReturn($stored);
+
+    $settings = $service->getHomepageSettings();
+    expect($settings['hero_slides'][0])->toMatchArray($expected)
+        ->and(get_hero_slides($settings)[0])->toMatchArray($expected);
+})->with([
+    'legacy banner image' => [['hero_slides' => null, 'banner_image' => 'uploaded.jpg'], ['type' => 'image', 'desktop' => 'uploaded.jpg']],
+    'legacy banner video' => [['banner_video' => 'uploaded.mp4', 'banner_image' => 'poster.jpg'], ['type' => 'video', 'video' => 'uploaded.mp4', 'poster' => 'poster.jpg']],
+    'legacy slider takes precedence' => [[
+        'theme_02_slider_images' => '[{"image":"desktop.jpg","mobile_image":"mobile.jpg"}]',
+        'banner_video' => 'older.mp4', 'banner_image' => 'older.jpg',
+    ], ['type' => 'image', 'desktop' => 'desktop.jpg', 'mobile' => 'mobile.jpg']],
+    'invalid shared JSON uses legacy media' => [['hero_slides' => '{', 'banner_image' => 'uploaded.jpg'], ['type' => 'image', 'desktop' => 'uploaded.jpg']],
+]);
+
+it('keeps saved removals authoritative over legacy uploads', function ($saved) {
+    $stored = [
+        'hero_slides' => $saved,
+        'theme_02_slider_images' => '[{"desktop":"old-slider.jpg"}]',
+        'banner_video' => 'old.mp4', 'banner_image' => 'old.jpg',
+    ];
+    $service = Mockery::mock(App\Services\WebsiteSettingsService::class)->makePartial();
+    $service->shouldReceive('getMultiple')->once()->andReturn($stored);
+
+    $settings = $service->getHomepageSettings();
+    expect($settings['hero_slides'])->toBe($saved)
+        ->and(get_hero_slides($settings))->toBe([]);
+})->with([
+    'empty array' => [[]],
+    'empty JSON array' => ['[]'],
+    'cleared last image' => ['[{"type":"image","desktop":"","video":""}]'],
+    'cleared last video' => ['[{"type":"video","video":null}]'],
+]);
+
 it('normalizes mixed image and video slides with backward-compatible fallbacks', function () {
     $slides = get_hero_slides([
         'banner_heading' => 'Journeys',

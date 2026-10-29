@@ -171,6 +171,20 @@
                                                 @error('email')
                                                     <span class="text-danger">{{ $message }}</span>
                                                 @enderror
+                                                <div class="mt-2">
+                                                    <button type="button" id="send-customer-email-code" class="btn btn-outline-secondary btn-sm">
+                                                        I've booked before - verify my email
+                                                    </button>
+                                                    <small class="d-block text-muted mt-1">Only needed if you have booked with us before using this email. New customers can continue without a code.</small>
+                                                    <div id="customer-email-code-panel" class="mt-2" hidden>
+                                                        <label for="customer-email-code">6-digit email code</label>
+                                                        <div class="d-flex gap-2">
+                                                            <input id="customer-email-code" type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="form-control" aria-describedby="customer-email-code-status">
+                                                            <button type="button" id="verify-customer-email-code" class="btn btn-primary">Confirm</button>
+                                                        </div>
+                                                    </div>
+                                                    <div id="customer-email-code-status" class="small mt-1" role="status" aria-live="polite"></div>
+                                                </div>
                                             </div>
                                         </div>
                                         <div class="col-md-6">
@@ -2877,4 +2891,77 @@
 
     <!-- Checkout Payment Type Handler -->
     <script src="{{ assetVersion('assets/js/checkout-payment-type.js') }}"></script>
+    <script>
+        (() => {
+            const form = document.getElementById('checkout-form');
+            const emailInput = form?.querySelector('input[name="email"]');
+            const sendButton = document.getElementById('send-customer-email-code');
+            const verifyButton = document.getElementById('verify-customer-email-code');
+            const codePanel = document.getElementById('customer-email-code-panel');
+            const codeInput = document.getElementById('customer-email-code');
+            const status = document.getElementById('customer-email-code-status');
+            const csrf = document.querySelector('meta[name="csrf-token"]')?.content;
+            let verifiedEmail = '';
+
+            if (!form || !emailInput || !sendButton || !verifyButton || !status || !codePanel || !codeInput) return;
+
+            const normalizedEmail = () => emailInput.value.trim().toLowerCase();
+            const showMessage = (message, verified = false) => {
+                status.textContent = message;
+                status.className = `small mt-1 ${verified ? 'text-success' : 'text-muted'}`;
+            };
+            const post = async (url, data) => {
+                const response = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRF-TOKEN': csrf, 'Accept': 'application/json' },
+                    body: JSON.stringify(data),
+                });
+                const payload = await response.json().catch(() => ({}));
+                if (!response.ok) throw new Error(payload?.errors?.code?.[0] || payload?.errors?.email?.[0] || payload?.message || 'Please try again.');
+                return payload;
+            };
+
+            sendButton.addEventListener('click', async () => {
+                const email = normalizedEmail();
+                if (!emailInput.checkValidity()) { emailInput.reportValidity(); return; }
+                sendButton.disabled = true;
+                try {
+                    await post(@json(route('checkout.customer-email.send-code')), { email });
+                    codePanel.hidden = false;
+                    showMessage('If this email is already used for a customer account, check your inbox for a code.');
+                    codeInput.focus();
+                } catch (error) {
+                    showMessage(error.message || 'Could not send a code. Please try again.');
+                } finally {
+                    sendButton.disabled = false;
+                }
+            });
+
+            verifyButton.addEventListener('click', async () => {
+                const email = normalizedEmail();
+                if (!emailInput.checkValidity()) { emailInput.reportValidity(); return; }
+                verifyButton.disabled = true;
+                try {
+                    const result = await post(@json(route('checkout.customer-email.verify-code')), { email, code: codeInput.value.trim() });
+                    verifiedEmail = email;
+                    showMessage(result.message || 'Email verified.', true);
+                    codePanel.hidden = true;
+                } catch (error) {
+                    showMessage(error.message || 'The code is invalid or expired.');
+                } finally {
+                    verifyButton.disabled = false;
+                }
+            });
+
+            emailInput.addEventListener('input', () => {
+                const email = normalizedEmail();
+                if (verifiedEmail && email !== verifiedEmail) {
+                    verifiedEmail = '';
+                    codePanel.hidden = true;
+                    codeInput.value = '';
+                    showMessage('Verify this email again if it belongs to an existing customer account.');
+                }
+            });
+        })();
+    </script>
 @endpush

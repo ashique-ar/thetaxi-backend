@@ -989,9 +989,12 @@ it('persists actual completion and route distance once without a pricing owner',
         'assignment_id' => $assignment->id, 'latitude' => 6.9001, 'longitude' => 79.8001, 'recorded_at' => now(),
     ]);
 
+    $staleRequestAssignment = $assignment->fresh();
     $summary = $this->tripService->endTrip($assignment, ['latitude' => 6.95, 'longitude' => 79.85]);
+    $staleRetry = $this->tripService->endTrip($staleRequestAssignment, ['latitude' => 6.96, 'longitude' => 79.86]);
     $completed = $assignment->fresh();
     $retry = $this->tripService->endTrip($completed, []);
+    $status = $this->tripService->getTripStatus($completed);
 
     expect($completed->trip_phase)->toBe(TripPhase::COMPLETED)
         ->and((float) $completed->final_latitude)->toBe(6.95)
@@ -1001,8 +1004,103 @@ it('persists actual completion and route distance once without a pricing owner',
         ->and($summary['trip_completed_at'])->toBe($completed->trip_completed_at->copy()->utc()->toIso8601String())
         ->and($retry['total_distance_km'])->toBe($summary['total_distance_km'])
         ->and($retry['trip_started_at'])->toBe($summary['trip_started_at'])
-        ->and($retry['trip_completed_at'])->toBe($summary['trip_completed_at']);
+        ->and($retry['trip_completed_at'])->toBe($summary['trip_completed_at'])
+        ->and($staleRetry['dropoff_coordinates'])->toBe($summary['dropoff_coordinates'])
+        ->and($status['trip_phase'])->toBe('completed')
+        ->and($status['total_distance_km'] ?? null)->toBe($summary['total_distance_km'])
+        ->and(array_key_exists('final_pricing', $status))->toBeTrue()
+        ->and(array_key_exists('payment', $status))->toBeTrue()
+        ->and($completed->fresh()->updated_at->toIso8601String())->toBe($completed->updated_at->toIso8601String());
 });
+
+it('does not expose completion errors and reports server failures', function (string $exceptionClass, string $action, string $operation, array $expected) {
+    $driver = Driver::create(['code' => 'COMPLETION-ERROR']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id, 'trip_phase' => TripPhase::IN_PROGRESS, 'status' => 'active',
+    ]);
+    $error = new $exceptionClass('Private database and pricing details');
+    $auth = Mockery::mock(\App\Services\Driver\DriverAuthService::class);
+    $auth->shouldReceive('getDriver')->once()->andReturn($driver);
+    $trips = Mockery::mock(TripTrackingService::class);
+    $trips->shouldReceive($operation)->once()->andThrow($error);
+    $this->partialMock(\Illuminate\Contracts\Debug\ExceptionHandler::class, function ($handler) use ($error) {
+        $handler->shouldReceive('report')->once()->with($error);
+    });
+    $controller = new \App\Http\Controllers\Api\Driver\Mobile\TripController(
+        $auth, $trips, Mockery::mock(MobileAssignmentService::class),
+        Mockery::mock(\App\Services\Sms\SmsAutomationService::class),
+    );
+    $request = Mockery::mock(\App\Http\Requests\Driver\Mobile\EndTripRequest::class);
+    $request->shouldReceive('user')->andReturn(new \App\Models\User());
+    $request->shouldReceive('validated')->andReturn(['latitude' => 6.95, 'longitude' => 79.85]);
+
+    $response = $controller->$action($request, $assignment->id);
+
+    expect($response->getStatusCode())->toBe(500)
+        ->and($response->getData(true))->toBe($expected)
+        ->and($assignment->fresh()->trip_phase)->toBe(TripPhase::IN_PROGRESS);
+})->with([
+    [\RuntimeException::class, 'endTripForAssignment', 'endTrip', ['status' => 'error', 'message' => 'Failed to end trip', 'error_code' => 'TRIP_END_FAILED']],
+    [\TypeError::class, 'endTripForAssignment', 'endTrip', ['status' => 'error', 'message' => 'Failed to end trip', 'error_code' => 'TRIP_END_FAILED']],
+    [\RuntimeException::class, 'statusForAssignment', 'getTripStatus', ['status' => 'error', 'message' => 'Failed to retrieve trip status', 'error_code' => 'TRIP_STATUS_FAILED']],
+    [\TypeError::class, 'statusForAssignment', 'getTripStatus', ['status' => 'error', 'message' => 'Failed to retrieve trip status', 'error_code' => 'TRIP_STATUS_FAILED']],
+]);
+
+it('denies access to another drivers completion and status', function () {
+    $driver = Driver::create(['code' => 'COMPLETION-OWNER']);
+    $otherDriver = Driver::create(['code' => 'COMPLETION-OTHER']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $otherDriver->id, 'trip_phase' => TripPhase::IN_PROGRESS, 'status' => 'active',
+    ]);
+    $auth = Mockery::mock(\App\Services\Driver\DriverAuthService::class);
+    $auth->shouldReceive('getDriver')->twice()->andReturn($driver);
+    $trips = Mockery::mock(TripTrackingService::class);
+    $trips->shouldNotReceive('endTrip');
+    $trips->shouldNotReceive('getTripStatus');
+    $controller = new \App\Http\Controllers\Api\Driver\Mobile\TripController(
+        $auth, $trips, Mockery::mock(MobileAssignmentService::class),
+        Mockery::mock(\App\Services\Sms\SmsAutomationService::class),
+    );
+    $request = Mockery::mock(\App\Http\Requests\Driver\Mobile\EndTripRequest::class);
+    $request->shouldReceive('user')->andReturn(new \App\Models\User());
+
+    expect($controller->endTripForAssignment($request, $assignment->id)->getStatusCode())->toBe(404)
+        ->and($controller->statusForAssignment($request, $assignment->id)->getStatusCode())->toBe(404)
+        ->and($assignment->fresh()->trip_phase)->toBe(TripPhase::IN_PROGRESS);
+});
+
+it('returns the current fare in completion and recovered status', function (string $action, string $operation) {
+    $driver = Driver::create(['code' => 'COMPLETION-FARE']);
+    $assignment = DriverAssignment::create([
+        'driver_id' => $driver->id, 'trip_phase' => TripPhase::COMPLETED, 'status' => 'completed',
+    ]);
+    $auth = Mockery::mock(\App\Services\Driver\DriverAuthService::class);
+    $auth->shouldReceive('getDriver')->once()->andReturn($driver);
+    $trips = Mockery::mock(TripTrackingService::class);
+    $trips->shouldReceive($operation)->once()->andReturn([
+        'assignment_id' => $assignment->id, 'hire_completed' => true, 'trip_phase' => 'completed',
+    ]);
+    $assignments = Mockery::mock(MobileAssignmentService::class);
+    $assignments->shouldReceive('buildAssignmentPayload')->once()->andReturn([
+        'id' => $assignment->id, 'fare_amount' => 1500.0, 'pricing_visible' => true,
+    ]);
+    $controller = new \App\Http\Controllers\Api\Driver\Mobile\TripController(
+        $auth, $trips, $assignments, Mockery::mock(\App\Services\Sms\SmsAutomationService::class),
+    );
+    $request = Mockery::mock(\App\Http\Requests\Driver\Mobile\EndTripRequest::class);
+    $request->shouldReceive('user')->andReturn(new \App\Models\User());
+    $request->shouldReceive('validated')->andReturn(['latitude' => 6.95, 'longitude' => 79.85]);
+
+    $response = $controller->$action($request, $assignment->id);
+    $data = $response->getData(true)['data'];
+
+    expect($response->getStatusCode())->toBe(200)
+        ->and($data['fare'] ?? null)->toBe(1500)
+        ->and($data['assignment']['id'] ?? null)->toBe($assignment->id);
+})->with([
+    ['endTripForAssignment', 'endTrip'],
+    ['statusForAssignment', 'getTripStatus'],
+]);
 
 it('reconciles a stale mobile assignment when the parent booking is already completed', function () {
     $booking = Booking::create([

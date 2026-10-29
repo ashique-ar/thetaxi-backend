@@ -19,9 +19,17 @@ use Illuminate\Validation\ValidationException;
  */
 class SalesPolicySettingsService
 {
-    public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone'];
+    public const KINDS = ['fx_corrections', 'commission_dispute', 'profile_export_retention', 'business_timezone', 'inquiry_response', 'booking_assignment'];
     // Expose a tenant toggle only after every runtime path for it is company-aware.
-    public const FEATURES = ['fx_corrections', 'rolling_payment_schedules', 'enforce_payment_finality', 'statements', 'payouts', 'performance_snapshots', 'performance_alert_evaluations', 'performance_alert_actions', 'crm', 'commission_notifications'];
+    public const FEATURES = ['fx_corrections', 'rolling_payment_schedules', 'enforce_payment_finality', 'statements', 'payouts', 'performance_snapshots', 'performance_alert_evaluations', 'performance_alert_actions', 'crm', 'crm_contact_stage', 'crm_qualification_stage', 'crm_quotation_stage', 'crm_negotiation_stage', 'commission_notifications'];
+
+    public function approvedFeatureSetting(string $companyId, string $feature): ?SalesCompanyFeatureSetting
+    {
+        if (! in_array($feature, self::FEATURES, true) || ! Schema::hasTable('sales_company_feature_settings')) return null;
+
+        return SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
+            ->where('feature_key', $feature)->where('status', 'approved')->orderByDesc('version')->first();
+    }
 
     public function featureEnabled(string $companyId, string $feature): bool
     {
@@ -30,9 +38,7 @@ class SalesPolicySettingsService
             return false;
         }
 
-        return (bool) SalesCompanyFeatureSetting::query()->where('company_id', $companyId)
-            ->where('feature_key', $feature)->where('status', 'approved')
-            ->orderByDesc('version')->value('enabled');
+        return (bool) $this->approvedFeatureSetting($companyId, $feature)?->enabled;
     }
 
     public function featureAvailability(): array
@@ -68,6 +74,9 @@ class SalesPolicySettingsService
     public function approveFeature(string $id, string $actorUserId): SalesCompanyFeatureSetting
     {
         return DB::transaction(function () use ($id, $actorUserId) {
+            $candidate = SalesCompanyFeatureSetting::query()->findOrFail($id);
+            abort_unless(DB::table('companies')->where('id', $candidate->company_id)->whereNull('deleted_at')
+                ->lockForUpdate()->first(), 404, 'The feature-setting company is unavailable.');
             $setting = SalesCompanyFeatureSetting::query()->lockForUpdate()->findOrFail($id);
             abort_unless($setting->status === 'draft', 422, 'Only a draft company feature setting can be approved.');
             abort_if($setting->created_by === $actorUserId, 409, 'The feature-setting creator cannot approve the same version.');
@@ -111,6 +120,16 @@ class SalesPolicySettingsService
     public function businessTimezone(string $companyId): ?string
     {
         return $this->current($companyId, 'business_timezone')?->business_timezone;
+    }
+
+    public function inquiryFirstResponseMinutes(string $companyId): ?int
+    {
+        return $this->current($companyId, 'inquiry_response')?->inquiry_first_response_minutes;
+    }
+
+    public function bookingAssignmentTargetMinutes(string $companyId): ?int
+    {
+        return $this->current($companyId, 'booking_assignment')?->booking_assignment_target_minutes;
     }
 
     /** @return array<int, string> */
@@ -169,6 +188,8 @@ class SalesPolicySettingsService
             'commission_dispute' => ['dispute_response_days' => (int) $data['dispute_response_days']],
             'profile_export_retention' => ['profile_export_retention_days' => (int) $data['profile_export_retention_days']],
             'business_timezone' => ['business_timezone' => (string) $data['business_timezone']],
+            'inquiry_response' => ['inquiry_first_response_minutes' => (int) $data['inquiry_first_response_minutes']],
+            'booking_assignment' => ['booking_assignment_target_minutes' => (int) $data['booking_assignment_target_minutes']],
         };
     }
 

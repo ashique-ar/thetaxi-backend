@@ -419,7 +419,15 @@ class WebsiteSettingsService
             'video_section_help_text'
         ];
 
-        return $this->getMultiple($types);
+        $settings = $this->getMultiple($types);
+        $rawSlides = $settings['hero_slides'] ?? null;
+        $slides = is_string($rawSlides) ? json_decode($rawSlides, true) : $rawSlides;
+        if (!is_array($slides)) {
+            // Show legacy media in the shared editor using the public site's precedence.
+            $settings['hero_slides'] = get_hero_slides($settings);
+        }
+
+        return $settings;
     }
 
     /**

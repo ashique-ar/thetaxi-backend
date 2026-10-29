@@ -8,6 +8,7 @@ use App\Models\UserContext;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 /**
  * CustomerService - Manages customer creation and profile management
@@ -41,16 +42,36 @@ class CustomerService
             $user = $this->findUserByEmail($email, true);
 
             if ($user) {
-                // User exists - restore if soft-deleted and update their info
-                if ($user->trashed()) {
-                    $user->restore();
+                if (!$this->checkoutEmailIsVerified($email)) {
+                    throw ValidationException::withMessages([
+                        'email' => ['Verify this email to connect the booking to the existing customer account.'],
+                    ]);
+                }
+
+                if ($user->trashed() || !$user->is_active) {
+                    throw ValidationException::withMessages([
+                        'email' => ['This account is inactive. Please contact the business before booking with this email.'],
+                    ]);
+                }
+
+                if (!$user->is_guest && !$user->hasRole('customer')) {
+                    throw ValidationException::withMessages([
+                        'email' => ['This email belongs to a non-customer account. Use a customer account to book online.'],
+                    ]);
+                }
+
+                $savedCustomer = Customer::withTrashed()->where('user_id', $user->id)->first();
+                $mergedCustomer = $this->customerForUser($user);
+                if ($savedCustomer?->trashed() && ! $mergedCustomer) {
+                    throw ValidationException::withMessages([
+                        'email' => ['This customer profile is inactive. Please contact the business before booking with this email.'],
+                    ]);
                 }
 
                 $user->update([
                     'first_name' => $data['first_name'] ?? $this->splitCustomerName($data['customer_name'])[0],
                     'last_name' => $data['last_name'] ?? $this->splitCustomerName($data['customer_name'])[1],
                     'phone' => $data['customer_phone'] ?? $user->phone,
-                    'is_active' => true,
                 ]);
 
                 return $this->ensureCustomerForUser($user, $data)->load('user');
@@ -66,7 +87,6 @@ class CustomerService
                 'phone' => $data['customer_phone'] ?? null,
                 'password' => bcrypt(Str::random(16)), // Random password, guest won't login
                 'is_guest' => true,
-                'email_verified_at' => now(),
             ]);
 
             return $this->ensureCustomerForUser($user, $data)->load('user');
@@ -126,28 +146,48 @@ class CustomerService
     {
         $data = $this->normalizeCheckoutData($data);
 
+        if (Auth::check()) {
+            $user = Auth::user();
+
+            if (strtolower(trim((string) ($data['customer_email'] ?? ''))) !== strtolower(trim((string) $user->email))) {
+                throw ValidationException::withMessages([
+                    'email' => ['Use the email address on your signed-in account to complete this booking.'],
+                ]);
+            }
+
+            $customer = $this->customerForUser($user);
+            return $customer
+                ? $this->updateCustomerProfile($customer, $data)->load('user')
+                : $this->createCustomerForUser($user, $data);
+        }
+
         if (!empty($data['customer_email'])) {
             $customer = $this->getCustomerByEmail($data['customer_email']);
 
             if ($customer) {
+                if (!$this->checkoutEmailIsVerified($data['customer_email'])) {
+                    throw ValidationException::withMessages([
+                        'email' => ['Verify this email to connect the booking to the existing customer account.'],
+                    ]);
+                }
+
+                if (!$customer->user || $customer->user->trashed() || !$customer->user->is_active) {
+                    throw ValidationException::withMessages([
+                        'email' => ['This account is inactive. Please contact the business before booking with this email.'],
+                    ]);
+                }
+
+                if (!$customer->user->is_guest && !$customer->user->hasRole('customer')) {
+                    throw ValidationException::withMessages([
+                        'email' => ['This email belongs to a non-customer account. Use a customer account to book online.'],
+                    ]);
+                }
+
                 return $this->updateCustomerProfile($customer, $data)->load('user');
             }
         }
 
-        if (Auth::check()) {
-            // Authenticated user - get existing customer or create new
-            $user = Auth::user();
-            if ($user->customer) {
-                // Update existing customer with new checkout data
-                return $this->updateCustomerProfile($user->customer, $data);
-            } else {
-                // Create new customer for existing user
-                return $this->createCustomerForUser($user, $data);
-            }
-        } else {
-            // Guest checkout - create new user and customer
-            return $this->createGuestCustomer($data);
-        }
+        return $this->createGuestCustomer($data);
     }
 
     /**
@@ -162,9 +202,14 @@ class CustomerService
     {
         $email = strtolower(trim($email));
 
-        return Customer::whereHas('user', function ($query) use ($email) {
+        $customer = Customer::whereHas('user', function ($query) use ($email) {
             $query->whereRaw('LOWER(email) = ?', [$email]);
         })->with('user')->first();
+        if ($customer) return $customer;
+
+        $userId = User::query()->whereRaw('LOWER(email) = ?', [$email])->value('id');
+        $customerId = $userId ? DB::table('customer_user_aliases')->where('user_id', $userId)->value('customer_id') : null;
+        return $customerId ? Customer::query()->with('user')->find($customerId) : null;
     }
 
     /**
@@ -206,6 +251,13 @@ class CustomerService
 
     private function ensureCustomerForUser(User $user, array $data): Customer
     {
+        $mergedCustomerId = DB::table('customer_user_aliases')->where('user_id', $user->id)->value('customer_id');
+        if ($mergedCustomerId) {
+            $customer = Customer::query()->findOrFail($mergedCustomerId);
+            $this->ensureCustomerContext($user, $customer);
+            return $customer->fresh('user');
+        }
+
         $customer = Customer::withTrashed()->where('user_id', $user->id)->lockForUpdate()->first();
 
         if (!$customer) {
@@ -240,6 +292,15 @@ class CustomerService
         $this->ensureCustomerContext($user, $customer);
 
         return $customer->fresh('user');
+    }
+
+    public function customerForUser(User $user): ?Customer
+    {
+        $customer = Customer::query()->where('user_id', $user->id)->first();
+        if ($customer) return $customer;
+
+        $customerId = DB::table('customer_user_aliases')->where('user_id', $user->id)->value('customer_id');
+        return $customerId ? Customer::query()->find($customerId) : null;
     }
 
     private function ensureCustomerContext(User $user, Customer $customer): void
@@ -296,6 +357,12 @@ class CustomerService
         $data['customer_name'] = trim((string) ($data['customer_name'] ?? trim(($data['first_name'] ?? '') . ' ' . ($data['last_name'] ?? ''))));
 
         return $data;
+    }
+
+    private function checkoutEmailIsVerified(string $email): bool
+    {
+        return hash_equals(strtolower(trim((string) session('checkout_verified_email'))), strtolower(trim($email)))
+            && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800;
     }
 
     private function splitCustomerName(string $name): array

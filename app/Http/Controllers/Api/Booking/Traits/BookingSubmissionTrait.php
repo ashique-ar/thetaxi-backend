@@ -2,14 +2,18 @@
 
 namespace App\Http\Controllers\Api\Booking\Traits;
 
+use App\Enums\BookingLifecycleStatus;
 use App\Http\Resources\Booking\BookingFlowResource;
 use App\Mail\QuotationRequestMail;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
+use App\Models\User;
 use App\Services\Sms\SmsAutomationService;
+use App\Services\SingleCompanyScope;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
@@ -243,7 +247,10 @@ trait BookingSubmissionTrait
         return response()->json([
             'status' => 'success',
             'data' => new BookingFlowResource($booking),
-            'message' => 'Booking confirmed successfully'
+            'requires_approval' => (bool) $booking->requires_approval,
+            'message' => $booking->requires_approval
+                ? 'Booking submitted for approval successfully'
+                : 'Booking confirmed successfully'
         ], 201);
     }
 
@@ -558,9 +565,10 @@ trait BookingSubmissionTrait
                     $booking->loadMissing('customer.user', 'bookingItems.vehicleGroup', 'bookingItems.serviceType');
                     $email = $booking->customer?->user?->email;
                     if ($email) {
+                        $checkoutLink = \App\Helpers\BookingLinkHelper::getQuotationCheckoutLink($booking);
                         app(\App\Services\MailDispatchService::class)->sendToCustomer(
                             $email,
-                            new QuotationRequestMail($booking, staffRequested: true)
+                            new QuotationRequestMail($booking, staffRequested: true, checkoutLink: $checkoutLink ?: null)
                         );
                     }
                 } catch (\Throwable $e) {
@@ -648,18 +656,35 @@ trait BookingSubmissionTrait
             'has_overrides' => 'nullable|boolean',
             'priority' => 'nullable|string|in:normal,high,urgent',
             'assigned_to' => 'nullable|uuid|exists:users,id',
+            'mine_only' => 'nullable|boolean',
+            'work_only' => 'nullable|boolean',
             'created_by' => 'nullable|uuid|exists:users,id',
             'item_type' => 'nullable|string|max:100',
             'is_self_driven' => 'nullable|boolean',
             'booking_source' => 'nullable|string|in:public,corporate,internal',
             'corporate_id' => 'nullable|uuid',
             'dashboard_scope' => 'nullable|string|in:standard',
-            'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
-            'queue' => 'nullable|string|in:needs_approval,needs_assignment,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
+            'operations_queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
+            'queue' => 'nullable|string|in:needs_approval,needs_assignment,needs_responsible_owner,needs_responsible_owner_past_target,ready_to_dispatch,active,return_due,qc_pending,repair_pending,ready_to_complete,payment_pending,payment_attention',
         ]);
 
+        $queue = $request->input('queue', $request->input('operations_queue'));
+        if ($queue === 'needs_responsible_owner_past_target') {
+            $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+            abort_unless($companyId && app(\App\Services\Sales\SalesPolicySettingsService::class)
+                ->bookingAssignmentTargetMinutes((string) $companyId), 409,
+                'Ask an administrator to set and approve the booking assignment target first.');
+        }
+
         try {
-            $bookings = $this->bookingFlowService->getFilteredBookings($request->all());
+            $filters = $request->all();
+            if ($request->boolean('work_only')) {
+                $filters['assigned_to'] = $request->user()->id;
+                $filters['status'] = array_merge(['draft'], BookingLifecycleStatus::activeOperationalValues());
+            } elseif ($request->boolean('mine_only')) {
+                $filters['assigned_to'] = $request->user()->id;
+            }
+            $bookings = $this->bookingFlowService->getFilteredBookings($filters);
 
             return response()->json([
                 'status' => 'success',
@@ -674,6 +699,72 @@ trait BookingSubmissionTrait
                 'error' => $e->getMessage()
             ], 500);
         }
+    }
+
+    public function responsibleUserOptions(Request $request): JsonResponse
+    {
+        $company = app(SingleCompanyScope::class)->activeDefaultCompany();
+        abort_unless($company, 409, 'Set one active default company before assigning bookings.');
+
+        $rows = app(\App\Services\BookingResponsibilityService::class)->eligibleEmployees()
+            ->map(fn ($row) => ['id' => (string) $row->id, 'name' => trim($row->first_name.' '.$row->last_name), 'code' => $row->code]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function assignResponsibleUser(Request $request, string $bookingId): JsonResponse
+    {
+        $data = $request->validate(['responsible_user_id' => ['present', 'nullable', 'uuid']]);
+        $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
+        abort_unless($company, 409, 'Set one active default company before assigning bookings.');
+
+        $booking = DB::transaction(function () use ($bookingId, $data, $request, $company) {
+            abort_unless(app(SingleCompanyScope::class)->activeDefaultCompany(true)?->id === $company->id, 409, 'Default company changed; retry assignment.');
+            $bookingQuery = Booking::query()->whereKey($bookingId);
+            \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', $company->id);
+            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+            $newOwnerId = $data['responsible_user_id'];
+
+            if ($newOwnerId !== null) {
+                $eligible = DB::table('staff')->join('users', 'users.id', '=', 'staff.user_id')
+                    ->where('staff.company_id', $company->id)->where('users.id', $newOwnerId)
+                    ->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                    ->whereNull('users.deleted_at')->where('users.is_active', true)
+                    ->lockForUpdate()->exists()
+                    && User::permission('bookings.view')->whereKey($newOwnerId)->exists();
+                abort_unless($eligible, 422, 'Select an active employee in the current company who can view bookings.');
+            }
+
+            $previousOwnerId = $booking->responsible_user_id;
+            if ($previousOwnerId !== $newOwnerId) {
+                $booking->forceFill(['responsible_user_id' => $newOwnerId, 'updated_user_id' => $request->user()->id])->save();
+                BookingActivity::create([
+                    'booking_id' => $booking->id,
+                    'event_key' => 'booking_responsible_user_changed',
+                    'channel' => 'system',
+                    'result_status' => 'completed',
+                    'source' => 'portal',
+                    'title' => $newOwnerId ? 'Booking owner assigned' : 'Booking owner cleared',
+                    'detail' => 'Responsible employee changed.',
+                    'idempotency_key' => 'booking-owner-'.\Illuminate\Support\Str::uuid(),
+                    'meta' => ['from_user_id' => $previousOwnerId, 'to_user_id' => $newOwnerId, 'actor_user_id' => (string) $request->user()->id],
+                    'event_at' => now(),
+                ]);
+                if ($newOwnerId) {
+                    app(\App\Services\BookingResponsibilityService::class)->notifyResponsibleEmployee($booking);
+                }
+            }
+
+            return $booking->load('responsibleUser:id,first_name,last_name');
+        });
+
+        return response()->json(['status' => 'success', 'data' => [
+            'booking_id' => (string) $booking->id,
+            'responsible_user' => $booking->responsibleUser ? [
+                'id' => (string) $booking->responsibleUser->id,
+                'name' => trim($booking->responsibleUser->first_name.' '.$booking->responsibleUser->last_name),
+            ] : null,
+        ]]);
     }
 
     public function getReturnInspectionOptions(Request $request): JsonResponse

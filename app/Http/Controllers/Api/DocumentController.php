@@ -254,7 +254,7 @@ class DocumentController extends Controller
             'document_type' => ['required', 'string', 'max:50'],
             'document_number' => ['nullable', 'string', 'max:255'],
             'idempotency_key' => ['required', 'uuid'],
-            'expiry_date' => ['nullable', 'date'],
+            'expiry_date' => ['required_if:document_type,driver_license,driving_license', 'nullable', 'date'],
             'supersedes_id' => ['nullable', 'uuid'],
             'retention_until' => ['nullable', 'date'],
             'file' => ['required', 'file', 'max:20480'],

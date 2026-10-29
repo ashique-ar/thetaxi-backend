@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Enums\BookingLifecycleStatus;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingApproval;
 use App\Models\Booking\BookingAddon;
@@ -47,6 +48,7 @@ use Illuminate\Notifications\DatabaseNotification;
 use Ramsey\Uuid\Uuid;
 use App\Services\PricingVariableService;
 use App\Services\AssignmentService;
+use App\Services\Sales\SalesPolicySettingsService;
 use App\Services\Pricing\PricingDefinitionOrchestrator;
 use App\Services\Pricing\PricingHolidayCalendarService;
 use App\Services\Pricing\PricingContextPolicyService;
@@ -2326,7 +2328,8 @@ class BookingFlowService
             $totals = $this->extractTotalsFromPricing($pricing);
             $approvalTriggers = $this->resolveApprovalTriggers(
                 $params,
-                is_array($pricing['addons_pricing'] ?? null) ? $pricing['addons_pricing'] : null
+                is_array($pricing['addons_pricing'] ?? null) ? $pricing['addons_pricing'] : null,
+                $draft
             );
             $requiresApproval = !empty($approvalTriggers);
 
@@ -2384,6 +2387,9 @@ class BookingFlowService
             );
 
             $booking->save();
+            if ($booking->wasRecentlyCreated) {
+                app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
+            }
 
             $this->recordPortalPromoUsage($booking, $params);
 
@@ -3019,6 +3025,13 @@ class BookingFlowService
         // to the cache table while booking rows are locked.
         app(WebsiteSettingsService::class)->getBookingSettings();
 
+        $approvalDraft = !empty($params['booking_id'])
+            ? Booking::with('bookingItems')->findOrFail($params['booking_id'])
+            : null;
+        if ($this->serviceRequiresBookingApproval($params, $approvalDraft, null)) {
+            return $this->submitBookingForApproval($params);
+        }
+
         return DB::transaction(function () use ($params) {
             $draft = $this->prepareDraftForTransition($params);
             $deferConfirmation = filter_var($params['defer_confirmation'] ?? false, FILTER_VALIDATE_BOOL);
@@ -3091,6 +3104,9 @@ class BookingFlowService
             // initialize actuals with estimated
             $booking->total_actual = $booking->total_estimated;
             $booking->save();
+            if ($booking->wasRecentlyCreated) {
+                app(BookingResponsibilityService::class)->notifyBookingCreated($booking);
+            }
             $this->recordPortalPromoUsage($booking, $params);
 
             // Handle multi-group booking items creation
@@ -6670,6 +6686,7 @@ class BookingFlowService
             'has_overrides' => 'Override applied',
             'custom_addons' => 'Custom add-on pricing applied',
             'concurrent_assignments' => 'Concurrent assignment detected',
+            'service_booking_approval' => 'This service requires manager approval',
         ];
 
         return array_values(array_unique(array_map(
@@ -6704,7 +6721,48 @@ class BookingFlowService
             $triggers[] = 'concurrent_assignments';
         }
 
+        if ($this->serviceRequiresBookingApproval($params, $booking, $bookingItem)) {
+            $triggers[] = 'service_booking_approval';
+        }
+
         return array_values(array_unique($triggers));
+    }
+
+    private function serviceRequiresBookingApproval(array $params, ?Booking $booking, ?BookingItem $bookingItem): bool
+    {
+        if ($booking && ($booking->confirmed || $booking->confirmed_at || $booking->status === 'confirmed')) {
+            return false;
+        }
+
+        if ($bookingItem && data_get($bookingItem->workflow_config_snapshot, 'policy_version') === 1) {
+            return (bool) data_get($bookingItem->workflow_config_snapshot, 'booking_approval_required', false);
+        }
+
+        if ($booking) {
+            $items = $booking->relationLoaded('bookingItems')
+                ? $booking->bookingItems
+                : $booking->bookingItems()->get(['id', 'service_type_id', 'workflow_config_snapshot']);
+            if ($items->isNotEmpty()) {
+                return $items->contains(fn (BookingItem $item): bool =>
+                    data_get($item->workflow_config_snapshot, 'policy_version') === 1
+                    && (bool) data_get($item->workflow_config_snapshot, 'booking_approval_required', false)
+                );
+            }
+        }
+
+        $serviceTypeIds = collect(array_merge(
+            [
+                $params['service_type_id'] ?? null,
+                Str::isUuid((string) ($params['service_type'] ?? '')) ? $params['service_type'] : null,
+            ],
+            collect($params['booking_items'] ?? [])->pluck('service_type_id')->all()
+        ))->filter(fn ($id): bool => is_string($id) && Str::isUuid($id))->unique()->values();
+
+        return $serviceTypeIds->isNotEmpty()
+            && ServiceType::query()->whereIn('id', $serviceTypeIds)->get(['id', 'workflow_config'])
+                ->contains(fn (ServiceType $serviceType): bool =>
+                    (bool) data_get($serviceType->workflow_config, 'booking_approval_required', false)
+                );
     }
 
     private function collectApprovalDiscounts(array $params = [], ?Booking $booking = null): array
@@ -8686,6 +8744,9 @@ class BookingFlowService
                 'exchange_rate' => (float) ($item->exchange_rate ?? 1),
                 'status' => $item->status ?? 'pending',
                 'requires_approval' => (bool) ($item->requires_approval ?? false),
+                'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
+                    ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
+                    : true,
                 'item_type' => $item->item_type ?? null,
                 'notes' => $item->notes ?? null,
                 'metadata' => $metadata,
@@ -9285,6 +9346,7 @@ class BookingFlowService
                 'booking.employeeUser' => fn ($q) => $q->withTrashed()
                     ->select(['id', 'first_name', 'last_name', 'email', 'phone']),
                 'booking.createdBy:id,first_name,last_name',
+                'booking.responsibleUser:id,first_name,last_name',
                 'booking.bookingChannel:id,name',
                 'booking.vehicleAssignments' => function ($q) {
                     $q->where('status', '!=', 'cancelled')
@@ -9530,7 +9592,7 @@ class BookingFlowService
 
         if (!empty($filters['assigned_to'])) {
             $query->whereHas('booking', function ($bookingQuery) use ($filters) {
-                $bookingQuery->where('assigned_to', $filters['assigned_to']);
+                $bookingQuery->where('responsible_user_id', $filters['assigned_to']);
             });
         }
 
@@ -9746,6 +9808,18 @@ class BookingFlowService
         }
 
         match ($queue) {
+            'needs_responsible_owner', 'needs_responsible_owner_past_target' => $query->whereHas('booking', function ($bookingQuery) use ($queue) {
+                    $companyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
+                    $eligibleOwners = $companyId ? app(BookingResponsibilityService::class)->eligibleEmployees((string) $companyId)->pluck('id')->map(fn ($id) => (string) $id)->all() : [];
+                    $bookingQuery->whereIn('status', BookingLifecycleStatus::activeOperationalValues())
+                        ->where(fn ($ownerQuery) => $ownerQuery->whereNull('bookings.responsible_user_id')->orWhereNotIn('bookings.responsible_user_id', $eligibleOwners));
+                    if ($queue === 'needs_responsible_owner_past_target') {
+                        $targetMinutes = $companyId ? app(SalesPolicySettingsService::class)->bookingAssignmentTargetMinutes((string) $companyId) : null;
+                        $targetMinutes === null
+                            ? $bookingQuery->whereRaw('1 = 0')
+                            : $bookingQuery->where('bookings.created_at', '<=', now()->subMinutes($targetMinutes));
+                    }
+                }),
             'needs_approval' => $query->whereHas('booking', function ($bookingQuery) {
                     $bookingQuery->where('status', 'pending_approval')
                     ->orWhere(function ($approvalQuery) {
@@ -10144,6 +10218,10 @@ class BookingFlowService
             'dispatch_status' => $dispatchStatus,
             'booking_source' => $bookingSource,
             'booking_origin' => $booking?->booking_origin,
+            'responsible_user' => $booking?->responsibleUser ? [
+                'id' => (string) $booking->responsibleUser->id,
+                'name' => trim($booking->responsibleUser->first_name.' '.$booking->responsibleUser->last_name),
+            ] : null,
             'booking_origin_label' => match ($booking?->booking_origin) {
                 'corporate_portal' => 'Corporate portal',
                 'customer_portal' => 'Customer portal',
@@ -10651,6 +10729,9 @@ class BookingFlowService
                 'exchange_rate' => (float) ($item->exchange_rate ?? 1),
                 'status' => $item->status ?? 'pending',
                 'requires_approval' => (bool) $item->requires_approval,
+                'signed_agreement_required' => array_key_exists('signed_agreement_required', $item->workflow_config_snapshot ?? [])
+                    ? (bool) $item->workflow_config_snapshot['signed_agreement_required']
+                    : true,
                 'approved_at' => optional($item->approved_at)->toISOString(),
                 'approved_by' => $item->approved_by ? (string) $item->approved_by : null,
                 'item_type' => $item->item_type,
@@ -11628,6 +11709,8 @@ class BookingFlowService
     {
         $counts = [];
         foreach ([
+            'needs_responsible_owner',
+            'needs_responsible_owner_past_target',
             'needs_approval',
             'needs_assignment',
             'ready_to_dispatch',
@@ -11641,7 +11724,9 @@ class BookingFlowService
             $queueQuery = clone $query;
             $queueQuery->reorder();
             $this->applyOperationsQueueFilter($queueQuery, $queue);
-            $counts[$queue] = $queueQuery->count('booking_items.id');
+            $counts[$queue] = in_array($queue, ['needs_responsible_owner', 'needs_responsible_owner_past_target'], true)
+                ? $queueQuery->distinct()->count('booking_items.booking_id')
+                : $queueQuery->count('booking_items.id');
         }
 
         return $counts;
@@ -13012,7 +13097,7 @@ class BookingFlowService
             $booking->booking_date = $booking->booking_date ?? now();
             $booking->status = 'draft';
             $this->applyCorporateBookingFields($booking, $params);
-            $this->applyPortalBookingSource($booking);
+            $this->applyPortalBookingSource($booking, $params);
             $this->applyBookingPaymentFields($booking, $params);
 
             // An incomplete draft may be saved before any trip or vehicle
@@ -13135,10 +13220,29 @@ class BookingFlowService
         }
 
         if (is_string($candidate) && trim($candidate) !== '') {
-            $customer = Customer::find($candidate);
+            $defaultCompanyIds = Company::query()->where('is_active', true)->where('is_default', true)->limit(2)->pluck('id');
+            $companyId = $defaultCompanyIds->count() === 1 ? $defaultCompanyIds->first() : null;
+            $authenticatedUserId = Auth::id();
+            if (! $companyId) {
+                throw ValidationException::withMessages([
+                    'customer_id' => 'A customer can only be selected after an active business is configured.',
+                ]);
+            }
+            $customer = Customer::query()->whereKey($candidate)
+                ->where(function ($query) use ($companyId, $authenticatedUserId): void {
+                    CompanyCustomerScope::constrain($query, 'customers', (string) $companyId);
+                    if ($authenticatedUserId) {
+                        $query->orWhere('customers.user_id', $authenticatedUserId);
+                    }
+                })
+                ->first();
             if ($customer) {
                 return (string) $customer->id;
             }
+
+            throw ValidationException::withMessages([
+                'customer_id' => 'Select a customer already linked to this business, or use your own customer account.',
+            ]);
         }
 
         $isCorporateBooking = filter_var($params['is_corporate_booking'] ?? false, FILTER_VALIDATE_BOOL);

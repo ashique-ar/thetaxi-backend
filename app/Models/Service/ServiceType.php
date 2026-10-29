@@ -58,6 +58,7 @@ class ServiceType extends BaseModel
         'allow_multiple_pickup_locations',
         'allow_multiple_dropoff_locations',
         'form_config',
+        'workflow_config',
         'frontend_category',
         'category',
         'priority',
@@ -92,6 +93,7 @@ class ServiceType extends BaseModel
         'owner_type' => 'string',
         'owner_id' => 'string',
         'form_config' => 'array',
+        'workflow_config' => 'array',
     ];
 
     // Relations
@@ -114,6 +116,11 @@ class ServiceType extends BaseModel
     public function updatedBy()
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    public function workflowRevisions()
+    {
+        return $this->hasMany(ServiceTypeWorkflowRevision::class)->orderByDesc('revision');
     }
 
     /**

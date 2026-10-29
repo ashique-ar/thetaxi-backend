@@ -6,6 +6,7 @@ use App\Models\Booking\Booking;
 use App\Models\Booking\BookingItem;
 use App\Models\Booking\BookingDispatch;
 use App\Models\Booking\BookingQC;
+use App\Models\Booking\BookingActivity;
 use App\Models\DriverAssignment;
 use App\Models\Driver\DriverSession;
 use App\Models\Vehicle\VehiclePricing\VehiclePricingCalculationDefinition;
@@ -55,6 +56,7 @@ class BookingLifecycleService
     protected WebsiteSettingsService $websiteSettingsService;
     protected CustomerMobileActivityService $customerMobileActivityService;
     protected FinalPricingTelemetryResolver $finalPricingTelemetryResolver;
+    protected BookingWorkflowSettingsResolver $workflowSettingsResolver;
     protected ?BookingOperationsHealthMonitor $healthMonitor;
 
     public function __construct(
@@ -70,6 +72,7 @@ class BookingLifecycleService
         CustomerMobileActivityService $customerMobileActivityService,
         FinalPricingTelemetryResolver $finalPricingTelemetryResolver,
         ?BookingOperationsHealthMonitor $healthMonitor = null,
+        ?BookingWorkflowSettingsResolver $workflowSettingsResolver = null,
     ) {
         $this->assignmentService = $assignmentService;
         $this->bookingFlowService = $bookingFlowService;
@@ -82,6 +85,7 @@ class BookingLifecycleService
         $this->websiteSettingsService = $websiteSettingsService;
         $this->customerMobileActivityService = $customerMobileActivityService;
         $this->finalPricingTelemetryResolver = $finalPricingTelemetryResolver;
+        $this->workflowSettingsResolver = $workflowSettingsResolver ?? new BookingWorkflowSettingsResolver($websiteSettingsService);
         $this->healthMonitor = $healthMonitor;
     }
 
@@ -433,8 +437,8 @@ class BookingLifecycleService
                 ->findOrFail($bookingId);
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
-            $this->assertFinancialLifecycleReady($booking, 'dispatch');
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertFinancialLifecycleReady($booking, 'dispatch', $context['booking_item']);
 
             if (!$context['vehicle_id']) {
                 throw new \Exception('Vehicle must be assigned before dispatch preparation');
@@ -483,8 +487,14 @@ class BookingLifecycleService
                 ->findOrFail($bookingId);
             $bookingItemId = $dispatchData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
-            $this->assertFinancialLifecycleReady($booking, 'dispatch');
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertFinancialLifecycleReady($booking, 'dispatch', $context['booking_item']);
+            if ($this->getLifecycleWorkflowSettings($booking, $context['booking_item'])['require_signed_agreement']
+                && empty($dispatchData['agreements_signed'])) {
+                throw ValidationException::withMessages([
+                    'agreements_signed' => 'The signed rental agreement must be confirmed before dispatch.',
+                ]);
+            }
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $vehicleId = $context['vehicle_id'];
             $driverId = $context['driver_id'];
@@ -751,26 +761,98 @@ class BookingLifecycleService
         ];
     }
 
-    /**
-     * Process replacement request
-     */
-    public function processReplacement(string $bookingId, array $replacementData): array
+    public function requestReplacement(string $bookingId, string $bookingItemId, string $reason, ?string $notes = null): array
     {
-        return DB::transaction(function () use ($bookingId, $replacementData) {
-            $booking = Booking::findOrFail($bookingId);
+        return DB::transaction(function () use ($bookingId, $bookingItemId, $reason, $notes): array {
+            $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
+            if (! $company) throw new \DomainException('Set one active default company before requesting a replacement.');
+            $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
+            CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+            $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $dispatch = $this->resolveItemDispatch($booking, ['booking_item' => $item, 'booking_item_id' => $item->id]);
+            $qc = $this->resolveItemQc($booking, ['booking_item' => $item, 'booking_item_id' => $item->id]);
+            $currentStatus = $this->resolveSelectedItemLifecycleStatus($booking, $item, $dispatch, $qc);
+            if ($currentStatus === BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED
+                && data_get($item->lifecycle_data, 'replacement_request.status') === 'open') {
+                return $this->getLifecycleSummary((string) $booking->id, (string) $item->id);
+            }
+            if ($currentStatus !== BookingLifecycleStatus::ONGOING_ACTIVE) {
+                throw new \DomainException('A replacement can only be requested for a trip that is in progress.');
+            }
 
-            // This would integrate with the existing swap functionality
-            // from AssignmentController
-
-            $booking->transitionToStatus(BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, Auth::id(), $replacementData);
-
-            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ONGOING_ACTIVE, BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, $replacementData);
-
-            return [
-                'booking' => $booking,
-                'replacement_requested' => true,
-                'next_actions' => $booking->getNextActions(),
+            $lifecycleData = is_array($item->lifecycle_data) ? $item->lifecycle_data : [];
+            $lifecycleData['operational_status'] = BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED->value;
+            $lifecycleData['replacement_request'] = [
+                'status' => 'open', 'reason' => $reason, 'notes' => $notes,
+                'requested_by' => (string) Auth::id(), 'requested_at' => Carbon::now('UTC')->toIso8601String(),
             ];
+            $item->forceFill(['lifecycle_data' => $lifecycleData])->save();
+            $this->logLifecycleTransition($booking, $currentStatus, BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, [
+                'booking_item_id' => (string) $item->id, 'source' => 'replacement_request', 'reason' => $reason, 'notes' => $notes,
+            ]);
+            BookingActivity::create([
+                'booking_id' => $booking->id, 'booking_item_id' => $item->id,
+                'event_key' => 'replacement_requested', 'channel' => 'operations', 'result_status' => 'pending',
+                'source' => 'booking_workspace', 'title' => 'Replacement requested',
+                'detail' => trim($reason.' '.($notes ?? '')),
+                'idempotency_key' => 'replacement-request-'.\Illuminate\Support\Str::uuid(),
+                'meta' => ['reason' => $reason, 'notes' => $notes, 'requested_by' => (string) Auth::id()],
+                'event_at' => Carbon::now('UTC'),
+            ]);
+            return $this->getLifecycleSummary((string) $booking->id, (string) $item->id);
+        });
+    }
+
+    public function closeReplacementRequest(string $bookingId, string $bookingItemId, string $resolutionReason): array
+    {
+        return DB::transaction(function () use ($bookingId, $bookingItemId, $resolutionReason): array {
+            $company = app(SingleCompanyScope::class)->activeDefaultCompany(true);
+            if (! $company) throw new \DomainException('Set one active default company before closing a replacement request.');
+            $bookingQuery = Booking::query()->with(['bookingItems', 'dispatches', 'qcs'])->whereKey($bookingId);
+            CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+            $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+            $item = BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail();
+            $lifecycleData = is_array($item->lifecycle_data) ? $item->lifecycle_data : [];
+            if (data_get($lifecycleData, 'replacement_request.status') !== 'open') {
+                throw new \DomainException('There is no open replacement request for this trip.');
+            }
+
+            unset($lifecycleData['operational_status']);
+            $lifecycleData['replacement_request'] = array_merge($lifecycleData['replacement_request'], [
+                'status' => 'closed_without_swap',
+                'resolution_reason' => trim($resolutionReason),
+                'closed_by' => (string) Auth::id(),
+                'closed_at' => Carbon::now('UTC')->toIso8601String(),
+            ]);
+            $item->forceFill(['lifecycle_data' => $lifecycleData])->save();
+            $this->logLifecycleTransition($booking, BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED, BookingLifecycleStatus::ONGOING_ACTIVE, [
+                'booking_item_id' => (string) $item->id, 'source' => 'replacement_request_closed', 'reason' => trim($resolutionReason),
+            ]);
+            BookingActivity::create([
+                'booking_id' => $booking->id, 'booking_item_id' => $item->id,
+                'event_key' => 'replacement_request_closed', 'channel' => 'operations', 'result_status' => 'completed',
+                'source' => 'booking_workspace', 'title' => 'Replacement request closed without a swap',
+                'detail' => trim($resolutionReason),
+                'idempotency_key' => 'replacement-request-close-'.\Illuminate\Support\Str::uuid(),
+                'meta' => ['resolution_reason' => trim($resolutionReason), 'closed_by' => (string) Auth::id()],
+                'event_at' => Carbon::now('UTC'),
+            ]);
+            try {
+                $booking->loadMissing('customer.user');
+                $booking->customer?->user?->notify(new BookingLifecycleNotification(
+                    $booking,
+                    'Replacement update',
+                    'The replacement is no longer needed. Your current trip remains active.',
+                    'booking_replacement_request_closed',
+                ));
+            } catch (\Throwable $exception) {
+                Log::warning('Customer replacement update could not be queued', [
+                    'booking_id' => $booking->id, 'error' => $exception->getMessage(),
+                ]);
+            }
+
+            return $this->getLifecycleSummary((string) $booking->id, (string) $item->id);
         });
     }
 
@@ -788,10 +870,10 @@ class BookingLifecycleService
                 ->lockForUpdate()
                 ->with(['bookingItems', 'dispatches'])
                 ->findOrFail($bookingId);
-            $this->assertReturnStageAvailable($booking);
             $bookingItemId = $returnData['booking_item_id'] ?? null;
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertReturnStageAvailable($booking, $context['booking_item']);
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
 
             if ($dispatch) {
@@ -819,6 +901,75 @@ class BookingLifecycleService
     }
 
     /**
+     * Finish a driver trip through the booking's configured post-trip workflow.
+     * A legacy taxi assignment may not have a dispatch row; create a clearly
+     * identified return record only when the saved service requires that stage.
+     */
+    public function completeDriverTrip(DriverAssignment $assignment, string $bookingItemId, array $completionData): void
+    {
+        DB::transaction(function () use ($assignment, $bookingItemId, $completionData): void {
+            $lockedAssignment = DriverAssignment::query()->lockForUpdate()->findOrFail($assignment->id);
+            abort_unless((string) $lockedAssignment->booking_id === (string) $assignment->booking_id
+                && (string) $lockedAssignment->booking_item_id === $bookingItemId
+                && $lockedAssignment->trip_phase?->value === TripPhase::COMPLETED->value
+                && $lockedAssignment->trip_completed_at, 409, 'The completed driver trip could not be verified.');
+
+            $booking = Booking::query()->lockForUpdate()->with(['dispatches', 'bookingItems'])->findOrFail($assignment->booking_id);
+            if ((string) $booking->status === 'completed') {
+                return;
+            }
+            $this->assertItemSafeLifecycle($booking, $bookingItemId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $bookingItem = $context['booking_item']
+                ? BookingItem::query()->whereKey($bookingItemId)->where('booking_id', $booking->id)->lockForUpdate()->firstOrFail()
+                : null;
+            $context['booking_item'] = $bookingItem;
+            $workflow = $this->getLifecycleWorkflowSettings($booking, $bookingItem);
+
+            if (! ($workflow['enable_return_stage'] ?? false) && ! ($workflow['enable_qc_stage'] ?? false)) {
+                $this->completeBooking((string) $booking->id, $completionData + ['completed_by_driver' => true], $bookingItemId);
+                return;
+            }
+
+            $dispatch = $this->resolveItemDispatch($booking, $context, true);
+            if (! $dispatch) {
+                $vehicleId = $context['vehicle_id'] ?? null;
+                abort_if(! $vehicleId, 409, 'A vehicle must be assigned before the required return and inspection can be completed.');
+                abort_if($booking->bookingItems->count() > 1 && ! Schema::hasColumn('booking_dispatches', 'booking_item_id'), 409,
+                    'This database cannot safely record a return for one item in a multi-item booking.');
+
+                $dispatchData = [
+                    'booking_id' => (string) $booking->id,
+                    'vehicle_id' => (string) $vehicleId,
+                    'driver_id' => $lockedAssignment->driver_id,
+                    'dispatch_status' => DispatchStatus::IN_PROGRESS,
+                    'dispatched_at' => $lockedAssignment->trip_started_at,
+                    'dispatched_by' => null,
+                    'expected_return_at' => $lockedAssignment->assigned_to ?? $bookingItem?->to_date ?? $booking->to_date,
+                    'is_self_driven' => false,
+                    'dispatch_notes' => 'Return record created from completed driver assignment; original dispatch record was missing.',
+                    'created_user_id' => Auth::id(),
+                ];
+                if (Schema::hasColumn('booking_dispatches', 'booking_item_id')) {
+                    $dispatchData['booking_item_id'] = $bookingItemId;
+                }
+                $dispatch = BookingDispatch::query()->create($dispatchData);
+            }
+
+            $this->processReturn((string) $booking->id, [
+                'booking_item_id' => $bookingItemId,
+                'actual_return_time' => $completionData['actual_return_time'] ?? $lockedAssignment->trip_completed_at,
+                'mileage' => $completionData['mileage_in'] ?? null,
+                'notes' => $completionData['notes'] ?? 'Completed via driver mobile app',
+                'condition' => null,
+                'damages' => [],
+                'charges' => [],
+                'completed_by_driver' => true,
+            ]);
+        });
+    }
+
+    /**
      * Process return
      */
     public function processReturn(string $bookingId, array $returnData): BookingDispatch
@@ -839,6 +990,9 @@ class BookingLifecycleService
                     ->firstOrFail()
                 : null;
             $context['booking_item'] = $bookingItem;
+            if (data_get($bookingItem?->lifecycle_data, 'replacement_request.status') === 'open') {
+                throw new \DomainException('Complete the replacement swap or close the request with a reason before completing this trip.');
+            }
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $isMultiItem = $booking->bookingItems->count() > 1;
             $fromStatus = $booking->getLifecycleStatus();
@@ -867,7 +1021,7 @@ class BookingLifecycleService
                 return $dispatch;
             }
 
-            $this->assertReturnStageAvailable($booking);
+            $this->assertReturnStageAvailable($booking, $bookingItem);
             if (!$actorUserId) {
                 throw new \Exception('Authenticated user is required to process return');
             }
@@ -952,8 +1106,8 @@ class BookingLifecycleService
             if (!$vehicleId) {
                 throw new \Exception('Vehicle not found for return processing');
             }
-            $workflowSettings = $this->getLifecycleWorkflowSettings();
-            $forceSkipQc = (bool) ($returnData['skip_qc'] ?? false) || (bool) ($returnData['completed_by_driver'] ?? false);
+            $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $bookingItem);
+            $forceSkipQc = (bool) ($returnData['skip_qc'] ?? false);
             $isQcEnabled = !$forceSkipQc && (bool) ($workflowSettings['enable_qc_stage'] ?? true);
 
             if ($isQcEnabled) {
@@ -984,7 +1138,7 @@ class BookingLifecycleService
             } else {
                 // Skip QC stage for businesses that disable it in website settings.
                 $this->assertFinancialLifecycleReady($booking, 'completion');
-                $this->makeVehicleAvailable($vehicleId);
+                $this->queuePostTripMaintenance($booking, $bookingItem, $vehicleId, (string) $actorUserId);
                 $completionMeta = array_merge(
                     $returnData,
                     [
@@ -1091,9 +1245,9 @@ class BookingLifecycleService
                 ->lockForUpdate()
                 ->with(['dispatches', 'qcs', 'bookingItems'])
                 ->findOrFail($bookingId);
-            $this->assertQcStageAvailable($booking);
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertQcStageAvailable($booking, $context['booking_item']);
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
             $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
             if (!$vehicleId) {
@@ -1150,9 +1304,9 @@ class BookingLifecycleService
                 ->lockForUpdate()
                 ->with(['dispatches', 'qcs', 'bookingItems'])
                 ->findOrFail($bookingId);
-            $this->assertQcStageAvailable($booking);
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertQcStageAvailable($booking, $context['booking_item']);
             $qc = $this->resolveItemQc($booking, $context, true);
 
             if (!$qc) {
@@ -1185,11 +1339,12 @@ class BookingLifecycleService
 
             // If no repair needed, make vehicle available
             $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
-            if (!$qc->needsRepair() && !$qc->requires_maintenance) {
+            $maintenanceStageEnabled = (bool) ($this->getLifecycleWorkflowSettings($booking, $context['booking_item'])['enable_maintenance_stage'] ?? false);
+            if (!$qc->needsRepair() && !$qc->requires_maintenance && !$maintenanceStageEnabled) {
                 if ($vehicleId) {
                     $this->makeVehicleAvailable($vehicleId);
                 }
-            } elseif (!$qc->needsRepair() && $qc->requires_maintenance) {
+            } elseif (!$qc->needsRepair() && ($qc->requires_maintenance || $maintenanceStageEnabled)) {
                 if ($vehicleId) {
                     $vehicle = Vehicle::findOrFail($vehicleId);
                     $vehicle->update([
@@ -1218,9 +1373,9 @@ class BookingLifecycleService
                 ->lockForUpdate()
                 ->with(['dispatches', 'qcs', 'bookingItems'])
                 ->findOrFail($bookingId);
-            $this->assertQcStageAvailable($booking);
             $this->assertItemSafeLifecycle($booking, $bookingItemId);
             $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $this->assertQcStageAvailable($booking, $context['booking_item']);
             $qc = $this->resolveItemQc($booking, $context, true);
 
             if (!$qc) {
@@ -1248,7 +1403,14 @@ class BookingLifecycleService
             // Make vehicle available
             $vehicleId = $qc->vehicle_id ?: $booking->vehicle_id;
             if ($vehicleId) {
-                $this->makeVehicleAvailable($vehicleId);
+                $settings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
+                if ($settings['enable_maintenance_stage'] ?? false) {
+                    Vehicle::findOrFail($vehicleId)->update([
+                        'availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value,
+                    ]);
+                } else {
+                    $this->makeVehicleAvailable($vehicleId);
+                }
             }
 
             return $qc;
@@ -1301,6 +1463,23 @@ class BookingLifecycleService
         }
 
         if ($bookingItem->completed_at && (string) $bookingItem->status === 'completed') {
+            return false;
+        }
+
+        $workflowSettings = $this->getLifecycleWorkflowSettings($assignment->booking, $bookingItem);
+        $dispatch = $this->resolveItemDispatch($assignment->booking, [
+            'booking_item' => $bookingItem,
+            'booking_item_id' => (string) $bookingItem->id,
+        ]);
+        if (($workflowSettings['enable_return_stage'] ?? false)
+            && ! ($bookingItem->returned_at || $dispatch?->isReturned())) {
+            return false;
+        }
+        if (($workflowSettings['enable_qc_stage'] ?? false)
+            && ! $this->resolveItemQc($assignment->booking, [
+                'booking_item' => $bookingItem,
+                'booking_item_id' => (string) $bookingItem->id,
+            ])?->isCompleted()) {
             return false;
         }
 
@@ -1401,8 +1580,18 @@ class BookingLifecycleService
                     ->firstOrFail()
                 : null;
             $context['booking_item'] = $bookingItem;
+            if (data_get($bookingItem?->lifecycle_data, 'replacement_request.status') === 'open') {
+                throw new \DomainException('Complete the replacement swap or close the request with a reason before completing this trip.');
+            }
             $dispatch = $this->resolveItemDispatch($booking, $context, true);
-            $workflowSettings = $this->getLifecycleWorkflowSettings();
+            $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $bookingItem);
+            $hasReturned = (bool) ($bookingItem?->returned_at || $dispatch?->isReturned());
+            $hasPassedQc = $this->resolveItemQc($booking, $context)?->isCompleted() ?? false;
+            if (($completionData['completed_by_driver'] ?? false)
+                && ((($workflowSettings['enable_return_stage'] ?? false) && ! $hasReturned)
+                    || (($workflowSettings['enable_qc_stage'] ?? false) && ! $hasPassedQc))) {
+                throw new \DomainException('This booking requires operations to complete the configured return and inspection steps. Contact the dispatcher.');
+            }
             $fromStatus = $booking->getLifecycleStatus();
             $actorUserId = Auth::id()
                 ?? $booking->updated_user_id
@@ -1516,15 +1705,13 @@ class BookingLifecycleService
                     ),
                 ]);
 
-                $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
-                if ($vehicleId) {
-                    $this->makeVehicleAvailable($vehicleId);
-                }
             } elseif (!$transitioned) {
                 throw new \Exception('Booking cannot be completed from its current lifecycle status');
             }
 
             $this->markBookingItemCompleted($bookingItem?->fresh(), $completionData);
+            $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
+            $this->queuePostTripMaintenance($booking, $bookingItem?->fresh(), $vehicleId, (string) $actorUserId);
             $this->closeDriverAssignmentsForCompletion(
                 $bookingId,
                 $bookingItem?->id,
@@ -1784,7 +1971,7 @@ class BookingLifecycleService
 
                 $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
                 if ($vehicleId) {
-                    $this->makeVehicleAvailable((string) $vehicleId);
+                    $this->queuePostTripMaintenance($booking, $bookingItem, (string) $vehicleId, (string) $actorUserId);
                 }
 
                 $allItemsCompleted = $booking->bookingItems()->whereNull('completed_at')->doesntExist();
@@ -1960,7 +2147,7 @@ class BookingLifecycleService
 
         $vehicleId = $dispatch?->vehicle_id ?: $context['vehicle_id'];
         if ($vehicleId) {
-            $this->makeVehicleAvailable((string) $vehicleId);
+            $this->queuePostTripMaintenance($booking, $bookingItem, (string) $vehicleId, $actorUserId);
         }
 
         $this->logItemLifecycleEvent($booking, $bookingItem, 'completed', $completionData);
@@ -3317,26 +3504,164 @@ class BookingLifecycleService
         $vehicle->update(['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
     }
 
-    private function getLifecycleWorkflowSettings(): array
+    private function postTripMaintenanceKey(Booking $booking, ?BookingItem $bookingItem): string
     {
-        $enableReturn = $this->normalizeSettingBoolean(
-            $this->websiteSettingsService->get('feature_vehicle_return_management_enabled', 'false'),
-            false
-        );
-        $enableQc = $this->normalizeSettingBoolean(
-            $this->websiteSettingsService->get('assignment_enable_qc_stage', 'false'),
-            false
-        ) && $enableReturn;
-        $enableMaintenance = $this->normalizeSettingBoolean(
-            $this->websiteSettingsService->get('assignment_enable_maintenance_stage', 'false'),
-            false
-        );
+        return 'post-trip-maintenance:' . ($bookingItem?->id ?: $booking->id);
+    }
 
-        return [
-            'enable_return_stage' => $enableReturn,
-            'enable_qc_stage' => $enableQc,
-            'enable_maintenance_stage' => $enableMaintenance,
-        ];
+    private function postTripMaintenanceActivity(Booking $booking, ?BookingItem $bookingItem): ?BookingActivity
+    {
+        return BookingActivity::query()
+            ->where('idempotency_key', $this->postTripMaintenanceKey($booking, $bookingItem))
+            ->first();
+    }
+
+    private function queuePostTripMaintenance(
+        Booking $booking,
+        ?BookingItem $bookingItem,
+        ?string $vehicleId,
+        string $actorUserId
+    ): void {
+        if (!$vehicleId) return;
+
+        $vehicle = Vehicle::query()->lockForUpdate()->findOrFail($vehicleId);
+        $key = $this->postTripMaintenanceKey($booking, $bookingItem);
+        $activity = BookingActivity::withTrashed()->where('idempotency_key', $key)->first();
+        if ($activity?->result_status === 'pending') {
+            if ($activity->trashed()) $activity->restore();
+            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
+            return;
+        }
+        if ($activity?->result_status === 'completed') return;
+
+        if (!($this->getLifecycleWorkflowSettings($booking, $bookingItem)['enable_maintenance_stage'] ?? false)) {
+            if (in_array((string) $vehicle->availability_status, [
+                VehicleAvailabilityStatus::ON_HIRE->value,
+                VehicleAvailabilityStatus::UNAVAILABLE_QC->value,
+            ], true)) {
+                $vehicle->update(['availability_status' => VehicleAvailabilityStatus::AVAILABLE->value]);
+            }
+            return;
+        }
+
+        if (!$activity) {
+            $activity = new BookingActivity([
+                'company_id' => $vehicle->company_id,
+                'booking_id' => $booking->id,
+                'booking_item_id' => $bookingItem?->id,
+                'event_key' => 'post_trip_maintenance',
+                'channel' => 'internal',
+                'result_status' => 'pending',
+                'source' => 'booking_lifecycle',
+                'title' => 'Post-trip maintenance required',
+                'detail' => 'Record the required vehicle work before returning it to service.',
+                'idempotency_key' => $key,
+                'meta' => [
+                    'vehicle_id' => $vehicleId,
+                    'prior_availability_status' => in_array((string) $vehicle->availability_status, [
+                        VehicleAvailabilityStatus::ON_HIRE->value,
+                        VehicleAvailabilityStatus::UNAVAILABLE_QC->value,
+                        VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value,
+                    ], true) ? VehicleAvailabilityStatus::AVAILABLE->value : (string) $vehicle->availability_status,
+                    'queued_by' => $actorUserId,
+                ],
+                'event_at' => Carbon::now('UTC'),
+            ]);
+            $activity->save();
+        } elseif ($activity->trashed()) {
+            $activity->restore();
+        }
+
+        if ($activity->result_status !== 'completed') {
+            $vehicle->update(['availability_status' => VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value]);
+        }
+    }
+
+    public function completePostTripMaintenance(
+        string $bookingId,
+        ?string $bookingItemId,
+        string $notes,
+        string $actorUserId
+    ): BookingActivity {
+        return DB::transaction(function () use ($bookingId, $bookingItemId, $notes, $actorUserId) {
+            $booking = Booking::query()->lockForUpdate()->with('bookingItems')->findOrFail($bookingId);
+            $context = $this->resolveLifecycleContext($booking, $bookingItemId);
+            $bookingItem = $context['booking_item'];
+            $activity = BookingActivity::withTrashed()
+                ->where('idempotency_key', $this->postTripMaintenanceKey($booking, $bookingItem))
+                ->lockForUpdate()
+                ->first();
+            if (!$activity || $activity->trashed() || $activity->result_status !== 'pending') {
+                throw new \DomainException('There is no pending post-trip maintenance task for this trip.');
+            }
+
+            $vehicleId = (string) data_get($activity->meta, 'vehicle_id');
+            $vehicle = Vehicle::query()->lockForUpdate()->findOrFail($vehicleId);
+            if ((string) $vehicle->availability_status !== VehicleAvailabilityStatus::UNAVAILABLE_MAINTENANCE->value) {
+                throw new \DomainException('The vehicle status changed. Review it before closing maintenance.');
+            }
+
+            $blockers = [];
+            if (Schema::hasTable('vehicle_maintenance_records') && Schema::hasColumn('vehicle_maintenance_records', 'status')) {
+                $activeRecord = DB::table('vehicle_maintenance_records')->where('vehicle_id', $vehicleId)
+                    ->where('status', 'in_progress')->whereNull('deleted_at')->exists();
+                if ($activeRecord) $blockers[] = 'A scheduled vehicle maintenance record is still in progress.';
+            }
+            if (Schema::hasTable('vehicle_maintenance_schedules')) {
+                $scheduleDateColumn = Schema::hasColumn('vehicle_maintenance_schedules', 'scheduled_date')
+                    ? 'scheduled_date'
+                    : 'next_due_date';
+                $scheduleBlock = DB::table('vehicle_maintenance_schedules')->where('vehicle_id', $vehicleId)->whereNull('deleted_at')
+                    ->where(function ($query) use ($scheduleDateColumn): void {
+                        if (Schema::hasColumn('vehicle_maintenance_schedules', 'status')) {
+                            $query->whereIn('status', ['due', 'in_progress']);
+                            if (Schema::hasColumn('vehicle_maintenance_schedules', $scheduleDateColumn)) {
+                                $query->orWhere(function ($overdue) use ($scheduleDateColumn): void {
+                                    $overdue->whereNotIn('status', ['completed', 'cancelled'])
+                                        ->where($scheduleDateColumn, '<=', Carbon::now('UTC')->toDateString());
+                                });
+                            }
+                        } elseif (Schema::hasColumn('vehicle_maintenance_schedules', $scheduleDateColumn)) {
+                            $query->where($scheduleDateColumn, '<=', Carbon::now('UTC')->toDateString());
+                        }
+                    })->exists();
+                if ($scheduleBlock) $blockers[] = 'A separate scheduled maintenance item is still due or in progress.';
+            }
+            if ($blockers !== []) throw new \DomainException(implode(' ', $blockers));
+
+            $meta = is_array($activity->meta) ? $activity->meta : [];
+            $activity->update([
+                'result_status' => 'completed',
+                'detail' => trim($notes),
+                'event_at' => Carbon::now('UTC'),
+                'meta' => array_merge($meta, [
+                    'completed_by' => $actorUserId,
+                    'completed_at' => Carbon::now('UTC')->toIso8601String(),
+                    'completion_notes' => trim($notes),
+                ]),
+            ]);
+
+            $priorStatus = (string) data_get($meta, 'prior_availability_status', 'available');
+            $vehicle->update([
+                'availability_status' => in_array($priorStatus, [
+                    VehicleAvailabilityStatus::UNAVAILABLE_OFFLINE->value,
+                    VehicleAvailabilityStatus::UNAVAILABLE_REPAIR->value,
+                ], true) ? $priorStatus : VehicleAvailabilityStatus::AVAILABLE->value,
+            ]);
+
+            return $activity->fresh();
+        });
+    }
+
+    private function getLifecycleWorkflowSettings(?Booking $booking = null, ?BookingItem $bookingItem = null): array
+    {
+        if (!$bookingItem && $booking) {
+            $booking->loadMissing('bookingItems');
+            if ($booking->bookingItems->count() === 1) {
+                $bookingItem = $booking->bookingItems->first();
+            }
+        }
+        return $this->workflowSettingsResolver->resolve($bookingItem?->workflow_config_snapshot);
     }
 
     /**
@@ -3371,19 +3696,19 @@ class BookingLifecycleService
         return $status;
     }
 
-    private function assertReturnStageAvailable(Booking $booking): void
+    private function assertReturnStageAvailable(Booking $booking, ?BookingItem $bookingItem = null): void
     {
-        $settings = $this->getLifecycleWorkflowSettings();
+        $settings = $this->getLifecycleWorkflowSettings($booking, $bookingItem);
         if (!($settings['enable_return_stage'] ?? false)) {
-            throw new \Exception('Vehicle return management is disabled in booking settings');
+            throw new \Exception('Return tracking is disabled for this booking.');
         }
     }
 
-    private function assertQcStageAvailable(Booking $booking): void
+    private function assertQcStageAvailable(Booking $booking, ?BookingItem $bookingItem = null): void
     {
-        $settings = $this->getLifecycleWorkflowSettings();
+        $settings = $this->getLifecycleWorkflowSettings($booking, $bookingItem);
         if (!($settings['enable_qc_stage'] ?? false)) {
-            throw new \Exception('QC management is disabled in booking settings');
+            throw new \Exception('Return inspection is disabled for this booking.');
         }
     }
 
@@ -3501,6 +3826,8 @@ class BookingLifecycleService
                 'from_status' => $fromStatus?->value,
                 'to_status' => $toStatus->value,
                 'transition_source' => $data['source'] ?? 'booking_lifecycle',
+                'reason' => $data['reason'] ?? null,
+                'notes' => $data['notes'] ?? null,
             ],
         ]);
 
@@ -3531,6 +3858,11 @@ class BookingLifecycleService
                 'Trip started',
                 'Your trip is now in progress.',
                 'booking_trip_started',
+            ],
+            BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED => [
+                'Replacement requested',
+                'Operations is arranging a replacement vehicle or driver for your trip.',
+                'booking_replacement_requested',
             ],
             BookingLifecycleStatus::RETURN_SCHEDULED => [
                 'Vehicle return reminder',
@@ -3606,7 +3938,8 @@ class BookingLifecycleService
             $approvalReasonLabels = ['Manager approval required'];
         }
 
-        $workflowSettings = $this->getLifecycleWorkflowSettings();
+        $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
+        $maintenanceActivity = $this->postTripMaintenanceActivity($booking, $context['booking_item']);
         $itemQc = $this->resolveItemQc($booking, $context);
         $itemDispatch = $this->resolveItemDispatch($booking, $context);
         $currentStatus = $this->resolveSelectedItemLifecycleStatus(
@@ -3683,21 +4016,29 @@ class BookingLifecycleService
             'selected_booking_item_id' => $context['booking_item_id'],
             'selected_trip_number' => $context['trip_number'],
             'selected_booking_item' => $context['booking_item'],
+            'replacement_request' => data_get($context['booking_item']?->lifecycle_data, 'replacement_request'),
             'lifecycle_contract' => $lifecycleContract,
             'allowed_actions' => $lifecycleContract['allowed_actions'],
             'blocking_reasons' => $lifecycleContract['blocking_reasons'],
             'current_status' => [
                 'value' => $currentStatus->value,
-                'stage' => $currentStatus->getProgressStage(),
-                'display_name' => $currentStatus->getDisplayName(),
-                'label' => $currentStatus->getDisplayName(),
+                'stage' => $maintenanceActivity?->result_status === 'pending' ? 'maintenance' : $currentStatus->getProgressStage(),
+                'display_name' => $maintenanceActivity?->result_status === 'pending' ? 'Maintenance follow-up' : $currentStatus->getDisplayName(),
+                'label' => $maintenanceActivity?->result_status === 'pending' ? 'Maintenance follow-up' : $currentStatus->getDisplayName(),
                 'color' => $currentStatus->getColor(),
                 'icon' => $this->getStatusIcon($currentStatus),
-                'primaryAction' => $this->getPrimaryActionText($currentStatus, $workflowSettings),
+                'primaryAction' => $maintenanceActivity?->result_status === 'pending'
+                    ? 'Record maintenance complete'
+                    : $this->getPrimaryActionText($currentStatus, $workflowSettings),
             ],
             'next_actions' => $nextActions,
-            'stage_progress' => $this->getStageProgress($booking, $workflowSettings, $currentStatus),
-            'timeline' => $this->getLifecycleTimeline($booking, $itemDispatch, $itemQc),
+            'stage_progress' => $this->getStageProgress($booking, $workflowSettings, $currentStatus, $context['booking_item']),
+            'timeline' => array_merge($this->getLifecycleTimeline($booking, $itemDispatch, $itemQc), $maintenanceActivity ? [[
+                'event' => $maintenanceActivity->result_status === 'completed' ? 'Post-trip maintenance completed' : 'Post-trip maintenance required',
+                'timestamp' => $this->toUtcIsoTimestamp($maintenanceActivity->event_at),
+                'user' => 'Staff',
+                'status' => 'maintenance',
+            ]] : []),
             'lifecycle_history' => $lifecycleHistory,
             'return_details' => $itemDispatch ? [
                 'returned_at' => $itemDispatch->actual_return_at,
@@ -3745,7 +4086,7 @@ class BookingLifecycleService
             $itemDispatch,
             $itemQc
         );
-        $workflowSettings = $this->getLifecycleWorkflowSettings();
+        $workflowSettings = $this->getLifecycleWorkflowSettings($booking, $context['booking_item']);
         $currentStatus = $this->normalizeStatusForDisabledOptionalStages($currentStatus, $workflowSettings);
 
         $driverAssignment = $this->latestDriverAssignment(
@@ -3814,6 +4155,10 @@ class BookingLifecycleService
 
         if ($bookingItem?->completed_at) {
             return BookingLifecycleStatus::COMPLETED;
+        }
+
+        if (data_get($bookingItem?->lifecycle_data, 'operational_status') === BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED->value) {
+            return BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED;
         }
 
         if ($qc) {
@@ -3948,6 +4293,12 @@ class BookingLifecycleService
             BookingLifecycleStatus::RETURN_SCHEDULED,
             BookingLifecycleStatus::RETURN_OVERDUE,
         ], true)) {
+            if ($currentStatus === BookingLifecycleStatus::ONGOING_ACTIVE) {
+                $actions[] = 'request_replacement';
+            }
+            if ($currentStatus === BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED) {
+                $actions[] = 'perform_swap';
+            }
             if ($workflowSettings['enable_return_stage'] ?? false) {
                 $actions[] = 'process_return';
             } else {
@@ -3989,9 +4340,14 @@ class BookingLifecycleService
         }
 
         if ($currentStatus === BookingLifecycleStatus::COMPLETED) {
-            $blockingReasons[] = (string) $booking->status === 'completed'
-                ? 'Booking is already completed'
-                : 'Selected booking item is complete; the booking is waiting for its remaining items';
+            $maintenance = $this->postTripMaintenanceActivity($booking, $context['booking_item']);
+            if ($maintenance?->result_status === 'pending') {
+                $actions[] = 'complete_post_trip_maintenance';
+            } else {
+                $blockingReasons[] = (string) $booking->status === 'completed'
+                    ? 'Booking is already completed'
+                    : 'Selected booking item is complete; the booking is waiting for its remaining items';
+            }
         } elseif ($currentStatus === BookingLifecycleStatus::CANCELLED) {
             $blockingReasons[] = 'Booking is cancelled';
         }
@@ -4000,6 +4356,39 @@ class BookingLifecycleService
         if ($financialBlockingReasons !== []) {
             $actions = array_values(array_diff($actions, ['dispatch_vehicle', 'complete_booking']));
             $blockingReasons = array_merge($blockingReasons, $financialBlockingReasons);
+        }
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_CONFIRMED,
+            BookingLifecycleStatus::ALLOCATION_PENDING,
+            BookingLifecycleStatus::ALLOCATION_CONFLICTS,
+            BookingLifecycleStatus::ALLOCATION_ASSIGNED,
+            BookingLifecycleStatus::ALLOCATION_APPROVED,
+            BookingLifecycleStatus::DISPATCH_READY,
+        ], true) && app(BookingPaymentLedgerService::class)->serviceDepositDue($booking) > 0) {
+            $actions = array_values(array_diff($actions, ['dispatch_vehicle']));
+            $blockingReasons[] = 'The required service deposit must be received before dispatch';
+        }
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_CONFIRMED,
+            BookingLifecycleStatus::ALLOCATION_PENDING,
+            BookingLifecycleStatus::ALLOCATION_CONFLICTS,
+            BookingLifecycleStatus::ALLOCATION_ASSIGNED,
+            BookingLifecycleStatus::ALLOCATION_APPROVED,
+            BookingLifecycleStatus::DISPATCH_READY,
+        ], true) && ($workflowSettings['require_driver_license'] ?? false) && !$this->hasVerifiedCustomerDriverLicense($booking)) {
+            $actions = array_values(array_diff($actions, ['dispatch_vehicle']));
+            $blockingReasons[] = 'Add a verified, unexpired driver licence to the customer profile before dispatch';
+        }
+        if (in_array($currentStatus, [
+            BookingLifecycleStatus::BOOKING_CONFIRMED,
+            BookingLifecycleStatus::ALLOCATION_PENDING,
+            BookingLifecycleStatus::ALLOCATION_CONFLICTS,
+            BookingLifecycleStatus::ALLOCATION_ASSIGNED,
+            BookingLifecycleStatus::ALLOCATION_APPROVED,
+            BookingLifecycleStatus::DISPATCH_READY,
+        ], true) && ($workflowSettings['require_customer_identity_document'] ?? false) && !$this->hasVerifiedCustomerIdentityDocument($booking)) {
+            $actions = array_values(array_diff($actions, ['dispatch_vehicle']));
+            $blockingReasons[] = 'Add a verified identity document to the customer profile before dispatch';
         }
 
         return [array_values(array_unique($actions)), array_values(array_unique($blockingReasons))];
@@ -4047,12 +4436,46 @@ class BookingLifecycleService
         return array_values(array_unique($reasons));
     }
 
-    private function assertFinancialLifecycleReady(Booking $booking, string $operation): void
+    private function assertFinancialLifecycleReady(Booking $booking, string $operation, ?BookingItem $bookingItem = null): void
     {
         $reasons = $this->resolveFinancialLifecycleBlockingReasons($booking);
         if ($reasons !== []) {
             throw new \DomainException(ucfirst($operation) . ' is blocked: ' . implode('; ', $reasons));
         }
+        if ($operation === 'dispatch' && app(BookingPaymentLedgerService::class)->serviceDepositDue($booking) > 0) {
+            throw new \DomainException('Dispatch is blocked until the required service deposit has been received.');
+        }
+        if ($operation === 'dispatch'
+            && ($this->getLifecycleWorkflowSettings($booking, $bookingItem)['require_driver_license'] ?? false)
+            && !$this->hasVerifiedCustomerDriverLicense($booking)) {
+            throw new \DomainException('Dispatch is blocked until the customer has a verified, unexpired driver licence on file.');
+        }
+        if ($operation === 'dispatch'
+            && ($this->getLifecycleWorkflowSettings($booking, $bookingItem)['require_customer_identity_document'] ?? false)
+            && !$this->hasVerifiedCustomerIdentityDocument($booking)) {
+            throw new \DomainException('Dispatch is blocked until the customer has a verified identity document on file.');
+        }
+    }
+
+    private function hasVerifiedCustomerDriverLicense(Booking $booking): bool
+    {
+        $booking->loadMissing('customer');
+        return $booking->customer?->documents()
+            ->whereIn('document_type', ['driver_license', 'driving_license'])
+            ->where('status', 'verified')
+            ->whereNotNull('expiry_date')
+            ->whereDate('expiry_date', '>=', now()->toDateString())
+            ->exists() ?? false;
+    }
+
+    private function hasVerifiedCustomerIdentityDocument(Booking $booking): bool
+    {
+        $booking->loadMissing('customer');
+        return $booking->customer?->documents()
+            ->whereIn('document_type', ['passport', 'id_card'])
+            ->where('status', 'verified')
+            ->where(fn ($query) => $query->whereNull('expiry_date')->orWhereDate('expiry_date', '>=', now()->toDateString()))
+            ->exists() ?? false;
     }
 
     /**
@@ -4061,7 +4484,8 @@ class BookingLifecycleService
     private function getStageProgress(
         Booking $booking,
         array $workflowSettings,
-        ?BookingLifecycleStatus $selectedStatus = null
+        ?BookingLifecycleStatus $selectedStatus = null,
+        ?BookingItem $bookingItem = null
     ): array
     {
         $currentStatus = $selectedStatus ?? $booking->getLifecycleStatus();
@@ -4079,6 +4503,13 @@ class BookingLifecycleService
             $stages['qc_repair'] = ['completed' => false, 'current' => false];
         }
         $stages['final'] = ['completed' => false, 'current' => false];
+        $maintenance = $this->postTripMaintenanceActivity($booking, $bookingItem);
+        if (($workflowSettings['enable_maintenance_stage'] ?? false) || $maintenance) {
+            $stages['maintenance'] = [
+                'completed' => $maintenance?->result_status === 'completed',
+                'current' => $maintenance?->result_status === 'pending',
+            ];
+        }
 
         $currentStage = $currentStatus->getProgressStage();
         $stageOrder = array_keys($stages);
@@ -4092,6 +4523,10 @@ class BookingLifecycleService
         // Mark current stage
         if ($currentIndex !== false) {
             $stages[$currentStage]['current'] = true;
+        }
+        if (($stages['maintenance']['current'] ?? false) === true) {
+            $stages['final']['completed'] = true;
+            $stages['final']['current'] = false;
         }
 
         return $stages;

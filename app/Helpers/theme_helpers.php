@@ -188,6 +188,9 @@ if (!function_exists('get_hero_slides')) {
 
                 $slides[] = compact('type', 'desktop', 'mobile', 'video', 'poster', 'heading', 'subheading', 'caption', 'alt', 'eyebrow', 'locationLabel', 'ctaText', 'ctaUrl');
             }
+
+            // A saved empty list (or cleared editor row) must not revive legacy uploads.
+            return $slides;
         }
 
         if (empty($slides)) {

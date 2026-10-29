@@ -2,7 +2,6 @@
 // app/Http/Requests/Customer/UpdateCustomerRequest.php
 namespace App\Http\Requests\Customer;
 
-use App\Models\Customer;
 use Illuminate\Foundation\Http\FormRequest;
 
 class UpdateCustomerRequest extends FormRequest
@@ -38,21 +37,7 @@ class UpdateCustomerRequest extends FormRequest
                     }
                 },
             ],
-            'phone' => [
-                'sometimes',
-                'nullable',
-                'string',
-                'max:20',
-                function ($attribute, $value, $fail) use ($customerId) {
-                    $exists = Customer::where('id', '!=', $customerId)
-                        ->whereHas('user', fn ($query) => $query->where('phone', $value))
-                        ->exists();
-
-                    if ($exists) {
-                        $fail('This phone number is already registered as a customer.');
-                    }
-                },
-            ],
+            'phone' => 'sometimes|nullable|string|max:20',
             'wedding_date' => 'sometimes|nullable|date',
             'type' => 'sometimes|nullable|string|max:50',
             'sub_type' => 'sometimes|nullable|string|max:50',

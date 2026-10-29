@@ -18,6 +18,8 @@ class SalesOpportunity extends BaseModel
         'expected_value_lkr', 'probability_percent', 'expected_close_date', 'services', 'customer_needs',
         'competitor_notes', 'next_action', 'next_action_at', 'confidentiality', 'lost_reason_code',
         'lost_reason', 'won_booking_id', 'won_at', 'closed_at', 'state_version', 'created_user_id', 'updated_user_id',
+        'workflow_quotation_stage_setting_id',
+        'workflow_contact_stage_setting_id', 'workflow_qualification_stage_setting_id', 'workflow_negotiation_stage_setting_id',
     ];
 
     protected $casts = [

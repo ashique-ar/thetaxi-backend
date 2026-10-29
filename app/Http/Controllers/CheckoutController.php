@@ -13,7 +13,9 @@ use App\Models\Customer;
 use App\Models\Service\ServiceType;
 use App\Models\TermsAndCondition;
 use App\Models\Vehicle\VehicleGroup;
+use App\Models\User;
 use App\Models\Website\WebsiteSetting;
+use App\Models\Website\PendingPaymentLink;
 use App\Services\BookingFlowService;
 use App\Services\CustomerService;
 use App\Services\MailDispatchService;
@@ -30,7 +32,11 @@ use Illuminate\Http\Request;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
@@ -70,6 +76,58 @@ class CheckoutController extends Controller
         $this->promoCodeService = $promoCodeService;
         $this->websiteSettingsService = $websiteSettingsService;
         $this->paymentEventService = $paymentEventService;
+    }
+
+    public function sendCustomerEmailVerificationCode(Request $request)
+    {
+        $email = mb_strtolower(trim($request->validate([
+            'email' => ['required', 'email:rfc', 'max:255'],
+        ])['email']));
+        $limitKey = 'checkout-email-code:'.sha1($email.'|'.$request->ip());
+        abort_if(RateLimiter::tooManyAttempts($limitKey, 5), 429, 'Please wait before requesting another code.');
+        RateLimiter::hit($limitKey, 600);
+
+        $user = User::withTrashed()->whereRaw('LOWER(email) = ?', [$email])->first();
+        if ($user) {
+            $code = (string) random_int(100000, 999999);
+            Cache::put($this->checkoutEmailCodeKey($request, $email), [
+                'hash' => Hash::make($code),
+                'attempts' => 0,
+            ], now()->addMinutes(10));
+            Notification::route('mail', $email)->notify(new \App\Notifications\CheckoutEmailVerificationCodeNotification($code));
+        }
+
+        return response()->json(['status' => 'success', 'message' => 'If this email is already used for a customer account, a verification code has been sent. New customers can continue without a code.']);
+    }
+
+    public function verifyCustomerEmailCode(Request $request)
+    {
+        $data = $request->validate([
+            'email' => ['required', 'email:rfc', 'max:255'],
+            'code' => ['required', 'digits:6'],
+        ]);
+        $email = mb_strtolower(trim($data['email']));
+        $key = $this->checkoutEmailCodeKey($request, $email);
+        $challenge = Cache::get($key);
+
+        if (!$challenge || $challenge['attempts'] >= 5 || !Hash::check($data['code'], $challenge['hash'])) {
+            if ($challenge) {
+                $challenge['attempts']++;
+                Cache::put($key, $challenge, now()->addMinutes(10));
+            }
+            throw ValidationException::withMessages(['code' => ['The code is invalid or expired. Request a new code and try again.']]);
+        }
+
+        Cache::forget($key);
+        session()->put('checkout_verified_email', $email);
+        session()->put('checkout_verified_email_at', now()->timestamp);
+
+        return response()->json(['status' => 'success', 'message' => 'Email verified for this checkout session.']);
+    }
+
+    private function checkoutEmailCodeKey(Request $request, string $email): string
+    {
+        return 'checkout-email-code:'.hash('sha256', $request->session()->getId().'|'.$email);
     }
 
     /**
@@ -359,7 +417,7 @@ class CheckoutController extends Controller
             ))
             ->value('id');
         if (!$existingCustomerId && Auth::check()) {
-            $existingCustomerId = Auth::user()?->customer?->id;
+            $existingCustomerId = $this->customerService->customerForUser(Auth::user())?->id;
         }
         $uniqueIdentification = Rule::unique('customers', 'nic');
         if ($existingCustomerId) {
@@ -473,7 +531,14 @@ class CheckoutController extends Controller
 
         // Recalculate totals and revalidate any applied portal-owned promo code
         // against the current cart and existing customer before creating a booking.
-        $existingCustomer = $this->customerService->getCustomerByEmail($validated['email']);
+        $checkoutEmail = mb_strtolower(trim($validated['email']));
+        $emailIdentityConfirmed = (Auth::check()
+                && mb_strtolower(trim((string) Auth::user()->email)) === $checkoutEmail)
+            || (mb_strtolower(trim((string) session('checkout_verified_email'))) === $checkoutEmail
+                && now()->timestamp - (int) session('checkout_verified_email_at', 0) <= 1800);
+        $existingCustomer = $emailIdentityConfirmed
+            ? $this->customerService->getCustomerByEmail($validated['email'])
+            : null;
         $promoState = $this->cartService->updateTotals($cartModel, $existingCustomer?->id);
         $cartModel->refresh();
 
@@ -620,6 +685,8 @@ class CheckoutController extends Controller
                 'contact_time' => $validated['contact_time'] ?? null,
                 'status' => config('booking.status.draft'),
                 'booking_source' => 'public',
+                'booking_origin' => 'website',
+                'responsible_user_id' => null,
                 'created_from' => 'web',
                 'created_user_id' => Auth::id(),
             ]);
@@ -674,6 +741,7 @@ class CheckoutController extends Controller
 
             $booking->workflow_data = $workflowData;
             $booking->save();
+            app(\App\Services\BookingResponsibilityService::class)->notifyBookingCreated($booking);
 
             // Create booking items for each cart item
             foreach ($cart as $cartKey => $item) {
@@ -2399,53 +2467,89 @@ class CheckoutController extends Controller
     public function convertQuotationToBooking(Request $request)
     {
         try {
-            $token = $request->route('token');
-
-            if (!$token) {
+            $token = (string) $request->route('token', '');
+            if ($token === '') {
                 return redirect()->route('home')->with('error', 'Invalid quotation link.');
+            }
+
+            $quote = PendingPaymentLink::query()->where('token', $token)->where('type', 'quotation_conversion')->first();
+            if ($quote) {
+                if (! $quote->isValid()) {
+                    return redirect()->route('home')->with('error', 'This quotation has expired or is no longer valid. Please contact our team.');
+                }
+                $booking = Booking::query()->with(['customer.user', 'bookingItems.serviceType'])->find($quote->booking_id);
+                $quotation = data_get($quote->booking_context, 'quotation', []);
+                if (! $booking || (string) $booking->status !== (string) config('booking.status.quotation_requested')) {
+                    return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
+                }
+                $snapshotHash = (string) data_get($quotation, 'snapshot_hash', '');
+                if ($snapshotHash === '' || ! hash_equals($snapshotHash, BookingLinkHelper::quotationSnapshotHash($booking))) {
+                    return redirect()->route('home')->with('error', 'This quotation has changed. Please contact our team for an updated offer.');
+                }
+                if (! is_numeric($booking->total_estimated) || (float) $booking->total_estimated <= 0) {
+                    return redirect()->route('home')->with('error', 'This quotation has no valid saved total. Please contact our team to review it.');
+                }
+                $terms = is_array($quotation['terms'] ?? null)
+                    ? $quotation['terms']
+                    : \App\Services\PendingPaymentManager::quotationTermsSnapshot($booking);
+                $termsHash = (string) ($quotation['terms_hash'] ?? hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)));
+                if (! hash_equals($termsHash, hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)))) {
+                    return redirect()->route('home')->with('error', 'The quotation terms could not be verified. Please contact our team.');
+                }
+
+                $quotation['display_snapshot'] ??= $quotation['snapshot'] ?? [];
+                return $this->quotationAcceptanceView($booking, $token, $quotation, $terms, $termsHash,
+                    $quote->expires_at, (int) ($quote->revision_number ?: 1));
             }
 
             $quotationData = BookingLinkHelper::decryptBookingData($token);
 
-            if (!$quotationData || $quotationData['type'] !== 'quotation_conversion') {
+            if (!$quotationData || ($quotationData['type'] ?? null) !== 'quotation_conversion') {
                 return redirect()->route('home')->with('error', 'Invalid quotation link.');
             }
 
-            $quotationBooking = Booking::find($quotationData['booking_id']);
+            $quotationBooking = Booking::find($quotationData['booking_id'] ?? null);
 
             if (!$quotationBooking) {
                 return redirect()->route('home')->with('error', 'Quotation not found.');
             }
 
-            // For quotations, ensure we have payment data
-            if (!$quotationBooking->total_estimated && !$quotationBooking->amount_to_pay) {
-                // Set a default amount or use the quotation amount if available
-                $quotationBooking->total_estimated = $quotationBooking->quotation_amount ?? 1000; // Fallback amount
-                $quotationBooking->save();
+            if (empty($quotationData['snapshot_hash'])) {
+                return redirect()->route('home')->with('error', 'This older quotation cannot be verified. Please contact our team for an updated offer.');
             }
 
-            // Generate payment link directly using the PendingPaymentManager
-            try {
-                $paymentLink = \App\Services\PendingPaymentManager::createPaymentLink($quotationBooking);
-
-                // Guard: if payment amount is not valid, stop and report
-                if (($paymentLink->amount_due ?? 0) <= 0) {
-                    Log::warning('Quotation conversion payment link has zero amount_due', [
-                        'booking_id' => $quotationBooking->id,
-                        'payment_link_id' => $paymentLink->id ?? null,
-                        'amount_due' => $paymentLink->amount_due
-                    ]);
-
-                    return redirect()->route('home')->with('error', 'Quotation amount is invalid. Please contact support.');
-                }
-
-                return redirect()->route('checkout.payment-resume', ['token' => $paymentLink->token])
-                    ->with('info', 'Your quotation is ready for payment. Please complete the booking below.');
-
-            } catch (\Exception $e) {
-                Log::error('Failed to generate payment link', ['error' => $e->getMessage()]);
-                return redirect()->route('home')->with('error', 'Unable to process quotation. Please contact support.');
+            if (empty($quotationData['expires_at']) || Carbon::parse($quotationData['expires_at'])->isPast()) {
+                return redirect()->route('home')->with('error', 'This quotation link has expired. Please contact our team for an updated quote.');
             }
+
+            if ((string) $quotationBooking->status !== (string) config('booking.status.quotation_requested')) {
+                return redirect()->route('home')->with('error', 'This quotation is no longer awaiting acceptance. Please contact our team.');
+            }
+
+            if (!hash_equals((string) $quotationData['snapshot_hash'], BookingLinkHelper::quotationSnapshotHash($quotationBooking))) {
+                return redirect()->route('home')->with('error', 'This quotation has changed. Please contact our team for an updated offer.');
+            }
+
+            if (!is_numeric($quotationBooking->total_estimated) || (float) $quotationBooking->total_estimated <= 0) {
+                Log::warning('Quotation conversion blocked because the saved total is missing or invalid', [
+                    'booking_id' => $quotationBooking->id,
+                    'total_estimated' => $quotationBooking->total_estimated,
+                ]);
+
+                return redirect()->route('home')->with('error', 'This quotation has no valid saved total. Please contact our team to review it.');
+            }
+
+            $quotationBooking->loadMissing(['customer.user', 'bookingItems.serviceType']);
+            $snapshot = BookingLinkHelper::quotationSnapshot($quotationBooking);
+            $terms = \App\Services\PendingPaymentManager::quotationTermsSnapshot($quotationBooking);
+            $termsHash = hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms));
+            return $this->quotationAcceptanceView($quotationBooking, $token, [
+                'snapshot_hash' => $quotationData['snapshot_hash'],
+                'snapshot' => $snapshot,
+                'display_snapshot' => BookingLinkHelper::quotationDisplaySnapshot($quotationBooking),
+                'terms' => $terms,
+                'terms_hash' => $termsHash,
+            ], $terms, $termsHash, $quotationData['expires_at'], 1);
 
         } catch (\Exception $e) {
             Log::error('Error converting quotation to booking from email link', [
@@ -2458,140 +2562,164 @@ class CheckoutController extends Controller
         }
     }
 
+    private function quotationAcceptanceView(Booking $booking, string $token, array $quotation, array $terms,
+        string $termsHash, mixed $expiresAt, int $revisionNumber): \Illuminate\Contracts\View\View
+    {
+        return view('checkout.quotation-acceptance', compact('booking', 'token', 'quotation', 'terms', 'termsHash', 'expiresAt', 'revisionNumber'));
+    }
+
+    public function acceptQuotation(Request $request, string $token)
+    {
+        $data = $request->validate([
+            'accept_terms' => ['required', 'accepted'],
+            'terms_hash' => ['required', 'string', 'size:64'],
+        ]);
+        $issuedQuote = PendingPaymentLink::query()->where('token', $token)->where('type', 'quotation_conversion')->exists();
+
+        [$paymentLink, $error] = DB::transaction(function () use ($request, $token, $data, $issuedQuote): array {
+            $quote = null;
+            if ($issuedQuote) {
+                $quote = PendingPaymentLink::query()->where('token', $token)->where('type', 'quotation_conversion')
+                    ->lockForUpdate()->first();
+                if (! $quote || ! $quote->isValid()) return [null, 'This quotation has expired or is no longer valid. Please contact our team.'];
+                $booking = Booking::query()->lockForUpdate()->find($quote->booking_id);
+            } else {
+                $legacy = BookingLinkHelper::decryptBookingData($token);
+                if (! $legacy || ($legacy['type'] ?? null) !== 'quotation_conversion') return [null, 'Invalid quotation link.'];
+                if (empty($legacy['snapshot_hash'])) return [null, 'This older quotation cannot be verified. Please contact our team for an updated offer.'];
+                if (empty($legacy['expires_at']) || Carbon::parse($legacy['expires_at'])->isPast()) return [null, 'This quotation has expired. Please contact our team for an updated offer.'];
+                $booking = Booking::query()->lockForUpdate()->find($legacy['booking_id'] ?? null);
+                if ($booking && ! empty($legacy['snapshot_hash'])
+                    && ! hash_equals((string) $legacy['snapshot_hash'], BookingLinkHelper::quotationSnapshotHash($booking))) {
+                    return [null, 'This quotation has changed. Please contact our team for an updated offer.'];
+                }
+            }
+            if (! $booking) return [null, 'Quotation not found.'];
+            if ($booking->payment_status === 'paid') return [null, 'This booking has already been paid.'];
+            if ((string) $booking->status !== (string) config('booking.status.quotation_requested')) {
+                return [null, 'This quotation is no longer awaiting acceptance. Please contact our team.'];
+            }
+            if (! is_numeric($booking->total_estimated) || (float) $booking->total_estimated <= 0) {
+                return [null, 'This quotation has no valid saved total. Please contact our team.'];
+            }
+
+            if ($quote) {
+                $quotation = data_get($quote->booking_context, 'quotation', []);
+                $snapshotHash = (string) ($quotation['snapshot_hash'] ?? '');
+                if ($snapshotHash === '' || ! hash_equals($snapshotHash, BookingLinkHelper::quotationSnapshotHash($booking))) {
+                    return [null, 'This quotation has changed. Please contact our team for an updated offer.'];
+                }
+                $terms = is_array($quotation['terms'] ?? null)
+                    ? $quotation['terms']
+                    : \App\Services\PendingPaymentManager::quotationTermsSnapshot($booking);
+                $termsHash = (string) ($quotation['terms_hash'] ?? hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)));
+                if (! hash_equals($termsHash, hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)))) {
+                    return [null, 'The quotation terms could not be verified. Please contact our team.'];
+                }
+                if (! hash_equals($termsHash, $data['terms_hash'])) return [null, 'The terms changed. Review the current offer and accept again.'];
+            } else {
+                $terms = \App\Services\PendingPaymentManager::quotationTermsSnapshot($booking);
+                $termsHash = hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms));
+                if (! hash_equals($termsHash, $data['terms_hash'])) return [null, 'The terms changed. Review the current offer and accept again.'];
+                $legacyHash = hash('sha256', $token);
+                $quote = PendingPaymentLink::query()->where('booking_id', $booking->id)->where('type', 'quotation_conversion')
+                    ->orderByDesc('revision_number')->get()->first(fn (PendingPaymentLink $candidate): bool =>
+                        data_get($candidate->acceptance_evidence, 'legacy_token_hash') === $legacyHash);
+                if (! $quote) {
+                    $quote = \App\Services\PendingPaymentManager::createQuotationLink($booking);
+                    $quotation = $quote->booking_context['quotation'] ?? [];
+                    if (! hash_equals((string) ($quotation['terms_hash'] ?? ''), $termsHash)) {
+                        throw new \RuntimeException('Quotation terms changed during acceptance.');
+                    }
+                }
+            }
+
+            $paymentLink = \App\Services\PendingPaymentManager::createPaymentLink($booking);
+            if (! is_numeric($paymentLink->amount_due) || (float) $paymentLink->amount_due <= 0) {
+                return [null, 'Quotation amount is invalid. Please contact our team.'];
+            }
+
+            if (empty(data_get($quote->acceptance_evidence, 'accepted_terms_hash'))) {
+                $now = now();
+                $evidence = [
+                    'confirmed_at' => $now->copy()->utc()->toIso8601String(),
+                    'accepted_at' => ($quote->accepted_at ?: $now)->copy()->utc()->toIso8601String(),
+                    'accepted_terms' => $terms,
+                    'accepted_terms_hash' => $termsHash,
+                    'accepted_quote_snapshot_hash' => $snapshotHash ?? data_get($quote->booking_context, 'quotation.snapshot_hash'),
+                    'revision_number' => (int) ($quote->revision_number ?: 1),
+                    'user_id' => Auth::id() ? (string) Auth::id() : null,
+                    'ip_address' => $request->ip(),
+                    'user_agent' => Str::limit((string) $request->userAgent(), 1000, ''),
+                ];
+                if (! $issuedQuote) $evidence['legacy_token_hash'] = hash('sha256', $token);
+                $quoteContext = $quote->booking_context ?? [];
+                if (! is_array(data_get($quoteContext, 'quotation.terms'))) {
+                    data_set($quoteContext, 'quotation.terms', $terms);
+                    data_set($quoteContext, 'quotation.terms_hash', $termsHash);
+                }
+                $quote->forceFill([
+                    'accepted_at' => $quote->accepted_at ?: $now,
+                    'accessed_at' => $quote->accessed_at ?: $now,
+                    'access_count' => (int) $quote->access_count + 1,
+                    'booking_context' => $quoteContext,
+                    'acceptance_evidence' => $evidence,
+                ])->save();
+                PendingPaymentLink::query()->where('booking_id', $booking->id)->where('type', 'quotation_conversion')
+                    ->where('id', '!=', $quote->id)->whereNull('accepted_at')->whereNull('invalidated_at')
+                    ->update(['invalidated_at' => $now]);
+            }
+
+            return [$paymentLink, null];
+        });
+
+        if ($error) return back()->withInput()->with('error', $error);
+        return redirect()->route('checkout.payment-resume', ['token' => $paymentLink->token])
+            ->with('info', 'Quotation accepted. Please complete your booking payment.');
+    }
+
     /**
-     * Convert quotation to payment booking
-     * Allows customer to directly proceed to payment from quotation email link
-     * Creates a new confirmed booking with same details and discounts
-     * 
-     * @param Request $request
-     * @return \Illuminate\Http\RedirectResponse
+     * Route legacy direct-payment quotation links through the current offer review.
      */
     public function quotationToPayment(Request $request)
     {
         try {
-            $token = $request->get('token');
-            if (!$token) {
+            $quotationData = BookingLinkHelper::decryptBookingData((string) $request->route('token', ''));
+            if (! $quotationData || ($quotationData['type'] ?? null) !== 'quotation_payment') {
                 return redirect()->route('checkout')->with('error', 'Invalid quotation link.');
             }
 
-            $quotationData = BookingLinkHelper::decryptBookingData($token);
-            if (!$quotationData || $quotationData['type'] !== 'quotation_payment') {
-                return redirect()->route('checkout')->with('error', 'Invalid quotation link.');
+            $booking = Booking::query()->with(['bookingItems.serviceType'])->find($quotationData['booking_id'] ?? null);
+            if (! $booking) return redirect()->route('checkout')->with('error', 'Quotation not found.');
+            if ((string) $booking->status !== (string) config('booking.status.quotation_requested')
+                || ! is_numeric($booking->total_estimated) || (float) $booking->total_estimated <= 0) {
+                return redirect()->route('checkout')->with('error', 'This quotation is no longer available. Please contact our team for a current offer.');
             }
 
-            $quotationBooking = Booking::find($quotationData['booking_id']);
-            if (!$quotationBooking) {
-                return redirect()->route('checkout')->with('error', 'Quotation not found.');
+            $snapshot = BookingLinkHelper::quotationSnapshot($booking);
+            $snapshotHash = hash('sha256', \App\Support\Foundation\CanonicalJson::encode($snapshot));
+            $acceptedQuote = PendingPaymentLink::query()->where('booking_id', $booking->id)
+                ->where('type', 'quotation_conversion')->whereNotNull('accepted_at')
+                ->orderByDesc('revision_number')->first();
+            if (hash_equals($snapshotHash, (string) data_get($acceptedQuote?->acceptance_evidence, 'accepted_quote_snapshot_hash', ''))
+                && data_get($acceptedQuote?->acceptance_evidence, 'accepted_terms_hash')) {
+                $paymentLink = PendingPaymentLink::query()->where('booking_id', $booking->id)
+                    ->where('type', 'payment_reminder')->whereNull('invalidated_at')
+                    ->where('expires_at', '>', now())->first();
+                if ($paymentLink) return redirect()->route('checkout.payment-resume', ['token' => $paymentLink->token]);
             }
 
-            // Check if customer is logged in, if not redirect to login
-            if (!Auth::check() && $quotationBooking->customer && $quotationBooking->customer->user) {
-                session()->put('quotation_booking_id', $quotationBooking->id);
-                return redirect()->route('login')->with('info', 'Please log in to proceed with your quotation booking.');
+            $quote = PendingPaymentLink::query()->where('booking_id', $booking->id)
+                ->where('type', 'quotation_conversion')->whereNull('accepted_at')->whereNull('invalidated_at')
+                ->where('expires_at', '>', now())->orderByDesc('revision_number')->first();
+            if (! $quote || ! hash_equals($snapshotHash, (string) data_get($quote->booking_context, 'quotation.snapshot_hash', ''))) {
+                $quote = \App\Services\PendingPaymentManager::createQuotationLink($booking);
             }
 
-            DB::beginTransaction();
-
-            try {
-                // Get quotation booking details
-                $customer = $quotationBooking->customer;
-                $workflowData = $quotationBooking->workflow_data ?? [];
-                $cartItems = $workflowData['cart_items'] ?? [];
-
-                // Create new booking from quotation (booking-level data only)
-                $newBooking = Booking::create([
-                    'customer_id' => $customer->id,
-                    'booking_number' => Booking::generateBookingNumber(),
-                    // Remove all item-related fields - they will be in booking_items
-                    'base_amount' => $quotationBooking->base_amount,
-                    'service_fee' => $quotationBooking->service_fee,
-                    'tax_amount' => $quotationBooking->tax_amount,
-                    'vat_amount' => $quotationBooking->vat_amount,
-                    'discount_amount' => $quotationBooking->discount_amount,
-                    'total_estimated' => $quotationBooking->total_estimated,
-                    'currency' => $quotationBooking->currency,
-                    'payment_method' => 'online',
-                    'payment_status' => 'pending',
-                    'payment_type' => 'full',
-                    'amount_to_pay' => $quotationBooking->total_estimated,
-                    'special_requirements' => $quotationBooking->special_requirements,
-                    'contact_time' => $quotationBooking->contact_time,
-                    'status' => config('booking.status.payment_processing'),
-                    'booking_source' => 'public',
-                    'created_from' => 'quotation_acceptance',
-                    'created_user_id' => Auth::id(),
-                    'workflow_data' => $workflowData,
-                ]);
-
-                // Copy booking items from quotation
-                foreach ($quotationBooking->bookingItems as $quotationItem) {
-                    BookingItem::create([
-                        'booking_id' => $newBooking->id,
-                        'vehicle_group_id' => $quotationItem->vehicle_group_id,
-                        'vehicle_id' => $quotationItem->vehicle_id,
-                        'driver_id' => $quotationItem->driver_id,
-                        'service_type_id' => $quotationItem->service_type_id,
-                        'from_date' => $quotationItem->from_date,
-                        'to_date' => $quotationItem->to_date,
-                        'from_time' => $quotationItem->from_time,
-                        'to_time' => $quotationItem->to_time,
-                        'pickup_location' => $quotationItem->pickup_location,
-                        'dropoff_location' => $quotationItem->dropoff_location,
-                        'pickup_latitude' => $quotationItem->pickup_latitude,
-                        'pickup_longitude' => $quotationItem->pickup_longitude,
-                        'pickup_landmark' => $quotationItem->pickup_landmark,
-                        'dropoff_latitude' => $quotationItem->dropoff_latitude,
-                        'dropoff_longitude' => $quotationItem->dropoff_longitude,
-                        'dropoff_landmark' => $quotationItem->dropoff_landmark,
-                        'is_self_driven' => $quotationItem->is_self_driven,
-                        'unit_price' => $quotationItem->unit_price,
-                        'total_price' => $quotationItem->total_price,
-                        'quantity' => $quotationItem->quantity,
-                        'duration_days' => $quotationItem->duration_days,
-                        'duration_hours' => $quotationItem->duration_hours,
-                        'currency' => $quotationItem->currency,
-                        'status' => 'confirmed',
-                        'item_type' => $quotationItem->item_type,
-                        'pricing_breakdown' => $quotationItem->pricing_breakdown,
-                        'addons' => $quotationItem->addons,
-                        'customizations' => $quotationItem->customizations,
-                        'metadata' => $quotationItem->metadata,
-                    ]);
-                }
-
-                // Copy booking addons from quotation
-                $quotationBooking->addons()->get()->each(function ($addon) use ($newBooking) {
-                    BookingAddon::create([
-                        'booking_id' => $newBooking->id,
-                        'addon_id' => $addon->addon_id,
-                        'qty' => $addon->qty,
-                        'rate' => $addon->rate,
-                        'amount' => $addon->amount,
-                        'is_insurance' => $addon->is_insurance,
-                        'is_milage' => $addon->is_milage,
-                        'label' => $addon->label,
-                    ]);
-                });
-
-                // Store booking ID in session for payment processing
-                session()->put('pending_booking_id', $newBooking->id);
-                session()->put('quotation_source_id', $quotationBooking->id);
-
-                DB::commit();
-
-                // Redirect to checkout payment with new booking
-                return redirect()->route('checkout')->with('info', 'Quotation converted to booking. Please complete payment.');
-            } catch (\Exception $e) {
-                DB::rollback();
-                throw $e;
-            }
-        } catch (\Exception $e) {
-            Log::error('Error converting quotation to payment booking from email link', [
-                'error' => $e->getMessage(),
-                'token' => $request->get('token')
-            ]);
-
-            return redirect()->route('checkout')->with('error', 'An error occurred. Please try again.');
+            return redirect()->route('checkout.quotation-convert', ['token' => $quote->token]);
+        } catch (\Throwable $exception) {
+            Log::warning('Legacy quotation link could not be routed to offer review', ['error' => $exception->getMessage()]);
+            return redirect()->route('checkout')->with('error', 'We could not open this quotation. Please contact our team for help.');
         }
     }
 

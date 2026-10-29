@@ -146,6 +146,10 @@ class TripTrackingService
                 ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
                 : null,
             'hire_completed' => $assignment->trip_phase === TripPhase::COMPLETED,
+            // Recover a lost completion response with the same canonical totals.
+            ...($assignment->trip_phase === TripPhase::COMPLETED
+                ? $this->endTrip($assignment, [])
+                : []),
         ];
     }
 
@@ -233,61 +237,68 @@ class TripTrackingService
      */
     public function endTrip(DriverAssignment $assignment, array $finalLocation): array
     {
-        // Idempotent: already completed — return the stored summary rather than re-processing
-        if ($assignment->trip_phase === TripPhase::COMPLETED) {
-            $waitingTime = $this->waitingTimeBreakdown($assignment);
-            $distanceEvidence = $this->calculateTripEvidence($assignment);
-            return [
-                'assignment_id'              => $assignment->id,
-                'booking_id'                 => $assignment->booking_id,
-                'booking_item_id'            => $assignment->booking_item_id,
-                'trip_started_at'            => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
-                'trip_completed_at'          => $assignment->trip_completed_at?->copy()->utc()->toIso8601String(),
-                'total_distance_km'          => $assignment->total_distance_km !== null
-                    ? round((float) $assignment->total_distance_km, 2)
-                    : null,
-                'distance_evidence'          => $distanceEvidence,
-                'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
-                    ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
-                    : 0,
-                'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
-                'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
-                'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
-                'waiting_period_count'       => $waitingTime['waiting_period_count'],
-                'pickup_coordinates'         => $this->resolvePickupCoordinates($assignment),
-                'dropoff_coordinates'        => [
-                    'latitude'  => ($finalLocation['latitude'] ?? $assignment->final_latitude) !== null
-                        ? (float) ($finalLocation['latitude'] ?? $assignment->final_latitude)
-                        : null,
-                    'longitude' => ($finalLocation['longitude'] ?? $assignment->final_longitude) !== null
-                        ? (float) ($finalLocation['longitude'] ?? $assignment->final_longitude)
-                        : null,
-                ],
-                'completion_evidence'        => data_get($assignment->bookingItem?->metadata, 'driver_route_evidence.completion'),
-                'route_point_count'          => $assignment->routePoints()->count(),
-                'hire_completed'             => true,
-                'pricing_visible'            => $this->driverCanViewPricing($assignment->booking),
-                'payment'                    => $this->mapDriverPaymentSummary($assignment->booking),
-                'final_pricing'              => $this->driverCanViewPricing($assignment->booking)
-                    ? $this->resolveCanonicalFinalPricingSummary($assignment)
-                    : null,
-                'package_charges'            => $this->driverCanViewPricing($assignment->booking)
-                    && $this->isOpenPackageAssignment($assignment)
-                    ? $this->resolveCanonicalFinalPricingSummary($assignment)
-                    : null,
-            ];
-        }
-
-        if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
-            throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
-        }
-
-        $stops = $this->ensureAssignmentStops($assignment);
-        if ($this->isMultiStopAssignment($assignment, $stops) && !$this->allStopsTerminal($stops)) {
-            throw new \InvalidArgumentException('TRIP_STOPS_INCOMPLETE');
-        }
-
         return DB::transaction(function () use ($assignment, $finalLocation) {
+            // Serialize retries before reading lifecycle state or finalizing charges.
+            $assignment = DriverAssignment::query()
+                ->whereKey($assignment->id)
+                ->where('driver_id', $assignment->driver_id)
+                ->lockForUpdate()
+                ->firstOrFail();
+
+            // Idempotent: already completed — return the stored summary rather than re-processing
+            if ($assignment->trip_phase === TripPhase::COMPLETED) {
+                $waitingTime = $this->waitingTimeBreakdown($assignment);
+                $distanceEvidence = $this->calculateTripEvidence($assignment);
+                return [
+                    'assignment_id'              => $assignment->id,
+                    'booking_id'                 => $assignment->booking_id,
+                    'booking_item_id'            => $assignment->booking_item_id,
+                    'trip_started_at'            => $assignment->trip_started_at?->copy()->utc()->toIso8601String(),
+                    'trip_completed_at'          => $assignment->trip_completed_at?->copy()->utc()->toIso8601String(),
+                    'total_distance_km'          => $assignment->total_distance_km !== null
+                        ? round((float) $assignment->total_distance_km, 2)
+                        : null,
+                    'distance_evidence'          => $distanceEvidence,
+                    'total_duration_minutes'     => $assignment->trip_started_at && $assignment->trip_completed_at
+                        ? (int) $assignment->trip_started_at->diffInMinutes($assignment->trip_completed_at)
+                        : 0,
+                    'total_waiting_time_seconds' => $waitingTime['total_waiting_time_seconds'],
+                    'pickup_waiting_time_seconds' => $waitingTime['pickup_waiting_time_seconds'],
+                    'hire_waiting_time_seconds' => $waitingTime['hire_waiting_time_seconds'],
+                    'waiting_period_count'       => $waitingTime['waiting_period_count'],
+                    'pickup_coordinates'         => $this->resolvePickupCoordinates($assignment),
+                    'dropoff_coordinates'        => [
+                        'latitude'  => $assignment->final_latitude !== null
+                            ? (float) $assignment->final_latitude
+                            : null,
+                        'longitude' => $assignment->final_longitude !== null
+                            ? (float) $assignment->final_longitude
+                            : null,
+                    ],
+                    'completion_evidence'        => data_get($assignment->bookingItem?->metadata, 'driver_route_evidence.completion'),
+                    'route_point_count'          => $assignment->routePoints()->count(),
+                    'hire_completed'             => true,
+                    'pricing_visible'            => $this->driverCanViewPricing($assignment->booking),
+                    'payment'                    => $this->mapDriverPaymentSummary($assignment->booking),
+                    'final_pricing'              => $this->driverCanViewPricing($assignment->booking)
+                        ? $this->resolveCanonicalFinalPricingSummary($assignment)
+                        : null,
+                    'package_charges'            => $this->driverCanViewPricing($assignment->booking)
+                        && $this->isOpenPackageAssignment($assignment)
+                        ? $this->resolveCanonicalFinalPricingSummary($assignment)
+                        : null,
+                ];
+            }
+
+            if ($assignment->trip_phase !== TripPhase::IN_PROGRESS) {
+                throw new \InvalidArgumentException('TRIP_NOT_IN_PROGRESS');
+            }
+
+            $stops = $this->ensureAssignmentStops($assignment);
+            if ($this->isMultiStopAssignment($assignment, $stops) && !$this->allStopsTerminal($stops)) {
+                throw new \InvalidArgumentException('TRIP_STOPS_INCOMPLETE');
+            }
+
             $now = Carbon::now('UTC');
             $trackingUnavailable = (bool) ($finalLocation['tracking_unavailable_acknowledged'] ?? false);
             $finalLatitude = $trackingUnavailable ? null : ($finalLocation['latitude'] ?? null);
@@ -1060,10 +1071,7 @@ class TripTrackingService
         return is_numeric($value) ? (float) $value : null;
     }
 
-    /**
-     * Driver-completed hire should finish lifecycle and immediately release vehicle
-     * without forcing QC/Maintenance flow.
-     */
+    /** Driver completion records the trip return; configured inspection remains for operations. */
     private function syncBookingLifecycleAfterDriverTripCompletion(
         DriverAssignment $assignment,
         array $finalLocation,
@@ -1095,61 +1103,18 @@ class TripTrackingService
 
         $bookingItemId = $this->resolveCanonicalAssignmentBookingItemId($assignment, $booking);
 
-        // Primary path: use lifecycle service so dispatch + booking tracking stay consistent.
-        try {
-            if ($this->resolveAssignmentDispatch($assignment)) {
-                $this->bookingLifecycleService->processReturn((string) $booking->id, [
-                    'booking_item_id' => $bookingItemId,
-                    'actual_return_time' => $completedAt->toIso8601String(),
-                    'mileage' => $finalLocation['ending_mileage'] ?? null,
-                    'notes' => $finalLocation['notes'] ?? 'Completed via driver mobile app',
-                    'condition' => null,
-                    'damages' => [],
-                    'charges' => [],
-                    'completed_by_driver' => true,
-                    'skip_qc' => true,
-                ]);
-                return $this->resolveCanonicalFinalPricingSummary($assignment);
-            }
-        } catch (\Throwable $exception) {
-            Log::warning('Driver trip completion fallback: lifecycle return processing failed', [
-                'assignment_id' => $assignment->id,
-                'booking_id' => $booking->id,
-                'error' => $exception->getMessage(),
-            ]);
-        }
-
-        // Dispatch-less assignments still use the canonical completion service so
-        // final mobile metrics are priced and invoiced before the legacy fallback.
-        try {
-            $this->bookingLifecycleService->completeBooking(
-                (string) $booking->id,
-                [
-                    'activity_source' => 'driver_mobile',
-                    'actual_start_time' => $assignment->trip_started_at?->toIso8601String(),
-                    'actual_return_time' => $completedAt->toIso8601String(),
-                    'actual_distance' => $assignment->total_distance_km !== null
-                        ? (float) $assignment->total_distance_km
-                        : null,
-                    'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
-                    'completed_by_driver' => true,
-                ],
-                $bookingItemId
-            );
-            return $this->resolveCanonicalFinalPricingSummary($assignment);
-        } catch (\Throwable $exception) {
-            Log::error('Driver trip completion blocked: canonical completion failed', [
-                'assignment_id' => $assignment->id,
-                'booking_id' => $booking->id,
-                'error' => $exception->getMessage(),
-            ]);
-
-            throw new \DomainException(
-                'Driver trip completion was stopped because canonical final pricing or invoicing could not be completed: '
-                . $exception->getMessage(),
-                previous: $exception
-            );
-        }
+        $this->bookingLifecycleService->completeDriverTrip($assignment, $bookingItemId, [
+            'activity_source' => 'driver_mobile',
+            'actual_start_time' => $assignment->trip_started_at?->toIso8601String(),
+            'actual_return_time' => $completedAt->toIso8601String(),
+            'actual_distance' => $assignment->total_distance_km !== null
+                ? (float) $assignment->total_distance_km
+                : null,
+            'waiting_minutes' => (int) ceil(((int) $assignment->total_waiting_time_seconds) / 60),
+            'mileage_in' => $finalLocation['ending_mileage'] ?? null,
+            'notes' => $finalLocation['notes'] ?? 'Completed via driver mobile app',
+        ]);
+        return $this->resolveCanonicalFinalPricingSummary($assignment);
     }
 
     /**

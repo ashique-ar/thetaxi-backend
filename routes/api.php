@@ -58,6 +58,8 @@ use App\Http\Controllers\Api\Corporate\CorporateRoleController;
 use App\Http\Controllers\Api\Corporate\CorporateStaffTransportController;
 use App\Http\Controllers\Api\Corporate\CorporateWorkspaceController;
 use App\Http\Controllers\Api\CountryController;
+use App\Http\Controllers\Api\Integration\RespondIoIntegrationController;
+use App\Http\Controllers\Api\Integration\ThreeCxCrmController;
 use App\Http\Controllers\Api\CurrencyController;
 use App\Http\Controllers\Api\RolePermissionAssistantController;
 use App\Http\Controllers\Api\Driver\DriverController;
@@ -198,6 +200,8 @@ use App\Http\Controllers\Api\CustomerPortalBookingController;
 use App\Http\Middleware\DenyCustomerPortalLegacyBookingActions;
 use App\Http\Middleware\RedactCustomerPortalBookingData;
 use App\Http\Controllers\Api\StaffController;
+use App\Http\Controllers\Api\StaffWorkloadController;
+use App\Http\Controllers\Api\MyWorkController;
 use App\Http\Controllers\BookingController;
 use App\Http\Controllers\CartController;
 use App\Http\Resources\ServiceTypeResource;
@@ -235,7 +239,7 @@ Route::prefix('auth')->group(function () {
 
     // Email verification routes
     Route::get('verify-email/{id}/{hash}', [AuthController::class, 'verifyEmail'])
-        ->name('verification.verify');
+        ->middleware('signed')->name('verification.verify');
 
     // Protected authentication routes
     Route::middleware(['auth:api', 'update.api.session'])->group(function () {
@@ -293,6 +297,17 @@ Route::prefix('public')->group(function () {
 Route::match(['get', 'post'], 'sms/webhooks/delivery-report', [SmsManagementController::class, 'deliveryCallback'])
     ->middleware('throttle:sms-webhook');
 
+Route::post('webhooks/respond-io/{connection}/{token}', [RespondIoIntegrationController::class, 'receive'])
+    ->whereUuid('connection')->where('token', '[a-f0-9]{64}')->middleware('throttle:120,1');
+
+Route::prefix('integrations/3cx')->middleware('throttle:600,1')->group(function (): void {
+    Route::get('contact-by-number', [ThreeCxCrmController::class, 'contactByNumber']);
+    Route::get('call-context-by-number', [ThreeCxCrmController::class, 'callContextByNumber']);
+    Route::get('contact-by-email', [ThreeCxCrmController::class, 'contactByEmail']);
+    Route::get('search-contacts', [ThreeCxCrmController::class, 'searchContacts']);
+    Route::post('report-call', [ThreeCxCrmController::class, 'reportCall']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | User Management Routes
@@ -330,6 +345,34 @@ Route::post('observability/frontend-log', [ObservabilityController::class, 'fron
     ->middleware('throttle:30,1');
 
 Route::middleware(['auth:api'])->group(function () {
+
+    Route::prefix('integrations/respond-io')->group(function (): void {
+        Route::get('assignee-options', [RespondIoIntegrationController::class, 'assigneeOptions'])->middleware('permission:communication.view');
+        Route::get('agent-mappings', [RespondIoIntegrationController::class, 'agentMappings'])->middleware('permission:communication.manage');
+        Route::delete('agent-mappings/{mapping}', [RespondIoIntegrationController::class, 'removeAgentMapping'])->middleware('permission:communication.manage')->whereUuid('mapping');
+        Route::get('connection', [RespondIoIntegrationController::class, 'connection'])->middleware('permission:communication.view');
+        Route::post('connection', [RespondIoIntegrationController::class, 'createConnection'])->middleware('permission:communication.manage');
+        Route::put('connection', [RespondIoIntegrationController::class, 'updateConnection'])->middleware('permission:communication.manage');
+        Route::post('connection/rotate-secret', [RespondIoIntegrationController::class, 'rotateSecret'])->middleware('permission:communication.manage');
+        Route::get('events', [RespondIoIntegrationController::class, 'events'])->middleware('permission:communication.view');
+        Route::get('events/{event}', [RespondIoIntegrationController::class, 'event'])->middleware('permission:communication.view');
+        Route::post('events/{event}/lookup-contact', [RespondIoIntegrationController::class, 'lookupContact'])->middleware(['permission:communication.manage', 'throttle:30,1']);
+        Route::post('events/{event}/map-assignee', [RespondIoIntegrationController::class, 'mapContactAssignee'])->middleware(['permission:communication.manage', 'throttle:20,1']);
+        Route::get('events/{event}/contact-history', [RespondIoIntegrationController::class, 'contactHistory'])->middleware(['permission:communication.manage', 'throttle:10,1']);
+        Route::post('events/{event}/sync-contact-history', [RespondIoIntegrationController::class, 'syncContactHistory'])->middleware(['permission:communication.manage', 'throttle:5,1']);
+        Route::post('inquiries/{inquiry}/reply', [RespondIoIntegrationController::class, 'sendInquiryReply'])->middleware(['permission:inquiries.edit', 'throttle:10,1'])->whereUuid('inquiry');
+        Route::post('events/{event}/create-inquiry', [RespondIoIntegrationController::class, 'createInquiry'])->middleware('permission:communication.manage');
+        Route::post('events/{event}/create-support-request', [RespondIoIntegrationController::class, 'createSupportRequest'])->middleware('permission:communication.manage');
+        Route::post('events/{event}/mark-not-lead', [RespondIoIntegrationController::class, 'markNotLead'])->middleware('permission:communication.manage');
+        Route::post('events/{event}/apply-contact-assignee', [RespondIoIntegrationController::class, 'applyContactAssignee'])->middleware('permission:communication.manage');
+    });
+
+    Route::prefix('integrations/3cx')->group(function (): void {
+        Route::get('connection', [ThreeCxCrmController::class, 'connection'])->middleware('permission:communication.view');
+        Route::post('connection', [ThreeCxCrmController::class, 'createConnection'])->middleware('permission:communication.manage');
+        Route::put('connection', [ThreeCxCrmController::class, 'updateConnection'])->middleware('permission:communication.manage');
+        Route::post('connection/rotate-api-key', [ThreeCxCrmController::class, 'rotateApiKey'])->middleware('permission:communication.manage');
+    });
 
     Route::post('diagnostic-reports', [ObservabilityController::class, 'mobileDiagnostic'])
         ->middleware('throttle:30,1');
@@ -850,6 +893,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('activities', [SalesCrmController::class, 'activities'])->middleware('permission:sales.crm.view');
         Route::post('activities', [SalesCrmController::class, 'recordActivity'])->middleware('permission:sales.crm.manage');
         Route::get('tasks', [SalesCrmController::class, 'tasks'])->middleware('permission:sales.crm.view');
+        Route::get('task-booking-options', [SalesCrmController::class, 'taskBookingOptions'])->middleware('permission:sales.crm.manage');
+        Route::get('task-inquiry-options', [SalesCrmController::class, 'taskInquiryOptions'])->middleware('permission:sales.crm.manage');
+        Route::get('task-customer-options', [SalesCrmController::class, 'taskCustomerOptions'])->middleware('permission:sales.crm.manage');
         Route::post('tasks', [SalesCrmController::class, 'createTask'])->middleware('permission:sales.crm.manage');
         Route::post('tasks/{task}/transition', [SalesCrmController::class, 'transitionTask'])
             ->whereUuid('task')->middleware('permission:sales.crm.manage');
@@ -1486,6 +1532,11 @@ Route::middleware(['auth:api'])->group(function () {
         Route::get('customers/feedback', [CustomerController::class, 'getAllCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::post('customers/feedback', [CustomerController::class, 'submitCustomerFeedback'])->middleware('permission:customers.feedback');
         Route::post('customers/feedback/{feedbackId}/respond', [CustomerController::class, 'respondToFeedback'])->middleware('permission:customers.feedback');
+        Route::get('customers/{customer}/possible-matches', [CustomerController::class, 'possibleMatches'])->whereUuid('customer');
+        Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/different-people', [CustomerController::class, 'markPossibleMatchAsDifferent'])
+            ->whereUuid('customer')->whereUuid('matchedCustomerId')->middleware('permission:customers.edit');
+        Route::post('customers/{customer}/possible-matches/{matchedCustomerId}/same-person', [CustomerController::class, 'mergePossibleMatch'])
+            ->whereUuid('customer')->whereUuid('matchedCustomerId')->middleware('permission:customers.edit');
         Route::get('customers/documents/stats', [CustomerController::class, 'getDocumentStats']);
         Route::get('customers/documents', [CustomerController::class, 'getDocuments']);
         Route::post('customers/documents', [CustomerController::class, 'storeDocument'])->middleware('permission:customers.create');
@@ -1494,12 +1545,20 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('customers/documents/{document}/verify', [CustomerController::class, 'verifyDocument'])->middleware('permission:customers.edit')->whereUuid('document');
         Route::post('customers/documents/{document}/reject', [CustomerController::class, 'rejectDocument'])->middleware('permission:customers.edit')->whereUuid('document');
         Route::get('customers/{customer}/bookings', [CustomerController::class, 'getCustomerBookings'])->middleware('permission:customers.bookings')->whereUuid('customer');
+        Route::get('customers/{customer}/inquiries', [CustomerController::class, 'getCustomerInquiries'])->whereUuid('customer');
+        Route::get('customers/{customer}/timeline', [CustomerController::class, 'getCustomerTimeline'])->whereUuid('customer');
         Route::get('customers/{customer}/loyalty', [CustomerController::class, 'getCustomerLoyalty'])->middleware('permission:customers.loyalty')->whereUuid('customer');
         Route::post('customers/{customer}/loyalty/points', [LoyaltyController::class, 'addPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
         Route::post('customers/{customer}/loyalty/adjustments', [LoyaltyController::class, 'adjustPoints'])->middleware('permission:customers.loyalty')->whereUuid('customer');
-        Route::get('customers/{customer}/documents', [CustomerController::class, 'getCustomerDocuments'])->whereUuid('customer');
+        Route::get('customers/{customer}/documents', [CustomerController::class, 'getCustomerDocuments'])->middleware('permission:documents.view')->whereUuid('customer');
         Route::get('customers/{customer}/feedback', [CustomerController::class, 'getCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
         Route::post('customers/{customer}/feedback', [CustomerController::class, 'addCustomerFeedback'])->middleware('permission:customers.feedback')->whereUuid('customer');
+        Route::get('customers/relationship-owner-options', [CustomerController::class, 'relationshipOwnerOptions']);
+        Route::put('customers/{customer}/relationship-owner', [CustomerController::class, 'assignRelationshipOwner'])->whereUuid('customer');
+        Route::post('customers/{customer}/send-portal-verification', [CustomerController::class, 'sendPortalVerification'])
+            ->middleware(['permission:users.manage', 'throttle:5,1'])->whereUuid('customer');
+        Route::post('customers/{customer}/activate-portal', [CustomerController::class, 'activateVerifiedPortal'])
+            ->middleware('permission:users.manage')->whereUuid('customer');
         Route::apiResource('customers', CustomerController::class)->whereUuid('customer');
     });
 
@@ -1515,6 +1574,10 @@ Route::middleware(['auth:api'])->group(function () {
         ->middleware('permission:staff.create');
     Route::get('staff', [StaffController::class, 'index'])
         ->middleware('permission:staff.view');
+    Route::get('staff/workload', StaffWorkloadController::class)
+        ->middleware('permission:staff.view');
+    Route::get('my-work/summary', MyWorkController::class)
+        ->middleware('permission:bookings.view|bookings.assign|bookings.update|inquiries.view|inquiries.edit|phone-calls.view|phone-calls.edit|customers.view|customers.edit|sales.crm.view');
     Route::post('staff', [StaffController::class, 'store'])
         ->middleware('permission:staff.create');
     Route::get('staff/{staff}', [StaffController::class, 'show'])
@@ -1596,6 +1659,9 @@ Route::middleware(['auth:api'])->group(function () {
         Route::apiResource('website-settings', WebsiteSettingController::class);
         Route::apiResource('vip-types', VipTypeController::class);
         Route::get('pricing-context-policy', [PricingContextPolicyController::class, 'show']);
+        Route::post('service-types/workflow-preview', [ServiceTypeController::class, 'previewWorkflow'])->middleware('pricing.context');
+        Route::get('service-types/{serviceType}/workflow-revisions', [ServiceTypeController::class, 'workflowRevisions'])->middleware(['pricing.context', 'permission:service-types.view|service-types.edit']);
+        Route::post('service-types/{serviceType}/workflow-revisions/{revision}/review', [ServiceTypeController::class, 'reviewWorkflowRevision'])->middleware('pricing.context');
         Route::apiResource('service-types', ServiceTypeController::class)->middleware('pricing.context');
         Route::post('service-types/{serviceType}/clone', [ServiceTypeController::class, 'clone'])
             ->middleware('pricing.context');
@@ -2147,11 +2213,27 @@ Route::middleware(['auth:api'])->group(function () {
     // Inquiry routes use their own view/create/edit/delete permissions in the controller.
     Route::get('inquiries/filter-options', [InquiryController::class, 'filterOptions']);
     Route::get('inquiries/assignee-options', [InquiryController::class, 'assigneeOptions']);
+    Route::get('inquiries/customer-options', [InquiryController::class, 'customerOptions']);
+    Route::get('inquiries/booking-options', [InquiryController::class, 'bookingOptions']);
+    Route::get('inquiries/response-metrics', [InquiryController::class, 'responseMetrics']);
+    Route::post('inquiries/{inquiry}/create-customer', [InquiryController::class, 'createCustomerFromInquiry'])->whereUuid('inquiry');
     Route::put('inquiries/{inquiry}/assign', [InquiryController::class, 'assign']);
     Route::put('inquiries/{inquiry}/status', [InquiryController::class, 'updateStatus']);
     Route::post('inquiries/{inquiry}/respond', [InquiryController::class, 'respond']);
+    Route::post('inquiries/{inquiry}/send-response', [InquiryController::class, 'sendEmailResponse'])->middleware('throttle:10,1')->whereUuid('inquiry');
     Route::put('inquiries/{inquiry}/mark-read', [InquiryController::class, 'markRead']);
     Route::apiResource('inquiries', InquiryController::class);
+
+    // Communication call records enforce their own granular permissions and company scope.
+    Route::get('phone-calls/assignment-options', [PhoneCallController::class, 'assignmentOptions'])
+        ->middleware('permission:phone-calls.edit');
+    Route::apiResource('phone-calls', PhoneCallController::class);
+    Route::post('phone-calls/{phoneCall}/follow-up', [PhoneCallController::class, 'scheduleFollowUp'])
+        ->middleware('permission:phone-calls.edit');
+    Route::post('phone-calls/{phoneCall}/create-inquiry', [PhoneCallController::class, 'createInquiryFromCall'])
+        ->middleware('permission:inquiries.create');
+    Route::put('phone-calls/{phoneCall}/assignment', [PhoneCallController::class, 'assign'])
+        ->middleware('permission:phone-calls.edit');
 
     Route::middleware(['permission:system.view'])->group(function () {
         Route::get('galleries/stats', [ImageGalleryController::class, 'stats']);
@@ -2164,7 +2246,6 @@ Route::middleware(['auth:api'])->group(function () {
         Route::post('notification-templates/{notification_template}/preview', [NotificationTemplateController::class, 'preview']);
         Route::post('notification-templates/{notification_template}/send-test', [NotificationTemplateController::class, 'sendTest']);
         Route::apiResource('notification-templates', NotificationTemplateController::class);
-        Route::apiResource('phone-calls', PhoneCallController::class);
     });
 
     Route::middleware(['permission:agreements.view'])->group(function () {
@@ -2419,6 +2500,10 @@ Route::middleware(['auth:api'])->group(function () {
             // Advanced booking list with filtering
             Route::get('bookings', [BookingFlowController::class, 'getBookingsList'])
                 ->middleware('permission:bookings.view');
+            Route::get('bookings/responsible-user-options', [BookingFlowController::class, 'responsibleUserOptions'])
+                ->middleware('permission:bookings.assign');
+            Route::put('bookings/{bookingId}/responsible-user', [BookingFlowController::class, 'assignResponsibleUser'])
+                ->whereUuid('bookingId')->middleware(['permission:bookings.assign', DenyCustomerPortalLegacyBookingActions::class]);
             Route::get('return-inspection/options', [BookingFlowController::class, 'getReturnInspectionOptions'])
                 ->middleware('permission:bookings.view');
             Route::get('bookings/{bookingId}/items/{bookingItemId}/operations-notes', [BookingFlowController::class, 'getOperationsNotes'])
@@ -2561,8 +2646,14 @@ Route::middleware(['auth:api'])->group(function () {
                 ->middleware('permission:bookings.qc_inspect');
             Route::post('complete-repairs', [BookingLifecycleController::class, 'completeRepairs'])
                 ->middleware('permission:bookings.complete_repairs');
+            Route::post('request-replacement', [BookingLifecycleController::class, 'requestReplacement'])
+                ->middleware('permission:bookings.update');
+            Route::post('close-replacement-request', [BookingLifecycleController::class, 'closeReplacementRequest'])
+                ->middleware('permission:bookings.update');
             Route::post('complete-booking', [BookingLifecycleController::class, 'completeBooking'])
                 ->middleware('permission:bookings.complete');
+            Route::post('complete-post-trip-maintenance', [BookingLifecycleController::class, 'completePostTripMaintenance'])
+                ->middleware('permission:vehicle-maintenance-records.edit');
             Route::post('{bookingId}/force-complete', [BookingLifecycleController::class, 'forceCompleteBooking'])
                 ->middleware('permission:bookings.complete');
             Route::post('check-vehicle-availability', [BookingLifecycleController::class, 'checkVehicleAvailability'])

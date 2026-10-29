@@ -177,8 +177,10 @@ class BookingPaymentLedgerService
         $securityReceived = $money((float) $confirmedSecurityReceipts->sum('amount'));
         $securityRefunded = $money((float) $confirmedSecurityReceipts->sum('refunded_amount'));
         $securityHeld = max(0, $money($securityReceived - $securityRefunded));
-        $requiredSecurity = (float) $booking->bookingItems()->with('vehicleGroup')->get()
+        $bookingItems = $booking->bookingItems()->with('vehicleGroup')->get();
+        $requiredSecurity = (float) $bookingItems
             ->sum(fn ($item) => (float) ($item->vehicleGroup?->refundable_deposit ?? 0) * max(1, (int) ($item->quantity ?? 1)));
+        $requiredServiceDeposit = $this->requiredServiceDeposit($bookingItems, $money);
         $total = $money((float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0));
         $ledgerPaid = $money((float) $confirmedFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount));
         $legacyPaid = $this->legacyPaidAmount($booking, $total);
@@ -255,6 +257,8 @@ class BookingPaymentLedgerService
             'generated_horizon_end' => $openEndedRule ? $scheduleRows->max(fn ($row) => $row->due_date?->toDateString()) : null,
             'paid_amount' => $paid,
             'service_deposit_received' => $money((float) $confirmedFareReceipts->where('payment_purpose', 'service_deposit')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
+            'service_deposit_required' => $requiredServiceDeposit,
+            'service_deposit_due' => max(0, $money($requiredServiceDeposit - min($requiredServiceDeposit, $paid))),
             'booking_payments_received' => $money((float) $confirmedFareReceipts->where('payment_purpose', 'booking_payment')->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
             'pending_collection_amount' => $money((float) $pendingFareReceipts->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount)),
             'due_amount' => $due,
@@ -384,6 +388,46 @@ class BookingPaymentLedgerService
                 'is_opening_balance' => (bool) data_get($receipt->metadata, 'opening_balance', false),
             ])->values(),
         ];
+    }
+
+    public function serviceDepositDue(Booking $booking): float
+    {
+        $currency = strtoupper((string) ($booking->currency ?: 'LKR'));
+        $money = fn (float $amount): float => app(CurrencyService::class)->roundAmount($amount, $currency);
+        $items = $booking->relationLoaded('bookingItems')
+            ? $booking->bookingItems
+            : $booking->bookingItems()->get(['total_price', 'workflow_config_snapshot']);
+        $required = $this->requiredServiceDeposit($items, $money);
+        if ($required <= 0) return 0.0;
+
+        $receipts = BookingPaymentReceipt::query()->where('booking_id', $booking->id)
+            ->get(['payment_purpose', 'finality_status', 'amount', 'refunded_amount']);
+        $total = (float) ($booking->total_actual ?? $booking->total_estimated ?? $booking->amount_to_pay ?? 0);
+        $paid = $receipts->isEmpty()
+            ? $this->legacyPaidAmount($booking, $total)
+            : (float) $receipts->whereIn('payment_purpose', ['booking_payment', 'service_deposit'])
+                ->where('finality_status', 'confirmed')
+                ->sum(fn ($receipt) => (float) $receipt->amount - (float) $receipt->refunded_amount);
+
+        return max(0, $money($required - min($required, $paid)));
+    }
+
+    private function requiredServiceDeposit(iterable $items, callable $money): float
+    {
+        $required = 0.0;
+        foreach ($items as $item) {
+            $policy = $item->workflow_config_snapshot ?? [];
+            $value = max(0, (float) ($policy['service_deposit_value'] ?? 0));
+            $itemTotal = max(0, (float) ($item->total_price ?? 0));
+            $amount = match ($policy['service_deposit_mode'] ?? 'none') {
+                'fixed' => min($value, $itemTotal),
+                'percentage' => $itemTotal * $value / 100,
+                default => 0.0,
+            };
+            $required += $money($amount);
+        }
+
+        return $money($required);
     }
 
     /**

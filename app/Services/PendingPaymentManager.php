@@ -4,9 +4,11 @@ namespace App\Services;
 
 use App\Models\Booking\Booking;
 use App\Models\Website\PendingPaymentLink;
+use App\Models\TermsAndCondition;
 use App\Services\UrlShortenerService;
 use Illuminate\Support\Facades\Crypt;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Carbon\Carbon;
 
@@ -60,6 +62,7 @@ class PendingPaymentManager
         // Reuse active pending payment link if one exists to avoid invalidating previously sent tokens
         $existing = PendingPaymentLink::where('booking_id', $booking->id)
             ->where('type', 'payment_reminder')
+            ->whereNull('invalidated_at')
             ->where('expires_at', '>', Carbon::now())
             ->first();
 
@@ -84,6 +87,71 @@ class PendingPaymentManager
 
 
         return $paymentLink;
+    }
+
+    public static function createQuotationLink(Booking $booking, int $expiryHours = 168): PendingPaymentLink
+    {
+        return DB::transaction(function () use ($booking, $expiryHours): PendingPaymentLink {
+            $lockedBooking = Booking::query()->with('bookingItems')->lockForUpdate()->findOrFail($booking->id);
+            $now = Carbon::now();
+
+            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'payment_reminder')
+                ->whereNull('invalidated_at')->where('expires_at', '>', $now)
+                ->update(['invalidated_at' => $now]);
+            PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)->where('type', 'quotation_conversion')
+                ->whereNull('accepted_at')->whereNull('invalidated_at')
+                ->update(['invalidated_at' => $now]);
+
+            $snapshot = \App\Helpers\BookingLinkHelper::quotationSnapshot($lockedBooking);
+            $displaySnapshot = \App\Helpers\BookingLinkHelper::quotationDisplaySnapshot($lockedBooking);
+            $terms = self::quotationTermsSnapshot($lockedBooking);
+            $revision = (int) PendingPaymentLink::query()->where('booking_id', $lockedBooking->id)
+                ->where('type', 'quotation_conversion')->max('revision_number') + 1;
+
+            return PendingPaymentLink::create([
+                'booking_id' => $lockedBooking->id,
+                'token' => Str::random(64),
+                'type' => 'quotation_conversion',
+                'booking_context' => ['quotation' => [
+                    'snapshot_hash' => hash('sha256', \App\Support\Foundation\CanonicalJson::encode($snapshot)),
+                    'snapshot' => $snapshot,
+                    'display_snapshot' => $displaySnapshot,
+                    'terms' => $terms,
+                    'terms_hash' => hash('sha256', \App\Support\Foundation\CanonicalJson::encode($terms)),
+                    'issued_at' => $now->copy()->utc()->toIso8601String(),
+                ]],
+                'amount_due' => self::calculateAmountDue($lockedBooking),
+                'expires_at' => $now->copy()->addHours($expiryHours),
+                'revision_number' => $revision,
+                'accessed_at' => null,
+                'access_count' => 0,
+            ]);
+        });
+    }
+
+    public static function quotationTermsSnapshot(Booking $booking): array
+    {
+        $booking->loadMissing('bookingItems.serviceType');
+        $terms = collect();
+        foreach ($booking->bookingItems as $item) {
+            $service = $item->serviceType;
+            if ($service?->id) {
+                $terms = $terms->merge(TermsAndCondition::getForCheckout((string) $service->id, 'quotation'));
+            }
+            if ($service?->code) {
+                $terms = $terms->merge(TermsAndCondition::getForCheckout((string) $service->code, 'quotation'));
+            }
+        }
+        $terms = $terms->merge(TermsAndCondition::getGeneralServiceTerms());
+
+        return $terms->unique('id')->values()->map(fn (TermsAndCondition $term): array => [
+            'id' => (string) $term->id,
+            'title' => (string) $term->title,
+            'version' => (string) ($term->version ?? ''),
+            'content' => (string) $term->content,
+            'service_type_id' => $term->service_type_id ? (string) $term->service_type_id : null,
+            'service_type' => $term->service_type,
+        ])->all();
     }
 
     /**

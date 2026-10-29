@@ -59,6 +59,7 @@ class BookingItem extends BaseModel
         'final_priced_at',
         'completed_at',
         'lifecycle_data',
+        'workflow_config_snapshot',
         'requires_approval',
         'approved_at',
         'approved_by',
@@ -98,6 +99,7 @@ class BookingItem extends BaseModel
         'final_priced_at' => 'datetime',
         'completed_at' => 'datetime',
         'lifecycle_data' => 'array',
+        'workflow_config_snapshot' => 'array',
     ];
 
     protected static function boot()
@@ -111,6 +113,24 @@ class BookingItem extends BaseModel
 
             $booking = Booking::query()->whereKey($item->booking_id)
                 ->first(['id', 'is_corporate_booking', 'corporate_account_id']);
+            if ($item->service_type_id) {
+                $serviceType = \App\Models\Service\ServiceType::find($item->service_type_id);
+                if ($serviceType) {
+                    $effective = app(\App\Services\BookingWorkflowSettingsResolver::class)->resolve($serviceType->workflow_config);
+                    $item->workflow_config_snapshot = array_merge($item->workflow_config_snapshot ?? [], [
+                        'policy_version' => 1,
+                        'return_stage_enabled' => $effective['enable_return_stage'],
+                        'qc_stage_enabled' => $effective['enable_qc_stage'],
+                        'maintenance_stage_enabled' => $effective['enable_maintenance_stage'],
+                        'signed_agreement_required' => $effective['require_signed_agreement'],
+                        'driver_license_required' => $effective['require_driver_license'],
+                        'customer_identity_document_required' => $effective['require_customer_identity_document'],
+                        'booking_approval_required' => $effective['require_booking_approval'],
+                        'service_deposit_mode' => $serviceType->deposit_mode ?: 'none',
+                        'service_deposit_value' => (float) ($serviceType->deposit_value ?? 0),
+                    ]);
+                }
+            }
             $corporateId = $booking?->is_corporate_booking ? $booking->corporate_account_id : null;
             $references = app(\App\Services\CorporateReferenceNumberService::class);
 

@@ -9,6 +9,7 @@ use App\Services\UserContextService;
 use App\Services\WebsiteSettingsService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Validator;
 
 class CustomerPortalBookingController extends BookingFlowController
@@ -146,9 +147,9 @@ class CustomerPortalBookingController extends BookingFlowController
         $context = $user->contexts()->whereKey($activeContext['id'])
             ->where('context_type', 'customer')->where('is_active', true)->first();
         $customer = $context?->context_id
-            ? Customer::query()->whereKey($context->context_id)->where('user_id', $user->id)->first()
+            ? Customer::query()->whereKey($context->context_id)->first()
             : null;
-        abort_unless($customer, 403, 'An active customer profile is required.');
+        abort_unless($customer && $this->customerPortalOwns((string) $user->id, $customer), 403, 'An active customer profile is required.');
         return $customer;
     }
 
@@ -176,11 +177,10 @@ class CustomerPortalBookingController extends BookingFlowController
         $customer = $customerContext && $customerContext->context_id
             ? Customer::query()
                 ->whereKey($customerContext->context_id)
-                ->where('user_id', $user->id)
                 ->first()
             : null;
 
-        abort_unless($customer, 403, 'An active customer profile is required.');
+        abort_unless($customer && $this->customerPortalOwns((string) $user->id, $customer), 403, 'An active customer profile is required.');
 
         $payload = $request->except([
             'customer_id',
@@ -281,6 +281,12 @@ class CustomerPortalBookingController extends BookingFlowController
         ];
 
         return response()->json($body, $response->getStatusCode());
+    }
+
+    private function customerPortalOwns(string $userId, Customer $customer): bool
+    {
+        return (string) $customer->user_id === $userId || DB::table('customer_user_aliases')
+            ->where('user_id', $userId)->where('customer_id', $customer->id)->exists();
     }
 
     private function stripPriceOverrideInputs(array $values): array

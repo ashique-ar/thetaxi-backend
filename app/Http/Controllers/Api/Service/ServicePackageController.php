@@ -114,6 +114,10 @@ class ServicePackageController extends Controller
             );
         }
 
+        if ($request->filled('context') && $request->context !== 'all') {
+            $query->whereHas('serviceType', fn ($serviceQuery) => $serviceQuery->where('context', $request->context));
+        }
+
         if ($request->filled('search')) {
             $search = $request->search;
             $query->where(function ($q) use ($search) {

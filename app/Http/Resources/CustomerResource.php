@@ -18,6 +18,10 @@ class CustomerResource extends JsonResource
             'phone'           => $this->user?->phone,
             'email_verified'  => (bool) $this->user?->email_verified_at,
             'phone_verified'  => (bool) $this->user?->phone_verified_at,
+            'possible_phone_match' => (bool) $this->possible_phone_match,
+            'possible_duplicate' => (bool) $this->possible_duplicate,
+            'customer_lifecycle' => $this->when(isset($this->completed_booking_count), (int) $this->completed_booking_count > 0 ? 'returning' : 'no_completed_booking'),
+            'completed_booking_count' => $this->when(isset($this->completed_booking_count), (int) $this->completed_booking_count),
             'status'          => $this->user?->is_active ? 'active' : 'inactive',
             'is_verified'     => (bool) ($this->user?->email_verified_at || $this->user?->phone_verified_at),
             'code'            => $this->code,
@@ -41,8 +45,14 @@ class CustomerResource extends JsonResource
             'state'           => $this->state?->name,
             'city'            => $this->city,
             'postal_code'     => $this->postal_code,
-            'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
+            'payment_methods' => $this->when(
+                $request->user()?->can('payment-methods.view') && $this->resource->relationLoaded('paymentMethods'),
+                fn () => PaymentMethodResource::collection($this->paymentMethods)
+            ),
             'default_payment_arrangement' => $this->default_payment_arrangement ?: 'account_credit',
+            'relationship_owner' => $this->when(isset($this->relationship_owner), $this->relationship_owner),
+            'relationship_owner_history' => $this->when(isset($this->relationship_owner_history), $this->relationship_owner_history),
+            'relationship_owner_name' => $this->relationship_owner_name,
             'created_at'      => $this->created_at,
             'updated_at'      => $this->updated_at,
         ];

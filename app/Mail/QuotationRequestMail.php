@@ -15,14 +15,16 @@ class QuotationRequestMail extends Mailable
 
     protected $booking;
     protected bool $staffRequested;
+    protected ?string $checkoutLink;
 
     /**
      * Create a new message instance.
      */
-    public function __construct(Booking $booking, bool $staffRequested = false)
+    public function __construct(Booking $booking, bool $staffRequested = false, ?string $checkoutLink = null)
     {
         $this->booking = $booking;
         $this->staffRequested = $staffRequested;
+        $this->checkoutLink = $checkoutLink;
     }
 
     /**
@@ -31,7 +33,7 @@ class QuotationRequestMail extends Mailable
     public function envelope(): Envelope
     {
         return new Envelope(
-            subject: 'We received your quotation request - ' . $this->booking->booking_number,
+            subject: ($this->staffRequested ? 'Your quotation is ready - ' : 'We received your quotation request - ') . $this->booking->booking_number,
             from: config('mail.from.address'),
             replyTo: [config('mail.from.address')]
         );
@@ -58,6 +60,7 @@ class QuotationRequestMail extends Mailable
             with: [
                 'booking' => $this->booking,
                 'staffRequested' => $this->staffRequested,
+                'checkoutLink' => $this->checkoutLink,
             ]
         );
     }

@@ -3,6 +3,11 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+use App\Models\Booking\Booking;
+use App\Models\Sales\SalesTask;
+use App\Models\Sales\SalesOpportunity;
 use App\Traits\UUID;
 
 /**
@@ -38,12 +43,27 @@ class PhoneCall extends BaseModel
      * The attributes that are mass assignable.
      */
     protected $fillable = [
+        'customer_id',
+        'booking_id',
+        'inquiry_id',
         'phone',
         'client_name',
         'summary',
         'call_time',
         'created_user_id',
         'updated_user_id',
+        'external_provider',
+        'external_call_key',
+        'direction',
+        'call_status',
+        'agent_extension',
+        'agent_email',
+        'call_started_at',
+        'call_ended_at',
+        'talk_duration_seconds',
+        'follow_up_task_id',
+        'assigned_user_id',
+        'company_id',
     ];
 
     /**
@@ -51,6 +71,8 @@ class PhoneCall extends BaseModel
      */
     protected $casts = [
         'call_time' => 'date',
+        'call_started_at' => 'datetime',
+        'call_ended_at' => 'datetime',
         'created_at' => 'datetime',
         'updated_at' => 'datetime',
         'deleted_at' => 'datetime',
@@ -70,5 +92,40 @@ class PhoneCall extends BaseModel
     public function updatedBy(): BelongsTo
     {
         return $this->belongsTo(User::class, 'updated_user_id');
+    }
+
+    public function customer(): BelongsTo
+    {
+        return $this->belongsTo(Customer::class);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class);
+    }
+
+    public function inquiry(): BelongsTo
+    {
+        return $this->belongsTo(Inquiry::class);
+    }
+
+    public function followUpTask(): BelongsTo
+    {
+        return $this->belongsTo(SalesTask::class, 'follow_up_task_id');
+    }
+
+    public function salesOpportunity(): HasOne
+    {
+        return $this->hasOne(SalesOpportunity::class, 'source_phone_call_id');
+    }
+
+    public function assignedTo(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'assigned_user_id');
+    }
+
+    public function assignments(): HasMany
+    {
+        return $this->hasMany(PhoneCallAssignment::class)->orderBy('event_at');
     }
 }

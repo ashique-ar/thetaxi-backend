@@ -159,6 +159,7 @@ class AllPermissionsSeeder extends Seeder
     ];
 
     private const SPECIAL_PERMISSIONS = [
+        'service-types.workflow.approve',
         'analytics.agents',
         'analytics.bookings',
         'analytics.customers',
@@ -169,6 +170,7 @@ class AllPermissionsSeeder extends Seeder
         'api.external',
         'api.webhooks',
         'approve_bookings',
+        'bookings.assign',
         'bookings.approve',
         'bookings.complete',
         'bookings.complete_repairs',
@@ -974,7 +976,7 @@ class AllPermissionsSeeder extends Seeder
                     $allPermissions,
                     '/^(bookings|customers|inquiries|quotations|image-galleries|popup|promo-code)\./'
                 ),
-                ['reports.view', 'analytics.view']
+                ['reports.view', 'analytics.view', 'service-types.view', 'service-types.workflow.approve']
             ))),
             'accountant' => array_values(array_unique(array_merge(
                 $this->matchingPermissions($allPermissions, '/^(payments|invoices|collection-commissions|financial-settlements)\./'),

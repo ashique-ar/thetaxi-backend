@@ -66,23 +66,16 @@ class BookingLinkHelper
     public static function getQuotationCheckoutLink(Booking $booking): string
     {
         try {
-            // Encrypt booking ID and convert-from-quotation flag
-            $encryptedData = self::encryptBookingData([
-                'booking_id' => $booking->id,
-                'type' => 'quotation_conversion',
-                'vehicle_group_id' => $booking->vehicle_group_id,
-                'from_date' => $booking->from_date?->toDateString(),
-                'to_date' => $booking->to_date?->toDateString(),
-            ]);
+            $quote = PendingPaymentManager::createQuotationLink($booking, 168);
 
             $originalUrl = route('checkout.quotation-convert', [
-                'token' => $encryptedData
+                'token' => $quote->token,
             ]);
 
             // Create shortened URL for email-friendly links
             $shortenedUrl = UrlShortenerService::shorten(
                 $originalUrl,
-                240, // 10 days expiry
+                168, // Match the seven-day offer validity.
                 'booking',
                 $booking->id,
                 'email', // source
@@ -104,9 +97,63 @@ class BookingLinkHelper
                 'booking_id' => $booking->id ?? null,
                 'error' => $e->getMessage(),
             ]);
-            // Fallback: return checkout URL without token
-            return route('checkout');
+            return '';
         }
+    }
+
+    public static function quotationSnapshotHash(Booking $booking): string
+    {
+        return hash('sha256', \App\Support\Foundation\CanonicalJson::encode(self::quotationSnapshot($booking)));
+    }
+
+    public static function quotationSnapshot(Booking $booking): array
+    {
+        $booking->loadMissing('bookingItems');
+        $money = static fn ($value): string => number_format((float) ($value ?? 0), 2, '.', '');
+
+        return [
+            'booking_id' => (string) $booking->id,
+            'customer_id' => (string) ($booking->customer_id ?? ''),
+            'vehicle_group_id' => (string) ($booking->vehicle_group_id ?? ''),
+            'from_date' => (string) ($booking->getRawOriginal('from_date') ?? ''),
+            'to_date' => (string) ($booking->getRawOriginal('to_date') ?? ''),
+            'currency' => (string) ($booking->currency ?? ''),
+            'base_amount' => $money($booking->base_amount),
+            'addons_cost' => $money($booking->addons_cost),
+            'discount_amount' => $money($booking->discount_amount),
+            'tax_amount' => $money($booking->tax_amount),
+            'total_estimated' => $money($booking->total_estimated),
+            'amount_to_pay' => $money($booking->amount_to_pay),
+            'amount_paid' => $money($booking->amount_paid),
+            'items' => $booking->bookingItems->sortBy('id')->map(fn ($item) => [
+                'id' => (string) $item->id,
+                'vehicle_group_id' => (string) ($item->vehicle_group_id ?? ''),
+                'service_type_id' => (string) ($item->service_type_id ?? ''),
+                'from_date' => (string) ($item->getRawOriginal('from_date') ?? ''),
+                'from_time' => (string) ($item->from_time ?? ''),
+                'to_date' => (string) ($item->getRawOriginal('to_date') ?? ''),
+                'to_time' => (string) ($item->to_time ?? ''),
+                'pickup_location' => $item->pickup_location ?? [],
+                'dropoff_location' => $item->dropoff_location ?? [],
+                'is_self_driven' => (bool) $item->is_self_driven,
+                'unit_price' => $money($item->unit_price),
+                'total_price' => $money($item->total_price),
+                'quantity' => (string) ($item->quantity ?? ''),
+                'pricing_breakdown' => $item->pricing_breakdown ?? [],
+            ])->values()->all(),
+        ];
+    }
+
+    public static function quotationDisplaySnapshot(Booking $booking): array
+    {
+        $booking->loadMissing(['bookingItems.serviceType', 'bookingItems.vehicleGroup']);
+        $snapshot = self::quotationSnapshot($booking);
+        foreach ($booking->bookingItems->sortBy('id')->values() as $index => $item) {
+            $snapshot['items'][$index]['service_name'] = (string) ($item->serviceType?->name ?? '');
+            $snapshot['items'][$index]['vehicle_group_name'] = (string) ($item->vehicleGroup?->name ?? '');
+        }
+
+        return $snapshot;
     }
 
     /**

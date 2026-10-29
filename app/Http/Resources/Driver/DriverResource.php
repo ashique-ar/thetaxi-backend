@@ -14,6 +14,7 @@ class DriverResource extends JsonResource
 {
     public function toArray($request)
     {
+        $viewer = $request->user();
         $fullName = trim(($this->user?->first_name ?? '') . ' ' . ($this->user?->last_name ?? ''));
         $status = $this->availability_status ?: ($this->is_online ? 'available' : 'off_duty');
         $activeAssignment = $this->assignments()
@@ -100,7 +101,11 @@ class DriverResource extends JsonResource
             'total_trips' => (int) ($this->total_trips ?? 0),
             'assigned_vehicle' => $vehicle ? $this->vehiclePayload($vehicle, $vehicleGroup) : null,
             'vehicle' => $vehicle ? $this->vehiclePayload($vehicle, $vehicleGroup) : null,
-            'payment_method' => new PaymentMethodResource($this->whenLoaded('paymentMethod')),
+            'payment_method' => $this->when(
+                $viewer && ($viewer->id === $this->user_id || $viewer->can('payment-methods.view'))
+                    && $this->resource->relationLoaded('paymentMethod'),
+                fn () => new PaymentMethodResource($this->paymentMethod)
+            ),
             // Relations
             'licenseType' => new DrivingLicenseTypeResource($this->whenLoaded('licenseType')),
             'state' => new StateResource($this->whenLoaded('state')),

@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\AuthService;
 use App\Services\UserContextService;
 use Illuminate\Http\Request;
+use Illuminate\Http\Response;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Hash;
@@ -375,23 +376,13 @@ class AuthController extends Controller
      * @param Request $request
      * @return JsonResponse
      */
-    public function verifyEmail(Request $request): JsonResponse
+    public function verifyEmail(Request $request, string $id, string $hash): Response
     {
-        try {
-            $user = $request->user();
-            $this->authService->verifyEmail($user);
+        $user = User::query()->findOrFail($id);
+        abort_unless(hash_equals(sha1((string) $user->email), $hash), 403, 'Email verification link is invalid.');
+        $this->authService->verifyEmail($user);
 
-            return response()->json([
-                'status' => 'success',
-                'message' => 'Email verified successfully'
-            ]);
-        } catch (\Exception $e) {
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Email verification failed',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        return response()->view('auth.email-verified');
     }
 
     /**

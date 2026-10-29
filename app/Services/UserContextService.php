@@ -773,6 +773,10 @@ class UserContextService
     {
         switch ($contextType) {
             case 'customer':
+                $mergedCustomerId = DB::table('customer_user_aliases')->where('user_id', $user->id)->value('customer_id');
+                if ($mergedCustomerId) {
+                    return Customer::query()->findOrFail($mergedCustomerId);
+                }
                 return Customer::firstOrCreate(
                     ['user_id' => $user->id],
                     array_merge([

@@ -28,7 +28,10 @@ class VehicleOwnerResource extends JsonResource
             'driver' => $this->whenLoaded('driver'),
             'ownerType' => $this->whenLoaded('type'),
             'type' => $this->whenLoaded('type'),
-            'payment_methods' => PaymentMethodResource::collection($this->whenLoaded('paymentMethods')),
+            'payment_methods' => $this->when(
+                $request->user()?->can('payment-methods.view') && $this->resource->relationLoaded('paymentMethods'),
+                fn () => PaymentMethodResource::collection($this->paymentMethods)
+            ),
             'postal_code' => $this->postal_code,
             'license_number' => $this->license_number,
             'license_expiry' => $this->license_expiry,

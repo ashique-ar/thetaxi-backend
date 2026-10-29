@@ -63,7 +63,7 @@ class SalesPolicySettingsController extends Controller
             || $request->user()->can('sales.policy-settings.approve');
         $policyColumns = [
             'id', 'policy_kind', 'version', 'status', 'fx_quote_base', 'fx_calculation_mode', 'fx_max_rate_age_hours',
-            'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'approved_at',
+            'fx_rounding_scale', 'dispute_response_days', 'profile_export_retention_days', 'business_timezone', 'inquiry_first_response_minutes', 'booking_assignment_target_minutes', 'approved_at',
         ];
         $featureColumns = ['id', 'feature_key', 'version', 'enabled', 'status'];
         $categoryColumns = ['id', 'category_name', 'status'];
@@ -101,6 +101,8 @@ class SalesPolicySettingsController extends Controller
             'dispute_response_days' => ['required_if:policy_kind,commission_dispute', 'nullable', 'integer', 'min:1', 'max:365'],
             'profile_export_retention_days' => ['required_if:policy_kind,profile_export_retention', 'nullable', 'integer', 'min:1', 'max:3650'],
             'business_timezone' => ['required_if:policy_kind,business_timezone', 'nullable', 'timezone'],
+            'inquiry_first_response_minutes' => ['required_if:policy_kind,inquiry_response', 'nullable', 'integer', 'min:1', 'max:10080'],
+            'booking_assignment_target_minutes' => ['required_if:policy_kind,booking_assignment', 'nullable', 'integer', 'min:1', 'max:10080'],
             'reason' => ['required', 'string', 'max:2000'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);

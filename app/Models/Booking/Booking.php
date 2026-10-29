@@ -313,6 +313,7 @@ class Booking extends BaseModel
 
         // Enhanced booking workflow
         'created_by_user_id',
+        'responsible_user_id',
         'booking_source',
         'override_reasons',
         'has_overrides',
@@ -493,6 +494,11 @@ class Booking extends BaseModel
     public function createdBy()
     {
         return $this->belongsTo(\App\Models\User::class, 'created_user_id');
+    }
+
+    public function responsibleUser()
+    {
+        return $this->belongsTo(\App\Models\User::class, 'responsible_user_id')->withTrashed();
     }
 
     public function paymentSchedules()
@@ -1132,6 +1138,12 @@ class Booking extends BaseModel
     private function updateStatusBasedOnLifecycle(BookingLifecycleStatus $status, string $userId, array $data = []): void
     {
         switch ($status) {
+            case BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED:
+                $this->status = $status->value;
+                $this->updated_user_id = $userId;
+                $this->save();
+                break;
+
             case BookingLifecycleStatus::BOOKING_CONFIRMED:
                 $this->markAsConfirmed($userId);
                 break;

@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Customer;
+use App\Models\CustomerLoyaltyPoint;
 use App\Models\LoyaltyPointTransaction;
 use App\Models\LoyaltyReward;
 use App\Models\LoyaltyTier;
@@ -50,15 +51,25 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyPoints(Customer $customer): JsonResponse
     {
-        $user = $customer->user;
+        $customer = $this->requireCompanyCustomer($customer);
+        $account = CustomerLoyaltyPoint::query()->where('customer_id', $customer->id)->first();
+        $points = (int) ($account?->available_points ?? 0);
+        $tier = collect($this->getLoyaltyTierStructure())->first(fn (array $tier): bool =>
+            strtolower($tier['name']) === strtolower((string) ($account?->current_tier ?? ''))
+        )
+            ?? $this->getLoyaltyTier($points);
         
         return response()->json([
             'status' => 'success',
             'data' => [
-                'points' => $user->getPoints(),
-                'tier' => $this->getLoyaltyTier($user->getPoints()),
-                'next_tier' => $this->getNextLoyaltyTier($user->getPoints()),
-                'points_to_next_tier' => $this->getPointsToNextTier($user->getPoints())
+                'points' => $points,
+                'total_points' => (int) ($account?->total_points ?? 0),
+                'available_points' => $points,
+                'redeemed_points' => (int) ($account?->redeemed_points ?? 0),
+                'expired_points' => (int) ($account?->expired_points ?? 0),
+                'tier' => $tier,
+                'next_tier' => $account?->next_tier ? ['name' => $account->next_tier] : $this->getNextLoyaltyTier($points),
+                'points_to_next_tier' => (int) ($account?->points_to_next_tier ?? $this->getPointsToNextTier($points)),
             ]
         ]);
     }
@@ -69,14 +80,18 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyTier(Customer $customer): JsonResponse
     {
-        $user = $customer->user;
-        $tier = $this->getLoyaltyTier($user->getPoints());
+        $customer = $this->requireCompanyCustomer($customer);
+        $account = CustomerLoyaltyPoint::query()->where('customer_id', $customer->id)->first();
+        $points = (int) ($account?->available_points ?? 0);
+        $tier = collect($this->getLoyaltyTierStructure())->first(fn (array $tier): bool =>
+            strtolower($tier['name']) === strtolower((string) ($account?->current_tier ?? ''))
+        ) ?? $this->getLoyaltyTier($points);
         
         return response()->json([
             'status' => 'success',
             'data' => [
                 'current_tier' => $tier,
-                'points' => $user->getPoints(),
+                'points' => $points,
                 'tier_benefits' => $this->getTierBenefits($tier['name'])
             ]
         ]);
@@ -88,9 +103,11 @@ class LoyaltyController extends Controller
      */
     public function getCustomerLoyaltyHistory(Customer $customer): JsonResponse
     {
-        $user = $customer->user;
+        $customer = $this->requireCompanyCustomer($customer);
         $history = LoyaltyPointTransaction::query()
             ->where('customer_id', $customer->id)
+            ->completed()
+            ->select(['id', 'type', 'points', 'description', 'earning_reason', 'redemption_reason', 'booking_id', 'created_at'])
             ->latest()
             ->paginate(20);
         
@@ -106,6 +123,19 @@ class LoyaltyController extends Controller
                 ]
             ]
         ]);
+    }
+
+    private function requireCompanyCustomer(Customer $customer): Customer
+    {
+        $companyIds = DB::table('companies')->whereNull('deleted_at')->where('is_active', true)
+            ->where('is_default', true)->orderBy('id')->limit(2)->pluck('id');
+        abort_unless($companyIds->count() === 1, 409, 'Configure exactly one active default business before viewing customer loyalty.');
+        $companyId = (string) $companyIds->first();
+
+        $query = Customer::query()->whereKey($customer->id);
+        \App\Services\CompanyCustomerScope::constrain($query, 'customers', $companyId);
+
+        return $query->firstOrFail();
     }
 
     public function addPoints(Request $request, Customer $customer): JsonResponse

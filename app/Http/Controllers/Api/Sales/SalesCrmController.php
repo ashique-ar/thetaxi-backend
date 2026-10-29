@@ -23,11 +23,12 @@ class SalesCrmController extends Controller
     public function __construct(
         private readonly SalesAccessScope $scope,
         private readonly SalesPolicySettingsService $policySettings,
+        private readonly SalesCrmService $crm,
     ) {}
 
     public function opportunities(Request $request): JsonResponse
     {
-        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $data = $request->validate(['stage' => ['nullable', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'won', 'lost'])], 'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'search' => ['nullable', 'string', 'max:100'], 'needs_follow_up' => ['nullable', 'boolean'], 'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'], 'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
         $data['company_id'] = $data['company_id'] ?? app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
         abort_unless($data['company_id'], 409, 'No active default legal entity is configured.');
         $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
@@ -59,6 +60,11 @@ class SalesCrmController extends Controller
                 $match->where('opportunity_number', 'like', $term)
                     ->orWhere('name', 'like', $term)->orWhere('prospect_name', 'like', $term);
             }))
+            ->when($request->boolean('needs_follow_up'), fn ($q) => $q->whereNotIn('sales_opportunities.stage', ['won', 'lost'])
+                ->whereNotExists(fn ($tasks) => $tasks->selectRaw('1')->from('sales_tasks as task')
+                    ->whereColumn('task.opportunity_id', 'sales_opportunities.id')
+                    ->whereColumn('task.company_id', 'sales_opportunities.company_id')
+                    ->whereIn('task.status', ['open', 'in_progress'])))
             ->when($data['from'] ?? null, fn ($q, $from) => $q->whereDate('expected_close_date', '>=', $from))
             ->when($data['to'] ?? null, fn ($q, $to) => $q->whereDate('expected_close_date', '<=', $to))
             ->latest()->paginate($this->paginationSize($request, 25));
@@ -73,6 +79,7 @@ class SalesCrmController extends Controller
             'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
         ]);
         $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team');
+        if ($this->scope->hasPermission($request->user(), 'sales.crm.manage-all')) $profileIds = null;
         $companyIds = $profileIds === null ? null : DB::table('sales_profiles')->whereNull('deleted_at')
             ->whereIn('id', $profileIds)->pluck('company_id')->filter()->unique()->values();
         $defaultCompanyId = app(SingleCompanyScope::class)->activeDefaultCompany()?->id;
@@ -199,7 +206,7 @@ class SalesCrmController extends Controller
 
         if ($data['source_type'] === 'inquiry') {
             $query = DB::table('inquiries as source')->leftJoin('sales_opportunities as opportunity', 'opportunity.inquiry_id', '=', 'source.id')
-                ->whereNull('source.deleted_at')->whereNull('opportunity.id')
+                ->where('source.company_id', $companyId)->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->where(fn ($scope) => $scope
                     ->where(fn ($assigned) => $assigned->whereNotNull('source.assigned_to')->whereIn('source.assigned_to', $userIds))
                     ->orWhere(fn ($created) => $created->whereNull('source.assigned_to')->whereIn('source.created_user_id', $userIds)));
@@ -221,8 +228,12 @@ class SalesCrmController extends Controller
                 'status' => $row->status,
             ]);
         } else {
-            $query = DB::table('phone_calls as source')->leftJoin('sales_opportunities as opportunity', 'opportunity.source_phone_call_id', '=', 'source.id')
-                ->whereNull('source.deleted_at')->whereNull('opportunity.id')
+            $query = DB::table('phone_calls as source')->leftJoin('sales_opportunities as opportunity', function ($join): void {
+                    $join->on('opportunity.source_phone_call_id', '=', 'source.id')
+                        ->on('opportunity.company_id', '=', 'source.company_id')
+                        ->whereNull('opportunity.deleted_at');
+                })
+                ->where('source.company_id', $companyId)->whereNull('source.deleted_at')->whereNull('opportunity.id')
                 ->whereIn('source.created_user_id', $userIds);
             if ($selected) $query->where('source.id', $data['selected_id']);
             else $query->when($data['search'] ?? null, function ($rows, $search) {
@@ -258,23 +269,48 @@ class SalesCrmController extends Controller
             'source_currency' => ['required', 'string', 'size:3'], 'expected_value_lkr' => ['nullable', 'required_if:source_currency,LKR', 'numeric', 'min:0'],
             'probability_percent' => ['required', 'integer', 'min:0', 'max:100'], 'expected_close_date' => ['nullable', 'date'],
             'services' => ['nullable', 'array'], 'customer_needs' => ['nullable', 'string', 'max:5000'],
-            'competitor_notes' => ['nullable', 'string', 'max:5000'], 'next_action' => ['nullable', 'string', 'max:2000'],
-            'next_action_at' => ['nullable', 'date'], 'confidentiality' => ['nullable', Rule::in(['owner', 'team', 'management'])],
+            'competitor_notes' => ['nullable', 'string', 'max:5000'],
+            'confidentiality' => ['nullable', Rule::in(['owner', 'team', 'management'])],
+            'follow_up_task' => ['required', 'array'],
+            'follow_up_task.title' => ['required', 'string', 'max:255'],
+            'follow_up_task.description' => ['nullable', 'string', 'max:5000'],
+            'follow_up_task.priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'follow_up_task.due_at' => ['required', 'date', 'after:now'],
+            'follow_up_task.remind_at' => ['nullable', 'date', 'before_or_equal:follow_up_task.due_at'],
         ]);
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $profile = SalesProfile::query()->findOrFail($data['owner_sales_profile_id']);
         abort_unless(SalesProfile::query()->whereKey($profile->id)->activeAt(now())->exists(), 422, 'Opportunity owner must have an active Sales Profile.');
         $this->scope->assertProfile($request->user(), $profile, 'sales.crm.manage-all', 'sales.crm.manage-team');
+        $authorizedProfileIds = $this->scope->profileIds(
+            $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', (string) $profile->company_id,
+        );
         return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createOpportunity(
-            $data, (string) $request->user()->id, $this->sourceUserIds($request, (string) $profile->company_id),
+            $data, (string) $request->user()->id, $this->sourceUserIds($request, (string) $profile->company_id), $authorizedProfileIds,
         ))], 201);
     }
 
     public function transitionOpportunity(Request $request, SalesOpportunity $opportunity, SalesCrmService $crm): JsonResponse
     {
         $this->assertOpportunityScope($request, $opportunity, true);
-        $data = $request->validate(['to_stage' => ['required', Rule::in(['contacted', 'qualified', 'quotation', 'negotiation', 'lost'])], 'expected_version' => ['required', 'integer', 'min:1'], 'reason_code' => ['nullable', 'string', 'max:80'], 'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160']]);
-        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transition($opportunity, $data['to_stage'], $data['expected_version'], $data['reason_code'] ?? null, $data['reason'] ?? null, $data['idempotency_key'], (string) $request->user()->id))]);
+        $data = $request->validate([
+            'to_stage' => ['required', Rule::in(['new', 'contacted', 'qualified', 'quotation', 'negotiation', 'lost'])],
+            'expected_version' => ['required', 'integer', 'min:1'], 'reason_code' => ['nullable', 'string', 'max:80'],
+            'reason' => ['nullable', 'string', 'max:2000'], 'idempotency_key' => ['required', 'string', 'max:160'],
+            'follow_up_task' => ['required_unless:to_stage,lost', 'array'],
+            'follow_up_task.title' => ['required_with:follow_up_task', 'required_unless:to_stage,lost', 'string', 'max:255'],
+            'follow_up_task.description' => ['nullable', 'string', 'max:5000'],
+            'follow_up_task.priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'follow_up_task.due_at' => ['required_with:follow_up_task', 'required_unless:to_stage,lost', 'date', 'after:now'],
+            'follow_up_task.remind_at' => ['nullable', 'date', 'before_or_equal:follow_up_task.due_at'],
+        ]);
+        $companyId = (string) $opportunity->company_id;
+        $authorizedProfileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->transition(
+            $opportunity, $data['to_stage'], $data['expected_version'], $data['reason_code'] ?? null, $data['reason'] ?? null,
+            $data['idempotency_key'], (string) $request->user()->id, $data['follow_up_task'] ?? null,
+            $authorizedProfileIds, $this->sourceUserIds($request, $companyId),
+        ))]);
     }
 
     public function transferOpportunity(Request $request, SalesOpportunity $opportunity, SalesCrmService $crm): JsonResponse
@@ -386,17 +422,45 @@ class SalesCrmController extends Controller
                                         ->where(fn ($company) => $company->whereNull('event_attribution.company_id')
                                             ->orWhereColumn('event_attribution.company_id', '!=', 'sales_activities.company_id')));
                                 $this->constrainBookingOwnerToOpportunity($linkedBooking, 'event_booking', 'opportunity');
-                            }))))));
+                            })))))
+                ->orWhereExists(fn ($directInquiry) => $directInquiry->selectRaw('1')->from('inquiries as activity_inquiry')
+                    ->whereColumn('activity_inquiry.id', 'sales_activities.inquiry_id')
+                    ->whereColumn('activity_inquiry.company_id', 'sales_activities.company_id')->whereNull('activity_inquiry.deleted_at')
+                    ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
+                        ->orWhereColumn('sales_activities.customer_id', 'activity_inquiry.customer_id')))
+                ->orWhereExists(fn ($directBooking) => $directBooking->selectRaw('1')->from('bookings as activity_booking')
+                    ->whereColumn('activity_booking.id', 'sales_activities.booking_id')->whereNull('activity_booking.deleted_at')
+                    ->where(fn ($company) => $company->whereExists(fn ($attribution) => $attribution->selectRaw('1')
+                        ->from('sales_booking_attributions as direct_attribution')->whereColumn('direct_attribution.booking_id', 'activity_booking.id')
+                        ->whereColumn('direct_attribution.company_id', 'sales_activities.company_id'))
+                        ->orWhereExists(fn ($owner) => $owner->selectRaw('1')->from('staff as booking_owner')
+                            ->whereColumn('booking_owner.user_id', 'activity_booking.responsible_user_id')
+                            ->whereColumn('booking_owner.company_id', 'sales_activities.company_id')->whereNull('booking_owner.deleted_at')))
+                    ->where(fn ($customer) => $customer->whereNull('sales_activities.customer_id')
+                        ->orWhereColumn('sales_activities.customer_id', 'activity_booking.customer_id')))
+                ->orWhereExists(fn ($directCustomer) => $directCustomer->selectRaw('1')->from('customer_relationship_owner_assignments as activity_customer_owner')
+                    ->whereColumn('activity_customer_owner.customer_id', 'sales_activities.customer_id')
+                    ->whereColumn('activity_customer_owner.company_id', 'sales_activities.company_id')));
         if ($ids !== null) $query->whereIn('sales_profile_id', $ids);
         $rows = $query->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where('sales_profile_id', $id))
             ->when($data['opportunity_id'] ?? null, fn ($q, $id) => $q->where('opportunity_id', $id))
             ->when($data['activity_type'] ?? null, fn ($q, $type) => $q->where('activity_type', $type))
             ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('occurred_at', '>=', $date))
             ->when($data['to'] ?? null, fn ($q, $date) => $q->whereDate('occurred_at', '<=', $date))
+            ->addSelect([
+                'opportunity_reference' => DB::table('sales_opportunities')->select('opportunity_number')->whereColumn('sales_opportunities.id', 'sales_activities.opportunity_id'),
+                'booking_reference' => DB::table('bookings')->selectRaw('COALESCE(booking_number, log_code)')->whereColumn('bookings.id', 'sales_activities.booking_id'),
+                'inquiry_reference' => DB::table('inquiries')->select('inquiry_number')->whereColumn('inquiries.id', 'sales_activities.inquiry_id'),
+                'customer_reference' => DB::table('customers')->select('code')->whereColumn('customers.id', 'sales_activities.customer_id'),
+            ])
             ->latest('occurred_at')->paginate($this->paginationSize($request, 25));
         $rows->setCollection($rows->getCollection()->map(fn (SalesActivity $activity): array => [
             'activity_type' => $activity->activity_type, 'subject' => $activity->subject,
             'outcome' => $activity->outcome, 'next_action' => $activity->next_action,
+            'record_label' => $activity->opportunity_id ? 'Opportunity ' . $activity->opportunity_reference
+                : ($activity->booking_id ? 'Booking ' . ($activity->booking_reference ?: '—')
+                    : ($activity->inquiry_id ? 'Inquiry ' . $activity->inquiry_reference
+                        : ($activity->customer_id ? 'Customer ' . ($activity->customer_reference ?: '—') : ''))),
             'occurred_at' => $activity->occurred_at,
         ]));
 
@@ -407,12 +471,18 @@ class SalesCrmController extends Controller
     {
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'], 'sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
-            'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
-            'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
+            'opportunity_id' => ['nullable', 'required_without_all:booking_id,inquiry_id,customer_id', 'uuid', 'exists:sales_opportunities,id'], 'customer_id' => ['nullable', 'required_without_all:opportunity_id,booking_id,inquiry_id', 'uuid', 'exists:customers,id'],
+            'inquiry_id' => ['nullable', 'required_without_all:opportunity_id,booking_id,customer_id', 'uuid', 'exists:inquiries,id'], 'booking_id' => ['nullable', 'required_without_all:opportunity_id,inquiry_id,customer_id', 'uuid', 'exists:bookings,id'],
             'phone_call_id' => ['nullable', 'uuid', 'exists:phone_calls,id'], 'booking_activity_id' => ['nullable', 'uuid', 'exists:booking_activities,id'],
             'activity_type' => ['required', Rule::in(['call', 'email', 'sms', 'whatsapp', 'meeting', 'site_visit', 'note', 'quotation', 'follow_up', 'collection_follow_up'])],
             'direction' => ['nullable', Rule::in(['inbound', 'outbound'])], 'subject' => ['required', 'string', 'max:255'], 'notes' => ['nullable', 'string', 'max:5000'],
             'outcome' => ['nullable', 'string', 'max:80'], 'next_action' => ['nullable', 'string', 'max:2000'], 'next_action_at' => ['nullable', 'date'],
+            'follow_up_task' => ['sometimes', 'array'],
+            'follow_up_task.title' => ['required_with:follow_up_task', 'string', 'max:255'],
+            'follow_up_task.description' => ['nullable', 'string', 'max:5000'],
+            'follow_up_task.priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'follow_up_task.due_at' => ['required_with:follow_up_task', 'date'],
+            'follow_up_task.remind_at' => ['nullable', 'date', 'before_or_equal:follow_up_task.due_at'],
             'source_system' => ['required', 'string', 'max:60'], 'source_reference' => ['required', 'string', 'max:160'],
             'evidence_file_id' => ['nullable', 'uuid', 'exists:domain_evidence_files,id'], 'occurred_at' => ['required', 'date', 'before_or_equal:now'],
         ]);
@@ -422,16 +492,20 @@ class SalesCrmController extends Controller
         $authorizedProfileIds = $this->scope->profileIds(
             $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
         );
-        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->recordActivity($data, (string) $request->user()->id, $authorizedProfileIds))], 201);
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->recordActivity(
+            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request, $data['company_id']),
+        ))], 201);
     }
 
     public function tasks(Request $request): JsonResponse
     {
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
-            'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'],
+            'sales_profile_id' => ['nullable', 'uuid'], 'opportunity_id' => ['nullable', 'uuid'], 'task_id' => ['nullable', 'uuid'],
             'status' => ['nullable', Rule::in(['open', 'in_progress', 'completed', 'cancelled'])],
             'priority' => ['nullable', Rule::in(['low', 'normal', 'high', 'urgent'])],
+            'overdue_only' => ['nullable', 'boolean'],
+            'actionable_only' => ['nullable', 'boolean'],
             'from' => ['nullable', 'date'], 'to' => ['nullable', 'date', 'after_or_equal:from'],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:1', 'max:100'],
@@ -439,7 +513,17 @@ class SalesCrmController extends Controller
         $data['company_id'] = $this->resolveCompanyId($data['company_id'] ?? null);
         $ids = $this->scope->profileIds($request->user(), 'sales.crm.view-all', 'sales.crm.view-team', $data['company_id']);
         $this->assertActiveListCompany($data['company_id'], $ids);
+        $nowUtc = now('UTC');
+        $workdayEndUtc = now(config('app.timezone'))->endOfDay()->utc();
         $query = SalesTask::query()
+            ->with([
+                'owner',
+                'opportunity:id,company_id,opportunity_number,name,prospect_name',
+                'booking:id,booking_number,log_code',
+                'inquiry:id,inquiry_number,subject,name',
+                'customer:id,code,user_id',
+                'customer.user:id,first_name,last_name',
+            ])
             ->where('sales_tasks.company_id', $data['company_id'])
             ->whereExists(fn ($profile) => $profile->selectRaw('1')->from('sales_profiles as profile')
                 ->whereColumn('profile.id', 'sales_tasks.owner_sales_profile_id')
@@ -448,8 +532,9 @@ class SalesCrmController extends Controller
                 ->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as owner_staff')
                     ->whereColumn('owner_staff.id', 'profile.staff_id')
                     ->whereColumn('owner_staff.company_id', 'sales_tasks.company_id')
-                    ->whereNull('owner_staff.deleted_at')))
-            ->whereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
+                    ))
+            ->where(fn ($linkScope) => $linkScope
+                ->whereExists(fn ($linked) => $linked->selectRaw('1')->from('sales_opportunities as opportunity')
                     ->whereColumn('opportunity.id', 'sales_tasks.opportunity_id')
                     ->whereColumn('opportunity.company_id', 'sales_tasks.company_id')
                     ->where(fn ($references) => $references->whereNull('sales_tasks.customer_id')
@@ -469,25 +554,230 @@ class SalesCrmController extends Controller
                                     ->where(fn ($company) => $company->whereNull('attribution.company_id')
                                         ->orWhereColumn('attribution.company_id', '!=', 'sales_tasks.company_id')));
                             $this->constrainBookingOwnerToOpportunity($linkedBooking, 'task_booking', 'opportunity');
-                        })));
+                        })))
+                ->orWhereExists(fn ($direct) => $direct->selectRaw('1')->from('bookings as task_booking')
+                    ->whereColumn('task_booking.id', 'sales_tasks.booking_id')
+                    ->whereNull('task_booking.deleted_at')
+                    ->whereNull('sales_tasks.opportunity_id')
+                    ->whereNull('sales_tasks.inquiry_id')
+                    ->where(fn ($company) => $company
+                        ->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
+                            ->whereColumn('attribution.booking_id', 'task_booking.id')
+                            ->whereColumn('attribution.company_id', 'sales_tasks.company_id'))
+                        ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
+                            ->whereColumn('booking_owner.user_id', 'task_booking.responsible_user_id')
+                            ->whereColumn('booking_owner.company_id', 'sales_tasks.company_id')))
+                    ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
+                        ->orWhereColumn('sales_tasks.customer_id', 'task_booking.customer_id')))
+                ->orWhereExists(fn ($inquiry) => $inquiry->selectRaw('1')->from('inquiries as task_inquiry')
+                    ->whereColumn('task_inquiry.id', 'sales_tasks.inquiry_id')->whereNull('task_inquiry.deleted_at')
+                    ->whereColumn('task_inquiry.company_id', 'sales_tasks.company_id')
+                    ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')
+                    ->where(function ($source) {
+                        $source->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_owner')
+                            ->whereColumn('inquiry_owner.user_id', 'task_inquiry.assigned_to')
+                            ->whereColumn('inquiry_owner.company_id', 'sales_tasks.company_id'))
+                            ->orWhere(function ($unassigned) {
+                                $unassigned->whereNull('task_inquiry.assigned_to')->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as inquiry_creator')
+                                    ->whereColumn('inquiry_creator.user_id', 'task_inquiry.created_user_id')
+                                    ->whereColumn('inquiry_creator.company_id', 'sales_tasks.company_id'));
+                            });
+                    })
+                    ->where(fn ($customer) => $customer->whereNull('sales_tasks.customer_id')
+                        ->orWhereColumn('sales_tasks.customer_id', 'task_inquiry.customer_id')))
+                ->orWhereExists(fn ($customer) => $customer->selectRaw('1')->from('customer_relationship_owner_assignments as customer_owner')
+                    ->whereColumn('customer_owner.customer_id', 'sales_tasks.customer_id')
+                    ->whereColumn('customer_owner.company_id', 'sales_tasks.company_id')
+                    ->whereNull('sales_tasks.opportunity_id')->whereNull('sales_tasks.booking_id')->whereNull('sales_tasks.inquiry_id')));
         if ($ids !== null) $query->whereIn('owner_sales_profile_id', $ids);
         $rows = $query
             ->when($data['sales_profile_id'] ?? null, fn ($q, $id) => $q->where('owner_sales_profile_id', $id))
             ->when($data['opportunity_id'] ?? null, fn ($q, $id) => $q->where('opportunity_id', $id))
+            ->when($data['task_id'] ?? null, fn ($q, $id) => $q->whereKey($id))
             ->when($data['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($data['priority'] ?? null, fn ($q, $priority) => $q->where('priority', $priority))
+            ->when($request->boolean('overdue_only'), fn ($q) => $q->whereIn('status', ['open', 'in_progress'])->where('due_at', '<', $nowUtc))
+            ->when($request->boolean('actionable_only'), fn ($q) => $q->whereIn('status', ['open', 'in_progress'])->where('due_at', '<=', $workdayEndUtc))
             ->when($data['from'] ?? null, fn ($q, $date) => $q->whereDate('due_at', '>=', $date))
             ->when($data['to'] ?? null, fn ($q, $date) => $q->whereDate('due_at', '<=', $date))
             ->orderByRaw("CASE WHEN status IN ('completed','cancelled') THEN 1 ELSE 0 END")
             ->orderBy('due_at')->paginate($this->paginationSize($request, 25));
-        $rows->setCollection($rows->getCollection()->map(fn (SalesTask $task): array => [
-            'id' => (string) $task->id,
-            'title' => $task->title,
-            'priority' => $task->priority,
-            'status' => $task->status,
-            'due_at' => $task->due_at,
-            'state_version' => (int) $task->state_version,
-        ]));
+        $rows->setCollection($rows->getCollection()->map(function (SalesTask $task) use ($request, $nowUtc): array {
+            [$sourceType, $sourceId, $sourceLabel] = match (true) {
+                (bool) $task->opportunity_id => ['opportunity', (string) $task->opportunity_id,
+                    trim(($task->opportunity?->opportunity_number ?: 'Opportunity').' · '.($task->opportunity?->prospect_name ?: $task->opportunity?->name))],
+                (bool) $task->inquiry_id => ['inquiry', (string) $task->inquiry_id,
+                    trim(($task->inquiry?->inquiry_number ?: 'Inquiry').' · '.($task->inquiry?->subject ?: $task->inquiry?->name))],
+                (bool) $task->booking_id => ['booking', (string) $task->booking_id,
+                    $task->booking?->booking_number ?: ($task->booking?->log_code ? 'Draft '.$task->booking->log_code : 'Booking')],
+                (bool) $task->customer_id => ['customer', (string) $task->customer_id,
+                    trim(($task->customer?->code ? $task->customer->code.' · ' : 'Customer · ')
+                        .trim(($task->customer?->user?->first_name ?? '').' '.($task->customer?->user?->last_name ?? '')))],
+                default => [null, null, null],
+            };
+            $canViewSource = match ($sourceType) {
+                'inquiry' => $request->user()->can('inquiries.view'),
+                'booking' => $request->user()->can('bookings.view'),
+                'customer' => $request->user()->can('customers.view'),
+                default => true,
+            };
+            if (! $canViewSource && $sourceType) {
+                [$sourceType, $sourceId, $sourceLabel] = [null, null, 'Linked record (access restricted)'];
+            }
+
+            return [
+                'id' => (string) $task->id,
+                'title' => $task->title,
+                'priority' => $task->priority,
+                'status' => $task->status,
+                'company_id' => (string) $task->company_id,
+                'owner_sales_profile_id' => (string) $task->owner_sales_profile_id,
+                'owner_label' => $task->owner?->staff?->user?->full_name ?: ($task->owner?->sales_code ?: 'Former employee'),
+                'owner_active' => (bool) ($task->owner?->status === 'active' && $task->owner?->staff
+                    && ! $task->owner->staff->deleted_at && ! $task->owner->staff->employment_ended_at
+                    && $task->owner->staff->user?->is_active),
+                'due_at' => $task->due_at,
+                'is_overdue' => (bool) (in_array($task->status, ['open', 'in_progress'], true)
+                    && $task->due_at?->utc()->lt($nowUtc)),
+                'state_version' => (int) $task->state_version,
+                'source_type' => $sourceType,
+                'source_id' => $sourceId,
+                'source_label' => $sourceLabel,
+            ];
+        }));
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function taskBookingOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->resolveCompanyId($data['company_id']);
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $this->assertActiveListCompany($companyId, $profileIds);
+
+        $query = DB::table('bookings as booking')->whereNull('booking.deleted_at')
+            ->where(function ($scope) use ($companyId) {
+                $scope->whereExists(fn ($attribution) => $attribution->selectRaw('1')->from('sales_booking_attributions as attribution')
+                    ->whereColumn('attribution.booking_id', 'booking.id')->where('attribution.company_id', $companyId))
+                    ->orWhereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as booking_owner')
+                        ->whereColumn('booking_owner.user_id', 'booking.responsible_user_id')
+                        ->where('booking_owner.company_id', $companyId)->whereNull('booking_owner.deleted_at'));
+            })
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('booking.id', $id))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
+                $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($data['search'])).'%';
+                $q->where(fn ($match) => $match->where('booking.booking_number', 'like', $term)
+                    ->orWhere('booking.log_code', 'like', $term));
+            })
+            ->orderByDesc('booking.created_at')
+            ->select(['booking.id', 'booking.booking_number', 'booking.log_code', 'booking.created_at']);
+
+        $rows = $query->paginate($this->paginationSize($request, 25));
+        $rows->getCollection()->transform(fn ($booking) => [
+            'value' => (string) $booking->id,
+            'label' => $booking->booking_number ?: ($booking->log_code ? 'Draft '.$booking->log_code : 'Booking '.substr((string) $booking->created_at, 0, 10)),
+            'metadata' => ['created_at' => $booking->created_at],
+            'status' => 'available',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function taskInquiryOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->resolveCompanyId($data['company_id']);
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $this->assertActiveListCompany($companyId, $profileIds);
+        $sourceUsers = $this->sourceUserIds($request, $companyId);
+        $query = DB::table('inquiries as inquiry')->where('inquiry.company_id', $companyId)->whereNull('inquiry.deleted_at')
+            ->where(function ($scope) use ($sourceUsers) {
+                $scope->whereIn('inquiry.assigned_to', $sourceUsers)
+                    ->orWhere(function ($created) use ($sourceUsers) {
+                        $created->whereNull('inquiry.assigned_to')->whereIn('inquiry.created_user_id', $sourceUsers);
+                    });
+            })
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('inquiry.id', $id))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
+                $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($data['search'])).'%';
+                $q->where(fn ($match) => $match->where('inquiry.inquiry_number', 'like', $term)
+                    ->orWhere('inquiry.name', 'like', $term)->orWhere('inquiry.subject', 'like', $term)
+                    ->orWhere('inquiry.phone', 'like', $term)->orWhere('inquiry.email', 'like', $term));
+            })
+            ->orderByDesc('inquiry.created_at')
+            ->select(['inquiry.id', 'inquiry.inquiry_number', 'inquiry.name', 'inquiry.subject', 'inquiry.status', 'inquiry.created_at']);
+        $rows = $query->paginate($this->paginationSize($request, 25));
+        $rows->getCollection()->transform(fn ($inquiry) => [
+            'value' => (string) $inquiry->id,
+            'label' => trim(($inquiry->inquiry_number ?: 'Inquiry').' - '.($inquiry->name ?: $inquiry->subject ?: 'New lead')),
+            'metadata' => ['status' => $inquiry->status, 'created_at' => $inquiry->created_at],
+            'status' => 'available',
+        ]);
+
+        return response()->json(['status' => 'success', 'data' => $rows]);
+    }
+
+    public function taskCustomerOptions(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'company_id' => ['required', 'uuid', 'exists:companies,id'],
+            'search' => ['nullable', 'string', 'max:100'], 'selected_id' => ['nullable', 'uuid'],
+            'page' => ['nullable', 'integer', 'min:1'], 'per_page' => ['nullable', 'integer', 'min:1', 'max:50'],
+        ]);
+        $companyId = $this->resolveCompanyId($data['company_id']);
+        $profileIds = $this->scope->profileIds($request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $companyId);
+        $this->assertActiveListCompany($companyId, $profileIds);
+
+        $query = DB::table('customers as customer')
+            ->join('users as contact', 'contact.id', '=', 'customer.user_id')
+            ->join('customer_relationship_owner_assignments as assignment', function ($join) use ($companyId): void {
+                $join->on('assignment.customer_id', '=', 'customer.id')->where('assignment.company_id', '=', $companyId)
+                    ->whereNull('assignment.ended_at')->whereNotNull('assignment.owner_sales_profile_id');
+            })
+            ->join('sales_profiles as owner_profile', function ($join) use ($companyId): void {
+                $join->on('owner_profile.id', '=', 'assignment.owner_sales_profile_id')->where('owner_profile.company_id', '=', $companyId)
+                    ->where('owner_profile.status', '=', 'active')->where('owner_profile.effective_from', '<=', now())
+                    ->whereNotNull('owner_profile.reporting_currency')->whereNotNull('owner_profile.staff_category_snapshot')
+                    ->where(fn ($eligible) => $eligible->where('owner_profile.acquisition_eligible', true)
+                        ->orWhere('owner_profile.collection_eligible', true)->orWhere('owner_profile.commission_eligible', true))
+                    ->where(fn ($effective) => $effective->whereNull('owner_profile.effective_until')->orWhere('owner_profile.effective_until', '>', now()));
+            })
+            ->join('staff as owner_staff', function ($join) use ($companyId): void {
+                $join->on('owner_staff.id', '=', 'owner_profile.staff_id')->where('owner_staff.company_id', '=', $companyId)
+                    ->whereNull('owner_staff.deleted_at')
+                    ->where(fn ($employment) => $employment->whereNull('owner_staff.employment_ended_at')->orWhere('owner_staff.employment_ended_at', '>', now()));
+            })
+            ->join('users as owner_user', function ($join): void {
+                $join->on('owner_user.id', '=', 'owner_staff.user_id')->where('owner_user.is_active', '=', true)->whereNull('owner_user.deleted_at');
+            })
+            ->whereNull('customer.deleted_at')
+            ->when($profileIds !== null, fn ($q) => $q->whereIn('assignment.owner_sales_profile_id', $profileIds))
+            ->when($data['selected_id'] ?? null, fn ($q, $id) => $q->where('customer.id', $id))
+            ->when(empty($data['selected_id']) && ! empty($data['search']), function ($q) use ($data) {
+                $term = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($data['search'])).'%';
+                $q->where(fn ($match) => $match->where('contact.first_name', 'like', $term)
+                    ->orWhere('contact.last_name', 'like', $term)->orWhere('contact.email', 'like', $term)
+                    ->orWhere('contact.phone', 'like', $term)->orWhere('customer.code', 'like', $term));
+            })
+            ->orderBy('contact.first_name')->orderBy('contact.last_name')
+            ->select(['customer.id', 'customer.code', 'contact.first_name', 'contact.last_name', 'contact.phone', 'contact.email'])
+            ->distinct();
+        $rows = $query->paginate($this->paginationSize($request, 25));
+        $rows->getCollection()->transform(fn ($customer) => [
+            'value' => (string) $customer->id,
+            'label' => trim(($customer->code ? $customer->code.' - ' : '').trim($customer->first_name.' '.$customer->last_name)),
+            'metadata' => ['phone' => $customer->phone, 'email' => $customer->email],
+            'status' => 'available',
+        ]);
 
         return response()->json(['status' => 'success', 'data' => $rows]);
     }
@@ -514,7 +804,6 @@ class SalesCrmController extends Controller
     private function constrainBookingOwnerToOpportunity($query, string $bookingAlias, string $opportunityAlias): void
     {
         $query->whereExists(fn ($staff) => $staff->selectRaw('1')->from('staff as linked_booking_staff')
-            ->whereNull('linked_booking_staff.deleted_at')
             ->whereColumn('linked_booking_staff.company_id', "{$opportunityAlias}.company_id")
             ->where(fn ($owner) => $owner->whereColumn('linked_booking_staff.id', "{$bookingAlias}.commission_owner_staff_id")
                 ->orWhere(fn ($creator) => $creator->whereNull("{$bookingAlias}.commission_owner_staff_id")
@@ -536,7 +825,7 @@ class SalesCrmController extends Controller
         $data = $request->validate([
             'company_id' => ['nullable', 'uuid', 'exists:companies,id'],
             'owner_sales_profile_id' => ['required', 'uuid', 'exists:sales_profiles,id'],
-            'opportunity_id' => ['required', 'uuid', 'exists:sales_opportunities,id'],
+            'opportunity_id' => ['nullable', 'uuid', 'exists:sales_opportunities,id'],
             'customer_id' => ['nullable', 'uuid', 'exists:customers,id'],
             'inquiry_id' => ['nullable', 'uuid', 'exists:inquiries,id'],
             'booking_id' => ['nullable', 'uuid', 'exists:bookings,id'],
@@ -552,7 +841,12 @@ class SalesCrmController extends Controller
         $authorizedProfileIds = $this->scope->profileIds(
             $request->user(), 'sales.crm.manage-all', 'sales.crm.manage-team', $data['company_id'],
         );
-        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createTask($data, (string) $request->user()->id, $authorizedProfileIds))], 201);
+        $linkedSourceCount = count(array_filter([$data['opportunity_id'] ?? null, $data['booking_id'] ?? null, $data['inquiry_id'] ?? null]));
+        abort_unless($linkedSourceCount === 1 || ($linkedSourceCount === 0 && ! empty($data['customer_id'])),
+            422, 'Choose one opportunity, booking, inquiry, or owned customer for this follow-up.');
+        return response()->json(['status' => 'success', 'data' => $this->writeConfirmation($crm->createTask(
+            $data, (string) $request->user()->id, $authorizedProfileIds, $this->sourceUserIds($request, $data['company_id']),
+        ))], 201);
     }
 
     public function transitionTask(Request $request, SalesTask $task, SalesCrmService $crm): JsonResponse
@@ -632,6 +926,7 @@ class SalesCrmController extends Controller
                 'reason' => $event->reason,
                 'occurred_at' => $event->occurred_at,
             ])->values(),
+            'available_transitions' => $this->crm->allowedTransitions($row),
         ];
     }
 

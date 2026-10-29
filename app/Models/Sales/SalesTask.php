@@ -25,4 +25,8 @@ class SalesTask extends Model
         'completed_at' => 'datetime', 'state_version' => 'integer',
     ];
     public function owner(): BelongsTo { return $this->belongsTo(SalesProfile::class, 'owner_sales_profile_id')->with('staff.user'); }
+    public function opportunity(): BelongsTo { return $this->belongsTo(SalesOpportunity::class); }
+    public function booking(): BelongsTo { return $this->belongsTo(\App\Models\Booking\Booking::class); }
+    public function inquiry(): BelongsTo { return $this->belongsTo(\App\Models\Inquiry::class); }
+    public function customer(): BelongsTo { return $this->belongsTo(\App\Models\Customer::class); }
 }

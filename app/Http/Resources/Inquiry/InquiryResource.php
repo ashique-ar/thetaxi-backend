@@ -25,9 +25,13 @@ class InquiryResource extends JsonResource
         $assignedLabel = $this->assigned_to && $companyId && $assignedStaff?->company_id === $companyId
             ? trim(($this->assignedUser->first_name ?? '') . ' ' . ($this->assignedUser->last_name ?? ''))
             : null;
+        $responseAuthor = $this->relationLoaded('firstResponseSavedBy') ? $this->firstResponseSavedBy : null;
 
         return [
             'id'           => $this->id,
+            $this->mergeWhen(array_key_exists('linked_opportunity_id', $this->resource->getAttributes()), [
+                'linked_opportunity_id' => $this->linked_opportunity_id,
+            ]),
             'inquiry_number' => $this->inquiry_number,
             'reference_number' => $this->inquiry_number,
             'name' => $this->name,
@@ -54,13 +58,24 @@ class InquiryResource extends JsonResource
             'utm' => $payload['meta']['utm'] ?? [],
             'notification_results' => $payload['meta']['notification_results'] ?? [],
             'customer_id'  => $this->customer_id,
+            'booking_id' => $this->booking_id,
+            'booking_number' => $this->whenLoaded('booking', fn () => $this->booking?->booking_number),
             'subject'      => $this->subject,
             'message'      => $this->message,
             'status'       => $this->status,
             'priority'     => $this->priority,
             'response'     => $this->response,
+            'response_delivery_status' => $this->getAttribute('email_response_status')
+                ?? ($this->response ? 'saved_not_sent' : 'not_started'),
+            'response_sent_at' => $this->when(array_key_exists('email_response_sent_at', $this->resource->getAttributes()), $this->email_response_sent_at),
+            'email_response_idempotency_key' => $this->when(array_key_exists('email_response_idempotency_key', $this->resource->getAttributes()), $this->email_response_idempotency_key),
+            'respond_io_reply_status' => $this->when(array_key_exists('respond_io_reply_status', $this->resource->getAttributes()), $this->respond_io_reply_status),
             'notes' => $this->notes,
             'responded_at' => $this->responded_at,
+            'first_response_sent_at' => $this->first_response_sent_at,
+            'first_response_saved_at' => $this->first_response_saved_at,
+            'first_response_saved_by_user_id' => $this->first_response_saved_by_user_id,
+            'first_response_saved_by' => $responseAuthor ? trim(($responseAuthor->first_name ?? '') . ' ' . ($responseAuthor->last_name ?? '')) : null,
             'created_at'   => $this->created_at,
             'updated_at'   => $this->updated_at,
         ];

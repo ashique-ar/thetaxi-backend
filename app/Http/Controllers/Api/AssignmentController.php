@@ -12,11 +12,13 @@ use App\Services\Sales\SalesCollectionCompanyIntegrity;
 use App\Models\Booking\Booking;
 use App\Models\Booking\BookingActivity;
 use App\Models\Booking\BookingPaymentReceipt;
+use App\Enums\BookingLifecycleStatus;
 use App\Models\Driver\RoutePoint;
 use App\Models\Driver\DriverSession;
 use App\Models\Driver\Driver;
 use App\Services\Driver\NotificationTriggerService;
 use App\Models\Vehicle\VehicleAddon;
+use App\Notifications\BookingLifecycleNotification;
 use App\Models\Booking\BookingAddon;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
@@ -1763,11 +1765,11 @@ class AssignmentController extends Controller
     public function performSwap(Request $request): JsonResponse
     {
         $request->validate([
-            'booking_id' => 'required|string|exists:bookings,id',
-            'booking_item_id' => 'nullable|string|exists:booking_items,id',
+            'booking_id' => 'required|uuid',
+            'booking_item_id' => 'nullable|uuid',
             'swap_type' => 'required|string|in:vehicle,driver,both',
-            'new_vehicle_id' => 'nullable|string|exists:vehicles,id|required_if:swap_type,vehicle,both',
-            'new_driver_id' => 'nullable|string|exists:drivers,id|required_if:swap_type,driver,both',
+            'new_vehicle_id' => 'nullable|uuid|required_if:swap_type,vehicle,both',
+            'new_driver_id' => 'nullable|uuid|required_if:swap_type,driver,both',
             'reason' => 'required|string|in:customer_request,vehicle_breakdown,customer_fault,accident,general',
             'notes' => 'nullable|string',
             'carrier_cost' => 'nullable|numeric|min:0',
@@ -1784,7 +1786,11 @@ class AssignmentController extends Controller
 
         try {
             return DB::transaction(function () use ($request) {
-                $booking = Booking::with(['customer', 'bookingItems'])->findOrFail($request->booking_id);
+                $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany(true);
+                if (! $company) throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Set one active default company before swapping resources.');
+                $bookingQuery = Booking::with(['customer', 'bookingItems'])->whereKey($request->booking_id);
+                \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+                $booking = $bookingQuery->lockForUpdate()->firstOrFail();
                 $selectedBookingItem = null;
 
                 if ($request->filled('booking_item_id')) {
@@ -1809,6 +1815,18 @@ class AssignmentController extends Controller
                 $oldDriverId = $selectedBookingItem?->driver_id ?? $booking->driver_id;
                 $newVehicleId = $request->new_vehicle_id;
                 $newDriverId = $request->new_driver_id;
+                if ($newVehicleId && in_array($request->swap_type, ['vehicle', 'both'], true)) {
+                    $eligibleVehicle = DB::table('vehicles')->where('id', $newVehicleId)->where('company_id', $company->id)->where('is_active', true)->whereNull('deleted_at')->exists();
+                    if (! $eligibleVehicle) throw \Illuminate\Validation\ValidationException::withMessages(['new_vehicle_id' => 'Choose an active vehicle in the current company.']);
+                }
+                if ($newDriverId && in_array($request->swap_type, ['driver', 'both'], true)) {
+                    $eligibleDriver = DB::table('drivers as driver')->join('staff', 'staff.user_id', '=', 'driver.user_id')
+                        ->join('users', 'users.id', '=', 'driver.user_id')->where('driver.id', $newDriverId)
+                        ->whereNull('driver.deleted_at')
+                        ->where('staff.company_id', $company->id)->whereNull('staff.deleted_at')->whereNull('staff.employment_ended_at')
+                        ->whereNull('users.deleted_at')->where('users.is_active', true)->exists();
+                    if (! $eligibleDriver) throw \Illuminate\Validation\ValidationException::withMessages(['new_driver_id' => 'Choose an active driver in the current company.']);
+                }
                 $reason = $request->reason;
                 $serviceTypeId = $selectedBookingItem?->service_type_id ?? $booking->service_type_id ?? $booking->service_type;
                 $customerName = trim((string) (
@@ -2103,6 +2121,43 @@ class AssignmentController extends Controller
                     'event_at' => $swapTime,
                 ]);
 
+                $resolvedReplacementRequest = false;
+                if ($selectedBookingItem) {
+                    $lifecycleData = is_array($selectedBookingItem->lifecycle_data) ? $selectedBookingItem->lifecycle_data : [];
+                    if (data_get($lifecycleData, 'replacement_request.status') === 'open') {
+                        unset($lifecycleData['operational_status']);
+                        $lifecycleData['replacement_request'] = array_merge($lifecycleData['replacement_request'], [
+                            'status' => 'completed',
+                            'completed_by' => (string) Auth::id(),
+                            'completed_at' => $swapTime->toIso8601String(),
+                        ]);
+                        $selectedBookingItem->forceFill(['lifecycle_data' => $lifecycleData])->save();
+                        $resolvedReplacementRequest = true;
+                    }
+                }
+
+                if ($resolvedReplacementRequest) {
+                    try {
+                        $booking->loadMissing('customer.user');
+                        $booking->customer?->user?->notify(new BookingLifecycleNotification(
+                            $booking,
+                            'Replacement arranged',
+                            'A replacement has been assigned and your trip is continuing.',
+                            'booking_replacement_completed',
+                        ));
+                    } catch (\Throwable $exception) {
+                        Log::warning('Customer replacement completion update could not be queued', [
+                            'booking_id' => $booking->id, 'error' => $exception->getMessage(),
+                        ]);
+                    }
+                }
+
+                if ($booking->getLifecycleStatus() === BookingLifecycleStatus::ONGOING_REPLACEMENT_NEEDED) {
+                    $booking->status = BookingLifecycleStatus::ONGOING_ACTIVE->value;
+                    $booking->updated_user_id = Auth::id();
+                    $booking->save();
+                }
+
                 Log::info('Vehicle/Driver swap performed', $swapRecord);
 
                 return response()->json([
@@ -2118,6 +2173,8 @@ class AssignmentController extends Controller
                     ],
                 ]);
             });
+        } catch (\Illuminate\Validation\ValidationException|\Illuminate\Database\Eloquent\ModelNotFoundException|\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error performing swap: ' . $e->getMessage());
             return response()->json([
@@ -2134,20 +2191,30 @@ class AssignmentController extends Controller
     public function recordBreakdown(Request $request): JsonResponse
     {
         $request->validate([
-            'booking_id' => 'required|string|exists:bookings,id',
-            'booking_item_id' => 'nullable|string|exists:booking_items,id',
+            'booking_id' => 'required|uuid',
+            'booking_item_id' => 'nullable|uuid',
             'action' => 'required|string|in:customer_reimburse,workshop,send_mechanic,send_driver,replace_vehicle',
             'description' => 'required|string',
             'location' => 'nullable|string',
             'photos' => 'nullable|array',
             'estimated_cost' => 'nullable|numeric|min:0',
             'workshop_details' => 'nullable|array',
-            'replacement_vehicle_id' => 'nullable|string|exists:vehicles,id',
+            'replacement_vehicle_id' => 'nullable|uuid',
         ]);
 
         try {
             return DB::transaction(function () use ($request) {
-                $booking = Booking::findOrFail($request->booking_id);
+                $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany(true);
+                if (! $company) throw new \Symfony\Component\HttpKernel\Exception\HttpException(409, 'Set one active default company before recording a breakdown.');
+                $bookingQuery = Booking::with('bookingItems')->whereKey($request->booking_id);
+                \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+                $booking = $bookingQuery->lockForUpdate()->firstOrFail();
+                if ($request->filled('booking_item_id') && ! $booking->bookingItems->contains('id', $request->booking_item_id)) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['booking_item_id' => 'Select an item from this booking.']);
+                }
+                if ($request->replacement_vehicle_id && ! DB::table('vehicles')->where('id', $request->replacement_vehicle_id)->where('company_id', $company->id)->where('is_active', true)->whereNull('deleted_at')->exists()) {
+                    throw \Illuminate\Validation\ValidationException::withMessages(['replacement_vehicle_id' => 'Choose an active vehicle in the current company.']);
+                }
                 $addons = [];
 
                 switch ($request->action) {
@@ -2243,6 +2310,8 @@ class AssignmentController extends Controller
                     ],
                 ]);
             });
+        } catch (\Illuminate\Validation\ValidationException|\Illuminate\Database\Eloquent\ModelNotFoundException|\Symfony\Component\HttpKernel\Exception\HttpExceptionInterface $e) {
+            throw $e;
         } catch (\Exception $e) {
             Log::error('Error recording breakdown: ' . $e->getMessage());
             return response()->json([

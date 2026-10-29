@@ -52,6 +52,8 @@ class VehicleOwnerController extends Controller
     public function store(CreateVehicleOwnerRequest $request): JsonResponse
     {
         $data = $request->validated();
+        abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
+            'Payment method management permission is required.');
         $data['created_user_id'] = $request->user()->id;
 
         try {
@@ -131,6 +133,8 @@ class VehicleOwnerController extends Controller
     {
         try {
             $data = $request->validated();
+            abort_unless(! array_key_exists('payment_methods', $data) || $request->user()->can('payment-methods.manage'), 403,
+                'Payment method management permission is required.');
             $updatedPayload = DB::transaction(function () use ($data, $request, $vehicleOwner) {
                 $data['updated_user_id'] = $request->user()->id;
 

@@ -231,7 +231,7 @@ class VehiclePricingCommonRateDefinitionController extends Controller
                     ->lockForUpdate()
                     ->firstOrFail();
                 $pricing = $commonRate->vehicleGroupPricing()->lockForUpdate();
-                $pricingCount = $pricing->count();
+                $pricingCount = $pricing->get(['id'])->count();
                 $confirmedCount = (int) ($confirmation['confirmed_pricing_count'] ?? -1);
                 $confirmed = (bool) ($confirmation['confirm_associations'] ?? false);
 

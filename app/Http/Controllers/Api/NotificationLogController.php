@@ -25,8 +25,9 @@ class NotificationLogController extends Controller
 
     public function index(Request $request): AnonymousResourceCollection
     {
-        $q = NotificationLog::query()->with(['user', 'template']);
-        return NotificationLogResource::collection($q->paginate($request->per_page ?? 15));
+        $filters = $request->validate(['per_page' => ['nullable', 'integer', 'min:1', 'max:100']]);
+        $q = NotificationLog::query()->with(['user', 'template'])->latest('sent_at');
+        return NotificationLogResource::collection($q->paginate($filters['per_page'] ?? 15));
     }
 
     public function store(CreateNotificationLogRequest $request): JsonResponse

@@ -4,27 +4,79 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServiceTypeWorkflowRevision;
 use App\Http\Requests\ServiceType\CreateServiceTypeRequest;
 use App\Http\Requests\ServiceType\UpdateServiceTypeRequest;
 use App\Http\Resources\ServiceTypeResource;
 use App\Services\ServiceTypeCloneService;
+use App\Services\BookingWorkflowSettingsResolver;
 use App\Services\Pricing\PricingContextPolicyService;
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ServiceTypeController extends Controller
 {
     public function __construct(
         private readonly ServiceTypeCloneService $cloneService,
-        private readonly PricingContextPolicyService $pricingContextPolicy
+        private readonly PricingContextPolicyService $pricingContextPolicy,
+        private readonly BookingWorkflowSettingsResolver $workflowSettingsResolver,
     ) {
         $this->middleware('permission:service-types.view')->only(['index','show']);
         $this->middleware('permission:service-types.create')->only(['store', 'clone']);
         $this->middleware('permission:service-types.edit')->only(['update']);
         $this->middleware('permission:service-types.delete')->only(['destroy']);
+        $this->middleware('permission:service-types.create|service-types.edit')->only(['previewWorkflow']);
+        $this->middleware('permission:service-types.workflow.approve')->only(['reviewWorkflowRevision']);
+    }
+
+    public function previewWorkflow(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'service_type_id' => ['nullable', 'uuid'],
+            'workflow_config' => ['required', 'array:return_stage_enabled,qc_stage_enabled,maintenance_stage_enabled,signed_agreement_required,driver_license_required,customer_identity_document_required,booking_approval_required'],
+            'workflow_config.return_stage_enabled' => ['nullable', 'boolean'],
+            'workflow_config.qc_stage_enabled' => ['nullable', 'boolean'],
+            'workflow_config.maintenance_stage_enabled' => ['nullable', 'boolean'],
+            'workflow_config.signed_agreement_required' => ['nullable', 'boolean'],
+            'workflow_config.driver_license_required' => ['nullable', 'boolean'],
+            'workflow_config.customer_identity_document_required' => ['nullable', 'boolean'],
+            'workflow_config.booking_approval_required' => ['nullable', 'boolean'],
+        ]);
+        if (! empty($data['service_type_id'])) {
+            $serviceType = ServiceType::query()->findOrFail($data['service_type_id']);
+            $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+            $this->resolveScope($request, $serviceType);
+        }
+
+        return response()->json([
+            'status' => 'success',
+            'data' => $this->workflowSettingsResolver->preview($data['workflow_config']),
+        ]);
+    }
+
+    public function workflowRevisions(ServiceType $serviceType): JsonResponse
+    {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+        $revisions = ServiceTypeWorkflowRevision::query()->where('service_type_id', $serviceType->id)
+            ->with(['actor:id,first_name,last_name', 'reviewer:id,first_name,last_name'])->orderByDesc('revision')->limit(30)->get()
+            ->map(fn (ServiceTypeWorkflowRevision $revision) => [
+                'revision' => $revision->revision,
+                'change_type' => $revision->change_type,
+                'status' => $revision->status,
+                'workflow_config' => $revision->workflow_config,
+                'effective_settings' => $revision->effective_settings,
+                'actor_name' => $revision->actor ? trim($revision->actor->first_name.' '.$revision->actor->last_name) : null,
+                'reviewer_name' => $revision->reviewer ? trim($revision->reviewer->first_name.' '.$revision->reviewer->last_name) : null,
+                'reviewed_at' => $revision->reviewed_at,
+                'review_note' => $revision->review_note,
+                'created_at' => $revision->created_at,
+            ]);
+
+        return response()->json(['status' => 'success', 'data' => $revisions]);
     }
 
     public function index(Request $request): AnonymousResourceCollection
@@ -64,7 +116,11 @@ class ServiceTypeController extends Controller
         $data['owner_id'] = $data['owner_id'] ?? $ownerId;
         $data['slug'] = $data['slug'] ?? Str::slug($data['code']);
         $data['created_user_id'] = $request->user()->id;
-        $svc = ServiceType::create($data);
+        $svc = DB::transaction(function () use ($data, $request): ServiceType {
+            $serviceType = ServiceType::create($data);
+            $this->recordWorkflowRevision($serviceType, $serviceType->workflow_config, (string) $request->user()->id, 'created');
+            return $serviceType;
+        });
         app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         Cache::forget('sitemap');
@@ -90,37 +146,55 @@ class ServiceTypeController extends Controller
     {
         $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
         $data = $request->validated();
-        if (array_key_exists('trip_mode', $data)) {
-            $formConfig = $serviceType->form_config ?? [];
-            $formConfig['trip_mode'] = $data['trip_mode'];
-            $data['form_config'] = $formConfig;
-            unset($data['trip_mode']);
-        }
         [$context, $ownerType, $ownerId] = $this->resolveScope($request, $serviceType);
-        $data['context'] = $data['context'] ?? $context;
-        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
-        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
-        $data['updated_user_id'] = $request->user()->id;
-        $serviceType->update($data);
-
-        if (
-            ServiceType::where('code', $serviceType->code)
-                ->where('context', $serviceType->context)
-                ->where('owner_type', $serviceType->owner_type)
-                ->where('owner_id', $serviceType->owner_id)
-                ->where('id', '!=', $serviceType->id)
-                ->exists()
-        ) {
+        $data['code'] = strtolower(str_replace(' ', '_', $data['code'] ?? $serviceType->code));
+        $duplicateCodeExists = ServiceType::query()
+            ->where('context', $context)
+            ->where('owner_type', $ownerType)
+            ->where('owner_id', $ownerId)
+            ->whereRaw('LOWER(REPLACE(code, ?, ?)) = ?', [' ', '_', $data['code']])
+            ->where('id', '!=', $serviceType->id)
+            ->exists();
+        if ($duplicateCodeExists) {
             return response()->json([
                 'status' => 'error',
                 'message' => 'Service type code must be unique.',
             ], 422);
         }
-        $serviceType->code = strtolower(str_replace(' ', '_', $serviceType->code));
-        if (!$serviceType->slug) {
-            $serviceType->slug = Str::slug($serviceType->code);
-        }
-        $serviceType->save();
+        $data['context'] = $data['context'] ?? $context;
+        $data['owner_type'] = $data['owner_type'] ?? $ownerType;
+        $data['owner_id'] = $data['owner_id'] ?? $ownerId;
+        $data['updated_user_id'] = $request->user()->id;
+        $serviceType = DB::transaction(function () use ($serviceType, $data, $request): ServiceType {
+            $locked = ServiceType::query()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
+            if (array_key_exists('workflow_config', $data) && is_array($data['workflow_config'])) {
+                $data['workflow_config'] = array_replace((array) $locked->workflow_config, $data['workflow_config']);
+            }
+            $workflowConfig = $data['workflow_config'] ?? null;
+            $workflowChanged = array_key_exists('workflow_config', $data)
+                && $locked->workflow_config !== $data['workflow_config'];
+            unset($data['workflow_config']);
+            if (array_key_exists('trip_mode', $data)) {
+                $formConfig = $locked->form_config ?? [];
+                $formConfig['trip_mode'] = $data['trip_mode'];
+                $data['form_config'] = $formConfig;
+                unset($data['trip_mode']);
+            }
+            if ($workflowChanged) {
+                $revisionCount = (int) ServiceTypeWorkflowRevision::query()->where('service_type_id', $locked->id)->max('revision');
+                if ($revisionCount === 0) {
+                    $this->recordWorkflowRevision($locked, $locked->workflow_config, null, 'legacy_baseline');
+                }
+            }
+            $locked->update($data);
+            if (! $locked->slug) $locked->slug = Str::slug($locked->code);
+            $locked->save();
+            if ($workflowChanged) {
+                ServiceTypeWorkflowRevision::query()->where('service_type_id', $locked->id)->where('status', 'pending')->update(['status' => 'superseded']);
+                $this->recordWorkflowRevision($locked, $workflowConfig, (string) $request->user()->id, 'changed', 'pending');
+            }
+            return $locked;
+        });
         app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
         Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
         Cache::forget('sitemap');
@@ -129,6 +203,39 @@ class ServiceTypeController extends Controller
             'message'=>'Service type updated',
             'data'=>['service_type'=>new ServiceTypeResource($serviceType)]
         ]);
+    }
+
+    public function reviewWorkflowRevision(Request $request, ServiceType $serviceType, int $revision): JsonResponse
+    {
+        $this->pricingContextPolicy->assertServiceTypeIsWritable($serviceType);
+        $data = $request->validate([
+            'decision' => ['required', 'in:approve,reject'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ]);
+        $result = DB::transaction(function () use ($serviceType, $revision, $data, $request): ServiceTypeWorkflowRevision {
+            $lockedService = ServiceType::query()->whereKey($serviceType->id)->lockForUpdate()->firstOrFail();
+            $change = ServiceTypeWorkflowRevision::query()->where('service_type_id', $lockedService->id)->where('revision', $revision)->lockForUpdate()->firstOrFail();
+            abort_unless($change->status === 'pending', 409, 'This workflow proposal is no longer awaiting review.');
+            if ($data['decision'] === 'approve') {
+                abort_unless((string) $change->actor_user_id !== (string) $request->user()->id, 403, 'Another authorized employee must approve this workflow proposal.');
+                ServiceTypeWorkflowRevision::query()->where('service_type_id', $lockedService->id)->where('status', 'active')->update(['status' => 'superseded']);
+                $lockedService->workflow_config = $change->workflow_config;
+                $lockedService->updated_user_id = $request->user()->id;
+                $lockedService->save();
+                $change->status = 'active';
+            } else {
+                $change->status = 'rejected';
+            }
+            $change->reviewed_by_user_id = $request->user()->id;
+            $change->reviewed_at = now();
+            $change->review_note = $data['note'] ?? null;
+            $change->save();
+            return $change;
+        });
+        app(\App\Services\DynamicServiceConfigurationService::class)->clearCache();
+        Cache::put('ref.service-types.v', ((int) Cache::get('ref.service-types.v', 0)) + 1, 86400);
+
+        return response()->json(['status' => 'success', 'message' => 'Workflow proposal '.$result->status.'.']);
     }
 
     // public function toggleStatus(Request $request, string $id): JsonResponse
@@ -197,6 +304,21 @@ class ServiceTypeController extends Controller
         }
 
         return [$context, $ownerType, $ownerId];
+    }
+
+    private function recordWorkflowRevision(ServiceType $serviceType, ?array $workflowConfig, ?string $actorUserId, string $changeType, string $status = 'active'): void
+    {
+        $revision = ((int) ServiceTypeWorkflowRevision::query()->where('service_type_id', $serviceType->id)->max('revision')) + 1;
+        ServiceTypeWorkflowRevision::query()->create([
+            'service_type_id' => $serviceType->id,
+            'revision' => $revision,
+            'change_type' => $changeType,
+            'status' => $status,
+            'workflow_config' => $workflowConfig,
+            'effective_settings' => $this->workflowSettingsResolver->resolve($workflowConfig),
+            'actor_user_id' => $actorUserId,
+            'created_at' => now(),
+        ]);
     }
 
     private function resolveFallbackScope(Request $request): array

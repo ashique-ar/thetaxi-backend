@@ -495,6 +495,41 @@ function pricingOwnershipMigration(): Migration
     return require base_path('database/migrations/2026_07_16_150000_reconcile_global_pricing_definitions.php');
 }
 
+it('locks linked common-rate rows without an aggregate and preserves deletion confirmation', function (array $confirmation, int $status, bool $deleted): void {
+    $now = now();
+    DB::table('vehicle_pricing_common_rate_definitions')->insert(
+        pricingCommonDefinition('delete-rate', null, null, $now)
+    );
+    DB::table('vehicle_group_common_rate_pricing')->insert(
+        pricingCommonValue('delete-value', 'delete-rate', 3500, null, null, $now)
+    );
+
+    DB::enableQueryLog();
+    DB::flushQueryLog();
+    $response = (new VehiclePricingCommonRateDefinitionController())->destroy(
+        Request::create('/common-rate-definitions/delete-rate', 'DELETE', $confirmation),
+        'delete-rate'
+    );
+    $queries = collect(DB::getQueryLog())->pluck('query');
+    DB::disableQueryLog();
+
+    expect($response->getStatusCode())->toBe($status)
+        ->and($queries->contains(fn (string $sql): bool => str_contains($sql, 'count(*)')
+            && str_contains($sql, 'vehicle_group_common_rate_pricing')))->toBeFalse();
+    expect(DB::table('vehicle_pricing_common_rate_definitions')->where('id', 'delete-rate')->value('deleted_at') !== null)
+        ->toBe($deleted)
+        ->and(DB::table('vehicle_group_common_rate_pricing')->where('id', 'delete-value')->value('deleted_at') !== null)
+        ->toBe($deleted);
+    if (!$deleted) {
+        expect($response->getData(true)['code'])->toBe('COMMON_RATE_IN_USE')
+            ->and($response->getData(true)['data']['vehicle_group_pricing_count'])->toBe(1);
+    }
+})->with([
+    'unconfirmed' => [[], 409, false],
+    'stale count' => [['confirm_associations' => true, 'confirmed_pricing_count' => 0], 409, false],
+    'confirmed' => [['confirm_associations' => true, 'confirmed_pricing_count' => 1], 200, true],
+]);
+
 function pricingCommonDefinition(
     string $id,
     ?string $ownerType,

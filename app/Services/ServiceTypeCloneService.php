@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Service\ServiceType;
+use App\Models\Service\ServiceTypeWorkflowRevision;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -10,6 +11,10 @@ use Illuminate\Support\Str;
 
 class ServiceTypeCloneService
 {
+    public function __construct(private readonly BookingWorkflowSettingsResolver $workflowSettingsResolver)
+    {
+    }
+
     public function clone(ServiceType $source, array $targetAttributes, ?string $userId = null): ServiceType
     {
         return DB::transaction(function () use ($source, $targetAttributes, $userId) {
@@ -39,6 +44,15 @@ class ServiceTypeCloneService
                     'updated_user_id' => $userId,
                 ]
             ));
+            ServiceTypeWorkflowRevision::query()->create([
+                'service_type_id' => $target->id,
+                'revision' => 1,
+                'change_type' => 'cloned',
+                'workflow_config' => $target->workflow_config,
+                'effective_settings' => $this->workflowSettingsResolver->resolve($target->workflow_config),
+                'actor_user_id' => $userId,
+                'created_at' => now(),
+            ]);
 
             $packageMap = $this->cloneTableWithServiceType('service_packages', $source->id, $target->id, $userId, [
                 'code' => fn (string $value) => $this->makeUniqueCode('service_packages', 'code', $value, $target->code),

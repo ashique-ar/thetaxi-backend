@@ -9,7 +9,6 @@ return new class extends Migration {
     public function up(): void
     {
         Schema::table('booking_channels', function (Blueprint $table) {
-            $table->boolean('is_active')->default(true);
             $table->boolean('is_default')->default(false);
         });
         Schema::table('bookings', function (Blueprint $table) {
@@ -29,6 +28,6 @@ return new class extends Migration {
             $table->dropConstrainedForeignId('booking_channel_id');
             $table->dropColumn('booking_origin');
         });
-        Schema::table('booking_channels', fn (Blueprint $table) => $table->dropColumn(['is_active', 'is_default']));
+        Schema::table('booking_channels', fn (Blueprint $table) => $table->dropColumn('is_default'));
     }
 };

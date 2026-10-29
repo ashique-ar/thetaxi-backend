@@ -18,6 +18,8 @@ class SalesPolicySetting extends BaseModel
         'dispute_response_days',
         'profile_export_retention_days',
         'business_timezone',
+        'inquiry_first_response_minutes',
+        'booking_assignment_target_minutes',
         'reason',
         'created_by',
         'approved_by',
@@ -30,6 +32,8 @@ class SalesPolicySetting extends BaseModel
         'fx_rounding_scale' => 'integer',
         'dispute_response_days' => 'integer',
         'profile_export_retention_days' => 'integer',
+        'inquiry_first_response_minutes' => 'integer',
+        'booking_assignment_target_minutes' => 'integer',
         'approved_at' => 'datetime',
     ];
 }

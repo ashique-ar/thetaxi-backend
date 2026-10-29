@@ -52,16 +52,22 @@ class TripController extends Controller
                 ], 404);
             }
 
+            $status = $this->tripTrackingService->getTripStatus($assignment);
+            if (($status['hire_completed'] ?? false) === true) {
+                $status['assignment'] = $this->assignmentService->buildAssignmentPayload($assignment->fresh());
+                $status['fare'] = $status['assignment']['fare_amount'] ?? null;
+            }
+
             return response()->json([
                 'status' => 'success',
-                'data' => $this->tripTrackingService->getTripStatus($assignment),
+                'data' => $status,
             ]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            report($e);
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to retrieve trip status',
                 'error_code' => 'TRIP_STATUS_FAILED',
-                'error' => $e->getMessage()
             ], 500);
         }
     }
@@ -440,6 +446,7 @@ class TripController extends Controller
             $summary = $this->tripTrackingService->endTrip($assignment, $request->validated());
             $completedAssignment = $assignment->fresh();
             $summary['assignment'] = $this->assignmentService->buildAssignmentPayload($completedAssignment);
+            $summary['fare'] = $summary['assignment']['fare_amount'] ?? null;
             if (data_get($summary, 'completion_evidence.operations_review_required') === true) {
                 app(BookingOperationsHealthMonitor::class)->recordIncompleteTrackingCompletion([
                     'booking_id' => $assignment->booking_id,
@@ -479,12 +486,12 @@ class TripController extends Controller
                 'error_code' => $e->getMessage(),
                 'errors' => []
             ], 400);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
+            report($e);
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to end trip',
                 'error_code' => 'TRIP_END_FAILED',
-                'error' => $e->getMessage()
             ], 500);
         }
     }

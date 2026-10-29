@@ -2,13 +2,12 @@
 
 @section('title', 'Quotation Request - ' . config('app.name'))
 
-@section('header_title', 'Quotation Request Received')
+@section('header_title', $staffRequested ? 'Your Quotation Is Ready' : 'Quotation Request Received')
 
-@section('header_subtitle', 'Thank you for your interest')
+@section('header_subtitle', $staffRequested ? 'Please review your offer' : 'Thank you for your interest')
 
 @section('content')
     @php
-        use App\Helpers\BookingLinkHelper;
         $workflowData = is_string($booking->workflow_data)
             ? json_decode($booking->workflow_data, true)
             : $booking->workflow_data ?? [];
@@ -30,7 +29,6 @@
         //     'over-2000' => 'Over $2,000',
         //     default => 'Not specified',
         // };
-        $checkoutLink = BookingLinkHelper::getQuotationCheckoutLink($booking);
     @endphp
 
     <!-- Greeting -->
@@ -39,8 +37,11 @@
     </p>
 
     <p class="intro-text">
-        Thank you for submitting a quotation request to {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We have received
-        your inquiry and will get back to you shortly.
+        @if ($staffRequested)
+            Your quotation from {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }} is ready. Review the details below and contact us if you need any changes.
+        @else
+            Thank you for submitting a quotation request to {{ ($settings['company_name'] ?? $settings['brand_name'] ?? $settings['site_name'] ?? 'Company') }}. We have received your inquiry and our team will review it and contact you with an offer.
+        @endif
     </p>
 
     <!-- Reference Box -->
@@ -203,12 +204,11 @@
         </h2>
         <div class="highlight-box info">
             <h3>What Happens Now?</h3>
-            <p style="margin-bottom: 0;">Our team will review your quotation request and contact you as soon as possible with a
-                detailed quote and options tailored to your needs.</p>
+            <p style="margin-bottom: 0;">@if ($staffRequested) Your quotation is ready. Please review the details and let us know if you have questions. @else Our team will review your quotation request and contact you as soon as possible with a detailed quote and options tailored to your needs. @endif</p>
         </div>
     </div>
 
-    <!-- Quick Checkout Option -->
+    @if ($staffRequested && $checkoutLink)
     <div class="section">
         <h2 class="section-title">
             <span class="icon">⚡</span> Accept & Proceed to Payment
@@ -234,6 +234,11 @@
                 style="color: #BF2629; text-decoration: underline; word-break: break-all;">{{ $checkoutLink }}</a>
         </p>
     </div>
+    @elseif ($staffRequested)
+    <div class="section">
+        <p>Our team will contact you with an updated offer. This email does not contain an active checkout link.</p>
+    </div>
+    @endif
 
     @php
         $supportPhone = $settings['company_phone'] ?? '';

@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Models\Website\CmsContent;
+use App\Models\Booking\Booking;
 use App\Traits\UUID;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\QueryException;
@@ -19,6 +20,9 @@ use Illuminate\Support\Carbon;
  * @property string|null $priority Inquiry priority (optional)
  * @property string|null $response Response to inquiry (optional)
  * @property Carbon|null $responded_at Response date (optional)
+ * @property Carbon|null $first_response_saved_at First staff response draft saved date
+ * @property Carbon|null $first_response_sent_at First confirmed human response sent date
+ * @property string|null $first_response_saved_by_user_id Staff member who first saved a response draft
  * @property string|null $created_user_id ID of user who created this record
  * @property string|null $updated_user_id ID of user who last updated this record
  * @property Carbon|null $created_at
@@ -36,7 +40,9 @@ class Inquiry extends BaseModel
      * @var array<int, string>
      */
     protected $fillable = [
+        'company_id',
         'customer_id',
+        'booking_id',
         'agent_id',
         'assigned_to',
         'name',
@@ -49,6 +55,9 @@ class Inquiry extends BaseModel
         'response',
         'notes',
         'responded_at',
+        'first_response_saved_at',
+        'first_response_sent_at',
+        'first_response_saved_by_user_id',
         'source',
         'payload',
         'created_user_id',
@@ -75,6 +84,8 @@ class Inquiry extends BaseModel
      */
     protected $casts = [
         'responded_at' => 'datetime',
+        'first_response_saved_at' => 'datetime',
+        'first_response_sent_at' => 'datetime',
         'payload' => 'array',
         'search_context' => 'array',
         'form_data' => 'array',
@@ -90,6 +101,11 @@ class Inquiry extends BaseModel
     public function customer()
     {
         return $this->belongsTo(Customer::class);
+    }
+
+    public function booking(): BelongsTo
+    {
+        return $this->belongsTo(Booking::class, 'booking_id');
     }
 
     /**
@@ -128,6 +144,11 @@ class Inquiry extends BaseModel
     public function assignedUser()
     {
         return $this->belongsTo(User::class, 'assigned_to')->withTrashed();
+    }
+
+    public function firstResponseSavedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'first_response_saved_by_user_id')->withTrashed();
     }
 
     /**
@@ -199,6 +220,7 @@ class Inquiry extends BaseModel
         parent::boot();
 
         static::creating(function ($inquiry) {
+            $inquiry->company_id = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany()?->id;
             if (empty($inquiry->inquiry_number)) {
                 $inquiry->inquiry_number = static::generateInquiryNumber();
             }

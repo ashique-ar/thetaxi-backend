@@ -55,6 +55,22 @@ enum BookingLifecycleStatus: string
     case COMPLETION_PENDING = 'completion_pending';
     case CANCELLED = 'cancelled';
 
+    /** Current and legacy booking states that still need staff action. */
+    public static function activeOperationalValues(): array
+    {
+        $lifecycleValues = array_map(
+            static fn (self $status): string => $status->value,
+            array_filter(self::cases(), static fn (self $status): bool =>
+                in_array($status->getStage(), ['booking', 'allocation_dispatch', 'ongoing', 'return', 'qc_repair'], true)
+                && ! in_array($status, [self::BOOKING_CANCELLED, self::BOOKING_REJECTED], true)),
+        );
+
+        return array_values(array_unique(array_merge($lifecycleValues, [
+            'pending', 'payment_processing', 'quotation_requested', 'pending_approval',
+            'approved', 'confirmed', 'allocated', 'in_progress', 'active',
+        ])));
+    }
+
     /**
      * Get the stage group for this status
      */

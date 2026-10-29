@@ -433,6 +433,47 @@ class BookingLifecycleController extends Controller
         }
     }
 
+    public function requestReplacement(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_id' => ['required', 'uuid'],
+            'booking_item_id' => ['required', 'uuid'],
+            'reason' => ['required', Rule::in(['customer_request', 'vehicle_breakdown', 'customer_fault', 'accident', 'general'])],
+            'notes' => ['nullable', 'string', 'max:2000'],
+        ]);
+
+        try {
+            $summary = $this->lifecycleService->requestReplacement(
+                $data['booking_id'], $data['booking_item_id'], $data['reason'], $data['notes'] ?? null
+            );
+            return response()->json(['status' => 'success', 'data' => $summary, 'message' => 'Replacement request sent to the operations queue.']);
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found for this company.'], 404);
+        }
+    }
+
+    public function closeReplacementRequest(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_id' => ['required', 'uuid'],
+            'booking_item_id' => ['required', 'uuid'],
+            'resolution_reason' => ['required', 'string', 'min:3', 'max:1000'],
+        ]);
+
+        try {
+            $summary = $this->lifecycleService->closeReplacementRequest(
+                $data['booking_id'], $data['booking_item_id'], trim($data['resolution_reason'])
+            );
+            return response()->json(['status' => 'success', 'data' => $summary, 'message' => 'Replacement request closed with a reason.']);
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (\Illuminate\Database\Eloquent\ModelNotFoundException $e) {
+            return response()->json(['status' => 'error', 'message' => 'Booking or trip was not found for this company.'], 404);
+        }
+    }
+
     /**
      * Complete booking lifecycle
      */
@@ -503,6 +544,49 @@ class BookingLifecycleController extends Controller
                 'status' => 'error',
                 'message' => 'Failed to complete booking: ' . $e->getMessage()
             ], $statusCode);
+        }
+    }
+
+    public function completePostTripMaintenance(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'booking_id' => ['required', 'uuid'],
+            'booking_item_id' => ['nullable', 'uuid'],
+            'notes' => ['required', 'string', 'min:3', 'max:3000'],
+        ]);
+        $data['notes'] = trim($data['notes']);
+        if (mb_strlen($data['notes']) < 3) {
+            throw ValidationException::withMessages(['notes' => 'Describe the completed work in at least 3 characters.']);
+        }
+
+        $company = app(\App\Services\SingleCompanyScope::class)->activeDefaultCompany();
+        abort_unless($company, 409, 'Set one active default company before completing maintenance.');
+        $bookingQuery = Booking::query()->whereKey($data['booking_id'])->whereNull('deleted_at');
+        \App\Services\CompanyBookingScope::constrain($bookingQuery, 'bookings', (string) $company->id);
+        $bookingQuery->firstOrFail();
+
+        try {
+            $activity = $this->lifecycleService->completePostTripMaintenance(
+                $data['booking_id'],
+                $data['booking_item_id'] ?? null,
+                trim($data['notes']),
+                (string) Auth::id()
+            );
+
+            return response()->json([
+                'status' => 'success',
+                'data' => $activity,
+                'message' => 'Maintenance completion recorded.',
+            ]);
+        } catch (\DomainException|\InvalidArgumentException $e) {
+            return response()->json(['status' => 'error', 'message' => $e->getMessage()], 422);
+        } catch (\Throwable $e) {
+            Log::error('Error completing post-trip maintenance', [
+                'booking_id' => $data['booking_id'],
+                'user_id' => Auth::id(),
+                'error' => $e->getMessage(),
+            ]);
+            return response()->json(['status' => 'error', 'message' => 'Failed to record maintenance completion.'], 500);
         }
     }
 
@@ -688,61 +772,6 @@ class BookingLifecycleController extends Controller
             return response()->json([
                 'status' => 'error',
                 'message' => 'Failed to retrieve QC details'
-            ], 500);
-        }
-    }
-
-    /**
-     * Process vehicle replacement (temporary or override)
-     */
-    public function processReplacement(Request $request): JsonResponse
-    {
-        $request->validate([
-            'booking_id' => 'required|string',
-            'replacement_type' => 'required|in:temporary,override',
-            'new_vehicle_id' => 'required|string',
-            'new_driver_id' => 'nullable|string',
-            'reason' => 'required|string',
-            'notes' => 'nullable|string',
-            'start_time' => 'nullable|date',
-            'end_time' => 'nullable|date',
-        ]);
-
-        try {
-            DB::beginTransaction();
-
-            $replacement = $this->lifecycleService->processReplacement(
-                $request->booking_id,
-                array_merge($request->only([
-                    'new_vehicle_id',
-                    'new_driver_id', 
-                    'reason',
-                    'notes',
-                    'start_time',
-                    'end_time'
-                ]), [
-                    'replacement_type' => $request->replacement_type
-                ])
-            );
-
-            DB::commit();
-
-            return response()->json([
-                'status' => 'success',
-                'data' => $replacement,
-                'message' => 'Vehicle replacement processed successfully'
-            ]);
-        } catch (\Exception $e) {
-            DB::rollBack();
-            Log::error('Error processing replacement', [
-                'booking_id' => $request->booking_id,
-                'error' => $e->getMessage(),
-                'trace' => $e->getTraceAsString()
-            ]);
-
-            return response()->json([
-                'status' => 'error',
-                'message' => 'Failed to process replacement'
             ], 500);
         }
     }
