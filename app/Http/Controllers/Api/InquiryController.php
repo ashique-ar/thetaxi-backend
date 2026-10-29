@@ -41,6 +41,7 @@ class InquiryController extends Controller
     {
         $this->middleware('permission:inquiries.view')->only(['index', 'show', 'filterOptions', 'assigneeOptions', 'responseMetrics', 'unscoped']);
         $this->middleware('permission:inquiries.edit')->only(['scopeUnassigned']);
+        $this->middleware('permission:companies.edit')->only(['unscoped', 'scopeUnassigned']);
         $this->middleware('permission:companies.view')->only(['unscoped', 'scopeUnassigned', 'companyOptions']);
         $this->middleware('permission:inquiries.view|communication.manage')->only(['customerOptions', 'bookingOptions']);
         $this->middleware('permission:inquiries.create')->only(['store']);
@@ -166,7 +167,7 @@ class InquiryController extends Controller
             ->orderBy('inquiries.created_at')->orderBy('inquiries.id')
             ->paginate(min(max((int) $request->integer('per_page', 25), 1), 100), [
                 'inquiries.id', 'inquiries.inquiry_number', 'inquiries.name', 'inquiries.email', 'inquiries.phone', 'inquiries.subject',
-                'inquiries.message', 'inquiries.customer_id', 'inquiries.booking_id', 'inquiries.assigned_to', 'inquiries.status', 'inquiries.created_at',
+                'inquiries.message', 'inquiries.assigned_to', 'inquiries.status', 'inquiries.created_at',
                 'assignee.first_name as assigned_first_name', 'assignee.last_name as assigned_last_name',
             ]);
 

@@ -30,7 +30,7 @@ class MyWorkController extends Controller
         $activeBookingStatuses = array_merge(['inquiry', 'inquiry_qualified'], BookingLifecycleStatus::activeOperationalValues());
 
         if ($request->user()->can('inquiries.view') && $request->user()->can('inquiries.edit')
-            && $request->user()->can('companies.view')) {
+            && $request->user()->can('companies.view') && $request->user()->can('companies.edit')) {
             $unscopedInquiries = (int) DB::table('inquiries')->whereNull('company_id')->whereNull('deleted_at')->count();
             if ($unscopedInquiries > 0) {
                 $queues[] = ['group' => 'assignment', 'title' => 'Older inquiries need a business',
